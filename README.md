@@ -1,92 +1,117 @@
-# OnlyMonkes — Solana Mobile dApp
+# OnlyMonkes
 
-A **production-ready scaffold** for an NFT-gated global chatroom on Solana Mobile (Android). Holders of the **Saga Monkes** collection connect their wallet, prove ownership on-chain, and join a decentralized group chat via XMTP.
+An NFT-gated group chat for **Saga Monkes** holders on Solana Mobile. Connect your wallet, prove ownership, and chat with other verified holders — all on-chain identity, decentralized messaging via XMTP.
 
 ---
 
-## Architecture
+## Features
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                        User Device                       │
-│                                                          │
-│   ┌─────────────────────────────────────────────────┐   │
-│   │           NFT Chat (React Native + Expo)        │   │
-│   │                                                  │   │
-│   │  ConnectScreen  ──►  VerifyScreen  ──►  Chat    │   │
-│   │       │                   │                │     │   │
-│   │       ▼                   ▼                ▼     │   │
-│   │    MWA Hook         NFT Verify         XMTP Hook │   │
-│   └─────────────────────────────────────────────────┘   │
-│            │                   │                │        │
-│            ▼                   ▼                ▼        │
-│       Wallet App        Helius DAS API     XMTP Network  │
-│    (Phantom / Solflare)  (NFT ownership)  (P2P messages) │
-└─────────────────────────────────────────────────────────┘
-```
+- **NFT-gated access** — only verified Saga Monkes holders can join
+- **Decentralized messaging** — group chat powered by XMTP (E2E encrypted, no central server)
+- **NFT avatar** — your Monke NFT is your profile picture in chat
+- **Custom username** — set a display name on first launch
+- **Banana reactions** 🍌 — react to any message
+- **Reply threads** — long press any message to reply
+- **dApp side chats** — per-dApp community channels via the hamburger menu
+- **Monke Tools** 🔧 — ecosystem links and notification settings
+- **User profiles** — tap any username to view their NFT and bio
+- **Push notifications** via expo-notifications
+- **Solana Mobile optimized** — built for Seeker / Saga devices
 
-### Auth Flow
+---
 
-```
-1. Connect Wallet (MWA)
-        │
-        ▼
-2. Fetch NFTs from Helius DAS API
-        │
-        ├── No collection NFT found → Access Denied
-        │
-        ▼
-3. Sign XMTP identity message (wallet sign, no tx)
-        │
-        ▼
-4. Join global XMTP conversation (all holders share same topic)
-        │
-        ▼
-5. Load history + stream live messages
-```
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Framework | React Native + Expo (bare workflow) |
+| Navigation | Expo Router (file-based) |
+| Messaging | XMTP v5 (`@xmtp/react-native-sdk`) |
+| Wallet | Mobile Wallet Adapter (`@solana-mobile/mobile-wallet-adapter-protocol-web3js`) |
+| NFT Verification | Helius DAS API |
+| State | Zustand |
+| Fonts | Space Grotesk, Inter, JetBrains Mono |
 
 ---
 
 ## Project Structure
 
 ```
-nft-chat-dapp/
-├── app/                      # Expo Router routes
-│   ├── _layout.tsx           # Root layout (fonts, providers)
-│   ├── index.tsx             # → ConnectScreen
-│   ├── verify.tsx            # → VerifyScreen
-│   └── chat.tsx              # → ChatScreen (auth-guarded)
+OnlyMonkes/
+├── app/                        # Expo Router screens
+│   ├── _layout.tsx             # Root layout (fonts, providers)
+│   ├── index.tsx               # → ConnectScreen
+│   ├── verify.tsx              # → VerifyScreen
+│   ├── chat.tsx                # → ChatScreen (NFT-gated)
+│   └── dapp-chat.tsx           # → DAppChatScreen
 │
 ├── src/
 │   ├── components/
-│   │   ├── MessageBubble.tsx # Message w/ reactions + reply
-│   │   └── ChatInput.tsx     # Composer w/ reply strip
+│   │   ├── ChatInput.tsx       # Message composer with reply strip
+│   │   ├── MenuDrawer.tsx      # Slide-out dApp navigation drawer
+│   │   ├── MessageBubble.tsx   # Message with reactions + reply preview
+│   │   ├── MonkeToolsModal.tsx # Ecosystem links + notification settings
+│   │   ├── NftPickerModal.tsx  # NFT avatar selector
+│   │   ├── UserProfileModal.tsx# Tappable user profile card
+│   │   └── UsernameModal.tsx   # First-launch username setup
 │   │
 │   ├── hooks/
-│   │   ├── useMobileWallet.ts  # MWA connect + signMessage
+│   │   ├── useGroupChat.ts     # XMTP group chat logic
+│   │   ├── useMobileWallet.ts  # MWA wallet connect + signMessage
 │   │   ├── useNFTVerification.ts
-│   │   └── useXmtp.ts          # XMTP init, stream, send
+│   │   └── useXmtp.ts          # XMTP client init, stream, send, react
 │   │
 │   ├── lib/
-│   │   ├── constants.ts        # Theme, config, collections
-│   │   ├── nftVerification.ts  # Helius DAS API + fallback
-│   │   └── xmtp.ts             # XMTP client + message utils
+│   │   ├── constants.ts        # Theme, fonts, collection config
+│   │   ├── nftVerification.ts  # Helius DAS API + on-chain fallback
+│   │   ├── notifications.ts    # Push notification helpers
+│   │   ├── session.ts          # Session persistence
+│   │   ├── userProfile.ts      # Profile save/load (AsyncStorage)
+│   │   └── xmtp.ts             # XMTP client + message codec utils
 │   │
 │   ├── screens/
-│   │   ├── ConnectScreen.tsx
-│   │   ├── VerifyScreen.tsx
-│   │   └── ChatScreen.tsx
+│   │   ├── ChatScreen.tsx      # Main global chatroom
+│   │   ├── ConnectScreen.tsx   # Wallet connect landing
+│   │   ├── DAppChatScreen.tsx  # Per-dApp community chat
+│   │   └── VerifyScreen.tsx    # NFT ownership verification
 │   │
 │   ├── store/
-│   │   ├── appStore.ts         # Zustand: wallet + auth state
-│   │   └── chatStore.ts        # Zustand: messages
+│   │   ├── appStore.ts         # Zustand: wallet, NFT, auth state
+│   │   └── chatStore.ts        # Zustand: messages, reply state
 │   │
 │   └── types/index.ts
 │
-├── global.ts                  # Buffer / process polyfills
-├── metro.config.js            # Node.js shims for Solana
-├── app.config.ts              # Expo config + env vars
-└── babel.config.js
+├── assets/
+│   ├── header.png              # Header background image
+│   ├── icon.png
+│   ├── splash.png
+│   └── fonts/                  # Space Grotesk, Inter, JetBrains Mono
+│
+├── app.config.ts               # Expo config + env vars
+├── global.ts                   # Buffer / process polyfills
+└── metro.config.js             # Node.js shims for Solana libs
+```
+
+---
+
+## Auth Flow
+
+```
+Connect Wallet (MWA)
+        │
+        ▼
+Fetch NFTs via Helius DAS API
+        │
+        ├── No Saga Monkes found → Access Denied
+        │
+        ▼
+Sign XMTP identity (wallet sign, no transaction / no fee)
+        │
+        ▼
+Join global XMTP group chat
+        │
+        ▼
+Load history + stream live messages
 ```
 
 ---
@@ -96,57 +121,59 @@ nft-chat-dapp/
 ### 1. Clone & Install
 
 ```bash
-git clone <your-repo>
-cd nft-chat-dapp
+git clone https://github.com/jumpstreet25/OnlyMonkes.git
+cd OnlyMonkes
 npm install
 ```
 
-### 2. Configure Your Collection
+### 2. Add Fonts
 
-Edit `src/lib/constants.ts` or use environment variables:
+Download and place in `assets/fonts/`:
+- [Space Grotesk](https://fonts.google.com/specimen/Space+Grotesk) — `SpaceGrotesk-Bold.ttf`, `SpaceGrotesk-Medium.ttf`
+- [Inter](https://fonts.google.com/specimen/Inter) — `Inter-Regular.ttf`, `Inter-Medium.ttf`, `Inter-SemiBold.ttf`
+- [JetBrains Mono](https://fonts.google.com/specimen/JetBrains+Mono) — `JetBrainsMono-Regular.ttf`
+
+### 3. Configure (optional)
+
+Defaults are already set for the Saga Monkes collection. To change the collection, edit `src/lib/constants.ts`:
+
+```ts
+export const NFT_COLLECTION_ADDRESS = 'your-collection-address';
+export const COLLECTION_NAME = 'Your Collection';
+export const HELIUS_API_KEY = 'your-helius-api-key'; // helius.dev
+```
+
+### 4. Run on Android
 
 ```bash
-# .env (all values already hardcoded — no .env needed for defaults)
-NFT_COLLECTION_ADDRESS=8vN3ke2Q7dbv8hpEsvcbR7jDmPp85sK6qagd77aR73jx  # ✅ Saga Monkes
-HELIUS_API_KEY=***REDACTED_HELIUS_KEY***                   # ✅ Already set
-SOLANA_RPC_URL=https://api.mainnet-beta.solana.com
-```
-
-Collection name and app name are already set in `src/lib/constants.ts`:
-```ts
-export const COLLECTION_NAME = "Saga Monkes"; // ✅
-```
-
-### 3. Add Fonts
-
-Download from Google Fonts and place in `assets/fonts/`:
-- [Space Grotesk](https://fonts.google.com/specimen/Space+Grotesk) — Bold, Medium
-- [JetBrains Mono](https://fonts.google.com/specimen/JetBrains+Mono) — Regular
-- [Inter](https://fonts.google.com/specimen/Inter) — Regular, Medium, SemiBold
-
-### 4. Update App Identity (for MWA)
-
-In `src/hooks/useMobileWallet.ts`:
-```ts
-const APP_IDENTITY = {
-  name: "Your App Name",
-  uri: "https://yourapp.com",
-  icon: "favicon.ico",
-};
-```
-
-### 5. Run (Android only — MWA requires Android)
-
-```bash
-# Build dev client
 npx expo run:android
-
-# Or with EAS Build
-eas build --platform android --profile development
 ```
 
-> ⚠️ **MWA requires a physical Android device or emulator** with a Solana wallet app installed (Phantom, Solflare).  
-> Expo Go does **not** support MWA — you must use a dev build.
+> **Requires a physical Android device** (Seeker or Saga recommended) with a Solana wallet app installed (Phantom or Solflare). Expo Go is not supported — MWA requires a custom dev build.
+
+---
+
+## Building a Release APK
+
+```bash
+cd android
+./gradlew assembleRelease
+```
+
+Output: `android/app/build/outputs/apk/release/app-release.apk`
+
+**Signing credentials** are stored in `android/gradle.properties`. Keep your keystore file (`onlymonkes-release.keystore`) backed up — it is required for all future updates.
+
+---
+
+## Collection
+
+| | |
+|---|---|
+| **Collection** | Saga Monkes |
+| **Chain** | Solana Mainnet |
+| **Collection Address** | `GokAiStXz2Kqbxwz2oqzfEXuUhE7aXySmBGEP7uejKXF` |
+| **NFT Verification** | Helius DAS API (`getAssetsByOwner`) |
 
 ---
 
@@ -154,64 +181,11 @@ eas build --platform android --profile development
 
 | Package | Purpose |
 |---|---|
-| `@solana-mobile/mobile-wallet-adapter-protocol-web3js` | MWA — wallet connect + signing |
-| `@solana/web3.js` | Solana RPC, PublicKey |
-| `@metaplex-foundation/js` | NFT metadata decoding |
-| `@xmtp/react-native-sdk` | Decentralized messaging |
-| `zustand` | Lightweight state management |
+| `@xmtp/react-native-sdk` | Decentralized group messaging |
+| `@solana-mobile/mobile-wallet-adapter-protocol-web3js` | MWA wallet connect |
+| `@solana/web3.js` | Solana RPC + PublicKey |
 | `expo-router` | File-based navigation |
-
----
-
-## NFT Verification Details
-
-### Helius DAS API (Recommended)
-Uses `getAssetsByOwner` to efficiently scan all NFTs in a wallet and filter by `collection.group_value`. Fast, paginated, handles large wallets.
-
-**Get a free API key:** [helius.dev](https://helius.dev)
-
-### On-Chain Fallback
-Without Helius, falls back to `getTokenAccountsByOwner`. This does **not** verify collection membership — only detects NFTs (amount=1, decimals=0). For production, Helius is required.
-
----
-
-## Messaging Architecture (XMTP)
-
-- All verified holders connect to **the same XMTP conversation** (anchored to a fixed peer address).
-- Messages are **E2E encrypted** at the XMTP protocol level.
-- **Reactions** are sent as plain messages with the format `REACT:emoji:targetId` and applied client-side.
-- **Replies** are encoded as `REPLY:targetId:senderAddr:content`.
-- No per-message Solana transactions — messaging is free.
-
----
-
-## Production Checklist
-
-- [x] `NFT_COLLECTION_ADDRESS` set → `8vN3ke2Q7dbv8hpEsvcbR7jDmPp85sK6qagd77aR73jx`
-- [x] `HELIUS_API_KEY` set → Helius mainnet
-- [x] Collection name set → Saga Monkes
-- [x] App name set → OnlyMonkes
-- [ ] Download + bundle fonts
-- [ ] Update `APP_IDENTITY` URI to your published app URL
-- [ ] Configure splash screen and icon assets
-- [ ] Test on physical Android device with Phantom installed
-- [ ] Submit to Solana dApp Store: [docs.solanamobile.com](https://docs.solanamobile.com/dapp-publishing/intro)
-
----
-
-## Extending the App
-
-### Add DM support
-Create a new XMTP conversation to the target wallet address:
-```ts
-const dmConversation = await client.conversations.newConversation(peerAddress);
-```
-
-### Add NFT-per-collection chat rooms
-Use the collection mint as part of the XMTP conversation topic to segment holders.
-
-### Add push notifications
-Integrate with XMTP's push notification service or use a custom backend.
-
-### Add user profiles
-Store display names/bios in a Solana on-chain program or off-chain (e.g., Ceramic / Shadow Drive).
+| `expo-notifications` | Push notifications |
+| `expo-secure-store` | Secure credential storage |
+| `zustand` | State management |
+| `react-native-reanimated` | Animations |
