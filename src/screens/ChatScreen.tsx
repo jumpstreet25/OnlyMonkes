@@ -32,6 +32,11 @@ import {
   KeyboardAvoidingView,
   Platform,
   ListRenderItem,
+  Clipboard,
+  Modal,
+  ScrollView,
+  TextInput,
+  Alert,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAppStore } from "@/store/appStore";
@@ -51,18 +56,25 @@ const HEADER_BG = "transparent";
 
 export default function ChatScreen() {
   const insets = useSafeAreaInsets();
-  const { verifiedNft, myInboxId, username, setUsername, setBio } =
-    useAppStore();
+  const {
+    verifiedNft, myInboxId, username, setUsername, setBio,
+    isGroupMember, isGroupAdmin, joinRequests, remoteGroupId,
+  } = useAppStore();
   const { messages, replyingTo, isLoadingHistory, setReplyingTo } =
     useChatStore();
-  const { initialize, disconnect, send, reply, react } = useXmtp();
-
+  const { initialize, disconnect, send, reply, react, loadJoinRequests, approveJoinRequest, publishGroupId } = useXmtp();
+  const [copied, setCopied] = useState(false);
   const [inputText, setInputText] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [showUsernameModal, setShowUsernameModal] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
+  const [adminOpen, setAdminOpen] = useState(false);
   const [profileTarget, setProfileTarget] = useState<ProfileTarget | null>(null);
+  const [approvingId, setApprovingId] = useState<string | null>(null);
+  const [patInput, setPatInput] = useState("");
+  const [patSaving, setPatSaving] = useState(false);
+  const [patSaved, setPatSaved] = useState(false);
   const flatListRef = useRef<FlatList>(null);
 
   const myAddress = myInboxId ?? "";
@@ -194,12 +206,7 @@ export default function ChatScreen() {
         keyboardVerticalOffset={0}
       >
         {/* ── Header ────────────────────────────────────────────────────────── */}
-        <ImageBackground
-          // eslint-disable-next-line @typescript-eslint/no-require-imports
-          source={require("../../assets/header.png")}
-          style={styles.header}
-          resizeMode="cover"
-        >
+        <View style={styles.header}>
           {/* Left: avatar + username stacked */}
           <View style={styles.headerLeft}>
             {verifiedNft?.image ? (
@@ -217,7 +224,15 @@ export default function ChatScreen() {
             </Text>
           </View>
 
-          {/* Right: 🔧 + ☰ */}
+          {/* Center: decorative banner image */}
+          <ImageBackground
+            // eslint-disable-next-line @typescript-eslint/no-require-imports
+            source={require("../../assets/header.png")}
+            style={styles.headerCenter}
+            resizeMode="cover"
+          />
+
+          {/* Right: 🔧 + admin badge + ☰ */}
           <View style={styles.headerRight}>
             <Pressable
               onPress={() => setToolsOpen(true)}
@@ -226,6 +241,20 @@ export default function ChatScreen() {
             >
               <Text style={styles.iconBtnText}>🔧</Text>
             </Pressable>
+
+            {/* Admin join-requests button — only visible to group admin */}
+            {isGroupAdmin && (
+              <Pressable
+                onPress={() => { loadJoinRequests(); setAdminOpen(true); }}
+                style={[styles.iconBtn, joinRequests.length > 0 && styles.iconBtnAlert]}
+                hitSlop={8}
+              >
+                <Text style={styles.iconBtnText}>
+                  {joinRequests.length > 0 ? `👥 ${joinRequests.length}` : "👥"}
+                </Text>
+              </Pressable>
+            )}
+
             <Pressable
               onPress={() => setDrawerOpen(true)}
               style={styles.iconBtn}
@@ -234,10 +263,143 @@ export default function ChatScreen() {
               <Text style={styles.menuIcon}>☰</Text>
             </Pressable>
           </View>
-        </ImageBackground>
+        </View>
+
+        {/* ── Admin Panel Modal ─────────────────────────────────────────────── */}
+        <Modal
+          visible={adminOpen}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setAdminOpen(false)}
+          statusBarTranslucent
+        >
+          <Pressable style={styles.adminOverlay} onPress={() => setAdminOpen(false)} />
+          <View style={styles.adminSheet}>
+            <View style={styles.adminSheetHandle} />
+            <Text style={styles.adminTitle}>Admin Panel</Text>
+
+            {/* Publish group ID section */}
+            <Text style={styles.adminSectionLabel}>PUBLISH GROUP TO GITHUB</Text>
+            <Text style={styles.adminHint}>
+              Enter a GitHub PAT (classic, repo scope) once to let testers find this group.
+            </Text>
+            <TextInput
+              style={styles.adminInput}
+              placeholder="ghp_…"
+              placeholderTextColor={THEME.textFaint}
+              value={patInput}
+              onChangeText={setPatInput}
+              secureTextEntry
+              autoCapitalize="none"
+            />
+            <Pressable
+              style={[styles.adminPrimaryBtn, patSaving && styles.adminBtnDisabled]}
+              onPress={async () => {
+                if (!patInput.trim()) return;
+                setPatSaving(true);
+                try {
+                  await publishGroupId(patInput.trim());
+                  setPatSaved(true);
+                  setPatInput("");
+                  setTimeout(() => setPatSaved(false), 3000);
+                } catch (err: any) {
+                  Alert.alert("Publish failed", err?.message ?? String(err));
+                } finally {
+                  setPatSaving(false);
+                }
+              }}
+            >
+              <Text style={styles.adminPrimaryBtnText}>
+                {patSaving ? "Publishing…" : patSaved ? "✓ Published!" : "Publish Group ID"}
+              </Text>
+            </Pressable>
+
+            {/* Pending join requests section */}
+            <Text style={[styles.adminSectionLabel, { marginTop: 20 }]}>
+              PENDING JOIN REQUESTS ({joinRequests.length})
+            </Text>
+            {joinRequests.length === 0 ? (
+              <Text style={styles.adminHint}>No pending requests. Pull down to refresh.</Text>
+            ) : (
+              <ScrollView style={styles.adminRequestList}>
+                {joinRequests.map((req) => (
+                  <View key={req.inboxId} style={styles.adminRequestRow}>
+                    <View style={styles.adminRequestInfo}>
+                      <Text style={styles.adminRequestUsername}>
+                        {req.username ?? "Unknown"}
+                      </Text>
+                      <Text style={styles.adminRequestInboxId} numberOfLines={1}>
+                        {req.inboxId}
+                      </Text>
+                    </View>
+                    <Pressable
+                      style={[
+                        styles.adminAddBtn,
+                        approvingId === req.inboxId && styles.adminBtnDisabled,
+                      ]}
+                      onPress={async () => {
+                        setApprovingId(req.inboxId);
+                        try {
+                          await approveJoinRequest(req.inboxId);
+                        } catch (err: any) {
+                          Alert.alert("Error", err?.message ?? String(err));
+                        } finally {
+                          setApprovingId(null);
+                        }
+                      }}
+                    >
+                      <Text style={styles.adminAddBtnText}>
+                        {approvingId === req.inboxId ? "Adding…" : "Add"}
+                      </Text>
+                    </Pressable>
+                  </View>
+                ))}
+              </ScrollView>
+            )}
+
+            <Pressable
+              style={styles.adminRefreshBtn}
+              onPress={() => loadJoinRequests()}
+            >
+              <Text style={styles.adminRefreshBtnText}>Refresh Requests</Text>
+            </Pressable>
+          </View>
+        </Modal>
+
+        {/* ── Not yet a member ─────────────────────────────────────────────── */}
+        {remoteGroupId && !isGroupMember && (
+          <View style={styles.pendingContainer}>
+            <Text style={styles.pendingIcon}>⏳</Text>
+            <Text style={styles.pendingTitle}>Join request sent</Text>
+            <Text style={styles.pendingSubtitle}>
+              Your request has been sent to the admin. You'll be added shortly.
+              If it's been a while, share your Inbox ID directly.
+            </Text>
+            <View style={styles.inboxIdBox}>
+              <Text style={styles.inboxIdText} selectable numberOfLines={1}>
+                {myInboxId ?? "Loading…"}
+              </Text>
+            </View>
+            <Pressable
+              style={styles.copyBtn}
+              onPress={() => {
+                if (myInboxId) {
+                  Clipboard.setString(myInboxId);
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+                }
+              }}
+            >
+              <Text style={styles.copyBtnText}>{copied ? "✓ Copied!" : "Copy Inbox ID"}</Text>
+            </Pressable>
+            <Pressable style={styles.retryBtn} onPress={initialize}>
+              <Text style={styles.retryBtnText}>Retry</Text>
+            </Pressable>
+          </View>
+        )}
 
         {/* Loading history */}
-        {isLoadingHistory && (
+        {isGroupMember && isLoadingHistory && (
           <View style={styles.historyLoading}>
             <ActivityIndicator size="small" color={THEME.accent} />
             <Text style={styles.historyLoadingText}>Loading messages…</Text>
@@ -245,7 +407,7 @@ export default function ChatScreen() {
         )}
 
         {/* Empty state */}
-        {!isLoadingHistory && messages.length === 0 && (
+        {isGroupMember && !isLoadingHistory && messages.length === 0 && (
           <View style={styles.emptyState}>
             <Text style={styles.emptyIcon}>🍌</Text>
             <Text style={styles.emptyTitle}>The chat is empty</Text>
@@ -256,7 +418,7 @@ export default function ChatScreen() {
         )}
 
         {/* Messages */}
-        <FlatList
+        {isGroupMember && <FlatList
           ref={flatListRef}
           data={messages}
           renderItem={renderMessage}
@@ -268,17 +430,17 @@ export default function ChatScreen() {
           removeClippedSubviews
           maxToRenderPerBatch={20}
           windowSize={10}
-        />
+        />}
 
         {/* Input */}
-        <ChatInput
+        {isGroupMember && <ChatInput
           value={inputText}
           onChangeText={setInputText}
           onSend={handleSend}
           replyingTo={replyingTo}
           onCancelReply={() => setReplyingTo(null)}
           isSending={isSending}
-        />
+        />}
 
         <View style={{ height: insets.bottom }} />
       </KeyboardAvoidingView>
@@ -296,12 +458,15 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
     paddingHorizontal: 12,
     paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: THEME.border,
     backgroundColor: HEADER_BG,
+  },
+  headerCenter: {
+    flex: 1,
+    alignSelf: "stretch",
   },
   headerLeft: {
     alignItems: "flex-start",
@@ -391,5 +556,185 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     flexGrow: 1,
     justifyContent: "flex-end",
+  },
+
+  // ── Pending / not yet a member ───────────────────────────────────────────────
+  pendingContainer: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 12,
+    paddingHorizontal: 32,
+  },
+  pendingIcon: { fontSize: 48 },
+  pendingTitle: {
+    fontFamily: FONTS.display,
+    fontSize: 20,
+    color: THEME.text,
+  },
+  pendingSubtitle: {
+    fontFamily: FONTS.body,
+    fontSize: 14,
+    color: THEME.textMuted,
+    textAlign: "center",
+    lineHeight: 20,
+  },
+  inboxIdBox: {
+    backgroundColor: THEME.surface,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    width: "100%",
+  },
+  inboxIdText: {
+    fontFamily: FONTS.mono,
+    fontSize: 11,
+    color: THEME.textMuted,
+  },
+  copyBtn: {
+    backgroundColor: THEME.accent,
+    borderRadius: 10,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    width: "100%",
+    alignItems: "center",
+  },
+  copyBtnText: {
+    fontFamily: FONTS.displayMed,
+    fontSize: 14,
+    color: "#fff",
+  },
+  retryBtn: {
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+  },
+  retryBtnText: {
+    fontFamily: FONTS.body,
+    fontSize: 13,
+    color: THEME.textMuted,
+  },
+
+  // ── Header admin badge ────────────────────────────────────────────────────────
+  iconBtnAlert: {
+    borderColor: THEME.accent + "88",
+    backgroundColor: THEME.accentSoft,
+  },
+
+  // ── Admin Panel ───────────────────────────────────────────────────────────────
+  adminOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.55)",
+  },
+  adminSheet: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: THEME.surfaceHigh,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    borderTopWidth: 1,
+    borderColor: THEME.border,
+    padding: 20,
+    paddingBottom: 36,
+    maxHeight: "80%",
+  },
+  adminSheetHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: THEME.border,
+    alignSelf: "center",
+    marginBottom: 16,
+  },
+  adminTitle: {
+    fontFamily: FONTS.display,
+    fontSize: 18,
+    color: THEME.text,
+    marginBottom: 16,
+  },
+  adminSectionLabel: {
+    fontFamily: FONTS.mono,
+    fontSize: 10,
+    color: THEME.textFaint,
+    letterSpacing: 2,
+    textTransform: "uppercase",
+    marginBottom: 8,
+  },
+  adminHint: {
+    fontFamily: FONTS.body,
+    fontSize: 12,
+    color: THEME.textMuted,
+    marginBottom: 10,
+    lineHeight: 18,
+  },
+  adminInput: {
+    backgroundColor: THEME.surface,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontFamily: FONTS.mono,
+    fontSize: 13,
+    color: THEME.text,
+    marginBottom: 10,
+  },
+  adminPrimaryBtn: {
+    backgroundColor: THEME.accent,
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  adminBtnDisabled: { opacity: 0.5 },
+  adminPrimaryBtnText: {
+    fontFamily: FONTS.displayMed,
+    fontSize: 14,
+    color: "#fff",
+  },
+  adminRequestList: {
+    maxHeight: 200,
+  },
+  adminRequestRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: THEME.border,
+  },
+  adminRequestInfo: { flex: 1, gap: 2 },
+  adminRequestUsername: {
+    fontFamily: FONTS.displayMed,
+    fontSize: 13,
+    color: THEME.text,
+  },
+  adminRequestInboxId: {
+    fontFamily: FONTS.mono,
+    fontSize: 10,
+    color: THEME.textFaint,
+  },
+  adminAddBtn: {
+    backgroundColor: THEME.accent,
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  adminAddBtnText: {
+    fontFamily: FONTS.displayMed,
+    fontSize: 13,
+    color: "#fff",
+  },
+  adminRefreshBtn: {
+    marginTop: 14,
+    alignItems: "center",
+    paddingVertical: 10,
+  },
+  adminRefreshBtnText: {
+    fontFamily: FONTS.body,
+    fontSize: 13,
+    color: THEME.textMuted,
   },
 });

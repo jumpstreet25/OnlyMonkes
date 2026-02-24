@@ -12,8 +12,9 @@
 
 import { Client, Group, PublicIdentity } from "@xmtp/react-native-sdk";
 import type { ChatMessage, MessageReaction, ReactionEmoji } from "@/types";
-import { GLOBAL_GROUP_ID, REACTIONS } from "./constants";
+import { REACTIONS } from "./constants";
 import * as SecureStore from "expo-secure-store";
+import type { JoinRequest } from "@/store/appStore";
 
 export type XmtpClient = Client;
 export type XmtpGroup = Group;
@@ -67,27 +68,102 @@ export async function initXmtpClient(): Promise<Client> {
 
 // ─── Global Group ─────────────────────────────────────────────────────────────
 
+/**
+ * groupId: fetched from remote config (GitHub). Empty string = no group yet.
+ * Returns the group if found/created, or null if the user isn't a member yet.
+ * Returns { group: null, isNewAdmin: true } when this client just created the group.
+ */
 export async function getOrCreateGlobalChat(
-  client: XmtpClient
-): Promise<XmtpGroup> {
-  // Only sync when we have a known group ID — avoids slow network call on first run
-  if (GLOBAL_GROUP_ID) {
+  client: XmtpClient,
+  groupId: string
+): Promise<{ group: XmtpGroup | null; isNewAdmin: boolean }> {
+  if (groupId) {
     await client.conversations.sync();
-    const found = await client.conversations.findGroup(GLOBAL_GROUP_ID as any);
-    if (found) return found as unknown as XmtpGroup;
+    const found = await client.conversations.findGroup(groupId as any);
+    if (found) return { group: found as unknown as XmtpGroup, isNewAdmin: false };
+    // Group ID set but user is not yet a member — must be added by admin.
+    return { group: null, isNewAdmin: false };
   }
 
-  // Use newGroup (simpler, more reliable than newGroupCustomPermissions)
+  // No group ID in remote config — this is the first admin run. Create the group.
   const group = await client.conversations.newGroup([], {
     permissionLevel: "all_members",
     name: "OnlyMonkes Global Chat",
   });
 
   console.warn(
-    `[XMTP] New group created. Set in constants.ts:\nexport const GLOBAL_GROUP_ID = '${(group as any).id}';`
+    `[XMTP] Global group created. ID:\n${(group as any).id}`
   );
 
-  return group as unknown as XmtpGroup;
+  return { group: group as unknown as XmtpGroup, isNewAdmin: true };
+}
+
+export async function addMemberToGroup(
+  group: XmtpGroup,
+  inboxId: string
+): Promise<void> {
+  await (group as any).addMembers([inboxId]);
+}
+
+// ─── Join Request DMs ─────────────────────────────────────────────────────────
+
+const JOIN_REQUEST_PREFIX = "JOIN_REQUEST:";
+
+/**
+ * Tester sends a DM to the admin's inboxId to request group membership.
+ * Format: JOIN_REQUEST:<myInboxId>:<username>
+ */
+export async function sendJoinRequestDM(
+  client: XmtpClient,
+  adminInboxId: string,
+  myInboxId: string,
+  username?: string | null
+): Promise<void> {
+  const dm = await (client.conversations as any).newDm(adminInboxId);
+  const payload = `${JOIN_REQUEST_PREFIX}${myInboxId}:${username ?? ""}`;
+  await (dm as any).send(payload);
+}
+
+/**
+ * Admin calls this to scan all DMs and collect pending join requests.
+ */
+export async function fetchJoinRequests(client: XmtpClient): Promise<JoinRequest[]> {
+  await client.conversations.sync();
+  const allConvos: any[] = await (client.conversations as any).list();
+
+  const requests: JoinRequest[] = [];
+
+  for (const convo of allConvos) {
+    // Skip groups — only process DM conversations.
+    if (typeof (convo as any).isGroup !== "undefined" && (convo as any).isGroup) continue;
+    if (typeof (convo as any).peerInboxId === "undefined") continue;
+
+    try {
+      await (convo as any).sync();
+      const msgs: any[] = await (convo as any).messages({ limit: 20 });
+
+      for (const msg of msgs) {
+        let content: string;
+        try { content = msg.content(); } catch { continue; }
+
+        if (typeof content === "string" && content.startsWith(JOIN_REQUEST_PREFIX)) {
+          const rest = content.slice(JOIN_REQUEST_PREFIX.length);
+          const colonIdx = rest.indexOf(":");
+          const inboxId  = colonIdx === -1 ? rest : rest.slice(0, colonIdx);
+          const username = colonIdx === -1 ? undefined : rest.slice(colonIdx + 1) || undefined;
+
+          if (inboxId) {
+            requests.push({ inboxId, username, requestedAt: new Date(msg.sentNs / 1_000_000) });
+          }
+          break; // one request per DM convo is enough
+        }
+      }
+    } catch {
+      // skip unreadable convos
+    }
+  }
+
+  return requests;
 }
 
 // ─── Message Decoding ─────────────────────────────────────────────────────────
