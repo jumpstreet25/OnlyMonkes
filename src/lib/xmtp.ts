@@ -203,8 +203,10 @@ export function decodeMessage(raw: any, myInboxId: string): ChatMessage | null {
     const rawContent: unknown = raw.content();
     if (!rawContent || typeof rawContent !== "string") return null;
 
-    // Reactions are handled separately
+    // System messages — handled separately, not displayed in chat
     if (rawContent.startsWith("REACT:")) return null;
+    if (rawContent.startsWith("PROFILE_UPDATE:")) return null;
+    if (rawContent.startsWith("EVENT:")) return null;
 
     const { username, inner } = parseContent(rawContent);
 
@@ -341,4 +343,33 @@ export async function sendReaction(
 ): Promise<void> {
   const packed = `REACT:${emoji}:${targetMessageId}`;
   await (group as any).send(packed);
+}
+
+export async function sendProfileUpdate(
+  group: XmtpGroup,
+  inboxId: string,
+  username?: string | null,
+  bio?: string | null,
+  xAccount?: string | null,
+  walletAddress?: string | null,
+  tipWallet?: string | null,
+  nftImage?: string | null
+): Promise<void> {
+  const payload = JSON.stringify({
+    id: inboxId,
+    u: username ?? "",
+    b: bio ?? "",
+    x: xAccount ?? "",
+    w: walletAddress ?? "",
+    tw: tipWallet ?? "",
+    ni: nftImage ?? "",
+  });
+  await (group as any).send(`PROFILE_UPDATE:${payload}`);
+}
+
+export async function sendEventMessage(
+  group: XmtpGroup,
+  eventJson: string
+): Promise<void> {
+  await (group as any).send(`EVENT:${eventJson}`);
 }
