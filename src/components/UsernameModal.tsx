@@ -1,11 +1,11 @@
 /**
  * UsernameModal
  *
- * Full-screen modal shown on first entry to the chat.
- * Collects a username (required) and a short bio (optional).
+ * Shown on first entry OR when user taps their own PFP to edit profile.
+ * Collects username (required), bio (optional), X account (optional).
  */
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import {
   View,
   Text,
@@ -16,27 +16,58 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  ScrollView,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { THEME, FONTS } from "@/lib/constants";
 import { saveUserProfile } from "@/lib/userProfile";
 import { useAppStore } from "@/store/appStore";
+import { shortenAddress } from "@/lib/nftVerification";
 
 interface UsernameModalProps {
   visible: boolean;
   onDone: () => void;
+  // Edit mode — pre-populate fields with current values
+  initialUsername?: string;
+  initialBio?: string;
+  initialXAccount?: string;
+  initialTipWallet?: string;
+  editMode?: boolean;
 }
 
 const MAX_USERNAME = 20;
 const MAX_BIO = 100;
+const MAX_X = 30;
+const MAX_WALLET = 48;
 
-export function UsernameModal({ visible, onDone }: UsernameModalProps) {
-  const { setUsername, setBio } = useAppStore();
-  const [name, setName] = useState("");
-  const [bio, setBioLocal] = useState("");
+export function UsernameModal({
+  visible,
+  onDone,
+  initialUsername = "",
+  initialBio = "",
+  initialXAccount = "",
+  initialTipWallet = "",
+  editMode = false,
+}: UsernameModalProps) {
+  const { setUsername, setBio, setXAccount, setTipWallet } = useAppStore();
+  const [name, setName] = useState(initialUsername);
+  const [bio, setBioLocal] = useState(initialBio);
+  const [xAccount, setXAccountLocal] = useState(initialXAccount);
+  const [tipWallet, setTipWalletLocal] = useState(initialTipWallet);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  // Re-populate when opened in edit mode
+  useEffect(() => {
+    if (visible) {
+      setName(initialUsername);
+      setBioLocal(initialBio);
+      setXAccountLocal(initialXAccount);
+      setTipWalletLocal(initialTipWallet);
+      setError("");
+    }
+  }, [visible, initialUsername, initialBio, initialXAccount, initialTipWallet]);
 
   const trimmedName = name.trim();
   const canSave = trimmedName.length >= 2 && !saving;
@@ -52,17 +83,22 @@ export function UsernameModal({ visible, onDone }: UsernameModalProps) {
     setError("");
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
+    const cleanX   = xAccount.trim().replace(/^@/, ""); // strip leading @
+    const cleanTip = tipWallet.trim();
+
     try {
-      await saveUserProfile(trimmedName, bio.trim());
+      await saveUserProfile(trimmedName, bio.trim(), cleanX, cleanTip);
       setUsername(trimmedName);
       setBio(bio.trim());
+      setXAccount(cleanX);
+      setTipWallet(cleanTip);
       onDone();
     } catch {
       setError("Failed to save — please try again.");
     } finally {
       setSaving(false);
     }
-  }, [canSave, trimmedName, bio, setUsername, setBio, onDone]);
+  }, [canSave, trimmedName, bio, xAccount, tipWallet, setUsername, setBio, setXAccount, setTipWallet, onDone]);
 
   return (
     <Modal visible={visible} animationType="slide" transparent={false}>
@@ -77,7 +113,7 @@ export function UsernameModal({ visible, onDone }: UsernameModalProps) {
           style={StyleSheet.absoluteFill}
         />
 
-        <View style={styles.content}>
+        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           {/* Icon */}
           <View style={styles.iconWrap}>
             <View style={styles.iconInner}>
@@ -85,9 +121,13 @@ export function UsernameModal({ visible, onDone }: UsernameModalProps) {
             </View>
           </View>
 
-          <Text style={styles.title}>Create your profile</Text>
+          <Text style={styles.title}>
+            {editMode ? "Edit your profile" : "Create your profile"}
+          </Text>
           <Text style={styles.subtitle}>
-            Choose a name that other holders will see in the chat.
+            {editMode
+              ? "Changes are saved permanently to your device."
+              : "Choose a name that other holders will see in the chat."}
           </Text>
 
           {/* Username */}
@@ -97,10 +137,7 @@ export function UsernameModal({ visible, onDone }: UsernameModalProps) {
               <TextInput
                 style={styles.input}
                 value={name}
-                onChangeText={(t) => {
-                  setName(t);
-                  setError("");
-                }}
+                onChangeText={(t) => { setName(t); setError(""); }}
                 placeholder="e.g. CryptoMonke"
                 placeholderTextColor={THEME.textFaint}
                 maxLength={MAX_USERNAME}
@@ -135,6 +172,50 @@ export function UsernameModal({ visible, onDone }: UsernameModalProps) {
             </View>
           </View>
 
+          {/* X account */}
+          <View style={styles.fieldGroup}>
+            <Text style={styles.label}>X (Twitter) account  (optional)</Text>
+            <View style={styles.inputWrap}>
+              <TextInput
+                style={styles.input}
+                value={xAccount}
+                onChangeText={setXAccountLocal}
+                placeholder="@username"
+                placeholderTextColor={THEME.textFaint}
+                maxLength={MAX_X}
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="next"
+              />
+            </View>
+          </View>
+
+          {/* Tipping wallet */}
+          <View style={styles.fieldGroup}>
+            <Text style={styles.label}>💰 Tipping Wallet  (optional)</Text>
+            <Text style={styles.fieldHint}>
+              Solana address where SKR tips are sent to you
+            </Text>
+            <View style={styles.inputWrap}>
+              <TextInput
+                style={styles.input}
+                value={tipWallet}
+                onChangeText={setTipWalletLocal}
+                placeholder="Solana address…"
+                placeholderTextColor={THEME.textFaint}
+                maxLength={MAX_WALLET}
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="done"
+              />
+              {tipWallet.trim().length > 0 && (
+                <Text style={styles.counter}>
+                  {shortenAddress(tipWallet.trim())}
+                </Text>
+              )}
+            </View>
+          </View>
+
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
           {/* Save button */}
@@ -159,16 +240,22 @@ export function UsernameModal({ visible, onDone }: UsernameModalProps) {
                 <ActivityIndicator color="#fff" />
               ) : (
                 <Text style={[styles.saveBtnText, !canSave && styles.saveBtnTextDisabled]}>
-                  Enter the chat
+                  {editMode ? "Save changes" : "Enter the chat"}
                 </Text>
               )}
             </LinearGradient>
           </Pressable>
 
+          {editMode && (
+            <Pressable onPress={onDone} style={styles.cancelBtn}>
+              <Text style={styles.cancelBtnText}>Cancel</Text>
+            </Pressable>
+          )}
+
           <Text style={styles.hint}>
             Minimum 2 characters · Max {MAX_USERNAME} characters
           </Text>
-        </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </Modal>
   );
@@ -180,12 +267,11 @@ const styles = StyleSheet.create({
     backgroundColor: THEME.bg,
   },
   content: {
-    flex: 1,
+    flexGrow: 1,
     paddingHorizontal: 28,
     paddingTop: 80,
     paddingBottom: 48,
     alignItems: "center",
-    justifyContent: "center",
     gap: 20,
   },
   iconWrap: {
@@ -293,10 +379,26 @@ const styles = StyleSheet.create({
     color: THEME.textFaint,
   },
 
+  cancelBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 24,
+  },
+  cancelBtnText: {
+    fontFamily: FONTS.body,
+    fontSize: 14,
+    color: THEME.textMuted,
+  },
+
   hint: {
     fontFamily: FONTS.body,
     fontSize: 11,
     color: THEME.textFaint,
     textAlign: "center",
+  },
+  fieldHint: {
+    fontFamily: FONTS.body,
+    fontSize: 11,
+    color: THEME.textFaint,
+    marginBottom: 4,
   },
 });
