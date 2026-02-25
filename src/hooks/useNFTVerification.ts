@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import { verifyNFTOwnership } from '@/lib/nftVerification';
+import { loadSelectedNftMint } from '@/lib/userProfile';
 import { useAppStore } from '@/store/appStore';
 
 export function useNFTVerification() {
@@ -14,8 +15,16 @@ export function useNFTVerification() {
     try {
       const result = await verifyNFTOwnership(wallet.address);
       if (result.verified && result.nft) {
-        setVerified(true, result.nft);
-        setAllNfts(result.allNfts ?? [result.nft]);
+        const allNfts = result.allNfts ?? [result.nft];
+        setAllNfts(allNfts);
+
+        // Restore previously chosen NFT if available
+        const savedMint = await loadSelectedNftMint();
+        const chosen = savedMint
+          ? (allNfts.find((n) => n.mint === savedMint) ?? allNfts[0])
+          : allNfts[0];
+
+        setVerified(true, chosen);
         return true;
       } else {
         setError(result.error ?? 'NFT verification failed');

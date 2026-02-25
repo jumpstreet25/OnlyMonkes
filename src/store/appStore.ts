@@ -1,6 +1,17 @@
 import { create } from 'zustand';
 import type { WalletAccount, OwnedNFT } from '../types';
 
+export interface CalendarEvent {
+  id: string;
+  title: string;
+  date: string;      // "MM/DD/YYYY"
+  time: string;      // "HH:MM"
+  location: string;
+  purpose: string;
+  creatorInboxId: string;
+  creatorUsername?: string;
+}
+
 export interface JoinRequest {
   inboxId: string;
   username?: string;
@@ -16,6 +27,8 @@ interface AppState {
   myInboxId: string | null;
   username: string | null;
   bio: string | null;
+  xAccount: string | null;
+  tipWallet: string | null;
   isLoading: boolean;
   error: string | null;
   // Notification preferences
@@ -28,6 +41,11 @@ interface AppState {
   joinRequests: JoinRequest[];
   // Remote config — fetched on init so ChatScreen knows if a group exists
   remoteGroupId: string;
+  // Chat theme
+  themeId: string;
+  customBubbleColor: string | null;
+  // Calendar events
+  calendarEvents: CalendarEvent[];
 }
 
 interface AppActions {
@@ -38,6 +56,8 @@ interface AppActions {
   setMyInboxId: (inboxId: string | null) => void;
   setUsername: (username: string) => void;
   setBio: (bio: string) => void;
+  setXAccount: (xAccount: string) => void;
+  setTipWallet: (tipWallet: string) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
   setNotificationsEnabled: (enabled: boolean) => void;
@@ -48,6 +68,10 @@ interface AppActions {
   addJoinRequest: (req: JoinRequest) => void;
   removeJoinRequest: (inboxId: string) => void;
   setRemoteGroupId: (id: string) => void;
+  setThemeId: (id: string) => void;
+  setCustomBubbleColor: (color: string | null) => void;
+  setCalendarEvents: (events: CalendarEvent[]) => void;
+  addCalendarEvent: (event: CalendarEvent) => void;
   reset: () => void;
 }
 
@@ -60,6 +84,8 @@ const initialState: AppState = {
   myInboxId: null,
   username: null,
   bio: null,
+  xAccount: null,
+  tipWallet: null,
   isLoading: false,
   error: null,
   notificationsEnabled: true,
@@ -68,6 +94,9 @@ const initialState: AppState = {
   isGroupAdmin: false,
   joinRequests: [],
   remoteGroupId: '',
+  themeId: 'default',
+  customBubbleColor: null,
+  calendarEvents: [],
 };
 
 export const useAppStore = create<AppState & AppActions>((set, get) => ({
@@ -80,6 +109,8 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   setMyInboxId: (myInboxId) => set({ myInboxId }),
   setUsername: (username) => set({ username }),
   setBio: (bio) => set({ bio }),
+  setXAccount: (xAccount) => set({ xAccount }),
+  setTipWallet: (tipWallet) => set({ tipWallet }),
   setLoading: (isLoading) => set({ isLoading }),
   setError: (error) => set({ error }),
   setNotificationsEnabled: (notificationsEnabled) => set({ notificationsEnabled }),
@@ -95,5 +126,9 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   removeJoinRequest: (inboxId) =>
     set({ joinRequests: get().joinRequests.filter((r) => r.inboxId !== inboxId) }),
   setRemoteGroupId: (remoteGroupId) => set({ remoteGroupId }),
+  setThemeId: (themeId) => set({ themeId }),
+  setCustomBubbleColor: (customBubbleColor) => set({ customBubbleColor }),
+  setCalendarEvents: (calendarEvents) => set({ calendarEvents }),
+  addCalendarEvent: (event) => set((s) => ({ calendarEvents: [...s.calendarEvents, event] })),
   reset: () => set(initialState),
 }));

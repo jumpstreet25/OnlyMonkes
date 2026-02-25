@@ -30,6 +30,7 @@ interface ChatInputProps {
   replyingTo: ChatMessage | null;
   onCancelReply: () => void;
   isSending?: boolean;
+  onDevTip?: () => void;
 }
 
 export function ChatInput({
@@ -39,6 +40,7 @@ export function ChatInput({
   replyingTo,
   onCancelReply,
   isSending,
+  onDevTip,
 }: ChatInputProps) {
   const inputRef = useRef<TextInput>(null);
 
@@ -96,9 +98,7 @@ export function ChatInput({
           )}
         </View>
 
-        <Pressable
-          onPress={handleSend}
-          disabled={!canSend}
+        <Pressable onPress={handleSend} disabled={!canSend}
           style={({ pressed }) => [
             styles.sendButton,
             pressed && styles.sendButtonPressed,
@@ -115,6 +115,16 @@ export function ChatInput({
           </LinearGradient>
         </Pressable>
       </View>
+
+      {/* Dev tip strip — below the input */}
+      {onDevTip && (
+        <Pressable
+          style={({ pressed }) => [styles.devTipRow, pressed && { opacity: 0.7 }]}
+          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onDevTip(); }}
+        >
+          <Text style={styles.devTipText}>🍌  Support Jump.skr dev</Text>
+        </Pressable>
+      )}
     </View>
   );
 }
@@ -216,4 +226,19 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   sendArrowDisabled: { color: THEME.textFaint },
+
+  devTipRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: THEME.border,
+  },
+  devTipText: {
+    fontFamily: FONTS.mono,
+    fontSize: 11,
+    color: "#FFD700",
+    letterSpacing: 0.5,
+  },
 });
