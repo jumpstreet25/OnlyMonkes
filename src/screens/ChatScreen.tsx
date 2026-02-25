@@ -37,6 +37,8 @@ import {
   ScrollView,
   TextInput,
   Alert,
+  AppState,
+  type AppStateStatus,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAppStore } from "@/store/appStore";
@@ -48,25 +50,43 @@ import { UsernameModal } from "@/components/UsernameModal";
 import { MenuDrawer } from "@/components/MenuDrawer";
 import { MonkeToolsModal } from "@/components/MonkeToolsModal";
 import { UserProfileModal, type ProfileTarget } from "@/components/UserProfileModal";
+import { NftPickerModal } from "@/components/NftPickerModal";
+import { router } from "expo-router";
 import { THEME, FONTS } from "@/lib/constants";
-import { loadUserProfile } from "@/lib/userProfile";
+import { loadUserProfile, getCachedProfile, saveSelectedNftMint } from "@/lib/userProfile";
+import { loadEvents } from "@/lib/calendar";
+import { loadThemeId, loadCustomColor } from "@/lib/theme";
+import { sendSkrTip, sendDevTip } from "@/lib/solana";
+import { TipModal } from "@/components/TipModal";
+import { SearchModal } from "@/components/SearchModal";
+import { CalendarModal } from "@/components/CalendarModal";
 import type { ChatMessage, ReactionEmoji } from "@/types";
+import type { TipAmount } from "@/lib/constants";
 
 const HEADER_BG = "transparent";
 
 export default function ChatScreen() {
   const insets = useSafeAreaInsets();
   const {
-    verifiedNft, myInboxId, username, setUsername, setBio,
+    verifiedNft, allNfts, myInboxId, username, bio, xAccount, tipWallet,
+    setUsername, setBio, setXAccount, setTipWallet, setVerified,
     isGroupMember, isGroupAdmin, joinRequests, remoteGroupId,
+    setThemeId, setCustomBubbleColor, setCalendarEvents,
   } = useAppStore();
   const { messages, replyingTo, isLoadingHistory, setReplyingTo } =
     useChatStore();
-  const { initialize, disconnect, send, reply, react, loadJoinRequests, approveJoinRequest, publishGroupId } = useXmtp();
+  const { initialize, disconnect, logout, streamAlive, send, reply, react, loadJoinRequests, approveJoinRequest, publishGroupId, broadcastProfile, broadcastEvent, syncMessages } = useXmtp();
   const [copied, setCopied] = useState(false);
   const [inputText, setInputText] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [showUsernameModal, setShowUsernameModal] = useState(false);
+  const [editingProfile, setEditingProfile] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [tipTarget, setTipTarget] = useState<ChatMessage | null>(null);
+  const [devTipOpen, setDevTipOpen] = useState(false);
+  const [tipSending, setTipSending] = useState(false);
+  const [pfpPickerOpen, setPfpPickerOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
   const [adminOpen, setAdminOpen] = useState(false);
@@ -79,23 +99,66 @@ export default function ChatScreen() {
 
   const myAddress = myInboxId ?? "";
 
-  // ─── XMTP connect — must live here so send/react/reply share the same instance ─
+  // ─── XMTP connect + foreground sync ──────────────────────────────────────────
   useEffect(() => {
     initialize();
-    return () => { disconnect(); };
+
+    // Sync messages when app comes back to foreground (fixes missed msgs on Android)
+    let lastState: AppStateStatus = AppState.currentState;
+    const sub = AppState.addEventListener("change", (next: AppStateStatus) => {
+      if (lastState !== "active" && next === "active") {
+        syncMessages();
+      }
+      lastState = next;
+    });
+
+    return () => {
+      sub.remove();
+      disconnect();
+    };
   }, []);
+
+  // ─── Auto-retry for users waiting on approval ────────────────────────────────
+  // Polls initialize() every 20s so users enter automatically once admin approves.
+  useEffect(() => {
+    if (isGroupMember || !remoteGroupId) return;
+    const interval = setInterval(() => {
+      initialize();
+    }, 20_000);
+    return () => clearInterval(interval);
+  }, [isGroupMember, remoteGroupId]);
+
+  // ─── Stream heartbeat ─────────────────────────────────────────────────────────
+  // Every 15s: if stream is dead → reconnect; if alive → sync missed messages.
+  useEffect(() => {
+    if (!isGroupMember) return;
+    const id = setInterval(() => {
+      if (!streamAlive()) { initialize(); }
+      else { syncMessages(); }
+    }, 15_000);
+    return () => clearInterval(id);
+  }, [isGroupMember]);
 
   // ─── Load saved profile, show modal if no username yet ───────────────────
 
   useEffect(() => {
-    loadUserProfile().then(({ username: saved, bio }) => {
+    loadUserProfile().then(({ username: saved, bio, xAccount: savedX, tipWallet: savedTip }) => {
       if (saved) {
         setUsername(saved);
         if (bio) setBio(bio);
+        if (savedX) setXAccount(savedX);
+        // Use saved tip wallet; fall back to connected wallet address automatically
+        const effectiveTip = savedTip || useAppStore.getState().wallet?.address || null;
+        if (effectiveTip) setTipWallet(effectiveTip);
       } else {
         setShowUsernameModal(true);
       }
     });
+    // Load persisted theme
+    loadThemeId().then(setThemeId);
+    loadCustomColor().then((c) => { if (c) setCustomBubbleColor(c); });
+    // Load persisted calendar events
+    loadEvents().then(setCalendarEvents);
   }, []);
 
   // ─── Send ────────────────────────────────────────────────────────────────────
@@ -166,6 +229,49 @@ export default function ChatScreen() {
     setProfileTarget(target);
   }, []);
 
+  // ─── Tipping ─────────────────────────────────────────────────────────────────
+
+  const handleTip = useCallback((message: ChatMessage) => {
+    setTipTarget(message);
+  }, []);
+
+  const handleConfirmTip = useCallback(async (amount: TipAmount) => {
+    if (!tipTarget) return;
+    const cached = getCachedProfile(tipTarget.senderAddress);
+    // Prefer dedicated tip wallet; fall back to connected wallet address
+    const recipientWallet = cached?.tipWallet || cached?.walletAddress;
+    if (!recipientWallet) {
+      Alert.alert(
+        "No wallet found",
+        `${tipTarget.senderUsername ?? "This user"} hasn't linked a wallet yet. Ask them to set one in their profile.`
+      );
+      return;
+    }
+    setTipSending(true);
+    try {
+      await sendSkrTip(recipientWallet, amount);
+      Alert.alert("🍌 Tip sent!", `${amount} SKR sent to ${tipTarget.senderUsername ?? "this user"}`);
+      setTipTarget(null);
+    } catch (err: any) {
+      Alert.alert("Tip failed", err?.message ?? "Transaction could not be sent.");
+    } finally {
+      setTipSending(false);
+    }
+  }, [tipTarget]);
+
+  const handleDevTip = useCallback(async (amount: TipAmount) => {
+    setTipSending(true);
+    try {
+      await sendDevTip(amount);
+      Alert.alert("🍌 Thanks!", `${amount} SKR sent to Jump.skr!`);
+      setDevTipOpen(false);
+    } catch (err: any) {
+      Alert.alert("Tip failed", err?.message ?? "Transaction could not be sent.");
+    } finally {
+      setTipSending(false);
+    }
+  }, []);
+
   // ─── Render ──────────────────────────────────────────────────────────────────
 
   const renderMessage: ListRenderItem<ChatMessage> = useCallback(
@@ -176,9 +282,10 @@ export default function ChatScreen() {
         onReact={handleReact}
         onReply={setReplyingTo}
         onPressUser={handlePressUser}
+        onTip={handleTip}
       />
     ),
-    [myAddress, handleReact, setReplyingTo, handlePressUser]
+    [myAddress, handleReact, setReplyingTo, handlePressUser, handleTip]
   );
 
   const keyExtractor = useCallback((item: ChatMessage) => item.id, []);
@@ -186,11 +293,48 @@ export default function ChatScreen() {
   return (
     <>
       <UsernameModal
-        visible={showUsernameModal}
-        onDone={() => setShowUsernameModal(false)}
+        visible={showUsernameModal || editingProfile}
+        onDone={async () => {
+          setShowUsernameModal(false);
+          setEditingProfile(false);
+          await broadcastProfile();
+        }}
+        editMode={editingProfile}
+        initialUsername={editingProfile ? (username ?? "") : ""}
+        initialBio={editingProfile ? (bio ?? "") : ""}
+        initialXAccount={editingProfile ? (xAccount ?? "") : ""}
+        initialTipWallet={editingProfile ? (tipWallet ?? "") : ""}
       />
 
-      <MenuDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} />
+      <MenuDrawer
+        visible={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        onCreateEvent={() => setCalendarOpen(true)}
+        onSearch={() => setSearchOpen(true)}
+        onMonkeTools={() => setToolsOpen(true)}
+      />
+
+      <SearchModal visible={searchOpen} onClose={() => setSearchOpen(false)} />
+
+      <CalendarModal
+        visible={calendarOpen}
+        onClose={() => setCalendarOpen(false)}
+        onBroadcast={broadcastEvent}
+      />
+
+      <TipModal
+        visible={!!tipTarget}
+        recipientName={tipTarget?.senderUsername ?? "this monke"}
+        onConfirm={handleConfirmTip}
+        onClose={() => setTipTarget(null)}
+      />
+
+      <TipModal
+        visible={devTipOpen}
+        recipientName="Jump.skr (dev)"
+        onConfirm={handleDevTip}
+        onClose={() => setDevTipOpen(false)}
+      />
 
       <MonkeToolsModal visible={toolsOpen} onClose={() => setToolsOpen(false)} />
 
@@ -198,6 +342,22 @@ export default function ChatScreen() {
         visible={!!profileTarget}
         target={profileTarget}
         onClose={() => setProfileTarget(null)}
+        onEditProfile={() => setEditingProfile(true)}
+        onChangePfp={allNfts.length > 0 ? () => setPfpPickerOpen(true) : undefined}
+        onLogout={async () => { await logout(); router.replace("/"); }}
+        onSwitchWallet={async () => { await logout(); router.replace("/"); }}
+      />
+
+      <NftPickerModal
+        visible={pfpPickerOpen}
+        nfts={allNfts}
+        onCancel={() => setPfpPickerOpen(false)}
+        onSelect={async (nft) => {
+          setVerified(true, nft);
+          await saveSelectedNftMint(nft.mint);
+          setPfpPickerOpen(false);
+          await broadcastProfile();
+        }}
       />
 
       <KeyboardAvoidingView
@@ -207,8 +367,16 @@ export default function ChatScreen() {
       >
         {/* ── Header ────────────────────────────────────────────────────────── */}
         <View style={styles.header}>
-          {/* Left: avatar + username stacked */}
-          <View style={styles.headerLeft}>
+          {/* Left: avatar (tappable — opens own profile) */}
+          <Pressable
+            style={styles.headerLeft}
+            onPress={() => setProfileTarget({
+              senderAddress: myAddress,
+              senderUsername: username ?? undefined,
+              senderNft: verifiedNft ?? undefined,
+            })}
+            hitSlop={6}
+          >
             {verifiedNft?.image ? (
               <Image
                 source={{ uri: verifiedNft.image }}
@@ -219,10 +387,7 @@ export default function ChatScreen() {
                 <Text style={styles.headerNftGlyph}>🐒</Text>
               </View>
             )}
-            <Text style={styles.headerUsername} numberOfLines={1}>
-              {username ?? "Monke"}
-            </Text>
-          </View>
+          </Pressable>
 
           {/* Center: decorative banner image */}
           <ImageBackground
@@ -232,17 +397,8 @@ export default function ChatScreen() {
             resizeMode="cover"
           />
 
-          {/* Right: 🔧 + admin badge + ☰ */}
+          {/* Right: admin badge (admin only) + ☰ menu */}
           <View style={styles.headerRight}>
-            <Pressable
-              onPress={() => setToolsOpen(true)}
-              style={styles.iconBtn}
-              hitSlop={8}
-            >
-              <Text style={styles.iconBtnText}>🔧</Text>
-            </Pressable>
-
-            {/* Admin join-requests button — only visible to group admin */}
             {isGroupAdmin && (
               <Pressable
                 onPress={() => { loadJoinRequests(); setAdminOpen(true); }}
@@ -440,6 +596,7 @@ export default function ChatScreen() {
           replyingTo={replyingTo}
           onCancelReply={() => setReplyingTo(null)}
           isSending={isSending}
+          onDevTip={() => setDevTipOpen(true)}
         />}
 
         <View style={{ height: insets.bottom }} />
@@ -470,7 +627,6 @@ const styles = StyleSheet.create({
   },
   headerLeft: {
     alignItems: "flex-start",
-    gap: 4,
   },
   headerNft: {
     width: 52,
@@ -490,12 +646,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   headerNftGlyph: { fontSize: 24 },
-  headerUsername: {
-    fontFamily: FONTS.display,
-    fontSize: 15,
-    color: THEME.text,
-    maxWidth: 100,
-  },
   headerRight: {
     flexDirection: "row",
     alignItems: "center",
