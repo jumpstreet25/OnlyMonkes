@@ -32,7 +32,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   ListRenderItem,
-  Clipboard,
   Modal,
   ScrollView,
   TextInput,
@@ -76,7 +75,6 @@ export default function ChatScreen() {
   const { messages, replyingTo, isLoadingHistory, setReplyingTo } =
     useChatStore();
   const { initialize, disconnect, logout, streamAlive, send, reply, react, loadJoinRequests, approveJoinRequest, publishGroupId, broadcastProfile, broadcastEvent, syncMessages } = useXmtp();
-  const [copied, setCopied] = useState(false);
   const [inputText, setInputText] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [showUsernameModal, setShowUsernameModal] = useState(false);
@@ -118,13 +116,13 @@ export default function ChatScreen() {
     };
   }, []);
 
-  // ─── Auto-retry for users waiting on approval ────────────────────────────────
-  // Polls initialize() every 20s so users enter automatically once admin approves.
+  // ─── Auto-retry until approved ───────────────────────────────────────────────
+  // Retries every 5s — any online group member's device auto-approves the request.
   useEffect(() => {
     if (isGroupMember || !remoteGroupId) return;
     const interval = setInterval(() => {
       initialize();
-    }, 20_000);
+    }, 5_000);
     return () => clearInterval(interval);
   }, [isGroupMember, remoteGroupId]);
 
@@ -522,35 +520,15 @@ export default function ChatScreen() {
           </View>
         </Modal>
 
-        {/* ── Not yet a member ─────────────────────────────────────────────── */}
+        {/* ── Not yet a member — seamless auto-join spinner ─────────────── */}
         {remoteGroupId && !isGroupMember && (
           <View style={styles.pendingContainer}>
-            <Text style={styles.pendingIcon}>⏳</Text>
-            <Text style={styles.pendingTitle}>Join request sent</Text>
+            <Text style={styles.pendingIcon}>🐒</Text>
+            <Text style={styles.pendingTitle}>Getting you in…</Text>
+            <ActivityIndicator color={THEME.accent} style={{ marginTop: 4 }} />
             <Text style={styles.pendingSubtitle}>
-              Your request has been sent to the admin. You'll be added shortly.
-              If it's been a while, share your Inbox ID directly.
+              Verifying your Saga Monke. Hang tight!
             </Text>
-            <View style={styles.inboxIdBox}>
-              <Text style={styles.inboxIdText} selectable numberOfLines={1}>
-                {myInboxId ?? "Loading…"}
-              </Text>
-            </View>
-            <Pressable
-              style={styles.copyBtn}
-              onPress={() => {
-                if (myInboxId) {
-                  Clipboard.setString(myInboxId);
-                  setCopied(true);
-                  setTimeout(() => setCopied(false), 2000);
-                }
-              }}
-            >
-              <Text style={styles.copyBtnText}>{copied ? "✓ Copied!" : "Copy Inbox ID"}</Text>
-            </Pressable>
-            <Pressable style={styles.retryBtn} onPress={initialize}>
-              <Text style={styles.retryBtnText}>Retry</Text>
-            </Pressable>
           </View>
         )}
 
@@ -713,10 +691,10 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    gap: 12,
+    gap: 14,
     paddingHorizontal: 32,
   },
-  pendingIcon: { fontSize: 48 },
+  pendingIcon: { fontSize: 52 },
   pendingTitle: {
     fontFamily: FONTS.display,
     fontSize: 20,
@@ -728,42 +706,6 @@ const styles = StyleSheet.create({
     color: THEME.textMuted,
     textAlign: "center",
     lineHeight: 20,
-  },
-  inboxIdBox: {
-    backgroundColor: THEME.surface,
-    borderWidth: 1,
-    borderColor: THEME.border,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    width: "100%",
-  },
-  inboxIdText: {
-    fontFamily: FONTS.mono,
-    fontSize: 11,
-    color: THEME.textMuted,
-  },
-  copyBtn: {
-    backgroundColor: THEME.accent,
-    borderRadius: 10,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    width: "100%",
-    alignItems: "center",
-  },
-  copyBtnText: {
-    fontFamily: FONTS.displayMed,
-    fontSize: 14,
-    color: "#fff",
-  },
-  retryBtn: {
-    paddingHorizontal: 24,
-    paddingVertical: 10,
-  },
-  retryBtnText: {
-    fontFamily: FONTS.body,
-    fontSize: 13,
-    color: THEME.textMuted,
   },
 
   // ── Header admin badge ────────────────────────────────────────────────────────

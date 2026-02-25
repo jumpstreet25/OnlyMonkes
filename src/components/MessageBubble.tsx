@@ -8,7 +8,7 @@
  * - Long-press → reply
  */
 
-import React, { memo, useCallback } from "react";
+import React, { memo, useCallback, useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -21,13 +21,12 @@ import { format } from "date-fns";
 import { THEME, FONTS } from "@/lib/constants";
 import { shortenAddress } from "@/lib/nftVerification";
 import { useAppStore } from "@/store/appStore";
-import { getThemeById } from "@/lib/theme";
 import { getCachedProfile } from "@/lib/userProfile";
+import { getOrExtractNftColor, readableTextColor } from "@/lib/nftColor";
 import type { ChatMessage, ReactionEmoji } from "@/types";
 import type { ProfileTarget } from "@/components/UserProfileModal";
 
-const IMESSAGE_BLUE      = "#1D8CF5";
-const IMESSAGE_BLUE_TEXT = "#FFFFFF";
+const FALLBACK_BUBBLE = THEME.accent;
 
 interface MessageBubbleProps {
   message: ChatMessage;
@@ -46,10 +45,28 @@ export const MessageBubble = memo(function MessageBubble({
   onPressUser,
   onTip,
 }: MessageBubbleProps) {
-  const { themeId, customBubbleColor } = useAppStore();
-  const theme = getThemeById(themeId);
-  const ownBubbleColor = customBubbleColor ?? theme.ownBubble;
-  const ownTextColor   = theme.ownText;
+  const { verifiedNft, myInboxId } = useAppStore();
+
+  // ── PFP-derived bubble color ─────────────────────────────────────────────
+  const cachedNftImageForColor = getCachedProfile(message.senderAddress)?.nftImage;
+  const senderImageUrl = isOwn
+    ? (verifiedNft?.image ?? null)
+    : (message.senderNft?.image ?? cachedNftImageForColor ?? null);
+  const colorCacheKey = isOwn ? (myInboxId ?? "own") : message.senderAddress;
+
+  const [bubbleColor, setBubbleColor] = useState<string>(FALLBACK_BUBBLE);
+  const [textColor, setTextColor] = useState<string>("#FFFFFF");
+
+  useEffect(() => {
+    let cancelled = false;
+    getOrExtractNftColor(senderImageUrl, colorCacheKey).then((color) => {
+      if (!cancelled) {
+        setBubbleColor(color);
+        setTextColor(readableTextColor(color));
+      }
+    });
+    return () => { cancelled = true; };
+  }, [senderImageUrl, colorCacheKey]);
 
   const bananaReaction = message.reactions["🍌"];
   const bananaCount    = bananaReaction?.count    ?? 0;
@@ -86,7 +103,7 @@ export const MessageBubble = memo(function MessageBubble({
   const displayName = message.senderUsername ?? shortenAddress(message.senderAddress);
 
   // ── Avatar helper — NFT image from message or profile cache ──────────────
-  const cachedNft = getCachedProfile(message.senderAddress)?.nftImage;
+  const cachedNft = cachedNftImageForColor;
   const avatarUri = message.senderNft?.image ?? cachedNft ?? null;
   const avatarEl  = avatarUri ? (
     <Image source={{ uri: avatarUri }} style={styles.avatar} />
@@ -130,23 +147,23 @@ export const MessageBubble = memo(function MessageBubble({
           </View>
         )}
 
-        {/* Main bubble */}
+        {/* Main bubble — color from NFT PFP for both own and others */}
         <Pressable
           onLongPress={handleLongPress}
           delayLongPress={350}
           style={[
             styles.bubble,
-            isOwn && styles.bubbleOwn,
-            isOwn && { backgroundColor: ownBubbleColor },
+            isOwn ? styles.bubbleOwn : styles.bubbleOther,
+            { backgroundColor: bubbleColor },
           ]}
         >
-          <Text style={[styles.content, isOwn && styles.contentOwn, isOwn && { color: ownTextColor }]}>
+          <Text style={[styles.content, { color: textColor }]}>
             {message.content}
           </Text>
 
           {/* Footer: timestamp + banana pill */}
           <View style={styles.bubbleFooter}>
-            <Text style={[styles.time, isOwn && styles.timeOwn]}>
+            <Text style={[styles.time, { color: textColor + "99" }]}>
               {format(message.sentAt, "HH:mm")}
               {message.status === "sending" && "  ···"}
             </Text>
@@ -156,7 +173,6 @@ export const MessageBubble = memo(function MessageBubble({
               hitSlop={8}
               style={[
                 styles.bananaPill,
-                isOwn && styles.bananaPillOwn,
                 bananaByMe && styles.bananaPillActive,
               ]}
             >
@@ -262,28 +278,25 @@ const styles = StyleSheet.create({
 
   // ── Bubble ─────────────────────────────────────────────────────────────────
   bubble: {
-    backgroundColor: THEME.surface,
     borderRadius: 18,
     borderTopLeftRadius: 4,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    borderWidth: 1,
-    borderColor: THEME.border,
     gap: 4,
   },
   bubbleOwn: {
-    backgroundColor: IMESSAGE_BLUE,
-    borderColor: "transparent",
     borderTopLeftRadius: 18,
     borderTopRightRadius: 4,
+  },
+  bubbleOther: {
+    borderTopLeftRadius: 4,
+    borderTopRightRadius: 18,
   },
   content: {
     fontFamily: FONTS.body,
     fontSize: 15,
-    color: THEME.text,
     lineHeight: 22,
   },
-  contentOwn: { color: IMESSAGE_BLUE_TEXT },
 
   // ── Footer ─────────────────────────────────────────────────────────────────
   bubbleFooter: {
@@ -296,9 +309,7 @@ const styles = StyleSheet.create({
   time: {
     fontFamily: FONTS.mono,
     fontSize: 10,
-    color: THEME.textFaint,
   },
-  timeOwn: { color: "rgba(255,255,255,0.55)" },
 
   // ── Banana pill ────────────────────────────────────────────────────────────
   bananaPill: {
