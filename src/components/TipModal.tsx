@@ -14,6 +14,7 @@ import {
   Pressable,
   StyleSheet,
   ActivityIndicator,
+  useWindowDimensions,
 } from "react-native";
 import Slider from "@react-native-community/slider";
 import * as Haptics from "expo-haptics";
@@ -28,6 +29,7 @@ interface TipModalProps {
 }
 
 export function TipModal({ visible, recipientName, onConfirm, onClose }: TipModalProps) {
+  const { width: SCREEN_W } = useWindowDimensions();
   const [selected, setSelected] = useState<number>(10);
   const [sending, setSending] = useState(false);
 
@@ -65,7 +67,7 @@ export function TipModal({ visible, recipientName, onConfirm, onClose }: TipModa
         <View style={styles.sliderWrap}>
           <Text style={styles.sliderValue}>🍌  {Math.round(selected)} SKR</Text>
           <Slider
-            style={styles.slider}
+            style={{ width: SCREEN_W - 80, height: 44 }}
             minimumValue={TIP_MIN}
             maximumValue={TIP_MAX}
             step={1}
@@ -75,7 +77,7 @@ export function TipModal({ visible, recipientName, onConfirm, onClose }: TipModa
             maximumTrackTintColor={THEME.border}
             thumbTintColor="#FFD700"
           />
-          <View style={styles.sliderEndLabels}>
+          <View style={[styles.sliderEndLabels, { width: SCREEN_W - 80 }]}>
             <Text style={styles.sliderEndLabel}>1 SKR</Text>
             <Text style={styles.sliderEndLabel}>500 SKR</Text>
           </View>
@@ -160,24 +162,19 @@ const styles = StyleSheet.create({
     color: THEME.textFaint,
   },
   sliderWrap: {
-    alignSelf: "stretch",
     alignItems: "center",
     gap: 6,
   },
   sliderValue: {
     fontFamily: FONTS.display,
-    fontSize: 26,
+    fontSize: 28,
     color: "#FFD700",
   },
-  slider: {
-    alignSelf: "stretch",
-    height: 40,
-  },
+  // slider uses inline width: SCREEN_W - 80 for Android compatibility
   sliderEndLabels: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignSelf: "stretch",
-    paddingHorizontal: 4,
+    gap: 16,
   },
   sliderEndLabel: {
     fontFamily: FONTS.mono,
