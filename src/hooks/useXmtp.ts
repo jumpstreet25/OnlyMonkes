@@ -31,7 +31,7 @@ import {
   sendProfileUpdate,
   sendEventMessage,
 } from "@/lib/xmtp";
-import { cacheProfile } from "@/lib/userProfile";
+import { cacheProfile, loadProfileCache } from "@/lib/userProfile";
 import { parseEventMessage, saveEvent } from "@/lib/calendar";
 import {
   fetchAppConfig,
@@ -76,6 +76,9 @@ export function useXmtp() {
     setError(null);
 
     try {
+      // ── 0. Restore profile cache so PFPs are available before history loads ─
+      await loadProfileCache();
+
       // ── 1. Boot XMTP client ────────────────────────────────────────────────
       const client = await initXmtpClient();
       console.log("[XMTP] client inboxId:", client.inboxId);
@@ -83,6 +86,13 @@ export function useXmtp() {
       setXmtpClient(client as unknown as null);
       setMyInboxId(client.inboxId);
       _myInboxId = client.inboxId;
+
+      // Seed own profile into the cache so PFP shows immediately for own messages
+      const { username: ownUsername, verifiedNft: ownNft } = useAppStore.getState();
+      cacheProfile(client.inboxId, {
+        username: ownUsername ?? undefined,
+        nftImage: ownNft?.image ?? null,
+      });
 
       // ── 2. Fetch remote config (group ID + admin inboxId) ──────────────────
       const config = await fetchAppConfig();
@@ -391,6 +401,11 @@ export function useXmtp() {
         tipWallet ?? null,
         verifiedNft?.image ?? null
       );
+      // Keep own cache entry current so PFP is always available locally
+      cacheProfile(_myInboxId, {
+        username: username ?? undefined,
+        nftImage: verifiedNft?.image ?? null,
+      });
     } catch (err) {
       console.warn("[XMTP] broadcastProfile failed:", err);
     }
