@@ -52,7 +52,7 @@ import { UserProfileModal, type ProfileTarget } from "@/components/UserProfileMo
 import { NftPickerModal } from "@/components/NftPickerModal";
 import { router } from "expo-router";
 import { THEME, FONTS } from "@/lib/constants";
-import { loadUserProfile, getCachedProfile, saveSelectedNftMint } from "@/lib/userProfile";
+import { loadUserProfile, getCachedProfile, saveSelectedNftMint, cacheProfile } from "@/lib/userProfile";
 import { loadEvents } from "@/lib/calendar";
 import { loadThemeId, loadCustomColor } from "@/lib/theme";
 import { sendSkrTip, sendDevTip } from "@/lib/solana";
@@ -145,12 +145,14 @@ export default function ChatScreen() {
         setUsername(saved);
         if (bio) setBio(bio);
         if (savedX) setXAccount(savedX);
-        // Use saved tip wallet; fall back to connected wallet address automatically
         const effectiveTip = savedTip || useAppStore.getState().wallet?.address || null;
         if (effectiveTip) setTipWallet(effectiveTip);
       } else {
         setShowUsernameModal(true);
       }
+      // Always keep own entry in the profile cache so PFP shows everywhere
+      const { myInboxId: id, verifiedNft: nft } = useAppStore.getState();
+      if (id) cacheProfile(id, { username: saved ?? undefined, nftImage: nft?.image ?? null });
     });
     // Load persisted theme
     loadThemeId().then(setThemeId);

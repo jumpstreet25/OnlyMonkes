@@ -15,10 +15,11 @@ import {
   StyleSheet,
   Image,
   Pressable,
+  Modal,
 } from "react-native";
 import * as Haptics from "expo-haptics";
 import { format } from "date-fns";
-import { THEME, FONTS } from "@/lib/constants";
+import { THEME, FONTS, REACTIONS } from "@/lib/constants";
 import { shortenAddress } from "@/lib/nftVerification";
 import { useAppStore } from "@/store/appStore";
 import { getCachedProfile } from "@/lib/userProfile";
@@ -68,22 +69,29 @@ export const MessageBubble = memo(function MessageBubble({
     return () => { cancelled = true; };
   }, [senderImageUrl, colorCacheKey]);
 
-  const bananaReaction = message.reactions["🍌"];
-  const bananaCount    = bananaReaction?.count    ?? 0;
-  const bananaByMe     = bananaReaction?.reactedByMe ?? false;
+  const [pickerVisible, setPickerVisible] = useState(false);
 
   const handleLongPress = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setPickerVisible(true);
+  }, []);
+
+  const handlePickReaction = useCallback((emoji: ReactionEmoji) => {
+    setPickerVisible(false);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    onReact(emoji, message.id);
+  }, [onReact, message.id]);
+
+  const handlePickReply = useCallback(() => {
+    setPickerVisible(false);
     onReply(message);
   }, [onReply, message]);
 
-  const handleBanana = useCallback(() => {
+  const handleBananaPill = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (!isOwn && onTip) {
-      // Tap on others' messages → open tip sheet
       onTip(message);
     } else {
-      // Own messages or no tip handler → classic reaction
       onReact("🍌", message.id);
     }
   }, [isOwn, onTip, onReact, message]);
@@ -114,6 +122,7 @@ export const MessageBubble = memo(function MessageBubble({
   );
 
   return (
+    <>
     <View style={[styles.row, isOwn && styles.rowOwn]}>
 
       {/* Avatar — left for others (bottom-aligned), right for own (centered) */}
@@ -161,32 +170,90 @@ export const MessageBubble = memo(function MessageBubble({
             {message.content}
           </Text>
 
-          {/* Footer: timestamp + banana pill */}
+          {/* Footer: timestamp + all active reaction pills */}
           <View style={styles.bubbleFooter}>
             <Text style={[styles.time, { color: textColor + "99" }]}>
               {format(message.sentAt, "HH:mm")}
               {message.status === "sending" && "  ···"}
             </Text>
 
-            <Pressable
-              onPress={handleBanana}
-              hitSlop={8}
-              style={[
-                styles.bananaPill,
-                bananaByMe && styles.bananaPillActive,
-              ]}
-            >
-              <Text style={styles.bananaEmoji}>🍌</Text>
-              {bananaCount > 0 && (
-                <Text style={[styles.bananaCount, bananaByMe && styles.bananaCountActive]}>
-                  {bananaCount}
-                </Text>
-              )}
-            </Pressable>
+            {(REACTIONS as readonly ReactionEmoji[]).map((emoji) => {
+              const rxn = message.reactions[emoji];
+              const count = rxn?.count ?? 0;
+              const byMe  = rxn?.reactedByMe ?? false;
+              if (emoji === "🍌") {
+                return (
+                  <Pressable
+                    key={emoji}
+                    onPress={handleBananaPill}
+                    hitSlop={8}
+                    style={[styles.reactionPill, byMe && styles.reactionPillActive]}
+                  >
+                    <Text style={styles.pillEmoji}>🍌</Text>
+                    {count > 0 && (
+                      <Text style={[styles.pillCount, byMe && styles.pillCountActive]}>
+                        {count}
+                      </Text>
+                    )}
+                  </Pressable>
+                );
+              }
+              if (count === 0) return null;
+              return (
+                <Pressable
+                  key={emoji}
+                  onPress={() => onReact(emoji, message.id)}
+                  hitSlop={8}
+                  style={[styles.reactionPill, byMe && styles.reactionPillActive]}
+                >
+                  <Text style={styles.pillEmoji}>{emoji}</Text>
+                  <Text style={[styles.pillCount, byMe && styles.pillCountActive]}>
+                    {count}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </View>
         </Pressable>
       </View>
     </View>
+
+    {/* ── Reaction picker Modal ──────────────────────────────────────── */}
+    <Modal
+      visible={pickerVisible}
+      transparent
+      animationType="fade"
+      onRequestClose={() => setPickerVisible(false)}
+    >
+      <Pressable style={styles.pickerOverlay} onPress={() => setPickerVisible(false)}>
+        <Pressable style={styles.pickerSheet} onPress={(e) => e.stopPropagation()}>
+          <View style={styles.pickerEmojiRow}>
+            {(REACTIONS as readonly ReactionEmoji[]).map((emoji) => (
+              <Pressable
+                key={emoji}
+                onPress={() => handlePickReaction(emoji)}
+                style={({ pressed }) => [
+                  styles.pickerEmojiBtn,
+                  pressed && styles.pickerEmojiBtnPressed,
+                ]}
+              >
+                <Text style={styles.pickerEmoji}>{emoji}</Text>
+              </Pressable>
+            ))}
+          </View>
+          <Pressable
+            onPress={handlePickReply}
+            style={({ pressed }) => [
+              styles.pickerReplyBtn,
+              pressed && styles.pickerReplyBtnPressed,
+            ]}
+          >
+            <Text style={styles.pickerReplyText}>↩  Reply</Text>
+          </Pressable>
+        </Pressable>
+      </Pressable>
+    </Modal>
+    </>
   );
 });
 
@@ -311,8 +378,8 @@ const styles = StyleSheet.create({
     fontSize: 10,
   },
 
-  // ── Banana pill ────────────────────────────────────────────────────────────
-  bananaPill: {
+  // ── Reaction pills ─────────────────────────────────────────────────────────
+  reactionPill: {
     flexDirection: "row",
     alignItems: "center",
     gap: 3,
@@ -321,17 +388,68 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 2,
   },
-  bananaPillOwn: {
-    backgroundColor: "rgba(255,255,255,0.15)",
-  },
-  bananaPillActive: {
+  reactionPillActive: {
     backgroundColor: "rgba(255,213,79,0.28)",
   },
-  bananaEmoji: { fontSize: 12 },
-  bananaCount: {
+  pillEmoji: { fontSize: 12 },
+  pillCount: {
     fontFamily: FONTS.mono,
     fontSize: 10,
     color: THEME.textFaint,
   },
-  bananaCountActive: { color: "#FFD54F" },
+  pillCountActive: { color: "#FFD54F" },
+
+  // ── Reaction picker Modal ──────────────────────────────────────────────────
+  pickerOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    justifyContent: "flex-end",
+    paddingBottom: 40,
+    alignItems: "center",
+  },
+  pickerSheet: {
+    backgroundColor: THEME.surface,
+    borderRadius: 20,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    alignItems: "center",
+    gap: 12,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    minWidth: 280,
+  },
+  pickerEmojiRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  pickerEmojiBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: THEME.surfaceHigh,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pickerEmojiBtnPressed: {
+    backgroundColor: THEME.accentSoft,
+    transform: [{ scale: 1.15 }],
+  },
+  pickerEmoji: { fontSize: 26 },
+  pickerReplyBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 28,
+    borderRadius: 12,
+    backgroundColor: THEME.surfaceHigh,
+    borderWidth: 1,
+    borderColor: THEME.border,
+  },
+  pickerReplyBtnPressed: {
+    backgroundColor: THEME.accentSoft,
+    borderColor: THEME.accent,
+  },
+  pickerReplyText: {
+    fontFamily: FONTS.bodySemi,
+    fontSize: 14,
+    color: THEME.text,
+  },
 });
