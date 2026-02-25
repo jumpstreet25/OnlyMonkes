@@ -1,4 +1,5 @@
 import * as SecureStore from 'expo-secure-store';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const SK_USERNAME      = 'profile_username';
 const SK_BIO           = 'profile_bio';
@@ -58,10 +59,41 @@ export interface CachedProfile {
   nftImage?: string | null;
 }
 
+const AK_PROFILE_CACHE = 'profile_cache_v2';
 const _profileCache = new Map<string, CachedProfile>();
+let _persistTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Load persisted profile cache from AsyncStorage (call once on app start). */
+export async function loadProfileCache(): Promise<void> {
+  try {
+    const raw = await AsyncStorage.getItem(AK_PROFILE_CACHE);
+    if (!raw) return;
+    const obj = JSON.parse(raw) as Record<string, CachedProfile>;
+    for (const [k, v] of Object.entries(obj)) {
+      _profileCache.set(k, { ..._profileCache.get(k), ...v });
+    }
+  } catch { /* ignore */ }
+}
+
+function _schedulePersist() {
+  if (_persistTimer) clearTimeout(_persistTimer);
+  _persistTimer = setTimeout(async () => {
+    try {
+      const obj: Record<string, CachedProfile> = {};
+      _profileCache.forEach((v, k) => { obj[k] = v; });
+      await AsyncStorage.setItem(AK_PROFILE_CACHE, JSON.stringify(obj));
+    } catch { /* ignore */ }
+  }, 600);
+}
 
 export function cacheProfile(inboxId: string, profile: CachedProfile): void {
-  _profileCache.set(inboxId, { ..._profileCache.get(inboxId), ...profile });
+  const merged = { ..._profileCache.get(inboxId), ...profile };
+  // Strip explicit undefined/null nftImage so we don't overwrite a good image with null
+  if (profile.nftImage === null && _profileCache.get(inboxId)?.nftImage) {
+    merged.nftImage = _profileCache.get(inboxId)!.nftImage;
+  }
+  _profileCache.set(inboxId, merged);
+  _schedulePersist();
 }
 
 export function getCachedProfile(inboxId: string): CachedProfile | null {

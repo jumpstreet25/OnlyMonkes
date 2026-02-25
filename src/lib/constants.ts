@@ -36,7 +36,7 @@ export const DAPPS = [
 
 export const MAX_MESSAGE_LENGTH = 1000;
 
-export const REACTIONS = ['🍌'] as const;
+export const REACTIONS = ['🐒', '🔥', '🚀', '👍', '🍌'] as const;
 
 export const THEME = {
   bg: '#0A0A0F',
