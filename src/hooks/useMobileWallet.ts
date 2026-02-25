@@ -17,6 +17,7 @@ import {
   Web3MobileWallet,
 } from "@solana-mobile/mobile-wallet-adapter-protocol-web3js";
 import { PublicKey } from "@solana/web3.js";
+import { Linking } from "react-native";
 import { useAppStore } from "@/store/appStore";
 import type { WalletAccount } from "@/types";
 
@@ -34,14 +35,27 @@ export function useMobileWallet() {
 
   /**
    * Connect wallet via MWA.
-   * Opens the installed wallet app (Phantom, Solflare, etc.)
-   * and requests authorization.
+   * walletScheme: optional URI scheme to bring a specific wallet to
+   * foreground before transact() fires (e.g. "phantom://", "solflare://").
+   * Android will then prefer the foregrounded app when routing the MWA intent.
    */
-  const connect = useCallback(async (): Promise<WalletAccount | null> => {
+  const connect = useCallback(async (walletScheme?: string): Promise<WalletAccount | null> => {
     setLoading(true);
     setError(null);
 
     try {
+      // Bring specific wallet to foreground so Android MWA routes to it
+      if (walletScheme) {
+        try {
+          const canOpen = await Linking.canOpenURL(walletScheme);
+          if (canOpen) {
+            await Linking.openURL(walletScheme);
+            // Give the wallet app 900 ms to come to foreground
+            await new Promise<void>((r) => setTimeout(r, 900));
+          }
+        } catch { /* wallet not installed — fall through to system chooser */ }
+      }
+
       const account = await transact(async (mobileWallet: Web3MobileWallet) => {
         const authResult = await mobileWallet.authorize({
           cluster: "mainnet-beta",

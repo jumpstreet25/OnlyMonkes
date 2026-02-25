@@ -123,6 +123,16 @@ export default function ConnectScreen() {
     }
   }, [connect]);
 
+  // Connect with a specific wallet app (by URI scheme) before calling transact
+  const handleConnectWith = useCallback(async (walletScheme?: string) => {
+    setError(null);
+    const account = await connect(walletScheme);
+    if (account) {
+      await saveSession(account);
+      router.replace("/verify");
+    }
+  }, [connect]);
+
   // ─── Matrica connect ───────────────────────────────────────────────────────
   const handleMatrica = useCallback(async () => {
     setError(null);
@@ -217,9 +227,9 @@ export default function ConnectScreen() {
           <Text style={styles.sheetTitle}>Choose Wallet</Text>
 
           {[
-            { icon: "🟣", label: "Phantom", onPress: async () => { setWalletSheetOpen(false); await handleConnect(); } },
-            { icon: "🔥", label: "Solflare", onPress: async () => { setWalletSheetOpen(false); await handleConnect(); } },
-            { icon: "📱", label: "Mobile Wallet Adapter", onPress: async () => { setWalletSheetOpen(false); await handleConnect(); } },
+            { icon: "🟣", label: "Phantom", onPress: async () => { setWalletSheetOpen(false); await handleConnectWith("phantom://"); } },
+            { icon: "🔥", label: "Solflare", onPress: async () => { setWalletSheetOpen(false); await handleConnectWith("solflare://"); } },
+            { icon: "📱", label: "Mobile Wallet Adapter", onPress: async () => { setWalletSheetOpen(false); await handleConnectWith(); } },
             { icon: "M",  label: "Continue with Matrica", onPress: async () => { setWalletSheetOpen(false); await handleMatrica(); } },
           ].map(({ icon, label, onPress }) => (
             <Pressable
