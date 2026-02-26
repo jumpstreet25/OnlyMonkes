@@ -79,16 +79,25 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onSearch, onMonkeT
     const seen = new Map<string, ActiveUser>();
     for (const msg of messages) {
       if (msg.sentAt.getTime() < cutoff) continue;
+      const cached = getCachedProfile(msg.senderAddress);
+      const msgNft = msg.senderNft?.image ?? cached?.nftImage ?? null;
+      const msgUsername = cached?.username ?? msg.senderUsername;
       if (!seen.has(msg.senderAddress)) {
         seen.set(msg.senderAddress, {
           inboxId: msg.senderAddress,
-          username: msg.senderUsername,
-          nftImage: msg.senderNft?.image ?? null,
+          username: msgUsername,
+          nftImage: msgNft,
           lastSeen: msg.sentAt,
         });
       } else {
         const ex = seen.get(msg.senderAddress)!;
-        if (msg.sentAt > ex.lastSeen) seen.set(msg.senderAddress, { ...ex, lastSeen: msg.sentAt });
+        seen.set(msg.senderAddress, {
+          ...ex,
+          lastSeen: msg.sentAt > ex.lastSeen ? msg.sentAt : ex.lastSeen,
+          // always keep the best nftImage and username found across all messages
+          nftImage: ex.nftImage ?? msgNft,
+          username: ex.username ?? msgUsername,
+        });
       }
     }
     return Array.from(seen.values()).sort((a, b) => b.lastSeen.getTime() - a.lastSeen.getTime());
@@ -103,7 +112,11 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onSearch, onMonkeT
       for (const url of found) {
         if (!seen.has(url)) {
           seen.add(url);
-          results.push({ url, senderUsername: msg.senderUsername, sentAt: msg.sentAt });
+          results.push({
+            url,
+            senderUsername: getCachedProfile(msg.senderAddress)?.username ?? msg.senderUsername,
+            sentAt: msg.sentAt,
+          });
         }
       }
     }
@@ -207,7 +220,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onSearch, onMonkeT
               ) : (
                 activeUsers.map((user) => {
                   const cached = getCachedProfile(user.inboxId);
-                  const name = user.username ?? cached?.username ?? shortenAddress(user.inboxId);
+                  const name = cached?.username ?? user.username ?? shortenAddress(user.inboxId);
                   const avatarUri = user.nftImage ?? cached?.nftImage ?? null;
                   return (
                     <View key={user.inboxId} style={styles.userRow}>
@@ -285,7 +298,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onSearch, onMonkeT
                     <View style={styles.linkInfo}>
                       <Text style={styles.linkUrl} numberOfLines={1}>{link.url.replace(/^https?:\/\//, "")}</Text>
                       <Text style={styles.linkMeta}>
-                        {link.senderUsername ?? "Unknown"} · {formatRelative(link.sentAt)}
+                        {link.senderUsername ?? "?"} · {formatRelative(link.sentAt)}
                       </Text>
                     </View>
                     <Text style={styles.chevron}>›</Text>
@@ -310,7 +323,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onSearch, onMonkeT
                       resizeMode="cover"
                     />
                     <View style={styles.mediaInfo}>
-                      <Text style={styles.mediaSender}>{msg.senderUsername ?? shortenAddress(msg.senderAddress)}</Text>
+                      <Text style={styles.mediaSender}>{getCachedProfile(msg.senderAddress)?.username ?? msg.senderUsername ?? shortenAddress(msg.senderAddress)}</Text>
                       <Text style={styles.mediaTime}>{formatRelative(msg.sentAt)}</Text>
                     </View>
                   </View>
