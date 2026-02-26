@@ -4,6 +4,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
   name: 'OnlyMonkes',
   slug: 'onlymonkes',
+  owner: process.env.EXPO_OWNER ?? undefined,
   version: '1.0.0',
   orientation: 'portrait',
   icon: './assets/icon.png',
@@ -37,10 +38,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     heliusApiKey: process.env.HELIUS_API_KEY ?? 'f222b023-3712-4ab5-9dd1-caff88d27c40',
     nftCollectionAddress:
       process.env.NFT_COLLECTION_ADDRESS ?? 'GokAiStXz2Kqbxwz2oqzfEXuUhE7aXySmBGEP7uejKXF',
-    // EAS project ID — run `npx eas build:configure` to generate this.
-    // Required for Expo push tokens in production builds.
     eas: {
-      projectId: process.env.EAS_PROJECT_ID ?? '',
+      projectId: 'e669ee53-de73-4dfb-9a36-5c22de29c67e',
     },
   },
 });
