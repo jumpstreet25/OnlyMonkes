@@ -16,7 +16,7 @@
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useCallback } from "react";
-import { clearSession, clearMatricaSession } from "@/lib/session";
+import { clearSession, clearMatricaSession, clearVerifiedNft } from "@/lib/session";
 import {
   initXmtpClient,
   getOrCreateGlobalChat,
@@ -331,6 +331,7 @@ export function useXmtp() {
     _myInboxId = "";
     await clearSession();
     await clearMatricaSession();
+    await clearVerifiedNft();
     await AsyncStorage.removeItem(AK_JOIN_REQUEST_SENT);
     useAppStore.getState().reset();
   }, []);

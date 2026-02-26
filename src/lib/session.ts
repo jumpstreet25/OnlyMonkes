@@ -8,7 +8,7 @@
  */
 
 import * as SecureStore from "expo-secure-store";
-import type { WalletAccount } from "@/types";
+import type { WalletAccount, OwnedNFT } from "@/types";
 
 const SK_ADDRESS = "session_wallet_address";
 const SK_LABEL = "session_wallet_label";
@@ -113,4 +113,26 @@ export async function clearMatricaSession(): Promise<void> {
     SecureStore.deleteItemAsync(SK_MATRICA_WALLET),
     SecureStore.deleteItemAsync(SK_MATRICA_TS),
   ]);
+}
+
+// ─── Verified NFT cache ────────────────────────────────────────────────────────
+// Stores the NFT the user selected so we can skip the verify screen on re-launch.
+
+const SK_VERIFIED_NFT = "session_verified_nft";
+
+export async function saveVerifiedNft(nft: OwnedNFT): Promise<void> {
+  await SecureStore.setItemAsync(SK_VERIFIED_NFT, JSON.stringify(nft));
+}
+
+export async function loadVerifiedNft(): Promise<OwnedNFT | null> {
+  try {
+    const raw = await SecureStore.getItemAsync(SK_VERIFIED_NFT);
+    return raw ? (JSON.parse(raw) as OwnedNFT) : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function clearVerifiedNft(): Promise<void> {
+  await SecureStore.deleteItemAsync(SK_VERIFIED_NFT);
 }
