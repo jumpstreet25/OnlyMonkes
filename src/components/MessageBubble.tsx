@@ -259,19 +259,21 @@ export const MessageBubble = memo(function MessageBubble({
         </Pressable>
       </View>
 
-      {/* Banana pill — outside bubble, opposite side from avatar */}
-      <Pressable
-        onPress={handleBananaPill}
-        hitSlop={8}
-        style={[styles.bananaPill, bananaByMe && styles.bananaPillActive]}
-      >
-        <Text style={styles.bananaEmoji}>🍌</Text>
-        {bananaCount > 0 && (
-          <Text style={[styles.bananaCount, bananaByMe && styles.bananaCountActive]}>
-            {bananaCount}
-          </Text>
-        )}
-      </Pressable>
+      {/* Banana — only shown on others' messages (can't tip yourself) */}
+      {!isOwn && (
+        <Pressable
+          onPress={handleBananaPill}
+          hitSlop={8}
+          style={styles.bananaPill}
+        >
+          <Text style={styles.bananaEmoji}>🍌</Text>
+          {bananaCount > 0 && (
+            <Text style={[styles.bananaCount, bananaByMe && styles.bananaCountActive]}>
+              {bananaCount}
+            </Text>
+          )}
+        </Pressable>
+      )}
 
     </Animated.View>
 
@@ -468,23 +470,12 @@ const styles = StyleSheet.create({
   bananaPill: {
     alignItems: "center",
     justifyContent: "center",
-    gap: 2,
-    backgroundColor: "rgba(255,255,255,0.06)",
-    borderRadius: 12,
-    paddingHorizontal: 7,
-    paddingVertical: 5,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    minWidth: 34,
+    gap: 1,
   },
-  bananaPillActive: {
-    backgroundColor: "rgba(255,213,79,0.22)",
-    borderColor: "#FFD54F44",
-  },
-  bananaEmoji: { fontSize: 18 },
+  bananaEmoji: { fontSize: 10 },
   bananaCount: {
     fontFamily: FONTS.mono,
-    fontSize: 10,
+    fontSize: 9,
     color: THEME.textFaint,
   },
   bananaCountActive: { color: "#FFD54F" },
