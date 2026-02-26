@@ -77,7 +77,7 @@ export function useXmtp() {
     setJoinRequests,
     setRemoteGroupId,
   } = useAppStore();
-  const { setMessages, addMessage, mergeMessage, applyReactionUpdate, setLoadingHistory } =
+  const { setMessages, addMessage, mergeMessage, upgradeOwnMessage, applyReactionUpdate, setLoadingHistory } =
     useChatStore();
 
   const initialize = useCallback(async () => {
@@ -328,6 +328,7 @@ export function useXmtp() {
     setMessages,
     addMessage,
     mergeMessage,
+    upgradeOwnMessage,
     applyReactionUpdate,
     setLoadingHistory,
     setIsGroupMember,
@@ -449,15 +450,18 @@ export function useXmtp() {
         .reverse(); // oldest-first within the batch
 
       for (const msg of newMsgs) {
-        // mergeMessage deduplicates against optimistic bubbles (same sender+content)
-        // so own sent messages don't appear twice with the wrong avatar.
-        // enrichWithNft ensures senderNft is always populated from profile cache.
-        mergeMessage(enrichWithNft(msg));
+        if (msg.senderAddress === _myInboxId) {
+          // Own messages: only upgrade an existing opt-* bubble — never append.
+          // This eliminates the duplicate where heartbeat sync adds a second copy.
+          upgradeOwnMessage(enrichWithNft(msg));
+        } else {
+          mergeMessage(enrichWithNft(msg));
+        }
       }
     } catch (err) {
       console.warn("[XMTP] syncMessages failed:", err);
     }
-  }, [mergeMessage]);
+  }, [mergeMessage, upgradeOwnMessage]);
 
   // ── Broadcast a calendar event to the group ───────────────────────────────
   const broadcastEvent = useCallback(async (eventJson: string) => {
