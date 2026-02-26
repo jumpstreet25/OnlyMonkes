@@ -42,6 +42,7 @@ import {
   saveSession,
   loadMatricaSession,
   saveMatricaSession,
+  loadVerifiedNft,
 } from "@/lib/session";
 import {
   startMatricaAuth,
@@ -55,7 +56,7 @@ export default function ConnectScreen() {
   const { width: SCREEN_W, height: SCREEN_H } = useWindowDimensions();
   const HEADER_HEIGHT = Math.round(SCREEN_H * 0.30);
   const { connect } = useMobileWallet();
-  const { isLoading, error, setError, setWallet } = useAppStore();
+  const { isLoading, error, setError, setWallet, setVerified } = useAppStore();
   const [checkingSession, setCheckingSession] = useState(true);
   const [matricaLoading, setMatricaLoading] = useState(false);
   const [walletSheetOpen, setWalletSheetOpen] = useState(false);
@@ -67,16 +68,29 @@ export default function ConnectScreen() {
       const matrica = await loadMatricaSession();
       if (matrica) {
         setWallet(matrica);
-        router.replace("/verify");
+        const nft = await loadVerifiedNft();
+        if (nft) {
+          setVerified(true, nft);
+          router.replace("/chat");
+        } else {
+          router.replace("/verify");
+        }
         return;
       }
-      // Then wallet session
+      // Then MWA wallet session
       const wallet = await loadSession();
       if (wallet) {
         setWallet(wallet);
-        router.replace("/verify");
+        const nft = await loadVerifiedNft();
+        if (nft) {
+          setVerified(true, nft);
+          router.replace("/chat");
+        } else {
+          router.replace("/verify");
+        }
         return;
       }
+      // No session — show login screen interactively
       setCheckingSession(false);
     })();
   }, []);
@@ -144,15 +158,6 @@ export default function ConnectScreen() {
     }
   }, []);
 
-  // ─── Session check spinner ─────────────────────────────────────────────────
-  if (checkingSession) {
-    return (
-      <View style={styles.splash}>
-        <ActivityIndicator size="large" color={THEME.accent} />
-      </View>
-    );
-  }
-
   const busy = isLoading || matricaLoading;
 
   return (
@@ -177,39 +182,48 @@ export default function ConnectScreen() {
 
         {/* Buttons */}
         <View style={styles.buttons}>
-          {/* Single Login button */}
-          <Pressable
-            style={({ pressed }) => [
-              styles.primaryBtn,
-              pressed && styles.btnPressed,
-            ]}
-            onPress={() => setWalletSheetOpen(true)}
-            disabled={busy}
-          >
-            <LinearGradient
-              colors={["#9c7cff", "#7c5cfc", "#5c3cec"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.primaryGradient}
+          {checkingSession ? (
+            /* Auto-login in progress — show branded loader, not a tappable button */
+            <View style={styles.autoLoginRow}>
+              <ActivityIndicator size="small" color={THEME.accent} />
+              <Text style={styles.autoLoginText}>Signing you in…</Text>
+            </View>
+          ) : (
+            <Pressable
+              style={({ pressed }) => [
+                styles.primaryBtn,
+                pressed && styles.btnPressed,
+              ]}
+              onPress={() => setWalletSheetOpen(true)}
+              disabled={busy}
             >
-              {busy ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.primaryBtnText}>Login</Text>
-              )}
-            </LinearGradient>
-          </Pressable>
+              <LinearGradient
+                colors={["#9c7cff", "#7c5cfc", "#5c3cec"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.primaryGradient}
+              >
+                {busy ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.primaryBtnText}>Login</Text>
+                )}
+              </LinearGradient>
+            </Pressable>
+          )}
         </View>
 
-        {/* Error */}
-        {error ? (
-          <View style={styles.errorBox}>
-            <Text style={styles.errorText}>{error}</Text>
-          </View>
-        ) : (
-          <Text style={styles.hint}>
-            Requires a Solana wallet app (Phantom, Solflare, etc.)
-          </Text>
+        {/* Error / hint — only shown when login form is interactive */}
+        {!checkingSession && (
+          error ? (
+            <View style={styles.errorBox}>
+              <Text style={styles.errorText}>{error}</Text>
+            </View>
+          ) : (
+            <Text style={styles.hint}>
+              Requires a Solana wallet app (Phantom, Solflare, etc.)
+            </Text>
+          )
         )}
       </View>
 
@@ -253,12 +267,6 @@ export default function ConnectScreen() {
 }
 
 const styles = StyleSheet.create({
-  splash: {
-    flex: 1,
-    backgroundColor: THEME.bg,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   container: {
     flex: 1,
     backgroundColor: THEME.bg,
@@ -294,6 +302,18 @@ const styles = StyleSheet.create({
   buttons: {
     alignSelf: "stretch",
     gap: 0,
+  },
+  autoLoginRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    paddingVertical: 18,
+  },
+  autoLoginText: {
+    fontFamily: FONTS.bodyMed,
+    fontSize: 15,
+    color: THEME.textMuted,
   },
   btnPressed: {
     opacity: 0.82,
