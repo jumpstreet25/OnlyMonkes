@@ -67,7 +67,7 @@ export function useXmtp() {
     setJoinRequests,
     setRemoteGroupId,
   } = useAppStore();
-  const { setMessages, addMessage, applyReactionUpdate, setLoadingHistory } =
+  const { setMessages, addMessage, mergeMessage, applyReactionUpdate, setLoadingHistory } =
     useChatStore();
 
   const initialize = useCallback(async () => {
@@ -272,7 +272,7 @@ export function useXmtp() {
         // Skip own messages — already shown as optimistic bubbles
         if (msg.senderAddress === _myInboxId) return;
 
-        addMessage(msg);
+        mergeMessage(msg);
 
         const { notificationsEnabled, mentionsOnly, username } =
           useAppStore.getState();
@@ -307,6 +307,7 @@ export function useXmtp() {
     setError,
     setMessages,
     addMessage,
+    mergeMessage,
     applyReactionUpdate,
     setLoadingHistory,
     setIsGroupMember,
@@ -428,14 +429,14 @@ export function useXmtp() {
         .reverse(); // oldest-first within the batch
 
       for (const msg of newMsgs) {
-        // Add all new messages (including own — they may have come from another device)
-        // Skip optimistic ones that are already in the store
-        addMessage(msg);
+        // mergeMessage deduplicates against optimistic bubbles (same sender+content)
+        // so own sent messages don't appear twice with the wrong avatar
+        mergeMessage(msg);
       }
     } catch (err) {
       console.warn("[XMTP] syncMessages failed:", err);
     }
-  }, [addMessage]);
+  }, [mergeMessage]);
 
   // ── Broadcast a calendar event to the group ───────────────────────────────
   const broadcastEvent = useCallback(async (eventJson: string) => {
