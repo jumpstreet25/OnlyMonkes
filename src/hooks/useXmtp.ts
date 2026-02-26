@@ -31,7 +31,7 @@ import {
   sendProfileUpdate,
   sendEventMessage,
 } from "@/lib/xmtp";
-import { cacheProfile, loadProfileCache } from "@/lib/userProfile";
+import { cacheProfile, getCachedProfile, loadProfileCache } from "@/lib/userProfile";
 import { parseEventMessage, saveEvent } from "@/lib/calendar";
 import {
   fetchAppConfig,
@@ -55,6 +55,16 @@ let _streamAlive = false;
 
 const AK_JOIN_REQUEST_SENT = "xmtp_join_request_sent";
 const AK_IS_ADMIN         = "xmtp_is_group_admin";
+
+/** Fill senderNft from profile cache if the decoded message has none. */
+function enrichWithNft(msg: ChatMessage): ChatMessage {
+  if (msg.senderNft) return msg;
+  const cached = getCachedProfile(msg.senderAddress);
+  if (cached?.nftImage) {
+    return { ...msg, senderNft: { mint: "", name: "", image: cached.nftImage } };
+  }
+  return msg;
+}
 
 export function useXmtp() {
   const {
@@ -197,17 +207,12 @@ export function useXmtp() {
       await (group as any).sync();
       const rawHistory: any[] = await (group as any).messages({ limit: 100 });
 
-      const decoded = rawHistory
-        .map((m) => decodeMessage(m, _myInboxId))
-        .filter(Boolean) as ChatMessage[];
-
-      let enriched = decoded;
+      // ── Pass 1: seed profile cache + events from history ─────────────────
+      // Must run BEFORE decoding messages so enrichWithNft() has fresh cache data.
       for (const raw of rawHistory) {
         try {
           const content = raw.content();
-          if (typeof content === "string" && content.startsWith("REACT:")) {
-            enriched = applyReaction(enriched, raw, _myInboxId);
-          } else if (typeof content === "string" && content.startsWith("PROFILE_UPDATE:")) {
+          if (typeof content === "string" && content.startsWith("PROFILE_UPDATE:")) {
             try {
               const data = JSON.parse(content.slice("PROFILE_UPDATE:".length));
               if (data.id) cacheProfile(data.id, { username: data.u || undefined, bio: data.b || undefined, xAccount: data.x || undefined, walletAddress: data.w || undefined, tipWallet: data.tw || undefined, nftImage: data.ni || undefined });
@@ -218,12 +223,27 @@ export function useXmtp() {
               if (event) await saveEvent(event);
             } catch { /* ignore */ }
           }
-        } catch {
-          // skip
-        }
+        } catch { /* skip */ }
       }
 
-      setMessages(enriched.reverse()); // oldest-first
+      // ── Pass 2: decode messages, apply reactions, enrich with NFT images ──
+      let decoded = rawHistory
+        .map((m) => decodeMessage(m, _myInboxId))
+        .filter(Boolean) as ChatMessage[];
+
+      for (const raw of rawHistory) {
+        try {
+          const content = raw.content();
+          if (typeof content === "string" && content.startsWith("REACT:")) {
+            decoded = applyReaction(decoded, raw, _myInboxId);
+          }
+        } catch { /* skip */ }
+      }
+
+      // Populate senderNft from profile cache so avatars always show correctly
+      const historyMessages = decoded.map(enrichWithNft);
+
+      setMessages(historyMessages.reverse()); // oldest-first
       setLoadingHistory(false);
 
       // ── 5. Stream incoming messages ────────────────────────────────────────
@@ -272,7 +292,7 @@ export function useXmtp() {
         // Skip own messages — already shown as optimistic bubbles
         if (msg.senderAddress === _myInboxId) return;
 
-        mergeMessage(msg);
+        mergeMessage(enrichWithNft(msg));
 
         const { notificationsEnabled, mentionsOnly, username } =
           useAppStore.getState();
@@ -430,8 +450,9 @@ export function useXmtp() {
 
       for (const msg of newMsgs) {
         // mergeMessage deduplicates against optimistic bubbles (same sender+content)
-        // so own sent messages don't appear twice with the wrong avatar
-        mergeMessage(msg);
+        // so own sent messages don't appear twice with the wrong avatar.
+        // enrichWithNft ensures senderNft is always populated from profile cache.
+        mergeMessage(enrichWithNft(msg));
       }
     } catch (err) {
       console.warn("[XMTP] syncMessages failed:", err);

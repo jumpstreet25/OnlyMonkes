@@ -8,7 +8,7 @@
  * - Long-press → reply
  */
 
-import React, { memo, useCallback, useEffect, useState } from "react";
+import React, { memo, useCallback, useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -16,6 +16,8 @@ import {
   Image,
   Pressable,
   Modal,
+  PanResponder,
+  Animated,
 } from "react-native";
 import * as Haptics from "expo-haptics";
 import { format } from "date-fns";
@@ -96,7 +98,7 @@ export const MessageBubble = memo(function MessageBubble({
     }
   }, [isOwn, onTip, onReact, message]);
 
-  const handlePressName = useCallback(() => {
+  const handlePressAvatar = useCallback(() => {
     if (!onPressUser) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const nftFromCache = getCachedProfile(message.senderAddress)?.nftImage;
@@ -108,37 +110,74 @@ export const MessageBubble = memo(function MessageBubble({
     });
   }, [onPressUser, message]);
 
+  // ── Swipe-right to reply ──────────────────────────────────────────────────
+  const swipeAnim = useRef(new Animated.Value(0)).current;
+  const didTrigger = useRef(false);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_, { dx, dy }) =>
+        dx > 8 && Math.abs(dx) > Math.abs(dy) * 2,
+      onPanResponderMove: (_, { dx }) => {
+        if (dx > 0) swipeAnim.setValue(Math.min(dx * 0.55, 70));
+      },
+      onPanResponderRelease: (_, { dx }) => {
+        if (dx > 52 && !didTrigger.current) {
+          didTrigger.current = true;
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          onReply(message);
+        }
+        Animated.spring(swipeAnim, {
+          toValue: 0,
+          useNativeDriver: true,
+          tension: 200,
+          friction: 20,
+        }).start(() => { didTrigger.current = false; });
+      },
+      onPanResponderTerminate: () => {
+        Animated.spring(swipeAnim, { toValue: 0, useNativeDriver: true }).start(() => {
+          didTrigger.current = false;
+        });
+      },
+    })
+  ).current;
+
   const displayName = message.senderUsername ?? shortenAddress(message.senderAddress);
 
   // ── Avatar helper — NFT image from message or profile cache ──────────────
   const cachedNft = cachedNftImageForColor;
   const avatarUri = message.senderNft?.image ?? cachedNft ?? null;
-  const avatarEl  = avatarUri ? (
-    <Image source={{ uri: avatarUri }} style={styles.avatar} />
-  ) : (
-    <View style={styles.avatarFallback}>
-      <Text style={styles.avatarGlyph}>🐒</Text>
-    </View>
-  );
 
   return (
     <>
-    <View style={[styles.row, isOwn && styles.rowOwn]}>
+    <Animated.View
+      style={[styles.row, isOwn && styles.rowOwn, { transform: [{ translateX: swipeAnim }] }]}
+      {...panResponder.panHandlers}
+    >
 
-      {/* Avatar — left for others (bottom-aligned), right for own (centered) */}
-      <View style={isOwn ? styles.avatarContainerOwn : styles.avatarContainer}>
-        {avatarEl}
-      </View>
+      {/* Avatar — tappable → opens profile */}
+      <Pressable
+        style={isOwn ? styles.avatarContainerOwn : styles.avatarContainer}
+        onPress={handlePressAvatar}
+        hitSlop={6}
+      >
+        {avatarUri ? (
+          <Image source={{ uri: avatarUri }} style={styles.avatar} />
+        ) : (
+          <View style={styles.avatarFallback}>
+            <Text style={styles.avatarGlyph}>🐒</Text>
+          </View>
+        )}
+      </Pressable>
 
       {/* Bubble group */}
       <View style={[styles.bubbleGroup, isOwn && styles.bubbleGroupOwn]}>
 
-        {/* Sender name */}
-        <Pressable onPress={handlePressName} hitSlop={6}>
-          <Text style={[styles.sender, isOwn && styles.senderOwn]}>
-            {isOwn ? "You" : displayName}
-          </Text>
-        </Pressable>
+        {/* Sender name — display only, tap avatar to open profile */}
+        <Text style={[styles.sender, isOwn && styles.senderOwn]}>
+          {isOwn ? "You" : displayName}
+        </Text>
 
         {/* Reply preview */}
         {message.replyTo && (
@@ -216,7 +255,7 @@ export const MessageBubble = memo(function MessageBubble({
           </View>
         </Pressable>
       </View>
-    </View>
+    </Animated.View>
 
     {/* ── Reaction picker Modal ──────────────────────────────────────── */}
     <Modal
