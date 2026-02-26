@@ -143,7 +143,10 @@ export const MessageBubble = memo(function MessageBubble({
     })
   ).current;
 
-  const displayName = message.senderUsername ?? shortenAddress(message.senderAddress);
+  const displayName =
+    getCachedProfile(message.senderAddress)?.username ??
+    message.senderUsername ??
+    shortenAddress(message.senderAddress);
 
   // ── Avatar helper — NFT image from message or profile cache ──────────────
   const cachedNft = cachedNftImageForColor;
@@ -185,7 +188,8 @@ export const MessageBubble = memo(function MessageBubble({
             <View style={[styles.replyBar, isOwn && styles.replyBarOwn]} />
             <View style={styles.replyContent}>
               <Text style={[styles.replySender, isOwn && styles.replySenderOwn]}>
-                {message.replyTo.senderUsername ??
+                {getCachedProfile(message.replyTo.senderAddress)?.username ??
+                  message.replyTo.senderUsername ??
                   shortenAddress(message.replyTo.senderAddress)}
               </Text>
               <Text style={styles.replyText} numberOfLines={1}>
