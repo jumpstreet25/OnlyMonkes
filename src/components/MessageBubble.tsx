@@ -1,11 +1,19 @@
 /**
  * MessageBubble
  *
- * - Avatar left (others) / right (own, vertically centered)
- * - Username above bubble
- * - Reply preview strip
- * - Bubble with inline footer: timestamp + highlighted banana pill
- * - Long-press → reply
+ * Layout:
+ *   Row: [Avatar] [BubbleGroup] [BananaPill]
+ *   - For own messages (row-reverse): [BananaPill] [BubbleGroup] [Avatar]
+ *   BubbleGroup:
+ *     [SenderName ────── Timestamp]  ← header row
+ *     ReplyPreview (if any)
+ *     Bubble (content + non-banana reaction pills)
+ *
+ * Interactions:
+ *   - Long-press → emoji picker modal
+ *   - Swipe right → reply
+ *   - Tap avatar → open profile
+ *   - Tap banana pill → tip (others) / react (own)
  */
 
 import React, { memo, useCallback, useEffect, useRef, useState } from "react";
@@ -89,6 +97,11 @@ export const MessageBubble = memo(function MessageBubble({
     onReply(message);
   }, [onReply, message]);
 
+  // Banana pill — outside the bubble on the opposite side from avatar
+  const bananaRxn = message.reactions["🍌"];
+  const bananaCount = bananaRxn?.count ?? 0;
+  const bananaByMe = bananaRxn?.reactedByMe ?? false;
+
   const handleBananaPill = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (!isOwn && onTip) {
@@ -148,7 +161,7 @@ export const MessageBubble = memo(function MessageBubble({
     message.senderUsername ??
     shortenAddress(message.senderAddress);
 
-  // ── Avatar helper — NFT image from message or profile cache ──────────────
+  // ── Avatar ────────────────────────────────────────────────────────────────
   const cachedNft = cachedNftImageForColor;
   const avatarUri = message.senderNft?.image ?? cachedNft ?? null;
 
@@ -158,10 +171,9 @@ export const MessageBubble = memo(function MessageBubble({
       style={[styles.row, isOwn && styles.rowOwn, { transform: [{ translateX: swipeAnim }] }]}
       {...panResponder.panHandlers}
     >
-
       {/* Avatar — tappable → opens profile */}
       <Pressable
-        style={isOwn ? styles.avatarContainerOwn : styles.avatarContainer}
+        style={styles.avatarContainer}
         onPress={handlePressAvatar}
         hitSlop={6}
       >
@@ -177,10 +189,16 @@ export const MessageBubble = memo(function MessageBubble({
       {/* Bubble group */}
       <View style={[styles.bubbleGroup, isOwn && styles.bubbleGroupOwn]}>
 
-        {/* Sender name — display only, tap avatar to open profile */}
-        <Text style={[styles.sender, isOwn && styles.senderOwn]}>
-          {isOwn ? "You" : displayName}
-        </Text>
+        {/* Header: sender name + timestamp */}
+        <View style={[styles.msgHeader, isOwn && styles.msgHeaderOwn]}>
+          <Text style={[styles.sender, isOwn && styles.senderOwn]}>
+            {isOwn ? "You" : displayName}
+          </Text>
+          <Text style={[styles.time, { color: THEME.textFaint }]}>
+            {format(message.sentAt, "HH:mm")}
+            {message.status === "sending" && "  ···"}
+          </Text>
+        </View>
 
         {/* Reply preview */}
         {message.replyTo && (
@@ -199,7 +217,7 @@ export const MessageBubble = memo(function MessageBubble({
           </View>
         )}
 
-        {/* Main bubble — color from NFT PFP for both own and others */}
+        {/* Main bubble */}
         <Pressable
           onLongPress={handleLongPress}
           delayLongPress={350}
@@ -213,52 +231,48 @@ export const MessageBubble = memo(function MessageBubble({
             {message.content}
           </Text>
 
-          {/* Footer: timestamp + all active reaction pills */}
-          <View style={styles.bubbleFooter}>
-            <Text style={[styles.time, { color: textColor + "99" }]}>
-              {format(message.sentAt, "HH:mm")}
-              {message.status === "sending" && "  ···"}
-            </Text>
-
-            {(REACTIONS as readonly ReactionEmoji[]).map((emoji) => {
-              const rxn = message.reactions[emoji];
-              const count = rxn?.count ?? 0;
-              const byMe  = rxn?.reactedByMe ?? false;
-              if (emoji === "🍌") {
+          {/* Footer: non-banana reaction pills only */}
+          {(REACTIONS as readonly ReactionEmoji[]).some((e) => e !== "🍌" && (message.reactions[e]?.count ?? 0) > 0) && (
+            <View style={styles.bubbleFooter}>
+              {(REACTIONS as readonly ReactionEmoji[]).map((emoji) => {
+                if (emoji === "🍌") return null;
+                const rxn = message.reactions[emoji];
+                const count = rxn?.count ?? 0;
+                const byMe = rxn?.reactedByMe ?? false;
+                if (count === 0) return null;
                 return (
                   <Pressable
                     key={emoji}
-                    onPress={handleBananaPill}
+                    onPress={() => onReact(emoji, message.id)}
                     hitSlop={8}
                     style={[styles.reactionPill, byMe && styles.reactionPillActive]}
                   >
-                    <Text style={styles.pillEmoji}>🍌</Text>
-                    {count > 0 && (
-                      <Text style={[styles.pillCount, byMe && styles.pillCountActive]}>
-                        {count}
-                      </Text>
-                    )}
+                    <Text style={styles.pillEmoji}>{emoji}</Text>
+                    <Text style={[styles.pillCount, byMe && styles.pillCountActive]}>
+                      {count}
+                    </Text>
                   </Pressable>
                 );
-              }
-              if (count === 0) return null;
-              return (
-                <Pressable
-                  key={emoji}
-                  onPress={() => onReact(emoji, message.id)}
-                  hitSlop={8}
-                  style={[styles.reactionPill, byMe && styles.reactionPillActive]}
-                >
-                  <Text style={styles.pillEmoji}>{emoji}</Text>
-                  <Text style={[styles.pillCount, byMe && styles.pillCountActive]}>
-                    {count}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
+              })}
+            </View>
+          )}
         </Pressable>
       </View>
+
+      {/* Banana pill — outside bubble, opposite side from avatar */}
+      <Pressable
+        onPress={handleBananaPill}
+        hitSlop={8}
+        style={[styles.bananaPill, bananaByMe && styles.bananaPillActive]}
+      >
+        <Text style={styles.bananaEmoji}>🍌</Text>
+        {bananaCount > 0 && (
+          <Text style={[styles.bananaCount, bananaByMe && styles.bananaCountActive]}>
+            {bananaCount}
+          </Text>
+        )}
+      </Pressable>
+
     </Animated.View>
 
     {/* ── Reaction picker Modal ──────────────────────────────────────── */}
@@ -304,22 +318,19 @@ const styles = StyleSheet.create({
   // ── Row ────────────────────────────────────────────────────────────────────
   row: {
     flexDirection: "row",
-    alignItems: "flex-end",   // others: avatar sits at bubble bottom
-    marginVertical: 2,
+    alignItems: "center",
+    marginVertical: 1,
     paddingHorizontal: 12,
-    gap: 8,
+    gap: 6,
   },
   rowOwn: {
     flexDirection: "row-reverse",
-    alignItems: "center",     // own: avatar vertically centered next to bubble
   },
 
   // ── Avatars ────────────────────────────────────────────────────────────────
   avatarContainer: {
-    marginBottom: 20,         // nudge up to align with bubble body (past sender label)
-  },
-  avatarContainerOwn: {
-    // no offset — centered by parent alignItems: "center"
+    alignSelf: "flex-end",
+    marginBottom: 2,
   },
   avatar: {
     width: 34,
@@ -342,23 +353,38 @@ const styles = StyleSheet.create({
 
   // ── Bubble group ───────────────────────────────────────────────────────────
   bubbleGroup: {
-    maxWidth: "75%",
-    gap: 3,
+    maxWidth: "72%",
+    gap: 2,
     alignItems: "flex-start",
+    flex: 1,
   },
   bubbleGroupOwn: { alignItems: "flex-end" },
 
-  // ── Sender name ────────────────────────────────────────────────────────────
+  // ── Header row: sender name + timestamp ───────────────────────────────────
+  msgHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginLeft: 4,
+    marginBottom: 1,
+  },
+  msgHeaderOwn: {
+    flexDirection: "row-reverse",
+    marginLeft: 0,
+    marginRight: 4,
+  },
   sender: {
     fontFamily: FONTS.mono,
     fontSize: 11,
     color: THEME.accent,
-    marginLeft: 4,
   },
   senderOwn: {
     color: THEME.textMuted,
-    marginLeft: 0,
-    marginRight: 4,
+  },
+  time: {
+    fontFamily: FONTS.mono,
+    fontSize: 10,
+    color: THEME.textFaint,
   },
 
   // ── Reply preview ──────────────────────────────────────────────────────────
@@ -408,20 +434,16 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
 
-  // ── Footer ─────────────────────────────────────────────────────────────────
+  // ── Bubble footer (non-banana reactions only) ──────────────────────────────
   bubbleFooter: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "flex-end",
-    gap: 6,
-    marginTop: 4,
-  },
-  time: {
-    fontFamily: FONTS.mono,
-    fontSize: 10,
+    flexWrap: "wrap",
+    gap: 4,
+    marginTop: 2,
   },
 
-  // ── Reaction pills ─────────────────────────────────────────────────────────
+  // ── Reaction pills (non-banana, inside bubble) ─────────────────────────────
   reactionPill: {
     flexDirection: "row",
     alignItems: "center",
@@ -441,6 +463,31 @@ const styles = StyleSheet.create({
     color: THEME.textFaint,
   },
   pillCountActive: { color: "#FFD54F" },
+
+  // ── Banana pill (outside bubble, opposite avatar) ─────────────────────────
+  bananaPill: {
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 2,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderRadius: 12,
+    paddingHorizontal: 7,
+    paddingVertical: 5,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    minWidth: 34,
+  },
+  bananaPillActive: {
+    backgroundColor: "rgba(255,213,79,0.22)",
+    borderColor: "#FFD54F44",
+  },
+  bananaEmoji: { fontSize: 18 },
+  bananaCount: {
+    fontFamily: FONTS.mono,
+    fontSize: 10,
+    color: THEME.textFaint,
+  },
+  bananaCountActive: { color: "#FFD54F" },
 
   // ── Reaction picker Modal ──────────────────────────────────────────────────
   pickerOverlay: {
