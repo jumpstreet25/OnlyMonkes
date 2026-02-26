@@ -37,5 +37,10 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     heliusApiKey: process.env.HELIUS_API_KEY ?? '***REDACTED_HELIUS_KEY***',
     nftCollectionAddress:
       process.env.NFT_COLLECTION_ADDRESS ?? 'GokAiStXz2Kqbxwz2oqzfEXuUhE7aXySmBGEP7uejKXF',
+    // EAS project ID — run `npx eas build:configure` to generate this.
+    // Required for Expo push tokens in production builds.
+    eas: {
+      projectId: process.env.EAS_PROJECT_ID ?? '',
+    },
   },
 });

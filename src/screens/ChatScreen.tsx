@@ -53,6 +53,7 @@ import { NftPickerModal } from "@/components/NftPickerModal";
 import { router } from "expo-router";
 import { THEME, FONTS } from "@/lib/constants";
 import { loadUserProfile, getCachedProfile, saveSelectedNftMint, cacheProfile } from "@/lib/userProfile";
+import { registerForPushNotifications } from "@/lib/notifications";
 import { loadEvents } from "@/lib/calendar";
 import { loadThemeId, loadCustomColor } from "@/lib/theme";
 import { sendSkrTip, sendDevTip } from "@/lib/solana";
@@ -125,6 +126,12 @@ export default function ChatScreen() {
     }, 5_000);
     return () => clearInterval(interval);
   }, [isGroupMember, remoteGroupId]);
+
+  // ─── Register for push notifications once member is confirmed ────────────────
+  useEffect(() => {
+    if (!isGroupMember) return;
+    registerForPushNotifications().catch(() => {/* silently ignore */});
+  }, [isGroupMember]);
 
   // ─── Stream heartbeat ─────────────────────────────────────────────────────────
   // Every 15s: if stream is dead → reconnect; if alive → sync missed messages.

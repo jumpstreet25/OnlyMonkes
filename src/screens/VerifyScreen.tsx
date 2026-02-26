@@ -6,7 +6,7 @@
  * all in the same hook instance — eliminates "Not connected" errors.
  */
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -28,12 +28,38 @@ import type { OwnedNFT } from "@/types";
 
 type VerifyState = "idle" | "checking-nft" | "nft-fail" | "nft-ok" | "pick-nft" | "ready";
 
+const VERIFY_STEPS = [
+  "Connecting to Helius DAS API…",
+  "Scanning wallet for NFTs…",
+  "Verifying Saga Monkes ownership…",
+];
+
 export default function VerifyScreen() {
   const { wallet, verifiedNft, allNfts, error, setVerified } = useAppStore();
   const { verify } = useNFTVerification();
   const { disconnect } = useMobileWallet();
 
   const [phase, setPhase] = useState<VerifyState>("idle");
+  const [verifyStep, setVerifyStep] = useState(0);
+  const stepTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Advance the sub-step label every 900 ms while the Helius call runs
+  useEffect(() => {
+    if (phase !== "checking-nft") {
+      if (stepTimerRef.current) {
+        clearInterval(stepTimerRef.current);
+        stepTimerRef.current = null;
+      }
+      return;
+    }
+    setVerifyStep(0);
+    stepTimerRef.current = setInterval(() => {
+      setVerifyStep((s) => Math.min(s + 1, VERIFY_STEPS.length - 1));
+    }, 900);
+    return () => {
+      if (stepTimerRef.current) clearInterval(stepTimerRef.current);
+    };
+  }, [phase]);
 
   useEffect(() => {
     runVerification();
@@ -108,7 +134,16 @@ export default function VerifyScreen() {
             {phase === "checking-nft" && (
               <>
                 <ActivityIndicator size="large" color={THEME.accent} />
-                <Text style={styles.statusText}>Checking NFT ownership…</Text>
+                <Text style={styles.statusText}>{VERIFY_STEPS[verifyStep]}</Text>
+                {/* Progress dots */}
+                <View style={styles.stepDots}>
+                  {VERIFY_STEPS.map((_, i) => (
+                    <View
+                      key={i}
+                      style={[styles.stepDot, i <= verifyStep && styles.stepDotActive]}
+                    />
+                  ))}
+                </View>
               </>
             )}
 
@@ -129,12 +164,12 @@ export default function VerifyScreen() {
           </View>
         </View>
 
-        {/* Single step indicator */}
+        {/* Step indicator */}
         <View style={styles.steps}>
           <StepRow
             done={["nft-ok", "pick-nft", "ready"].includes(phase)}
             active={phase === "checking-nft"}
-            label="Verifying NFT ownership"
+            label={phase === "checking-nft" ? VERIFY_STEPS[verifyStep] : "Verify NFT ownership"}
             index={1}
           />
         </View>
@@ -246,4 +281,7 @@ const styles = StyleSheet.create({
   errorMessage: { fontFamily: FONTS.body, fontSize: 13, color: THEME.textMuted, textAlign: "center", lineHeight: 20 },
   retryButton: { marginTop: 4, borderRadius: 10, borderWidth: 1, borderColor: THEME.border, paddingHorizontal: 20, paddingVertical: 10 },
   retryButtonText: { fontFamily: FONTS.bodyMed, fontSize: 13, color: THEME.textMuted },
+  stepDots: { flexDirection: "row", gap: 6, marginTop: 4 },
+  stepDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: THEME.border },
+  stepDotActive: { backgroundColor: THEME.accent },
 });
