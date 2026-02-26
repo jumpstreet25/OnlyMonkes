@@ -1,4 +1,13 @@
 export const APP_NAME = 'OnlyMonkes';
+
+// ─── SKR Token ────────────────────────────────────────────────────────────────
+export const SKR_MINT = 'SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3';
+// Jump.skr developer wallet — receives 5% of banana tips + direct tips
+export const DEV_WALLET = '7tLrnPvgcR5mLtyUcVwvmhAD1wXbAKgWcLBPWxpwyZ1J';
+// Tip slider range (in whole SKR units)
+export type TipAmount = number;
+export const TIP_MIN = 1;
+export const TIP_MAX = 500;
 export const COLLECTION_NAME = 'Saga Monkes';
 export const NFT_COLLECTION_ADDRESS = 'GokAiStXz2Kqbxwz2oqzfEXuUhE7aXySmBGEP7uejKXF';
 export const HELIUS_API_KEY = 'f222b023-3712-4ab5-9dd1-caff88d27c40';
@@ -27,7 +36,7 @@ export const DAPPS = [
 
 export const MAX_MESSAGE_LENGTH = 1000;
 
-export const REACTIONS = ['🍌'] as const;
+export const REACTIONS = ['🐒', '🔥', '🚀', '👍', '🍌'] as const;
 
 export const THEME = {
   bg: '#0A0A0F',

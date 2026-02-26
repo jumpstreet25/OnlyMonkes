@@ -36,8 +36,9 @@ const TOOLS = [
 ] as const;
 
 export function MonkeToolsModal({ visible, onClose }: MonkeToolsModalProps) {
-  const { notificationsEnabled, mentionsOnly, setNotificationsEnabled, setMentionsOnly } =
-    useAppStore();
+  const {
+    notificationsEnabled, mentionsOnly, setNotificationsEnabled, setMentionsOnly,
+  } = useAppStore();
 
   return (
     <Modal

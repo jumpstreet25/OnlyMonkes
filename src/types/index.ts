@@ -26,8 +26,7 @@ export interface NFTVerificationResult {
 
 // ─── Messaging ────────────────────────────────────────────────────────────────
 
-// Only the banana like — keeping reactions infra, just one emoji
-export type ReactionEmoji = '🍌';
+export type ReactionEmoji = '🍌' | '🐒' | '🔥' | '🚀' | '👍';
 
 export interface MessageReaction {
   emoji: ReactionEmoji;
