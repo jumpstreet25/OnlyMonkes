@@ -55,6 +55,7 @@ let _streamAlive = false;
 
 const AK_JOIN_REQUEST_SENT = "xmtp_join_request_sent";
 const AK_IS_ADMIN         = "xmtp_is_group_admin";
+const AK_APPROVED_IDS     = "xmtp_approved_inbox_ids";
 
 /** Fill senderNft from profile cache if the decoded message has none. */
 function enrichWithNft(msg: ChatMessage): ChatMessage {
@@ -145,32 +146,55 @@ export function useXmtp() {
         }
       }
 
-      // ── Auto-save PAT + auto-approve all pending join requests (admin) ────
+      // ── Auto-approve all pending join requests (admin) ───────────────────
       const isAdmin =
         storedAdmin === "1" ||
         !!(config.adminInboxId && config.adminInboxId === client.inboxId);
       if (isAdmin && group) {
-        // Seed the GitHub PAT on first run so auto-publish always works.
-        const existingToken = await getAdminToken();
-        if (!existingToken) {
-          await saveAdminToken("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");
-          console.log("[XMTP] Admin PAT seeded to SecureStore.");
-        }
-
-        // Fire-and-forget: approve all pending join requests automatically.
-        // Anyone who sent a JOIN_REQUEST DM to the admin gets added to the group.
+        // Fire-and-forget: approve genuinely new join requests automatically.
+        // Tracks approved IDs in AsyncStorage so repeated app opens don't
+        // re-notify for users who were already added.
         (async () => {
           try {
             const requests = await fetchJoinRequests(client);
-            if (requests.length > 0) {
-              for (const req of requests) {
+            if (requests.length === 0) return;
+
+            // Filter to only requests that haven't been processed before.
+            const approvedRaw = await AsyncStorage.getItem(AK_APPROVED_IDS);
+            const approvedSet = new Set<string>(
+              approvedRaw ? JSON.parse(approvedRaw) : []
+            );
+            const newRequests = requests.filter((r) => !approvedSet.has(r.inboxId));
+
+            if (newRequests.length > 0) {
+              // Update badge so admin sees how many are waiting.
+              setJoinRequests(newRequests);
+
+              // Notify admin of new arrivals.
+              const names = newRequests
+                .map((r) => r.username || r.inboxId.slice(0, 8))
+                .join(", ");
+              await showLocalNotification(
+                `👥 ${newRequests.length} new Monke${newRequests.length > 1 ? "s" : ""} joined!`,
+                names
+              );
+
+              // Auto-approve each new request.
+              for (const req of newRequests) {
                 try {
                   await addMemberToGroup(group as XmtpGroup, req.inboxId);
                   console.log("[XMTP] Auto-approved:", req.inboxId);
-                } catch { /* already a member — skip */ }
+                } catch { /* already a member — ignore */ }
+                approvedSet.add(req.inboxId);
+                useAppStore.getState().removeJoinRequest(req.inboxId);
               }
-              console.log(`[XMTP] Auto-approved ${requests.length} join request(s).`);
-              setJoinRequests([]);
+
+              // Persist updated approved set.
+              await AsyncStorage.setItem(
+                AK_APPROVED_IDS,
+                JSON.stringify([...approvedSet])
+              );
+              console.log(`[XMTP] Auto-approved ${newRequests.length} join request(s).`);
             }
           } catch (err) {
             console.warn("[XMTP] Auto-approve failed:", err);
