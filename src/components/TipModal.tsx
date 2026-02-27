@@ -66,18 +66,21 @@ export function TipModal({ visible, recipientName, onConfirm, onClose }: TipModa
         {/* Banana slider */}
         <View style={styles.sliderWrap}>
           <Text style={styles.sliderValue}>🍌  {Math.round(selected)} SKR</Text>
-          <Slider
-            style={{ width: SCREEN_W - 80, height: 44 }}
-            minimumValue={TIP_MIN}
-            maximumValue={TIP_MAX}
-            step={1}
-            value={selected}
-            onValueChange={(v) => { setSelected(v); Haptics.selectionAsync(); }}
-            minimumTrackTintColor="#FFD700"
-            maximumTrackTintColor={THEME.border}
-            thumbTintColor="#FFD700"
-          />
-          <View style={[styles.sliderEndLabels, { width: SCREEN_W - 80 }]}>
+          <View style={styles.sliderTrackWrap}>
+            <Slider
+              style={{ width: SCREEN_W - 64, height: 48 }}
+              minimumValue={TIP_MIN}
+              maximumValue={TIP_MAX}
+              step={1}
+              value={selected}
+              onValueChange={(v) => { setSelected(v); Haptics.selectionAsync(); }}
+              minimumTrackTintColor="#FFD700"
+              maximumTrackTintColor="rgba(255,255,255,0.18)"
+              thumbTintColor="#FFD700"
+              tapToSeek
+            />
+          </View>
+          <View style={[styles.sliderEndLabels, { width: SCREEN_W - 64 }]}>
             <Text style={styles.sliderEndLabel}>1 SKR</Text>
             <Text style={styles.sliderEndLabel}>500 SKR</Text>
           </View>
@@ -163,7 +166,17 @@ const styles = StyleSheet.create({
   },
   sliderWrap: {
     alignItems: "center",
-    gap: 6,
+    gap: 4,
+    alignSelf: "stretch",
+  },
+  sliderTrackWrap: {
+    alignItems: "center",
+    alignSelf: "stretch",
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    overflow: "hidden",
   },
   sliderValue: {
     fontFamily: FONTS.display,
