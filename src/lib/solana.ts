@@ -11,7 +11,6 @@ import {
   Connection,
   PublicKey,
   Transaction,
-  VersionedTransaction,
 } from "@solana/web3.js";
 import {
   createTransferInstruction,
@@ -58,6 +57,9 @@ export async function sendSkrTip(
   const devLamports   = Math.round(totalLamports * DEV_FEE_PERCENT);
   const userLamports  = totalLamports - devLamports;
 
+  // Fetch slot BEFORE opening the wallet so the simulation context is fresh
+  const minContextSlot = await connection.getSlot("finalized");
+
   const signature = await transact(async (mobileWallet: Web3MobileWallet) => {
     // Authorize (re-uses cached token if wallet already connected)
     const authResult = await mobileWallet.authorize({
@@ -77,12 +79,11 @@ export async function sendSkrTip(
     const recipientATA = getAssociatedTokenAddressSync(mintPubkey, recipientPubkey);
     const devATA       = getAssociatedTokenAddressSync(mintPubkey, devPubkey);
 
-    const { blockhash, lastValidBlockHeight } =
-      await connection.getLatestBlockhash();
+    const { blockhash } = await connection.getLatestBlockhash("finalized");
 
     const tx = new Transaction({ recentBlockhash: blockhash, feePayer: senderPubkey });
 
-    // Create recipient ATA if needed
+    // Create recipient ATA if needed (idempotent — no-op if already exists)
     tx.add(
       createAssociatedTokenAccountIdempotentInstruction(
         senderPubkey,
@@ -130,10 +131,10 @@ export async function sendSkrTip(
       )
     );
 
-    // Sign and send via MWA
+    // Sign and send — minContextSlot pre-fetched so wallet simulation has fresh state
     const [sig] = await mobileWallet.signAndSendTransactions({
       transactions: [tx],
-      minContextSlot: (await connection.getSlot()) - 1,
+      minContextSlot,
     });
 
     return sig;
@@ -153,6 +154,8 @@ export async function sendDevTip(amountUi: number): Promise<string> {
   const mintInfo = await getMint(connection, mintPubkey);
   const lamports = Math.round(amountUi * Math.pow(10, mintInfo.decimals));
 
+  const minContextSlot = await connection.getSlot("finalized");
+
   const signature = await transact(async (mobileWallet: Web3MobileWallet) => {
     const authResult = await mobileWallet.authorize({
       cluster: "mainnet-beta",
@@ -169,7 +172,7 @@ export async function sendDevTip(amountUi: number): Promise<string> {
     const senderATA = getAssociatedTokenAddressSync(mintPubkey, senderPubkey);
     const devATA    = getAssociatedTokenAddressSync(mintPubkey, devPubkey);
 
-    const { blockhash } = await connection.getLatestBlockhash();
+    const { blockhash } = await connection.getLatestBlockhash("finalized");
     const tx = new Transaction({ recentBlockhash: blockhash, feePayer: senderPubkey });
 
     tx.add(
@@ -187,7 +190,7 @@ export async function sendDevTip(amountUi: number): Promise<string> {
 
     const [sig] = await mobileWallet.signAndSendTransactions({
       transactions: [tx],
-      minContextSlot: (await connection.getSlot()) - 1,
+      minContextSlot,
     });
 
     return sig;
