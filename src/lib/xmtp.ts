@@ -213,22 +213,44 @@ export function decodeMessage(raw: any, myInboxId: string): ChatMessage | null {
     let content = inner;
     let replyTo: ChatMessage["replyTo"] | undefined;
 
-    if (inner.startsWith("REPLY:")) {
-      // Format: REPLY:<targetId>:<targetSender>:<replyContent>
-      const parts = inner.split(":");
-      const [, targetId, targetSender, ...rest] = parts;
-      const replyContent = rest.join(":");
-      // replyContent may itself be MSG:<username>:<text>
-      const parsed = parseContent(replyContent);
+    if (inner.startsWith("REPLYv2:")) {
+      // Format: REPLYv2:<targetId>:<targetSender>:<targetUsername>:<origBase64>:<replyContent>
+      // Base64 has no ":" so the first 5 fields are safe to split; replyContent
+      // is reassembled with join(":") to preserve any colons the user typed.
+      const withoutPrefix = inner.slice("REPLYv2:".length);
+      const parts = withoutPrefix.split(":");
+      const targetId      = parts[0] ?? "";
+      const targetSender  = parts[1] ?? "";
+      const targetUsername = parts[2] || undefined;
+      const origB64       = parts[3] ?? "";
+      const replyContent  = parts.slice(4).join(":");
+
+      let originalContent = "";
+      try {
+        originalContent = Buffer.from(origB64, "base64").toString("utf8");
+      } catch { /* leave blank if decode fails */ }
+
       replyTo = {
         id: targetId,
         senderAddress: targetSender,
-        senderUsername: parsed.username,
-        content: parsed.inner,
+        senderUsername: targetUsername,
+        content: originalContent,   // ← the quoted original text
       };
-      content = parsed.inner; // show the actual reply text as the message content
-      // The message's own content is the reply text (already parsed above)
-      // but we need the content field to be the actual reply text, not the REPLY: wrapper
+      content = replyContent;       // ← the new reply text
+
+    } else if (inner.startsWith("REPLY:")) {
+      // Legacy format (messages sent before REPLYv2). Original content was not
+      // stored, so replyTo.content will be empty — better than showing wrong text.
+      const parts = inner.split(":");
+      const [, targetId, targetSender, ...rest] = parts;
+      const replyContent = rest.join(":");
+      replyTo = {
+        id: targetId,
+        senderAddress: targetSender,
+        senderUsername: undefined,
+        content: "",  // original content was never stored in legacy format
+      };
+      content = replyContent;
     }
 
     return {
@@ -331,7 +353,13 @@ export async function sendReply(
   replyContent: string,
   username?: string | null
 ): Promise<void> {
-  const inner = `REPLY:${targetMessage.id}:${targetMessage.senderAddress}:${replyContent}`;
+  // REPLYv2 format embeds the original message's content (base64) and sender
+  // username so the quoted preview is always correct after decoding.
+  // Base64 never contains ":" so splitting on ":" is safe for all fields except
+  // replyContent itself, which is reassembled with rest.join(":").
+  const origB64 = Buffer.from(targetMessage.content).toString("base64");
+  const origUsername = targetMessage.senderUsername ?? "";
+  const inner = `REPLYv2:${targetMessage.id}:${targetMessage.senderAddress}:${origUsername}:${origB64}:${replyContent}`;
   const packed = username ? `MSG:${username}:${inner}` : inner;
   await (group as any).send(packed);
 }
