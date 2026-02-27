@@ -75,7 +75,7 @@ export default function ChatScreen() {
   } = useAppStore();
   const { messages, replyingTo, isLoadingHistory, setReplyingTo } =
     useChatStore();
-  const { initialize, disconnect, logout, streamAlive, send, reply, react, loadJoinRequests, approveJoinRequest, publishGroupId, broadcastProfile, broadcastEvent, syncMessages } = useXmtp();
+  const { initialize, disconnect, logout, streamAlive, send, reply, react, addMember, loadJoinRequests, approveJoinRequest, publishGroupId, broadcastProfile, broadcastEvent, syncMessages } = useXmtp();
   const [inputText, setInputText] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [showUsernameModal, setShowUsernameModal] = useState(false);
@@ -94,6 +94,8 @@ export default function ChatScreen() {
   const [patInput, setPatInput] = useState("");
   const [patSaving, setPatSaving] = useState(false);
   const [patSaved, setPatSaved] = useState(false);
+  const [addByIdInput, setAddByIdInput] = useState("");
+  const [addByIdBusy, setAddByIdBusy] = useState(false);
   const flatListRef = useRef<FlatList>(null);
 
   const myAddress = myInboxId ?? "";
@@ -482,7 +484,7 @@ export default function ChatScreen() {
               PENDING JOIN REQUESTS ({joinRequests.length})
             </Text>
             {joinRequests.length === 0 ? (
-              <Text style={styles.adminHint}>No pending requests. Pull down to refresh.</Text>
+              <Text style={styles.adminHint}>No pending requests. Tap "Refresh" below to check again.</Text>
             ) : (
               <ScrollView style={styles.adminRequestList}>
                 {joinRequests.map((req) => (
@@ -524,20 +526,71 @@ export default function ChatScreen() {
               style={styles.adminRefreshBtn}
               onPress={() => loadJoinRequests()}
             >
-              <Text style={styles.adminRefreshBtnText}>Refresh Requests</Text>
+              <Text style={styles.adminRefreshBtnText}>↻ Refresh Requests</Text>
+            </Pressable>
+
+            {/* Add user manually by inbox ID */}
+            <Text style={[styles.adminSectionLabel, { marginTop: 20 }]}>
+              ADD USER MANUALLY
+            </Text>
+            <Text style={styles.adminHint}>
+              Paste the user's Access Key (XMTP inbox ID) shown on their pending screen.
+            </Text>
+            <TextInput
+              style={styles.adminInput}
+              placeholder="Paste inbox ID…"
+              placeholderTextColor={THEME.textFaint}
+              value={addByIdInput}
+              onChangeText={setAddByIdInput}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <Pressable
+              style={[
+                styles.adminPrimaryBtn,
+                (!addByIdInput.trim() || addByIdBusy) && styles.adminBtnDisabled,
+              ]}
+              onPress={async () => {
+                const id = addByIdInput.trim();
+                if (!id) return;
+                setAddByIdBusy(true);
+                try {
+                  await addMember(id);
+                  Alert.alert("✓ Added!", `User has been added to the group.`);
+                  setAddByIdInput("");
+                } catch (err: any) {
+                  Alert.alert("Error", err?.message ?? String(err));
+                } finally {
+                  setAddByIdBusy(false);
+                }
+              }}
+              disabled={!addByIdInput.trim() || addByIdBusy}
+            >
+              <Text style={styles.adminPrimaryBtnText}>
+                {addByIdBusy ? "Adding…" : "Add User"}
+              </Text>
             </Pressable>
           </View>
         </Modal>
 
-        {/* ── Not yet a member — seamless auto-join spinner ─────────────── */}
+        {/* ── Not yet a member — show Access Key so admin can add them ─── */}
         {remoteGroupId && !isGroupMember && (
           <View style={styles.pendingContainer}>
             <Text style={styles.pendingIcon}>🐒</Text>
-            <Text style={styles.pendingTitle}>Getting you in…</Text>
+            <Text style={styles.pendingTitle}>Access Pending</Text>
             <ActivityIndicator color={THEME.accent} style={{ marginTop: 4 }} />
             <Text style={styles.pendingSubtitle}>
-              Verifying your Saga Monke. Hang tight!
+              Share your Access Key with the admin to get added to the chat.
             </Text>
+            <View style={styles.accessKeyBox}>
+              <Text style={styles.accessKeyLabel}>YOUR ACCESS KEY</Text>
+              <Text style={styles.accessKeyValue} selectable numberOfLines={3}>
+                {myAddress}
+              </Text>
+              <Text style={styles.accessKeyHint}>
+                Long-press the key above to copy it, then send it to the admin.
+              </Text>
+            </View>
           </View>
         )}
 
@@ -715,6 +768,37 @@ const styles = StyleSheet.create({
     color: THEME.textMuted,
     textAlign: "center",
     lineHeight: 20,
+  },
+
+  // ── Access Key box (pending screen) ──────────────────────────────────────────
+  accessKeyBox: {
+    backgroundColor: THEME.surface,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    borderRadius: 12,
+    padding: 16,
+    alignSelf: "stretch",
+    gap: 8,
+    marginTop: 8,
+  },
+  accessKeyLabel: {
+    fontFamily: FONTS.mono,
+    fontSize: 10,
+    color: THEME.textFaint,
+    letterSpacing: 2,
+    textTransform: "uppercase",
+  },
+  accessKeyValue: {
+    fontFamily: FONTS.mono,
+    fontSize: 12,
+    color: THEME.accent,
+    lineHeight: 18,
+  },
+  accessKeyHint: {
+    fontFamily: FONTS.body,
+    fontSize: 11,
+    color: THEME.textMuted,
+    fontStyle: "italic",
   },
 
   // ── Header admin badge ────────────────────────────────────────────────────────
