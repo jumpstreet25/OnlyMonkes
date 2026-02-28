@@ -1,10 +1,16 @@
 import { create } from 'zustand';
 import type { ChatMessage } from '../types';
 
+export interface TypingUser {
+  inboxId: string;
+  username?: string;
+}
+
 interface ChatState {
   messages: ChatMessage[];
   replyingTo: ChatMessage | null;
   isLoadingHistory: boolean;
+  typingUsers: TypingUser[];
 }
 
 interface ChatActions {
@@ -18,6 +24,8 @@ interface ChatActions {
   applyReactionUpdate: (messages: ChatMessage[]) => void;
   setReplyingTo: (message: ChatMessage | null) => void;
   setLoadingHistory: (loading: boolean) => void;
+  setTypingUser: (inboxId: string, username?: string) => void;
+  clearTypingUser: (inboxId: string) => void;
   reset: () => void;
 }
 
@@ -25,6 +33,7 @@ const initialState: ChatState = {
   messages: [],
   replyingTo: null,
   isLoadingHistory: false,
+  typingUsers: [],
 };
 
 export const useChatStore = create<ChatState & ChatActions>((set) => ({
@@ -98,6 +107,19 @@ export const useChatStore = create<ChatState & ChatActions>((set) => ({
   setReplyingTo: (replyingTo) => set({ replyingTo }),
 
   setLoadingHistory: (isLoadingHistory) => set({ isLoadingHistory }),
+
+  setTypingUser: (inboxId, username) =>
+    set((state) => ({
+      typingUsers: [
+        ...state.typingUsers.filter((u) => u.inboxId !== inboxId),
+        { inboxId, username },
+      ],
+    })),
+
+  clearTypingUser: (inboxId) =>
+    set((state) => ({
+      typingUsers: state.typingUsers.filter((u) => u.inboxId !== inboxId),
+    })),
 
   reset: () => set(initialState),
 }));

@@ -11,7 +11,7 @@
  */
 
 import { Client, Group, PublicIdentity } from "@xmtp/react-native-sdk";
-import type { ChatMessage, MessageReaction, ReactionEmoji } from "@/types";
+import type { ChatMessage, MessageReaction, ReactionEmoji, StickerReaction } from "@/types";
 import { REACTIONS } from "./constants";
 import * as SecureStore from "expo-secure-store";
 import type { JoinRequest } from "@/store/appStore";
@@ -205,6 +205,8 @@ export function decodeMessage(raw: any, myInboxId: string): ChatMessage | null {
 
     // System messages — handled separately, not displayed in chat
     if (rawContent.startsWith("REACT:")) return null;
+    if (rawContent.startsWith("STICKER_REACT:")) return null;
+    if (rawContent.startsWith("TYPING:")) return null;
     if (rawContent.startsWith("PROFILE_UPDATE:")) return null;
     if (rawContent.startsWith("EVENT:")) return null;
 
@@ -400,4 +402,98 @@ export async function sendEventMessage(
   eventJson: string
 ): Promise<void> {
   await (group as any).send(`EVENT:${eventJson}`);
+}
+
+// ─── Typing Indicator ─────────────────────────────────────────────────────────
+
+/**
+ * Broadcast a short-lived typing signal to the group.
+ * Format: TYPING:<inboxId>:<username>
+ * Filtered out by decodeMessage — never stored as a chat message.
+ */
+export async function sendTypingIndicator(
+  group: XmtpGroup,
+  inboxId: string,
+  username?: string | null
+): Promise<void> {
+  await (group as any).send(`TYPING:${inboxId}:${username ?? ""}`);
+}
+
+// ─── Sticker Reactions ────────────────────────────────────────────────────────
+
+/**
+ * Send a sticker reaction attached to a specific message.
+ * Format: STICKER_REACT:<url>:<targetMessageId>
+ */
+export async function sendStickerReaction(
+  group: XmtpGroup,
+  url: string,
+  targetMessageId: string
+): Promise<void> {
+  await (group as any).send(`STICKER_REACT:${url}:${targetMessageId}`);
+}
+
+/**
+ * Apply (or toggle off) a sticker reaction on the target message.
+ * Parses STICKER_REACT:<url>:<targetId> and mutates the stickerReactions array.
+ */
+export function applyStickerReaction(
+  messages: ChatMessage[],
+  raw: any,
+  myInboxId: string
+): ChatMessage[] {
+  let content: string;
+  try {
+    content = raw.content();
+  } catch {
+    return messages;
+  }
+
+  if (!content?.startsWith("STICKER_REACT:")) return messages;
+
+  // Format: STICKER_REACT:<url>:<targetId>
+  // url may contain ":" (https://...) so split only on the LAST ":" to get targetId
+  const withoutPrefix = content.slice("STICKER_REACT:".length);
+  const lastColon = withoutPrefix.lastIndexOf(":");
+  if (lastColon === -1) return messages;
+
+  const url = withoutPrefix.slice(0, lastColon);
+  const targetId = withoutPrefix.slice(lastColon + 1);
+  const sender: string = raw.senderInboxId;
+
+  return messages.map((msg) => {
+    if (msg.id !== targetId) return msg;
+
+    const existing = (msg.stickerReactions ?? []).find((s) => s.url === url);
+    let stickerReactions: StickerReaction[];
+
+    if (!existing) {
+      // First reaction with this sticker
+      stickerReactions = [
+        ...(msg.stickerReactions ?? []),
+        {
+          url,
+          count: 1,
+          reactedByMe: sender === myInboxId,
+          reactors: [sender],
+        },
+      ];
+    } else {
+      const alreadyReacted = existing.reactors.includes(sender);
+      stickerReactions = (msg.stickerReactions ?? []).map((s) => {
+        if (s.url !== url) return s;
+        return {
+          ...s,
+          count: alreadyReacted ? s.count - 1 : s.count + 1,
+          reactedByMe:
+            sender === myInboxId ? !s.reactedByMe : s.reactedByMe,
+          reactors: alreadyReacted
+            ? s.reactors.filter((r) => r !== sender)
+            : [...s.reactors, sender],
+        };
+      }).filter((s) => s.count > 0);
+    }
+
+    return { ...msg, stickerReactions };
+  });
 }

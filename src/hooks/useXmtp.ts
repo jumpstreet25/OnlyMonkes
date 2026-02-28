@@ -23,9 +23,12 @@ import {
   addMemberToGroup,
   decodeMessage,
   applyReaction,
+  applyStickerReaction,
   sendMessage,
   sendReply,
   sendReaction,
+  sendStickerReaction,
+  sendTypingIndicator,
   sendJoinRequestDM,
   fetchJoinRequests,
   sendProfileUpdate,
@@ -41,6 +44,10 @@ import {
 } from "@/lib/remoteConfig";
 import { useAppStore } from "@/store/appStore";
 import { useChatStore } from "@/store/chatStore";
+// Typing-indicator timeout map — module-level so it survives re-renders
+const _typingTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
+// Throttle own typing broadcasts (one signal per 2.5 s max)
+let _lastTypingSent = 0;
 import { showLocalNotification, detectMention } from "@/lib/notifications";
 import type { ChatMessage, ReactionEmoji } from "@/types";
 import type { XmtpClient, XmtpGroup } from "@/lib/xmtp";
@@ -260,6 +267,8 @@ export function useXmtp() {
           const content = raw.content();
           if (typeof content === "string" && content.startsWith("REACT:")) {
             decoded = applyReaction(decoded, raw, _myInboxId);
+          } else if (typeof content === "string" && content.startsWith("STICKER_REACT:")) {
+            decoded = applyStickerReaction(decoded, raw, _myInboxId);
           }
         } catch { /* skip */ }
       }
@@ -288,6 +297,35 @@ export function useXmtp() {
           const { messages } = useChatStore.getState();
           const updated = applyReaction(messages, raw, _myInboxId);
           applyReactionUpdate(updated);
+          return;
+        }
+
+        if (typeof content === "string" && content.startsWith("STICKER_REACT:")) {
+          const { messages } = useChatStore.getState();
+          const updated = applyStickerReaction(messages, raw, _myInboxId);
+          applyReactionUpdate(updated);
+          return;
+        }
+
+        if (typeof content === "string" && content.startsWith("TYPING:")) {
+          // Format: TYPING:<inboxId>:<username>
+          const parts = content.split(":");
+          const typerId = parts[1] ?? (raw.senderInboxId as string);
+          const typerUsername = parts[2] || undefined;
+          // Ignore own typing signals
+          if (typerId && typerId !== _myInboxId) {
+            useChatStore.getState().setTypingUser(typerId, typerUsername);
+            // Auto-clear after 4 s of silence
+            const existing = _typingTimeouts.get(typerId);
+            if (existing) clearTimeout(existing);
+            _typingTimeouts.set(
+              typerId,
+              setTimeout(() => {
+                useChatStore.getState().clearTypingUser(typerId);
+                _typingTimeouts.delete(typerId);
+              }, 4000)
+            );
+          }
           return;
         }
 
@@ -403,10 +441,49 @@ export function useXmtp() {
         await initialize();
       }
       if (!_group) throw new Error("Not connected to chat");
+
+      // Apply optimistically — XMTP does not echo own messages back in the stream.
+      const fakeRaw = {
+        content: () => `REACT:${emoji}:${targetMessageId}`,
+        senderInboxId: _myInboxId,
+      };
+      const { messages } = useChatStore.getState();
+      applyReactionUpdate(applyReaction(messages, fakeRaw, _myInboxId));
+
       await sendReaction(_group, emoji, targetMessageId);
     },
-    [initialize]
+    [initialize, applyReactionUpdate]
   );
+
+  const stickerReact = useCallback(
+    async (url: string, targetMessageId: string) => {
+      if (!_group) await initialize();
+      if (!_group) throw new Error("Not connected to chat");
+
+      // Apply optimistically — XMTP does not echo own messages back in the stream.
+      const fakeRaw = {
+        content: () => `STICKER_REACT:${url}:${targetMessageId}`,
+        senderInboxId: _myInboxId,
+      };
+      const { messages } = useChatStore.getState();
+      applyReactionUpdate(applyStickerReaction(messages, fakeRaw, _myInboxId));
+
+      await sendStickerReaction(_group, url, targetMessageId);
+    },
+    [initialize, applyReactionUpdate]
+  );
+
+  // Throttled typing signal — max one broadcast per 2.5 s
+  const sendTyping = useCallback(async () => {
+    if (!_group) return;
+    const now = Date.now();
+    if (now - _lastTypingSent < 2500) return;
+    _lastTypingSent = now;
+    const { username, myInboxId: id } = useAppStore.getState();
+    try {
+      await sendTypingIndicator(_group, id ?? _myInboxId, username);
+    } catch { /* ignore — typing is best-effort */ }
+  }, []);
 
   const addMember = useCallback(async (inboxId: string) => {
     if (!_group) throw new Error("Not in a group");
@@ -418,8 +495,12 @@ export function useXmtp() {
     if (!_client) return;
     try {
       const requests = await fetchJoinRequests(_client);
-      setJoinRequests(requests);
-      console.log(`[XMTP] ${requests.length} pending join request(s).`);
+      // Filter out already-approved IDs so the list only shows genuinely pending users
+      const approvedRaw = await AsyncStorage.getItem(AK_APPROVED_IDS);
+      const approvedSet = new Set<string>(approvedRaw ? JSON.parse(approvedRaw) : []);
+      const pending = requests.filter((r) => !approvedSet.has(r.inboxId));
+      setJoinRequests(pending);
+      console.log(`[XMTP] ${pending.length} pending join request(s).`);
     } catch (err) {
       console.warn("[XMTP] loadJoinRequests failed:", err);
     }
@@ -508,6 +589,32 @@ export function useXmtp() {
     console.log("[XMTP] Group config published to GitHub.");
   }, []);
 
+  // ── Admin recovery: create a new group + publish when stale config blocks admin ─
+  // Call this from the pending screen when the admin is locked out after reinstall.
+  const forceAdminInit = useCallback(async (githubPat: string) => {
+    if (!_client) throw new Error("XMTP client not ready");
+
+    // Save PAT first so publishAppConfig can use it.
+    await saveAdminToken(githubPat);
+
+    // Create a brand-new group.
+    const rawGroup = await (_client.conversations as any).newGroup([], {
+      permissionLevel: "all_members",
+      name: "OnlyMonkes Global Chat",
+    });
+    const groupId = (rawGroup as any).id;
+
+    // Mark as admin in persistent storage so the next initialize() picks it up.
+    await AsyncStorage.setItem(AK_IS_ADMIN, "1");
+
+    // Publish new config — all clients will pick this up on next launch.
+    await publishAppConfig({ globalGroupId: groupId, adminInboxId: _client.inboxId });
+    console.log("[XMTP] forceAdminInit: new group", groupId, "published.");
+
+    // Re-run full initialize — it will find the new group and complete setup.
+    await initialize();
+  }, [initialize]);
+
   return {
     initialize,
     disconnect,
@@ -516,10 +623,13 @@ export function useXmtp() {
     send,
     reply,
     react,
+    stickerReact,
+    sendTyping,
     addMember,
     loadJoinRequests,
     approveJoinRequest,
     publishGroupId,
+    forceAdminInit,
     broadcastProfile,
     broadcastEvent,
     syncMessages,
