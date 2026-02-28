@@ -56,10 +56,12 @@ import { loadUserProfile, getCachedProfile, saveSelectedNftMint, cacheProfile } 
 import { registerForPushNotifications } from "@/lib/notifications";
 import { loadEvents } from "@/lib/calendar";
 import { loadThemeId, loadCustomColor } from "@/lib/theme";
-import { sendSkrTip, sendDevTip } from "@/lib/solana";
+import { sendSkrTip } from "@/lib/solana";
 import { TipModal } from "@/components/TipModal";
 import { SearchModal } from "@/components/SearchModal";
 import { CalendarModal } from "@/components/CalendarModal";
+import { GifPickerModal } from "@/components/GifPickerModal";
+import * as ImagePicker from "expo-image-picker";
 import type { ChatMessage, ReactionEmoji } from "@/types";
 import type { TipAmount } from "@/lib/constants";
 
@@ -73,9 +75,9 @@ export default function ChatScreen() {
     isGroupMember, isGroupAdmin, joinRequests, remoteGroupId,
     setThemeId, setCustomBubbleColor, setCalendarEvents,
   } = useAppStore();
-  const { messages, replyingTo, isLoadingHistory, setReplyingTo } =
+  const { messages, replyingTo, isLoadingHistory, setReplyingTo, typingUsers } =
     useChatStore();
-  const { initialize, disconnect, logout, streamAlive, send, reply, react, addMember, loadJoinRequests, approveJoinRequest, publishGroupId, broadcastProfile, broadcastEvent, syncMessages } = useXmtp();
+  const { initialize, disconnect, logout, streamAlive, send, reply, react, stickerReact, sendTyping, addMember, loadJoinRequests, approveJoinRequest, publishGroupId, forceAdminInit, broadcastProfile, broadcastEvent, syncMessages } = useXmtp();
   const [inputText, setInputText] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [showUsernameModal, setShowUsernameModal] = useState(false);
@@ -83,7 +85,6 @@ export default function ChatScreen() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [tipTarget, setTipTarget] = useState<ChatMessage | null>(null);
-  const [devTipOpen, setDevTipOpen] = useState(false);
   const [tipSending, setTipSending] = useState(false);
   const [pfpPickerOpen, setPfpPickerOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -96,6 +97,13 @@ export default function ChatScreen() {
   const [patSaved, setPatSaved] = useState(false);
   const [addByIdInput, setAddByIdInput] = useState("");
   const [addByIdBusy, setAddByIdBusy] = useState(false);
+  const [refreshingRequests, setRefreshingRequests] = useState(false);
+  const [gifPickerOpen, setGifPickerOpen] = useState(false);
+  const [pfpGifPickerOpen, setPfpGifPickerOpen] = useState(false);
+  const [adminRecoveryOpen, setAdminRecoveryOpen] = useState(false);
+  const [adminRecoveryPat, setAdminRecoveryPat] = useState("");
+  const [adminRecoveryBusy, setAdminRecoveryBusy] = useState(false);
+  const [adminRecoveryError, setAdminRecoveryError] = useState<string | null>(null);
   const flatListRef = useRef<FlatList>(null);
 
   const myAddress = myInboxId ?? "";
@@ -232,6 +240,87 @@ export default function ChatScreen() {
     [react]
   );
 
+  // ─── Send GIF ─────────────────────────────────────────────────────────────────
+
+  const handleSendGif = useCallback(async (url: string) => {
+    const content = `GIF:${url}`;
+    const optimistic: ChatMessage = {
+      id: `opt-${Date.now()}`,
+      senderAddress: myAddress,
+      senderUsername: username ?? undefined,
+      senderNft: verifiedNft ?? undefined,
+      content,
+      sentAt: new Date(),
+      reactions: {} as ChatMessage["reactions"],
+      status: "sending",
+    };
+    useChatStore.getState().addMessage(optimistic);
+    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 50);
+    try {
+      await send(content);
+      useChatStore.getState().updateMessageStatus(optimistic.id, "sent");
+    } catch (err) {
+      console.warn("GIF send failed:", err);
+      useChatStore.getState().updateMessageStatus(optimistic.id, "failed");
+    }
+  }, [send, myAddress, username, verifiedNft]);
+
+  // ─── Camera capture ────────────────────────────────────────────────────────
+
+  const handleCamera = useCallback(async () => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert("Camera permission required", "Please allow camera access in your device settings.");
+        return;
+      }
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.25,
+        allowsEditing: true,
+        base64: true,
+      });
+      if (result.canceled || !result.assets?.[0]) return;
+      const asset = result.assets[0];
+      // Embed as data URI so all users can display it (no backend upload needed)
+      const dataUri = asset.base64
+        ? `data:image/jpeg;base64,${asset.base64}`
+        : asset.uri;
+      const content = `IMAGE:${dataUri}`;
+      const optimistic: ChatMessage = {
+        id: `opt-${Date.now()}`,
+        senderAddress: myAddress,
+        senderUsername: username ?? undefined,
+        senderNft: verifiedNft ?? undefined,
+        content,
+        sentAt: new Date(),
+        reactions: {} as ChatMessage["reactions"],
+        status: "sending",
+      };
+      useChatStore.getState().addMessage(optimistic);
+      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 50);
+      try {
+        await send(content);
+        useChatStore.getState().updateMessageStatus(optimistic.id, "sent");
+      } catch (err: any) {
+        Alert.alert("Camera error", err?.message ?? "Could not send photo.");
+        useChatStore.getState().updateMessageStatus(optimistic.id, "failed");
+      }
+    } catch (err: any) {
+      Alert.alert("Camera error", err?.message ?? "Could not open camera.");
+    }
+  }, [send, myAddress, username, verifiedNft]);
+
+  // ─── Sticker react ────────────────────────────────────────────────────────────
+
+  const handleStickerReact = useCallback(async (url: string, messageId: string) => {
+    try {
+      await stickerReact(url, messageId);
+    } catch (err) {
+      console.warn("Sticker react failed:", err);
+    }
+  }, [stickerReact]);
+
   // ─── Profile popup ────────────────────────────────────────────────────────────
 
   const handlePressUser = useCallback((target: ProfileTarget) => {
@@ -268,18 +357,6 @@ export default function ChatScreen() {
     }
   }, [tipTarget]);
 
-  const handleDevTip = useCallback(async (amount: TipAmount) => {
-    setTipSending(true);
-    try {
-      await sendDevTip(amount);
-      Alert.alert("🍌 Thanks!", `${amount} SKR sent to Jump.skr!`);
-      setDevTipOpen(false);
-    } catch (err: any) {
-      Alert.alert("Tip failed", err?.message ?? "Transaction could not be sent.");
-    } finally {
-      setTipSending(false);
-    }
-  }, []);
 
   // ─── Render ──────────────────────────────────────────────────────────────────
 
@@ -292,9 +369,10 @@ export default function ChatScreen() {
         onReply={setReplyingTo}
         onPressUser={handlePressUser}
         onTip={handleTip}
+        onStickerReact={handleStickerReact}
       />
     ),
-    [myAddress, handleReact, setReplyingTo, handlePressUser, handleTip]
+    [myAddress, handleReact, setReplyingTo, handlePressUser, handleTip, handleStickerReact]
   );
 
   const keyExtractor = useCallback((item: ChatMessage) => item.id, []);
@@ -338,14 +416,20 @@ export default function ChatScreen() {
         onClose={() => setTipTarget(null)}
       />
 
-      <TipModal
-        visible={devTipOpen}
-        recipientName="Jump.skr (dev)"
-        onConfirm={handleDevTip}
-        onClose={() => setDevTipOpen(false)}
+      <MonkeToolsModal visible={toolsOpen} onClose={() => setToolsOpen(false)} />
+
+      <GifPickerModal
+        visible={gifPickerOpen}
+        onClose={() => setGifPickerOpen(false)}
+        onSelect={handleSendGif}
       />
 
-      <MonkeToolsModal visible={toolsOpen} onClose={() => setToolsOpen(false)} />
+      <GifPickerModal
+        visible={pfpGifPickerOpen}
+        onClose={() => setPfpGifPickerOpen(false)}
+        onSelect={handleSendGif}
+        sagaMonkesOnly
+      />
 
       <UserProfileModal
         visible={!!profileTarget}
@@ -524,9 +608,21 @@ export default function ChatScreen() {
 
             <Pressable
               style={styles.adminRefreshBtn}
-              onPress={() => loadJoinRequests()}
+              disabled={refreshingRequests}
+              onPress={async () => {
+                setRefreshingRequests(true);
+                try {
+                  await loadJoinRequests();
+                } finally {
+                  setRefreshingRequests(false);
+                }
+              }}
             >
-              <Text style={styles.adminRefreshBtnText}>↻ Refresh Requests</Text>
+              {refreshingRequests ? (
+                <ActivityIndicator size="small" color={THEME.textMuted} />
+              ) : (
+                <Text style={styles.adminRefreshBtnText}>↻ Refresh Requests</Text>
+              )}
             </Pressable>
 
             {/* Add user manually by inbox ID */}
@@ -591,6 +687,55 @@ export default function ChatScreen() {
                 Long-press the key above to copy it, then send it to the admin.
               </Text>
             </View>
+
+            {/* Admin recovery — shown after tapping "Are you the admin?" */}
+            {!adminRecoveryOpen ? (
+              <Pressable onPress={() => setAdminRecoveryOpen(true)} hitSlop={8}>
+                <Text style={styles.adminRecoveryLink}>Are you the admin?</Text>
+              </Pressable>
+            ) : (
+              <View style={styles.adminRecoveryBox}>
+                <Text style={styles.adminRecoveryTitle}>Admin Recovery</Text>
+                <Text style={styles.adminRecoveryHint}>
+                  Enter your GitHub PAT (repo scope) to create a new group and re-claim admin.
+                </Text>
+                <TextInput
+                  style={styles.adminRecoveryInput}
+                  placeholder="ghp_…"
+                  placeholderTextColor={THEME.textFaint}
+                  value={adminRecoveryPat}
+                  onChangeText={(t) => { setAdminRecoveryPat(t); setAdminRecoveryError(null); }}
+                  secureTextEntry
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                {adminRecoveryError && (
+                  <Text style={styles.adminRecoveryError}>{adminRecoveryError}</Text>
+                )}
+                <Pressable
+                  style={[styles.adminRecoveryBtn, (!adminRecoveryPat.trim() || adminRecoveryBusy) && { opacity: 0.5 }]}
+                  disabled={!adminRecoveryPat.trim() || adminRecoveryBusy}
+                  onPress={async () => {
+                    setAdminRecoveryBusy(true);
+                    setAdminRecoveryError(null);
+                    try {
+                      await forceAdminInit(adminRecoveryPat.trim());
+                      setAdminRecoveryOpen(false);
+                      setAdminRecoveryPat("");
+                    } catch (e) {
+                      setAdminRecoveryError(e instanceof Error ? e.message : "Failed — check your PAT and try again.");
+                    } finally {
+                      setAdminRecoveryBusy(false);
+                    }
+                  }}
+                >
+                  {adminRecoveryBusy
+                    ? <ActivityIndicator size="small" color="#fff" />
+                    : <Text style={styles.adminRecoveryBtnText}>Claim Admin</Text>
+                  }
+                </Pressable>
+              </View>
+            )}
           </View>
         )}
 
@@ -636,7 +781,12 @@ export default function ChatScreen() {
           replyingTo={replyingTo}
           onCancelReply={() => setReplyingTo(null)}
           isSending={isSending}
-          onDevTip={() => setDevTipOpen(true)}
+          onGifPicker={() => setGifPickerOpen(true)}
+          pfpUri={verifiedNft?.image ?? null}
+          onPfpGifPicker={() => setPfpGifPickerOpen(true)}
+          onTyping={sendTyping}
+          onCamera={handleCamera}
+          typingUsers={typingUsers}
         />}
 
         <View style={{ height: insets.bottom }} />
@@ -799,6 +949,64 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: THEME.textMuted,
     fontStyle: "italic",
+  },
+
+  // ── Admin recovery (pending screen) ──────────────────────────────────────────
+  adminRecoveryLink: {
+    fontFamily: FONTS.mono,
+    fontSize: 11,
+    color: THEME.textFaint,
+    textDecorationLine: "underline",
+    marginTop: 8,
+  },
+  adminRecoveryBox: {
+    alignSelf: "stretch",
+    backgroundColor: THEME.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    padding: 16,
+    gap: 10,
+    marginTop: 8,
+  },
+  adminRecoveryTitle: {
+    fontFamily: FONTS.displayMed,
+    fontSize: 14,
+    color: THEME.text,
+  },
+  adminRecoveryHint: {
+    fontFamily: FONTS.body,
+    fontSize: 12,
+    color: THEME.textMuted,
+    lineHeight: 18,
+  },
+  adminRecoveryInput: {
+    backgroundColor: THEME.surfaceHigh,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontFamily: FONTS.mono,
+    fontSize: 13,
+    color: THEME.text,
+  },
+  adminRecoveryError: {
+    fontFamily: FONTS.body,
+    fontSize: 12,
+    color: THEME.error,
+  },
+  adminRecoveryBtn: {
+    backgroundColor: THEME.accent,
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  adminRecoveryBtnText: {
+    fontFamily: FONTS.bodySemi,
+    fontSize: 14,
+    color: "#fff",
   },
 
   // ── Header admin badge ────────────────────────────────────────────────────────

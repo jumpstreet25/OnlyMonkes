@@ -29,7 +29,15 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       {
         icon: './assets/icon.png',
         color: '#7C3AED',
+        androidMode: 'default',
+        androidCollapsedTitle: 'OnlyMonkes',
         sounds: [],
+      },
+    ],
+    [
+      'expo-image-picker',
+      {
+        cameraPermission: 'Allow OnlyMonkes to open the camera to share photos in chat.',
       },
     ],
   ],
