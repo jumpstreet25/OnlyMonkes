@@ -26,6 +26,8 @@ import {
   Modal,
   PanResponder,
   Animated,
+  ActivityIndicator,
+  useWindowDimensions,
 } from "react-native";
 import * as Haptics from "expo-haptics";
 import { format } from "date-fns";
@@ -34,6 +36,7 @@ import { shortenAddress } from "@/lib/nftVerification";
 import { useAppStore } from "@/store/appStore";
 import { getCachedProfile } from "@/lib/userProfile";
 import { getOrExtractNftColor, readableTextColor } from "@/lib/nftColor";
+import { searchStickers, type GiphyItem } from "@/lib/giphy";
 import type { ChatMessage, ReactionEmoji } from "@/types";
 import type { ProfileTarget } from "@/components/UserProfileModal";
 
@@ -46,6 +49,7 @@ interface MessageBubbleProps {
   onReply: (message: ChatMessage) => void;
   onPressUser?: (target: ProfileTarget) => void;
   onTip?: (message: ChatMessage) => void;
+  onStickerReact?: (url: string, messageId: string) => void;
 }
 
 export const MessageBubble = memo(function MessageBubble({
@@ -55,8 +59,12 @@ export const MessageBubble = memo(function MessageBubble({
   onReply,
   onPressUser,
   onTip,
+  onStickerReact,
 }: MessageBubbleProps) {
   const { verifiedNft, myInboxId } = useAppStore();
+  const { width: SCREEN_W } = useWindowDimensions();
+  // Max bubble width is 72% of screen minus horizontal padding (14px each side)
+  const mediaWidth = Math.round(SCREEN_W * 0.72 - 28);
 
   // ── PFP-derived bubble color ─────────────────────────────────────────────
   const cachedNftImageForColor = getCachedProfile(message.senderAddress)?.nftImage;
@@ -80,6 +88,24 @@ export const MessageBubble = memo(function MessageBubble({
   }, [senderImageUrl, colorCacheKey]);
 
   const [pickerVisible, setPickerVisible] = useState(false);
+  const [stickerItems, setStickerItems] = useState<GiphyItem[]>([]);
+  const [stickersLoading, setStickersLoading] = useState(false);
+
+  // Fetch stickers when picker opens
+  useEffect(() => {
+    if (!pickerVisible) return;
+    let cancelled = false;
+    setStickersLoading(true);
+    searchStickers("sagamonkes", 12).then((items) => {
+      if (!cancelled) {
+        setStickerItems(items);
+        setStickersLoading(false);
+      }
+    }).catch(() => {
+      if (!cancelled) setStickersLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [pickerVisible]);
 
   const handleLongPress = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -97,19 +123,6 @@ export const MessageBubble = memo(function MessageBubble({
     onReply(message);
   }, [onReply, message]);
 
-  // Banana pill — outside the bubble on the opposite side from avatar
-  const bananaRxn = message.reactions["🍌"];
-  const bananaCount = bananaRxn?.count ?? 0;
-  const bananaByMe = bananaRxn?.reactedByMe ?? false;
-
-  const handleBananaPill = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    if (!isOwn && onTip) {
-      onTip(message);
-    } else {
-      onReact("🍌", message.id);
-    }
-  }, [isOwn, onTip, onReact, message]);
 
   const handlePressAvatar = useCallback(() => {
     if (!onPressUser) return;
@@ -227,11 +240,45 @@ export const MessageBubble = memo(function MessageBubble({
             { backgroundColor: bubbleColor },
           ]}
         >
-          <Text style={[styles.content, { color: textColor }]}>
-            {message.content}
-          </Text>
+          {/* GIF content */}
+          {message.content.startsWith("GIF:") ? (
+            <View style={{ width: mediaWidth }}>
+              <Image
+                source={{ uri: message.content.slice(4) }}
+                style={[styles.gifImage, { width: mediaWidth }]}
+                resizeMode="cover"
+              />
+              <View style={styles.gifBadge}>
+                <Text style={styles.gifBadgeText}>GIF</Text>
+              </View>
+            </View>
+          ) : message.content.startsWith("IMAGE:") ? (
+            <View style={{ width: mediaWidth }}>
+              <Image
+                source={{ uri: message.content.slice(6) }}
+                style={[styles.gifImage, { width: mediaWidth }]}
+                resizeMode="cover"
+              />
+              <Image
+                // eslint-disable-next-line @typescript-eslint/no-require-imports
+                source={require("../../assets/watermark.png")}
+                style={styles.watermark}
+                resizeMode="contain"
+              />
+            </View>
+          ) : message.content.startsWith("STICKER:") ? (
+            <Image
+              source={{ uri: message.content.slice(8) }}
+              style={styles.stickerImage}
+              resizeMode="contain"
+            />
+          ) : (
+            <Text style={[styles.content, { color: textColor }]}>
+              {message.content}
+            </Text>
+          )}
 
-          {/* Footer: non-banana reaction pills only */}
+          {/* Footer: non-banana emoji reaction pills */}
           {(REACTIONS as readonly ReactionEmoji[]).some((e) => e !== "🍌" && (message.reactions[e]?.count ?? 0) > 0) && (
             <View style={styles.bubbleFooter}>
               {(REACTIONS as readonly ReactionEmoji[]).map((emoji) => {
@@ -256,24 +303,28 @@ export const MessageBubble = memo(function MessageBubble({
               })}
             </View>
           )}
+
+          {/* Sticker reaction thumbnails */}
+          {(message.stickerReactions ?? []).length > 0 && (
+            <View style={styles.stickerReactionRow}>
+              {(message.stickerReactions ?? []).map((sr) => (
+                <Pressable
+                  key={sr.url}
+                  onPress={() => onStickerReact?.(sr.url, message.id)}
+                  hitSlop={6}
+                  style={[styles.stickerReactionPill, sr.reactedByMe && styles.stickerReactionPillActive]}
+                >
+                  <Image source={{ uri: sr.url }} style={styles.stickerReactionImg} />
+                  {sr.count > 1 && (
+                    <Text style={styles.stickerReactionCount}>{sr.count}</Text>
+                  )}
+                </Pressable>
+              ))}
+            </View>
+          )}
         </Pressable>
       </View>
 
-      {/* Banana — only shown on others' messages (can't tip yourself) */}
-      {!isOwn && (
-        <Pressable
-          onPress={handleBananaPill}
-          hitSlop={8}
-          style={styles.bananaPill}
-        >
-          <Text style={styles.bananaEmoji}>🍌</Text>
-          {bananaCount > 0 && (
-            <Text style={[styles.bananaCount, bananaByMe && styles.bananaCountActive]}>
-              {bananaCount}
-            </Text>
-          )}
-        </Pressable>
-      )}
 
     </Animated.View>
 
@@ -287,7 +338,7 @@ export const MessageBubble = memo(function MessageBubble({
       <Pressable style={styles.pickerOverlay} onPress={() => setPickerVisible(false)}>
         <Pressable style={styles.pickerSheet} onPress={(e) => e.stopPropagation()}>
           <View style={styles.pickerEmojiRow}>
-            {(REACTIONS as readonly ReactionEmoji[]).map((emoji) => (
+            {(REACTIONS as readonly ReactionEmoji[]).filter((e) => e !== "🍌").map((emoji) => (
               <Pressable
                 key={emoji}
                 onPress={() => handlePickReaction(emoji)}
@@ -309,6 +360,32 @@ export const MessageBubble = memo(function MessageBubble({
           >
             <Text style={styles.pickerReplyText}>↩  Reply</Text>
           </Pressable>
+
+          {/* Sticker grid */}
+          {onStickerReact && (
+            <View style={styles.stickerSection}>
+              <Text style={styles.stickerSectionLabel}>🐒 Saga Stickers</Text>
+              {stickersLoading ? (
+                <ActivityIndicator size="small" color={THEME.accent} style={{ marginVertical: 8 }} />
+              ) : (
+                <View style={styles.stickerGrid}>
+                  {stickerItems.map((item) => (
+                    <Pressable
+                      key={item.id}
+                      onPress={() => {
+                        setPickerVisible(false);
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        onStickerReact(item.displayUrl, message.id);
+                      }}
+                      style={({ pressed }) => [styles.stickerGridCell, pressed && { opacity: 0.7 }]}
+                    >
+                      <Image source={{ uri: item.previewUrl }} style={styles.stickerGridImg} />
+                    </Pressable>
+                  ))}
+                </View>
+              )}
+            </View>
+          )}
         </Pressable>
       </Pressable>
     </Modal>
@@ -358,7 +435,6 @@ const styles = StyleSheet.create({
     maxWidth: "72%",
     gap: 2,
     alignItems: "flex-start",
-    flex: 1,
   },
   bubbleGroupOwn: { alignItems: "flex-end" },
 
@@ -466,20 +542,6 @@ const styles = StyleSheet.create({
   },
   pillCountActive: { color: "#FFD54F" },
 
-  // ── Banana pill (outside bubble, opposite avatar) ─────────────────────────
-  bananaPill: {
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 1,
-  },
-  bananaEmoji: { fontSize: 10 },
-  bananaCount: {
-    fontFamily: FONTS.mono,
-    fontSize: 9,
-    color: THEME.textFaint,
-  },
-  bananaCountActive: { color: "#FFD54F" },
-
   // ── Reaction picker Modal ──────────────────────────────────────────────────
   pickerOverlay: {
     flex: 1,
@@ -532,5 +594,98 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.bodySemi,
     fontSize: 14,
     color: THEME.text,
+  },
+
+  // ── GIF & Sticker in bubble ─────────────────────────────────────────────────
+  gifImage: {
+    height: 160,
+    borderRadius: 12,
+  },
+  watermark: {
+    position: "absolute",
+    bottom: -4,
+    right: -56,
+    width: 128,
+    height: 64,
+    opacity: 0.85,
+    backgroundColor: "transparent",
+  },
+  gifBadge: {
+    position: "absolute",
+    bottom: 6,
+    right: 6,
+    backgroundColor: "rgba(0,0,0,0.65)",
+    borderRadius: 4,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+  },
+  gifBadgeText: {
+    fontFamily: FONTS.mono,
+    fontSize: 9,
+    color: "#fff",
+    letterSpacing: 0.5,
+  },
+  stickerImage: {
+    width: 120,
+    height: 120,
+  },
+
+  // ── Sticker reaction row (below non-banana pills) ──────────────────────────
+  stickerReactionRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 4,
+    marginTop: 4,
+  },
+  stickerReactionPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderRadius: 10,
+    padding: 3,
+  },
+  stickerReactionPillActive: {
+    backgroundColor: "rgba(255,213,79,0.28)",
+  },
+  stickerReactionImg: {
+    width: 32,
+    height: 32,
+    borderRadius: 4,
+  },
+  stickerReactionCount: {
+    fontFamily: FONTS.mono,
+    fontSize: 10,
+    color: THEME.textFaint,
+    marginRight: 2,
+  },
+
+  // ── Sticker picker inside long-press sheet ─────────────────────────────────
+  stickerSection: {
+    alignSelf: "stretch",
+    marginTop: 4,
+    gap: 8,
+  },
+  stickerSectionLabel: {
+    fontFamily: FONTS.mono,
+    fontSize: 10,
+    color: THEME.textFaint,
+    letterSpacing: 1.5,
+    textTransform: "uppercase",
+    textAlign: "center",
+  },
+  stickerGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    justifyContent: "center",
+  },
+  stickerGridCell: {
+    borderRadius: 10,
+    overflow: "hidden",
+  },
+  stickerGridImg: {
+    width: 72,
+    height: 72,
   },
 });
