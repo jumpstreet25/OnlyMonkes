@@ -8,7 +8,7 @@
  *  - Send button (gradient, disabled when empty)
  */
 
-import React, { useRef, useCallback } from "react";
+import React, { useRef, useCallback, useEffect } from "react";
 import {
   View,
   Text,
@@ -16,12 +16,16 @@ import {
   StyleSheet,
   Pressable,
   Keyboard,
+  Image,
+  Animated,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { THEME, FONTS, MAX_MESSAGE_LENGTH } from "@/lib/constants";
 import { shortenAddress } from "@/lib/nftVerification";
 import type { ChatMessage } from "@/types";
+
+interface TypingUser { inboxId: string; username?: string; }
 
 interface ChatInputProps {
   value: string;
@@ -30,7 +34,12 @@ interface ChatInputProps {
   replyingTo: ChatMessage | null;
   onCancelReply: () => void;
   isSending?: boolean;
-  onDevTip?: () => void;
+  onGifPicker?: () => void;
+  pfpUri?: string | null;
+  onPfpGifPicker?: () => void;
+  onTyping?: () => void;
+  onCamera?: () => void;
+  typingUsers?: TypingUser[];
 }
 
 export function ChatInput({
@@ -40,9 +49,33 @@ export function ChatInput({
   replyingTo,
   onCancelReply,
   isSending,
-  onDevTip,
+  onGifPicker,
+  pfpUri,
+  onPfpGifPicker,
+  onTyping,
+  onCamera,
+  typingUsers,
 }: ChatInputProps) {
   const inputRef = useRef<TextInput>(null);
+  const bounceAnim = useRef(new Animated.Value(0)).current;
+  const hasTypers = !!(typingUsers && typingUsers.length > 0);
+
+  // Bounce animation — runs while any remote user is typing
+  useEffect(() => {
+    if (!hasTypers) {
+      bounceAnim.stopAnimation();
+      bounceAnim.setValue(0);
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(bounceAnim, { toValue: -5, duration: 280, useNativeDriver: true }),
+        Animated.timing(bounceAnim, { toValue: 0,  duration: 280, useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [hasTypers]);
 
   const canSend = value.trim().length > 0 && value.length <= MAX_MESSAGE_LENGTH && !isSending;
 
@@ -53,11 +86,29 @@ export function ChatInput({
     inputRef.current?.focus();
   }, [canSend, onSend]);
 
+  const handleChangeText = useCallback((text: string) => {
+    onChangeText(text);
+    if (text.length > 0) onTyping?.();
+  }, [onChangeText, onTyping]);
+
   const charsLeft = MAX_MESSAGE_LENGTH - value.length;
   const isNearLimit = charsLeft <= 50;
 
   return (
     <View style={styles.container}>
+      {/* Typing indicator */}
+      {hasTypers && (
+        <Animated.View
+          style={[styles.typingRow, { transform: [{ translateY: bounceAnim }] }]}
+          pointerEvents="none"
+        >
+          <Text style={styles.typingDots}>●●●</Text>
+          <Text style={styles.typingText}>
+            {typingUsers!.length === 1 ? "A Monke is Typing" : "Many Monkes are Typing"}
+          </Text>
+        </Animated.View>
+      )}
+
       {/* Reply preview */}
       {replyingTo && (
         <View style={styles.replyBanner}>
@@ -78,12 +129,29 @@ export function ChatInput({
 
       {/* Input row */}
       <View style={styles.inputRow}>
+        {/* PFP button — opens sagaMonkes GIF picker */}
+        {onPfpGifPicker && (
+          <Pressable
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onPfpGifPicker(); }}
+            hitSlop={6}
+            style={({ pressed }) => [styles.pfpBtn, pressed && { opacity: 0.7 }]}
+          >
+            {pfpUri ? (
+              <Image source={{ uri: pfpUri }} style={styles.pfpImg} />
+            ) : (
+              <View style={styles.pfpFallback}>
+                <Text style={styles.pfpGlyph}>🐒</Text>
+              </View>
+            )}
+          </Pressable>
+        )}
+
         <View style={styles.inputWrap}>
           <TextInput
             ref={inputRef}
             style={styles.input}
             value={value}
-            onChangeText={onChangeText}
+            onChangeText={handleChangeText}
             placeholder="Message…"
             placeholderTextColor={THEME.textFaint}
             multiline
@@ -97,6 +165,28 @@ export function ChatInput({
             </Text>
           )}
         </View>
+
+        {/* Camera button */}
+        {onCamera && (
+          <Pressable
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onCamera(); }}
+            hitSlop={6}
+            style={({ pressed }) => [styles.cameraBtn, pressed && { opacity: 0.7 }]}
+          >
+            <Text style={styles.cameraBtnText}>📷</Text>
+          </Pressable>
+        )}
+
+        {/* GIF pill button */}
+        {onGifPicker && (
+          <Pressable
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onGifPicker(); }}
+            hitSlop={6}
+            style={({ pressed }) => [styles.gifPill, pressed && { opacity: 0.7 }]}
+          >
+            <Text style={styles.gifPillText}>GIF</Text>
+          </Pressable>
+        )}
 
         <Pressable onPress={handleSend} disabled={!canSend}
           style={({ pressed }) => [
@@ -116,15 +206,6 @@ export function ChatInput({
         </Pressable>
       </View>
 
-      {/* Dev tip strip — below the input */}
-      {onDevTip && (
-        <Pressable
-          style={({ pressed }) => [styles.devTipRow, pressed && { opacity: 0.7 }]}
-          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onDevTip(); }}
-        >
-          <Text style={styles.devTipText}>🍌  Support Jump.skr dev</Text>
-        </Pressable>
-      )}
     </View>
   );
 }
@@ -227,15 +308,81 @@ const styles = StyleSheet.create({
   },
   sendArrowDisabled: { color: THEME.textFaint },
 
-  devTipRow: {
+  // ── Typing indicator ──────────────────────────────────────────────────────
+  typingRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 6,
-    borderBottomWidth: 1,
-    borderBottomColor: THEME.border,
+    gap: 5,
+    paddingHorizontal: 16,
+    paddingTop: 6,
+    paddingBottom: 2,
   },
-  devTipText: {
+  typingDots: {
+    fontSize: 8,
+    color: THEME.accent,
+    letterSpacing: 2,
+  },
+  typingText: {
+    fontFamily: FONTS.mono,
+    fontSize: 11,
+    color: THEME.textMuted,
+    fontStyle: "italic",
+  },
+
+  // ── Camera button ──────────────────────────────────────────────────────────
+  cameraBtn: {
+    alignSelf: "flex-end",
+    marginBottom: 2,
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: THEME.surfaceHigh,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cameraBtnText: {
+    fontSize: 18,
+  },
+
+  // ── PFP button (left of input) ─────────────────────────────────────────────
+  pfpBtn: {
+    alignSelf: "flex-end",
+    marginBottom: 2,
+  },
+  pfpImg: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: THEME.border,
+  },
+  pfpFallback: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: THEME.accentSoft,
+    borderWidth: 1,
+    borderColor: THEME.accent + "44",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pfpGlyph: { fontSize: 16 },
+
+  // ── GIF pill button (between input and send) ───────────────────────────────
+  gifPill: {
+    alignSelf: "flex-end",
+    marginBottom: 2,
+    borderRadius: 9,
+    borderWidth: 1,
+    borderColor: "#FFD700",
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    minHeight: 34,
+    justifyContent: "center",
+  },
+  gifPillText: {
     fontFamily: FONTS.mono,
     fontSize: 11,
     color: "#FFD700",

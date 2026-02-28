@@ -19,12 +19,16 @@
 
 import * as SecureStore from "expo-secure-store";
 import Constants from "expo-constants";
+import { Platform } from "react-native";
 
 const SK_PUSH_TOKEN = "push_token";
 
 // ─── Lazy-load the native module ─────────────────────────────────────────────
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let Notifications: any = null;
+
+// Android notification channel ID — must match what's used in scheduleNotificationAsync
+export const NOTIFICATION_CHANNEL_ID = "onlymonkes_default";
 
 try {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -34,9 +38,25 @@ try {
     handleNotification: async () => ({
       shouldShowAlert: true,
       shouldPlaySound: true,
-      shouldSetBadge: false,
+      shouldSetBadge: true,
     }),
   });
+
+  // Create the Android notification channel so the OnlyMonkes icon + name
+  // appears correctly in the device notification centre.
+  // The icon itself is compiled into the APK by the expo-notifications plugin
+  // (see app.config.ts  →  plugins → expo-notifications → icon).
+  if (Platform.OS === "android") {
+    Notifications.setNotificationChannelAsync(NOTIFICATION_CHANNEL_ID, {
+      name: "OnlyMonkes",
+      importance: Notifications.AndroidImportance.HIGH,
+      vibrationPattern: [0, 200, 100, 200],
+      lightColor: "#FFD700",
+      enableVibrate: true,
+      showBadge: true,
+      sound: "default",
+    }).catch(() => {/* ignore if module not available */});
+  }
 } catch {
   // Native module not available — rebuild with: npx expo run:android
 }
@@ -116,7 +136,9 @@ export async function showLocalNotification(
       content: {
         title,
         body: body.length > 100 ? `${body.slice(0, 97)}…` : body,
-        sound: true,
+        sound: "default",
+        // Android: route to our named channel so the OnlyMonkes icon is used
+        ...(Platform.OS === "android" ? { channelId: NOTIFICATION_CHANNEL_ID } : {}),
       },
       trigger: null, // show immediately
     });

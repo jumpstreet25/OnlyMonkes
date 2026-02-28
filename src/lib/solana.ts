@@ -57,9 +57,6 @@ export async function sendSkrTip(
   const devLamports   = Math.round(totalLamports * DEV_FEE_PERCENT);
   const userLamports  = totalLamports - devLamports;
 
-  // Fetch slot BEFORE opening the wallet so the simulation context is fresh
-  const minContextSlot = await connection.getSlot("finalized");
-
   const signature = await transact(async (mobileWallet: Web3MobileWallet) => {
     // Authorize (re-uses cached token if wallet already connected)
     const authResult = await mobileWallet.authorize({
@@ -74,12 +71,15 @@ export async function sendSkrTip(
         : addrRaw;
     const senderPubkey = new PublicKey(pubkeyBytes);
 
+    // Fetch slot AFTER auth so the simulation context is always fresh
+    const minContextSlot = await connection.getSlot();
+
     // Derive all ATAs
     const senderATA    = getAssociatedTokenAddressSync(mintPubkey, senderPubkey);
     const recipientATA = getAssociatedTokenAddressSync(mintPubkey, recipientPubkey);
     const devATA       = getAssociatedTokenAddressSync(mintPubkey, devPubkey);
 
-    const { blockhash } = await connection.getLatestBlockhash("finalized");
+    const { blockhash } = await connection.getLatestBlockhash("confirmed");
 
     const tx = new Transaction({ recentBlockhash: blockhash, feePayer: senderPubkey });
 
@@ -154,8 +154,6 @@ export async function sendDevTip(amountUi: number): Promise<string> {
   const mintInfo = await getMint(connection, mintPubkey);
   const lamports = Math.round(amountUi * Math.pow(10, mintInfo.decimals));
 
-  const minContextSlot = await connection.getSlot("finalized");
-
   const signature = await transact(async (mobileWallet: Web3MobileWallet) => {
     const authResult = await mobileWallet.authorize({
       cluster: "mainnet-beta",
@@ -169,10 +167,13 @@ export async function sendDevTip(amountUi: number): Promise<string> {
         : addrRaw;
     const senderPubkey = new PublicKey(pubkeyBytes);
 
+    // Fetch slot AFTER auth so the simulation context is always fresh
+    const minContextSlot = await connection.getSlot();
+
     const senderATA = getAssociatedTokenAddressSync(mintPubkey, senderPubkey);
     const devATA    = getAssociatedTokenAddressSync(mintPubkey, devPubkey);
 
-    const { blockhash } = await connection.getLatestBlockhash("finalized");
+    const { blockhash } = await connection.getLatestBlockhash("confirmed");
     const tx = new Transaction({ recentBlockhash: blockhash, feePayer: senderPubkey });
 
     tx.add(
