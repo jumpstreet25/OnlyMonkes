@@ -80,7 +80,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onSearch, onMonkeT
     for (const msg of messages) {
       if (msg.sentAt.getTime() < cutoff) continue;
       const cached = getCachedProfile(msg.senderAddress);
-      const msgNft = msg.senderNft?.image ?? cached?.nftImage ?? null;
+      const msgNft = cached?.nftImage ?? msg.senderNft?.image ?? null;
       const msgUsername = cached?.username ?? msg.senderUsername;
       if (!seen.has(msg.senderAddress)) {
         seen.set(msg.senderAddress, {
@@ -221,7 +221,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onSearch, onMonkeT
                 activeUsers.map((user) => {
                   const cached = getCachedProfile(user.inboxId);
                   const name = cached?.username ?? user.username ?? shortenAddress(user.inboxId);
-                  const avatarUri = user.nftImage ?? cached?.nftImage ?? null;
+                  const avatarUri = cached?.nftImage ?? user.nftImage ?? null;
                   return (
                     <View key={user.inboxId} style={styles.userRow}>
                       {avatarUri ? (

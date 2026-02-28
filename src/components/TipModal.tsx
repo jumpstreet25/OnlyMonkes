@@ -15,6 +15,7 @@ import {
   StyleSheet,
   ActivityIndicator,
   useWindowDimensions,
+  type LayoutChangeEvent,
 } from "react-native";
 import Slider from "@react-native-community/slider";
 import * as Haptics from "expo-haptics";
@@ -32,6 +33,16 @@ export function TipModal({ visible, recipientName, onConfirm, onClose }: TipModa
   const { width: SCREEN_W } = useWindowDimensions();
   const [selected, setSelected] = useState<number>(10);
   const [sending, setSending] = useState(false);
+  const [trackWidth, setTrackWidth] = useState(0);
+
+  const SIDE_PAD = 10;
+  const bananaLeft =
+    trackWidth > 0
+      ? SIDE_PAD +
+        (trackWidth - 2 * SIDE_PAD) *
+          ((selected - TIP_MIN) / (TIP_MAX - TIP_MIN)) -
+        11
+      : 0;
 
   const handleSend = async () => {
     setSending(true);
@@ -65,8 +76,13 @@ export function TipModal({ visible, recipientName, onConfirm, onClose }: TipModa
 
         {/* Banana slider */}
         <View style={styles.sliderWrap}>
-          <Text style={styles.sliderValue}>🍌  {Math.round(selected)} SKR</Text>
-          <View style={styles.sliderTrackWrap}>
+          <Text style={styles.sliderValue}>{Math.round(selected)} SKR</Text>
+          <View
+            style={styles.sliderTrackWrap}
+            onLayout={(e: LayoutChangeEvent) =>
+              setTrackWidth(e.nativeEvent.layout.width)
+            }
+          >
             <Slider
               style={{ width: SCREEN_W - 64, height: 48 }}
               minimumValue={TIP_MIN}
@@ -76,9 +92,17 @@ export function TipModal({ visible, recipientName, onConfirm, onClose }: TipModa
               onValueChange={(v) => { setSelected(v); Haptics.selectionAsync(); }}
               minimumTrackTintColor="#FFD700"
               maximumTrackTintColor="rgba(255,255,255,0.18)"
-              thumbTintColor="#FFD700"
+              thumbTintColor={THEME.surfaceHigh}
               tapToSeek
             />
+            {trackWidth > 0 && (
+              <Text
+                style={[styles.bananaThumb, { left: bananaLeft }]}
+                pointerEvents="none"
+              >
+                🍌
+              </Text>
+            )}
           </View>
           <View style={[styles.sliderEndLabels, { width: SCREEN_W - 64 }]}>
             <Text style={styles.sliderEndLabel}>1 SKR</Text>
@@ -176,7 +200,12 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.08)",
-    overflow: "hidden",
+    position: "relative",
+  },
+  bananaThumb: {
+    position: "absolute",
+    top: 13,
+    fontSize: 22,
   },
   sliderValue: {
     fontFamily: FONTS.display,

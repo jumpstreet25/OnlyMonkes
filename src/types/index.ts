@@ -35,6 +35,13 @@ export interface MessageReaction {
   reactors: string[];
 }
 
+export interface StickerReaction {
+  url: string;
+  count: number;
+  reactedByMe: boolean;
+  reactors: string[];
+}
+
 export interface ChatMessage {
   id: string;
   senderAddress: string;      // XMTP inboxId
@@ -43,6 +50,7 @@ export interface ChatMessage {
   content: string;
   sentAt: Date;
   reactions: Partial<Record<ReactionEmoji, MessageReaction>>;
+  stickerReactions?: StickerReaction[];
   replyTo?: { id: string; content: string; senderAddress: string; senderUsername?: string };
   status?: 'sending' | 'sent' | 'failed';
 }
