@@ -87,6 +87,9 @@ export const MessageBubble = memo(function MessageBubble({
     return () => { cancelled = true; };
   }, [senderImageUrl, colorCacheKey]);
 
+  // Dynamic aspect ratio for GIF / IMAGE — computed from actual image dimensions on load
+  const [imgAspect, setImgAspect] = useState<number>(3 / 4); // sensible portrait default
+
   const [pickerVisible, setPickerVisible] = useState(false);
   const [stickerItems, setStickerItems] = useState<GiphyItem[]>([]);
   const [stickersLoading, setStickersLoading] = useState(false);
@@ -175,8 +178,14 @@ export const MessageBubble = memo(function MessageBubble({
     shortenAddress(message.senderAddress);
 
   // ── Avatar ────────────────────────────────────────────────────────────────
-  const cachedNft = cachedNftImageForColor;
-  const avatarUri = message.senderNft?.image ?? cachedNft ?? null;
+  // Own: use live verifiedNft. Others: prefer fresh profile cache first.
+  const avatarUri = isOwn
+    ? (verifiedNft?.image ?? null)
+    : (getCachedProfile(message.senderAddress)?.nftImage ?? message.senderNft?.image ?? null);
+
+  // ── Media detection (GIF / photo — rendered without bubble background) ───
+  const isMedia =
+    message.content.startsWith("GIF:") || message.content.startsWith("IMAGE:");
 
   return (
     <>
@@ -202,17 +211,6 @@ export const MessageBubble = memo(function MessageBubble({
       {/* Bubble group */}
       <View style={[styles.bubbleGroup, isOwn && styles.bubbleGroupOwn]}>
 
-        {/* Header: sender name + timestamp */}
-        <View style={[styles.msgHeader, isOwn && styles.msgHeaderOwn]}>
-          <Text style={[styles.sender, isOwn && styles.senderOwn]}>
-            {isOwn ? "You" : displayName}
-          </Text>
-          <Text style={[styles.time, { color: THEME.textFaint }]}>
-            {format(message.sentAt, "HH:mm")}
-            {message.status === "sending" && "  ···"}
-          </Text>
-        </View>
-
         {/* Reply preview */}
         {message.replyTo && (
           <View style={[styles.replyPreview, isOwn && styles.replyPreviewOwn]}>
@@ -230,11 +228,11 @@ export const MessageBubble = memo(function MessageBubble({
           </View>
         )}
 
-        {/* Main bubble */}
+        {/* Main bubble — no background/padding for GIF/IMAGE */}
         <Pressable
           onLongPress={handleLongPress}
           delayLongPress={350}
-          style={[
+          style={isMedia ? styles.mediaBubble : [
             styles.bubble,
             isOwn ? styles.bubbleOwn : styles.bubbleOther,
             { backgroundColor: bubbleColor },
@@ -242,22 +240,30 @@ export const MessageBubble = memo(function MessageBubble({
         >
           {/* GIF content */}
           {message.content.startsWith("GIF:") ? (
-            <View style={{ width: mediaWidth }}>
+            <View style={{ width: mediaWidth, borderRadius: 14, overflow: "hidden" }}>
               <Image
                 source={{ uri: message.content.slice(4) }}
-                style={[styles.gifImage, { width: mediaWidth }]}
-                resizeMode="cover"
+                style={{ width: mediaWidth, height: mediaWidth * imgAspect }}
+                resizeMode="contain"
+                onLoad={(e) => {
+                  const { width: w, height: h } = e.nativeEvent.source;
+                  if (w > 0) setImgAspect(h / w);
+                }}
               />
               <View style={styles.gifBadge}>
                 <Text style={styles.gifBadgeText}>GIF</Text>
               </View>
             </View>
           ) : message.content.startsWith("IMAGE:") ? (
-            <View style={{ width: mediaWidth }}>
+            <View style={{ width: mediaWidth, borderRadius: 14, overflow: "hidden" }}>
               <Image
                 source={{ uri: message.content.slice(6) }}
-                style={[styles.gifImage, { width: mediaWidth }]}
-                resizeMode="cover"
+                style={{ width: mediaWidth, height: mediaWidth * imgAspect }}
+                resizeMode="contain"
+                onLoad={(e) => {
+                  const { width: w, height: h } = e.nativeEvent.source;
+                  if (w > 0) setImgAspect(h / w);
+                }}
               />
               <Image
                 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -277,52 +283,64 @@ export const MessageBubble = memo(function MessageBubble({
               {message.content}
             </Text>
           )}
-
-          {/* Footer: non-banana emoji reaction pills */}
-          {(REACTIONS as readonly ReactionEmoji[]).some((e) => e !== "🍌" && (message.reactions[e]?.count ?? 0) > 0) && (
-            <View style={styles.bubbleFooter}>
-              {(REACTIONS as readonly ReactionEmoji[]).map((emoji) => {
-                if (emoji === "🍌") return null;
-                const rxn = message.reactions[emoji];
-                const count = rxn?.count ?? 0;
-                const byMe = rxn?.reactedByMe ?? false;
-                if (count === 0) return null;
-                return (
-                  <Pressable
-                    key={emoji}
-                    onPress={() => onReact(emoji, message.id)}
-                    hitSlop={8}
-                    style={[styles.reactionPill, byMe && styles.reactionPillActive]}
-                  >
-                    <Text style={styles.pillEmoji}>{emoji}</Text>
-                    <Text style={[styles.pillCount, byMe && styles.pillCountActive]}>
-                      {count}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          )}
-
-          {/* Sticker reaction thumbnails */}
-          {(message.stickerReactions ?? []).length > 0 && (
-            <View style={styles.stickerReactionRow}>
-              {(message.stickerReactions ?? []).map((sr) => (
-                <Pressable
-                  key={sr.url}
-                  onPress={() => onStickerReact?.(sr.url, message.id)}
-                  hitSlop={6}
-                  style={[styles.stickerReactionPill, sr.reactedByMe && styles.stickerReactionPillActive]}
-                >
-                  <Image source={{ uri: sr.url }} style={styles.stickerReactionImg} />
-                  {sr.count > 1 && (
-                    <Text style={styles.stickerReactionCount}>{sr.count}</Text>
-                  )}
-                </Pressable>
-              ))}
-            </View>
-          )}
         </Pressable>
+
+        {/* Header: sender name + timestamp — BELOW bubble, ABOVE reactions */}
+        <View style={[styles.msgHeader, isOwn && styles.msgHeaderOwn]}>
+          <Text style={[styles.sender, isOwn && styles.senderOwn]}>
+            {isOwn ? "You" : displayName}
+          </Text>
+          <Text style={[styles.time, { color: THEME.textFaint }]}>
+            {format(message.sentAt, "HH:mm")}
+            {message.status === "sending" && "  ···"}
+          </Text>
+        </View>
+
+        {/* Reaction pills — OUTSIDE bubble, below name */}
+        {(REACTIONS as readonly ReactionEmoji[]).some((e) => e !== "🍌" && (message.reactions[e]?.count ?? 0) > 0) && (
+          <View style={[styles.bubbleFooter, isOwn && styles.bubbleFooterOwn]}>
+            {(REACTIONS as readonly ReactionEmoji[]).map((emoji) => {
+              if (emoji === "🍌") return null;
+              const rxn = message.reactions[emoji];
+              const count = rxn?.count ?? 0;
+              const byMe = rxn?.reactedByMe ?? false;
+              if (count === 0) return null;
+              return (
+                <Pressable
+                  key={emoji}
+                  onPress={() => onReact(emoji, message.id)}
+                  hitSlop={8}
+                  style={[styles.reactionPill, byMe && styles.reactionPillActive]}
+                >
+                  <Text style={styles.pillEmoji}>{emoji}</Text>
+                  <Text style={[styles.pillCount, byMe && styles.pillCountActive]}>
+                    {count}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
+
+        {/* Sticker reaction thumbnails — OUTSIDE bubble, below reaction pills */}
+        {(message.stickerReactions ?? []).length > 0 && (
+          <View style={[styles.stickerReactionRow, isOwn && styles.stickerReactionRowOwn]}>
+            {(message.stickerReactions ?? []).map((sr) => (
+              <Pressable
+                key={sr.url}
+                onPress={() => onStickerReact?.(sr.url, message.id)}
+                hitSlop={6}
+                style={[styles.stickerReactionPill, sr.reactedByMe && styles.stickerReactionPillActive]}
+              >
+                <Image source={{ uri: sr.url }} style={styles.stickerReactionImg} />
+                {sr.count > 1 && (
+                  <Text style={styles.stickerReactionCount}>{sr.count}</Text>
+                )}
+              </Pressable>
+            ))}
+          </View>
+        )}
+
       </View>
 
 
@@ -337,20 +355,6 @@ export const MessageBubble = memo(function MessageBubble({
     >
       <Pressable style={styles.pickerOverlay} onPress={() => setPickerVisible(false)}>
         <Pressable style={styles.pickerSheet} onPress={(e) => e.stopPropagation()}>
-          <View style={styles.pickerEmojiRow}>
-            {(REACTIONS as readonly ReactionEmoji[]).filter((e) => e !== "🍌").map((emoji) => (
-              <Pressable
-                key={emoji}
-                onPress={() => handlePickReaction(emoji)}
-                style={({ pressed }) => [
-                  styles.pickerEmojiBtn,
-                  pressed && styles.pickerEmojiBtnPressed,
-                ]}
-              >
-                <Text style={styles.pickerEmoji}>{emoji}</Text>
-              </Pressable>
-            ))}
-          </View>
           <Pressable
             onPress={handlePickReply}
             style={({ pressed }) => [
@@ -408,8 +412,7 @@ const styles = StyleSheet.create({
 
   // ── Avatars ────────────────────────────────────────────────────────────────
   avatarContainer: {
-    alignSelf: "flex-end",
-    marginBottom: 2,
+    alignSelf: "center",
   },
   avatar: {
     width: 34,
@@ -444,7 +447,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
     marginLeft: 4,
-    marginBottom: 1,
+    marginTop: 3,
   },
   msgHeaderOwn: {
     flexDirection: "row-reverse",
@@ -512,13 +515,25 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
 
-  // ── Bubble footer (non-banana reactions only) ──────────────────────────────
+  // ── Media bubble (GIF / photo — no background or padding) ─────────────────
+  mediaBubble: {
+    // No background, no padding — just the image with rounded corners applied
+    // directly on the inner View wrapping each media type.
+  },
+
+  // ── Bubble footer (reaction pills — now OUTSIDE bubble) ───────────────────
   bubbleFooter: {
     flexDirection: "row",
     alignItems: "center",
     flexWrap: "wrap",
     gap: 4,
-    marginTop: 2,
+    marginTop: 4,
+    marginLeft: 4,
+  },
+  bubbleFooterOwn: {
+    justifyContent: "flex-end",
+    marginLeft: 0,
+    marginRight: 4,
   },
 
   // ── Reaction pills (non-banana, inside bubble) ─────────────────────────────
@@ -598,7 +613,6 @@ const styles = StyleSheet.create({
 
   // ── GIF & Sticker in bubble ─────────────────────────────────────────────────
   gifImage: {
-    height: 160,
     borderRadius: 12,
   },
   watermark: {
@@ -630,12 +644,18 @@ const styles = StyleSheet.create({
     height: 120,
   },
 
-  // ── Sticker reaction row (below non-banana pills) ──────────────────────────
+  // ── Sticker reaction row (OUTSIDE bubble, below reaction pills) ───────────
   stickerReactionRow: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 4,
     marginTop: 4,
+    marginLeft: 4,
+  },
+  stickerReactionRowOwn: {
+    justifyContent: "flex-end",
+    marginLeft: 0,
+    marginRight: 4,
   },
   stickerReactionPill: {
     flexDirection: "row",

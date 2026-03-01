@@ -64,10 +64,18 @@ const AK_JOIN_REQUEST_SENT = "xmtp_join_request_sent";
 const AK_IS_ADMIN         = "xmtp_is_group_admin";
 const AK_APPROVED_IDS     = "xmtp_approved_inbox_ids";
 
-/** Fill senderNft from profile cache if the decoded message has none. */
+/**
+ * Bidirectional sync between message senderNft and profile cache.
+ * - If message has senderNft.image but cache doesn't, seed the cache.
+ * - If message has no senderNft but cache has nftImage, fill it in.
+ */
 function enrichWithNft(msg: ChatMessage): ChatMessage {
-  if (msg.senderNft) return msg;
   const cached = getCachedProfile(msg.senderAddress);
+  // Seed cache from message if we have an image not yet cached
+  if (msg.senderNft?.image && !cached?.nftImage) {
+    cacheProfile(msg.senderAddress, { nftImage: msg.senderNft.image });
+  }
+  if (msg.senderNft) return msg;
   if (cached?.nftImage) {
     return { ...msg, senderNft: { mint: "", name: "", image: cached.nftImage } };
   }
