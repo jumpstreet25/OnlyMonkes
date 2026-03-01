@@ -111,16 +111,18 @@ const JOIN_REQUEST_PREFIX = "JOIN_REQUEST:";
 
 /**
  * Tester sends a DM to the admin's inboxId to request group membership.
- * Format: JOIN_REQUEST:<myInboxId>:<username>
+ * Format: JOIN_REQUEST:<myInboxId>:<username>:<nftMint>
+ * nftMint is included so the admin can verify NFT ownership without needing the wallet address.
  */
 export async function sendJoinRequestDM(
   client: XmtpClient,
   adminInboxId: string,
   myInboxId: string,
-  username?: string | null
+  username?: string | null,
+  nftMint?: string | null,
 ): Promise<void> {
   const dm = await (client.conversations as any).newDm(adminInboxId);
-  const payload = `${JOIN_REQUEST_PREFIX}${myInboxId}:${username ?? ""}`;
+  const payload = `${JOIN_REQUEST_PREFIX}${myInboxId}:${username ?? ""}:${nftMint ?? ""}`;
   await (dm as any).send(payload);
 }
 
@@ -147,13 +149,14 @@ export async function fetchJoinRequests(client: XmtpClient): Promise<JoinRequest
         try { content = msg.content(); } catch { continue; }
 
         if (typeof content === "string" && content.startsWith(JOIN_REQUEST_PREFIX)) {
-          const rest = content.slice(JOIN_REQUEST_PREFIX.length);
-          const colonIdx = rest.indexOf(":");
-          const inboxId  = colonIdx === -1 ? rest : rest.slice(0, colonIdx);
-          const username = colonIdx === -1 ? undefined : rest.slice(colonIdx + 1) || undefined;
+          // Format: JOIN_REQUEST:<inboxId>:<username>:<nftMint>
+          const parts = content.slice(JOIN_REQUEST_PREFIX.length).split(":");
+          const inboxId  = parts[0] ?? "";
+          const username = parts[1] || undefined;
+          const nftMint  = parts[2] || undefined;
 
           if (inboxId) {
-            requests.push({ inboxId, username, requestedAt: new Date(msg.sentNs / 1_000_000) });
+            requests.push({ inboxId, username, nftMint, requestedAt: new Date(msg.sentNs / 1_000_000) });
           }
           break; // one request per DM convo is enough
         }

@@ -34,6 +34,7 @@ import {
   sendProfileUpdate,
   sendEventMessage,
 } from "@/lib/xmtp";
+import { verifyNftMintInCollection } from "@/lib/nftVerification";
 import { cacheProfile, getCachedProfile, loadProfileCache } from "@/lib/userProfile";
 import { parseEventMessage, saveEvent } from "@/lib/calendar";
 import {
@@ -195,13 +196,27 @@ export function useXmtp() {
               );
 
               // Auto-approve each new request.
+              // NFT holders are admitted immediately; others are added normally.
+              // Only mark as approved if addMemberToGroup actually succeeds.
               for (const req of newRequests) {
                 try {
+                  // NFT gate: verify the mint belongs to the Saga Monkes collection.
+                  if (req.nftMint) {
+                    const validNft = await verifyNftMintInCollection(req.nftMint);
+                    if (!validNft) {
+                      console.log("[XMTP] NFT verification failed for", req.inboxId, "— skipping auto-approve");
+                      continue;
+                    }
+                    console.log("[XMTP] NFT verified for", req.inboxId, "— auto-admitting");
+                  }
                   await addMemberToGroup(group as XmtpGroup, req.inboxId);
+                  approvedSet.add(req.inboxId);
+                  useAppStore.getState().removeJoinRequest(req.inboxId);
                   console.log("[XMTP] Auto-approved:", req.inboxId);
-                } catch { /* already a member — ignore */ }
-                approvedSet.add(req.inboxId);
-                useAppStore.getState().removeJoinRequest(req.inboxId);
+                } catch (approveErr) {
+                  console.warn("[XMTP] Failed to auto-approve", req.inboxId, approveErr);
+                  // Do NOT add to approvedSet — leave visible in admin panel for manual action.
+                }
               }
 
               // Persist updated approved set.
@@ -226,10 +241,16 @@ export function useXmtp() {
           const alreadySent = await AsyncStorage.getItem(AK_JOIN_REQUEST_SENT);
           if (!alreadySent) {
             try {
-              const { username } = useAppStore.getState();
-              await sendJoinRequestDM(client, config.adminInboxId, client.inboxId, username);
+              const { username, verifiedNft } = useAppStore.getState();
+              await sendJoinRequestDM(
+                client,
+                config.adminInboxId,
+                client.inboxId,
+                username,
+                verifiedNft?.mint ?? null,
+              );
               await AsyncStorage.setItem(AK_JOIN_REQUEST_SENT, "1");
-              console.log("[XMTP] Join request DM sent to admin.");
+              console.log("[XMTP] Join request DM sent to admin (nft:", verifiedNft?.mint ?? "none", ")");
             } catch (err) {
               console.warn("[XMTP] Could not send join request DM:", err);
             }
