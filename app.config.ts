@@ -27,7 +27,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     [
       'expo-notifications',
       {
-        icon: './assets/icon.png',
+        icon: './assets/ic_notification.png',
         color: '#7C3AED',
         androidMode: 'default',
         androidCollapsedTitle: 'OnlyMonkes',

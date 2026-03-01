@@ -178,6 +178,13 @@ export default function ChatScreen() {
     loadEvents().then(setCalendarEvents);
   }, []);
 
+  // ─── Keep own NFT in profile cache in sync whenever verifiedNft changes ──────
+  useEffect(() => {
+    if (myInboxId && verifiedNft?.image) {
+      cacheProfile(myInboxId, { nftImage: verifiedNft.image });
+    }
+  }, [myInboxId, verifiedNft]);
+
   // ─── Send ────────────────────────────────────────────────────────────────────
 
   const handleSend = useCallback(async () => {
@@ -277,7 +284,7 @@ export default function ChatScreen() {
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         quality: 0.25,
-        allowsEditing: true,
+        allowsEditing: false,
         base64: true,
       });
       if (result.canceled || !result.assets?.[0]) return;
