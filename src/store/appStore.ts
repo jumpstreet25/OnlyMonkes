@@ -15,6 +15,7 @@ export interface CalendarEvent {
 export interface JoinRequest {
   inboxId: string;
   username?: string;
+  nftMint?: string;
   requestedAt: Date;
 }
 

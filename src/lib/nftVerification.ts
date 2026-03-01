@@ -179,6 +179,36 @@ export async function verifyNFTOwnership(
 }
 
 /**
+ * Verify a single NFT mint belongs to the configured collection.
+ * Used by the admin to gate-check incoming join requests without needing the wallet address.
+ * Returns true if the mint's verified collection matches NFT_COLLECTION_ADDRESS.
+ */
+export async function verifyNftMintInCollection(nftMint: string): Promise<boolean> {
+  if (!HELIUS_API_KEY || !NFT_COLLECTION_ADDRESS || !nftMint) return false;
+  try {
+    const res = await fetch(`https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "mint-check",
+        method: "getAsset",
+        params: { id: nftMint },
+      }),
+    });
+    if (!res.ok) return false;
+    const json = await res.json();
+    const grouping: { group_key: string; group_value: string }[] =
+      json?.result?.grouping ?? [];
+    return grouping.some(
+      (g) => g.group_key === "collection" && g.group_value === NFT_COLLECTION_ADDRESS
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Shorten a wallet address for display: "8xKp...3fQa"
  */
 export function shortenAddress(address: string, chars = 4): string {

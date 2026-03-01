@@ -265,12 +265,14 @@ export const MessageBubble = memo(function MessageBubble({
                   if (w > 0) setImgAspect(h / w);
                 }}
               />
-              <Image
-                // eslint-disable-next-line @typescript-eslint/no-require-imports
-                source={require("../../assets/watermark.png")}
-                style={styles.watermark}
-                resizeMode="contain"
-              />
+              <View style={styles.watermarkShadow}>
+                <Image
+                  // eslint-disable-next-line @typescript-eslint/no-require-imports
+                  source={require("../../assets/watermark.png")}
+                  style={styles.watermark}
+                  resizeMode="contain"
+                />
+              </View>
             </View>
           ) : message.content.startsWith("STICKER:") ? (
             <Image
@@ -615,14 +617,22 @@ const styles = StyleSheet.create({
   gifImage: {
     borderRadius: 12,
   },
-  watermark: {
+  watermarkShadow: {
     position: "absolute",
-    bottom: -4,
-    right: -56,
+    bottom: 6,
+    right: 6,
     width: 128,
     height: 64,
-    opacity: 0.85,
-    backgroundColor: "transparent",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.55,
+    shadowRadius: 4,
+    elevation: 6,
+  },
+  watermark: {
+    width: 128,
+    height: 64,
+    opacity: 0.9,
   },
   gifBadge: {
     position: "absolute",
