@@ -270,7 +270,8 @@ export function useXmtp() {
 
       // ── Pass 1: seed profile cache + events from history ─────────────────
       // Must run BEFORE decoding messages so enrichWithNft() has fresh cache data.
-      for (const raw of rawHistory) {
+      // Iterate oldest-first so later (newer) PROFILE_UPDATEs win over older ones.
+      for (const raw of [...rawHistory].reverse()) {
         try {
           const content = raw.content();
           if (typeof content === "string" && content.startsWith("PROFILE_UPDATE:")) {

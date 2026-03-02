@@ -60,7 +60,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onSearch, onMonkeT
 
   const slideAnim = useRef(new Animated.Value(DRAWER_WIDTH)).current;
   const { messages } = useChatStore();
-  const { calendarEvents } = useAppStore();
+  const { calendarEvents, myInboxId, username } = useAppStore();
   const [activeTab, setActiveTab] = useState<Tab>("members");
 
   useEffect(() => {
@@ -125,6 +125,12 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onSearch, onMonkeT
 
   const sharedMedia = useMemo(() => {
     return messages.filter((m) => m.content.startsWith("IMAGE:") || m.content.startsWith("GIF:"));
+  }, [messages]);
+
+  const allTimeUsers = useMemo<number>(() => {
+    const seen = new Set<string>();
+    for (const msg of messages) seen.add(msg.senderAddress);
+    return seen.size;
   }, [messages]);
 
   // Sort events: upcoming first
@@ -212,6 +218,21 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onSearch, onMonkeT
           {/* ── Members ─────────────────────────────────────────────────────── */}
           {activeTab === "members" && (
             <>
+              {/* All-Time stats card */}
+              <View style={styles.statsRow}>
+                <View style={styles.statBox}>
+                  <Text style={styles.statNum}>{allTimeUsers}</Text>
+                  <Text style={styles.statLabel}>All-Time Users</Text>
+                </View>
+                <View style={styles.statDivider} />
+                <View style={styles.statBox}>
+                  <Text style={styles.statNum} numberOfLines={1}>
+                    {username ?? shortenAddress(myInboxId ?? "")}
+                  </Text>
+                  <Text style={styles.statLabel}>Logged In</Text>
+                </View>
+              </View>
+
               <Text style={styles.sectionLabel}>
                 Active last 24h · {activeUsers.length}
               </Text>
@@ -477,6 +498,40 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: 24,
     lineHeight: 20,
+  },
+
+  // Stats card
+  statsRow: {
+    flexDirection: "row",
+    borderRadius: 12,
+    backgroundColor: THEME.surface,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    marginBottom: 16,
+    overflow: "hidden",
+  },
+  statBox: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 6,
+  },
+  statDivider: {
+    width: 1,
+    backgroundColor: THEME.border,
+  },
+  statNum: {
+    fontFamily: FONTS.display,
+    fontSize: 16,
+    color: THEME.text,
+    marginBottom: 2,
+  },
+  statLabel: {
+    fontFamily: FONTS.mono,
+    fontSize: 9,
+    color: THEME.textFaint,
+    letterSpacing: 1,
+    textTransform: "uppercase",
   },
 
   // Members
