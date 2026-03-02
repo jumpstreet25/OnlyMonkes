@@ -60,6 +60,7 @@ let _client: XmtpClient | null = null;
 let _unsubscribeStream: (() => void) | null = null;
 let _myInboxId = "";
 let _streamAlive = false;
+let _profileBroadcastDone = false;
 
 const AK_JOIN_REQUEST_SENT = "xmtp_join_request_sent";
 const AK_IS_ADMIN         = "xmtp_is_group_admin";
@@ -403,6 +404,34 @@ export function useXmtp() {
 
       _streamAlive = true;
       _unsubscribeStream = () => { _streamAlive = false; unsub(); };
+
+      // ── 6. Auto-broadcast own profile once per session ─────────────────────
+      // Ensures every user's PFP is visible in the cache of everyone in the chat,
+      // even if they never manually updated their profile settings.
+      if (!_profileBroadcastDone) {
+        _profileBroadcastDone = true;
+        (async () => {
+          try {
+            const { username, bio, xAccount, wallet, tipWallet, verifiedNft } =
+              useAppStore.getState();
+            if (!verifiedNft?.image) return;
+            await sendProfileUpdate(
+              group as XmtpGroup,
+              client.inboxId,
+              username,
+              bio,
+              xAccount,
+              wallet?.address ?? null,
+              tipWallet ?? null,
+              verifiedNft.image,
+            );
+            cacheProfile(client.inboxId, {
+              username: username ?? undefined,
+              nftImage: verifiedNft.image,
+            });
+          } catch { /* non-critical */ }
+        })();
+      }
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "XMTP initialization failed";
@@ -442,6 +471,7 @@ export function useXmtp() {
     _group = null;
     _client = null;
     _myInboxId = "";
+    _profileBroadcastDone = false;
     await clearSession();
     await clearMatricaSession();
     await clearVerifiedNft();

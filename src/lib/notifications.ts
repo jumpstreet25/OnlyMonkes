@@ -1,20 +1,13 @@
 /**
  * notifications.ts
  *
- * Expo Notifications → Google FCM pipeline.
+ * Expo Notifications → Android heads-up + FCM pipeline.
  *
- * Flow:
- *   1. App opens → registerForPushNotifications() called in ChatScreen
- *   2. Device requests Expo push token (Expo Push Service ↔ FCM)
- *   3. Token stored in SecureStore and optionally sent to your backend
- *   4. Backend uses sendExpoPushNotification() to deliver messages via Expo API
- *
- * Expo Push Service docs: https://docs.expo.dev/push-notifications/overview/
- *
- * To finish FCM setup:
- *   a. Create a Firebase project → download google-services.json → place in android/app/
- *   b. Run: npx eas build:configure  (adds EAS project ID to app.config.ts)
- *   c. Set extra.eas.projectId in app.config.ts
+ * Features:
+ *  - MAX importance channel → guaranteed heads-up (peek) on Android
+ *  - Inline "Reply" action → user replies without opening the app
+ *  - ic_notification.png as small status-bar icon (configured in app.config.ts)
+ *  - icon.png (adaptive icon) shown as the large notification icon by Android
  */
 
 import * as SecureStore from "expo-secure-store";
@@ -23,17 +16,26 @@ import { Platform } from "react-native";
 
 const SK_PUSH_TOKEN = "push_token";
 
-// ─── Lazy-load the native module ─────────────────────────────────────────────
+// Android notification channel — MAX importance = guaranteed heads-up pop-up
+export const NOTIFICATION_CHANNEL_ID = "onlymonkes_chat";
+
+// ── Module-level reply callback ───────────────────────────────────────────────
+// Set by ChatScreen once XMTP is connected so inline replies go straight to chat.
+let _replyHandler: ((text: string) => void) | null = null;
+
+export function setNotificationReplyHandler(fn: (text: string) => void): void {
+  _replyHandler = fn;
+}
+
+// ── Lazy-load native module ───────────────────────────────────────────────────
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let Notifications: any = null;
-
-// Android notification channel ID — must match what's used in scheduleNotificationAsync
-export const NOTIFICATION_CHANNEL_ID = "onlymonkes_default";
 
 try {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   Notifications = require("expo-notifications");
 
+  // Show notification even when app is in foreground
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
       shouldShowAlert: true,
@@ -42,20 +44,48 @@ try {
     }),
   });
 
-  // Create the Android notification channel so the OnlyMonkes icon + name
-  // appears correctly in the device notification centre.
-  // The icon itself is compiled into the APK by the expo-notifications plugin
-  // (see app.config.ts  →  plugins → expo-notifications → icon).
   if (Platform.OS === "android") {
+    // ── Channel: MAX importance = heads-up on all Android versions ────────────
     Notifications.setNotificationChannelAsync(NOTIFICATION_CHANNEL_ID, {
       name: "OnlyMonkes",
-      importance: Notifications.AndroidImportance.HIGH,
+      importance: 5,          // AndroidImportance.MAX
       vibrationPattern: [0, 200, 100, 200],
       lightColor: "#FFD700",
       enableVibrate: true,
       showBadge: true,
       sound: "default",
+      lockscreenVisibility: 1, // AndroidNotificationVisibility.PUBLIC
     }).catch(() => {/* ignore if module not available */});
+
+    // ── Reply action category ─────────────────────────────────────────────────
+    // Adds a "Reply" button to every chat notification. Tapping it opens an
+    // inline text field; submitting sends the text back to the JS layer via
+    // addNotificationResponseReceivedListener below.
+    Notifications.setNotificationCategoryAsync("chat_message", [
+      {
+        identifier: "reply",
+        buttonTitle: "Reply",
+        textInput: {
+          submitButtonTitle: "Send",
+          placeholder: "Type a reply…",
+        },
+        options: {
+          opensAppToForeground: true,
+        },
+      },
+    ]).catch(() => {/* ignore */});
+
+    // ── Response listener (module-level, registered once) ─────────────────────
+    // Fires when the user taps "Send" on an inline reply.
+    Notifications.addNotificationResponseReceivedListener((response: any) => {
+      if (
+        response.actionIdentifier === "reply" &&
+        typeof response.userText === "string" &&
+        response.userText.trim()
+      ) {
+        _replyHandler?.(response.userText.trim());
+      }
+    });
   }
 } catch {
   // Native module not available — rebuild with: npx expo run:android
@@ -75,13 +105,6 @@ export async function requestNotificationPermissions(): Promise<boolean> {
 
 // ─── Push Token Registration ──────────────────────────────────────────────────
 
-/**
- * Requests permissions, gets the Expo push token for this device,
- * and caches it in SecureStore. Returns null if unavailable.
- *
- * Pass the returned token to your backend so it can send push notifications
- * via sendExpoPushNotification() or Expo's REST API.
- */
 export async function registerForPushNotifications(): Promise<string | null> {
   try {
     if (!Notifications) return null;
@@ -89,12 +112,9 @@ export async function registerForPushNotifications(): Promise<string | null> {
     const granted = await requestNotificationPermissions();
     if (!granted) return null;
 
-    // Return cached token if we already registered this session
     const stored = await SecureStore.getItemAsync(SK_PUSH_TOKEN);
     if (stored) return stored;
 
-    // Expo Push Service needs the EAS project ID for production tokens.
-    // Configure via: app.config.ts extra.eas.projectId
     const projectId: string | undefined =
       (Constants.expoConfig?.extra as Record<string, unknown> | undefined)?.eas?.projectId as string | undefined ??
       Constants.easConfig?.projectId;
@@ -113,9 +133,6 @@ export async function registerForPushNotifications(): Promise<string | null> {
   }
 }
 
-/**
- * Returns the cached push token without re-registering.
- */
 export async function getCachedPushToken(): Promise<string | null> {
   try {
     return await SecureStore.getItemAsync(SK_PUSH_TOKEN);
@@ -137,10 +154,13 @@ export async function showLocalNotification(
         title,
         body: body.length > 100 ? `${body.slice(0, 97)}…` : body,
         sound: "default",
-        // Android: route to our named channel so the OnlyMonkes icon is used
-        ...(Platform.OS === "android" ? { channelId: NOTIFICATION_CHANNEL_ID } : {}),
+        // Route to MAX importance channel so Android shows heads-up
+        ...(Platform.OS === "android" ? {
+          channelId: NOTIFICATION_CHANNEL_ID,
+          categoryIdentifier: "chat_message",  // attaches the Reply button
+        } : {}),
       },
-      trigger: null, // show immediately
+      trigger: null, // immediate
     });
   } catch {
     // Silently ignore — permission denied or module not ready
@@ -165,16 +185,6 @@ interface ExpoPushMessage {
   badge?: number;
 }
 
-/**
- * Send a push notification via Expo's Push Service.
- *
- * Call this from your backend / serverless function (Vercel, Cloudflare, etc.)
- * with the recipient's Expo push token.
- *
- * Example serverless usage:
- *   import { sendExpoPushNotification } from "@/lib/notifications";
- *   await sendExpoPushNotification(token, "New message", "Jump.skr: gm!");
- */
 export async function sendExpoPushNotification(
   expoPushToken: string,
   title: string,

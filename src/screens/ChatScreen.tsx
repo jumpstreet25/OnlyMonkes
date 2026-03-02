@@ -53,7 +53,7 @@ import { NftPickerModal } from "@/components/NftPickerModal";
 import { router } from "expo-router";
 import { THEME, FONTS } from "@/lib/constants";
 import { loadUserProfile, getCachedProfile, saveSelectedNftMint, cacheProfile } from "@/lib/userProfile";
-import { registerForPushNotifications } from "@/lib/notifications";
+import { registerForPushNotifications, setNotificationReplyHandler } from "@/lib/notifications";
 import { loadEvents } from "@/lib/calendar";
 import { loadThemeId, loadCustomColor } from "@/lib/theme";
 import { sendSkrTip } from "@/lib/solana";
@@ -142,6 +142,16 @@ export default function ChatScreen() {
     if (!isGroupMember) return;
     registerForPushNotifications().catch(() => {/* silently ignore */});
   }, [isGroupMember]);
+
+  // ─── Wire notification inline-reply → XMTP send ───────────────────────────
+  // When user hits "Reply" on a heads-up notification, the typed text is
+  // delivered here and sent directly to the group chat.
+  useEffect(() => {
+    if (!isGroupMember) return;
+    setNotificationReplyHandler((text) => {
+      send(text).catch((err) => console.warn("[Notifications] Reply send failed:", err));
+    });
+  }, [isGroupMember, send]);
 
   // ─── Stream heartbeat ─────────────────────────────────────────────────────────
   // Every 15s: if stream is dead → reconnect; if alive → sync missed messages.
