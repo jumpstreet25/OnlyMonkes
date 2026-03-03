@@ -21,11 +21,13 @@ import {
   ScrollView,
   Linking,
 } from "react-native";
+import * as Haptics from "expo-haptics";
 import { THEME, FONTS } from "@/lib/constants";
 import { useChatStore } from "@/store/chatStore";
 import { useAppStore } from "@/store/appStore";
-import { getCachedProfile } from "@/lib/userProfile";
+import { getCachedProfile, useProfileVersion } from "@/lib/userProfile";
 import { shortenAddress } from "@/lib/nftVerification";
+import type { ProfileTarget } from "@/components/UserProfileModal";
 
 const DRAWER_WIDTH_RATIO = 0.82;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
@@ -39,6 +41,7 @@ interface MenuDrawerProps {
   onCreateEvent?: () => void;
   onSearch?: () => void;
   onMonkeTools?: () => void;
+  onPressUser?: (target: ProfileTarget) => void;
 }
 
 interface ActiveUser {
@@ -54,7 +57,7 @@ interface SharedLink {
   sentAt: Date;
 }
 
-export function MenuDrawer({ visible, onClose, onCreateEvent, onSearch, onMonkeTools }: MenuDrawerProps) {
+export function MenuDrawer({ visible, onClose, onCreateEvent, onSearch, onMonkeTools, onPressUser }: MenuDrawerProps) {
   const { width: SCREEN_WIDTH } = useWindowDimensions();
   const DRAWER_WIDTH = SCREEN_WIDTH * DRAWER_WIDTH_RATIO;
 
@@ -62,6 +65,9 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onSearch, onMonkeT
   const { messages } = useChatStore();
   const { calendarEvents, myInboxId, username } = useAppStore();
   const [activeTab, setActiveTab] = useState<Tab>("members");
+
+  // Re-render whenever any profile PFP updates (instant avatar refresh)
+  useProfileVersion();
 
   useEffect(() => {
     Animated.timing(slideAnim, {
@@ -243,8 +249,21 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onSearch, onMonkeT
                   const cached = getCachedProfile(user.inboxId);
                   const name = cached?.username ?? user.username ?? shortenAddress(user.inboxId);
                   const avatarUri = cached?.nftImage ?? user.nftImage ?? null;
+                  const handleTap = () => {
+                    if (!onPressUser) return;
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    onPressUser({
+                      senderAddress: user.inboxId,
+                      senderUsername: name,
+                      senderNft: avatarUri ? { mint: "", name: "", image: avatarUri } : null,
+                    });
+                  };
                   return (
-                    <View key={user.inboxId} style={styles.userRow}>
+                    <Pressable
+                      key={user.inboxId}
+                      style={({ pressed }) => [styles.userRow, pressed && { opacity: 0.7 }]}
+                      onPress={handleTap}
+                    >
                       {avatarUri ? (
                         <Image source={{ uri: avatarUri }} style={styles.userAvatar} />
                       ) : (
@@ -257,7 +276,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onSearch, onMonkeT
                         <Text style={styles.userTime}>{formatRelative(user.lastSeen)}</Text>
                       </View>
                       <View style={styles.onlineDot} />
-                    </View>
+                    </Pressable>
                   );
                 })
               )}

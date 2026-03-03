@@ -416,6 +416,7 @@ export default function ChatScreen() {
         onCreateEvent={() => setCalendarOpen(true)}
         onSearch={() => setSearchOpen(true)}
         onMonkeTools={() => setToolsOpen(true)}
+        onPressUser={(target) => { setDrawerOpen(false); setTimeout(() => setProfileTarget(target), 300); }}
       />
 
       <SearchModal visible={searchOpen} onClose={() => setSearchOpen(false)} />

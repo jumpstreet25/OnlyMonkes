@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -63,6 +64,24 @@ const AK_PROFILE_CACHE = 'profile_cache_v2';
 const _profileCache = new Map<string, CachedProfile>();
 let _persistTimer: ReturnType<typeof setTimeout> | null = null;
 
+// ─── Instant-update subscriber system ────────────────────────────────────────
+// Call useProfileVersion() in any component to auto-rerender on PFP changes.
+const _cacheListeners = new Set<() => void>();
+
+function _notifyProfileListeners() {
+  _cacheListeners.forEach(fn => fn());
+}
+
+export function useProfileVersion(): number {
+  const [v, setV] = useState(0);
+  useEffect(() => {
+    const handler = () => setV(n => n + 1);
+    _cacheListeners.add(handler);
+    return () => { _cacheListeners.delete(handler); };
+  }, []);
+  return v;
+}
+
 /** Load persisted profile cache from AsyncStorage (call once on app start). */
 export async function loadProfileCache(): Promise<void> {
   try {
@@ -94,6 +113,7 @@ export function cacheProfile(inboxId: string, profile: CachedProfile): void {
   }
   _profileCache.set(inboxId, merged);
   _schedulePersist();
+  _notifyProfileListeners();
 }
 
 export function getCachedProfile(inboxId: string): CachedProfile | null {
