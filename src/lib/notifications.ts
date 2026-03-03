@@ -16,8 +16,9 @@ import { Platform } from "react-native";
 
 const SK_PUSH_TOKEN = "push_token";
 
-// Android notification channel — MAX importance = guaranteed heads-up pop-up
-export const NOTIFICATION_CHANNEL_ID = "onlymonkes_chat";
+// Android notification channel — v2 forces a fresh channel with MAX importance.
+// (Android caches channel settings; a new ID guarantees heads-up on all devices.)
+export const NOTIFICATION_CHANNEL_ID = "onlymonkes_chat_v2";
 
 // ── Module-level reply callback ───────────────────────────────────────────────
 // Set by ChatScreen once XMTP is connected so inline replies go straight to chat.

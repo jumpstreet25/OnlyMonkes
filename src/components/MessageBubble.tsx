@@ -34,7 +34,7 @@ import { format } from "date-fns";
 import { THEME, FONTS, REACTIONS } from "@/lib/constants";
 import { shortenAddress } from "@/lib/nftVerification";
 import { useAppStore } from "@/store/appStore";
-import { getCachedProfile } from "@/lib/userProfile";
+import { getCachedProfile, useProfileVersion } from "@/lib/userProfile";
 import { getOrExtractNftColor, readableTextColor } from "@/lib/nftColor";
 import { searchStickers, type GiphyItem } from "@/lib/giphy";
 import type { ChatMessage, ReactionEmoji } from "@/types";
@@ -66,17 +66,27 @@ export const MessageBubble = memo(function MessageBubble({
   // Max bubble width is 72% of screen minus horizontal padding (14px each side)
   const mediaWidth = Math.round(SCREEN_W * 0.72 - 28);
 
-  // ── PFP-derived bubble color ─────────────────────────────────────────────
-  const cachedNftImageForColor = getCachedProfile(message.senderAddress)?.nftImage;
-  const senderImageUrl = isOwn
-    ? (verifiedNft?.image ?? null)
-    : (message.senderNft?.image ?? cachedNftImageForColor ?? null);
-  const colorCacheKey = isOwn ? (myInboxId ?? "own") : message.senderAddress;
+  // Re-render instantly whenever any profile cache entry changes (PFP updates)
+  useProfileVersion();
 
-  const [bubbleColor, setBubbleColor] = useState<string>(FALLBACK_BUBBLE);
-  const [textColor, setTextColor] = useState<string>("#FFFFFF");
+  // ── Bubble color: own messages use NFT-derived color, others use flat surface ─
+  // Others get THEME.surfaceHigh so the chat doesn't look like a purple rainbow.
+  const senderImageUrl = isOwn ? (verifiedNft?.image ?? null) : null;
+  const colorCacheKey  = myInboxId ?? "own";
+
+  const [bubbleColor, setBubbleColor] = useState<string>(
+    isOwn ? FALLBACK_BUBBLE : THEME.surfaceHigh
+  );
+  const [textColor, setTextColor] = useState<string>(
+    isOwn ? "#FFFFFF" : THEME.text
+  );
 
   useEffect(() => {
+    if (!isOwn) {
+      setBubbleColor(THEME.surfaceHigh);
+      setTextColor(THEME.text);
+      return;
+    }
     let cancelled = false;
     getOrExtractNftColor(senderImageUrl, colorCacheKey).then((color) => {
       if (!cancelled) {
@@ -85,7 +95,7 @@ export const MessageBubble = memo(function MessageBubble({
       }
     });
     return () => { cancelled = true; };
-  }, [senderImageUrl, colorCacheKey]);
+  }, [isOwn, senderImageUrl, colorCacheKey]);
 
   // Dynamic aspect ratio for GIF / IMAGE — computed from actual image dimensions on load
   const [imgAspect, setImgAspect] = useState<number>(3 / 4); // sensible portrait default
@@ -172,16 +182,15 @@ export const MessageBubble = memo(function MessageBubble({
     })
   ).current;
 
-  const displayName =
-    getCachedProfile(message.senderAddress)?.username ??
-    message.senderUsername ??
-    shortenAddress(message.senderAddress);
+  // Re-read from cache on every render (re-render triggered by useProfileVersion above)
+  const cachedSender = getCachedProfile(message.senderAddress);
+  const displayName  = cachedSender?.username ?? message.senderUsername ?? shortenAddress(message.senderAddress);
 
   // ── Avatar ────────────────────────────────────────────────────────────────
-  // Own: use live verifiedNft. Others: prefer fresh profile cache first.
+  // Own: use live verifiedNft. Others: always prefer fresh profile cache.
   const avatarUri = isOwn
     ? (verifiedNft?.image ?? null)
-    : (getCachedProfile(message.senderAddress)?.nftImage ?? message.senderNft?.image ?? null);
+    : (cachedSender?.nftImage ?? message.senderNft?.image ?? null);
 
   // ── Media detection (GIF / photo — rendered without bubble background) ───
   const isMedia =
