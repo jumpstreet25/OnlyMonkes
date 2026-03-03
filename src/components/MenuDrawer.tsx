@@ -25,7 +25,7 @@ import * as Haptics from "expo-haptics";
 import { THEME, FONTS } from "@/lib/constants";
 import { useChatStore } from "@/store/chatStore";
 import { useAppStore } from "@/store/appStore";
-import { getCachedProfile, useProfileVersion } from "@/lib/userProfile";
+import { getCachedProfile, useProfileVersion, getAllTimeUsers } from "@/lib/userProfile";
 import { shortenAddress } from "@/lib/nftVerification";
 import type { ProfileTarget } from "@/components/UserProfileModal";
 
@@ -133,11 +133,9 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onSearch, onMonkeT
     return messages.filter((m) => m.content.startsWith("IMAGE:") || m.content.startsWith("GIF:"));
   }, [messages]);
 
-  const allTimeUsers = useMemo<number>(() => {
-    const seen = new Set<string>();
-    for (const msg of messages) seen.add(msg.senderAddress);
-    return seen.size;
-  }, [messages]);
+  // Read directly from the persistent all-time registry.
+  // useProfileVersion() above ensures re-render when trackUser() adds new entries.
+  const allTimeUsers = getAllTimeUsers().size;
 
   // Sort events: upcoming first
   const sortedEvents = useMemo(() => {

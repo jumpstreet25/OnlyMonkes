@@ -119,3 +119,74 @@ export function cacheProfile(inboxId: string, profile: CachedProfile): void {
 export function getCachedProfile(inboxId: string): CachedProfile | null {
   return _profileCache.get(inboxId) ?? null;
 }
+
+// ─── All-time user registry ───────────────────────────────────────────────────
+// Persistent set of every unique inboxId that has ever appeared in the chat.
+// Never shrinks, survives app restarts, never double-counts the same wallet.
+
+const AK_ALL_TIME_USERS = 'all_time_users_v1';
+// inboxId → display name (empty string if unknown at time of first sighting)
+const _allTimeUsers = new Map<string, string>();
+let _allTimePersistTimer: ReturnType<typeof setTimeout> | null = null;
+
+function _scheduleAllTimePersist() {
+  if (_allTimePersistTimer) clearTimeout(_allTimePersistTimer);
+  _allTimePersistTimer = setTimeout(async () => {
+    try {
+      const obj: Record<string, string> = {};
+      _allTimeUsers.forEach((v, k) => { obj[k] = v; });
+      await AsyncStorage.setItem(AK_ALL_TIME_USERS, JSON.stringify(obj));
+    } catch { /* ignore */ }
+  }, 600);
+}
+
+/**
+ * Load the all-time user registry from AsyncStorage, then seed any entries
+ * that are already known from the profile cache but not yet in the registry.
+ * Call once on app startup, after loadProfileCache().
+ */
+export async function loadAllTimeUsers(): Promise<void> {
+  try {
+    const raw = await AsyncStorage.getItem(AK_ALL_TIME_USERS);
+    if (raw) {
+      const obj = JSON.parse(raw) as Record<string, string>;
+      for (const [k, v] of Object.entries(obj)) {
+        _allTimeUsers.set(k, v);
+      }
+    }
+  } catch { /* ignore */ }
+
+  // Seed from profile cache so users seen before this feature existed are counted
+  _profileCache.forEach((profile, inboxId) => {
+    if (!_allTimeUsers.has(inboxId)) {
+      _allTimeUsers.set(inboxId, profile.username ?? "");
+    }
+  });
+}
+
+/**
+ * Record a user as having ever used the app. Safe to call many times for the
+ * same inboxId — only the first call per wallet counts; subsequent calls only
+ * update the stored name if we now have one we didn't have before.
+ */
+export function trackUser(inboxId: string, username?: string): void {
+  if (!inboxId) return;
+  const existing = _allTimeUsers.get(inboxId);
+  if (existing !== undefined) {
+    // Already tracked — only update name if we now have one
+    if (username && !existing) {
+      _allTimeUsers.set(inboxId, username);
+      _scheduleAllTimePersist();
+      _notifyProfileListeners();
+    }
+    return;
+  }
+  _allTimeUsers.set(inboxId, username ?? "");
+  _scheduleAllTimePersist();
+  _notifyProfileListeners();
+}
+
+/** Returns the full all-time user map: inboxId → name. */
+export function getAllTimeUsers(): Map<string, string> {
+  return _allTimeUsers;
+}
