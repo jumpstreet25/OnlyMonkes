@@ -35,7 +35,7 @@ import {
   sendEventMessage,
 } from "@/lib/xmtp";
 import { verifyNftMintInCollection } from "@/lib/nftVerification";
-import { cacheProfile, getCachedProfile, loadProfileCache } from "@/lib/userProfile";
+import { cacheProfile, getCachedProfile, loadProfileCache, trackUser, loadAllTimeUsers } from "@/lib/userProfile";
 import { parseEventMessage, saveEvent } from "@/lib/calendar";
 import {
   fetchAppConfig,
@@ -104,8 +104,9 @@ export function useXmtp() {
     setError(null);
 
     try {
-      // ── 0. Restore profile cache so PFPs are available before history loads ─
+      // ── 0. Restore profile cache + all-time user registry ─────────────────
       await loadProfileCache();
+      await loadAllTimeUsers();
 
       // ── 1. Boot XMTP client ────────────────────────────────────────────────
       const client = await initXmtpClient();
@@ -277,7 +278,10 @@ export function useXmtp() {
           if (typeof content === "string" && content.startsWith("PROFILE_UPDATE:")) {
             try {
               const data = JSON.parse(content.slice("PROFILE_UPDATE:".length));
-              if (data.id) cacheProfile(data.id, { username: data.u || undefined, bio: data.b || undefined, xAccount: data.x || undefined, walletAddress: data.w || undefined, tipWallet: data.tw || undefined, nftImage: data.ni || undefined });
+              if (data.id) {
+                cacheProfile(data.id, { username: data.u || undefined, bio: data.b || undefined, xAccount: data.x || undefined, walletAddress: data.w || undefined, tipWallet: data.tw || undefined, nftImage: data.ni || undefined });
+                trackUser(data.id, data.u || undefined);
+              }
             } catch { /* ignore */ }
           } else if (typeof content === "string" && content.startsWith("EVENT:")) {
             try {
@@ -303,6 +307,9 @@ export function useXmtp() {
           }
         } catch { /* skip */ }
       }
+
+      // Track every message sender in the all-time registry
+      for (const msg of decoded) trackUser(msg.senderAddress, msg.senderUsername);
 
       // Populate senderNft from profile cache so avatars always show correctly
       const historyMessages = decoded.map(enrichWithNft);
@@ -363,7 +370,10 @@ export function useXmtp() {
         if (typeof content === "string" && content.startsWith("PROFILE_UPDATE:")) {
           try {
             const data = JSON.parse(content.slice("PROFILE_UPDATE:".length));
-            if (data.id) cacheProfile(data.id, { username: data.u || undefined, bio: data.b || undefined, xAccount: data.x || undefined, walletAddress: data.w || undefined, tipWallet: data.tw || undefined, nftImage: data.ni || undefined });
+            if (data.id) {
+              cacheProfile(data.id, { username: data.u || undefined, bio: data.b || undefined, xAccount: data.x || undefined, walletAddress: data.w || undefined, tipWallet: data.tw || undefined, nftImage: data.ni || undefined });
+              trackUser(data.id, data.u || undefined);
+            }
           } catch { /* ignore */ }
           return;
         }
@@ -381,6 +391,9 @@ export function useXmtp() {
 
         const msg = decodeMessage(raw, _myInboxId);
         if (!msg) return;
+
+        // Record every sender in the all-time registry
+        trackUser(msg.senderAddress, msg.senderUsername);
 
         // Skip own messages — already shown as optimistic bubbles
         if (msg.senderAddress === _myInboxId) return;
