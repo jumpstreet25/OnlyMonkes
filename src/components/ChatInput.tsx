@@ -8,7 +8,7 @@
  *  - Send button (gradient, disabled when empty)
  */
 
-import React, { useRef, useCallback, useEffect } from "react";
+import React, { useRef, useCallback, useEffect, useMemo } from "react";
 import {
   View,
   Text,
@@ -23,7 +23,15 @@ import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { THEME, FONTS, MAX_MESSAGE_LENGTH } from "@/lib/constants";
 import { shortenAddress } from "@/lib/nftVerification";
+import { getAllTimeUsers, getCachedProfile } from "@/lib/userProfile";
+import { useAppStore } from "@/store/appStore";
 import type { ChatMessage } from "@/types";
+
+function getActiveMention(text: string): { start: number; query: string } | null {
+  const match = text.match(/@(\w*)$/);
+  if (!match) return null;
+  return { start: text.length - match[0].length, query: match[1] };
+}
 
 interface TypingUser { inboxId: string; username?: string; }
 
@@ -59,6 +67,27 @@ export function ChatInput({
   const inputRef = useRef<TextInput>(null);
   const bounceAnim = useRef(new Animated.Value(0)).current;
   const hasTypers = !!(typingUsers && typingUsers.length > 0);
+  const { myInboxId } = useAppStore();
+
+  const activeMention = getActiveMention(value);
+  const suggestions: { inboxId: string; username: string }[] = useMemo(() => {
+    if (!activeMention) return [];
+    const q = activeMention.query.toLowerCase();
+    const results: { inboxId: string; username: string }[] = [];
+    getAllTimeUsers().forEach((name, inboxId) => {
+      if (name && name.toLowerCase().startsWith(q) && inboxId !== myInboxId) {
+        results.push({ inboxId, username: name });
+      }
+    });
+    return results.slice(0, 6);
+  }, [activeMention?.query, value]);
+
+  const insertMention = useCallback((username: string) => {
+    const match = value.match(/@(\w*)$/);
+    if (!match) return;
+    const newText = value.slice(0, value.length - match[0].length) + `@${username} `;
+    onChangeText(newText);
+  }, [value, onChangeText]);
 
   // Bounce animation — runs while any remote user is typing
   useEffect(() => {
@@ -96,6 +125,24 @@ export function ChatInput({
 
   return (
     <View style={styles.container}>
+      {/* Mention suggestions */}
+      {suggestions.length > 0 && (
+        <View style={styles.mentionList}>
+          {suggestions.map(({ inboxId, username }) => {
+            const avatar = getCachedProfile(inboxId)?.nftImage;
+            return (
+              <Pressable key={inboxId} style={styles.mentionRow} onPress={() => insertMention(username)}>
+                {avatar
+                  ? <Image source={{ uri: avatar }} style={styles.mentionAvatar} />
+                  : <View style={[styles.mentionAvatar, styles.mentionAvatarFallback]} />
+                }
+                <Text style={styles.mentionUsername}>@{username}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
+
       {/* Typing indicator */}
       {hasTypers && (
         <Animated.View
@@ -388,4 +435,27 @@ const styles = StyleSheet.create({
     color: "#FFD700",
     letterSpacing: 0.5,
   },
+
+  // ── @mention suggestion list ────────────────────────────────────────────────
+  mentionList: {
+    backgroundColor: THEME.surface,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    borderRadius: 12,
+    marginHorizontal: 8,
+    marginBottom: 6,
+    overflow: "hidden",
+  },
+  mentionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: THEME.border,
+  },
+  mentionAvatar: { width: 28, height: 28, borderRadius: 14 },
+  mentionAvatarFallback: { backgroundColor: THEME.border },
+  mentionUsername: { fontFamily: FONTS.bodyMed, fontSize: 14, color: THEME.text },
 });

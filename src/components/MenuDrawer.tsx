@@ -26,6 +26,7 @@ import { THEME, FONTS } from "@/lib/constants";
 import { useChatStore } from "@/store/chatStore";
 import { useAppStore } from "@/store/appStore";
 import { getCachedProfile, useProfileVersion, getAllTimeUsers } from "@/lib/userProfile";
+import { getLeaderboard, getWeekLabel, type LeaderboardEntry } from "@/lib/activityTracker";
 import { shortenAddress } from "@/lib/nftVerification";
 import type { ProfileTarget } from "@/components/UserProfileModal";
 
@@ -137,6 +138,8 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onSearch, onMonkeT
   // useProfileVersion() above ensures re-render when trackUser() adds new entries.
   const allTimeUsers = getAllTimeUsers().size;
 
+  const leaderboard = useMemo<LeaderboardEntry[]>(() => getLeaderboard(10), [messages]);
+
   // Sort events: upcoming first
   const sortedEvents = useMemo(() => {
     return [...calendarEvents].sort((a, b) => {
@@ -222,6 +225,47 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onSearch, onMonkeT
           {/* ── Members ─────────────────────────────────────────────────────── */}
           {activeTab === "members" && (
             <>
+              {/* 🏆 Top Monkes leaderboard */}
+              {leaderboard.length > 0 && (
+                <View style={styles.leaderboardCard}>
+                  <Text style={styles.leaderboardTitle}>🏆 Top Monkes · {getWeekLabel()}</Text>
+                  {leaderboard.slice(0, 3).map((entry, idx) => {
+                    const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : '🥉';
+                    const cached = getCachedProfile(entry.inboxId);
+                    const name = cached?.username ?? shortenAddress(entry.inboxId);
+                    const avatarUri = cached?.nftImage ?? null;
+                    return (
+                      <Pressable
+                        key={entry.inboxId}
+                        style={({ pressed }) => [styles.leaderRow, pressed && { opacity: 0.7 }]}
+                        onPress={() => {
+                          if (!onPressUser) return;
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          onPressUser({
+                            senderAddress: entry.inboxId,
+                            senderUsername: name,
+                            senderNft: avatarUri ? { mint: '', name: '', image: avatarUri } : null,
+                          });
+                        }}
+                      >
+                        <Text style={styles.leaderMedal}>{medal}</Text>
+                        {avatarUri ? (
+                          <Image source={{ uri: avatarUri }} style={styles.leaderAvatar} />
+                        ) : (
+                          <View style={[styles.leaderAvatar, styles.leaderAvatarFallback]}>
+                            <Text style={{ fontSize: 12 }}>🐒</Text>
+                          </View>
+                        )}
+                        <Text style={styles.leaderName} numberOfLines={1}>{name}</Text>
+                        <Text style={styles.leaderStats}>
+                          💬{entry.sent} · 🎯{entry.received} · ❤️{entry.given}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              )}
+
               {/* All-Time stats card */}
               <View style={styles.statsRow}>
                 <View style={styles.statBox}>
@@ -515,6 +559,45 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: 24,
     lineHeight: 20,
+  },
+
+  // Leaderboard card
+  leaderboardCard: {
+    backgroundColor: THEME.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    marginBottom: 12,
+    padding: 12,
+    gap: 8,
+  },
+  leaderboardTitle: {
+    fontFamily: FONTS.displayMed,
+    fontSize: 12,
+    color: THEME.textMuted,
+    marginBottom: 4,
+  },
+  leaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  leaderMedal: { fontSize: 16, width: 22, textAlign: 'center' },
+  leaderAvatar: { width: 28, height: 28, borderRadius: 7, borderWidth: 1, borderColor: THEME.border },
+  leaderAvatarFallback: {
+    backgroundColor: THEME.accentSoft,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  leaderName: {
+    fontFamily: FONTS.displayMed,
+    fontSize: 12,
+    color: THEME.text,
+    flex: 1,
+  },
+  leaderStats: {
+    fontFamily: FONTS.mono,
+    fontSize: 9,
+    color: THEME.textFaint,
   },
 
   // Stats card

@@ -36,6 +36,7 @@ import {
 } from "@/lib/xmtp";
 import { verifyNftMintInCollection } from "@/lib/nftVerification";
 import { cacheProfile, getCachedProfile, loadProfileCache, trackUser, loadAllTimeUsers } from "@/lib/userProfile";
+import { loadWeeklyActivity, trackActivity } from "@/lib/activityTracker";
 import { parseEventMessage, saveEvent } from "@/lib/calendar";
 import {
   fetchAppConfig,
@@ -49,7 +50,9 @@ import { useChatStore } from "@/store/chatStore";
 const _typingTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
 // Throttle own typing broadcasts (one signal per 2.5 s max)
 let _lastTypingSent = 0;
-import { showLocalNotification, detectMention } from "@/lib/notifications";
+import { showLocalNotification, detectMention, CH_ALL, CH_MENTIONS, CH_BOT } from "@/lib/notifications";
+
+const BOT_USERNAME = "AI Agent #9385";
 import type { ChatMessage, ReactionEmoji } from "@/types";
 import type { XmtpClient, XmtpGroup } from "@/lib/xmtp";
 
@@ -57,6 +60,8 @@ import type { XmtpClient, XmtpGroup } from "@/lib/xmtp";
 
 let _group: XmtpGroup | null = null;
 let _client: XmtpClient | null = null;
+
+export function getXmtpClient(): XmtpClient | null { return _client; }
 let _unsubscribeStream: (() => void) | null = null;
 let _myInboxId = "";
 let _streamAlive = false;
@@ -104,9 +109,9 @@ export function useXmtp() {
     setError(null);
 
     try {
-      // ── 0. Restore profile cache + all-time user registry ─────────────────
       await loadProfileCache();
       await loadAllTimeUsers();
+      await loadWeeklyActivity();
 
       // ── 1. Boot XMTP client ────────────────────────────────────────────────
       const client = await initXmtpClient();
@@ -279,7 +284,7 @@ export function useXmtp() {
             try {
               const data = JSON.parse(content.slice("PROFILE_UPDATE:".length));
               if (data.id) {
-                cacheProfile(data.id, { username: data.u || undefined, bio: data.b || undefined, xAccount: data.x || undefined, walletAddress: data.w || undefined, tipWallet: data.tw || undefined, nftImage: data.ni || undefined });
+                cacheProfile(data.id, { username: data.u || undefined, bio: data.b || undefined, xAccount: data.x || undefined, walletAddress: data.w || undefined, tipWallet: data.tw || undefined, nftImage: data.ni || undefined, legendary: !!data.lg });
                 trackUser(data.id, data.u || undefined);
               }
             } catch { /* ignore */ }
@@ -297,10 +302,19 @@ export function useXmtp() {
         .map((m) => decodeMessage(m, _myInboxId))
         .filter(Boolean) as ChatMessage[];
 
+      // Build a quick lookup: messageId → senderInboxId for reaction tracking
+      const _msgSenderMap = new Map<string, string>(decoded.map(m => [m.id, m.senderAddress]));
+
       for (const raw of rawHistory) {
         try {
           const content = raw.content();
           if (typeof content === "string" && content.startsWith("REACT:")) {
+            // Track activity: reactor gave a reaction; target sender received one
+            const parts = content.split(":");
+            const targetId = parts[2] ?? "";
+            trackActivity(raw.senderInboxId as string, 'given');
+            const targetSender = _msgSenderMap.get(targetId);
+            if (targetSender) trackActivity(targetSender, 'received');
             decoded = applyReaction(decoded, raw, _myInboxId);
           } else if (typeof content === "string" && content.startsWith("STICKER_REACT:")) {
             decoded = applyStickerReaction(decoded, raw, _myInboxId);
@@ -308,8 +322,11 @@ export function useXmtp() {
         } catch { /* skip */ }
       }
 
-      // Track every message sender in the all-time registry
-      for (const msg of decoded) trackUser(msg.senderAddress, msg.senderUsername);
+      // Track every message sender in the all-time registry + activity
+      for (const msg of decoded) {
+        trackUser(msg.senderAddress, msg.senderUsername);
+        trackActivity(msg.senderAddress, 'sent');
+      }
 
       // Populate senderNft from profile cache so avatars always show correctly
       const historyMessages = decoded.map(enrichWithNft);
@@ -332,7 +349,13 @@ export function useXmtp() {
         }
 
         if (typeof content === "string" && content.startsWith("REACT:")) {
+          // Track activity for streamed reactions
+          const parts = content.split(":");
+          const targetId = parts[2] ?? "";
+          trackActivity(raw.senderInboxId as string, 'given');
           const { messages } = useChatStore.getState();
+          const targetMsg = messages.find(m => m.id === targetId);
+          if (targetMsg) trackActivity(targetMsg.senderAddress, 'received');
           const updated = applyReaction(messages, raw, _myInboxId);
           applyReactionUpdate(updated);
           return;
@@ -371,7 +394,7 @@ export function useXmtp() {
           try {
             const data = JSON.parse(content.slice("PROFILE_UPDATE:".length));
             if (data.id) {
-              cacheProfile(data.id, { username: data.u || undefined, bio: data.b || undefined, xAccount: data.x || undefined, walletAddress: data.w || undefined, tipWallet: data.tw || undefined, nftImage: data.ni || undefined });
+              cacheProfile(data.id, { username: data.u || undefined, bio: data.b || undefined, xAccount: data.x || undefined, walletAddress: data.w || undefined, tipWallet: data.tw || undefined, nftImage: data.ni || undefined, legendary: !!data.lg });
               trackUser(data.id, data.u || undefined);
             }
           } catch { /* ignore */ }
@@ -392,28 +415,39 @@ export function useXmtp() {
         const msg = decodeMessage(raw, _myInboxId);
         if (!msg) return;
 
-        // Record every sender in the all-time registry
+        // Record every sender in the all-time registry + activity
         trackUser(msg.senderAddress, msg.senderUsername);
+        trackActivity(msg.senderAddress, 'sent');
 
         // Skip own messages — already shown as optimistic bubbles
         if (msg.senderAddress === _myInboxId) return;
 
         mergeMessage(enrichWithNft(msg));
 
-        const { notificationsEnabled, mentionsOnly, username } =
+        const { notificationsEnabled, mentionsOnly, botNotificationsEnabled, username } =
           useAppStore.getState();
+
+        const senderLabel = msg.senderUsername ?? msg.senderAddress.slice(0, 6);
+        const isBotMessage = msg.senderUsername === BOT_USERNAME;
+
+        if (isBotMessage) {
+          if (botNotificationsEnabled) {
+            await showLocalNotification(`${senderLabel} 🤖`, msg.content, CH_BOT);
+          }
+          return;
+        }
 
         if (!notificationsEnabled) return;
 
         const isMention = detectMention(msg.content, username ?? "");
         if (mentionsOnly && !isMention) return;
 
-        const senderLabel = msg.senderUsername ?? msg.senderAddress.slice(0, 6);
+        const channelId = isMention ? CH_MENTIONS : CH_ALL;
         const title = isMention
           ? `${senderLabel} mentioned you 🍌`
           : `${senderLabel} in OnlyMonkes`;
 
-        await showLocalNotification(title, msg.content);
+        await showLocalNotification(title, msg.content, channelId);
       });
 
       _streamAlive = true;
@@ -426,7 +460,7 @@ export function useXmtp() {
         _profileBroadcastDone = true;
         (async () => {
           try {
-            const { username, bio, xAccount, wallet, tipWallet, verifiedNft } =
+            const { username, bio, xAccount, wallet, tipWallet, verifiedNft, isLegendary } =
               useAppStore.getState();
             if (!verifiedNft?.image) return;
             await sendProfileUpdate(
@@ -438,6 +472,7 @@ export function useXmtp() {
               wallet?.address ?? null,
               tipWallet ?? null,
               verifiedNft.image,
+              isLegendary,
             );
             cacheProfile(client.inboxId, {
               username: username ?? undefined,
@@ -593,14 +628,15 @@ export function useXmtp() {
   // ── Broadcast own profile to the group ────────────────────────────────────
   const broadcastProfile = useCallback(async () => {
     if (!_group || !_myInboxId) return;
-    const { username, bio, xAccount, wallet, tipWallet, verifiedNft } = useAppStore.getState();
+    const { username, bio, xAccount, wallet, tipWallet, verifiedNft, isLegendary } = useAppStore.getState();
     try {
       await sendProfileUpdate(
         _group, _myInboxId,
         username, bio, xAccount,
         wallet?.address ?? null,
         tipWallet ?? null,
-        verifiedNft?.image ?? null
+        verifiedNft?.image ?? null,
+        isLegendary
       );
       // Keep own cache entry current so PFP is always available locally
       cacheProfile(_myInboxId, {

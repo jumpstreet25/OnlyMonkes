@@ -35,6 +35,7 @@ interface AppState {
   // Notification preferences
   notificationsEnabled: boolean;
   mentionsOnly: boolean;
+  botNotificationsEnabled: boolean;
   // Group membership
   isGroupMember: boolean;
   // Admin
@@ -47,6 +48,10 @@ interface AppState {
   customBubbleColor: string | null;
   // Calendar events
   calendarEvents: CalendarEvent[];
+  // Login streaks
+  loginStreak: number;
+  bestStreak: number;
+  isLegendary: boolean;
 }
 
 interface AppActions {
@@ -63,6 +68,7 @@ interface AppActions {
   setError: (error: string | null) => void;
   setNotificationsEnabled: (enabled: boolean) => void;
   setMentionsOnly: (mentionsOnly: boolean) => void;
+  setBotNotificationsEnabled: (enabled: boolean) => void;
   setIsGroupMember: (isMember: boolean) => void;
   setIsGroupAdmin: (isAdmin: boolean) => void;
   setJoinRequests: (requests: JoinRequest[]) => void;
@@ -73,6 +79,7 @@ interface AppActions {
   setCustomBubbleColor: (color: string | null) => void;
   setCalendarEvents: (events: CalendarEvent[]) => void;
   addCalendarEvent: (event: CalendarEvent) => void;
+  setLoginStreak: (streak: number, best: number, legendary: boolean) => void;
   reset: () => void;
 }
 
@@ -91,6 +98,7 @@ const initialState: AppState = {
   error: null,
   notificationsEnabled: true,
   mentionsOnly: false,
+  botNotificationsEnabled: true,
   isGroupMember: false,
   isGroupAdmin: false,
   joinRequests: [],
@@ -98,6 +106,9 @@ const initialState: AppState = {
   themeId: 'default',
   customBubbleColor: null,
   calendarEvents: [],
+  loginStreak: 0,
+  bestStreak: 0,
+  isLegendary: false,
 };
 
 export const useAppStore = create<AppState & AppActions>((set, get) => ({
@@ -116,6 +127,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   setError: (error) => set({ error }),
   setNotificationsEnabled: (notificationsEnabled) => set({ notificationsEnabled }),
   setMentionsOnly: (mentionsOnly) => set({ mentionsOnly }),
+  setBotNotificationsEnabled: (botNotificationsEnabled) => set({ botNotificationsEnabled }),
   setIsGroupMember: (isGroupMember) => set({ isGroupMember }),
   setIsGroupAdmin: (isGroupAdmin) => set({ isGroupAdmin }),
   setJoinRequests: (joinRequests) => set({ joinRequests }),
@@ -131,5 +143,6 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   setCustomBubbleColor: (customBubbleColor) => set({ customBubbleColor }),
   setCalendarEvents: (calendarEvents) => set({ calendarEvents }),
   addCalendarEvent: (event) => set((s) => ({ calendarEvents: [...s.calendarEvents, event] })),
+  setLoginStreak: (loginStreak, bestStreak, isLegendary) => set({ loginStreak, bestStreak, isLegendary }),
   reset: () => set(initialState),
 }));

@@ -27,8 +27,10 @@ import {
   PanResponder,
   Animated,
   ActivityIndicator,
+  Keyboard,
   useWindowDimensions,
 } from "react-native";
+import { Image as ExpoImage } from "expo-image";
 import * as Haptics from "expo-haptics";
 import { format } from "date-fns";
 import { THEME, FONTS, REACTIONS } from "@/lib/constants";
@@ -50,6 +52,7 @@ interface MessageBubbleProps {
   onPressUser?: (target: ProfileTarget) => void;
   onTip?: (message: ChatMessage) => void;
   onStickerReact?: (url: string, messageId: string) => void;
+  onPressImage?: (url: string) => void;
 }
 
 export const MessageBubble = memo(function MessageBubble({
@@ -60,6 +63,7 @@ export const MessageBubble = memo(function MessageBubble({
   onPressUser,
   onTip,
   onStickerReact,
+  onPressImage,
 }: MessageBubbleProps) {
   const { verifiedNft, myInboxId } = useAppStore();
   const { width: SCREEN_W } = useWindowDimensions();
@@ -103,6 +107,7 @@ export const MessageBubble = memo(function MessageBubble({
   const [pickerVisible, setPickerVisible] = useState(false);
   const [stickerItems, setStickerItems] = useState<GiphyItem[]>([]);
   const [stickersLoading, setStickersLoading] = useState(false);
+  const [reactorsFor, setReactorsFor] = useState<ReactionEmoji | null>(null);
 
   // Fetch stickers when picker opens
   useEffect(() => {
@@ -121,6 +126,7 @@ export const MessageBubble = memo(function MessageBubble({
   }, [pickerVisible]);
 
   const handleLongPress = useCallback(() => {
+    Keyboard.dismiss();
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setPickerVisible(true);
   }, []);
@@ -185,6 +191,9 @@ export const MessageBubble = memo(function MessageBubble({
   // Re-read from cache on every render (re-render triggered by useProfileVersion above)
   const cachedSender = getCachedProfile(message.senderAddress);
   const displayName  = cachedSender?.username ?? message.senderUsername ?? shortenAddress(message.senderAddress);
+  const isLegendarySender = isOwn
+    ? useAppStore.getState().isLegendary
+    : !!(cachedSender?.legendary);
 
   // ── Avatar ────────────────────────────────────────────────────────────────
   // Own: use live verifiedNft. Others: always prefer fresh profile cache.
@@ -249,28 +258,38 @@ export const MessageBubble = memo(function MessageBubble({
         >
           {/* GIF content */}
           {message.content.startsWith("GIF:") ? (
-            <View style={{ width: mediaWidth, borderRadius: 14, overflow: "hidden" }}>
-              <Image
+            <Pressable
+              onPress={() => onPressImage?.(message.content.slice(4))}
+              style={{ width: mediaWidth, borderRadius: 14, overflow: "hidden" }}
+            >
+              <ExpoImage
                 source={{ uri: message.content.slice(4) }}
                 style={{ width: mediaWidth, height: mediaWidth * imgAspect }}
-                resizeMode="contain"
-                onLoad={(e) => {
-                  const { width: w, height: h } = e.nativeEvent.source;
+                contentFit="contain"
+                cachePolicy="disk"
+                priority="normal"
+                onLoad={(e: any) => {
+                  const { width: w, height: h } = e.source;
                   if (w > 0) setImgAspect(h / w);
                 }}
               />
               <View style={styles.gifBadge}>
                 <Text style={styles.gifBadgeText}>GIF</Text>
               </View>
-            </View>
+            </Pressable>
           ) : message.content.startsWith("IMAGE:") ? (
-            <View style={{ width: mediaWidth, borderRadius: 14, overflow: "hidden" }}>
-              <Image
+            <Pressable
+              onPress={() => onPressImage?.(message.content.slice(6))}
+              style={{ width: mediaWidth, borderRadius: 14, overflow: "hidden" }}
+            >
+              <ExpoImage
                 source={{ uri: message.content.slice(6) }}
                 style={{ width: mediaWidth, height: mediaWidth * imgAspect }}
-                resizeMode="contain"
-                onLoad={(e) => {
-                  const { width: w, height: h } = e.nativeEvent.source;
+                contentFit="contain"
+                cachePolicy="disk"
+                priority="normal"
+                onLoad={(e: any) => {
+                  const { width: w, height: h } = e.source;
                   if (w > 0) setImgAspect(h / w);
                 }}
               />
@@ -282,7 +301,7 @@ export const MessageBubble = memo(function MessageBubble({
                   resizeMode="contain"
                 />
               </View>
-            </View>
+            </Pressable>
           ) : message.content.startsWith("STICKER:") ? (
             <Image
               source={{ uri: message.content.slice(8) }}
@@ -299,7 +318,7 @@ export const MessageBubble = memo(function MessageBubble({
         {/* Header: sender name + timestamp — BELOW bubble, ABOVE reactions */}
         <View style={[styles.msgHeader, isOwn && styles.msgHeaderOwn]}>
           <Text style={[styles.sender, isOwn && styles.senderOwn]}>
-            {isOwn ? "You" : displayName}
+            {isOwn ? "You" : displayName}{isLegendarySender ? ' 🌟' : ''}
           </Text>
           <Text style={[styles.time, { color: THEME.textFaint }]}>
             {format(message.sentAt, "HH:mm")}
@@ -320,6 +339,7 @@ export const MessageBubble = memo(function MessageBubble({
                 <Pressable
                   key={emoji}
                   onPress={() => onReact(emoji, message.id)}
+                  onLongPress={() => setReactorsFor(emoji)}
                   hitSlop={8}
                   style={[styles.reactionPill, byMe && styles.reactionPillActive]}
                 >
@@ -401,6 +421,40 @@ export const MessageBubble = memo(function MessageBubble({
               )}
             </View>
           )}
+        </Pressable>
+      </Pressable>
+    </Modal>
+
+    {/* ── Who-Reacted Modal ──────────────────────────────────────────── */}
+    <Modal
+      visible={!!reactorsFor}
+      transparent
+      animationType="slide"
+      onRequestClose={() => setReactorsFor(null)}
+    >
+      <Pressable style={styles.pickerOverlay} onPress={() => setReactorsFor(null)}>
+        <Pressable style={styles.pickerSheet} onPress={e => e.stopPropagation()}>
+          <Text style={styles.reactorTitle}>{reactorsFor}  Reacted</Text>
+          {(reactorsFor ? (message.reactions[reactorsFor]?.reactors ?? []) : []).map(inboxId => {
+            const p = getCachedProfile(inboxId);
+            const name = p?.username ?? shortenAddress(inboxId);
+            return (
+              <View key={inboxId} style={styles.reactorRow}>
+                {p?.nftImage
+                  ? <Image source={{ uri: p.nftImage }} style={styles.reactorAvatar} />
+                  : <View style={[styles.reactorAvatar, styles.reactorAvatarFallback]} />}
+                <Text style={styles.reactorName}>{name}</Text>
+              </View>
+            );
+          })}
+          <Pressable
+            style={styles.reactorToggleBtn}
+            onPress={() => { const e = reactorsFor!; setReactorsFor(null); onReact(e, message.id); }}
+          >
+            <Text style={styles.reactorToggleBtnText}>
+              {reactorsFor && message.reactions[reactorsFor]?.reactedByMe ? 'Remove' : 'Add'} {reactorsFor}
+            </Text>
+          </Pressable>
         </Pressable>
       </Pressable>
     </Modal>
@@ -697,6 +751,43 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: THEME.textFaint,
     marginRight: 2,
+  },
+
+  // ── Who-Reacted sheet ──────────────────────────────────────────────────────
+  reactorTitle: {
+    fontFamily: FONTS.displayMed,
+    fontSize: 15,
+    color: THEME.text,
+    marginBottom: 8,
+  },
+  reactorRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 7,
+    alignSelf: "stretch",
+  },
+  reactorAvatar: { width: 30, height: 30, borderRadius: 15 },
+  reactorAvatarFallback: { backgroundColor: THEME.border },
+  reactorName: {
+    fontFamily: FONTS.bodyMed,
+    fontSize: 14,
+    color: THEME.text,
+  },
+  reactorToggleBtn: {
+    marginTop: 10,
+    alignSelf: "stretch",
+    backgroundColor: THEME.accentSoft,
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: THEME.accent + "55",
+  },
+  reactorToggleBtnText: {
+    fontFamily: FONTS.displayMed,
+    fontSize: 13,
+    color: THEME.accent,
   },
 
   // ── Sticker picker inside long-press sheet ─────────────────────────────────
