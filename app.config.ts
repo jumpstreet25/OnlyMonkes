@@ -44,6 +44,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   scheme: 'onlymonkes',
   extra: {
     heliusApiKey: process.env.HELIUS_API_KEY ?? 'f222b023-3712-4ab5-9dd1-caff88d27c40',
+    giphyApiKey: process.env.GIPHY_API_KEY ?? 'SbYTCZWCjGZAzCGfIzbUSYBoKBgHaHTI',
     nftCollectionAddress:
       process.env.NFT_COLLECTION_ADDRESS ?? 'GokAiStXz2Kqbxwz2oqzfEXuUhE7aXySmBGEP7uejKXF',
     eas: {

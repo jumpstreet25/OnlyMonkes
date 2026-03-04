@@ -3,11 +3,15 @@
  *
  * Expo Notifications → Android heads-up + FCM pipeline.
  *
- * Features:
- *  - MAX importance channel → guaranteed heads-up (peek) on Android
- *  - Inline "Reply" action → user replies without opening the app
- *  - ic_notification.png as small status-bar icon (configured in app.config.ts)
- *  - icon.png (adaptive icon) shown as the large notification icon by Android
+ * Android channel structure (visible in Settings → App info → Notifications):
+ *  ┌─ OnlyMonkes (group)
+ *  │   ├─ All Notifications   [om_all]      — every chat message
+ *  │   ├─ @Mentions           [om_mentions] — messages that @mention you
+ *  │   └─ Bot Notifications   [om_bot]      — AI Agent trade/sales alerts
+ *  └─
+ *
+ * Legacy channels (onlymonkes_chat, onlymonkes_chat_v2) are deleted on startup
+ * so they no longer appear in the settings list.
  */
 
 import * as SecureStore from "expo-secure-store";
@@ -16,12 +20,14 @@ import { Platform } from "react-native";
 
 const SK_PUSH_TOKEN = "push_token";
 
-// Android notification channel — v2 forces a fresh channel with MAX importance.
-// (Android caches channel settings; a new ID guarantees heads-up on all devices.)
-export const NOTIFICATION_CHANNEL_ID = "onlymonkes_chat_v2";
+// ── Channel IDs ───────────────────────────────────────────────────────────────
+export const CH_ALL      = "om_all";       // regular chat messages
+export const CH_MENTIONS = "om_mentions";  // @mention messages
+export const CH_BOT      = "om_bot";       // bot alerts (AI Agent #9385)
+
+const CHANNEL_GROUP_ID = "onlymonkes";
 
 // ── Module-level reply callback ───────────────────────────────────────────────
-// Set by ChatScreen once XMTP is connected so inline replies go straight to chat.
 let _replyHandler: ((text: string) => void) | null = null;
 
 export function setNotificationReplyHandler(fn: (text: string) => void): void {
@@ -46,22 +52,48 @@ try {
   });
 
   if (Platform.OS === "android") {
-    // ── Channel: MAX importance = heads-up on all Android versions ────────────
-    Notifications.setNotificationChannelAsync(NOTIFICATION_CHANNEL_ID, {
-      name: "OnlyMonkes",
-      importance: 5,          // AndroidImportance.MAX
-      vibrationPattern: [0, 200, 100, 200],
-      lightColor: "#FFD700",
-      enableVibrate: true,
-      showBadge: true,
-      sound: "default",
-      lockscreenVisibility: 1, // AndroidNotificationVisibility.PUBLIC
-    }).catch(() => {/* ignore if module not available */});
+    // ── Delete old channels so they vanish from Android's list ────────────────
+    // Android caches channel definitions forever; deleting them cleans the list.
+    (async () => {
+      for (const old of ["onlymonkes_chat", "onlymonkes_chat_v2", "default"]) {
+        try { await Notifications.deleteNotificationChannelAsync(old); } catch { /* ignore */ }
+      }
+    })();
 
-    // ── Reply action category ─────────────────────────────────────────────────
-    // Adds a "Reply" button to every chat notification. Tapping it opens an
-    // inline text field; submitting sends the text back to the JS layer via
-    // addNotificationResponseReceivedListener below.
+    // ── Channel group — "OnlyMonkes" ──────────────────────────────────────────
+    Notifications.setNotificationChannelGroupAsync(CHANNEL_GROUP_ID, {
+      name: "OnlyMonkes",
+    }).catch(() => {/* ignore */});
+
+    // Shared settings for all channels
+    const BASE = {
+      groupId:              CHANNEL_GROUP_ID,
+      importance:           5,           // AndroidImportance.MAX — heads-up
+      vibrationPattern:     [0, 200, 100, 200] as number[],
+      lightColor:           "#FFD700",
+      enableVibrate:        true,
+      showBadge:            true,
+      sound:                "default",
+      lockscreenVisibility: 1,           // AndroidNotificationVisibility.PUBLIC
+    };
+
+    Notifications.setNotificationChannelAsync(CH_ALL, {
+      ...BASE,
+      name: "All Notifications",
+    }).catch(() => {});
+
+    Notifications.setNotificationChannelAsync(CH_MENTIONS, {
+      ...BASE,
+      name: "@Mentions",
+    }).catch(() => {});
+
+    Notifications.setNotificationChannelAsync(CH_BOT, {
+      ...BASE,
+      importance: 4,      // HIGH — still heads-up but one step below MAX
+      name: "Bot Notifications",
+    }).catch(() => {});
+
+    // ── Reply action (attached to chat channels only) ─────────────────────────
     Notifications.setNotificationCategoryAsync("chat_message", [
       {
         identifier: "reply",
@@ -70,14 +102,11 @@ try {
           submitButtonTitle: "Send",
           placeholder: "Type a reply…",
         },
-        options: {
-          opensAppToForeground: true,
-        },
+        options: { opensAppToForeground: true },
       },
-    ]).catch(() => {/* ignore */});
+    ]).catch(() => {});
 
     // ── Response listener (module-level, registered once) ─────────────────────
-    // Fires when the user taps "Send" on an inline reply.
     Notifications.addNotificationResponseReceivedListener((response: any) => {
       if (
         response.actionIdentifier === "reply" &&
@@ -144,9 +173,15 @@ export async function getCachedPushToken(): Promise<string | null> {
 
 // ─── Local Notification ───────────────────────────────────────────────────────
 
+/**
+ * Show an immediate local notification.
+ * Pass one of CH_ALL, CH_MENTIONS, or CH_BOT as `channelId`.
+ * Defaults to CH_ALL.
+ */
 export async function showLocalNotification(
   title: string,
-  body: string
+  body: string,
+  channelId: string = CH_ALL,
 ): Promise<void> {
   try {
     if (!Notifications) return;
@@ -155,10 +190,10 @@ export async function showLocalNotification(
         title,
         body: body.length > 100 ? `${body.slice(0, 97)}…` : body,
         sound: "default",
-        // Route to MAX importance channel so Android shows heads-up
         ...(Platform.OS === "android" ? {
-          channelId: NOTIFICATION_CHANNEL_ID,
-          categoryIdentifier: "chat_message",  // attaches the Reply button
+          channelId,
+          // Attach Reply action only on chat channels (not bot)
+          ...(channelId !== CH_BOT ? { categoryIdentifier: "chat_message" } : {}),
         } : {}),
       },
       trigger: null, // immediate

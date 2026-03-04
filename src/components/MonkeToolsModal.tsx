@@ -37,7 +37,8 @@ const TOOLS = [
 
 export function MonkeToolsModal({ visible, onClose }: MonkeToolsModalProps) {
   const {
-    notificationsEnabled, mentionsOnly, setNotificationsEnabled, setMentionsOnly,
+    notificationsEnabled, mentionsOnly, botNotificationsEnabled,
+    setNotificationsEnabled, setMentionsOnly, setBotNotificationsEnabled,
   } = useAppStore();
 
   return (
@@ -127,6 +128,23 @@ export function MonkeToolsModal({ visible, onClose }: MonkeToolsModalProps) {
                 disabled={!notificationsEnabled}
                 trackColor={{ false: THEME.border, true: THEME.accent + "88" }}
                 thumbColor={mentionsOnly ? THEME.accent : THEME.textFaint}
+              />
+            </View>
+
+            <View style={styles.settingDivider} />
+
+            <View style={styles.settingRow}>
+              <View style={styles.settingInfo}>
+                <Text style={styles.settingTitle}>Bot notifications</Text>
+                <Text style={styles.settingDesc}>
+                  Alerts from AI Agent (trade signals, announcements)
+                </Text>
+              </View>
+              <Switch
+                value={botNotificationsEnabled}
+                onValueChange={setBotNotificationsEnabled}
+                trackColor={{ false: THEME.border, true: THEME.accent + "88" }}
+                thumbColor={botNotificationsEnabled ? THEME.accent : THEME.textFaint}
               />
             </View>
           </View>

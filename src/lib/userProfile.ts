@@ -58,6 +58,8 @@ export interface CachedProfile {
   walletAddress?: string;
   tipWallet?: string;
   nftImage?: string | null;
+  cachedAt?: number;          // epoch ms of last write
+  legendary?: boolean;
 }
 
 const AK_PROFILE_CACHE = 'profile_cache_v2';
@@ -106,11 +108,18 @@ function _schedulePersist() {
 }
 
 export function cacheProfile(inboxId: string, profile: CachedProfile): void {
-  const merged = { ..._profileCache.get(inboxId), ...profile };
-  // Strip explicit undefined/null nftImage so we don't overwrite a good image with null
-  if (profile.nftImage === null && _profileCache.get(inboxId)?.nftImage) {
-    merged.nftImage = _profileCache.get(inboxId)!.nftImage;
+  const existing = _profileCache.get(inboxId);
+  const SIX_HOURS = 6 * 3600_000;
+  // Don't overwrite a fresh nftImage with a potentially stale one
+  if (profile.nftImage !== undefined && existing?.nftImage
+      && existing.cachedAt && Date.now() - existing.cachedAt < SIX_HOURS) {
+    delete profile.nftImage; // keep the existing fresh image
   }
+  // Strip explicit null nftImage if we already have a good one
+  if (profile.nftImage === null && existing?.nftImage) {
+    delete profile.nftImage;
+  }
+  const merged = { ...existing, ...profile, cachedAt: Date.now() };
   _profileCache.set(inboxId, merged);
   _schedulePersist();
   _notifyProfileListeners();

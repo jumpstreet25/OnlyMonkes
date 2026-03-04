@@ -386,7 +386,8 @@ export async function sendProfileUpdate(
   xAccount?: string | null,
   walletAddress?: string | null,
   tipWallet?: string | null,
-  nftImage?: string | null
+  nftImage?: string | null,
+  legendary?: boolean
 ): Promise<void> {
   const payload = JSON.stringify({
     id: inboxId,
@@ -396,6 +397,7 @@ export async function sendProfileUpdate(
     w: walletAddress ?? "",
     tw: tipWallet ?? "",
     ni: nftImage ?? "",
+    lg: legendary ? 1 : 0,
   });
   await (group as any).send(`PROFILE_UPDATE:${payload}`);
 }
@@ -420,6 +422,23 @@ export async function sendTypingIndicator(
   username?: string | null
 ): Promise<void> {
   await (group as any).send(`TYPING:${inboxId}:${username ?? ""}`);
+}
+
+// ─── Direct Messages ──────────────────────────────────────────────────────────
+
+export async function openOrCreateDm(client: XmtpClient, peerInboxId: string): Promise<any> {
+  return (client.conversations as any).newDm(peerInboxId);
+}
+
+export async function loadDmMessages(dm: any, myInboxId: string): Promise<ChatMessage[]> {
+  await dm.sync();
+  const raw: any[] = await dm.messages({ limit: 50 });
+  return raw.map(r => decodeMessage(r, myInboxId)).filter(Boolean) as ChatMessage[];
+}
+
+export async function sendDmMessage(dm: any, content: string, username?: string | null): Promise<void> {
+  const payload = username ? `MSG:${username}:${content}` : content;
+  await dm.send(payload);
 }
 
 // ─── Sticker Reactions ────────────────────────────────────────────────────────

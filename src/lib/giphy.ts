@@ -5,7 +5,9 @@
  * Uses the v1 REST API with a public API key.
  */
 
-const API_KEY = "SbYTCZWCjGZAzCGfIzbUSYBoKBgHaHTI";
+import Constants from 'expo-constants';
+const API_KEY: string =
+  (Constants.expoConfig?.extra?.giphyApiKey as string) ?? 'SbYTCZWCjGZAzCGfIzbUSYBoKBgHaHTI';
 const BASE_URL = "https://api.giphy.com/v1";
 
 export interface GiphyItem {

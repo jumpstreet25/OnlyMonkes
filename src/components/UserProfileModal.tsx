@@ -36,9 +36,10 @@ interface UserProfileModalProps {
   onChangePfp?: () => void;        // called when user taps "Change PFP" on own card
   onSwitchWallet?: () => void;     // called when user taps "Switch Wallet" on own card
   onLogout?: () => void;           // called when user taps "Log Out" on own card
+  onMessage?: () => void;          // called when user taps "Message" on another user's card
 }
 
-export function UserProfileModal({ visible, target, onClose, onEditProfile, onChangePfp, onSwitchWallet, onLogout }: UserProfileModalProps) {
+export function UserProfileModal({ visible, target, onClose, onEditProfile, onChangePfp, onSwitchWallet, onLogout, onMessage }: UserProfileModalProps) {
   const { myInboxId, username: myUsername, bio: myBio, xAccount: myXAccount, tipWallet: myTipWallet, verifiedNft } = useAppStore();
 
   if (!target) return null;
@@ -130,6 +131,16 @@ export function UserProfileModal({ visible, target, onClose, onEditProfile, onCh
               </Text>
             </View>
           ) : null}
+
+          {/* Message button (other profiles only) */}
+          {!isOwnProfile && onMessage && (
+            <Pressable
+              onPress={() => { onClose(); setTimeout(onMessage!, 300); }}
+              style={styles.messageBtn}
+            >
+              <Text style={styles.messageBtnText}>💬  Message</Text>
+            </Pressable>
+          )}
 
           {/* Edit + Change PFP buttons (own profile only) */}
           {isOwnProfile && (
@@ -382,6 +393,19 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.displayMed,
     fontSize: 14,
     color: "#ff6666",
+  },
+  messageBtn: {
+    alignSelf: 'stretch',
+    backgroundColor: THEME.accent,
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  messageBtnText: {
+    fontFamily: FONTS.displayMed,
+    fontSize: 14,
+    color: '#fff',
   },
   closeBtn: {
     marginTop: 4,

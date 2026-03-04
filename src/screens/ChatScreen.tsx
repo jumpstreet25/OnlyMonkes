@@ -20,6 +20,7 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import Animated, { FadeIn } from "react-native-reanimated";
 import {
   View,
   Text,
@@ -37,8 +38,11 @@ import {
   TextInput,
   Alert,
   AppState,
+  Dimensions,
   type AppStateStatus,
 } from "react-native";
+
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAppStore } from "@/store/appStore";
 import { useChatStore } from "@/store/chatStore";
@@ -53,6 +57,8 @@ import { NftPickerModal } from "@/components/NftPickerModal";
 import { router } from "expo-router";
 import { THEME, FONTS } from "@/lib/constants";
 import { loadUserProfile, getCachedProfile, saveSelectedNftMint, cacheProfile } from "@/lib/userProfile";
+import { checkAndUpdateStreak } from "@/lib/streaks";
+import { ConfettiView } from "@/components/ConfettiView";
 import { registerForPushNotifications, setNotificationReplyHandler } from "@/lib/notifications";
 import { loadEvents } from "@/lib/calendar";
 import { loadThemeId, loadCustomColor } from "@/lib/theme";
@@ -74,6 +80,7 @@ export default function ChatScreen() {
     setUsername, setBio, setXAccount, setTipWallet, setVerified,
     isGroupMember, isGroupAdmin, joinRequests, remoteGroupId,
     setThemeId, setCustomBubbleColor, setCalendarEvents,
+    loginStreak, isLoading, error,
   } = useAppStore();
   const { messages, replyingTo, isLoadingHistory, setReplyingTo, typingUsers } =
     useChatStore();
@@ -98,19 +105,28 @@ export default function ChatScreen() {
   const [addByIdInput, setAddByIdInput] = useState("");
   const [addByIdBusy, setAddByIdBusy] = useState(false);
   const [refreshingRequests, setRefreshingRequests] = useState(false);
+  const [showConfetti, setShowConfetti] = useState(false);
   const [gifPickerOpen, setGifPickerOpen] = useState(false);
   const [pfpGifPickerOpen, setPfpGifPickerOpen] = useState(false);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [adminRecoveryOpen, setAdminRecoveryOpen] = useState(false);
   const [adminRecoveryPat, setAdminRecoveryPat] = useState("");
   const [adminRecoveryBusy, setAdminRecoveryBusy] = useState(false);
   const [adminRecoveryError, setAdminRecoveryError] = useState<string | null>(null);
   const flatListRef = useRef<FlatList>(null);
+  const initialMsgIdsRef = useRef<Set<string>>(new Set());
 
   const myAddress = myInboxId ?? "";
 
   // ─── XMTP connect + foreground sync ──────────────────────────────────────────
   useEffect(() => {
-    initialize();
+    initialize().then(async () => {
+      const { justHitLegendary } = await checkAndUpdateStreak();
+      if (justHitLegendary) {
+        setShowConfetti(true);
+        broadcastProfile();
+      }
+    });
 
     // Sync messages when app comes back to foreground (fixes missed msgs on Android)
     let lastState: AppStateStatus = AppState.currentState;
@@ -194,6 +210,13 @@ export default function ChatScreen() {
       cacheProfile(myInboxId, { nftImage: verifiedNft.image });
     }
   }, [myInboxId, verifiedNft]);
+
+  // ─── Record initial message IDs so only new arrivals get FadeIn animation ────
+  useEffect(() => {
+    if (!isLoadingHistory && messages.length > 0 && initialMsgIdsRef.current.size === 0) {
+      initialMsgIdsRef.current = new Set(messages.map(m => m.id));
+    }
+  }, [isLoadingHistory, messages.length]);
 
   // ─── Send ────────────────────────────────────────────────────────────────────
 
@@ -378,17 +401,23 @@ export default function ChatScreen() {
   // ─── Render ──────────────────────────────────────────────────────────────────
 
   const renderMessage: ListRenderItem<ChatMessage> = useCallback(
-    ({ item }) => (
-      <MessageBubble
-        message={item}
-        isOwn={item.senderAddress === myAddress}
-        onReact={handleReact}
-        onReply={setReplyingTo}
-        onPressUser={handlePressUser}
-        onTip={handleTip}
-        onStickerReact={handleStickerReact}
-      />
-    ),
+    ({ item }) => {
+      const isNew = !initialMsgIdsRef.current.has(item.id);
+      return (
+        <Animated.View entering={isNew ? FadeIn.duration(220) : undefined}>
+          <MessageBubble
+            message={item}
+            isOwn={item.senderAddress === myAddress}
+            onReact={handleReact}
+            onReply={setReplyingTo}
+            onPressUser={handlePressUser}
+            onTip={handleTip}
+            onStickerReact={handleStickerReact}
+            onPressImage={setLightboxUrl}
+          />
+        </Animated.View>
+      );
+    },
     [myAddress, handleReact, setReplyingTo, handlePressUser, handleTip, handleStickerReact]
   );
 
@@ -396,6 +425,8 @@ export default function ChatScreen() {
 
   return (
     <>
+      {showConfetti && <ConfettiView onDone={() => setShowConfetti(false)} />}
+
       <UsernameModal
         visible={showUsernameModal || editingProfile}
         onDone={async () => {
@@ -457,6 +488,10 @@ export default function ChatScreen() {
         onChangePfp={allNfts.length > 0 ? () => setPfpPickerOpen(true) : undefined}
         onLogout={async () => { await logout(); router.replace("/"); }}
         onSwitchWallet={async () => { await logout(); router.replace("/"); }}
+        onMessage={profileTarget && profileTarget.senderAddress !== myAddress
+          ? () => router.push(`/dm/${profileTarget.senderAddress}`)
+          : undefined
+        }
       />
 
       <NftPickerModal
@@ -471,6 +506,34 @@ export default function ChatScreen() {
         }}
       />
 
+      {/* ── Image Lightbox ──────────────────────────────────────────────── */}
+      <Modal
+        visible={!!lightboxUrl}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => setLightboxUrl(null)}
+      >
+        <Pressable
+          style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.95)", justifyContent: "center", alignItems: "center" }}
+          onPress={() => setLightboxUrl(null)}
+        >
+          <Image
+            source={{ uri: lightboxUrl ?? "" }}
+            style={{ width: SCREEN_W, height: SCREEN_H * 0.85 }}
+            resizeMode="contain"
+          />
+        </Pressable>
+        <Pressable
+          onPress={() => setLightboxUrl(null)}
+          style={{ position: "absolute", top: 52, right: 16, width: 36, height: 36, borderRadius: 18,
+                   backgroundColor: "rgba(255,255,255,0.15)", alignItems: "center", justifyContent: "center" }}
+          hitSlop={10}
+        >
+          <Text style={{ color: "#FFF", fontSize: 18, fontWeight: "bold" }}>✕</Text>
+        </Pressable>
+      </Modal>
+
       <KeyboardAvoidingView
         style={[styles.container, { paddingTop: insets.top }]}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -478,7 +541,7 @@ export default function ChatScreen() {
       >
         {/* ── Header ────────────────────────────────────────────────────────── */}
         <View style={styles.header}>
-          {/* Left: avatar (tappable — opens own profile) */}
+          {/* Left: avatar (tappable — opens own profile) + streak pill */}
           <Pressable
             style={styles.headerLeft}
             onPress={() => setProfileTarget({
@@ -496,6 +559,11 @@ export default function ChatScreen() {
             ) : (
               <View style={styles.headerNftFallback}>
                 <Text style={styles.headerNftGlyph}>🐒</Text>
+              </View>
+            )}
+            {loginStreak >= 2 && (
+              <View style={styles.streakPill}>
+                <Text style={styles.streakPillText}>🔥{loginStreak}</Text>
               </View>
             )}
           </Pressable>
@@ -687,8 +755,31 @@ export default function ChatScreen() {
           </View>
         </Modal>
 
+        {/* ── Connecting… spinner (before group state is known) ──────────── */}
+        {isLoading && !isGroupMember && (
+          <View style={styles.pendingContainer}>
+            <ActivityIndicator size="large" color={THEME.accent} />
+            <Text style={styles.pendingSubtitle}>Connecting to chat…</Text>
+          </View>
+        )}
+
+        {/* ── Init error — network / XMTP failure ─────────────────────────── */}
+        {!isLoading && !isGroupMember && !!error && (
+          <View style={styles.pendingContainer}>
+            <Text style={styles.pendingIcon}>⚠️</Text>
+            <Text style={styles.pendingTitle}>Connection Failed</Text>
+            <Text style={[styles.pendingSubtitle, { color: THEME.error }]}>{error}</Text>
+            <Pressable style={styles.retryBtn} onPress={() => initialize()}>
+              <Text style={styles.retryBtnText}>↻ Retry</Text>
+            </Pressable>
+            <Pressable onPress={async () => { await logout(); router.replace("/"); }} hitSlop={8}>
+              <Text style={styles.pendingLogoutLink}>Log out</Text>
+            </Pressable>
+          </View>
+        )}
+
         {/* ── Not yet a member — show Access Key so admin can add them ─── */}
-        {remoteGroupId && !isGroupMember && (
+        {!isLoading && !isGroupMember && !error && (
           <View style={styles.pendingContainer}>
             <Text style={styles.pendingIcon}>🐒</Text>
             <Text style={styles.pendingTitle}>Access Pending</Text>
@@ -696,15 +787,20 @@ export default function ChatScreen() {
             <Text style={styles.pendingSubtitle}>
               Share your Access Key with the admin to get added to the chat.
             </Text>
-            <View style={styles.accessKeyBox}>
-              <Text style={styles.accessKeyLabel}>YOUR ACCESS KEY</Text>
-              <Text style={styles.accessKeyValue} selectable numberOfLines={3}>
-                {myAddress}
-              </Text>
-              <Text style={styles.accessKeyHint}>
-                Long-press the key above to copy it, then send it to the admin.
-              </Text>
-            </View>
+            {!!myAddress && (
+              <View style={styles.accessKeyBox}>
+                <Text style={styles.accessKeyLabel}>YOUR ACCESS KEY</Text>
+                <Text style={styles.accessKeyValue} selectable numberOfLines={3}>
+                  {myAddress}
+                </Text>
+                <Text style={styles.accessKeyHint}>
+                  Long-press the key above to copy it, then send it to the admin.
+                </Text>
+              </View>
+            )}
+            <Pressable onPress={async () => { await logout(); router.replace("/"); }} hitSlop={8}>
+              <Text style={styles.pendingLogoutLink}>Log out</Text>
+            </Pressable>
 
             {/* Admin recovery — shown after tapping "Are you the admin?" */}
             {!adminRecoveryOpen ? (
@@ -854,6 +950,22 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   headerNftGlyph: { fontSize: 24 },
+  streakPill: {
+    position: "absolute",
+    bottom: -6,
+    right: -6,
+    backgroundColor: THEME.surface,
+    borderRadius: 8,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderWidth: 1,
+    borderColor: THEME.border,
+  },
+  streakPillText: {
+    fontFamily: FONTS.mono,
+    fontSize: 9,
+    color: THEME.text,
+  },
   headerRight: {
     flexDirection: "row",
     alignItems: "center",
@@ -939,6 +1051,26 @@ const styles = StyleSheet.create({
   },
 
   // ── Access Key box (pending screen) ──────────────────────────────────────────
+  retryBtn: {
+    marginTop: 12,
+    backgroundColor: THEME.accent,
+    borderRadius: 10,
+    paddingVertical: 11,
+    paddingHorizontal: 32,
+    alignItems: "center",
+  },
+  retryBtnText: {
+    fontFamily: FONTS.displayMed,
+    fontSize: 14,
+    color: "#fff",
+  },
+  pendingLogoutLink: {
+    fontFamily: FONTS.mono,
+    fontSize: 11,
+    color: THEME.textFaint,
+    textDecorationLine: "underline",
+    marginTop: 16,
+  },
   accessKeyBox: {
     backgroundColor: THEME.surface,
     borderWidth: 1,
