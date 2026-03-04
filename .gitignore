@@ -22,3 +22,6 @@ dist/
 # Android build outputs
 android/app/build/
 android/.gradle/
+
+# Environment secrets
+.env

@@ -1,3 +1,5 @@
+import Constants from 'expo-constants';
+
 export const APP_NAME = 'OnlyMonkes';
 
 // ─── SKR Token ────────────────────────────────────────────────────────────────
@@ -10,7 +12,8 @@ export const TIP_MIN = 1;
 export const TIP_MAX = 500;
 export const COLLECTION_NAME = 'Saga Monkes';
 export const NFT_COLLECTION_ADDRESS = 'GokAiStXz2Kqbxwz2oqzfEXuUhE7aXySmBGEP7uejKXF';
-export const HELIUS_API_KEY = '***REDACTED_HELIUS_KEY***';
+export const HELIUS_API_KEY: string =
+  (Constants.expoConfig?.extra?.heliusApiKey as string) ?? '***REDACTED_HELIUS_KEY***';
 export const HELIUS_RPC_URL = `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`;
 export const SOLANA_RPC_URL = 'https://api.mainnet-beta.solana.com';
 
