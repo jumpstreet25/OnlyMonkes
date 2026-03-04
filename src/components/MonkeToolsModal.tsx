@@ -16,9 +16,13 @@ import {
   Linking,
   Switch,
   ScrollView,
+  Alert,
+  Platform,
 } from "react-native";
+import * as Clipboard from "expo-clipboard";
 import { THEME, FONTS } from "@/lib/constants";
 import { useAppStore } from "@/store/appStore";
+import { clearPushToken, registerForPushNotifications, scheduleTestNotification } from "@/lib/notifications";
 
 interface MonkeToolsModalProps {
   visible: boolean;
@@ -39,7 +43,25 @@ export function MonkeToolsModal({ visible, onClose }: MonkeToolsModalProps) {
   const {
     notificationsEnabled, mentionsOnly, botNotificationsEnabled,
     setNotificationsEnabled, setMentionsOnly, setBotNotificationsEnabled,
+    expoPushToken, setExpoPushToken,
   } = useAppStore();
+
+  async function handleTestNotification() {
+    // Schedule via Android AlarmManager — fires even if app is killed after swiping home
+    await scheduleTestNotification();
+    onClose();
+  }
+
+  async function handleRefreshToken() {
+    await clearPushToken();
+    const token = await registerForPushNotifications();
+    if (token) {
+      setExpoPushToken(token);
+      Alert.alert("Token refreshed", token);
+    } else {
+      Alert.alert("Failed", "Could not get push token. Check notification permissions.");
+    }
+  }
 
   return (
     <Modal
@@ -97,6 +119,24 @@ export function MonkeToolsModal({ visible, onClose }: MonkeToolsModalProps) {
             Notifications
           </Text>
 
+          {/* Android: direct link to fix popup/heads-up importance */}
+          {Platform.OS === "android" && (
+            <Pressable
+              style={styles.fixBanner}
+              onPress={() => Linking.openSettings()}
+            >
+              <Text style={styles.fixBannerIcon}>🔔</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.fixBannerTitle}>Not seeing popup alerts?</Text>
+                <Text style={styles.fixBannerDesc}>
+                  Tap to open Notification Settings → set importance to{" "}
+                  <Text style={{ color: THEME.accent }}>Urgent</Text> for heads-up banners.
+                </Text>
+              </View>
+              <Text style={styles.chevron}>›</Text>
+            </Pressable>
+          )}
+
           <View style={styles.settingsCard}>
             <View style={styles.settingRow}>
               <View style={styles.settingInfo}>
@@ -146,6 +186,35 @@ export function MonkeToolsModal({ visible, onClose }: MonkeToolsModalProps) {
                 trackColor={{ false: THEME.border, true: THEME.accent + "88" }}
                 thumbColor={botNotificationsEnabled ? THEME.accent : THEME.textFaint}
               />
+            </View>
+          </View>
+
+          {/* Push Token */}
+          <Text style={[styles.sectionLabel, styles.sectionLabelSpaced]}>
+            Push Token
+          </Text>
+          <View style={styles.tokenCard}>
+            <Text style={styles.tokenText} numberOfLines={2} selectable>
+              {expoPushToken ?? "Not registered yet"}
+            </Text>
+            <View style={styles.tokenButtons}>
+              {expoPushToken && (
+                <Pressable
+                  style={styles.tokenBtn}
+                  onPress={async () => {
+                    await Clipboard.setStringAsync(expoPushToken);
+                    Alert.alert("Copied", "Expo push token copied to clipboard.");
+                  }}
+                >
+                  <Text style={styles.tokenBtnText}>Copy</Text>
+                </Pressable>
+              )}
+              <Pressable style={styles.tokenBtn} onPress={handleRefreshToken}>
+                <Text style={styles.tokenBtnText}>Refresh</Text>
+              </Pressable>
+              <Pressable style={[styles.tokenBtn, { borderColor: THEME.accent }]} onPress={handleTestNotification}>
+                <Text style={styles.tokenBtnText}>Test (press Home!)</Text>
+              </Pressable>
             </View>
           </View>
 
@@ -301,5 +370,62 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: THEME.border,
     marginHorizontal: 16,
+  },
+
+  fixBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: THEME.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: THEME.accent + "44",
+    padding: 14,
+    marginBottom: 10,
+  },
+  fixBannerIcon: { fontSize: 22 },
+  fixBannerTitle: {
+    fontFamily: FONTS.bodyMed,
+    fontSize: 13,
+    color: THEME.text,
+    marginBottom: 2,
+  },
+  fixBannerDesc: {
+    fontFamily: FONTS.body,
+    fontSize: 11,
+    color: THEME.textMuted,
+    lineHeight: 15,
+  },
+
+  tokenCard: {
+    backgroundColor: THEME.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    padding: 14,
+    gap: 10,
+  },
+  tokenText: {
+    fontFamily: FONTS.mono,
+    fontSize: 11,
+    color: THEME.textMuted,
+    lineHeight: 16,
+  },
+  tokenButtons: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  tokenBtn: {
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+    backgroundColor: THEME.surfaceHigh,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: THEME.border,
+  },
+  tokenBtnText: {
+    fontFamily: FONTS.bodyMed,
+    fontSize: 12,
+    color: THEME.accent,
   },
 });
