@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "233588801263",
+    "project_id": "onlymonkes-9f97f",
+    "storage_bucket": "onlymonkes-9f97f.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:233588801263:android:960198103123ea5c79e51a",
+        "android_client_info": {
+          "package_name": "com.yourorg.onlymonkes"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCONY64M4cW27TTAvaUtaJoo_sDTecTgzo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

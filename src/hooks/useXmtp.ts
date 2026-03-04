@@ -16,6 +16,7 @@
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useCallback } from "react";
+import { AppState } from "react-native";
 import { clearSession, clearMatricaSession, clearVerifiedNft } from "@/lib/session";
 import {
   initXmtpClient,
@@ -430,24 +431,30 @@ export function useXmtp() {
         const senderLabel = msg.senderUsername ?? msg.senderAddress.slice(0, 6);
         const isBotMessage = msg.senderUsername === BOT_USERNAME;
 
-        if (isBotMessage) {
-          if (botNotificationsEnabled) {
-            await showLocalNotification(`${senderLabel} 🤖`, msg.content, CH_BOT);
+        // Only notify when app is in the background — when in foreground,
+        // expo-notifications overrides channelId with the fallback channel and
+        // sets groupKey=silent, suppressing heads-up. Background delivery goes
+        // directly through om_all_v6 (HIGH importance) → proper heads-up banner.
+        if (AppState.currentState !== 'active') {
+          if (isBotMessage) {
+            if (botNotificationsEnabled) {
+              await showLocalNotification(`${senderLabel} 🤖`, msg.content, CH_BOT);
+            }
+            return;
           }
-          return;
+
+          if (!notificationsEnabled) return;
+
+          const isMention = detectMention(msg.content, username ?? "");
+          if (mentionsOnly && !isMention) return;
+
+          const channelId = isMention ? CH_MENTIONS : CH_ALL;
+          const title = isMention
+            ? `${senderLabel} mentioned you 🍌`
+            : `${senderLabel} in OnlyMonkes`;
+
+          await showLocalNotification(title, msg.content, channelId);
         }
-
-        if (!notificationsEnabled) return;
-
-        const isMention = detectMention(msg.content, username ?? "");
-        if (mentionsOnly && !isMention) return;
-
-        const channelId = isMention ? CH_MENTIONS : CH_ALL;
-        const title = isMention
-          ? `${senderLabel} mentioned you 🍌`
-          : `${senderLabel} in OnlyMonkes`;
-
-        await showLocalNotification(title, msg.content, channelId);
       });
 
       _streamAlive = true;

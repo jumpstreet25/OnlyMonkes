@@ -52,6 +52,8 @@ interface AppState {
   loginStreak: number;
   bestStreak: number;
   isLegendary: boolean;
+  // Push notifications
+  expoPushToken: string | null;
 }
 
 interface AppActions {
@@ -80,6 +82,7 @@ interface AppActions {
   setCalendarEvents: (events: CalendarEvent[]) => void;
   addCalendarEvent: (event: CalendarEvent) => void;
   setLoginStreak: (streak: number, best: number, legendary: boolean) => void;
+  setExpoPushToken: (token: string | null) => void;
   reset: () => void;
 }
 
@@ -109,6 +112,7 @@ const initialState: AppState = {
   loginStreak: 0,
   bestStreak: 0,
   isLegendary: false,
+  expoPushToken: null,
 };
 
 export const useAppStore = create<AppState & AppActions>((set, get) => ({
@@ -144,5 +148,6 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   setCalendarEvents: (calendarEvents) => set({ calendarEvents }),
   addCalendarEvent: (event) => set((s) => ({ calendarEvents: [...s.calendarEvents, event] })),
   setLoginStreak: (loginStreak, bestStreak, isLegendary) => set({ loginStreak, bestStreak, isLegendary }),
+  setExpoPushToken: (expoPushToken) => set({ expoPushToken }),
   reset: () => set(initialState),
 }));
