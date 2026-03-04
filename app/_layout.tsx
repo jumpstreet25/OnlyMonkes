@@ -10,6 +10,8 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { COLORS } from '../src/lib/constants';
 import { registerBackgroundSync } from '../src/lib/backgroundSync';
+import { registerForPushNotifications } from '../src/lib/notifications';
+import { useAppStore } from '../src/store/appStore';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -19,6 +21,11 @@ export default function RootLayout() {
   useEffect(() => {
     SplashScreen.hideAsync();
     registerBackgroundSync();
+
+    // Request notification permissions and get Expo push token on every launch
+    registerForPushNotifications().then(token => {
+      if (token) useAppStore.getState().setExpoPushToken(token);
+    }).catch(err => console.warn('[Layout] Push token error:', err));
   }, []);
 
   return (

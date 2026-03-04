@@ -156,7 +156,9 @@ export default function ChatScreen() {
   // ─── Register for push notifications once member is confirmed ────────────────
   useEffect(() => {
     if (!isGroupMember) return;
-    registerForPushNotifications().catch(() => {/* silently ignore */});
+    registerForPushNotifications().then(token => {
+      if (token) useAppStore.getState().setExpoPushToken(token);
+    }).catch(() => {/* silently ignore */});
   }, [isGroupMember]);
 
   // ─── Wire notification inline-reply → XMTP send ───────────────────────────

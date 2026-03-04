@@ -5,25 +5,32 @@
  *
  * Android channel structure (visible in Settings → App info → Notifications):
  *  ┌─ OnlyMonkes (group)
- *  │   ├─ All Notifications   [om_all]      — every chat message
- *  │   ├─ @Mentions           [om_mentions] — messages that @mention you
- *  │   └─ Bot Notifications   [om_bot]      — AI Agent trade/sales alerts
+ *  │   ├─ All Notifications   [om_all_v3]      — every chat message
+ *  │   ├─ @Mentions           [om_mentions_v3] — messages that @mention you
+ *  │   └─ Bot Notifications   [om_bot_v3]      — AI Agent trade/sales alerts
  *  └─
  *
- * Legacy channels (onlymonkes_chat, onlymonkes_chat_v2) are deleted on startup
- * so they no longer appear in the settings list.
+ * Legacy channels (om_all, om_bot, om_mentions, onlymonkes_chat*) are deleted
+ * on startup — their importance was locked to LOW by users so v3 replaces them.
  */
 
 import * as SecureStore from "expo-secure-store";
 import Constants from "expo-constants";
-import { Platform } from "react-native";
+import { Platform, NativeModules } from "react-native";
+
+// Native module that bypasses expo-notifications' groupKey=silent pipeline
+// and posts directly to the specified Android notification channel.
+const DirectNotif: { show: (t: string, b: string, ch: string) => void; showDelayed: (t: string, b: string, ch: string, ms: number) => void } | null =
+  Platform.OS === "android" ? (NativeModules.DirectNotif ?? null) : null;
 
 const SK_PUSH_TOKEN = "push_token";
 
 // ── Channel IDs ───────────────────────────────────────────────────────────────
-export const CH_ALL      = "om_all";       // regular chat messages
-export const CH_MENTIONS = "om_mentions";  // @mention messages
-export const CH_BOT      = "om_bot";       // bot alerts (AI Agent #9385)
+// v6 IDs: AndroidImportance enum in expo-notifications v0.28 is offset:
+//   HIGH=6, MAX=7  (not 4/5 as assumed). v5 used 4→LOW, v6 uses 6→HIGH.
+export const CH_ALL      = "om_all_v6";      // regular chat messages
+export const CH_MENTIONS = "om_mentions_v6"; // @mention messages
+export const CH_BOT      = "om_bot_v6";      // bot alerts (AI Agent #9385)
 
 const CHANNEL_GROUP_ID = "onlymonkes";
 
@@ -42,20 +49,36 @@ try {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   Notifications = require("expo-notifications");
 
-  // Show notification even when app is in foreground
-  Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowAlert: true,
-      shouldPlaySound: true,
-      shouldSetBadge: true,
-    }),
-  });
+  // iOS only: without this handler, iOS won't show local notifications in foreground.
+  // On Android, setNotificationHandler intercepts ALL local notifications and
+  // re-fires them on expo_notifications_fallback_notification_channel with
+  // groupKey=silent — which suppresses heads-up regardless of channel importance.
+  // Android local notifications go directly to the specified channelId when no
+  // handler is registered, so we deliberately skip this on Android.
+  if (Platform.OS !== "android") {
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: true,
+      }),
+    });
+  }
 
   if (Platform.OS === "android") {
-    // ── Delete old channels so they vanish from Android's list ────────────────
+    // ── Delete stale channels so they vanish from Android's list ─────────────
     // Android caches channel definitions forever; deleting them cleans the list.
+    // om_all / om_bot / om_mentions had their importance locked to LOW by users;
+    // the v3 channels replace them with MAX importance.
     (async () => {
-      for (const old of ["onlymonkes_chat", "onlymonkes_chat_v2", "default"]) {
+      for (const old of [
+        "onlymonkes_chat", "onlymonkes_chat_v2", "default",
+        "om_all", "om_mentions", "om_bot",
+        "om_all_v3", "om_mentions_v3", "om_bot_v3",
+        "om_all_v4", "om_mentions_v4", "om_bot_v4",
+        "om_all_v5", "om_mentions_v5", "om_bot_v5",
+        "onlymonkes_default",
+      ]) {
         try { await Notifications.deleteNotificationChannelAsync(old); } catch { /* ignore */ }
       }
     })();
@@ -65,22 +88,25 @@ try {
       name: "OnlyMonkes",
     }).catch(() => {/* ignore */});
 
-    // Shared settings for all channels
+    // Shared settings for all channels.
+    // In expo-notifications v0.28, AndroidImportance enum values are offset:
+    //   HIGH=6 → IMPORTANCE_HIGH (4) on Android → triggers heads-up banners
+    //   MAX=7  → IMPORTANCE_MAX (5)
     const BASE = {
       groupId:              CHANNEL_GROUP_ID,
-      importance:           5,           // AndroidImportance.MAX — heads-up
+      importance:           6,           // AndroidImportance.HIGH — heads-up
       vibrationPattern:     [0, 200, 100, 200] as number[],
       lightColor:           "#FFD700",
       enableVibrate:        true,
       showBadge:            true,
-      sound:                "default",
       lockscreenVisibility: 1,           // AndroidNotificationVisibility.PUBLIC
     };
 
     Notifications.setNotificationChannelAsync(CH_ALL, {
       ...BASE,
       name: "All Notifications",
-    }).catch(() => {});
+    }).then((ch: unknown) => console.log('[Notifications] CH_ALL created, importance:', (ch as any)?.importance))
+      .catch((e: unknown) => console.warn('[Notifications] CH_ALL error:', e));
 
     Notifications.setNotificationChannelAsync(CH_MENTIONS, {
       ...BASE,
@@ -89,7 +115,7 @@ try {
 
     Notifications.setNotificationChannelAsync(CH_BOT, {
       ...BASE,
-      importance: 4,      // HIGH — still heads-up but one step below MAX
+      importance: 5,      // AndroidImportance.DEFAULT — bot alerts, no heads-up
       name: "Bot Notifications",
     }).catch(() => {});
 
@@ -135,32 +161,49 @@ export async function requestNotificationPermissions(): Promise<boolean> {
 
 // ─── Push Token Registration ──────────────────────────────────────────────────
 
+const HARDCODED_PROJECT_ID = 'e669ee53-de73-4dfb-9a36-5c22de29c67e';
+
 export async function registerForPushNotifications(): Promise<string | null> {
   try {
     if (!Notifications) return null;
 
-    const granted = await requestNotificationPermissions();
-    if (!granted) return null;
+    // Always check permissions first — triggers system dialog on first run
+    const { status } = await Notifications.requestPermissionsAsync();
+    if (status !== 'granted') {
+      console.warn('[Notifications] Permission denied:', status);
+      // Clear any stale cached token if permission was revoked
+      await SecureStore.deleteItemAsync(SK_PUSH_TOKEN).catch(() => {});
+      return null;
+    }
 
+    // Return cached token if we have one (tokens are stable across restarts)
     const stored = await SecureStore.getItemAsync(SK_PUSH_TOKEN);
-    if (stored) return stored;
+    if (stored) {
+      console.log('[Notifications] Cached Expo push token:', stored);
+      return stored;
+    }
 
-    const projectId: string | undefined =
-      (Constants.expoConfig?.extra as Record<string, unknown> | undefined)?.eas?.projectId as string | undefined ??
-      Constants.easConfig?.projectId;
+    // Get project ID — try config first, fall back to hardcoded
+    const projectId: string =
+      ((Constants.expoConfig?.extra as Record<string, unknown>)?.eas?.projectId as string) ??
+      Constants.easConfig?.projectId ??
+      HARDCODED_PROJECT_ID;
 
-    const tokenResponse = await Notifications.getExpoPushTokenAsync(
-      projectId ? { projectId } : undefined
-    );
+    const tokenResponse = await Notifications.getExpoPushTokenAsync({ projectId });
     const token: string = tokenResponse.data;
 
     await SecureStore.setItemAsync(SK_PUSH_TOKEN, token);
-    console.log("[Notifications] Expo push token:", token);
+    console.log('[Notifications] Expo push token:', token);
     return token;
   } catch (err) {
-    console.warn("[Notifications] registerForPushNotifications failed:", err);
+    console.warn('[Notifications] registerForPushNotifications failed:', err);
     return null;
   }
+}
+
+/** Force-clear cached token so next call to registerForPushNotifications fetches a fresh one. */
+export async function clearPushToken(): Promise<void> {
+  await SecureStore.deleteItemAsync(SK_PUSH_TOKEN).catch(() => {});
 }
 
 export async function getCachedPushToken(): Promise<string | null> {
@@ -174,29 +217,57 @@ export async function getCachedPushToken(): Promise<string | null> {
 // ─── Local Notification ───────────────────────────────────────────────────────
 
 /**
+ * Schedule a test heads-up notification 6 seconds from now.
+ * On Android uses the DirectNotif native module (Handler.postDelayed) so it
+ * bypasses expo's groupKey=silent pipeline. Works as long as the app process
+ * is alive (backgrounded). For a true test, swipe home — don't force-kill.
+ */
+export async function scheduleTestNotification(): Promise<void> {
+  if (DirectNotif) {
+    DirectNotif.showDelayed("MonkeyFace Test 🐒", "Heads-up banner working!", CH_ALL, 6000);
+    return;
+  }
+  // iOS fallback
+  try {
+    if (!Notifications) return;
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: "MonkeyFace Test 🐒",
+        body: "Heads-up banner working!",
+        sound: "default",
+      },
+      trigger: { seconds: 6 },
+    });
+  } catch (e) {
+    console.warn("[Notifications] scheduleTestNotification failed:", e);
+  }
+}
+
+/**
  * Show an immediate local notification.
  * Pass one of CH_ALL, CH_MENTIONS, or CH_BOT as `channelId`.
  * Defaults to CH_ALL.
+ *
+ * On Android: uses DirectNotif native module to post directly to the channel,
+ * bypassing expo-notifications' groupKey=silent interception.
+ * On iOS: uses expo-notifications (required for foreground display).
  */
 export async function showLocalNotification(
   title: string,
   body: string,
   channelId: string = CH_ALL,
 ): Promise<void> {
+  const truncated = body.length > 100 ? `${body.slice(0, 97)}…` : body;
+  if (DirectNotif) {
+    DirectNotif.show(title, truncated, channelId);
+    return;
+  }
+  // iOS
   try {
     if (!Notifications) return;
     await Notifications.scheduleNotificationAsync({
-      content: {
-        title,
-        body: body.length > 100 ? `${body.slice(0, 97)}…` : body,
-        sound: "default",
-        ...(Platform.OS === "android" ? {
-          channelId,
-          // Attach Reply action only on chat channels (not bot)
-          ...(channelId !== CH_BOT ? { categoryIdentifier: "chat_message" } : {}),
-        } : {}),
-      },
-      trigger: null, // immediate
+      content: { title, body: truncated, sound: "default" },
+      trigger: null,
     });
   } catch {
     // Silently ignore — permission denied or module not ready
