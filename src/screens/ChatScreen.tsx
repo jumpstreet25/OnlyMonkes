@@ -105,6 +105,7 @@ export default function ChatScreen() {
   const [addByIdInput, setAddByIdInput] = useState("");
   const [addByIdBusy, setAddByIdBusy] = useState(false);
   const [refreshingRequests, setRefreshingRequests] = useState(false);
+  const [refreshingChat, setRefreshingChat] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
   const [gifPickerOpen, setGifPickerOpen] = useState(false);
   const [pfpGifPickerOpen, setPfpGifPickerOpen] = useState(false);
@@ -117,6 +118,13 @@ export default function ChatScreen() {
   const initialMsgIdsRef = useRef<Set<string>>(new Set());
 
   const myAddress = myInboxId ?? "";
+
+  // ─── Pull-to-refresh handler ──────────────────────────────────────────────────
+  const handleRefreshChat = useCallback(async () => {
+    setRefreshingChat(true);
+    await syncMessages();
+    setRefreshingChat(false);
+  }, [syncMessages]);
 
   // ─── XMTP connect + foreground sync ──────────────────────────────────────────
   useEffect(() => {
@@ -181,6 +189,22 @@ export default function ChatScreen() {
     }, 15_000);
     return () => clearInterval(id);
   }, [isGroupMember]);
+
+  // ─── Aggressive re-sync on sparse history (fresh install / epoch update) ──────
+  // After a fresh install the new installation key won't see old messages until
+  // the group epoch updates. Re-sync every 8s for the first 2 minutes so new
+  // messages appear as soon as the epoch is current.
+  useEffect(() => {
+    if (!isGroupMember) return;
+    if (messages.length >= 10) return; // history looks healthy, skip
+    let count = 0;
+    const id = setInterval(() => {
+      syncMessages();
+      count++;
+      if (count >= 15) clearInterval(id); // stop after 2 min
+    }, 8_000);
+    return () => clearInterval(id);
+  }, [isGroupMember, messages.length >= 10]);
 
   // ─── Load saved profile, show modal if no username yet ───────────────────
 
@@ -884,6 +908,8 @@ export default function ChatScreen() {
           onContentSizeChange={() =>
             flatListRef.current?.scrollToEnd({ animated: false })
           }
+          refreshing={refreshingChat}
+          onRefresh={handleRefreshChat}
           removeClippedSubviews
           maxToRenderPerBatch={20}
           windowSize={10}
