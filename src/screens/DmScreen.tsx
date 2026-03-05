@@ -1,4 +1,4 @@
-import React, { useRef, useCallback, useState } from 'react';
+import React, { useRef, useCallback, useState, useEffect } from 'react';
 import { View, FlatList, StyleSheet, Text, Pressable, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -13,6 +13,7 @@ import type { ChatMessage, ReactionEmoji } from '@/types';
 export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
   const insets = useSafeAreaInsets();
   const { myInboxId } = useAppStore();
+  const [retryKey, setRetryKey] = useState(0);
   const { messages, loading, error, sending, send } = useDm(peerInboxId);
   const [inputText, setInputText] = useState('');
   const flatListRef = useRef<FlatList>(null);
@@ -40,12 +41,23 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
       </View>
 
       {loading ? (
-        <ActivityIndicator style={{ flex: 1 }} color={THEME.accent} />
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+          <ActivityIndicator color={THEME.accent} size="large" />
+          <Text style={{ color: THEME.textDim, fontFamily: FONTS.body, fontSize: 13 }}>
+            Opening conversation…
+          </Text>
+        </View>
       ) : error ? (
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <Text style={{ color: THEME.textDim, fontFamily: FONTS.body, textAlign: 'center', paddingHorizontal: 32 }}>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16, paddingHorizontal: 32 }}>
+          <Text style={{ color: THEME.textDim, fontFamily: FONTS.body, textAlign: 'center', fontSize: 14 }}>
             {error}
           </Text>
+          <Pressable
+            onPress={() => setRetryKey(k => k + 1)}
+            style={{ backgroundColor: THEME.accent, paddingHorizontal: 24, paddingVertical: 10, borderRadius: 20 }}
+          >
+            <Text style={{ color: '#fff', fontFamily: FONTS.displayMed, fontSize: 14 }}>Retry</Text>
+          </Pressable>
         </View>
       ) : (
         <FlatList
@@ -62,6 +74,13 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
           )}
           contentContainerStyle={{ paddingVertical: 8, flexGrow: 1, justifyContent: 'flex-end' }}
           onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
+          ListEmptyComponent={
+            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 60 }}>
+              <Text style={{ color: THEME.textDim, fontFamily: FONTS.body, fontSize: 14 }}>
+                No messages yet — say hi!
+              </Text>
+            </View>
+          }
         />
       )}
 

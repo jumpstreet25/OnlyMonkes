@@ -6,14 +6,23 @@ import type { ChatMessage } from '@/types';
 
 let _activeDm: any = null;
 
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`[useDm] ${label} timed out after ${ms}ms`)), ms)
+    ),
+  ]);
+}
+
 export function useDm(peerInboxId: string) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [loading, setLoading]   = useState(true);
-  const [error, setError]       = useState<string | null>(null);
-  const [sending, setSending]   = useState(false);
-  const { myInboxId }           = useAppStore();
-  const retryTimer              = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const unsubscribeStream       = useRef<(() => void) | null>(null);
+  const [messages, setMessages]   = useState<ChatMessage[]>([]);
+  const [loading, setLoading]     = useState(true);
+  const [error, setError]         = useState<string | null>(null);
+  const [sending, setSending]     = useState(false);
+  const { myInboxId }             = useAppStore();
+  const retryTimer                = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const unsubscribeStream         = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -21,27 +30,33 @@ export function useDm(peerInboxId: string) {
     async function init() {
       const client = getXmtpClient();
       if (!client || !myInboxId) {
-        // Client not ready yet — retry in 500ms
         retryTimer.current = setTimeout(() => { if (!cancelled) init(); }, 500);
         return;
       }
 
       try {
         setError(null);
-        // Sync conversations first so the DM is discoverable
-        await client.conversations.sync();
+
+        await withTimeout(client.conversations.sync(), 10_000, 'conversations.sync');
         if (cancelled) return;
 
-        _activeDm = await openOrCreateDm(client, peerInboxId);
+        _activeDm = await withTimeout(
+          openOrCreateDm(client, peerInboxId),
+          15_000,
+          'findOrCreateDm'
+        );
         if (cancelled) return;
 
-        const history = await loadDmMessages(_activeDm, myInboxId);
+        const history = await withTimeout(
+          loadDmMessages(_activeDm, myInboxId),
+          10_000,
+          'loadDmMessages'
+        );
         if (cancelled) return;
 
         setMessages(history);
         setLoading(false);
 
-        // streamMessages takes a callback — returns a cleanup function
         const stopStream = await _activeDm.streamMessages(
           async (raw: any) => {
             if (cancelled) return;
@@ -52,8 +67,8 @@ export function useDm(peerInboxId: string) {
         unsubscribeStream.current = typeof stopStream === 'function' ? stopStream : null;
       } catch (e: any) {
         if (!cancelled) {
-          console.warn('[useDm] init error:', e);
-          setError(e?.message ?? 'Failed to load DM');
+          console.warn('[useDm] init error:', e?.message ?? e);
+          setError(e?.message ?? 'Failed to open DM — check connection');
           setLoading(false);
         }
       }
@@ -76,7 +91,6 @@ export function useDm(peerInboxId: string) {
     const { username } = useAppStore.getState();
     try {
       await sendDmMessage(_activeDm, text, username);
-      // Optimistic local append
       const optimistic: ChatMessage = {
         id: `optimistic-${Date.now()}`,
         content: text,
