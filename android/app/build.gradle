@@ -104,6 +104,12 @@ def enableProguardInReleaseBuilds = (findProperty('android.enableProguardInRelea
  */
 def jscFlavor = 'org.webkit:android-jsc:+'
 
+// Exclude ARCore entirely — we don't use AR features and Seeker devices don't support it.
+// expo-camera pulls it in transitively; this removes it from all dependency trees.
+configurations.all {
+    exclude group: 'com.google.ar', module: 'core'
+}
+
 android {
     ndkVersion rootProject.ext.ndkVersion
 
