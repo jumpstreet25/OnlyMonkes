@@ -272,8 +272,13 @@ export function useXmtp() {
       // ── 4. Load message history ────────────────────────────────────────────
       setIsGroupMember(true);
       setLoadingHistory(true);
+      // First sync the group to pull its latest messages from the network.
+      // Then syncAllConversations triggers the epoch update for fresh installs
+      // (new installation key needs the group to propagate its latest epoch).
       await (group as any).sync();
-      const rawHistory: any[] = await (group as any).messages({ limit: 100 });
+      try { await client.conversations.syncAllConversations(); } catch { /* ignore */ }
+      await (group as any).sync(); // second pass after epoch update
+      const rawHistory: any[] = await (group as any).messages({ limit: 200 });
 
       // ── Pass 1: seed profile cache + events from history ─────────────────
       // Must run BEFORE decoding messages so enrichWithNft() has fresh cache data.
@@ -285,7 +290,7 @@ export function useXmtp() {
             try {
               const data = JSON.parse(content.slice("PROFILE_UPDATE:".length));
               if (data.id) {
-                cacheProfile(data.id, { username: data.u || undefined, bio: data.b || undefined, xAccount: data.x || undefined, walletAddress: data.w || undefined, tipWallet: data.tw || undefined, nftImage: data.ni || undefined, legendary: !!data.lg });
+                cacheProfile(data.id, { username: data.u || undefined, bio: data.b || undefined, xAccount: data.x || undefined, walletAddress: data.w || undefined, tipWallet: data.tw || undefined, nftImage: data.ni || null, legendary: !!data.lg});
                 trackUser(data.id, data.u || undefined);
               }
             } catch { /* ignore */ }
@@ -395,7 +400,7 @@ export function useXmtp() {
           try {
             const data = JSON.parse(content.slice("PROFILE_UPDATE:".length));
             if (data.id) {
-              cacheProfile(data.id, { username: data.u || undefined, bio: data.b || undefined, xAccount: data.x || undefined, walletAddress: data.w || undefined, tipWallet: data.tw || undefined, nftImage: data.ni || undefined, legendary: !!data.lg });
+              cacheProfile(data.id, { username: data.u || undefined, bio: data.b || undefined, xAccount: data.x || undefined, walletAddress: data.w || undefined, tipWallet: data.tw || undefined, nftImage: data.ni || null, legendary: !!data.lg});
               trackUser(data.id, data.u || undefined);
             }
           } catch { /* ignore */ }
@@ -469,7 +474,9 @@ export function useXmtp() {
           try {
             const { username, bio, xAccount, wallet, tipWallet, verifiedNft, isLegendary } =
               useAppStore.getState();
-            if (!verifiedNft?.image) return;
+            // Always broadcast — even if image isn't ready yet, so username/bio
+            // propagate. Recipients with a cached image will keep it (cacheProfile
+            // protects against null overwriting a known-good nftImage).
             await sendProfileUpdate(
               group as XmtpGroup,
               client.inboxId,
@@ -478,12 +485,12 @@ export function useXmtp() {
               xAccount,
               wallet?.address ?? null,
               tipWallet ?? null,
-              verifiedNft.image,
+              verifiedNft?.image ?? null,
               isLegendary,
             );
             cacheProfile(client.inboxId, {
               username: username ?? undefined,
-              nftImage: verifiedNft.image,
+              nftImage: verifiedNft?.image ?? null,
             });
           } catch { /* non-critical */ }
         })();
