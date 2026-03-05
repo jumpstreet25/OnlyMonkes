@@ -11,4 +11,9 @@
 -keep class com.swmansion.reanimated.** { *; }
 -keep class com.facebook.react.turbomodule.** { *; }
 
+# JNA references desktop Java classes (java.awt.*) that don't exist on Android.
+# Tell R8 to ignore them rather than failing the build.
+-dontwarn java.awt.**
+-dontwarn com.sun.jna.**
+
 # Add any project specific keep options here:
