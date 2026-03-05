@@ -191,6 +191,7 @@ export const MessageBubble = memo(function MessageBubble({
   // Re-read from cache on every render (re-render triggered by useProfileVersion above)
   const cachedSender = getCachedProfile(message.senderAddress);
   const displayName  = cachedSender?.username ?? message.senderUsername ?? shortenAddress(message.senderAddress);
+  const isBot = message.senderUsername === "AI Agent #9385";
   const isLegendarySender = isOwn
     ? useAppStore.getState().isLegendary
     : !!(cachedSender?.legendary);
@@ -219,6 +220,8 @@ export const MessageBubble = memo(function MessageBubble({
       >
         {avatarUri ? (
           <Image source={{ uri: avatarUri }} style={styles.avatar} />
+        ) : isBot ? (
+          <Image source={require('../../assets/ai_agent_avatar.png')} style={styles.avatar} />
         ) : (
           <View style={styles.avatarFallback}>
             <Text style={styles.avatarGlyph}>🐒</Text>
