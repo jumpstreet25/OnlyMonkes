@@ -78,6 +78,7 @@ export async function getOrCreateGlobalChat(
   groupId: string
 ): Promise<{ group: XmtpGroup | null; isNewAdmin: boolean }> {
   if (groupId) {
+    // Step 1: discover conversations (fetches welcome messages / group invites)
     await client.conversations.sync();
     const found = await client.conversations.findGroup(groupId as any);
     if (found) return { group: found as unknown as XmtpGroup, isNewAdmin: false };
@@ -121,7 +122,7 @@ export async function sendJoinRequestDM(
   username?: string | null,
   nftMint?: string | null,
 ): Promise<void> {
-  const dm = await (client.conversations as any).newDm(adminInboxId);
+  const dm = await client.conversations.findOrCreateDm(adminInboxId as any);
   const payload = `${JOIN_REQUEST_PREFIX}${myInboxId}:${username ?? ""}:${nftMint ?? ""}`;
   await (dm as any).send(payload);
 }
@@ -427,7 +428,7 @@ export async function sendTypingIndicator(
 // ─── Direct Messages ──────────────────────────────────────────────────────────
 
 export async function openOrCreateDm(client: XmtpClient, peerInboxId: string): Promise<any> {
-  return (client.conversations as any).newDm(peerInboxId);
+  return client.conversations.findOrCreateDm(peerInboxId as any);
 }
 
 export async function loadDmMessages(dm: any, myInboxId: string): Promise<ChatMessage[]> {

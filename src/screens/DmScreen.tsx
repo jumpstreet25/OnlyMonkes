@@ -13,7 +13,7 @@ import type { ChatMessage, ReactionEmoji } from '@/types';
 export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
   const insets = useSafeAreaInsets();
   const { myInboxId } = useAppStore();
-  const { messages, loading, sending, send } = useDm(peerInboxId);
+  const { messages, loading, error, sending, send } = useDm(peerInboxId);
   const [inputText, setInputText] = useState('');
   const flatListRef = useRef<FlatList>(null);
   const peerProfile = getCachedProfile(peerInboxId);
@@ -41,6 +41,12 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
 
       {loading ? (
         <ActivityIndicator style={{ flex: 1 }} color={THEME.accent} />
+      ) : error ? (
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={{ color: THEME.textDim, fontFamily: FONTS.body, textAlign: 'center', paddingHorizontal: 32 }}>
+            {error}
+          </Text>
+        </View>
       ) : (
         <FlatList
           ref={flatListRef}

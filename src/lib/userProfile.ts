@@ -109,16 +109,15 @@ function _schedulePersist() {
 
 export function cacheProfile(inboxId: string, profile: CachedProfile): void {
   const existing = _profileCache.get(inboxId);
-  const SIX_HOURS = 6 * 3600_000;
-  // Don't overwrite a fresh nftImage with a potentially stale one
-  if (profile.nftImage !== undefined && existing?.nftImage
-      && existing.cachedAt && Date.now() - existing.cachedAt < SIX_HOURS) {
-    delete profile.nftImage; // keep the existing fresh image
-  }
-  // Strip explicit null nftImage if we already have a good one
-  if (profile.nftImage === null && existing?.nftImage) {
+
+  // Never overwrite a known-good image with null or undefined.
+  // `== null` covers both null and undefined (explicit spread of {nftImage: undefined}
+  // would otherwise silently wipe an existing PFP).
+  // A real image change always arrives as a new truthy data/URL string.
+  if (profile.nftImage == null && existing?.nftImage) {
     delete profile.nftImage;
   }
+
   const merged = { ...existing, ...profile, cachedAt: Date.now() };
   _profileCache.set(inboxId, merged);
   _schedulePersist();
