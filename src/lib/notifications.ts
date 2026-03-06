@@ -28,9 +28,9 @@ const SK_PUSH_TOKEN = "push_token";
 // ── Channel IDs ───────────────────────────────────────────────────────────────
 // v6 IDs: AndroidImportance enum in expo-notifications v0.28 is offset:
 //   HIGH=6, MAX=7  (not 4/5 as assumed). v5 used 4→LOW, v6 uses 6→HIGH.
-export const CH_ALL      = "om_all_v6";      // regular chat messages
-export const CH_MENTIONS = "om_mentions_v6"; // @mention messages
-export const CH_BOT      = "om_bot_v6";      // bot alerts (AI Agent #9385)
+export const CH_ALL      = "om_all_v7";      // regular chat messages
+export const CH_MENTIONS = "om_mentions_v7"; // @mention messages
+export const CH_BOT      = "om_bot_v7";      // bot alerts (AI Agent #9385)
 
 const CHANNEL_GROUP_ID = "onlymonkes";
 
@@ -77,6 +77,7 @@ try {
         "om_all_v3", "om_mentions_v3", "om_bot_v3",
         "om_all_v4", "om_mentions_v4", "om_bot_v4",
         "om_all_v5", "om_mentions_v5", "om_bot_v5",
+        "om_all_v6", "om_mentions_v6", "om_bot_v6",
         "onlymonkes_default",
       ]) {
         try { await Notifications.deleteNotificationChannelAsync(old); } catch { /* ignore */ }
@@ -94,7 +95,7 @@ try {
     //   MAX=7  → IMPORTANCE_MAX (5)
     const BASE = {
       groupId:              CHANNEL_GROUP_ID,
-      importance:           6,           // AndroidImportance.HIGH — heads-up
+      importance:           7,           // AndroidImportance.MAX — heads-up
       vibrationPattern:     [0, 200, 100, 200] as number[],
       lightColor:           "#FFD700",
       enableVibrate:        true,
