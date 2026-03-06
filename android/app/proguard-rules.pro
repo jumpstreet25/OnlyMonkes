@@ -16,4 +16,22 @@
 -dontwarn java.awt.**
 -dontwarn com.sun.jna.**
 
+# Protocol Buffers — R8 renames fields that protobuf looks up by name at runtime
+# (FieldBytes_ / FieldName_ lookups break without this)
+-keepclassmembers class * extends com.google.protobuf.GeneratedMessageLite {
+    <fields>;
+}
+-keepclassmembers class * extends com.google.protobuf.GeneratedMessage {
+    <fields>;
+}
+-keep class com.google.protobuf.** { *; }
+-dontwarn com.google.protobuf.**
+
+# XMTP / UniFfi JNI bindings — use reflection and JNI field lookup internally
+-keep class uniffi.** { *; }
+-keep class org.xmtp.** { *; }
+-keep class xmtpv3.** { *; }
+-dontwarn uniffi.**
+-dontwarn org.xmtp.**
+
 # Add any project specific keep options here:
