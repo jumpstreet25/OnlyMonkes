@@ -11,8 +11,10 @@
 -keep class com.swmansion.reanimated.** { *; }
 -keep class com.facebook.react.turbomodule.** { *; }
 
-# JNA references desktop Java classes (java.awt.*) that don't exist on Android.
-# Tell R8 to ignore them rather than failing the build.
+# JNA (Java Native Access) — used by XMTP for native bindings.
+# Keep all classes and suppress warnings about missing desktop Java (java.awt.*).
+-keep class com.sun.jna.** { *; }
+-keep interface com.sun.jna.** { *; }
 -dontwarn java.awt.**
 -dontwarn com.sun.jna.**
 
