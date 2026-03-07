@@ -40,13 +40,23 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         cameraPermission: 'Allow OnlyMonkes to open the camera to share photos in chat.',
       },
     ],
+    [
+      'expo-camera',
+      {
+        cameraPermission: 'Allow OnlyMonkes to open the camera to record videos in chat.',
+        microphonePermission: 'Allow OnlyMonkes to record audio for videos.',
+        recordAudioAndroid: true,
+      },
+    ],
   ],
   scheme: 'onlymonkes',
   extra: {
-    heliusApiKey: process.env.HELIUS_API_KEY ?? 'f222b023-3712-4ab5-9dd1-caff88d27c40',
-    giphyApiKey: process.env.GIPHY_API_KEY ?? 'SbYTCZWCjGZAzCGfIzbUSYBoKBgHaHTI',
+    heliusApiKey: process.env.HELIUS_API_KEY ?? '',
+    giphyApiKey: process.env.GIPHY_API_KEY ?? '',
     nftCollectionAddress:
       process.env.NFT_COLLECTION_ADDRESS ?? 'GokAiStXz2Kqbxwz2oqzfEXuUhE7aXySmBGEP7uejKXF',
+    cloudinaryCloudName: process.env.CLOUDINARY_CLOUD_NAME ?? '',
+    cloudinaryUploadPreset: process.env.CLOUDINARY_UPLOAD_PRESET ?? '',
     eas: {
       projectId: 'e669ee53-de73-4dfb-9a36-5c22de29c67e',
     },
