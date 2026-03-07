@@ -67,6 +67,8 @@ import { TipModal } from "@/components/TipModal";
 import { SearchModal } from "@/components/SearchModal";
 import { CalendarModal } from "@/components/CalendarModal";
 import { GifPickerModal } from "@/components/GifPickerModal";
+import { VideoCameraModal } from "@/components/VideoCameraModal";
+import { Video, ResizeMode } from "expo-av";
 import * as ImagePicker from "expo-image-picker";
 import type { ChatMessage, ReactionEmoji } from "@/types";
 import type { TipAmount } from "@/lib/constants";
@@ -95,7 +97,6 @@ export default function ChatScreen() {
   const [tipSending, setTipSending] = useState(false);
   const [pfpPickerOpen, setPfpPickerOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [toolsOpen, setToolsOpen] = useState(false);
   const [adminOpen, setAdminOpen] = useState(false);
   const [profileTarget, setProfileTarget] = useState<ProfileTarget | null>(null);
   const [approvingId, setApprovingId] = useState<string | null>(null);
@@ -110,6 +111,8 @@ export default function ChatScreen() {
   const [gifPickerOpen, setGifPickerOpen] = useState(false);
   const [pfpGifPickerOpen, setPfpGifPickerOpen] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [videoModalOpen, setVideoModalOpen] = useState(false);
+  const [videoLightboxUrl, setVideoLightboxUrl] = useState<string | null>(null);
   const [adminRecoveryOpen, setAdminRecoveryOpen] = useState(false);
   const [adminRecoveryPat, setAdminRecoveryPat] = useState("");
   const [adminRecoveryBusy, setAdminRecoveryBusy] = useState(false);
@@ -377,6 +380,41 @@ export default function ChatScreen() {
     }
   }, [send, myAddress, username, verifiedNft]);
 
+  // ─── Camera button — alert for Photo vs Video ────────────────────────────────
+
+  const handleCameraButtonPress = useCallback(() => {
+    Alert.alert('Share media', 'Choose an option', [
+      { text: '📷 Photo', onPress: handleCamera },
+      { text: '🎥 Video', onPress: () => setVideoModalOpen(true) },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  }, [handleCamera]);
+
+  // ─── Video send (from VideoCameraModal) ──────────────────────────────────────
+
+  const handleVideoSend = useCallback(async (content: string) => {
+    setVideoModalOpen(false);
+    const optimistic: ChatMessage = {
+      id: `opt-${Date.now()}`,
+      senderAddress: myAddress,
+      senderUsername: username ?? undefined,
+      senderNft: verifiedNft ?? undefined,
+      content,
+      sentAt: new Date(),
+      reactions: {} as ChatMessage['reactions'],
+      status: 'sending',
+    };
+    useChatStore.getState().addMessage(optimistic);
+    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 50);
+    try {
+      await send(content);
+      useChatStore.getState().updateMessageStatus(optimistic.id, 'sent');
+    } catch (err: any) {
+      Alert.alert('Video error', err?.message ?? 'Could not send video.');
+      useChatStore.getState().updateMessageStatus(optimistic.id, 'failed');
+    }
+  }, [send, myAddress, username, verifiedNft]);
+
   // ─── Sticker react ────────────────────────────────────────────────────────────
 
   const handleStickerReact = useCallback(async (url: string, messageId: string) => {
@@ -440,11 +478,12 @@ export default function ChatScreen() {
             onTip={handleTip}
             onStickerReact={handleStickerReact}
             onPressImage={setLightboxUrl}
+            onPressVideo={setVideoLightboxUrl}
           />
         </Animated.View>
       );
     },
-    [myAddress, handleReact, setReplyingTo, handlePressUser, handleTip, handleStickerReact]
+    [myAddress, handleReact, setReplyingTo, handlePressUser, handleTip, handleStickerReact, setVideoLightboxUrl]
   );
 
   const keyExtractor = useCallback((item: ChatMessage) => item.id, []);
@@ -472,7 +511,6 @@ export default function ChatScreen() {
         onClose={() => setDrawerOpen(false)}
         onCreateEvent={() => setCalendarOpen(true)}
         onSearch={() => setSearchOpen(true)}
-        onMonkeTools={() => setToolsOpen(true)}
         onPressUser={(target) => { setDrawerOpen(false); setTimeout(() => setProfileTarget(target), 300); }}
       />
 
@@ -491,7 +529,6 @@ export default function ChatScreen() {
         onClose={() => setTipTarget(null)}
       />
 
-      <MonkeToolsModal visible={toolsOpen} onClose={() => setToolsOpen(false)} />
 
       <GifPickerModal
         visible={gifPickerOpen}
@@ -927,12 +964,46 @@ export default function ChatScreen() {
           pfpUri={verifiedNft?.image ?? null}
           onPfpGifPicker={() => setPfpGifPickerOpen(true)}
           onTyping={sendTyping}
-          onCamera={handleCamera}
+          onCamera={handleCameraButtonPress}
           typingUsers={typingUsers}
         />}
 
         <View style={{ height: insets.bottom }} />
       </KeyboardAvoidingView>
+
+      <VideoCameraModal
+        visible={videoModalOpen}
+        onClose={() => setVideoModalOpen(false)}
+        onSend={handleVideoSend}
+      />
+
+      {/* ── Video Lightbox ────────────────────────────────────────────── */}
+      <Modal
+        visible={!!videoLightboxUrl}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => setVideoLightboxUrl(null)}
+      >
+        <View style={{ flex: 1, backgroundColor: '#000' }}>
+          <Video
+            source={{ uri: videoLightboxUrl! }}
+            style={{ flex: 1 }}
+            useNativeControls
+            shouldPlay
+            resizeMode={ResizeMode.CONTAIN}
+          />
+          <Pressable
+            onPress={() => setVideoLightboxUrl(null)}
+            style={{ position: 'absolute', top: 52, right: 20, width: 36, height: 36,
+                     borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.15)',
+                     alignItems: 'center', justifyContent: 'center' }}
+            hitSlop={10}
+          >
+            <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold' }}>✕</Text>
+          </Pressable>
+        </View>
+      </Modal>
     </>
   );
 }

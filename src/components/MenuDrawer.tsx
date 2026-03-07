@@ -1,11 +1,18 @@
 /**
  * MenuDrawer
  *
- * Slide-in drawer (right side). Four tabs:
- *   👥 Members  — active in last 24h
- *   📅 Events   — community calendar
- *   🔗 Links    — URLs shared in chat
- *   🖼️ Media    — images/GIFs shared in chat (placeholder)
+ * Slide-in Community drawer (right side).
+ * Clean nav list → sub-views:
+ *   💬 Messages       — active users to DM
+ *   🤖 AI Agent Alerts — alerts from AI Agent #9385
+ *   🗓️  Events         — community calendar + add event
+ *   🖼️  Shared Images  — images/GIFs/Videos sent in chat
+ *   🔗  Shared Links   — URLs shared in chat
+ *   ⚙️  App Settings   — notification toggles, push token
+ *   🔧  Monke Tools    — ecosystem links
+ *
+ * All-Time Users count replaces the old emoji tab bar.
+ * Active Monkes 24hr lives at the bottom of the main list.
  */
 
 import React, { useEffect, useRef, useMemo, useState } from "react";
@@ -20,28 +27,52 @@ import {
   Image,
   ScrollView,
   Linking,
+  Switch,
+  Alert,
+  Platform,
 } from "react-native";
 import * as Haptics from "expo-haptics";
+import * as Clipboard from "expo-clipboard";
 import { THEME, FONTS } from "@/lib/constants";
 import { useChatStore } from "@/store/chatStore";
 import { useAppStore } from "@/store/appStore";
 import { getCachedProfile, useProfileVersion, getAllTimeUsers } from "@/lib/userProfile";
-import { getLeaderboard, getWeekLabel, type LeaderboardEntry } from "@/lib/activityTracker";
 import { shortenAddress } from "@/lib/nftVerification";
+import { clearPushToken, registerForPushNotifications, scheduleTestNotification } from "@/lib/notifications";
 import type { ProfileTarget } from "@/components/UserProfileModal";
 
 const DRAWER_WIDTH_RATIO = 0.82;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const URL_REGEX = /https?:\/\/[^\s"'<>)]+/g;
+const BOT_USERNAME = "AI Agent #9385";
 
-type Tab = "members" | "events" | "links" | "media";
+type ActiveView = "list" | "messages" | "alerts" | "events" | "images" | "links" | "settings" | "tools";
+
+const VIEW_TITLES: Record<ActiveView, string> = {
+  list:     "Community",
+  messages: "Messages",
+  alerts:   "AI Agent Alerts",
+  events:   "Events",
+  images:   "Shared Images",
+  links:    "Shared Links",
+  settings: "App Settings",
+  tools:    "Monke Tools",
+};
+
+const TOOLS = [
+  { name: "MonkeExplorer", url: "https://explorer.sagamonkes.com", icon: "🔭" },
+  { name: "MonkeMerits",   url: "https://merits.sagamonkes.com",   icon: "🏆" },
+  { name: "MonkeShop",     url: "https://shop.sagamonkes.com",     icon: "🛒" },
+  { name: "MonkeSignal",   url: "https://signal.sagamonkes.com",   icon: "📡" },
+  { name: "MonkeSnap",     url: "https://snap.sagamonkes.com",     icon: "📸" },
+  { name: "MonkeSwap",     url: "https://swap.sagamonkes.com",     icon: "🔄" },
+] as const;
 
 interface MenuDrawerProps {
   visible: boolean;
   onClose: () => void;
   onCreateEvent?: () => void;
   onSearch?: () => void;
-  onMonkeTools?: () => void;
   onPressUser?: (target: ProfileTarget) => void;
 }
 
@@ -58,16 +89,19 @@ interface SharedLink {
   sentAt: Date;
 }
 
-export function MenuDrawer({ visible, onClose, onCreateEvent, onSearch, onMonkeTools, onPressUser }: MenuDrawerProps) {
+export function MenuDrawer({ visible, onClose, onCreateEvent, onSearch, onPressUser }: MenuDrawerProps) {
   const { width: SCREEN_WIDTH } = useWindowDimensions();
   const DRAWER_WIDTH = SCREEN_WIDTH * DRAWER_WIDTH_RATIO;
 
   const slideAnim = useRef(new Animated.Value(DRAWER_WIDTH)).current;
   const { messages } = useChatStore();
-  const { calendarEvents, myInboxId, username } = useAppStore();
-  const [activeTab, setActiveTab] = useState<Tab>("members");
+  const { calendarEvents, myInboxId, username,
+    notificationsEnabled, mentionsOnly, botNotificationsEnabled,
+    setNotificationsEnabled, setMentionsOnly, setBotNotificationsEnabled,
+    expoPushToken, setExpoPushToken,
+  } = useAppStore();
+  const [activeView, setActiveView] = useState<ActiveView>("list");
 
-  // Re-render whenever any profile PFP updates (instant avatar refresh)
   useProfileVersion();
 
   useEffect(() => {
@@ -76,10 +110,10 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onSearch, onMonkeT
       duration: 260,
       useNativeDriver: true,
     }).start();
-    if (!visible) setActiveTab("members");
+    if (!visible) setActiveView("list");
   }, [visible, DRAWER_WIDTH]);
 
-  // ── Derived data ────────────────────────────────────────────────────────────
+  // ── Derived data ──────────────────────────────────────────────────────────
 
   const activeUsers = useMemo<ActiveUser[]>(() => {
     const cutoff = Date.now() - ONE_DAY_MS;
@@ -101,7 +135,6 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onSearch, onMonkeT
         seen.set(msg.senderAddress, {
           ...ex,
           lastSeen: msg.sentAt > ex.lastSeen ? msg.sentAt : ex.lastSeen,
-          // always keep the best nftImage and username found across all messages
           nftImage: ex.nftImage ?? msgNft,
           username: ex.username ?? msgUsername,
         });
@@ -130,17 +163,19 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onSearch, onMonkeT
     return results;
   }, [messages]);
 
-  const sharedMedia = useMemo(() => {
-    return messages.filter((m) => m.content.startsWith("IMAGE:") || m.content.startsWith("GIF:"));
-  }, [messages]);
+  const sharedMedia = useMemo(() =>
+    messages.filter((m) =>
+      m.content.startsWith("IMAGE:") ||
+      m.content.startsWith("GIF:") ||
+      m.content.startsWith("VIDEO:")
+    ), [messages]);
 
-  // Read directly from the persistent all-time registry.
-  // useProfileVersion() above ensures re-render when trackUser() adds new entries.
+  const agentAlerts = useMemo(() =>
+    messages.filter((m) => m.senderUsername === BOT_USERNAME),
+    [messages]);
+
   const allTimeUsers = getAllTimeUsers().size;
 
-  const leaderboard = useMemo<LeaderboardEntry[]>(() => getLeaderboard(10), [messages]);
-
-  // Sort events: upcoming first
   const sortedEvents = useMemo(() => {
     return [...calendarEvents].sort((a, b) => {
       const da = new Date(`${a.date} ${a.time || "00:00"}`);
@@ -149,12 +184,97 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onSearch, onMonkeT
     });
   }, [calendarEvents]);
 
-  const TABS: { id: Tab; label: string; badge?: number }[] = [
-    { id: "members", label: "👥" },
-    { id: "events",  label: "📅", badge: sortedEvents.length || undefined },
-    { id: "links",   label: "🔗", badge: sharedLinks.length || undefined },
-    { id: "media",   label: "🖼️" },
-  ];
+  // ── Notification handlers ─────────────────────────────────────────────────
+
+  async function handleTestNotification() {
+    await scheduleTestNotification();
+  }
+
+  async function handleRefreshToken() {
+    await clearPushToken();
+    const token = await registerForPushNotifications();
+    if (token) {
+      setExpoPushToken(token);
+      Alert.alert("Token refreshed", token);
+    } else {
+      Alert.alert("Failed", "Could not get push token. Check notification permissions.");
+    }
+  }
+
+  // ── User row helper ───────────────────────────────────────────────────────
+
+  function renderUserRow(user: ActiveUser, showDot = true) {
+    const cached = getCachedProfile(user.inboxId);
+    const name = cached?.username ?? user.username ?? shortenAddress(user.inboxId);
+    const avatarUri = cached?.nftImage ?? user.nftImage ?? null;
+    return (
+      <Pressable
+        key={user.inboxId}
+        style={({ pressed }) => [styles.userRow, pressed && { opacity: 0.7 }]}
+        onPress={() => {
+          if (!onPressUser) return;
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          onPressUser({
+            senderAddress: user.inboxId,
+            senderUsername: name,
+            senderNft: avatarUri ? { mint: "", name: "", image: avatarUri } : null,
+          });
+        }}
+      >
+        {avatarUri ? (
+          <Image source={{ uri: avatarUri }} style={styles.userAvatar} />
+        ) : (
+          <View style={styles.userAvatarFallback}>
+            <Text style={styles.userAvatarGlyph}>🐒</Text>
+          </View>
+        )}
+        <View style={styles.userInfo}>
+          <Text style={styles.userName} numberOfLines={1}>{name}</Text>
+          <Text style={styles.userTime}>{formatRelative(user.lastSeen)}</Text>
+        </View>
+        {showDot && <View style={styles.onlineDot} />}
+      </Pressable>
+    );
+  }
+
+  // ── Menu list item helper ─────────────────────────────────────────────────
+
+  function MenuItem({
+    icon, title, subtitle, badge, onPress, rightExtra,
+  }: {
+    icon: string;
+    title: string;
+    subtitle?: string;
+    badge?: number;
+    onPress: () => void;
+    rightExtra?: React.ReactNode;
+  }) {
+    return (
+      <Pressable
+        style={({ pressed }) => [styles.menuItem, pressed && { opacity: 0.7 }]}
+        onPress={onPress}
+      >
+        <View style={styles.menuItemIcon}>
+          <Text style={styles.menuItemEmoji}>{icon}</Text>
+        </View>
+        <View style={styles.menuItemInfo}>
+          <Text style={styles.menuItemTitle}>{title}</Text>
+          {subtitle ? <Text style={styles.menuItemSub}>{subtitle}</Text> : null}
+        </View>
+        {badge !== undefined && badge > 0 && (
+          <View style={styles.menuBadge}>
+            <Text style={styles.menuBadgeText}>{badge}</Text>
+          </View>
+        )}
+        {rightExtra}
+        <Text style={styles.menuChevron}>›</Text>
+      </Pressable>
+    );
+  }
+
+  // ── Back / close header ───────────────────────────────────────────────────
+
+  const isList = activeView === "list";
 
   return (
     <Modal
@@ -174,159 +294,153 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onSearch, onMonkeT
       >
         {/* Header */}
         <View style={styles.drawerHeader}>
-          <Text style={styles.drawerTitle}>Community</Text>
+          {!isList ? (
+            <Pressable
+              onPress={() => setActiveView("list")}
+              style={styles.backBtn}
+              hitSlop={10}
+            >
+              <Text style={styles.backIcon}>‹</Text>
+              <Text style={styles.backLabel}>Back</Text>
+            </Pressable>
+          ) : (
+            <Text style={styles.drawerTitle}>Community</Text>
+          )}
+          {!isList && (
+            <Text style={styles.subViewTitle}>{VIEW_TITLES[activeView]}</Text>
+          )}
           <Pressable onPress={onClose} style={styles.closeBtn} hitSlop={10}>
             <Text style={styles.closeIcon}>✕</Text>
           </Pressable>
         </View>
 
-        {/* Quick actions — Search + Monke Tools */}
-        <View style={styles.quickActions}>
-          {onSearch && (
-            <Pressable
-              style={({ pressed }) => [styles.quickBtn, pressed && { opacity: 0.7 }]}
-              onPress={() => { onClose(); setTimeout(onSearch, 280); }}
-            >
-              <Text style={styles.quickBtnIcon}>🔍</Text>
-              <Text style={styles.quickBtnLabel}>Search</Text>
-            </Pressable>
-          )}
-          {onMonkeTools && (
-            <Pressable
-              style={({ pressed }) => [styles.quickBtn, pressed && { opacity: 0.7 }]}
-              onPress={() => { onClose(); setTimeout(onMonkeTools, 280); }}
-            >
-              <Text style={styles.quickBtnIcon}>🔧</Text>
-              <Text style={styles.quickBtnLabel}>Monke Tools</Text>
-            </Pressable>
-          )}
+        {/* All-Time Users — always visible */}
+        <View style={styles.statsRow}>
+          <View style={styles.statBox}>
+            <Text style={styles.statNum}>{allTimeUsers}</Text>
+            <Text style={styles.statLabel}>All-Time Users</Text>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.statBox}>
+            <Text style={styles.statNum} numberOfLines={1}>
+              {username ?? shortenAddress(myInboxId ?? "")}
+            </Text>
+            <Text style={styles.statLabel}>Logged In</Text>
+          </View>
         </View>
 
-        {/* Tab bar */}
-        <View style={styles.tabBar}>
-          {TABS.map((tab) => (
-            <Pressable
-              key={tab.id}
-              style={[styles.tab, activeTab === tab.id && styles.tabActive]}
-              onPress={() => setActiveTab(tab.id)}
-            >
-              <Text style={styles.tabEmoji}>{tab.label}</Text>
-              {tab.badge !== undefined && tab.badge > 0 && (
-                <View style={styles.tabBadge}>
-                  <Text style={styles.tabBadgeText}>{tab.badge}</Text>
-                </View>
-              )}
-            </Pressable>
-          ))}
-        </View>
-
-        {/* Tab content */}
+        {/* Content */}
         <ScrollView showsVerticalScrollIndicator={false} style={styles.content}>
-          {/* ── Members ─────────────────────────────────────────────────────── */}
-          {activeTab === "members" && (
-            <>
-              {/* 🏆 Top Monkes leaderboard */}
-              {leaderboard.length > 0 && (
-                <View style={styles.leaderboardCard}>
-                  <Text style={styles.leaderboardTitle}>🏆 Top Monkes · {getWeekLabel()}</Text>
-                  {leaderboard.slice(0, 3).map((entry, idx) => {
-                    const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : '🥉';
-                    const cached = getCachedProfile(entry.inboxId);
-                    const name = cached?.username ?? shortenAddress(entry.inboxId);
-                    const avatarUri = cached?.nftImage ?? null;
-                    return (
-                      <Pressable
-                        key={entry.inboxId}
-                        style={({ pressed }) => [styles.leaderRow, pressed && { opacity: 0.7 }]}
-                        onPress={() => {
-                          if (!onPressUser) return;
-                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                          onPressUser({
-                            senderAddress: entry.inboxId,
-                            senderUsername: name,
-                            senderNft: avatarUri ? { mint: '', name: '', image: avatarUri } : null,
-                          });
-                        }}
-                      >
-                        <Text style={styles.leaderMedal}>{medal}</Text>
-                        {avatarUri ? (
-                          <Image source={{ uri: avatarUri }} style={styles.leaderAvatar} />
-                        ) : (
-                          <View style={[styles.leaderAvatar, styles.leaderAvatarFallback]}>
-                            <Text style={{ fontSize: 12 }}>🐒</Text>
-                          </View>
-                        )}
-                        <Text style={styles.leaderName} numberOfLines={1}>{name}</Text>
-                        <Text style={styles.leaderStats}>
-                          💬{entry.sent} · 🎯{entry.received} · ❤️{entry.given}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              )}
 
-              {/* All-Time stats card */}
-              <View style={styles.statsRow}>
-                <View style={styles.statBox}>
-                  <Text style={styles.statNum}>{allTimeUsers}</Text>
-                  <Text style={styles.statLabel}>All-Time Users</Text>
-                </View>
-                <View style={styles.statDivider} />
-                <View style={styles.statBox}>
-                  <Text style={styles.statNum} numberOfLines={1}>
-                    {username ?? shortenAddress(myInboxId ?? "")}
-                  </Text>
-                  <Text style={styles.statLabel}>Logged In</Text>
-                </View>
+          {/* ── Main list ──────────────────────────────────────────────────── */}
+          {activeView === "list" && (
+            <>
+              <View style={styles.menuList}>
+                <MenuItem
+                  icon="💬"
+                  title="Messages"
+                  subtitle="Direct messages"
+                  onPress={() => setActiveView("messages")}
+                />
+                <MenuItem
+                  icon="🤖"
+                  title="AI Agent Alerts"
+                  subtitle={agentAlerts.length > 0 ? `${agentAlerts.length} alerts` : "Trade signals & announcements"}
+                  badge={agentAlerts.length || undefined}
+                  onPress={() => setActiveView("alerts")}
+                />
+                <MenuItem
+                  icon="🗓️"
+                  title="Events"
+                  subtitle={sortedEvents.length > 0 ? `${sortedEvents.length} upcoming` : "Community calendar"}
+                  badge={sortedEvents.length || undefined}
+                  onPress={() => setActiveView("events")}
+                />
+                <MenuItem
+                  icon="🖼️"
+                  title="Shared Images"
+                  subtitle={sharedMedia.length > 0 ? `${sharedMedia.length} shared` : "Photos, GIFs & videos"}
+                  onPress={() => setActiveView("images")}
+                />
+                <MenuItem
+                  icon="🔗"
+                  title="Shared Links"
+                  subtitle={sharedLinks.length > 0 ? `${sharedLinks.length} links` : "URLs shared in chat"}
+                  badge={sharedLinks.length || undefined}
+                  onPress={() => setActiveView("links")}
+                />
+                {onSearch && (
+                  <MenuItem
+                    icon="🔍"
+                    title="Search"
+                    subtitle="Search messages"
+                    onPress={() => { onClose(); setTimeout(onSearch, 280); }}
+                  />
+                )}
+                <MenuItem
+                  icon="⚙️"
+                  title="App Settings"
+                  subtitle="Notifications & preferences"
+                  onPress={() => setActiveView("settings")}
+                />
+                <MenuItem
+                  icon="🔧"
+                  title="Monke Tools"
+                  subtitle="Ecosystem links"
+                  onPress={() => setActiveView("tools")}
+                />
               </View>
 
+              {/* Active Monkes 24hr */}
               <Text style={styles.sectionLabel}>
                 Active last 24h · {activeUsers.length}
               </Text>
               {activeUsers.length === 0 ? (
                 <Text style={styles.emptyText}>No activity in the last 24 hours.</Text>
               ) : (
-                activeUsers.map((user) => {
-                  const cached = getCachedProfile(user.inboxId);
-                  const name = cached?.username ?? user.username ?? shortenAddress(user.inboxId);
-                  const avatarUri = cached?.nftImage ?? user.nftImage ?? null;
-                  const handleTap = () => {
-                    if (!onPressUser) return;
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    onPressUser({
-                      senderAddress: user.inboxId,
-                      senderUsername: name,
-                      senderNft: avatarUri ? { mint: "", name: "", image: avatarUri } : null,
-                    });
-                  };
-                  return (
-                    <Pressable
-                      key={user.inboxId}
-                      style={({ pressed }) => [styles.userRow, pressed && { opacity: 0.7 }]}
-                      onPress={handleTap}
-                    >
-                      {avatarUri ? (
-                        <Image source={{ uri: avatarUri }} style={styles.userAvatar} />
-                      ) : (
-                        <View style={styles.userAvatarFallback}>
-                          <Text style={styles.userAvatarGlyph}>🐒</Text>
-                        </View>
-                      )}
-                      <View style={styles.userInfo}>
-                        <Text style={styles.userName} numberOfLines={1}>{name}</Text>
-                        <Text style={styles.userTime}>{formatRelative(user.lastSeen)}</Text>
-                      </View>
-                      <View style={styles.onlineDot} />
-                    </Pressable>
-                  );
-                })
+                activeUsers.map((u) => renderUserRow(u))
               )}
             </>
           )}
 
-          {/* ── Events ──────────────────────────────────────────────────────── */}
-          {activeTab === "events" && (
+          {/* ── Messages ───────────────────────────────────────────────────── */}
+          {activeView === "messages" && (
+            <>
+              <Text style={styles.sectionLabel}>
+                Tap a user to start or continue a DM
+              </Text>
+              {activeUsers.length === 0 ? (
+                <Text style={styles.emptyText}>No recent users to message.</Text>
+              ) : (
+                activeUsers.map((u) => renderUserRow(u, false))
+              )}
+            </>
+          )}
+
+          {/* ── AI Agent Alerts ─────────────────────────────────────────────── */}
+          {activeView === "alerts" && (
+            <>
+              <Text style={styles.sectionLabel}>
+                Alerts · {agentAlerts.length}
+              </Text>
+              {agentAlerts.length === 0 ? (
+                <Text style={styles.emptyText}>No alerts from AI Agent yet.</Text>
+              ) : (
+                [...agentAlerts].reverse().map((msg) => (
+                  <View key={msg.id} style={styles.alertRow}>
+                    <View style={styles.alertDot} />
+                    <View style={styles.alertInfo}>
+                      <Text style={styles.alertContent}>{msg.content}</Text>
+                      <Text style={styles.alertTime}>{formatRelative(msg.sentAt)}</Text>
+                    </View>
+                  </View>
+                ))
+              )}
+            </>
+          )}
+
+          {/* ── Events ─────────────────────────────────────────────────────── */}
+          {activeView === "events" && (
             <>
               <View style={styles.eventsHeader}>
                 <Text style={styles.sectionLabel}>Community Events</Text>
@@ -335,12 +449,12 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onSearch, onMonkeT
                     style={styles.createEventBtn}
                     onPress={() => { onClose(); setTimeout(onCreateEvent, 300); }}
                   >
-                    <Text style={styles.createEventText}>+ New</Text>
+                    <Text style={styles.createEventText}>+ Add Event</Text>
                   </Pressable>
                 )}
               </View>
               {sortedEvents.length === 0 ? (
-                <Text style={styles.emptyText}>No events yet. Tap + New to create one.</Text>
+                <Text style={styles.emptyText}>No events yet. Tap + Add Event to create one.</Text>
               ) : (
                 sortedEvents.map((evt) => (
                   <View key={evt.id} style={styles.eventRow}>
@@ -361,8 +475,41 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onSearch, onMonkeT
             </>
           )}
 
-          {/* ── Links ───────────────────────────────────────────────────────── */}
-          {activeTab === "links" && (
+          {/* ── Shared Images ───────────────────────────────────────────────── */}
+          {activeView === "images" && (
+            <>
+              <Text style={styles.sectionLabel}>Shared Media · {sharedMedia.length}</Text>
+              {sharedMedia.length === 0 ? (
+                <Text style={styles.emptyText}>No images, GIFs or videos shared yet.</Text>
+              ) : (
+                [...sharedMedia].reverse().map((msg) => {
+                  const isVideo = msg.content.startsWith("VIDEO:");
+                  const parts = msg.content.replace(/^(IMAGE:|GIF:|VIDEO:)/, "").split("|");
+                  const thumbUri = isVideo ? parts[1] ?? parts[0] : parts[0];
+                  const displayUri = thumbUri;
+                  return (
+                    <View key={msg.id} style={styles.mediaRow}>
+                      <Image
+                        source={{ uri: displayUri }}
+                        style={styles.mediaThumb}
+                        resizeMode="cover"
+                      />
+                      <View style={styles.mediaInfo}>
+                        <Text style={styles.mediaSender}>
+                          {getCachedProfile(msg.senderAddress)?.username ?? msg.senderUsername ?? shortenAddress(msg.senderAddress)}
+                          {isVideo ? "  🎥" : ""}
+                        </Text>
+                        <Text style={styles.mediaTime}>{formatRelative(msg.sentAt)}</Text>
+                      </View>
+                    </View>
+                  );
+                })
+              )}
+            </>
+          )}
+
+          {/* ── Shared Links ─────────────────────────────────────────────────── */}
+          {activeView === "links" && (
             <>
               <Text style={styles.sectionLabel}>
                 Shared Links · {sharedLinks.length}
@@ -390,27 +537,120 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onSearch, onMonkeT
             </>
           )}
 
-          {/* ── Media ───────────────────────────────────────────────────────── */}
-          {activeTab === "media" && (
+          {/* ── App Settings ─────────────────────────────────────────────────── */}
+          {activeView === "settings" && (
             <>
-              <Text style={styles.sectionLabel}>Shared Media</Text>
-              {sharedMedia.length === 0 ? (
-                <Text style={styles.emptyText}>No images or GIFs shared yet.</Text>
-              ) : (
-                sharedMedia.map((msg) => (
-                  <View key={msg.id} style={styles.mediaRow}>
-                    <Image
-                      source={{ uri: msg.content.replace(/^(IMAGE:|GIF:)/, "") }}
-                      style={styles.mediaThumb}
-                      resizeMode="cover"
-                    />
-                    <View style={styles.mediaInfo}>
-                      <Text style={styles.mediaSender}>{getCachedProfile(msg.senderAddress)?.username ?? msg.senderUsername ?? shortenAddress(msg.senderAddress)}</Text>
-                      <Text style={styles.mediaTime}>{formatRelative(msg.sentAt)}</Text>
-                    </View>
+              <Text style={styles.sectionLabel}>Notifications</Text>
+
+              {Platform.OS === "android" && (
+                <Pressable style={styles.fixBanner} onPress={() => Linking.openSettings()}>
+                  <Text style={styles.fixBannerIcon}>🔔</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.fixBannerTitle}>Not seeing popup alerts?</Text>
+                    <Text style={styles.fixBannerDesc}>
+                      Tap to open Notification Settings → set importance to{" "}
+                      <Text style={{ color: THEME.accent }}>Urgent</Text> for heads-up banners.
+                    </Text>
                   </View>
-                ))
+                  <Text style={styles.chevron}>›</Text>
+                </Pressable>
               )}
+
+              <View style={styles.settingsCard}>
+                <View style={styles.settingRow}>
+                  <View style={styles.settingInfo}>
+                    <Text style={styles.settingTitle}>Enable notifications</Text>
+                    <Text style={styles.settingDesc}>Get notified for new messages in all chats</Text>
+                  </View>
+                  <Switch
+                    value={notificationsEnabled}
+                    onValueChange={setNotificationsEnabled}
+                    trackColor={{ false: THEME.border, true: THEME.accent + "88" }}
+                    thumbColor={notificationsEnabled ? THEME.accent : THEME.textFaint}
+                  />
+                </View>
+                <View style={styles.settingDivider} />
+                <View style={[styles.settingRow, !notificationsEnabled && styles.settingRowDisabled]}>
+                  <View style={styles.settingInfo}>
+                    <Text style={styles.settingTitle}>@Mentions only</Text>
+                    <Text style={styles.settingDesc}>Only notify when someone @mentions you</Text>
+                  </View>
+                  <Switch
+                    value={mentionsOnly}
+                    onValueChange={setMentionsOnly}
+                    disabled={!notificationsEnabled}
+                    trackColor={{ false: THEME.border, true: THEME.accent + "88" }}
+                    thumbColor={mentionsOnly ? THEME.accent : THEME.textFaint}
+                  />
+                </View>
+                <View style={styles.settingDivider} />
+                <View style={styles.settingRow}>
+                  <View style={styles.settingInfo}>
+                    <Text style={styles.settingTitle}>Bot notifications</Text>
+                    <Text style={styles.settingDesc}>Alerts from AI Agent (trade signals)</Text>
+                  </View>
+                  <Switch
+                    value={botNotificationsEnabled}
+                    onValueChange={setBotNotificationsEnabled}
+                    trackColor={{ false: THEME.border, true: THEME.accent + "88" }}
+                    thumbColor={botNotificationsEnabled ? THEME.accent : THEME.textFaint}
+                  />
+                </View>
+              </View>
+
+              <Text style={[styles.sectionLabel, { marginTop: 20 }]}>Push Token</Text>
+              <View style={styles.tokenCard}>
+                <Text style={styles.tokenText} numberOfLines={2} selectable>
+                  {expoPushToken ?? "Not registered yet"}
+                </Text>
+                <View style={styles.tokenButtons}>
+                  {expoPushToken && (
+                    <Pressable
+                      style={styles.tokenBtn}
+                      onPress={async () => {
+                        await Clipboard.setStringAsync(expoPushToken);
+                        Alert.alert("Copied", "Expo push token copied to clipboard.");
+                      }}
+                    >
+                      <Text style={styles.tokenBtnText}>Copy</Text>
+                    </Pressable>
+                  )}
+                  <Pressable style={styles.tokenBtn} onPress={handleRefreshToken}>
+                    <Text style={styles.tokenBtnText}>Refresh</Text>
+                  </Pressable>
+                  <Pressable style={[styles.tokenBtn, { borderColor: THEME.accent }]} onPress={handleTestNotification}>
+                    <Text style={styles.tokenBtnText}>Test (press Home!)</Text>
+                  </Pressable>
+                </View>
+              </View>
+            </>
+          )}
+
+          {/* ── Monke Tools ──────────────────────────────────────────────────── */}
+          {activeView === "tools" && (
+            <>
+              <Text style={styles.sectionLabel}>Ecosystem</Text>
+              {TOOLS.map((tool, idx) => (
+                <Pressable
+                  key={tool.name}
+                  style={({ pressed }) => [
+                    styles.toolRow,
+                    idx === 0 && styles.toolRowFirst,
+                    idx === TOOLS.length - 1 && styles.toolRowLast,
+                    pressed && { opacity: 0.7 },
+                  ]}
+                  onPress={() => Linking.openURL(tool.url)}
+                >
+                  <View style={styles.toolIconBox}>
+                    <Text style={styles.toolIcon}>{tool.icon}</Text>
+                  </View>
+                  <View style={styles.toolInfo}>
+                    <Text style={styles.toolName}>{tool.name}</Text>
+                    <Text style={styles.toolUrl}>{tool.url.replace("https://", "")}</Text>
+                  </View>
+                  <Text style={styles.chevron}>›</Text>
+                </Pressable>
+              ))}
             </>
           )}
 
@@ -453,17 +693,42 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     elevation: 20,
   },
+
+  // Header
   drawerHeader: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
     paddingHorizontal: 20,
     marginBottom: 12,
+    gap: 8,
   },
   drawerTitle: {
     fontFamily: FONTS.display,
     fontSize: 20,
     color: THEME.text,
+    flex: 1,
+  },
+  subViewTitle: {
+    fontFamily: FONTS.display,
+    fontSize: 17,
+    color: THEME.text,
+    flex: 1,
+    textAlign: "center",
+  },
+  backBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+  },
+  backIcon: {
+    fontSize: 22,
+    color: THEME.accent,
+    lineHeight: 24,
+  },
+  backLabel: {
+    fontFamily: FONTS.displayMed,
+    fontSize: 14,
+    color: THEME.accent,
   },
   closeBtn: {
     width: 32,
@@ -478,142 +743,21 @@ const styles = StyleSheet.create({
     color: THEME.textMuted,
   },
 
-  quickActions: {
-    flexDirection: "row",
-    gap: 8,
-    paddingHorizontal: 20,
-    marginBottom: 12,
-  },
-  quickBtn: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    backgroundColor: THEME.surface,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: THEME.border,
-    paddingVertical: 10,
-  },
-  quickBtnIcon: { fontSize: 16 },
-  quickBtnLabel: {
-    fontFamily: FONTS.displayMed,
-    fontSize: 12,
-    color: THEME.text,
-  },
-
-  tabBar: {
-    flexDirection: "row",
-    borderBottomWidth: 1,
-    borderBottomColor: THEME.border,
-    marginHorizontal: 20,
-    marginBottom: 14,
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: 8,
-    alignItems: "center",
-    borderBottomWidth: 2,
-    borderBottomColor: "transparent",
-    position: "relative",
-  },
-  tabActive: {
-    borderBottomColor: THEME.accent,
-  },
-  tabEmoji: { fontSize: 18 },
-  tabBadge: {
-    position: "absolute",
-    top: 2,
-    right: 6,
-    backgroundColor: THEME.accent,
-    borderRadius: 8,
-    minWidth: 14,
-    height: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 3,
-  },
-  tabBadgeText: {
-    fontFamily: FONTS.mono,
-    fontSize: 8,
-    color: "#fff",
-  },
-
-  content: {
-    flex: 1,
-    paddingHorizontal: 20,
-  },
-  sectionLabel: {
-    fontFamily: FONTS.mono,
-    fontSize: 10,
-    color: THEME.textFaint,
-    letterSpacing: 2,
-    textTransform: "uppercase",
-    marginBottom: 12,
-  },
-  emptyText: {
-    fontFamily: FONTS.body,
-    fontSize: 13,
-    color: THEME.textFaint,
-    textAlign: "center",
-    marginTop: 24,
-    lineHeight: 20,
-  },
-
-  // Leaderboard card
-  leaderboardCard: {
-    backgroundColor: THEME.surface,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: THEME.border,
-    marginBottom: 12,
-    padding: 12,
-    gap: 8,
-  },
-  leaderboardTitle: {
-    fontFamily: FONTS.displayMed,
-    fontSize: 12,
-    color: THEME.textMuted,
-    marginBottom: 4,
-  },
-  leaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  leaderMedal: { fontSize: 16, width: 22, textAlign: 'center' },
-  leaderAvatar: { width: 28, height: 28, borderRadius: 7, borderWidth: 1, borderColor: THEME.border },
-  leaderAvatarFallback: {
-    backgroundColor: THEME.accentSoft,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  leaderName: {
-    fontFamily: FONTS.displayMed,
-    fontSize: 12,
-    color: THEME.text,
-    flex: 1,
-  },
-  leaderStats: {
-    fontFamily: FONTS.mono,
-    fontSize: 9,
-    color: THEME.textFaint,
-  },
-
-  // Stats card
+  // All-Time Users
   statsRow: {
     flexDirection: "row",
     borderRadius: 12,
     backgroundColor: THEME.surface,
     borderWidth: 1,
     borderColor: THEME.border,
-    marginBottom: 16,
+    marginHorizontal: 20,
+    marginBottom: 14,
     overflow: "hidden",
   },
   statBox: {
     flex: 1,
     alignItems: "center",
-    paddingVertical: 12,
+    paddingVertical: 10,
     paddingHorizontal: 6,
   },
   statDivider: {
@@ -634,7 +778,85 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
 
-  // Members
+  content: {
+    flex: 1,
+    paddingHorizontal: 20,
+  },
+  sectionLabel: {
+    fontFamily: FONTS.mono,
+    fontSize: 10,
+    color: THEME.textFaint,
+    letterSpacing: 2,
+    textTransform: "uppercase",
+    marginBottom: 10,
+  },
+  emptyText: {
+    fontFamily: FONTS.body,
+    fontSize: 13,
+    color: THEME.textFaint,
+    textAlign: "center",
+    marginTop: 24,
+    lineHeight: 20,
+  },
+
+  // Menu list
+  menuList: {
+    borderRadius: 14,
+    backgroundColor: THEME.surface,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    overflow: "hidden",
+    marginBottom: 20,
+  },
+  menuItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 13,
+    paddingHorizontal: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: THEME.border,
+    gap: 12,
+  },
+  menuItemIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: THEME.surfaceHigh,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  menuItemEmoji: { fontSize: 18 },
+  menuItemInfo: { flex: 1, gap: 2 },
+  menuItemTitle: {
+    fontFamily: FONTS.displayMed,
+    fontSize: 14,
+    color: THEME.text,
+  },
+  menuItemSub: {
+    fontFamily: FONTS.mono,
+    fontSize: 10,
+    color: THEME.textFaint,
+  },
+  menuBadge: {
+    backgroundColor: THEME.accent,
+    borderRadius: 8,
+    minWidth: 18,
+    height: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 4,
+  },
+  menuBadgeText: {
+    fontFamily: FONTS.mono,
+    fontSize: 9,
+    color: "#fff",
+  },
+  menuChevron: {
+    fontSize: 20,
+    color: THEME.textFaint,
+  },
+
+  // User rows
   userRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -654,6 +876,36 @@ const styles = StyleSheet.create({
   userName: { fontFamily: FONTS.displayMed, fontSize: 13, color: THEME.text },
   userTime: { fontFamily: FONTS.mono, fontSize: 10, color: THEME.textFaint },
   onlineDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "#4caf50" },
+
+  // AI Agent Alerts
+  alertRow: {
+    flexDirection: "row",
+    gap: 12,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: THEME.border,
+    alignItems: "flex-start",
+  },
+  alertDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: THEME.accent,
+    marginTop: 5,
+    flexShrink: 0,
+  },
+  alertInfo: { flex: 1, gap: 4 },
+  alertContent: {
+    fontFamily: FONTS.body,
+    fontSize: 13,
+    color: THEME.text,
+    lineHeight: 19,
+  },
+  alertTime: {
+    fontFamily: FONTS.mono,
+    fontSize: 10,
+    color: THEME.textFaint,
+  },
 
   // Events
   eventsHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 4 },
@@ -712,6 +964,86 @@ const styles = StyleSheet.create({
   mediaInfo: { flex: 1, gap: 3 },
   mediaSender: { fontFamily: FONTS.displayMed, fontSize: 13, color: THEME.text },
   mediaTime: { fontFamily: FONTS.mono, fontSize: 10, color: THEME.textFaint },
+
+  // App Settings
+  fixBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: THEME.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: THEME.accent + "44",
+    padding: 14,
+    marginBottom: 10,
+  },
+  fixBannerIcon: { fontSize: 22 },
+  fixBannerTitle: { fontFamily: FONTS.bodyMed, fontSize: 13, color: THEME.text, marginBottom: 2 },
+  fixBannerDesc: { fontFamily: FONTS.body, fontSize: 11, color: THEME.textMuted, lineHeight: 15 },
+  settingsCard: {
+    backgroundColor: THEME.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    overflow: "hidden",
+  },
+  settingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    gap: 12,
+  },
+  settingRowDisabled: { opacity: 0.4 },
+  settingInfo: { flex: 1, gap: 3 },
+  settingTitle: { fontFamily: FONTS.bodyMed, fontSize: 14, color: THEME.text },
+  settingDesc: { fontFamily: FONTS.body, fontSize: 12, color: THEME.textMuted, lineHeight: 16 },
+  settingDivider: { height: 1, backgroundColor: THEME.border, marginHorizontal: 16 },
+  tokenCard: {
+    backgroundColor: THEME.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    padding: 14,
+    gap: 10,
+  },
+  tokenText: { fontFamily: FONTS.mono, fontSize: 11, color: THEME.textMuted, lineHeight: 16 },
+  tokenButtons: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
+  tokenBtn: {
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+    backgroundColor: THEME.surfaceHigh,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: THEME.border,
+  },
+  tokenBtnText: { fontFamily: FONTS.bodyMed, fontSize: 12, color: THEME.accent },
+
+  // Monke Tools
+  toolRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 13,
+    paddingHorizontal: 14,
+    backgroundColor: THEME.surface,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    borderBottomWidth: 0,
+  },
+  toolRowFirst: { borderTopLeftRadius: 12, borderTopRightRadius: 12 },
+  toolRowLast: { borderBottomWidth: 1, borderBottomLeftRadius: 12, borderBottomRightRadius: 12 },
+  toolIconBox: {
+    width: 40, height: 40, borderRadius: 10,
+    backgroundColor: THEME.surfaceHigh,
+    borderWidth: 1, borderColor: THEME.border,
+    alignItems: "center", justifyContent: "center",
+  },
+  toolIcon: { fontSize: 20 },
+  toolInfo: { flex: 1, gap: 2 },
+  toolName: { fontFamily: FONTS.displayMed, fontSize: 14, color: THEME.text },
+  toolUrl: { fontFamily: FONTS.mono, fontSize: 10, color: THEME.textFaint },
 
   footerHint: {
     fontFamily: FONTS.body,
