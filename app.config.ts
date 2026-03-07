@@ -57,6 +57,9 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       process.env.NFT_COLLECTION_ADDRESS ?? 'GokAiStXz2Kqbxwz2oqzfEXuUhE7aXySmBGEP7uejKXF',
     cloudinaryCloudName: process.env.CLOUDINARY_CLOUD_NAME ?? '',
     cloudinaryUploadPreset: process.env.CLOUDINARY_UPLOAD_PRESET ?? '',
+    livekitUrl: process.env.LIVEKIT_URL ?? '',
+    livekitApiKey: process.env.LIVEKIT_API_KEY ?? '',
+    livekitApiSecret: process.env.LIVEKIT_API_SECRET ?? '',
     eas: {
       projectId: 'e669ee53-de73-4dfb-9a36-5c22de29c67e',
     },

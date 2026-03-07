@@ -1,5 +1,6 @@
 import '../global';
 import 'react-native-get-random-values';
+import { registerGlobals as registerLiveKitGlobals } from '@livekit/react-native';
 import '../src/lib/backgroundSync'; // registers the TaskManager task definition at module level
 import { useEffect } from 'react';
 import { Stack } from 'expo-router';
@@ -11,7 +12,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { COLORS } from '../src/lib/constants';
 import { registerBackgroundSync } from '../src/lib/backgroundSync';
 import { registerForPushNotifications } from '../src/lib/notifications';
+import { triggerProfileRebroadcast } from '../src/hooks/useXmtp';
 import { useAppStore } from '../src/store/appStore';
+
+// Register LiveKit WebRTC globals (must be called before any LiveKit usage)
+registerLiveKitGlobals();
 
 SplashScreen.preventAutoHideAsync();
 
@@ -22,9 +27,16 @@ export default function RootLayout() {
     SplashScreen.hideAsync();
     registerBackgroundSync();
 
-    // Request notification permissions and get Expo push token on every launch
-    registerForPushNotifications().then(token => {
-      if (token) useAppStore.getState().setExpoPushToken(token);
+    // Request notification permissions and get Expo push token on every launch.
+    // After obtaining the token, re-broadcast our XMTP profile so the bot relay
+    // always has a fresh valid ExponentPushToken (fixes first-launch race condition).
+    registerForPushNotifications().then(async token => {
+      if (token) {
+        useAppStore.getState().setExpoPushToken(token);
+        // If XMTP is already initialized (common on second+ launch), push the token
+        // to the group immediately so the relay bot picks it up right away.
+        await triggerProfileRebroadcast(token);
+      }
     }).catch(err => console.warn('[Layout] Push token error:', err));
   }, []);
 

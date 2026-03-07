@@ -24,7 +24,7 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { THEME, FONTS } from "@/lib/constants";
-import { searchGifs, trendingGifs, type GiphyItem } from "@/lib/giphy";
+import { searchGifs, type GiphyItem } from "@/lib/giphy";
 
 interface GifPickerModalProps {
   visible: boolean;
@@ -49,10 +49,12 @@ export function GifPickerModal({
   const CELL_W = (SCREEN_W - 48 - 8) / 2;
   const CELL_H = Math.round(CELL_W * 0.6);
 
+  const DEFAULT_QUERY = "Saga Monkes";
+
   const load = useCallback(async (q: string) => {
     setLoading(true);
     try {
-      const results = q.trim() ? await searchGifs(q.trim()) : await trendingGifs();
+      const results = await searchGifs(q.trim() || DEFAULT_QUERY);
       setItems(results);
     } catch {
       setItems([]);
@@ -103,16 +105,14 @@ export function GifPickerModal({
       <View style={styles.sheet}>
         <View style={styles.handle} />
 
-        <Text style={styles.title}>
-          {sagaMonkesOnly ? "🐒  Saga GIFs" : "GIF"}
-        </Text>
+        <Text style={styles.title}>GIF</Text>
 
         {!sagaMonkesOnly && (
           <TextInput
             style={styles.searchInput}
             value={query}
             onChangeText={setQuery}
-            placeholder="Search GIFs…"
+            placeholder="Search all GIFs…"
             placeholderTextColor={THEME.textFaint}
             autoCapitalize="none"
             autoCorrect={false}

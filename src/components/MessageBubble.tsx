@@ -28,12 +28,13 @@ import {
   Animated,
   ActivityIndicator,
   Keyboard,
+  ScrollView,
   useWindowDimensions,
 } from "react-native";
 import { Image as ExpoImage } from "expo-image";
 import * as Haptics from "expo-haptics";
 import { format } from "date-fns";
-import { THEME, FONTS, REACTIONS } from "@/lib/constants";
+import { THEME, FONTS } from "@/lib/constants";
 import { shortenAddress } from "@/lib/nftVerification";
 import { useAppStore } from "@/store/appStore";
 import { getCachedProfile, useProfileVersion, getAllTimeUsers } from "@/lib/userProfile";
@@ -222,14 +223,13 @@ export const MessageBubble = memo(function MessageBubble({
   const [pickerVisible, setPickerVisible] = useState(false);
   const [stickerItems, setStickerItems] = useState<GiphyItem[]>([]);
   const [stickersLoading, setStickersLoading] = useState(false);
-  const [reactorsFor, setReactorsFor] = useState<ReactionEmoji | null>(null);
 
-  // Fetch stickers when picker opens
+  // Fetch SagaMonkes stickers when picker opens
   useEffect(() => {
     if (!pickerVisible) return;
     let cancelled = false;
     setStickersLoading(true);
-    searchStickers("sagamonkes", 12).then((items) => {
+    searchStickers("SagaMonkes", 30).then((items) => {
       if (!cancelled) {
         setStickerItems(items);
         setStickersLoading(false);
@@ -489,34 +489,7 @@ export const MessageBubble = memo(function MessageBubble({
           </Text>
         </View>
 
-        {/* Reaction pills — OUTSIDE bubble, below name */}
-        {(REACTIONS as readonly ReactionEmoji[]).some((e) => e !== "🍌" && (message.reactions[e]?.count ?? 0) > 0) && (
-          <View style={[styles.bubbleFooter, isOwn && styles.bubbleFooterOwn]}>
-            {(REACTIONS as readonly ReactionEmoji[]).map((emoji) => {
-              if (emoji === "🍌") return null;
-              const rxn = message.reactions[emoji];
-              const count = rxn?.count ?? 0;
-              const byMe = rxn?.reactedByMe ?? false;
-              if (count === 0) return null;
-              return (
-                <Pressable
-                  key={emoji}
-                  onPress={() => onReact(emoji, message.id)}
-                  onLongPress={() => setReactorsFor(emoji)}
-                  hitSlop={8}
-                  style={[styles.reactionPill, byMe && styles.reactionPillActive]}
-                >
-                  <Text style={styles.pillEmoji}>{emoji}</Text>
-                  <Text style={[styles.pillCount, byMe && styles.pillCountActive]}>
-                    {count}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        )}
-
-        {/* Sticker reaction thumbnails — OUTSIDE bubble, below reaction pills */}
+        {/* Sticker reaction thumbnails — OUTSIDE bubble, below name */}
         {(message.stickerReactions ?? []).length > 0 && (
           <View style={[styles.stickerReactionRow, isOwn && styles.stickerReactionRowOwn]}>
             {(message.stickerReactions ?? []).map((sr) => (
@@ -549,30 +522,6 @@ export const MessageBubble = memo(function MessageBubble({
     >
       <Pressable style={styles.pickerOverlay} onPress={() => setPickerVisible(false)}>
         <Pressable style={styles.pickerSheet} onPress={(e) => e.stopPropagation()}>
-          {/* Emoji reaction row */}
-          <View style={styles.pickerEmojiRow}>
-            {(REACTIONS as readonly ReactionEmoji[])
-              .filter(e => e !== "🍌")
-              .map((emoji) => (
-                <Pressable
-                  key={emoji}
-                  onPress={() => handlePickReaction(emoji)}
-                  style={({ pressed }) => [
-                    styles.pickerEmojiBtn,
-                    pressed && styles.pickerEmojiBtnPressed,
-                    message.reactions[emoji]?.reactedByMe && styles.pickerEmojiBtnActive,
-                  ]}
-                >
-                  <Text style={styles.pickerEmoji}>{emoji}</Text>
-                  {(message.reactions[emoji]?.count ?? 0) > 0 && (
-                    <Text style={styles.pickerEmojiCount}>
-                      {message.reactions[emoji]!.count}
-                    </Text>
-                  )}
-                </Pressable>
-              ))}
-          </View>
-
           <Pressable
             onPress={handlePickReply}
             style={({ pressed }) => [
@@ -583,28 +532,29 @@ export const MessageBubble = memo(function MessageBubble({
             <Text style={styles.pickerReplyText}>↩  Reply</Text>
           </Pressable>
 
-          {/* Sticker grid */}
+          {/* SagaMonkes sticker grid */}
           {onStickerReact && (
             <View style={styles.stickerSection}>
-              <Text style={styles.stickerSectionLabel}>🐒 Saga Stickers</Text>
               {stickersLoading ? (
                 <ActivityIndicator size="small" color={THEME.accent} style={{ marginVertical: 8 }} />
               ) : (
-                <View style={styles.stickerGrid}>
-                  {stickerItems.map((item) => (
-                    <Pressable
-                      key={item.id}
-                      onPress={() => {
-                        setPickerVisible(false);
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                        onStickerReact(item.displayUrl, message.id);
-                      }}
-                      style={({ pressed }) => [styles.stickerGridCell, pressed && { opacity: 0.7 }]}
-                    >
-                      <Image source={{ uri: item.previewUrl }} style={styles.stickerGridImg} />
-                    </Pressable>
-                  ))}
-                </View>
+                <ScrollView style={styles.stickerScroll} showsVerticalScrollIndicator={false}>
+                  <View style={styles.stickerGrid}>
+                    {stickerItems.map((item) => (
+                      <Pressable
+                        key={item.id}
+                        onPress={() => {
+                          setPickerVisible(false);
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          onStickerReact(item.displayUrl, message.id);
+                        }}
+                        style={({ pressed }) => [styles.stickerGridCell, pressed && { opacity: 0.7 }]}
+                      >
+                        <Image source={{ uri: item.previewUrl }} style={styles.stickerGridImg} />
+                      </Pressable>
+                    ))}
+                  </View>
+                </ScrollView>
               )}
             </View>
           )}
@@ -612,40 +562,7 @@ export const MessageBubble = memo(function MessageBubble({
       </Pressable>
     </Modal>
 
-    {/* ── Who-Reacted Modal ──────────────────────────────────────────── */}
-    <Modal
-      visible={!!reactorsFor}
-      transparent
-      animationType="slide"
-      onRequestClose={() => setReactorsFor(null)}
-    >
-      <Pressable style={styles.pickerOverlay} onPress={() => setReactorsFor(null)}>
-        <Pressable style={styles.pickerSheet} onPress={e => e.stopPropagation()}>
-          <Text style={styles.reactorTitle}>{reactorsFor}  Reacted</Text>
-          {(reactorsFor ? (message.reactions[reactorsFor]?.reactors ?? []) : []).map(inboxId => {
-            const p = getCachedProfile(inboxId);
-            const name = p?.username ?? shortenAddress(inboxId);
-            return (
-              <View key={inboxId} style={styles.reactorRow}>
-                {p?.nftImage
-                  ? <Image source={{ uri: p.nftImage }} style={styles.reactorAvatar} />
-                  : <View style={[styles.reactorAvatar, styles.reactorAvatarFallback]} />}
-                <Text style={styles.reactorName}>{name}</Text>
-              </View>
-            );
-          })}
-          <Pressable
-            style={styles.reactorToggleBtn}
-            onPress={() => { const e = reactorsFor!; setReactorsFor(null); onReact(e, message.id); }}
-          >
-            <Text style={styles.reactorToggleBtnText}>
-              {reactorsFor && message.reactions[reactorsFor]?.reactedByMe ? 'Remove' : 'Add'} {reactorsFor}
-            </Text>
-          </Pressable>
-        </Pressable>
-      </Pressable>
-    </Modal>
-    </>
+</>
   );
 });
 
@@ -838,6 +755,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: THEME.border,
     minWidth: 280,
+    maxHeight: "75%",
   },
   pickerEmojiRow: {
     flexDirection: "row",
@@ -1014,11 +932,16 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     textAlign: "center",
   },
+  stickerScroll: {
+    maxHeight: 320,
+    alignSelf: "stretch",
+  },
   stickerGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 6,
     justifyContent: "center",
+    paddingBottom: 8,
   },
   stickerGridCell: {
     borderRadius: 10,

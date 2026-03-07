@@ -412,6 +412,15 @@ export async function sendEventMessage(
   await (group as any).send(`EVENT:${eventJson}`);
 }
 
+// ─── Live Room signaling ───────────────────────────────────────────────────────
+
+export async function sendLiveRoomMessage(
+  group: XmtpGroup,
+  roomJson: string,
+): Promise<void> {
+  await (group as any).send(`LIVE_ROOM:${roomJson}`);
+}
+
 // ─── Typing Indicator ─────────────────────────────────────────────────────────
 
 /**
