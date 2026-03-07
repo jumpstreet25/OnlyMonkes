@@ -388,7 +388,8 @@ export async function sendProfileUpdate(
   walletAddress?: string | null,
   tipWallet?: string | null,
   nftImage?: string | null,
-  legendary?: boolean
+  legendary?: boolean,
+  pushToken?: string | null,
 ): Promise<void> {
   const payload = JSON.stringify({
     id: inboxId,
@@ -399,6 +400,7 @@ export async function sendProfileUpdate(
     tw: tipWallet ?? "",
     ni: nftImage ?? "",
     lg: legendary ? 1 : 0,
+    pt: pushToken ?? "",
   });
   await (group as any).send(`PROFILE_UPDATE:${payload}`);
 }
