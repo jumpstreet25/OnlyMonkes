@@ -427,6 +427,67 @@ export async function sendTypingIndicator(
 
 // ─── Direct Messages ──────────────────────────────────────────────────────────
 
+export interface DmThread {
+  peerInboxId: string;
+  lastMessage: string | null;
+  lastMessageAt: Date | null;
+}
+
+/**
+ * List all DM conversations for the current user, sorted newest-first.
+ * Skips group conversations and join-request DMs (JOIN_REQUEST: prefix).
+ */
+export async function listDmThreads(client: XmtpClient): Promise<DmThread[]> {
+  await client.conversations.sync();
+  const allConvos: any[] = await (client.conversations as any).list();
+  const threads: DmThread[] = [];
+
+  for (const convo of allConvos) {
+    if ((convo as any).isGroup) continue;
+    if (typeof (convo as any).peerInboxId === 'undefined') continue;
+    const peerInboxId: string = (convo as any).peerInboxId;
+
+    try {
+      await (convo as any).sync();
+      const msgs: any[] = await (convo as any).messages({ limit: 1 });
+      const last = msgs[0];
+      let lastMessage: string | null = null;
+      let lastMessageAt: Date | null = null;
+
+      if (last) {
+        try {
+          const raw: string = last.content();
+          // Parse MSG:<username>:<content> → show just the content part
+          if (typeof raw === 'string') {
+            if (raw.startsWith('MSG:')) {
+              const parts = raw.split(':');
+              lastMessage = parts.slice(2).join(':');
+            } else if (raw.startsWith('JOIN_REQUEST:')) {
+              continue; // skip join-request DMs from the inbox list
+            } else {
+              lastMessage = raw;
+            }
+          }
+        } catch { /* skip */ }
+        lastMessageAt = last.sentNs
+          ? new Date(Number(last.sentNs) / 1_000_000)
+          : null;
+      }
+
+      threads.push({ peerInboxId, lastMessage, lastMessageAt });
+    } catch {
+      threads.push({ peerInboxId, lastMessage: null, lastMessageAt: null });
+    }
+  }
+
+  return threads.sort((a, b) => {
+    if (!a.lastMessageAt && !b.lastMessageAt) return 0;
+    if (!a.lastMessageAt) return 1;
+    if (!b.lastMessageAt) return -1;
+    return b.lastMessageAt.getTime() - a.lastMessageAt.getTime();
+  });
+}
+
 export async function openOrCreateDm(client: XmtpClient, peerInboxId: string): Promise<any> {
   return client.conversations.findOrCreateDm(peerInboxId as any);
 }

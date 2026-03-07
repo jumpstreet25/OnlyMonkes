@@ -138,7 +138,7 @@ export function UserProfileModal({ visible, target, onClose, onEditProfile, onCh
               onPress={() => { onClose(); setTimeout(onMessage!, 300); }}
               style={styles.messageBtn}
             >
-              <Text style={styles.messageBtnText}>💬  Message</Text>
+              <Text style={styles.messageBtnText}>Message</Text>
             </Pressable>
           )}
 
@@ -158,7 +158,7 @@ export function UserProfileModal({ visible, target, onClose, onEditProfile, onCh
                   onPress={() => { onClose(); setTimeout(onChangePfp, 300); }}
                   style={styles.changePfpBtn}
                 >
-                  <Text style={styles.changePfpText}>🎨 Change PFP</Text>
+                  <Text style={styles.changePfpText}>Change PFP</Text>
                 </Pressable>
               )}
               {onSwitchWallet && (
@@ -166,7 +166,7 @@ export function UserProfileModal({ visible, target, onClose, onEditProfile, onCh
                   onPress={() => { onClose(); setTimeout(onSwitchWallet!, 300); }}
                   style={styles.switchBtn}
                 >
-                  <Text style={styles.switchBtnText}>🔄 Switch Wallet</Text>
+                  <Text style={styles.switchBtnText}>Switch Wallet</Text>
                 </Pressable>
               )}
               {onLogout && (
@@ -174,7 +174,7 @@ export function UserProfileModal({ visible, target, onClose, onEditProfile, onCh
                   onPress={() => { onClose(); setTimeout(onLogout!, 300); }}
                   style={styles.logoutBtn}
                 >
-                  <Text style={styles.logoutBtnText}>🚪 Log Out</Text>
+                  <Text style={styles.logoutBtnText}>Log Out</Text>
                 </Pressable>
               )}
             </View>
@@ -342,8 +342,6 @@ const styles = StyleSheet.create({
     alignSelf: "stretch",
     backgroundColor: THEME.accentSoft,
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: THEME.accent + "55",
     paddingVertical: 12,
     alignItems: "center",
   },
@@ -356,8 +354,6 @@ const styles = StyleSheet.create({
     alignSelf: "stretch",
     backgroundColor: THEME.surface,
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: THEME.border,
     paddingVertical: 12,
     alignItems: "center",
   },
@@ -370,8 +366,6 @@ const styles = StyleSheet.create({
     alignSelf: "stretch",
     backgroundColor: THEME.surface,
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: THEME.border,
     paddingVertical: 12,
     alignItems: "center",
   },
@@ -382,10 +376,8 @@ const styles = StyleSheet.create({
   },
   logoutBtn: {
     alignSelf: "stretch",
-    backgroundColor: "transparent",
+    backgroundColor: THEME.surface,
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#ff444455",
     paddingVertical: 12,
     alignItems: "center",
   },
@@ -412,8 +404,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingVertical: 10,
     borderRadius: 10,
-    borderWidth: 1,
-    borderColor: THEME.border,
     backgroundColor: THEME.surface,
   },
   closeBtnText: {

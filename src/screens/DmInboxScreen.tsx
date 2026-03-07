@@ -1,0 +1,408 @@
+/**
+ * DmInboxScreen — Twitter/X-style DM inbox.
+ *
+ * Layout:
+ *   Header: "Messages" + ✎ compose button (top-right)
+ *   FlatList: one row per DM thread → avatar | username + last message | timestamp
+ *   Compose modal: searchable list of all known users → tap to open DM
+ */
+
+import React, { useState, useMemo, useCallback } from 'react';
+import {
+  View,
+  Text,
+  FlatList,
+  Pressable,
+  StyleSheet,
+  Image,
+  TextInput,
+  Modal,
+  ActivityIndicator,
+  RefreshControl,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
+import * as Haptics from 'expo-haptics';
+import { formatDistanceToNowStrict } from 'date-fns';
+import { THEME, FONTS } from '@/lib/constants';
+import { useDmInbox } from '@/hooks/useDmInbox';
+import { useAppStore } from '@/store/appStore';
+import { getCachedProfile, getAllTimeUsers, useProfileVersion } from '@/lib/userProfile';
+import { shortenAddress } from '@/lib/nftVerification';
+import type { DmThread } from '@/lib/xmtp';
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function relativeTime(date: Date | null): string {
+  if (!date) return '';
+  try { return formatDistanceToNowStrict(date, { addSuffix: false }); } catch { return ''; }
+}
+
+// ─── Thread Row ───────────────────────────────────────────────────────────────
+
+function ThreadRow({ thread, myInboxId }: { thread: DmThread; myInboxId: string }) {
+  const profile    = getCachedProfile(thread.peerInboxId);
+  const isBot      = thread.peerInboxId === myInboxId;
+  const name       = profile?.username ?? shortenAddress(thread.peerInboxId);
+  const avatarUri  = profile?.nftImage ?? null;
+  const preview    = thread.lastMessage
+    ? thread.lastMessage.replace(/^STICKER:[^\s]+/, 'Sticker').replace(/^GIF:[^\s]+/, 'GIF').replace(/^IMAGE:[^\s]+/, 'Photo').replace(/^VIDEO:[^\s]+/, 'Video')
+    : 'No messages yet';
+  const timeStr = relativeTime(thread.lastMessageAt);
+
+  const handlePress = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    router.push(`/dm/${thread.peerInboxId}`);
+  }, [thread.peerInboxId]);
+
+  if (isBot) return null;
+
+  return (
+    <Pressable
+      style={({ pressed }) => [styles.threadRow, pressed && { backgroundColor: THEME.surfaceHigh }]}
+      onPress={handlePress}
+    >
+      {avatarUri ? (
+        <Image source={{ uri: avatarUri }} style={styles.avatar} />
+      ) : (
+        <View style={styles.avatarFallback}>
+          <Text style={styles.avatarGlyph}>🐒</Text>
+        </View>
+      )}
+
+      <View style={styles.threadInfo}>
+        <View style={styles.threadHeader}>
+          <Text style={styles.threadName} numberOfLines={1}>{name}</Text>
+          {timeStr ? <Text style={styles.threadTime}>{timeStr}</Text> : null}
+        </View>
+        <Text style={styles.threadPreview} numberOfLines={1}>{preview}</Text>
+      </View>
+
+      <Text style={styles.chevron}>›</Text>
+    </Pressable>
+  );
+}
+
+// ─── Compose Modal ────────────────────────────────────────────────────────────
+
+function ComposeModal({ visible, onClose, myInboxId }: {
+  visible: boolean;
+  onClose: () => void;
+  myInboxId: string;
+}) {
+  const [query, setQuery] = useState('');
+  useProfileVersion();
+
+  const users = useMemo(() => {
+    const allUsers = getAllTimeUsers(); // Map<inboxId, username>
+    const results: Array<{ inboxId: string; name: string; avatarUri: string | null }> = [];
+    for (const [inboxId, uname] of allUsers.entries()) {
+      if (inboxId === myInboxId) continue;
+      const profile = getCachedProfile(inboxId);
+      const name    = profile?.username ?? uname ?? shortenAddress(inboxId);
+      if (query && !name.toLowerCase().includes(query.toLowerCase())) continue;
+      results.push({ inboxId, name, avatarUri: profile?.nftImage ?? null });
+    }
+    return results.sort((a, b) => a.name.localeCompare(b.name));
+  }, [query, myInboxId]);
+
+  const handleSelect = useCallback((inboxId: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    onClose();
+    router.push(`/dm/${inboxId}`);
+  }, [onClose]);
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalSheet}>
+          {/* Header */}
+          <View style={styles.modalHeader}>
+            <Pressable onPress={onClose} style={styles.modalCancelBtn} hitSlop={8}>
+              <Text style={styles.modalCancelText}>Cancel</Text>
+            </Pressable>
+            <Text style={styles.modalTitle}>New Message</Text>
+            <View style={{ width: 60 }} />
+          </View>
+
+          {/* Search */}
+          <View style={styles.searchBar}>
+            <Text style={styles.searchIcon}>🔍</Text>
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search Monkes..."
+              placeholderTextColor={THEME.textFaint}
+              value={query}
+              onChangeText={setQuery}
+              autoFocus
+              autoCapitalize="none"
+            />
+          </View>
+
+          {/* User list */}
+          <FlatList
+            data={users}
+            keyExtractor={u => u.inboxId}
+            renderItem={({ item }) => (
+              <Pressable
+                style={({ pressed }) => [styles.userRow, pressed && { opacity: 0.7 }]}
+                onPress={() => handleSelect(item.inboxId)}
+              >
+                {item.avatarUri ? (
+                  <Image source={{ uri: item.avatarUri }} style={styles.userAvatar} />
+                ) : (
+                  <View style={styles.userAvatarFallback}>
+                    <Text style={styles.avatarGlyph}>🐒</Text>
+                  </View>
+                )}
+                <Text style={styles.userName} numberOfLines={1}>{item.name}</Text>
+                <Text style={styles.chevron}>›</Text>
+              </Pressable>
+            )}
+            ListEmptyComponent={
+              <Text style={styles.emptyText}>
+                {query ? 'No users match your search.' : 'No users found yet.'}
+              </Text>
+            }
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={{ paddingBottom: 24 }}
+          />
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+// ─── Screen ───────────────────────────────────────────────────────────────────
+
+export default function DmInboxScreen() {
+  const insets = useSafeAreaInsets();
+  const { myInboxId } = useAppStore();
+  const { threads, loading, refreshing, refresh } = useDmInbox();
+  const [composeOpen, setComposeOpen] = useState(false);
+  useProfileVersion();
+
+  return (
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      {/* Header */}
+      <View style={styles.header}>
+        <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={8}>
+          <Text style={styles.backArrow}>←</Text>
+        </Pressable>
+        <Text style={styles.headerTitle}>Messages</Text>
+        <Pressable
+          style={styles.composeBtn}
+          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setComposeOpen(true); }}
+          hitSlop={8}
+        >
+          {/* Pencil + paper compose icon */}
+          <Text style={styles.composeIcon}>✏</Text>
+        </Pressable>
+      </View>
+
+      {loading ? (
+        <View style={styles.center}>
+          <ActivityIndicator color={THEME.accent} size="large" />
+          <Text style={styles.loadingText}>Loading conversations…</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={threads}
+          keyExtractor={t => t.peerInboxId}
+          renderItem={({ item }) => (
+            <ThreadRow thread={item} myInboxId={myInboxId ?? ''} />
+          )}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={refresh}
+              tintColor={THEME.accent}
+            />
+          }
+          ListEmptyComponent={
+            <View style={styles.center}>
+              <Text style={styles.emptyTitle}>No DMs yet</Text>
+              <Text style={styles.emptySubtitle}>
+                Tap ✏ to start a conversation with another Monke.
+              </Text>
+            </View>
+          }
+          contentContainerStyle={{ flexGrow: 1 }}
+          ItemSeparatorComponent={() => <View style={styles.separator} />}
+        />
+      )}
+
+      <ComposeModal
+        visible={composeOpen}
+        onClose={() => setComposeOpen(false)}
+        myInboxId={myInboxId ?? ''}
+      />
+    </View>
+  );
+}
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
+
+const AVATAR_SIZE = 48;
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: THEME.bg },
+
+  // Header
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: THEME.border,
+  },
+  backBtn: { padding: 4, marginRight: 4 },
+  backArrow: { fontSize: 22, color: THEME.text },
+  headerTitle: {
+    flex: 1,
+    fontFamily: FONTS.displayMed,
+    fontSize: 18,
+    color: THEME.text,
+    textAlign: 'center',
+  },
+  composeBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: THEME.accentSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: THEME.accent + '55',
+  },
+  composeIcon: { fontSize: 17, color: THEME.accent },
+
+  // Thread row
+  threadRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 12,
+  },
+  avatar: {
+    width: AVATAR_SIZE,
+    height: AVATAR_SIZE,
+    borderRadius: AVATAR_SIZE / 2,
+    borderWidth: 1,
+    borderColor: THEME.border,
+  },
+  avatarFallback: {
+    width: AVATAR_SIZE,
+    height: AVATAR_SIZE,
+    borderRadius: AVATAR_SIZE / 2,
+    backgroundColor: THEME.accentSoft,
+    borderWidth: 1,
+    borderColor: THEME.accent + '44',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarGlyph: { fontSize: 22 },
+  threadInfo: { flex: 1, gap: 3 },
+  threadHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  threadName: {
+    fontFamily: FONTS.displayMed,
+    fontSize: 15,
+    color: THEME.text,
+    flexShrink: 1,
+  },
+  threadTime: {
+    fontFamily: FONTS.mono,
+    fontSize: 11,
+    color: THEME.textFaint,
+    marginLeft: 8,
+  },
+  threadPreview: {
+    fontFamily: FONTS.body,
+    fontSize: 13,
+    color: THEME.textMuted,
+  },
+  chevron: { fontSize: 20, color: THEME.textFaint, marginLeft: 4 },
+  separator: { height: 1, backgroundColor: THEME.border, marginLeft: 76 },
+
+  // Empty / loading
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40, gap: 12 },
+  loadingText: { fontFamily: FONTS.body, fontSize: 14, color: THEME.textMuted },
+  emptyTitle: { fontFamily: FONTS.displayMed, fontSize: 18, color: THEME.text },
+  emptySubtitle: { fontFamily: FONTS.body, fontSize: 14, color: THEME.textMuted, textAlign: 'center', lineHeight: 20 },
+
+  // Compose modal
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  modalSheet: {
+    backgroundColor: THEME.bg,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    maxHeight: '85%',
+    paddingBottom: 20,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: THEME.border,
+  },
+  modalTitle: { fontFamily: FONTS.displayMed, fontSize: 16, color: THEME.text },
+  modalCancelBtn: { width: 60 },
+  modalCancelText: { fontFamily: FONTS.body, fontSize: 15, color: THEME.accent },
+
+  // Search bar
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    margin: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: THEME.surfaceHigh,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    gap: 8,
+  },
+  searchIcon: { fontSize: 14 },
+  searchInput: {
+    flex: 1,
+    fontFamily: FONTS.body,
+    fontSize: 15,
+    color: THEME.text,
+    padding: 0,
+  },
+
+  // User rows in compose modal
+  userRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    gap: 12,
+  },
+  userAvatar: { width: 40, height: 40, borderRadius: 20, borderWidth: 1, borderColor: THEME.border },
+  userAvatarFallback: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: THEME.accentSoft,
+    borderWidth: 1,
+    borderColor: THEME.accent + '44',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  userName: { flex: 1, fontFamily: FONTS.bodyMed, fontSize: 15, color: THEME.text },
+  emptyText: {
+    fontFamily: FONTS.body,
+    fontSize: 14,
+    color: THEME.textMuted,
+    textAlign: 'center',
+    padding: 32,
+  },
+});

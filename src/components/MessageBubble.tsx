@@ -390,6 +390,7 @@ export const MessageBubble = memo(function MessageBubble({
         <Pressable
           onLongPress={handleLongPress}
           delayLongPress={350}
+          onPress={showBotExpand ? () => setBotExpanded(e => !e) : undefined}
           style={isMedia ? styles.mediaBubble : [
             styles.bubble,
             isOwn ? styles.bubbleOwn : styles.bubbleOther,
@@ -455,10 +456,7 @@ export const MessageBubble = memo(function MessageBubble({
               resizeMode="contain"
             />
           ) : (
-            <Pressable
-              onPress={showBotExpand ? () => setBotExpanded(e => !e) : undefined}
-              style={{ gap: 4 }}
-            >
+            <View style={{ gap: 4 }}>
               <Text
                 style={[styles.content, { color: textColor }]}
                 numberOfLines={showBotExpand && !botExpanded ? 9 : undefined}
@@ -470,7 +468,7 @@ export const MessageBubble = memo(function MessageBubble({
                   {botExpanded ? "collapse" : "expand"}
                 </Text>
               )}
-            </Pressable>
+            </View>
           )}
         </Pressable>
 
@@ -545,6 +543,30 @@ export const MessageBubble = memo(function MessageBubble({
     >
       <Pressable style={styles.pickerOverlay} onPress={() => setPickerVisible(false)}>
         <Pressable style={styles.pickerSheet} onPress={(e) => e.stopPropagation()}>
+          {/* Emoji reaction row */}
+          <View style={styles.pickerEmojiRow}>
+            {(REACTIONS as readonly ReactionEmoji[])
+              .filter(e => e !== "🍌")
+              .map((emoji) => (
+                <Pressable
+                  key={emoji}
+                  onPress={() => handlePickReaction(emoji)}
+                  style={({ pressed }) => [
+                    styles.pickerEmojiBtn,
+                    pressed && styles.pickerEmojiBtnPressed,
+                    message.reactions[emoji]?.reactedByMe && styles.pickerEmojiBtnActive,
+                  ]}
+                >
+                  <Text style={styles.pickerEmoji}>{emoji}</Text>
+                  {(message.reactions[emoji]?.count ?? 0) > 0 && (
+                    <Text style={styles.pickerEmojiCount}>
+                      {message.reactions[emoji]!.count}
+                    </Text>
+                  )}
+                </Pressable>
+              ))}
+          </View>
+
           <Pressable
             onPress={handlePickReply}
             style={({ pressed }) => [
@@ -816,18 +838,30 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   pickerEmojiBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
+    width: 52,
+    height: 58,
+    borderRadius: 14,
     backgroundColor: THEME.surfaceHigh,
     alignItems: "center",
     justifyContent: "center",
+    gap: 2,
+    borderWidth: 1,
+    borderColor: "transparent",
   },
   pickerEmojiBtnPressed: {
     backgroundColor: THEME.accentSoft,
     transform: [{ scale: 1.15 }],
   },
+  pickerEmojiBtnActive: {
+    backgroundColor: "rgba(255,213,79,0.22)",
+    borderColor: "#FFD54F55",
+  },
   pickerEmoji: { fontSize: 26 },
+  pickerEmojiCount: {
+    fontFamily: FONTS.mono,
+    fontSize: 9,
+    color: THEME.textFaint,
+  },
   pickerReplyBtn: {
     paddingVertical: 8,
     paddingHorizontal: 28,
