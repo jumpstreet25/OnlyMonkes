@@ -255,9 +255,6 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onSearch, onPressU
         style={({ pressed }) => [styles.menuItem, pressed && { opacity: 0.7 }]}
         onPress={onPress}
       >
-        <View style={styles.menuItemIcon}>
-          <Text style={styles.menuItemEmoji}>{icon}</Text>
-        </View>
         <View style={styles.menuItemInfo}>
           <Text style={styles.menuItemTitle}>{title}</Text>
           {subtitle ? <Text style={styles.menuItemSub}>{subtitle}</Text> : null}
@@ -341,7 +338,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onSearch, onPressU
                   icon="💬"
                   title="Messages"
                   subtitle="Direct messages"
-                  onPress={() => setActiveView("messages")}
+                  onPress={() => { onClose(); router.push('/dms'); }}
                 />
                 <MenuItem
                   icon="🤖"
@@ -832,31 +829,17 @@ const styles = StyleSheet.create({
 
   // Menu list
   menuList: {
-    borderRadius: 14,
-    backgroundColor: THEME.surface,
-    borderWidth: 1,
-    borderColor: THEME.border,
-    overflow: "hidden",
     marginBottom: 20,
   },
   menuItem: {
     flexDirection: "row",
     alignItems: "center",
     paddingVertical: 13,
-    paddingHorizontal: 14,
+    paddingHorizontal: 4,
     borderBottomWidth: 1,
     borderBottomColor: THEME.border,
     gap: 12,
   },
-  menuItemIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: THEME.surfaceHigh,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  menuItemEmoji: { fontSize: 18 },
   menuItemInfo: { flex: 1, gap: 2 },
   menuItemTitle: {
     fontFamily: FONTS.displayMed,

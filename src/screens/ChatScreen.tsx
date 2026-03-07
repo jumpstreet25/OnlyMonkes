@@ -69,6 +69,9 @@ import { CalendarModal } from "@/components/CalendarModal";
 import { GifPickerModal } from "@/components/GifPickerModal";
 import { VideoCameraModal } from "@/components/VideoCameraModal";
 import { Video, ResizeMode } from "expo-av";
+import * as MediaLibrary from "expo-media-library";
+import * as FileSystem from "expo-file-system";
+import { captureRef } from "react-native-view-shot";
 import * as ImagePicker from "expo-image-picker";
 import type { ChatMessage, ReactionEmoji } from "@/types";
 import type { TipAmount } from "@/lib/constants";
@@ -119,6 +122,38 @@ export default function ChatScreen() {
   const [adminRecoveryError, setAdminRecoveryError] = useState<string | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const initialMsgIdsRef = useRef<Set<string>>(new Set());
+  const lightboxViewRef = useRef<any>(null);
+
+  const handleDownloadImage = async () => {
+    const { status } = await MediaLibrary.requestPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Permission needed", "Allow gallery access to save images.");
+      return;
+    }
+    try {
+      const uri = await captureRef(lightboxViewRef, { format: "jpg", quality: 0.95 });
+      await MediaLibrary.saveToLibraryAsync(uri);
+      Alert.alert("Saved", "Image saved to your gallery.");
+    } catch {
+      Alert.alert("Error", "Could not save image.");
+    }
+  };
+
+  const handleDownloadVideo = async (uri: string) => {
+    const { status } = await MediaLibrary.requestPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Permission needed", "Allow gallery access to save videos.");
+      return;
+    }
+    try {
+      const dest = `${FileSystem.cacheDirectory}om_video_${Date.now()}.mp4`;
+      const dl = await FileSystem.downloadAsync(uri, dest);
+      await MediaLibrary.saveToLibraryAsync(dl.uri);
+      Alert.alert("Saved", "Video saved to your gallery.");
+    } catch {
+      Alert.alert("Error", "Could not save video.");
+    }
+  };
 
   const myAddress = myInboxId ?? "";
 
@@ -581,12 +616,25 @@ export default function ChatScreen() {
           style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.95)", justifyContent: "center", alignItems: "center" }}
           onPress={() => setLightboxUrl(null)}
         >
-          <Image
-            source={{ uri: lightboxUrl ?? "" }}
-            style={{ width: SCREEN_W, height: SCREEN_H * 0.85 }}
-            resizeMode="contain"
-          />
+          {/* Capturable view with watermark baked in */}
+          <View ref={lightboxViewRef} collapsable={false} style={{ width: SCREEN_W, height: SCREEN_H * 0.85 }}>
+            <Image
+              source={{ uri: lightboxUrl ?? "" }}
+              style={{ width: "100%", height: "100%" }}
+              resizeMode="contain"
+            />
+            {/* Watermark overlay */}
+            <View style={{ position: "absolute", bottom: 16, right: 16, opacity: 0.7 }} pointerEvents="none">
+              <Image
+                // eslint-disable-next-line @typescript-eslint/no-require-imports
+                source={require("../../assets/watermark.png")}
+                style={{ width: 120, height: 40 }}
+                resizeMode="contain"
+              />
+            </View>
+          </View>
         </Pressable>
+        {/* Close button */}
         <Pressable
           onPress={() => setLightboxUrl(null)}
           style={{ position: "absolute", top: 52, right: 16, width: 36, height: 36, borderRadius: 18,
@@ -594,6 +642,15 @@ export default function ChatScreen() {
           hitSlop={10}
         >
           <Text style={{ color: "#FFF", fontSize: 18, fontWeight: "bold" }}>✕</Text>
+        </Pressable>
+        {/* Download button */}
+        <Pressable
+          onPress={handleDownloadImage}
+          style={{ position: "absolute", top: 52, right: 62, width: 36, height: 36, borderRadius: 18,
+                   backgroundColor: "rgba(255,255,255,0.15)", alignItems: "center", justifyContent: "center" }}
+          hitSlop={10}
+        >
+          <Text style={{ color: "#FFF", fontSize: 16 }}>⬇</Text>
         </Pressable>
       </Modal>
 
@@ -993,6 +1050,16 @@ export default function ChatScreen() {
             shouldPlay
             resizeMode={ResizeMode.CONTAIN}
           />
+          {/* Watermark overlay */}
+          <View style={{ position: 'absolute', bottom: 72, right: 16, opacity: 0.7 }} pointerEvents="none">
+            <Image
+              // eslint-disable-next-line @typescript-eslint/no-require-imports
+              source={require('../../assets/watermark.png')}
+              style={{ width: 120, height: 40 }}
+              resizeMode="contain"
+            />
+          </View>
+          {/* Close button */}
           <Pressable
             onPress={() => setVideoLightboxUrl(null)}
             style={{ position: 'absolute', top: 52, right: 20, width: 36, height: 36,
@@ -1001,6 +1068,16 @@ export default function ChatScreen() {
             hitSlop={10}
           >
             <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold' }}>✕</Text>
+          </Pressable>
+          {/* Download button */}
+          <Pressable
+            onPress={() => videoLightboxUrl && handleDownloadVideo(videoLightboxUrl)}
+            style={{ position: 'absolute', top: 52, right: 66, width: 36, height: 36,
+                     borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.15)',
+                     alignItems: 'center', justifyContent: 'center' }}
+            hitSlop={10}
+          >
+            <Text style={{ color: '#fff', fontSize: 16 }}>⬇</Text>
           </Pressable>
         </View>
       </Modal>

@@ -7,7 +7,7 @@
 
 import Constants from 'expo-constants';
 const API_KEY: string =
-  (Constants.expoConfig?.extra?.giphyApiKey as string) ?? '***REDACTED_GIPHY_KEY***';
+  (Constants.expoConfig?.extra?.giphyApiKey as string) || 'rmagvCJdSEqYkDHRFCiF8hz7D0ypAJxi';
 const BASE_URL = "https://api.giphy.com/v1";
 
 export interface GiphyItem {
