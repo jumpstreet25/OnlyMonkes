@@ -71,7 +71,11 @@ export function TipModal({ visible, recipientName, onConfirm, onClose }: TipModa
         <Text style={styles.subtitle}>
           Tipping <Text style={styles.recipientName}>{recipientName}</Text>
           {"\n"}
-          <Text style={styles.feeNote}>5% goes to Jump.skr dev fund</Text>
+          {recipientName === "Jump.skr" ? (
+            <Text style={styles.feeNote}>100% goes directly to the developer</Text>
+          ) : (
+            <Text style={styles.feeNote}>5% goes to Jump.skr dev fund</Text>
+          )}
         </Text>
 
         {/* Banana slider */}

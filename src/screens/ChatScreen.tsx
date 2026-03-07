@@ -62,12 +62,15 @@ import { ConfettiView } from "@/components/ConfettiView";
 import { registerForPushNotifications, setNotificationReplyHandler } from "@/lib/notifications";
 import { loadEvents } from "@/lib/calendar";
 import { loadThemeId, loadCustomColor } from "@/lib/theme";
-import { sendSkrTip } from "@/lib/solana";
+import { sendSkrTip, sendDevTip } from "@/lib/solana";
 import { TipModal } from "@/components/TipModal";
 import { SearchModal } from "@/components/SearchModal";
 import { CalendarModal } from "@/components/CalendarModal";
 import { GifPickerModal } from "@/components/GifPickerModal";
 import { VideoCameraModal } from "@/components/VideoCameraModal";
+import { LiveRoomBanner } from "@/components/LiveRoomBanner";
+import { createLivekitToken, createRoomName, livekitConfigured, type LiveRoomData } from "@/lib/livekit";
+import { showLocalNotification, CH_ALL } from "@/lib/notifications";
 import { Video, ResizeMode } from "expo-av";
 import * as MediaLibrary from "expo-media-library";
 import * as FileSystem from "expo-file-system";
@@ -86,10 +89,11 @@ export default function ChatScreen() {
     isGroupMember, isGroupAdmin, joinRequests, remoteGroupId,
     setThemeId, setCustomBubbleColor, setCalendarEvents,
     loginStreak, isLoading, error,
+    activeLiveRoom, setActiveLiveRoom,
   } = useAppStore();
   const { messages, replyingTo, isLoadingHistory, setReplyingTo, typingUsers } =
     useChatStore();
-  const { initialize, disconnect, logout, streamAlive, send, reply, react, stickerReact, sendTyping, addMember, loadJoinRequests, approveJoinRequest, publishGroupId, forceAdminInit, broadcastProfile, broadcastEvent, syncMessages } = useXmtp();
+  const { initialize, disconnect, logout, streamAlive, send, reply, react, stickerReact, sendTyping, addMember, loadJoinRequests, approveJoinRequest, publishGroupId, forceAdminInit, broadcastProfile, broadcastEvent, broadcastLiveRoom, syncMessages } = useXmtp();
   const [inputText, setInputText] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [showUsernameModal, setShowUsernameModal] = useState(false);
@@ -98,6 +102,7 @@ export default function ChatScreen() {
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [tipTarget, setTipTarget] = useState<ChatMessage | null>(null);
   const [tipSending, setTipSending] = useState(false);
+  const [devTipOpen, setDevTipOpen] = useState(false);
   const [pfpPickerOpen, setPfpPickerOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [adminOpen, setAdminOpen] = useState(false);
@@ -116,6 +121,8 @@ export default function ChatScreen() {
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [videoModalOpen, setVideoModalOpen] = useState(false);
   const [videoLightboxUrl, setVideoLightboxUrl] = useState<string | null>(null);
+  const [liveRoomToken, setLiveRoomToken] = useState<string | null>(null);
+  const isInLiveRoom = !!liveRoomToken && !!activeLiveRoom;
   const [adminRecoveryOpen, setAdminRecoveryOpen] = useState(false);
   const [adminRecoveryPat, setAdminRecoveryPat] = useState("");
   const [adminRecoveryBusy, setAdminRecoveryBusy] = useState(false);
@@ -496,6 +503,76 @@ export default function ChatScreen() {
     }
   }, [tipTarget]);
 
+  // ─── Live audio room handlers ───────────────────────────────────────────────
+
+  const handleStartLive = useCallback(async () => {
+    if (!livekitConfigured()) {
+      Alert.alert(
+        "LiveKit not configured",
+        "Add LIVEKIT_URL, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET to your .env and rebuild."
+      );
+      return;
+    }
+    if (!myInboxId || !username) {
+      Alert.alert("Set a username first", "Go to your profile and set a username before starting a live.");
+      return;
+    }
+    try {
+      const roomId = createRoomName(myInboxId);
+      const token  = createLivekitToken(roomId, myInboxId, username);
+      const data: LiveRoomData = {
+        id:     roomId,
+        host:   username,
+        hostId: myInboxId,
+        ts:     Date.now(),
+        active: true,
+      };
+      setActiveLiveRoom({ ...data, participantCount: 1 });
+      setLiveRoomToken(token);
+      await broadcastLiveRoom(data);
+      // Push-notify the group
+      await showLocalNotification(`${username} started a Live`, "Tap to join the audio room", CH_ALL);
+      router.push({ pathname: "/live-room", params: { token, isHost: "1" } });
+    } catch (err: any) {
+      Alert.alert("Failed to start live", err?.message ?? "Unknown error");
+    }
+  }, [myInboxId, username, broadcastLiveRoom, setActiveLiveRoom]);
+
+  const handleJoinLive = useCallback(async () => {
+    if (!activeLiveRoom || !myInboxId || !username) return;
+    if (!livekitConfigured()) {
+      Alert.alert("LiveKit not configured", "LIVEKIT_* env vars missing.");
+      return;
+    }
+    try {
+      const token = createLivekitToken(activeLiveRoom.id, myInboxId, username);
+      setLiveRoomToken(token);
+      router.push({ pathname: "/live-room", params: { token, isHost: "0" } });
+    } catch (err: any) {
+      Alert.alert("Failed to join", err?.message ?? "Unknown error");
+    }
+  }, [activeLiveRoom, myInboxId, username]);
+
+  const handleLeaveLive = useCallback(async () => {
+    const wasHost = activeLiveRoom?.hostId === myInboxId;
+    setLiveRoomToken(null);
+    if (wasHost && activeLiveRoom) {
+      // End the room for everyone
+      const data: LiveRoomData = { ...activeLiveRoom, active: false };
+      setActiveLiveRoom(null);
+      await broadcastLiveRoom(data).catch(() => {});
+    }
+  }, [activeLiveRoom, myInboxId, broadcastLiveRoom, setActiveLiveRoom]);
+
+  const handleConfirmDevTip = useCallback(async (amount: TipAmount) => {
+    setDevTipOpen(false);
+    try {
+      await sendDevTip(amount);
+      Alert.alert("Thank you!", `${amount} SKR sent to Jump.skr. Your support keeps OnlyMonkes alive!`);
+    } catch (err: any) {
+      Alert.alert("Tip failed", err?.message ?? "Transaction could not be sent.");
+    }
+  }, []);
 
   // ─── Render ──────────────────────────────────────────────────────────────────
 
@@ -545,6 +622,7 @@ export default function ChatScreen() {
         visible={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         onCreateEvent={() => setCalendarOpen(true)}
+        onStartLive={handleStartLive}
         onSearch={() => setSearchOpen(true)}
         onPressUser={(target) => { setDrawerOpen(false); setTimeout(() => setProfileTarget(target), 300); }}
       />
@@ -562,6 +640,13 @@ export default function ChatScreen() {
         recipientName={tipTarget?.senderUsername ?? "this monke"}
         onConfirm={handleConfirmTip}
         onClose={() => setTipTarget(null)}
+      />
+
+      <TipModal
+        visible={devTipOpen}
+        recipientName="Jump.skr"
+        onConfirm={handleConfirmDevTip}
+        onClose={() => setDevTipOpen(false)}
       />
 
 
@@ -707,6 +792,16 @@ export default function ChatScreen() {
                 <Text style={styles.iconBtnText}>
                   {joinRequests.length > 0 ? `👥 ${joinRequests.length}` : "👥"}
                 </Text>
+              </Pressable>
+            )}
+
+            {isGroupMember && !activeLiveRoom && (
+              <Pressable
+                onPress={handleStartLive}
+                style={[styles.iconBtn, styles.liveBtn]}
+                hitSlop={8}
+              >
+                <Text style={styles.liveBtnText}>LIVE</Text>
               </Pressable>
             )}
 
@@ -1009,6 +1104,16 @@ export default function ChatScreen() {
           windowSize={10}
         />}
 
+        {/* Live room banner (pinned above input when a room is active) */}
+        {isGroupMember && activeLiveRoom && (
+          <LiveRoomBanner
+            room={activeLiveRoom}
+            isInRoom={isInLiveRoom}
+            onJoin={handleJoinLive}
+            onLeave={handleLeaveLive}
+          />
+        )}
+
         {/* Input */}
         {isGroupMember && <ChatInput
           value={inputText}
@@ -1024,6 +1129,18 @@ export default function ChatScreen() {
           onCamera={handleCameraButtonPress}
           typingUsers={typingUsers}
         />}
+
+        {/* Support banner */}
+        {isGroupMember && (
+          <Pressable
+            onPress={() => setDevTipOpen(true)}
+            style={({ pressed }) => [styles.supportBanner, pressed && { opacity: 0.6 }]}
+          >
+            <Text style={styles.supportBannerText}>
+              Help Support the Future of OnlyMonkes
+            </Text>
+          </Pressable>
+        )}
 
         <View style={{ height: insets.bottom }} />
       </KeyboardAvoidingView>
@@ -1455,5 +1572,31 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.body,
     fontSize: 13,
     color: THEME.textMuted,
+  },
+  supportBanner: {
+    paddingVertical: 9,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: THEME.border,
+  },
+  supportBannerText: {
+    fontFamily: FONTS.mono,
+    fontSize: 11,
+    color: THEME.textFaint,
+    letterSpacing: 0.4,
+    textAlign: 'center',
+  },
+  liveBtn: {
+    backgroundColor: "#EF4444",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+  },
+  liveBtnText: {
+    fontFamily: FONTS.mono,
+    fontSize: 9,
+    color: "#fff",
+    letterSpacing: 1.2,
   },
 });

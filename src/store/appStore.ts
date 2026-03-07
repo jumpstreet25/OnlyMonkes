@@ -1,5 +1,10 @@
 import { create } from 'zustand';
 import type { WalletAccount, OwnedNFT } from '../types';
+import type { LiveRoomData } from '../lib/livekit';
+
+export interface LiveRoomState extends LiveRoomData {
+  participantCount: number;
+}
 
 export interface CalendarEvent {
   id: string;
@@ -54,6 +59,8 @@ interface AppState {
   isLegendary: boolean;
   // Push notifications
   expoPushToken: string | null;
+  // Live audio room
+  activeLiveRoom: LiveRoomState | null;
 }
 
 interface AppActions {
@@ -83,6 +90,8 @@ interface AppActions {
   addCalendarEvent: (event: CalendarEvent) => void;
   setLoginStreak: (streak: number, best: number, legendary: boolean) => void;
   setExpoPushToken: (token: string | null) => void;
+  setActiveLiveRoom: (room: LiveRoomState | null) => void;
+  updateLiveRoomCount: (count: number) => void;
   reset: () => void;
 }
 
@@ -113,6 +122,7 @@ const initialState: AppState = {
   bestStreak: 0,
   isLegendary: false,
   expoPushToken: null,
+  activeLiveRoom: null,
 };
 
 export const useAppStore = create<AppState & AppActions>((set, get) => ({
@@ -149,5 +159,8 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   addCalendarEvent: (event) => set((s) => ({ calendarEvents: [...s.calendarEvents, event] })),
   setLoginStreak: (loginStreak, bestStreak, isLegendary) => set({ loginStreak, bestStreak, isLegendary }),
   setExpoPushToken: (expoPushToken) => set({ expoPushToken }),
+  setActiveLiveRoom: (activeLiveRoom) => set({ activeLiveRoom }),
+  updateLiveRoomCount: (count) =>
+    set((s) => s.activeLiveRoom ? { activeLiveRoom: { ...s.activeLiveRoom, participantCount: count } } : {}),
   reset: () => set(initialState),
 }));

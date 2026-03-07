@@ -73,6 +73,7 @@ interface MenuDrawerProps {
   visible: boolean;
   onClose: () => void;
   onCreateEvent?: () => void;
+  onStartLive?: () => void;
   onSearch?: () => void;
   onPressUser?: (target: ProfileTarget) => void;
 }
@@ -90,7 +91,7 @@ interface SharedLink {
   sentAt: Date;
 }
 
-export function MenuDrawer({ visible, onClose, onCreateEvent, onSearch, onPressUser }: MenuDrawerProps) {
+export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSearch, onPressUser }: MenuDrawerProps) {
   const { width: SCREEN_WIDTH } = useWindowDimensions();
   const DRAWER_WIDTH = SCREEN_WIDTH * DRAWER_WIDTH_RATIO;
 
@@ -480,21 +481,39 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onSearch, onPressU
               {sortedEvents.length === 0 ? (
                 <Text style={styles.emptyText}>No events yet. Tap + Add Event to create one.</Text>
               ) : (
-                sortedEvents.map((evt) => (
-                  <View key={evt.id} style={styles.eventRow}>
-                    <View style={styles.eventDateBadge}>
-                      <Text style={styles.eventDateText}>
-                        {evt.date.split("/").slice(0, 2).join("/")}
-                      </Text>
+                sortedEvents.map((evt) => {
+                  // Show "Go Live" for OnlyMonkes events whose start time has passed (within 2h)
+                  const isOnlyMonkes = evt.location?.toLowerCase() === "onlymonkes";
+                  const evtDate = new Date(`${evt.date} ${evt.time || "00:00"}`);
+                  const now = Date.now();
+                  const msSinceStart = now - evtDate.getTime();
+                  const isLive = isOnlyMonkes && msSinceStart >= 0 && msSinceStart < 2 * 60 * 60 * 1000;
+
+                  return (
+                    <View key={evt.id} style={styles.eventRow}>
+                      <View style={styles.eventDateBadge}>
+                        <Text style={styles.eventDateText}>
+                          {evt.date.split("/").slice(0, 2).join("/")}
+                        </Text>
+                      </View>
+                      <View style={styles.eventInfo}>
+                        <Text style={styles.eventTitle} numberOfLines={1}>{evt.title}</Text>
+                        {evt.time ? <Text style={styles.eventMeta}>{evt.time}{evt.location ? ` · ${evt.location}` : ""}</Text> : null}
+                        {evt.purpose ? <Text style={styles.eventPurpose} numberOfLines={2}>{evt.purpose}</Text> : null}
+                        <Text style={styles.eventCreator}>by {evt.creatorUsername ?? shortenAddress(evt.creatorInboxId)}</Text>
+                        {isLive && onStartLive && (
+                          <Pressable
+                            style={({ pressed }) => [styles.startLiveBtn, pressed && { opacity: 0.75 }]}
+                            onPress={() => { onClose(); onStartLive(); }}
+                          >
+                            <View style={styles.startLiveDot} />
+                            <Text style={styles.startLiveBtnText}>Start Live Audio Chat</Text>
+                          </Pressable>
+                        )}
+                      </View>
                     </View>
-                    <View style={styles.eventInfo}>
-                      <Text style={styles.eventTitle} numberOfLines={1}>{evt.title}</Text>
-                      {evt.time ? <Text style={styles.eventMeta}>{evt.time}{evt.location ? ` · ${evt.location}` : ""}</Text> : null}
-                      {evt.purpose ? <Text style={styles.eventPurpose} numberOfLines={2}>{evt.purpose}</Text> : null}
-                      <Text style={styles.eventCreator}>by {evt.creatorUsername ?? shortenAddress(evt.creatorInboxId)}</Text>
-                    </View>
-                  </View>
-                ))
+                  );
+                })
               )}
             </>
           )}
@@ -952,6 +971,21 @@ const styles = StyleSheet.create({
   eventMeta: { fontFamily: FONTS.mono, fontSize: 10, color: THEME.textMuted },
   eventPurpose: { fontFamily: FONTS.body, fontSize: 12, color: THEME.textFaint, lineHeight: 17 },
   eventCreator: { fontFamily: FONTS.mono, fontSize: 10, color: THEME.textFaint },
+  startLiveBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#2D0A0A",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginTop: 6,
+    alignSelf: "flex-start",
+    borderWidth: 1,
+    borderColor: "#EF4444",
+  },
+  startLiveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#EF4444" },
+  startLiveBtnText: { fontFamily: FONTS.bodySemi, fontSize: 12, color: "#EF4444" },
 
   // Links
   linkRow: {
