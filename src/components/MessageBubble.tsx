@@ -44,6 +44,84 @@ import type { ProfileTarget } from "@/components/UserProfileModal";
 
 const FALLBACK_BUBBLE = THEME.accent;
 
+function VideoBubble({ raw, mediaWidth, onPress }: {
+  raw: string;
+  mediaWidth: number;
+  onPress?: (url: string) => void;
+}) {
+  const pipeIdx = raw.indexOf('|');
+  const videoUrl = pipeIdx >= 0 ? raw.slice(0, pipeIdx) : raw;
+  const thumbUrl = pipeIdx >= 0 ? raw.slice(pipeIdx + 1) : raw;
+  return (
+    <Pressable
+      onPress={() => onPress?.(videoUrl)}
+      style={{ width: mediaWidth, borderRadius: 14, overflow: 'hidden' }}
+    >
+      <ExpoImage
+        source={{ uri: thumbUrl }}
+        style={{ width: mediaWidth, height: mediaWidth * (9 / 16) }}
+        contentFit="cover"
+        cachePolicy="disk"
+      />
+      <View style={videoStyles.playOverlay}>
+        <View style={videoStyles.playBtn}>
+          <Text style={videoStyles.playIcon}>▶</Text>
+        </View>
+      </View>
+      <View style={videoStyles.watermarkShadow}>
+        <Image
+          // eslint-disable-next-line @typescript-eslint/no-require-imports
+          source={require('../../assets/watermark.png')}
+          style={videoStyles.watermark}
+          resizeMode="contain"
+        />
+      </View>
+    </Pressable>
+  );
+}
+
+const videoStyles = StyleSheet.create({
+  playOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  playBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  playIcon: {
+    fontSize: 20,
+    color: '#fff',
+    marginLeft: 3,
+  },
+  watermarkShadow: {
+    position: 'absolute',
+    bottom: 6,
+    right: 6,
+    width: 128,
+    height: 64,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.55,
+    shadowRadius: 4,
+    elevation: 6,
+  },
+  watermark: {
+    width: 128,
+    height: 64,
+    opacity: 0.9,
+  },
+});
+
 interface MessageBubbleProps {
   message: ChatMessage;
   isOwn: boolean;
@@ -53,6 +131,7 @@ interface MessageBubbleProps {
   onTip?: (message: ChatMessage) => void;
   onStickerReact?: (url: string, messageId: string) => void;
   onPressImage?: (url: string) => void;
+  onPressVideo?: (url: string) => void;
 }
 
 export const MessageBubble = memo(function MessageBubble({
@@ -64,6 +143,7 @@ export const MessageBubble = memo(function MessageBubble({
   onTip,
   onStickerReact,
   onPressImage,
+  onPressVideo,
 }: MessageBubbleProps) {
   const { verifiedNft, myInboxId } = useAppStore();
   const { width: SCREEN_W } = useWindowDimensions();
@@ -204,7 +284,9 @@ export const MessageBubble = memo(function MessageBubble({
 
   // ── Media detection (GIF / photo — rendered without bubble background) ───
   const isMedia =
-    message.content.startsWith("GIF:") || message.content.startsWith("IMAGE:");
+    message.content.startsWith("GIF:") ||
+    message.content.startsWith("IMAGE:") ||
+    message.content.startsWith("VIDEO:");
 
   return (
     <>
@@ -305,6 +387,12 @@ export const MessageBubble = memo(function MessageBubble({
                 />
               </View>
             </Pressable>
+          ) : message.content.startsWith("VIDEO:") ? (
+            <VideoBubble
+              raw={message.content.slice(6)}
+              mediaWidth={mediaWidth}
+              onPress={onPressVideo}
+            />
           ) : message.content.startsWith("STICKER:") ? (
             <Image
               source={{ uri: message.content.slice(8) }}
