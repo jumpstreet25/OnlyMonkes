@@ -36,7 +36,7 @@ export function CalendarModal({ visible, onClose, onBroadcast }: CalendarModalPr
   const [title, setTitle] = useState("");
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
-  const [location, setLocation] = useState("");
+  const [location, setLocation] = useState("OnlyMonkes");
   const [purpose, setPurpose] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -44,7 +44,7 @@ export function CalendarModal({ visible, onClose, onBroadcast }: CalendarModalPr
 
   const reset = () => {
     setTitle(""); setDate(""); setTime("");
-    setLocation(""); setPurpose(""); setSaving(false);
+    setLocation("OnlyMonkes"); setPurpose(""); setSaving(false);
   };
 
   const handleCreate = async () => {

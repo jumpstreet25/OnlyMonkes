@@ -34,7 +34,9 @@ import {
   fetchJoinRequests,
   sendProfileUpdate,
   sendEventMessage,
+  sendLiveRoomMessage,
 } from "@/lib/xmtp";
+import { parseLiveRoomMessage, buildLiveRoomMessage, type LiveRoomData } from "@/lib/livekit";
 import { verifyNftMintInCollection } from "@/lib/nftVerification";
 import { cacheProfile, getCachedProfile, loadProfileCache, trackUser, loadAllTimeUsers } from "@/lib/userProfile";
 import { loadWeeklyActivity, trackActivity } from "@/lib/activityTracker";
@@ -67,6 +69,27 @@ let _unsubscribeStream: (() => void) | null = null;
 let _myInboxId = "";
 let _streamAlive = false;
 let _profileBroadcastDone = false;
+
+/**
+ * Re-broadcast own profile with a push token.
+ * Called from _layout.tsx after registerForPushNotifications() completes,
+ * ensuring the bot always receives a valid ExponentPushToken.
+ * Safe to call even if XMTP isn't ready yet — exits silently.
+ */
+export async function triggerProfileRebroadcast(pushToken: string): Promise<void> {
+  if (!_group || !_myInboxId) return;
+  const { username, bio, xAccount, wallet, tipWallet, verifiedNft, isLegendary } =
+    useAppStore.getState();
+  try {
+    await sendProfileUpdate(
+      _group as XmtpGroup, _myInboxId,
+      username, bio, xAccount,
+      wallet?.address ?? null, tipWallet ?? null,
+      verifiedNft?.image ?? null, isLegendary, pushToken,
+    );
+    console.log('[XMTP] Re-broadcast profile with push token:', pushToken.slice(0, 30) + '…');
+  } catch { /* non-critical */ }
+}
 
 const AK_JOIN_REQUEST_SENT = "xmtp_join_request_sent";
 const AK_IS_ADMIN         = "xmtp_is_group_admin";
@@ -299,6 +322,19 @@ export function useXmtp() {
               const event = parseEventMessage(content);
               if (event) await saveEvent(event);
             } catch { /* ignore */ }
+          } else if (typeof content === "string" && content.startsWith("LIVE_ROOM:")) {
+            try {
+              const data = parseLiveRoomMessage(content);
+              if (data) {
+                // Track the most recent active room from history
+                if (data.active) {
+                  useAppStore.getState().setActiveLiveRoom({ ...data, participantCount: 1 });
+                } else {
+                  const current = useAppStore.getState().activeLiveRoom;
+                  if (current?.id === data.id) useAppStore.getState().setActiveLiveRoom(null);
+                }
+              }
+            } catch { /* ignore */ }
           }
         } catch { /* skip */ }
       }
@@ -418,6 +454,21 @@ export function useXmtp() {
           return;
         }
 
+        if (typeof content === "string" && content.startsWith("LIVE_ROOM:")) {
+          try {
+            const data = parseLiveRoomMessage(content);
+            if (data) {
+              if (data.active) {
+                useAppStore.getState().setActiveLiveRoom({ ...data, participantCount: 1 });
+              } else {
+                const current = useAppStore.getState().activeLiveRoom;
+                if (current?.id === data.id) useAppStore.getState().setActiveLiveRoom(null);
+              }
+            }
+          } catch { /* ignore */ }
+          return;
+        }
+
         const msg = decodeMessage(raw, _myInboxId);
         if (!msg) return;
 
@@ -474,10 +525,18 @@ export function useXmtp() {
           try {
             const { username, bio, xAccount, wallet, tipWallet, verifiedNft, isLegendary } =
               useAppStore.getState();
-            // Always broadcast — even if image isn't ready yet, so username/bio
-            // propagate. Recipients with a cached image will keep it (cacheProfile
-            // protects against null overwriting a known-good nftImage).
-            const pushToken = await getCachedPushToken();
+            // Wait up to 8s for push token — on first launch, registerForPushNotifications()
+            // in _layout.tsx runs concurrently with XMTP init, causing a race condition
+            // where the token isn't in SecureStore yet when we broadcast.
+            let pushToken: string | null =
+              useAppStore.getState().expoPushToken ?? await getCachedPushToken();
+            if (!pushToken) {
+              for (let i = 0; i < 8 && !pushToken; i++) {
+                await new Promise(r => setTimeout(r, 1000));
+                pushToken = useAppStore.getState().expoPushToken ?? await getCachedPushToken();
+              }
+            }
+            console.log('[XMTP] Profile broadcast, push token:', pushToken ? pushToken.slice(0, 30) + '…' : 'none');
             await sendProfileUpdate(
               group as XmtpGroup,
               client.inboxId,
@@ -705,6 +764,16 @@ export function useXmtp() {
     }
   }, []);
 
+  // ── Broadcast a live room signal (start / end) ─────────────────────────────
+  const broadcastLiveRoom = useCallback(async (data: LiveRoomData) => {
+    if (!_group) return;
+    try {
+      await sendLiveRoomMessage(_group, JSON.stringify(data));
+    } catch (err) {
+      console.warn("[XMTP] broadcastLiveRoom failed:", err);
+    }
+  }, []);
+
   // ── Admin: publish group ID to GitHub config ───────────────────────────────
   const publishGroupId = useCallback(async (githubPat: string) => {
     if (!_client) throw new Error("XMTP client not ready");
@@ -759,6 +828,7 @@ export function useXmtp() {
     forceAdminInit,
     broadcastProfile,
     broadcastEvent,
+    broadcastLiveRoom,
     syncMessages,
   };
 }
