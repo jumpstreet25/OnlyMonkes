@@ -31,6 +31,7 @@ import {
   Alert,
   Platform,
 } from "react-native";
+import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
 import * as Clipboard from "expo-clipboard";
 import { THEME, FONTS } from "@/lib/constants";
@@ -407,12 +408,42 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onSearch, onPressU
           {activeView === "messages" && (
             <>
               <Text style={styles.sectionLabel}>
-                Tap a user to start or continue a DM
+                Tap a user to open a direct message
               </Text>
               {activeUsers.length === 0 ? (
                 <Text style={styles.emptyText}>No recent users to message.</Text>
               ) : (
-                activeUsers.map((u) => renderUserRow(u, false))
+                activeUsers
+                  .filter(u => u.inboxId !== myInboxId)
+                  .map((u) => {
+                    const cached = getCachedProfile(u.inboxId);
+                    const name = cached?.username ?? u.username ?? shortenAddress(u.inboxId);
+                    const avatarUri = cached?.nftImage ?? u.nftImage ?? null;
+                    return (
+                      <Pressable
+                        key={u.inboxId}
+                        style={({ pressed }) => [styles.userRow, pressed && { opacity: 0.7 }]}
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          onClose();
+                          router.push(`/dm/${u.inboxId}`);
+                        }}
+                      >
+                        {avatarUri ? (
+                          <Image source={{ uri: avatarUri }} style={styles.userAvatar} />
+                        ) : (
+                          <View style={styles.userAvatarFallback}>
+                            <Text style={styles.userAvatarGlyph}>🐒</Text>
+                          </View>
+                        )}
+                        <View style={styles.userInfo}>
+                          <Text style={styles.userName} numberOfLines={1}>{name}</Text>
+                          <Text style={styles.userTime}>{formatRelative(u.lastSeen)}</Text>
+                        </View>
+                        <Text style={styles.dmIcon}>✉</Text>
+                      </Pressable>
+                    );
+                  })
               )}
             </>
           )}
@@ -876,6 +907,7 @@ const styles = StyleSheet.create({
   userName: { fontFamily: FONTS.displayMed, fontSize: 13, color: THEME.text },
   userTime: { fontFamily: FONTS.mono, fontSize: 10, color: THEME.textFaint },
   onlineDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "#4caf50" },
+  dmIcon: { fontSize: 15, color: THEME.accent, marginLeft: "auto" as any },
 
   // AI Agent Alerts
   alertRow: {
