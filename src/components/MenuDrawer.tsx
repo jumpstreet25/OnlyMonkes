@@ -225,9 +225,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onSearch, onPressU
         {avatarUri ? (
           <Image source={{ uri: avatarUri }} style={styles.userAvatar} />
         ) : (
-          <View style={styles.userAvatarFallback}>
-            <Text style={styles.userAvatarGlyph}>🐒</Text>
-          </View>
+          <View style={styles.userAvatarFallback} />
         )}
         <View style={styles.userInfo}>
           <Text style={styles.userName} numberOfLines={1}>{name}</Text>
@@ -338,7 +336,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onSearch, onPressU
                   icon="💬"
                   title="Messages"
                   subtitle="Direct messages"
-                  onPress={() => { onClose(); router.push('/dms'); }}
+                  onPress={() => { onClose(); setTimeout(() => router.push('/dms'), 300); }}
                 />
                 <MenuItem
                   icon="🤖"
@@ -429,9 +427,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onSearch, onPressU
                         {avatarUri ? (
                           <Image source={{ uri: avatarUri }} style={styles.userAvatar} />
                         ) : (
-                          <View style={styles.userAvatarFallback}>
-                            <Text style={styles.userAvatarGlyph}>🐒</Text>
-                          </View>
+                          <View style={styles.userAvatarFallback} />
                         )}
                         <View style={styles.userInfo}>
                           <Text style={styles.userName} numberOfLines={1}>{name}</Text>
@@ -525,7 +521,6 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onSearch, onPressU
                       <View style={styles.mediaInfo}>
                         <Text style={styles.mediaSender}>
                           {getCachedProfile(msg.senderAddress)?.username ?? msg.senderUsername ?? shortenAddress(msg.senderAddress)}
-                          {isVideo ? "  🎥" : ""}
                         </Text>
                         <Text style={styles.mediaTime}>{formatRelative(msg.sentAt)}</Text>
                       </View>
@@ -551,7 +546,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onSearch, onPressU
                     style={({ pressed }) => [styles.linkRow, pressed && { opacity: 0.7 }]}
                     onPress={() => Linking.openURL(link.url)}
                   >
-                    <Text style={styles.linkIcon}>🔗</Text>
+                    <View style={styles.linkDot} />
                     <View style={styles.linkInfo}>
                       <Text style={styles.linkUrl} numberOfLines={1}>{link.url.replace(/^https?:\/\//, "")}</Text>
                       <Text style={styles.linkMeta}>
@@ -685,7 +680,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onSearch, onPressU
           <View style={{ height: 24 }} />
         </ScrollView>
 
-        <Text style={styles.footerHint}>OnlyMonkes · Saga Monkes holders 🐒</Text>
+        <Text style={styles.footerHint}>OnlyMonkes · Saga Monkes holders</Text>
       </Animated.View>
     </Modal>
   );
@@ -968,6 +963,7 @@ const styles = StyleSheet.create({
     borderBottomColor: THEME.border,
   },
   linkIcon: { fontSize: 16 },
+  linkDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: THEME.accent },
   linkInfo: { flex: 1, gap: 2 },
   linkUrl: { fontFamily: FONTS.mono, fontSize: 11, color: THEME.accent },
   linkMeta: { fontFamily: FONTS.body, fontSize: 11, color: THEME.textFaint },

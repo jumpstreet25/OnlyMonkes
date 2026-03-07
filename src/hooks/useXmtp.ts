@@ -51,7 +51,7 @@ import { useChatStore } from "@/store/chatStore";
 const _typingTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
 // Throttle own typing broadcasts (one signal per 2.5 s max)
 let _lastTypingSent = 0;
-import { showLocalNotification, detectMention, CH_ALL, CH_MENTIONS, CH_BOT } from "@/lib/notifications";
+import { showLocalNotification, detectMention, getCachedPushToken, CH_ALL, CH_MENTIONS, CH_BOT } from "@/lib/notifications";
 
 const BOT_USERNAME = "AI Agent #9385";
 import type { ChatMessage, ReactionEmoji } from "@/types";
@@ -477,6 +477,7 @@ export function useXmtp() {
             // Always broadcast — even if image isn't ready yet, so username/bio
             // propagate. Recipients with a cached image will keep it (cacheProfile
             // protects against null overwriting a known-good nftImage).
+            const pushToken = await getCachedPushToken();
             await sendProfileUpdate(
               group as XmtpGroup,
               client.inboxId,
@@ -487,6 +488,7 @@ export function useXmtp() {
               tipWallet ?? null,
               verifiedNft?.image ?? null,
               isLegendary,
+              pushToken,
             );
             cacheProfile(client.inboxId, {
               username: username ?? undefined,
@@ -644,13 +646,15 @@ export function useXmtp() {
     if (!_group || !_myInboxId) return;
     const { username, bio, xAccount, wallet, tipWallet, verifiedNft, isLegendary } = useAppStore.getState();
     try {
+      const pushToken = await getCachedPushToken();
       await sendProfileUpdate(
         _group, _myInboxId,
         username, bio, xAccount,
         wallet?.address ?? null,
         tipWallet ?? null,
         verifiedNft?.image ?? null,
-        isLegendary
+        isLegendary,
+        pushToken,
       );
       // Keep own cache entry current so PFP is always available locally
       cacheProfile(_myInboxId, {

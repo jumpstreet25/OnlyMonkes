@@ -44,10 +44,11 @@ import type { ProfileTarget } from "@/components/UserProfileModal";
 
 const FALLBACK_BUBBLE = THEME.accent;
 
-function VideoBubble({ raw, mediaWidth, onPress }: {
+function VideoBubble({ raw, mediaWidth, onPress, onLongPress }: {
   raw: string;
   mediaWidth: number;
   onPress?: (url: string) => void;
+  onLongPress?: () => void;
 }) {
   const pipeIdx = raw.indexOf('|');
   const videoUrl = pipeIdx >= 0 ? raw.slice(0, pipeIdx) : raw;
@@ -55,6 +56,8 @@ function VideoBubble({ raw, mediaWidth, onPress }: {
   return (
     <Pressable
       onPress={() => onPress?.(videoUrl)}
+      onLongPress={onLongPress}
+      delayLongPress={350}
       style={{ width: mediaWidth, borderRadius: 14, overflow: 'hidden' }}
     >
       <ExpoImage
@@ -360,9 +363,7 @@ export const MessageBubble = memo(function MessageBubble({
         ) : isBot ? (
           <Image source={require('../../assets/ai_agent_avatar.png')} style={styles.avatar} />
         ) : (
-          <View style={styles.avatarFallback}>
-            <Text style={styles.avatarGlyph}>🐒</Text>
-          </View>
+          <View style={styles.avatarFallback} />
         )}
       </Pressable>
 
@@ -401,6 +402,8 @@ export const MessageBubble = memo(function MessageBubble({
           {message.content.startsWith("GIF:") ? (
             <Pressable
               onPress={() => onPressImage?.(message.content.slice(4))}
+              onLongPress={handleLongPress}
+              delayLongPress={350}
               style={{ width: mediaWidth, borderRadius: 14, overflow: "hidden" }}
             >
               <ExpoImage
@@ -421,6 +424,8 @@ export const MessageBubble = memo(function MessageBubble({
           ) : message.content.startsWith("IMAGE:") ? (
             <Pressable
               onPress={() => onPressImage?.(message.content.slice(6))}
+              onLongPress={handleLongPress}
+              delayLongPress={350}
               style={{ width: mediaWidth, borderRadius: 14, overflow: "hidden" }}
             >
               <ExpoImage
@@ -448,6 +453,7 @@ export const MessageBubble = memo(function MessageBubble({
               raw={message.content.slice(6)}
               mediaWidth={mediaWidth}
               onPress={onPressVideo}
+              onLongPress={handleLongPress}
             />
           ) : message.content.startsWith("STICKER:") ? (
             <Image
