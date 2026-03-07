@@ -80,9 +80,7 @@ export function UserProfileModal({ visible, target, onClose, onEditProfile, onCh
             {nftImage ? (
               <Image source={{ uri: nftImage }} style={styles.avatar} />
             ) : (
-              <View style={styles.avatarFallback}>
-                <Text style={styles.avatarGlyph}>🐒</Text>
-              </View>
+              <View style={styles.avatarFallback} />
             )}
             {isOwnProfile && (
               <View style={styles.ownBadge}>
@@ -125,7 +123,6 @@ export function UserProfileModal({ visible, target, onClose, onEditProfile, onCh
           {/* Tipping wallet */}
           {tipWallet ? (
             <View style={styles.tipRow}>
-              <Text style={styles.tipIcon}>💰</Text>
               <Text style={styles.tipAddress} numberOfLines={1}>
                 {tipWallet.slice(0, 6)}…{tipWallet.slice(-4)}
               </Text>
