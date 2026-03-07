@@ -33,6 +33,20 @@ function getActiveMention(text: string): { start: number; query: string } | null
   return { start: text.length - match[0].length, query: match[1] };
 }
 
+const BOT_COMMANDS = [
+  { cmd: "/price",     args: "$TOKEN",  desc: "Live price snapshot" },
+  { cmd: "/ta",        args: "$TOKEN",  desc: "Technical analysis" },
+  { cmd: "/watchlist", args: "",        desc: "List tracked tokens" },
+  { cmd: "/alerts",    args: "",        desc: "Recent TA signals" },
+  { cmd: "/help",      args: "",        desc: "Show all commands" },
+];
+
+function getSlashSuggestions(text: string) {
+  if (!text.startsWith("/")) return [];
+  const query = text.slice(1).toLowerCase();
+  return BOT_COMMANDS.filter(c => c.cmd.slice(1).startsWith(query));
+}
+
 interface TypingUser { inboxId: string; username?: string; }
 
 interface ChatInputProps {
@@ -69,6 +83,8 @@ export function ChatInput({
   const hasTypers = !!(typingUsers && typingUsers.length > 0);
   const { myInboxId } = useAppStore();
 
+  const slashSuggestions = useMemo(() => getSlashSuggestions(value), [value]);
+
   const activeMention = getActiveMention(value);
   const suggestions: { inboxId: string; username: string }[] = useMemo(() => {
     if (!activeMention) return [];
@@ -81,6 +97,10 @@ export function ChatInput({
     });
     return results.slice(0, 6);
   }, [activeMention?.query, value]);
+
+  const insertSlashCommand = useCallback((cmd: string, args: string) => {
+    onChangeText(args ? `${cmd} ` : cmd);
+  }, [onChangeText]);
 
   const insertMention = useCallback((username: string) => {
     const match = value.match(/@(\w*)$/);
@@ -125,6 +145,23 @@ export function ChatInput({
 
   return (
     <View style={styles.container}>
+      {/* Slash command suggestions */}
+      {slashSuggestions.length > 0 && (
+        <View style={styles.mentionList}>
+          {slashSuggestions.map(({ cmd, args, desc }) => (
+            <Pressable key={cmd} style={styles.mentionRow} onPress={() => insertSlashCommand(cmd, args)}>
+              <View style={styles.slashCmdIcon}>
+                <Text style={styles.slashCmdSlash}>/</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.slashCmdName}>{cmd}{args ? ` ${args}` : ""}</Text>
+                <Text style={styles.slashCmdDesc}>{desc}</Text>
+              </View>
+            </Pressable>
+          ))}
+        </View>
+      )}
+
       {/* Mention suggestions */}
       {suggestions.length > 0 && (
         <View style={styles.mentionList}>
@@ -434,6 +471,33 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: "#FFD700",
     letterSpacing: 0.5,
+  },
+
+  // ── Slash command suggestion list ─────────────────────────────────────────
+  slashCmdIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: THEME.accentSoft,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  slashCmdSlash: {
+    fontFamily: FONTS.mono,
+    fontSize: 14,
+    color: THEME.accent,
+    fontWeight: "700",
+  },
+  slashCmdName: {
+    fontFamily: FONTS.bodyMed,
+    fontSize: 13,
+    color: THEME.text,
+  },
+  slashCmdDesc: {
+    fontFamily: FONTS.body,
+    fontSize: 11,
+    color: THEME.textMuted,
+    marginTop: 1,
   },
 
   // ── @mention suggestion list ────────────────────────────────────────────────

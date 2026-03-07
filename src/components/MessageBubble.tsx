@@ -16,7 +16,7 @@
  *   - Tap banana pill → tip (others) / react (own)
  */
 
-import React, { memo, useCallback, useEffect, useRef, useState } from "react";
+import React, { memo, useCallback, useEffect, useRef, useState, useMemo } from "react";
 import {
   View,
   Text,
@@ -36,7 +36,7 @@ import { format } from "date-fns";
 import { THEME, FONTS, REACTIONS } from "@/lib/constants";
 import { shortenAddress } from "@/lib/nftVerification";
 import { useAppStore } from "@/store/appStore";
-import { getCachedProfile, useProfileVersion } from "@/lib/userProfile";
+import { getCachedProfile, useProfileVersion, getAllTimeUsers } from "@/lib/userProfile";
 import { getOrExtractNftColor, readableTextColor } from "@/lib/nftColor";
 import { searchStickers, type GiphyItem } from "@/lib/giphy";
 import type { ChatMessage, ReactionEmoji } from "@/types";
@@ -122,6 +122,37 @@ const videoStyles = StyleSheet.create({
   },
 });
 
+const MENTION_COLOR = "#6BC5F8"; // blue hyperlink for @username
+const TOKEN_COLOR   = "#FFD700"; // gold for $TOKEN
+const RICH_SPLIT    = /(@\w+|\$[A-Za-z]{1,15})/g;
+
+/** Render text with @mention (blue, tappable) and $TOKEN (gold) highlighting. */
+function renderRichContent(
+  content: string,
+  onPressMention?: (username: string) => void,
+): React.ReactNode[] {
+  const parts = content.split(RICH_SPLIT);
+  return parts.map((part, i) => {
+    if (/^@\w+$/.test(part)) {
+      return (
+        <Text
+          key={i}
+          style={{ color: MENTION_COLOR }}
+          onPress={() => onPressMention?.(part.slice(1))}
+        >
+          {part}
+        </Text>
+      );
+    }
+    if (/^\$[A-Za-z]{1,15}$/.test(part)) {
+      return (
+        <Text key={i} style={{ color: TOKEN_COLOR }}>{part}</Text>
+      );
+    }
+    return part ? <React.Fragment key={i}>{part}</React.Fragment> : null;
+  });
+}
+
 interface MessageBubbleProps {
   message: ChatMessage;
   isOwn: boolean;
@@ -184,6 +215,7 @@ export const MessageBubble = memo(function MessageBubble({
   // Dynamic aspect ratio for GIF / IMAGE — computed from actual image dimensions on load
   const [imgAspect, setImgAspect] = useState<number>(3 / 4); // sensible portrait default
 
+  const [botExpanded, setBotExpanded] = useState(false);
   const [pickerVisible, setPickerVisible] = useState(false);
   const [stickerItems, setStickerItems] = useState<GiphyItem[]>([]);
   const [stickersLoading, setStickersLoading] = useState(false);
@@ -204,6 +236,27 @@ export const MessageBubble = memo(function MessageBubble({
     });
     return () => { cancelled = true; };
   }, [pickerVisible]);
+
+  // Look up @mentioned username → open their profile
+  const handlePressMention = useCallback((mentionedUsername: string) => {
+    if (!onPressUser) return;
+    const allUsers = getAllTimeUsers(); // Map<inboxId, username>
+    let foundInboxId: string | null = null;
+    for (const [inboxId, uname] of allUsers.entries()) {
+      if (uname.toLowerCase() === mentionedUsername.toLowerCase()) {
+        foundInboxId = inboxId;
+        break;
+      }
+    }
+    if (!foundInboxId) return;
+    const profile = getCachedProfile(foundInboxId);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    onPressUser({
+      senderAddress:  foundInboxId,
+      senderUsername: mentionedUsername,
+      senderNft: profile?.nftImage ? { mint: "", name: "", image: profile.nftImage } : null,
+    });
+  }, [onPressUser]);
 
   const handleLongPress = useCallback(() => {
     Keyboard.dismiss();
@@ -272,6 +325,8 @@ export const MessageBubble = memo(function MessageBubble({
   const cachedSender = getCachedProfile(message.senderAddress);
   const displayName  = cachedSender?.username ?? message.senderUsername ?? shortenAddress(message.senderAddress);
   const isBot = message.senderUsername === "AI Agent #9385";
+  // Show expand control when bot message likely exceeds 9 lines
+  const showBotExpand = isBot && (message.content.split("\n").length > 9 || message.content.length > 380);
   const isLegendarySender = isOwn
     ? useAppStore.getState().isLegendary
     : !!(cachedSender?.legendary);
@@ -400,9 +455,22 @@ export const MessageBubble = memo(function MessageBubble({
               resizeMode="contain"
             />
           ) : (
-            <Text style={[styles.content, { color: textColor }]}>
-              {message.content}
-            </Text>
+            <Pressable
+              onPress={showBotExpand ? () => setBotExpanded(e => !e) : undefined}
+              style={{ gap: 4 }}
+            >
+              <Text
+                style={[styles.content, { color: textColor }]}
+                numberOfLines={showBotExpand && !botExpanded ? 9 : undefined}
+              >
+                {renderRichContent(message.content, handlePressMention)}
+              </Text>
+              {showBotExpand && (
+                <Text style={styles.expandText}>
+                  {botExpanded ? "collapse" : "expand"}
+                </Text>
+              )}
+            </Pressable>
           )}
         </Pressable>
 
@@ -669,6 +737,17 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.body,
     fontSize: 15,
     lineHeight: 22,
+  },
+
+  // ── Bot expand text ────────────────────────────────────────────────────────
+  expandText: {
+    fontFamily: FONTS.body,
+    fontSize: 11,
+    fontStyle: "italic",
+    color: THEME.accent,
+    opacity: 0.75,
+    fontWeight: "300",
+    alignSelf: "flex-start",
   },
 
   // ── Media bubble (GIF / photo — no background or padding) ─────────────────
