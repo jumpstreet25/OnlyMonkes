@@ -795,16 +795,6 @@ export default function ChatScreen() {
               </Pressable>
             )}
 
-            {isGroupMember && !activeLiveRoom && (
-              <Pressable
-                onPress={handleStartLive}
-                style={[styles.iconBtn, styles.liveBtn]}
-                hitSlop={8}
-              >
-                <Text style={styles.liveBtnText}>LIVE</Text>
-              </Pressable>
-            )}
-
             <Pressable
               onPress={() => setDrawerOpen(true)}
               style={styles.iconBtn}
@@ -1128,6 +1118,7 @@ export default function ChatScreen() {
           onTyping={sendTyping}
           onCamera={handleCameraButtonPress}
           typingUsers={typingUsers}
+          onLive={!activeLiveRoom ? handleStartLive : undefined}
         />}
 
         {/* Support banner */}
@@ -1586,17 +1577,5 @@ const styles = StyleSheet.create({
     color: THEME.textFaint,
     letterSpacing: 0.4,
     textAlign: 'center',
-  },
-  liveBtn: {
-    backgroundColor: "#EF4444",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 4,
-  },
-  liveBtnText: {
-    fontFamily: FONTS.mono,
-    fontSize: 9,
-    color: "#fff",
-    letterSpacing: 1.2,
   },
 });
