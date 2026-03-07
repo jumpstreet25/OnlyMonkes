@@ -61,7 +61,20 @@ export function useDm(peerInboxId: string) {
           async (raw: any) => {
             if (cancelled) return;
             const msg = decodeMessage(raw, myInboxId);
-            if (msg) setMessages(prev => [...prev, msg]);
+            if (msg) setMessages(prev => {
+              // Replace matching optimistic message with the real one to avoid duplicates
+              const optimisticIdx = prev.findIndex(
+                m => m.id.startsWith('optimistic-') &&
+                     m.content === msg.content &&
+                     m.senderAddress === msg.senderAddress
+              );
+              if (optimisticIdx !== -1) {
+                const next = [...prev];
+                next[optimisticIdx] = msg;
+                return next;
+              }
+              return [...prev, msg];
+            });
           }
         );
         unsubscribeStream.current = typeof stopStream === 'function' ? stopStream : null;

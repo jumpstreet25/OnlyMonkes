@@ -3,7 +3,7 @@ import { View, FlatList, StyleSheet, Text, Pressable, ActivityIndicator } from '
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { THEME, FONTS } from '@/lib/constants';
-import { getCachedProfile } from '@/lib/userProfile';
+import { getCachedProfile, useProfileVersion } from '@/lib/userProfile';
 import { useDm } from '@/hooks/useDm';
 import { MessageBubble } from '@/components/MessageBubble';
 import { ChatInput } from '@/components/ChatInput';
@@ -17,6 +17,7 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
   const { messages, loading, error, sending, send } = useDm(peerInboxId);
   const [inputText, setInputText] = useState('');
   const flatListRef = useRef<FlatList>(null);
+  useProfileVersion();
   const peerProfile = getCachedProfile(peerInboxId);
   const peerName = peerProfile?.username ?? peerInboxId.slice(0, 8) + '…';
 
