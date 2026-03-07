@@ -62,6 +62,7 @@ interface ChatInputProps {
   onTyping?: () => void;
   onCamera?: () => void;
   typingUsers?: TypingUser[];
+  onLive?: () => void;
 }
 
 export function ChatInput({
@@ -77,6 +78,7 @@ export function ChatInput({
   onTyping,
   onCamera,
   typingUsers,
+  onLive,
 }: ChatInputProps) {
   const inputRef = useRef<TextInput>(null);
   const bounceAnim = useRef(new Animated.Value(0)).current;
@@ -258,6 +260,18 @@ export function ChatInput({
             style={({ pressed }) => [styles.cameraBtn, pressed && { opacity: 0.7 }]}
           >
             <Text style={styles.cameraBtnText}>📷</Text>
+          </Pressable>
+        )}
+
+        {/* LIVE pill button */}
+        {onLive && (
+          <Pressable
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onLive(); }}
+            hitSlop={6}
+            style={({ pressed }) => [styles.livePill, pressed && { opacity: 0.7 }]}
+          >
+            <View style={styles.liveDot} />
+            <Text style={styles.livePillText}>LIVE</Text>
           </Pressable>
         )}
 
@@ -453,6 +467,35 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   pfpGlyph: { fontSize: 16 },
+
+  // ── LIVE pill button ───────────────────────────────────────────────────────
+  livePill: {
+    alignSelf: "flex-end",
+    marginBottom: 2,
+    borderRadius: 9,
+    borderWidth: 1,
+    borderColor: "#FF4C4C55",
+    backgroundColor: "rgba(255,76,76,0.08)",
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    minHeight: 34,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    justifyContent: "center",
+  },
+  liveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#FF4C4C",
+  },
+  livePillText: {
+    fontFamily: FONTS.mono,
+    fontSize: 11,
+    color: "#FF4C4C",
+    letterSpacing: 0.5,
+  },
 
   // ── GIF pill button (between input and send) ───────────────────────────────
   gifPill: {
