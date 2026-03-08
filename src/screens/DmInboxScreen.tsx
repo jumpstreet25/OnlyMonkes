@@ -41,26 +41,36 @@ function relativeTime(date: Date | null): string {
 // ─── Thread Row ───────────────────────────────────────────────────────────────
 
 function ThreadRow({ thread, myInboxId }: { thread: DmThread; myInboxId: string }) {
-  const profile    = getCachedProfile(thread.peerInboxId);
-  const isBot      = thread.peerInboxId === myInboxId;
-  const name       = profile?.username ?? shortenAddress(thread.peerInboxId);
-  const avatarUri  = profile?.nftImage ?? null;
-  const preview    = thread.lastMessage
-    ? thread.lastMessage.replace(/^STICKER:[^\s]+/, 'Sticker').replace(/^GIF:[^\s]+/, 'GIF').replace(/^IMAGE:[^\s]+/, 'Photo').replace(/^VIDEO:[^\s]+/, 'Video')
-    : 'No messages yet';
-  const timeStr = relativeTime(thread.lastMessageAt);
+  if (thread.peerInboxId === myInboxId) return null;
 
-  const handlePress = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    router.push(`/dm/${thread.peerInboxId}`);
-  }, [thread.peerInboxId]);
+  let profile: any = null;
+  try { profile = getCachedProfile(thread.peerInboxId); } catch { /* ignore */ }
+  const name = profile?.username ?? thread.peerInboxId.slice(0, 8) + '…';
+  const avatarUri: string | null = profile?.nftImage ?? null;
 
-  if (isBot) return null;
+  const rawMsg = thread.lastMessage;
+  let preview = 'No messages yet';
+  if (typeof rawMsg === 'string' && rawMsg.length > 0) {
+    try {
+      preview = rawMsg
+        .replace(/^STICKER:[^\s]+/, 'Sticker')
+        .replace(/^GIF:[^\s]+/, 'GIF')
+        .replace(/^IMAGE:[^\s]+/, 'Photo')
+        .replace(/^VIDEO:[^\s]+/, 'Video')
+        .replace(/^MSG:[^:]+:/, '');
+    } catch { preview = rawMsg.slice(0, 50); }
+  }
+
+  let timeStr = '';
+  try { timeStr = relativeTime(thread.lastMessageAt); } catch { timeStr = ''; }
 
   return (
     <Pressable
       style={({ pressed }) => [styles.threadRow, pressed && { backgroundColor: THEME.surfaceHigh }]}
-      onPress={handlePress}
+      onPress={() => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        router.push(`/dm/${thread.peerInboxId}` as any);
+      }}
     >
       {avatarUri ? (
         <Image source={{ uri: avatarUri }} style={styles.avatar} />
