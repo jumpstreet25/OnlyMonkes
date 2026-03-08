@@ -313,7 +313,7 @@ export function useXmtp() {
             try {
               const data = JSON.parse(content.slice("PROFILE_UPDATE:".length));
               if (data.id) {
-                cacheProfile(data.id, { username: data.u || undefined, bio: data.b || undefined, xAccount: data.x || undefined, walletAddress: data.w || undefined, tipWallet: data.tw || undefined, nftImage: data.ni || null, legendary: !!data.lg});
+                cacheProfile(data.id, { username: data.u || undefined, bio: data.b || undefined, xAccount: data.x || undefined, walletAddress: data.w || undefined, tipWallet: data.tw || undefined, nftImage: data.ni || null, legendary: !!data.lg, pushToken: data.pt || undefined });
                 trackUser(data.id, data.u || undefined);
               }
             } catch { /* ignore */ }
@@ -436,7 +436,7 @@ export function useXmtp() {
           try {
             const data = JSON.parse(content.slice("PROFILE_UPDATE:".length));
             if (data.id) {
-              cacheProfile(data.id, { username: data.u || undefined, bio: data.b || undefined, xAccount: data.x || undefined, walletAddress: data.w || undefined, tipWallet: data.tw || undefined, nftImage: data.ni || null, legendary: !!data.lg});
+              cacheProfile(data.id, { username: data.u || undefined, bio: data.b || undefined, xAccount: data.x || undefined, walletAddress: data.w || undefined, tipWallet: data.tw || undefined, nftImage: data.ni || null, legendary: !!data.lg, pushToken: data.pt || undefined });
               trackUser(data.id, data.u || undefined);
             }
           } catch { /* ignore */ }
@@ -703,7 +703,10 @@ export function useXmtp() {
   // ── Broadcast own profile to the group ────────────────────────────────────
   const broadcastProfile = useCallback(async () => {
     if (!_group || !_myInboxId) return;
-    const { username, bio, xAccount, wallet, tipWallet, verifiedNft, isLegendary } = useAppStore.getState();
+    const { username, bio, xAccount, wallet, tipWallet, verifiedNft, isLegendary,
+      notificationsEnabled, mentionsOnly, botNotificationsEnabled,
+      dmNotificationsEnabled, liveRoomNotificationsEnabled,
+    } = useAppStore.getState();
     try {
       const pushToken = await getCachedPushToken();
       await sendProfileUpdate(
@@ -714,6 +717,13 @@ export function useXmtp() {
         verifiedNft?.image ?? null,
         isLegendary,
         pushToken,
+        {
+          all: notificationsEnabled,
+          mentions: mentionsOnly,
+          bot: botNotificationsEnabled,
+          dm: dmNotificationsEnabled,
+          live: liveRoomNotificationsEnabled,
+        },
       );
       // Keep own cache entry current so PFP is always available locally
       cacheProfile(_myInboxId, {

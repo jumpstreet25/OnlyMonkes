@@ -1,8 +1,5 @@
 /**
  * Live Audio Room route
- *
- * Reads room state from appStore (set when user taps Join in LiveRoomBanner
- * or hosts a room from ChatScreen). Token is generated on-device before navigation.
  */
 
 import React, { useEffect } from "react";
@@ -14,9 +11,8 @@ import { THEME, FONTS } from "@/lib/constants";
 
 export default function LiveRoomRoute() {
   const { token, isHost } = useLocalSearchParams<{ token: string; isHost?: string }>();
-  const { activeLiveRoom, setActiveLiveRoom, myInboxId } = useAppStore();
+  const { activeLiveRoom } = useAppStore();
 
-  // Safety: if room disappeared while navigating, go back
   useEffect(() => {
     if (!activeLiveRoom || !token) {
       router.back();
@@ -32,7 +28,10 @@ export default function LiveRoomRoute() {
   }
 
   const handleLeave = () => {
-    // If host left, end the room for everyone (done in ChatScreen via broadcastLiveRoom)
+    router.back();
+  };
+
+  const handleMinimize = () => {
     router.back();
   };
 
@@ -42,6 +41,7 @@ export default function LiveRoomRoute() {
       token={token}
       isHost={isHost === "1"}
       onLeave={handleLeave}
+      onMinimize={handleMinimize}
     />
   );
 }

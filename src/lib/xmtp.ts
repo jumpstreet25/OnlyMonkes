@@ -390,6 +390,7 @@ export async function sendProfileUpdate(
   nftImage?: string | null,
   legendary?: boolean,
   pushToken?: string | null,
+  notifPrefs?: { all: boolean; mentions: boolean; bot: boolean; dm: boolean; live: boolean } | null,
 ): Promise<void> {
   const payload = JSON.stringify({
     id: inboxId,
@@ -401,6 +402,7 @@ export async function sendProfileUpdate(
     ni: nftImage ?? "",
     lg: legendary ? 1 : 0,
     pt: pushToken ?? "",
+    np: notifPrefs ?? null,
   });
   await (group as any).send(`PROFILE_UPDATE:${payload}`);
 }
@@ -450,13 +452,16 @@ export interface DmThread {
  */
 export async function listDmThreads(client: XmtpClient): Promise<DmThread[]> {
   await client.conversations.sync();
-  const allConvos: any[] = await (client.conversations as any).list();
+  // listDms() returns only Dm objects; peerInboxId is an async method in SDK v5
+  const allDms: any[] = await (client.conversations as any).listDms();
   const threads: DmThread[] = [];
 
-  for (const convo of allConvos) {
-    if ((convo as any).isGroup) continue;
-    if (typeof (convo as any).peerInboxId === 'undefined') continue;
-    const peerInboxId: string = (convo as any).peerInboxId;
+  for (const convo of allDms) {
+    let peerInboxId: string;
+    try {
+      peerInboxId = await (convo as any).peerInboxId();
+    } catch { continue; }
+    if (!peerInboxId) continue;
 
     try {
       await (convo as any).sync();

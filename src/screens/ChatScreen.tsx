@@ -69,7 +69,9 @@ import { CalendarModal } from "@/components/CalendarModal";
 import { GifPickerModal } from "@/components/GifPickerModal";
 import { VideoCameraModal } from "@/components/VideoCameraModal";
 import { LiveRoomBanner } from "@/components/LiveRoomBanner";
-import { createLivekitToken, createRoomName, livekitConfigured, type LiveRoomData } from "@/lib/livekit";
+import { type LiveRoomData, createLivekitToken, createRoomName, LK_URL } from "@/lib/livekit";
+import * as liveAudio from "@/lib/liveAudio";
+import { LiveAudioPill } from "@/components/LiveAudioPill";
 import { showLocalNotification, CH_ALL } from "@/lib/notifications";
 import { Video, ResizeMode } from "expo-av";
 import * as MediaLibrary from "expo-media-library";
@@ -90,6 +92,7 @@ export default function ChatScreen() {
     setThemeId, setCustomBubbleColor, setCalendarEvents,
     loginStreak, isLoading, error,
     activeLiveRoom, setActiveLiveRoom,
+    isInLiveRoom, liveRoomToken, setIsInLiveRoom, setLiveRoomToken,
   } = useAppStore();
   const { messages, replyingTo, isLoadingHistory, setReplyingTo, typingUsers } =
     useChatStore();
@@ -121,8 +124,6 @@ export default function ChatScreen() {
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [videoModalOpen, setVideoModalOpen] = useState(false);
   const [videoLightboxUrl, setVideoLightboxUrl] = useState<string | null>(null);
-  const [liveRoomToken, setLiveRoomToken] = useState<string | null>(null);
-  const isInLiveRoom = !!liveRoomToken && !!activeLiveRoom;
   const [adminRecoveryOpen, setAdminRecoveryOpen] = useState(false);
   const [adminRecoveryPat, setAdminRecoveryPat] = useState("");
   const [adminRecoveryBusy, setAdminRecoveryBusy] = useState(false);
@@ -506,20 +507,12 @@ export default function ChatScreen() {
   // ─── Live audio room handlers ───────────────────────────────────────────────
 
   const handleStartLive = useCallback(async () => {
-    if (!livekitConfigured()) {
-      Alert.alert(
-        "LiveKit not configured",
-        "Add LIVEKIT_URL, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET to your .env and rebuild."
-      );
-      return;
-    }
     if (!myInboxId || !username) {
       Alert.alert("Set a username first", "Go to your profile and set a username before starting a live.");
       return;
     }
     try {
       const roomId = createRoomName(myInboxId);
-      const token  = createLivekitToken(roomId, myInboxId, username);
       const data: LiveRoomData = {
         id:     roomId,
         host:   username,
@@ -528,41 +521,37 @@ export default function ChatScreen() {
         active: true,
       };
       setActiveLiveRoom({ ...data, participantCount: 1 });
-      setLiveRoomToken(token);
       await broadcastLiveRoom(data);
-      // Push-notify the group
-      await showLocalNotification(`${username} started a Live`, "Tap to join the audio room", CH_ALL);
-      router.push({ pathname: "/live-room", params: { token, isHost: "1" } });
+      await showLocalNotification(`${username} started a Live`, "Live Audio in OnlyMonkes", CH_ALL);
+      // Generate token and navigate to live room screen
+      const token = createLivekitToken(roomId, myInboxId, username);
+      setLiveRoomToken(token);
+      router.push(`/live-room?token=${encodeURIComponent(token)}&isHost=1`);
     } catch (err: any) {
       Alert.alert("Failed to start live", err?.message ?? "Unknown error");
     }
-  }, [myInboxId, username, broadcastLiveRoom, setActiveLiveRoom]);
+  }, [myInboxId, username, broadcastLiveRoom, setActiveLiveRoom, setLiveRoomToken]);
 
   const handleJoinLive = useCallback(async () => {
-    if (!activeLiveRoom || !myInboxId || !username) return;
-    if (!livekitConfigured()) {
-      Alert.alert("LiveKit not configured", "LIVEKIT_* env vars missing.");
-      return;
-    }
+    if (!myInboxId || !username || !activeLiveRoom) return;
     try {
       const token = createLivekitToken(activeLiveRoom.id, myInboxId, username);
       setLiveRoomToken(token);
-      router.push({ pathname: "/live-room", params: { token, isHost: "0" } });
+      router.push(`/live-room?token=${encodeURIComponent(token)}&isHost=0`);
     } catch (err: any) {
       Alert.alert("Failed to join", err?.message ?? "Unknown error");
     }
-  }, [activeLiveRoom, myInboxId, username]);
+  }, [myInboxId, username, activeLiveRoom, setLiveRoomToken]);
 
-  const handleLeaveLive = useCallback(async () => {
-    const wasHost = activeLiveRoom?.hostId === myInboxId;
+  const handleEndLive = useCallback(async () => {
+    if (!activeLiveRoom) return;
+    const data: LiveRoomData = { ...activeLiveRoom, active: false };
+    setActiveLiveRoom(null);
+    setIsInLiveRoom(false);
     setLiveRoomToken(null);
-    if (wasHost && activeLiveRoom) {
-      // End the room for everyone
-      const data: LiveRoomData = { ...activeLiveRoom, active: false };
-      setActiveLiveRoom(null);
-      await broadcastLiveRoom(data).catch(() => {});
-    }
-  }, [activeLiveRoom, myInboxId, broadcastLiveRoom, setActiveLiveRoom]);
+    await liveAudio.disconnectFromRoom().catch(() => {});
+    await broadcastLiveRoom(data).catch(() => {});
+  }, [activeLiveRoom, broadcastLiveRoom, setActiveLiveRoom, setIsInLiveRoom, setLiveRoomToken]);
 
   const handleConfirmDevTip = useCallback(async (amount: TipAmount) => {
     setDevTipOpen(false);
@@ -1058,6 +1047,26 @@ export default function ChatScreen() {
           </View>
         )}
 
+        {/* Live room banner — pinned at top of chat, like a pinned tweet */}
+        {isGroupMember && activeLiveRoom && (
+          <LiveRoomBanner
+            room={activeLiveRoom}
+            isHost={activeLiveRoom.hostId === myInboxId}
+            onEnd={handleEndLive}
+            onJoin={handleJoinLive}
+          />
+        )}
+
+        {/* Floating pill — shown when this user is actively in the live audio room */}
+        {isGroupMember && isInLiveRoom && activeLiveRoom && (
+          <LiveAudioPill
+            hostName={activeLiveRoom.host}
+            isHost={activeLiveRoom.hostId === myInboxId}
+            onExpand={() => liveRoomToken && router.push(`/live-room?token=${encodeURIComponent(liveRoomToken)}&isHost=${activeLiveRoom.hostId === myInboxId ? "1" : "0"}`)}
+            onEnd={handleEndLive}
+          />
+        )}
+
         {/* Loading history */}
         {isGroupMember && isLoadingHistory && (
           <View style={styles.historyLoading}>
@@ -1093,16 +1102,6 @@ export default function ChatScreen() {
           maxToRenderPerBatch={20}
           windowSize={10}
         />}
-
-        {/* Live room banner (pinned above input when a room is active) */}
-        {isGroupMember && activeLiveRoom && (
-          <LiveRoomBanner
-            room={activeLiveRoom}
-            isInRoom={isInLiveRoom}
-            onJoin={handleJoinLive}
-            onLeave={handleLeaveLive}
-          />
-        )}
 
         {/* Input */}
         {isGroupMember && <ChatInput
