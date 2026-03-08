@@ -45,7 +45,7 @@ function ThreadRow({ thread, myInboxId }: { thread: DmThread; myInboxId: string 
 
   let profile: any = null;
   try { profile = getCachedProfile(thread.peerInboxId); } catch { /* ignore */ }
-  const name = profile?.username ?? thread.peerInboxId.slice(0, 8) + '…';
+  const name: string = profile?.username ?? thread.peerInboxId.slice(0, 8) + '…';
   const avatarUri: string | null = profile?.nftImage ?? null;
 
   const rawMsg = thread.lastMessage;
@@ -58,19 +58,20 @@ function ThreadRow({ thread, myInboxId }: { thread: DmThread; myInboxId: string 
         .replace(/^IMAGE:[^\s]+/, 'Photo')
         .replace(/^VIDEO:[^\s]+/, 'Video')
         .replace(/^MSG:[^:]+:/, '');
-    } catch { preview = rawMsg.slice(0, 50); }
+    } catch { preview = String(rawMsg).slice(0, 50); }
   }
 
   let timeStr = '';
-  try { timeStr = relativeTime(thread.lastMessageAt); } catch { timeStr = ''; }
+  try {
+    if (thread.lastMessageAt instanceof Date) {
+      timeStr = relativeTime(thread.lastMessageAt);
+    }
+  } catch { timeStr = ''; }
 
   return (
     <Pressable
-      style={({ pressed }) => [styles.threadRow, pressed && { backgroundColor: THEME.surfaceHigh }]}
-      onPress={() => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        router.push(`/dm/${thread.peerInboxId}` as any);
-      }}
+      style={styles.threadRow}
+      onPress={() => router.push(`/dm/${thread.peerInboxId}` as any)}
     >
       {avatarUri ? (
         <Image source={{ uri: avatarUri }} style={styles.avatar} />
@@ -79,7 +80,6 @@ function ThreadRow({ thread, myInboxId }: { thread: DmThread; myInboxId: string 
           <Text style={styles.avatarGlyph}>🐒</Text>
         </View>
       )}
-
       <View style={styles.threadInfo}>
         <View style={styles.threadHeader}>
           <Text style={styles.threadName} numberOfLines={1}>{name}</Text>
@@ -87,7 +87,6 @@ function ThreadRow({ thread, myInboxId }: { thread: DmThread; myInboxId: string 
         </View>
         <Text style={styles.threadPreview} numberOfLines={1}>{preview}</Text>
       </View>
-
       <Text style={styles.chevron}>›</Text>
     </Pressable>
   );

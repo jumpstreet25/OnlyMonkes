@@ -13,7 +13,7 @@ export const TIP_MAX = 500;
 export const COLLECTION_NAME = 'Saga Monkes';
 export const NFT_COLLECTION_ADDRESS = 'GokAiStXz2Kqbxwz2oqzfEXuUhE7aXySmBGEP7uejKXF';
 export const HELIUS_API_KEY: string =
-  (Constants.expoConfig?.extra?.heliusApiKey as string) ?? 'f222b023-3712-4ab5-9dd1-caff88d27c40';
+  (Constants.expoConfig?.extra?.heliusApiKey as string) || 'b651e3ee-fd5a-48bc-9972-da56cd3c3132';
 export const HELIUS_RPC_URL = `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`;
 export const SOLANA_RPC_URL = 'https://api.mainnet-beta.solana.com';
 

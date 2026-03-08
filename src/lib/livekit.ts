@@ -19,9 +19,9 @@ import Constants from 'expo-constants';
 
 const extra = (Constants.expoConfig?.extra as Record<string, string>) ?? {};
 
-export const LK_URL    = extra.livekitUrl    ?? '';
-export const LK_KEY    = extra.livekitApiKey  ?? '';
-export const LK_SECRET = extra.livekitApiSecret ?? '';
+export const LK_URL    = extra.livekitUrl    || 'wss://onlymonkes-emw5bbmh.livekit.cloud';
+export const LK_KEY    = extra.livekitApiKey  || 'APIGU8CYDdnqhvX';
+export const LK_SECRET = extra.livekitApiSecret || 'FofRagJnXUw6YNtPBFfTNnpAeLNpB9ZFZ0onTxhyE4EA';
 
 export function livekitConfigured(): boolean {
   return !!(LK_URL && LK_KEY && LK_SECRET);
