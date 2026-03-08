@@ -35,9 +35,9 @@ An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect yo
 - **Login streaks** 🔥 — daily login streak counter; confetti fires on the 7th day
 
 ### Notifications
-- **Push notifications** — Expo push tokens relayed via AI Agent bot (#9385); heads-up alerts for new messages, @mentions, live room starts, and AI signals
+- **Push notifications** — direct FCM Legacy HTTP API relay via AI Agent bot (#9385); heads-up alerts for new messages, @mentions, live room starts, and AI signals — no Expo relay dependency
 - **Per-user notification prefs** — opt-in categories: All Messages, @Mentions Only, Bot/AI alerts, DM notifications, Live Room start alerts; prefs broadcast in `PROFILE_UPDATE` so the bot filters server-side
-- **Direct DM push relay** — when a user sends a DM, a push notification is sent directly to the recipient's Expo token (peer-to-peer, no bot required); includes sender NFT avatar in the data payload
+- **Direct DM push relay** — when a user sends a DM, a push notification is sent directly to the recipient's FCM token (peer-to-peer, no bot required); includes sender NFT avatar in the data payload
 - **Background sync** — `expo-background-fetch` task keeps profile and data fresh when backgrounded
 
 ### Profiles & Wallets
@@ -45,8 +45,14 @@ An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect yo
 - **Tipping** — send SOL tips directly to a user's tip wallet from their profile card
 - **Monke Tools** 🔧 — ecosystem links, settings, and notification controls
 
-### AI Agent
+### AI Agent & TA Scanner
 - **AI Agent #9385** — XMTP bot in the group chat; delivers TA alerts (RSI, MACD, EMA) for Solana tokens, Saga Monke NFT sale alerts, and responds to DMs via Claude AI; built on ElizaOS v2 with plugin-solana for trade execution
+- **TA Savvy Monke** — professional-grade multi-timeframe TA scanner; scans all verified Solana SPL tokens every 8 min across 15m/1H/4H/daily candles; posts confluence alerts (Ichimoku, Fibonacci, Bollinger, Stochastic, ADX, OBV, candle patterns) to Main Chat when signal score ≥72/100; sentiment gate (Birdeye trending + wash trading detection)
+- **Slash commands** — `/tip @Username [amt]` (send $SKR), `/buy $TOKEN`, `/sell $TOKEN`, `/swap $A for $B` — all routed through Jupiter aggregator with referral
+- **Per-user TA risk settings** — DM the bot `/risk` to set position size, stop-loss %, conviction threshold, blacklist, mute, and more
+- **Backtesting** — DM `/backtest $TOKEN [days]` for historical signal replay with win/loss stats, Sharpe ratio, max drawdown
+- **Portfolio tracking** — DM `/portfolio` for open positions, closed P&L, and daily summaries
+- **Support OnlyMonkes button** — in the Tools drawer; quick-tip 5/10/25/50 $SKR to the dev wallet via Solana Pay deep link
 - **Per-type push titles** — 🐒 Saga Monke Sold! / 📈 Bullish Signal / 📉 Bearish Signal per alert type
 - **Enriched push payloads** — notifications include `type`, `sender`, `avatarUrl`, `preview` fields for rich display
 
@@ -67,7 +73,7 @@ An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect yo
 | Video | `expo-camera`, `expo-av`, `expo-video-thumbnails` |
 | Video Hosting | Cloudinary (upload preset, unsigned) |
 | GIF Search | GIPHY API |
-| Push Notifications | Expo Push + FCM (AI Agent relay + direct peer-to-peer DM push) |
+| Push Notifications | FCM Legacy HTTP API (direct — no Expo relay; AI Agent + peer-to-peer DM push) |
 | Background Tasks | `expo-background-fetch` + `expo-task-manager` |
 | JWT Signing | `crypto-js` (HS256 for LiveKit tokens, client-side) |
 | Animations | `react-native-reanimated` ~3.10 |
@@ -304,6 +310,10 @@ CLOUDINARY_UPLOAD_PRESET=your-preset        # unsigned upload preset
 LIVEKIT_URL=wss://your-project.livekit.cloud
 LIVEKIT_API_KEY=your-livekit-api-key        # livekit.io cloud dashboard
 LIVEKIT_API_SECRET=your-livekit-api-secret
+
+JUP_API_KEY=your-jupiter-api-key           # portal.jup.ag
+SKR_MINT=SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3
+DEV_WALLET=7tLrnPvgcR5mLtyUcVwvmhAD1wXbAKgWcLBPWxpwyZ1J
 ```
 
 These are injected via `app.config.ts` → `Constants.expoConfig.extra`.
