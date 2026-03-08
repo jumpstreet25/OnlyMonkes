@@ -41,6 +41,8 @@ interface AppState {
   notificationsEnabled: boolean;
   mentionsOnly: boolean;
   botNotificationsEnabled: boolean;
+  dmNotificationsEnabled: boolean;
+  liveRoomNotificationsEnabled: boolean;
   // Group membership
   isGroupMember: boolean;
   // Admin
@@ -61,6 +63,9 @@ interface AppState {
   expoPushToken: string | null;
   // Live audio room
   activeLiveRoom: LiveRoomState | null;
+  isInLiveRoom: boolean;
+  liveRoomMuted: boolean;
+  liveRoomToken: string | null;
 }
 
 interface AppActions {
@@ -78,6 +83,8 @@ interface AppActions {
   setNotificationsEnabled: (enabled: boolean) => void;
   setMentionsOnly: (mentionsOnly: boolean) => void;
   setBotNotificationsEnabled: (enabled: boolean) => void;
+  setDmNotificationsEnabled: (enabled: boolean) => void;
+  setLiveRoomNotificationsEnabled: (enabled: boolean) => void;
   setIsGroupMember: (isMember: boolean) => void;
   setIsGroupAdmin: (isAdmin: boolean) => void;
   setJoinRequests: (requests: JoinRequest[]) => void;
@@ -92,6 +99,9 @@ interface AppActions {
   setExpoPushToken: (token: string | null) => void;
   setActiveLiveRoom: (room: LiveRoomState | null) => void;
   updateLiveRoomCount: (count: number) => void;
+  setIsInLiveRoom: (val: boolean) => void;
+  setLiveRoomMuted: (val: boolean) => void;
+  setLiveRoomToken: (token: string | null) => void;
   reset: () => void;
 }
 
@@ -111,6 +121,8 @@ const initialState: AppState = {
   notificationsEnabled: true,
   mentionsOnly: false,
   botNotificationsEnabled: true,
+  dmNotificationsEnabled: true,
+  liveRoomNotificationsEnabled: true,
   isGroupMember: false,
   isGroupAdmin: false,
   joinRequests: [],
@@ -123,6 +135,9 @@ const initialState: AppState = {
   isLegendary: false,
   expoPushToken: null,
   activeLiveRoom: null,
+  isInLiveRoom: false,
+  liveRoomMuted: false,
+  liveRoomToken: null,
 };
 
 export const useAppStore = create<AppState & AppActions>((set, get) => ({
@@ -142,6 +157,8 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   setNotificationsEnabled: (notificationsEnabled) => set({ notificationsEnabled }),
   setMentionsOnly: (mentionsOnly) => set({ mentionsOnly }),
   setBotNotificationsEnabled: (botNotificationsEnabled) => set({ botNotificationsEnabled }),
+  setDmNotificationsEnabled: (dmNotificationsEnabled) => set({ dmNotificationsEnabled }),
+  setLiveRoomNotificationsEnabled: (liveRoomNotificationsEnabled) => set({ liveRoomNotificationsEnabled }),
   setIsGroupMember: (isGroupMember) => set({ isGroupMember }),
   setIsGroupAdmin: (isGroupAdmin) => set({ isGroupAdmin }),
   setJoinRequests: (joinRequests) => set({ joinRequests }),
@@ -162,5 +179,8 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   setActiveLiveRoom: (activeLiveRoom) => set({ activeLiveRoom }),
   updateLiveRoomCount: (count) =>
     set((s) => s.activeLiveRoom ? { activeLiveRoom: { ...s.activeLiveRoom, participantCount: count } } : {}),
+  setIsInLiveRoom: (isInLiveRoom) => set({ isInLiveRoom }),
+  setLiveRoomMuted: (liveRoomMuted) => set({ liveRoomMuted }),
+  setLiveRoomToken: (liveRoomToken) => set({ liveRoomToken }),
   reset: () => set(initialState),
 }));

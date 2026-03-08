@@ -1,9 +1,11 @@
 /**
  * VerifyScreen
  *
- * After wallet connection, verifies NFT ownership.
- * XMTP initialises inside ChatScreen so send/react/reply are
- * all in the same hook instance — eliminates "Not connected" errors.
+ * After wallet connection, verifies NFT ownership via Helius DAS API.
+ * Three phases:
+ *   checking-nft — skeleton loader + fun Monke-themed loading texts
+ *   nft-ok       — verified NFT display → routes to chat
+ *   nft-fail     — "not a holder" screen with marketplace CTAs
  */
 
 import React, { useEffect, useRef, useState } from "react";
@@ -14,6 +16,8 @@ import {
   Pressable,
   ActivityIndicator,
   Image,
+  Animated,
+  Linking,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
@@ -28,10 +32,28 @@ import type { OwnedNFT } from "@/types";
 
 type VerifyState = "idle" | "checking-nft" | "nft-fail" | "nft-ok" | "pick-nft" | "ready";
 
-const VERIFY_STEPS = [
-  "Connecting to Helius DAS API…",
-  "Scanning wallet for NFTs…",
-  "Verifying Saga Monkes ownership…",
+// Fun Monke-themed loading texts — rotate every 1.8 s
+const LOADING_TEXTS = [
+  "Sniffing bananas in your wallet…",
+  "Counting Monkes on-chain…",
+  "Verifying you're not a tourist…",
+  "Connecting to Helius…",
+  "Scanning for Saga Monkes…",
+  "Checking the banana vault…",
+  "Asking the chain nicely…",
+];
+
+const MARKETPLACES = [
+  {
+    label: "Buy on Magic Eden",
+    emoji: "🪄",
+    url: "https://magiceden.io/marketplace/sagamonkes",
+  },
+  {
+    label: "Buy on Tensor",
+    emoji: "⚡",
+    url: "https://www.tensor.trade/trade/sagamonkes",
+  },
 ];
 
 export default function VerifyScreen() {
@@ -40,32 +62,38 @@ export default function VerifyScreen() {
   const { disconnect } = useMobileWallet();
 
   const [phase, setPhase] = useState<VerifyState>("idle");
-  const [verifyStep, setVerifyStep] = useState(0);
-  const stepTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [loadingTextIdx, setLoadingTextIdx] = useState(0);
+  const textFade = useRef(new Animated.Value(1)).current;
+  const shimmer  = useRef(new Animated.Value(0)).current;
 
-  // Advance the sub-step label every 900 ms while the Helius call runs
+  // ── Skeleton shimmer ──────────────────────────────────────────────────────
   useEffect(() => {
-    if (phase !== "checking-nft") {
-      if (stepTimerRef.current) {
-        clearInterval(stepTimerRef.current);
-        stepTimerRef.current = null;
-      }
-      return;
-    }
-    setVerifyStep(0);
-    stepTimerRef.current = setInterval(() => {
-      setVerifyStep((s) => Math.min(s + 1, VERIFY_STEPS.length - 1));
-    }, 900);
-    return () => {
-      if (stepTimerRef.current) clearInterval(stepTimerRef.current);
-    };
+    if (phase !== "checking-nft") return;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(shimmer, { toValue: 1, duration: 700, useNativeDriver: true }),
+        Animated.timing(shimmer, { toValue: 0, duration: 700, useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
   }, [phase]);
 
+  // ── Rotate loading text with fade ─────────────────────────────────────────
   useEffect(() => {
-    runVerification();
-  }, []);
+    if (phase !== "checking-nft") return;
+    const timer = setInterval(() => {
+      Animated.sequence([
+        Animated.timing(textFade, { toValue: 0, duration: 200, useNativeDriver: true }),
+        Animated.timing(textFade, { toValue: 1, duration: 200, useNativeDriver: true }),
+      ]).start();
+      setLoadingTextIdx(i => (i + 1) % LOADING_TEXTS.length);
+    }, 1800);
+    return () => clearInterval(timer);
+  }, [phase]);
 
-  // Navigate to chat — XMTP connects inside ChatScreen
+  useEffect(() => { runVerification(); }, []);
+
   const goToChat = async (nftOverride?: OwnedNFT) => {
     setPhase("ready");
     const nftToSave = nftOverride ?? verifiedNft;
@@ -77,20 +105,10 @@ export default function VerifyScreen() {
   const runVerification = async () => {
     setPhase("checking-nft");
     const verified = await verify();
-
-    if (!verified) {
-      setPhase("nft-fail");
-      return;
-    }
-
+    if (!verified) { setPhase("nft-fail"); return; }
     setPhase("nft-ok");
     await new Promise((r) => setTimeout(r, 800));
-
-    if (allNfts.length > 1) {
-      setPhase("pick-nft");
-      return;
-    }
-
+    if (allNfts.length > 1) { setPhase("pick-nft"); return; }
     await goToChat();
   };
 
@@ -103,6 +121,8 @@ export default function VerifyScreen() {
     disconnect();
     router.replace("/");
   };
+
+  const shimmerOpacity = shimmer.interpolate({ inputRange: [0, 1], outputRange: [0.25, 0.55] });
 
   return (
     <View style={styles.container}>
@@ -128,62 +148,112 @@ export default function VerifyScreen() {
           </Text>
         </View>
 
-        {/* Status card */}
-        <View style={styles.card}>
-          <View style={styles.statusInner}>
-            {phase === "checking-nft" && (
-              <>
-                <ActivityIndicator size="large" color={THEME.accent} />
-                <Text style={styles.statusText}>{VERIFY_STEPS[verifyStep]}</Text>
-                {/* Progress dots */}
-                <View style={styles.stepDots}>
-                  {VERIFY_STEPS.map((_, i) => (
-                    <View
-                      key={i}
-                      style={[styles.stepDot, i <= verifyStep && styles.stepDotActive]}
-                    />
-                  ))}
-                </View>
-              </>
-            )}
+        {/* ── LOADING: skeleton + fun text ─────────────────────────────── */}
+        {phase === "checking-nft" && (
+          <View style={styles.card}>
+            {/* Skeleton rows */}
+            <Animated.View style={[styles.skeletonRow, styles.skeletonWide,  { opacity: shimmerOpacity }]} />
+            <Animated.View style={[styles.skeletonRow, styles.skeletonMed,   { opacity: shimmerOpacity }]} />
+            <Animated.View style={[styles.skeletonRow, styles.skeletonShort, { opacity: shimmerOpacity }]} />
 
-            {(phase === "nft-ok" || phase === "ready") && verifiedNft?.image && (
-              <>
-                <Image source={{ uri: verifiedNft.image }} style={styles.nftImage} />
-                <Text style={styles.nftFoundLabel}>NFT Verified ✓</Text>
-                <Text style={styles.nftName}>{verifiedNft.name}</Text>
-              </>
-            )}
+            {/* Pulsing spinner below skeletons */}
+            <View style={styles.spinnerRow}>
+              <ActivityIndicator size="small" color={THEME.accent} />
+              <Animated.Text style={[styles.loadingText, { opacity: textFade }]}>
+                {LOADING_TEXTS[loadingTextIdx]}
+              </Animated.Text>
+            </View>
 
-            {phase === "nft-fail" && (
-              <>
-                <Text style={styles.failIcon}>🔒</Text>
-                <Text style={styles.statusText}>No eligible NFT found</Text>
-              </>
-            )}
+            {/* Progress dots */}
+            <View style={styles.stepDots}>
+              {[0, 1, 2].map(i => (
+                <Animated.View
+                  key={i}
+                  style={[
+                    styles.stepDot,
+                    { opacity: shimmer.interpolate({ inputRange: [0, 1], outputRange: [i === 0 ? 0.4 : 0.15, i === 1 ? 0.9 : i === 2 ? 0.5 : 0.3] }) },
+                    i === 1 && styles.stepDotActive,
+                  ]}
+                />
+              ))}
+            </View>
           </View>
-        </View>
+        )}
 
-        {/* Step indicator */}
-        <View style={styles.steps}>
-          <StepRow
-            done={["nft-ok", "pick-nft", "ready"].includes(phase)}
-            active={phase === "checking-nft"}
-            label={phase === "checking-nft" ? VERIFY_STEPS[verifyStep] : "Verify NFT ownership"}
-            index={1}
-          />
-        </View>
+        {/* ── NFT OK ───────────────────────────────────────────────────── */}
+        {(phase === "nft-ok" || phase === "ready") && verifiedNft?.image && (
+          <View style={styles.card}>
+            <View style={styles.statusInner}>
+              <Image source={{ uri: verifiedNft.image }} style={styles.nftImage} />
+              <Text style={styles.nftFoundLabel}>NFT Verified ✓</Text>
+              <Text style={styles.nftName}>{verifiedNft.name}</Text>
+            </View>
+          </View>
+        )}
 
-        {/* Error state */}
+        {/* ── NOT A HOLDER ─────────────────────────────────────────────── */}
         {phase === "nft-fail" && (
-          <View style={styles.errorBlock}>
-            <Text style={styles.errorTitle}>Access Denied</Text>
-            <Text style={styles.errorMessage}>
-              {error ?? "You need a Saga Monkes NFT to access OnlyMonkes."}
+          <View style={styles.notHolderBlock}>
+            {/* Icon */}
+            <Text style={styles.notHolderEmoji}>🔒</Text>
+            <Text style={styles.notHolderTitle}>You Need a Saga Monke</Text>
+            <Text style={styles.notHolderBody}>
+              {error ?? "OnlyMonkes is an exclusive club for Saga Monkes NFT holders. Own one to unlock holder-only chat, AI signals, voice rooms, and more."}
             </Text>
+
+            {/* Divider */}
+            <View style={styles.divider} />
+
+            {/* "Why Saga Monkes?" blurb */}
+            <View style={styles.whyBlock}>
+              <Text style={styles.whyTitle}>Why Saga Monkes?</Text>
+              {[
+                "🐒  Rare — only 1,000 exist on Solana",
+                "🔐  Private group chat via XMTP encryption",
+                "📈  Live AI trading signals & alerts",
+                "🎙  Voice rooms & holder-only events",
+              ].map(line => (
+                <Text key={line} style={styles.whyLine}>{line}</Text>
+              ))}
+            </View>
+
+            {/* Marketplace buttons */}
+            <View style={styles.marketplaceRow}>
+              {MARKETPLACES.map(({ label, emoji, url }) => (
+                <Pressable
+                  key={label}
+                  style={({ pressed }) => [styles.marketBtn, pressed && { opacity: 0.7 }]}
+                  onPress={() => Linking.openURL(url)}
+                >
+                  <LinearGradient
+                    colors={["#9c7cff", "#7c5cfc"]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.marketBtnGradient}
+                  >
+                    <Text style={styles.marketBtnEmoji}>{emoji}</Text>
+                    <Text style={styles.marketBtnText}>{label}</Text>
+                  </LinearGradient>
+                </Pressable>
+              ))}
+            </View>
+
+            {/* Try again */}
             <Pressable style={styles.retryButton} onPress={handleDisconnect}>
-              <Text style={styles.retryButtonText}>Disconnect & Try Again</Text>
+              <Text style={styles.retryButtonText}>← Try a Different Wallet</Text>
             </Pressable>
+          </View>
+        )}
+
+        {/* Step indicator (checking-nft / ok states) */}
+        {phase !== "nft-fail" && (
+          <View style={styles.steps}>
+            <StepRow
+              done={["nft-ok", "pick-nft", "ready"].includes(phase)}
+              active={phase === "checking-nft"}
+              label={phase === "checking-nft" ? "Verifying NFT ownership…" : "Verified ✓"}
+              index={1}
+            />
           </View>
         )}
       </View>
@@ -218,10 +288,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 80,
     paddingBottom: 48,
-    gap: 24,
+    gap: 20,
     alignItems: "center",
     justifyContent: "center",
   },
+
   walletPill: {
     flexDirection: "row",
     alignItems: "center",
@@ -235,23 +306,128 @@ const styles = StyleSheet.create({
   },
   walletDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "#44ff88" },
   walletAddress: { fontFamily: FONTS.mono, fontSize: 13, color: THEME.textMuted },
+
+  // ── Shared card ──────────────────────────────────────────────────────────
   card: {
     alignSelf: "stretch",
     backgroundColor: THEME.surface,
     borderRadius: 20,
     borderWidth: 1,
     borderColor: THEME.border,
-    padding: 32,
+    padding: 28,
     minHeight: 200,
     alignItems: "center",
     justifyContent: "center",
+    gap: 16,
   },
+
+  // ── Skeleton loader ──────────────────────────────────────────────────────
+  skeletonRow: {
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: THEME.surfaceHigh,
+  },
+  skeletonWide:  { width: "85%" },
+  skeletonMed:   { width: "65%" },
+  skeletonShort: { width: "45%" },
+
+  spinnerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 4,
+  },
+  loadingText: {
+    fontFamily: FONTS.bodyMed,
+    fontSize: 13,
+    color: THEME.textMuted,
+    flexShrink: 1,
+  },
+
+  stepDots: { flexDirection: "row", gap: 6, marginTop: 4 },
+  stepDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: THEME.border },
+  stepDotActive: { backgroundColor: THEME.accent },
+
+  // ── NFT OK ───────────────────────────────────────────────────────────────
   statusInner: { alignItems: "center", gap: 16 },
-  statusText: { fontFamily: FONTS.bodyMed, fontSize: 15, color: THEME.textMuted, textAlign: "center" },
   nftImage: { width: 120, height: 120, borderRadius: 16, borderWidth: 2, borderColor: THEME.accent },
   nftFoundLabel: { fontFamily: FONTS.mono, fontSize: 12, color: "#44ff88", letterSpacing: 1 },
   nftName: { fontFamily: FONTS.display, fontSize: 18, color: THEME.text },
-  failIcon: { fontSize: 48 },
+
+  // ── Not a holder ─────────────────────────────────────────────────────────
+  notHolderBlock: {
+    alignSelf: "stretch",
+    backgroundColor: THEME.surface,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    padding: 24,
+    gap: 14,
+    alignItems: "center",
+  },
+  notHolderEmoji: { fontSize: 48, marginBottom: 2 },
+  notHolderTitle: {
+    fontFamily: FONTS.displayMed,
+    fontSize: 20,
+    color: THEME.text,
+    textAlign: "center",
+  },
+  notHolderBody: {
+    fontFamily: FONTS.body,
+    fontSize: 14,
+    color: THEME.textMuted,
+    textAlign: "center",
+    lineHeight: 20,
+  },
+
+  divider: {
+    alignSelf: "stretch",
+    height: 1,
+    backgroundColor: THEME.border,
+    marginVertical: 4,
+  },
+
+  whyBlock: { alignSelf: "stretch", gap: 6 },
+  whyTitle: {
+    fontFamily: FONTS.bodySemi,
+    fontSize: 13,
+    color: THEME.text,
+    marginBottom: 4,
+    letterSpacing: 0.3,
+  },
+  whyLine: {
+    fontFamily: FONTS.body,
+    fontSize: 13,
+    color: THEME.textMuted,
+    lineHeight: 20,
+  },
+
+  marketplaceRow: { flexDirection: "row", gap: 10, alignSelf: "stretch" },
+  marketBtn: { flex: 1, borderRadius: 12, overflow: "hidden" },
+  marketBtnGradient: {
+    paddingVertical: 13,
+    alignItems: "center",
+    gap: 4,
+  },
+  marketBtnEmoji: { fontSize: 18 },
+  marketBtnText: {
+    fontFamily: FONTS.bodySemi,
+    fontSize: 12,
+    color: "#fff",
+    textAlign: "center",
+  },
+
+  retryButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+  },
+  retryButtonText: {
+    fontFamily: FONTS.bodyMed,
+    fontSize: 13,
+    color: THEME.textFaint,
+  },
+
+  // ── Step indicator ───────────────────────────────────────────────────────
   steps: { alignSelf: "stretch" },
   stepRow: { flexDirection: "row", alignItems: "center", gap: 14, paddingVertical: 10 },
   stepCircle: {
@@ -267,21 +443,4 @@ const styles = StyleSheet.create({
   stepLabel: { fontFamily: FONTS.body, fontSize: 14, color: THEME.textFaint },
   stepLabelDone: { color: "#44ff88" },
   stepLabelActive: { color: THEME.text },
-  errorBlock: {
-    alignSelf: "stretch",
-    backgroundColor: "#ff444411",
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#ff444444",
-    padding: 20,
-    gap: 10,
-    alignItems: "center",
-  },
-  errorTitle: { fontFamily: FONTS.displayMed, fontSize: 17, color: "#ff7777" },
-  errorMessage: { fontFamily: FONTS.body, fontSize: 13, color: THEME.textMuted, textAlign: "center", lineHeight: 20 },
-  retryButton: { marginTop: 4, borderRadius: 10, borderWidth: 1, borderColor: THEME.border, paddingHorizontal: 20, paddingVertical: 10 },
-  retryButtonText: { fontFamily: FONTS.bodyMed, fontSize: 13, color: THEME.textMuted },
-  stepDots: { flexDirection: "row", gap: 6, marginTop: 4 },
-  stepDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: THEME.border },
-  stepDotActive: { backgroundColor: THEME.accent },
 });

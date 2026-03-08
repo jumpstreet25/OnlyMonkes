@@ -2,15 +2,11 @@
  * LiveAudioRoomScreen
  *
  * Twitter Spaces-style live audio room powered by LiveKit.
+ * Uses the liveAudio singleton so the Room survives navigation (minimize → chat → expand).
  *
- * Layout:
- *   - Host row (top, prominent card with crown)
- *   - Listeners grid (PFP + name + speaking indicator)
- *   - Bottom bar: Mute toggle + Leave button
- *
- * Speaking participants get an animated pulsing purple border.
- * The XMTP participant identity is the user's XMTP inboxId,
- * so we can look up NFT avatars via getCachedProfile().
+ * Props:
+ *   onMinimize — go back to chat without disconnecting audio
+ *   onLeave    — disconnect audio and go back
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -27,26 +23,21 @@ import {
 } from "react-native";
 import { Image } from "expo-image";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { router } from "expo-router";
-import {
-  Room,
-  RoomEvent,
-  ConnectionState,
-  type Participant,
-  type LocalParticipant,
-} from "livekit-client";
-import { AudioSession } from "@livekit/react-native";
+import { ConnectionState, type Participant } from "livekit-client";
 import * as Haptics from "expo-haptics";
 import { THEME, FONTS } from "@/lib/constants";
 import { getCachedProfile } from "@/lib/userProfile";
 import { useAppStore, type LiveRoomState } from "@/store/appStore";
 import { LK_URL } from "@/lib/livekit";
+import * as liveAudio from "@/lib/liveAudio";
+import type { LiveAudioState } from "@/lib/liveAudio";
 
 interface LiveAudioRoomScreenProps {
   room: LiveRoomState;
   token: string;
   isHost: boolean;
   onLeave: () => void;
+  onMinimize: () => void;
 }
 
 // ─── Speaking pulse animation ─────────────────────────────────────────────────
@@ -160,57 +151,58 @@ export default function LiveAudioRoomScreen({
   token,
   isHost,
   onLeave,
+  onMinimize,
 }: LiveAudioRoomScreenProps) {
   const insets = useSafeAreaInsets();
-  const [lkRoom] = useState(() => new Room());
   const [connectionState, setConnectionState] = useState<ConnectionState>(
-    ConnectionState.Disconnected
+    liveAudio.getRoomConnectionState()
   );
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [activeSpeakers, setActiveSpeakers] = useState<Set<string>>(new Set());
-  const [isMuted, setIsMuted] = useState(false);
+  const [isMuted, setIsMuted] = useState(liveAudio.getMuted());
   const [isLeaving, setIsLeaving] = useState(false);
-  const { updateLiveRoomCount } = useAppStore();
+  const { updateLiveRoomCount, setIsInLiveRoom, setLiveRoomToken } = useAppStore();
+  const connectedRef = useRef(false);
 
-  const refreshParticipants = useCallback(() => {
-    const remote = [...lkRoom.remoteParticipants.values()];
-    const all: Participant[] = lkRoom.localParticipant
-      ? [lkRoom.localParticipant as unknown as Participant, ...remote]
-      : remote;
-    setParticipants(all);
-    updateLiveRoomCount(all.length);
-  }, [lkRoom, updateLiveRoomCount]);
-
-  // ── Connect on mount ─────────────────────────────────────────────────────
+  // Subscribe to liveAudio singleton state
   useEffect(() => {
+    const unsub = liveAudio.addStateListener((state: LiveAudioState) => {
+      setParticipants(state.participants);
+      setActiveSpeakers(state.speakers);
+      setIsMuted(state.muted);
+      updateLiveRoomCount(state.participants.length);
+    });
+    return unsub;
+  }, []);
+
+  // Connect on mount only if not already connected
+  useEffect(() => {
+    const alreadyConnected =
+      liveAudio.getRoomConnectionState() === ConnectionState.Connected;
+
+    if (alreadyConnected) {
+      setConnectionState(ConnectionState.Connected);
+      return;
+    }
+
     let cancelled = false;
 
     const connect = async () => {
       try {
-        await AudioSession.startAudioSession();
-
-        lkRoom.on(RoomEvent.ConnectionStateChanged, (state: ConnectionState) => {
-          if (!cancelled) setConnectionState(state);
+        setConnectionState(ConnectionState.Connecting);
+        await liveAudio.connectToRoom(LK_URL, token, () => {
+          if (!cancelled) {
+            setIsInLiveRoom(false);
+            setLiveRoomToken(null);
+            onLeave();
+          }
         });
-
-        lkRoom.on(RoomEvent.ActiveSpeakersChanged, (speakers: Participant[]) => {
-          if (!cancelled) setActiveSpeakers(new Set(speakers.map((s) => s.identity)));
-        });
-
-        lkRoom.on(RoomEvent.ParticipantConnected,    refreshParticipants);
-        lkRoom.on(RoomEvent.ParticipantDisconnected, refreshParticipants);
-        lkRoom.on(RoomEvent.TrackPublished,          refreshParticipants);
-        lkRoom.on(RoomEvent.TrackUnpublished,        refreshParticipants);
-        lkRoom.on(RoomEvent.TrackSubscribed,         refreshParticipants);
-        lkRoom.on(RoomEvent.TrackUnsubscribed,       refreshParticipants);
-
-        lkRoom.on(RoomEvent.Disconnected, () => {
-          if (!cancelled) handleLeave();
-        });
-
-        await lkRoom.connect(LK_URL, token);
-        await lkRoom.localParticipant.setMicrophoneEnabled(true);
-        if (!cancelled) refreshParticipants();
+        if (!cancelled) {
+          connectedRef.current = true;
+          setConnectionState(ConnectionState.Connected);
+          setIsInLiveRoom(true);
+          setLiveRoomToken(token);
+        }
       } catch (err: any) {
         if (!cancelled) {
           Alert.alert("Connection failed", err?.message ?? "Could not join the live room.");
@@ -221,39 +213,37 @@ export default function LiveAudioRoomScreen({
 
     connect();
 
-    return () => {
-      cancelled = true;
-      lkRoom.disconnect();
-      AudioSession.stopAudioSession();
-    };
+    return () => { cancelled = true; };
   }, []);
 
   const handleLeave = useCallback(async () => {
     if (isLeaving) return;
     setIsLeaving(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    try {
-      await lkRoom.disconnect();
-      await AudioSession.stopAudioSession();
-    } catch { /* ignore */ }
+    setIsInLiveRoom(false);
+    setLiveRoomToken(null);
+    await liveAudio.disconnectFromRoom();
     onLeave();
-  }, [lkRoom, isLeaving, onLeave]);
+  }, [isLeaving, onLeave]);
+
+  const handleMinimize = useCallback(() => {
+    Haptics.selectionAsync();
+    onMinimize();
+  }, [onMinimize]);
 
   const handleToggleMute = useCallback(async () => {
     Haptics.selectionAsync();
-    try {
-      const newMuted = !isMuted;
-      await lkRoom.localParticipant.setMicrophoneEnabled(!newMuted);
-      setIsMuted(newMuted);
-    } catch { /* ignore */ }
-  }, [lkRoom, isMuted]);
+    const newMuted = await liveAudio.toggleMute();
+    setIsMuted(newMuted);
+  }, []);
 
   const isConnecting = connectionState !== ConnectionState.Connected;
 
   // Separate host from listeners
   const hostParticipant = participants.find((p) => p.identity === roomData.hostId);
   const listeners       = participants.filter((p) => p.identity !== roomData.hostId);
-  const localIdentity   = lkRoom.localParticipant?.identity ?? "";
+  const room            = liveAudio.getRoom();
+  const localIdentity   = room?.localParticipant?.identity ?? "";
 
   // ── Render ───────────────────────────────────────────────────────────────
   return (
@@ -262,9 +252,11 @@ export default function LiveAudioRoomScreen({
 
       {/* Header */}
       <View style={styles.header}>
-        <Pressable onPress={handleLeave} style={styles.backBtn} hitSlop={12}>
-          <Text style={styles.backText}>✕</Text>
+        {/* Minimize button — stays connected */}
+        <Pressable onPress={handleMinimize} style={styles.headerBtn} hitSlop={12}>
+          <Text style={styles.headerBtnText}>⌄</Text>
         </Pressable>
+
         <View style={styles.headerCenter}>
           <View style={styles.liveChip}>
             <View style={styles.liveChipDot} />
@@ -272,7 +264,16 @@ export default function LiveAudioRoomScreen({
           </View>
           <Text style={styles.headerTitle} numberOfLines={1}>{roomData.host}'s Space</Text>
         </View>
-        <View style={{ width: 36 }} />
+
+        {/* Leave button */}
+        <Pressable
+          onPress={handleLeave}
+          style={[styles.headerBtn, styles.headerLeaveBtn]}
+          hitSlop={12}
+          disabled={isLeaving}
+        >
+          <Text style={styles.headerLeaveBtnText}>✕</Text>
+        </Pressable>
       </View>
 
       {/* Connecting state */}
@@ -355,6 +356,14 @@ export default function LiveAudioRoomScreen({
           </Text>
         </Pressable>
 
+        {/* Minimize */}
+        <Pressable
+          style={({ pressed }) => [styles.minimizeBtn, pressed && { opacity: 0.75 }]}
+          onPress={handleMinimize}
+        >
+          <Text style={styles.minimizeBtnText}>⌄  Back to Chat</Text>
+        </Pressable>
+
         {/* Leave */}
         <Pressable
           style={({ pressed }) => [styles.leaveBtn, pressed && { opacity: 0.75 }]}
@@ -382,7 +391,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#1E0A3C",
   },
-  backBtn: {
+  headerBtn: {
     width: 36,
     height: 36,
     borderRadius: 18,
@@ -390,7 +399,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  backText: { color: THEME.textMuted, fontSize: 16 },
+  headerBtnText: { color: THEME.textMuted, fontSize: 20 },
+  headerLeaveBtn: { backgroundColor: "#2D0A0A" },
+  headerLeaveBtnText: { color: "#EF4444", fontSize: 16 },
   headerCenter: { alignItems: "center", gap: 4, flex: 1 },
   liveChip: {
     flexDirection: "row",
@@ -459,14 +470,12 @@ const styles = StyleSheet.create({
   },
   cardAvatar: {
     borderWidth: 2,
-    borderColor: "transparent",
+    borderColor: THEME.border,
   },
   cardAvatarFallback: {
     backgroundColor: THEME.surfaceHigh,
     alignItems: "center",
     justifyContent: "center",
-    borderColor: THEME.border,
-    borderWidth: 2,
   },
   cardInitial: {
     fontFamily: FONTS.display,
@@ -476,21 +485,20 @@ const styles = StyleSheet.create({
   cardName: {
     fontFamily: FONTS.bodyMed,
     fontSize: 11,
-    color: THEME.text,
-    textAlign: "center",
+    color: THEME.textMuted,
     maxWidth: 70,
+    textAlign: "center",
   },
   cardNameLarge: {
     fontSize: 13,
+    color: THEME.text,
     maxWidth: 100,
   },
   crownBadge: {
-    fontSize: 14,
-    marginTop: -8,
+    fontSize: 16,
+    marginTop: -4,
   },
-  muteIcon: {
-    fontSize: 13,
-  },
+  muteIcon: { fontSize: 12 },
   speakingRing: {
     borderRadius: 999,
     borderWidth: 2.5,
@@ -498,8 +506,8 @@ const styles = StyleSheet.create({
   },
   speakingDot: {
     position: "absolute",
-    bottom: 1,
-    right: 1,
+    bottom: 2,
+    right: 2,
     width: 10,
     height: 10,
     borderRadius: 5,
@@ -511,47 +519,59 @@ const styles = StyleSheet.create({
   bottomBar: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 16,
-    paddingTop: 16,
-    paddingHorizontal: 24,
+    paddingHorizontal: 20,
+    paddingTop: 14,
     borderTopWidth: 1,
     borderTopColor: "#1E0A3C",
-    backgroundColor: "#0D0518",
+    gap: 10,
   },
   muteBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 6,
     backgroundColor: THEME.surfaceHigh,
-    borderRadius: 24,
-    paddingHorizontal: 22,
-    paddingVertical: 12,
-    flex: 1,
-    justifyContent: "center",
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     borderWidth: 1,
     borderColor: THEME.border,
   },
   muteBtnActive: {
+    borderColor: "#EF444466",
     backgroundColor: "#2D0A0A",
-    borderColor: "#EF4444",
   },
-  muteBtnIcon: { fontSize: 18 },
+  muteBtnIcon: { fontSize: 16 },
   muteBtnText: {
     fontFamily: FONTS.bodySemi,
-    fontSize: 14,
+    fontSize: 13,
     color: THEME.text,
   },
   muteBtnTextActive: { color: "#EF4444" },
+  minimizeBtn: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: THEME.surfaceHigh,
+    borderWidth: 1,
+    borderColor: THEME.border,
+  },
+  minimizeBtnText: {
+    fontFamily: FONTS.bodySemi,
+    fontSize: 13,
+    color: THEME.textMuted,
+  },
   leaveBtn: {
-    backgroundColor: "#EF4444",
-    borderRadius: 24,
-    paddingHorizontal: 28,
-    paddingVertical: 12,
+    backgroundColor: "#2D0A0A",
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: "#EF444433",
   },
   leaveBtnText: {
     fontFamily: FONTS.bodySemi,
-    fontSize: 14,
-    color: "#fff",
+    fontSize: 13,
+    color: "#EF4444",
   },
 });

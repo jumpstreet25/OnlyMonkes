@@ -99,7 +99,9 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSea
   const { messages } = useChatStore();
   const { calendarEvents, myInboxId, username,
     notificationsEnabled, mentionsOnly, botNotificationsEnabled,
+    dmNotificationsEnabled, liveRoomNotificationsEnabled,
     setNotificationsEnabled, setMentionsOnly, setBotNotificationsEnabled,
+    setDmNotificationsEnabled, setLiveRoomNotificationsEnabled,
     expoPushToken, setExpoPushToken,
   } = useAppStore();
   const [activeView, setActiveView] = useState<ActiveView>("list");
@@ -636,6 +638,32 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSea
                     onValueChange={setBotNotificationsEnabled}
                     trackColor={{ false: THEME.border, true: THEME.accent + "88" }}
                     thumbColor={botNotificationsEnabled ? THEME.accent : THEME.textFaint}
+                  />
+                </View>
+                <View style={styles.settingDivider} />
+                <View style={styles.settingRow}>
+                  <View style={styles.settingInfo}>
+                    <Text style={styles.settingTitle}>DM notifications</Text>
+                    <Text style={styles.settingDesc}>Push alerts for direct messages</Text>
+                  </View>
+                  <Switch
+                    value={dmNotificationsEnabled}
+                    onValueChange={setDmNotificationsEnabled}
+                    trackColor={{ false: THEME.border, true: THEME.accent + "88" }}
+                    thumbColor={dmNotificationsEnabled ? THEME.accent : THEME.textFaint}
+                  />
+                </View>
+                <View style={styles.settingDivider} />
+                <View style={styles.settingRow}>
+                  <View style={styles.settingInfo}>
+                    <Text style={styles.settingTitle}>Live room alerts</Text>
+                    <Text style={styles.settingDesc}>Notify when a live audio room starts</Text>
+                  </View>
+                  <Switch
+                    value={liveRoomNotificationsEnabled}
+                    onValueChange={setLiveRoomNotificationsEnabled}
+                    trackColor={{ false: THEME.border, true: THEME.accent + "88" }}
+                    thumbColor={liveRoomNotificationsEnabled ? THEME.accent : THEME.textFaint}
                   />
                 </View>
               </View>

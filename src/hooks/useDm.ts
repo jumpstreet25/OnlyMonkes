@@ -2,7 +2,31 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAppStore } from '@/store/appStore';
 import { getXmtpClient } from '@/hooks/useXmtp';
 import { openOrCreateDm, loadDmMessages, sendDmMessage, decodeMessage } from '@/lib/xmtp';
+import { getCachedProfile } from '@/lib/userProfile';
 import type { ChatMessage } from '@/types';
+
+async function relayDmPush(
+  recipientToken: string,
+  senderUsername: string,
+  preview: string,
+  senderAvatarUrl?: string | null,
+): Promise<void> {
+  try {
+    const body: Record<string, unknown> = {
+      to: recipientToken,
+      title: `💬 ${senderUsername}`,
+      body: preview.slice(0, 80),
+      sound: 'default',
+      channelId: 'om_all_v8',
+      data: { type: 'dm', sender: senderUsername, avatarUrl: senderAvatarUrl ?? null },
+    };
+    await fetch('https://exp.host/--/api/v2/push/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(body),
+    });
+  } catch { /* non-critical — DM still sent even if push fails */ }
+}
 
 let _activeDm: any = null;
 
@@ -101,24 +125,37 @@ export function useDm(peerInboxId: string) {
   const send = useCallback(async (text: string) => {
     if (!_activeDm || !text.trim()) return;
     setSending(true);
-    const { username } = useAppStore.getState();
+    const { username, verifiedNft, dmNotificationsEnabled } = useAppStore.getState();
     try {
       await sendDmMessage(_activeDm, text, username);
       const optimistic: ChatMessage = {
         id: `optimistic-${Date.now()}`,
         content: text,
         senderAddress: myInboxId ?? '',
-        senderUsername: useAppStore.getState().username ?? '',
+        senderUsername: username ?? '',
         senderNft: null,
         sentAt: new Date(),
         reactions: {},
         replyTo: null,
       };
       setMessages(prev => [...prev, optimistic]);
+
+      // Relay push to recipient if they have a token cached
+      if (dmNotificationsEnabled) {
+        const peer = getCachedProfile(peerInboxId);
+        if (peer?.pushToken) {
+          void relayDmPush(
+            peer.pushToken,
+            username ?? 'Monke',
+            text,
+            verifiedNft?.image ?? null,
+          );
+        }
+      }
     } finally {
       setSending(false);
     }
-  }, [myInboxId]);
+  }, [myInboxId, peerInboxId]);
 
   return { messages, loading, error, sending, send };
 }
