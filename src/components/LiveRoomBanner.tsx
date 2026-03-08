@@ -1,8 +1,9 @@
 /**
  * LiveRoomBanner
  *
- * Pinned banner shown in ChatScreen when a live audio room is active.
- * Shows host name, participant count, live pulse, and Join/Leave button.
+ * Pinned at the top of ChatScreen (above messages) when a live audio room is active.
+ * Styled like a Twitter/X pinned post.
+ * Host sees an "End" button; others see a "Join" button (informational for now).
  */
 
 import React, { useEffect, useRef } from "react";
@@ -14,19 +15,19 @@ import type { LiveRoomState } from "@/store/appStore";
 
 interface LiveRoomBannerProps {
   room: LiveRoomState;
-  isInRoom: boolean;
+  isHost: boolean;
+  onEnd: () => void;
   onJoin: () => void;
-  onLeave: () => void;
 }
 
-export function LiveRoomBanner({ room, isInRoom, onJoin, onLeave }: LiveRoomBannerProps) {
+export function LiveRoomBanner({ room, isHost, onEnd, onJoin }: LiveRoomBannerProps) {
   const pulse = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     const anim = Animated.loop(
       Animated.sequence([
-        Animated.timing(pulse, { toValue: 0.4, duration: 800, useNativeDriver: true }),
-        Animated.timing(pulse, { toValue: 1,   duration: 800, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 0.3, duration: 900, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 1,   duration: 900, useNativeDriver: true }),
       ])
     );
     anim.start();
@@ -35,78 +36,102 @@ export function LiveRoomBanner({ room, isInRoom, onJoin, onLeave }: LiveRoomBann
 
   const hostProfile = getCachedProfile(room.hostId);
   const avatarUri   = hostProfile?.nftImage ?? null;
+  const displayName = room.host ?? "Unknown";
+  const count       = room.participantCount ?? 0;
 
   return (
-    <View style={styles.banner}>
-      {/* Left: live indicator + avatar + info */}
-      <View style={styles.left}>
+    <View style={styles.wrapper}>
+      {/* Pin label row */}
+      <View style={styles.pinRow}>
+        <Text style={styles.pinIcon}>📌</Text>
+        <Text style={styles.pinLabel}>Live Audio</Text>
         <Animated.View style={[styles.liveDot, { opacity: pulse }]} />
+      </View>
+
+      {/* Main row */}
+      <View style={styles.main}>
+        {/* Avatar */}
         {avatarUri ? (
           <Image source={{ uri: avatarUri }} style={styles.avatar} contentFit="cover" />
         ) : (
           <View style={[styles.avatar, styles.avatarFallback]}>
-            <Text style={styles.avatarInitial}>{(room.host ?? "?")[0].toUpperCase()}</Text>
+            <Text style={styles.avatarInitial}>{displayName[0]?.toUpperCase() ?? "?"}</Text>
           </View>
         )}
+
+        {/* Text */}
         <View style={styles.info}>
-          <View style={styles.infoRow}>
-            <View style={styles.liveBadge}><Text style={styles.liveBadgeText}>LIVE</Text></View>
-            <Text style={styles.hostName} numberOfLines={1}>{room.host}</Text>
-          </View>
-          <Text style={styles.countText}>
-            {room.participantCount} {room.participantCount === 1 ? "listener" : "listeners"}
+          <Text style={styles.hostLine} numberOfLines={1}>
+            Hosted by{" "}
+            <Text style={styles.atName}>@{displayName}</Text>
+          </Text>
+          <Text style={styles.countLine}>
+            {count} {count === 1 ? "Monke" : "Monkes"} In-Chat
           </Text>
         </View>
-      </View>
 
-      {/* Right: Join / Leave */}
-      <Pressable
-        style={({ pressed }) => [
-          styles.joinBtn,
-          isInRoom && styles.leaveBtn,
-          pressed && { opacity: 0.75 },
-        ]}
-        onPress={isInRoom ? onLeave : onJoin}
-      >
-        <Text style={[styles.joinText, isInRoom && styles.leaveText]}>
-          {isInRoom ? "Leave" : "Join"}
-        </Text>
-      </Pressable>
+        {/* Action button */}
+        <Pressable
+          style={({ pressed }) => [
+            styles.btn,
+            isHost ? styles.endBtn : styles.joinBtn,
+            pressed && { opacity: 0.7 },
+          ]}
+          onPress={isHost ? onEnd : onJoin}
+        >
+          <Text style={[styles.btnText, isHost && styles.endBtnText]}>
+            {isHost ? "End" : "Join"}
+          </Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  banner: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "#1A0A2E",
-    borderTopWidth: 1,
+  wrapper: {
     borderBottomWidth: 1,
-    borderColor: "#3D1E7A",
+    borderColor: THEME.border,
+    backgroundColor: THEME.surface,
     paddingHorizontal: 14,
-    paddingVertical: 10,
-    gap: 10,
+    paddingTop: 8,
+    paddingBottom: 10,
   },
-  left: {
+
+  pinRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: 5,
+    marginBottom: 8,
+  },
+  pinIcon: { fontSize: 11 },
+  pinLabel: {
+    fontFamily: FONTS.mono,
+    fontSize: 10,
+    color: THEME.textFaint,
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
     flex: 1,
   },
   liveDot: {
-    width: 8,
-    height: 8,
+    width: 7,
+    height: 7,
     borderRadius: 4,
     backgroundColor: "#EF4444",
   },
+
+  main: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+
   avatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     borderWidth: 1.5,
-    borderColor: "#7C3AED",
+    borderColor: THEME.accent + "88",
   },
   avatarFallback: {
     backgroundColor: THEME.surfaceHigh,
@@ -115,51 +140,45 @@ const styles = StyleSheet.create({
   },
   avatarInitial: {
     fontFamily: FONTS.display,
+    fontSize: 14,
+    color: THEME.text,
+  },
+
+  info: { flex: 1, gap: 2 },
+  hostLine: {
+    fontFamily: FONTS.bodyMed,
     fontSize: 13,
     color: THEME.text,
   },
-  info: { flex: 1, gap: 1 },
-  infoRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  liveBadge: {
-    backgroundColor: "#EF4444",
-    borderRadius: 3,
-    paddingHorizontal: 5,
-    paddingVertical: 1,
+  atName: {
+    fontFamily: FONTS.bodySemi,
+    color: THEME.accent,
   },
-  liveBadgeText: {
-    fontFamily: FONTS.mono,
-    fontSize: 9,
-    color: "#fff",
-    letterSpacing: 1,
-  },
-  hostName: {
-    fontFamily: FONTS.displayMed,
-    fontSize: 13,
-    color: THEME.text,
-    flex: 1,
-  },
-  countText: {
+  countLine: {
     fontFamily: FONTS.body,
-    fontSize: 11,
+    fontSize: 12,
     color: THEME.textMuted,
   },
-  joinBtn: {
-    backgroundColor: "#7C3AED",
+
+  btn: {
     borderRadius: 20,
     paddingHorizontal: 18,
     paddingVertical: 7,
   },
-  leaveBtn: {
+  joinBtn: {
+    backgroundColor: THEME.accent,
+  },
+  endBtn: {
     backgroundColor: "transparent",
     borderWidth: 1,
     borderColor: THEME.border,
   },
-  joinText: {
+  btnText: {
     fontFamily: FONTS.bodySemi,
     fontSize: 13,
     color: "#fff",
   },
-  leaveText: {
+  endBtnText: {
     color: THEME.textMuted,
   },
 });

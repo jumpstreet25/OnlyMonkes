@@ -13,6 +13,9 @@ An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect yo
 - **Custom username & bio** — set a display name and bio, synced across all group members via XMTP profile broadcasts
 - **Legendary badge** 🌟 — special suffix for legendary-tier Monkes
 - **Solana Mobile optimized** — built for Seeker / Saga devices (arm64-v8a only)
+- **Onboarding carousel** — animated 3-slide explainer shown once on first launch (🐒 Only Saga Monkes · 🔐 Private by Design · 🎙 Live & Growing)
+- **Not-a-holder screen** — non-holders see a branded gate with Magic Eden + Tensor marketplace CTAs and a "Why Saga Monkes?" breakdown
+- **Skeleton loader** — animated shimmer + rotating fun loading texts while NFT ownership is verified on-chain
 
 ### Messaging
 - **Emoji reactions** — react to any message with any emoji
@@ -26,13 +29,16 @@ An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect yo
 ### Community
 - **dApp side chats** — per-dApp community channels (hamburger menu)
 - **Community events calendar** — schedule, view, and RSVP to events; OnlyMonkes-tagged events support "Start Live Audio Chat" when time arrives
-- **Live Audio Rooms** — Twitter Spaces-style voice chat rooms via LiveKit WebRTC; host / listener grid with speaking highlights, mute toggle, live participant count, pinned banner in main chat
+- **Live Audio Rooms** — Twitter Spaces-style voice chat via LiveKit WebRTC; host/listener grid with speaking-highlight rings, mute toggle, live participant count, pinned banner in main chat
+  - **Minimize to chat** — tap ⌄ to collapse the audio room back to the chat without disconnecting; a floating blue pill stays pinned at the top of the chat showing `@host · N Monkes`, a live mute/unmute button, and an expand arrow to return to the full room
 - **Activity leaderboard** — weekly stats tracking messages sent/reactions given/received; top-3 with medals in the Members tab; auto-resets on Monday UTC
 - **Login streaks** 🔥 — daily login streak counter; confetti fires on the 7th day
 
-### Notifications & Background
-- **Push notifications** — Expo push tokens relayed via AI Agent bot; alerts for new messages and live room starts
-- **Background sync** — `expo-background-fetch` task keeps profile and data fresh when the app is backgrounded
+### Notifications
+- **Push notifications** — Expo push tokens relayed via AI Agent bot (#9385); heads-up alerts for new messages, @mentions, live room starts, and AI signals
+- **Per-user notification prefs** — opt-in categories: All Messages, @Mentions Only, Bot/AI alerts, DM notifications, Live Room start alerts; prefs broadcast in `PROFILE_UPDATE` so the bot filters server-side
+- **Direct DM push relay** — when a user sends a DM, a push notification is sent directly to the recipient's Expo token (peer-to-peer, no bot required); includes sender NFT avatar in the data payload
+- **Background sync** — `expo-background-fetch` task keeps profile and data fresh when backgrounded
 
 ### Profiles & Wallets
 - **User profiles** — tap any username to view their NFT, bio, wallet, and social links
@@ -40,7 +46,9 @@ An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect yo
 - **Monke Tools** 🔧 — ecosystem links, settings, and notification controls
 
 ### AI Agent
-- **AI Agent #9385** — XMTP bot in the group chat; delivers technical analysis alerts (RSI, MACD, EMA) for Solana tokens and responds to DMs via Claude AI; built on ElizaOS v2 with plugin-solana for trade execution
+- **AI Agent #9385** — XMTP bot in the group chat; delivers TA alerts (RSI, MACD, EMA) for Solana tokens, Saga Monke NFT sale alerts, and responds to DMs via Claude AI; built on ElizaOS v2 with plugin-solana for trade execution
+- **Per-type push titles** — 🐒 Saga Monke Sold! / 📈 Bullish Signal / 📉 Bearish Signal per alert type
+- **Enriched push payloads** — notifications include `type`, `sender`, `avatarUrl`, `preview` fields for rich display
 
 ---
 
@@ -55,12 +63,11 @@ An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect yo
 | Wallet | Mobile Wallet Adapter (`@solana-mobile/mobile-wallet-adapter-protocol-web3js`) |
 | NFT Verification | Helius DAS API (`getAssetsByOwner`) |
 | State | Zustand |
-| Server State | TanStack Query (`@tanstack/react-query`) |
 | Images | `expo-image` (disk-cached GIFs, NFT avatars) |
 | Video | `expo-camera`, `expo-av`, `expo-video-thumbnails` |
 | Video Hosting | Cloudinary (upload preset, unsigned) |
 | GIF Search | GIPHY API |
-| Push Notifications | Expo Push + FCM (via AI Agent relay) |
+| Push Notifications | Expo Push + FCM (AI Agent relay + direct peer-to-peer DM push) |
 | Background Tasks | `expo-background-fetch` + `expo-task-manager` |
 | JWT Signing | `crypto-js` (HS256 for LiveKit tokens, client-side) |
 | Animations | `react-native-reanimated` ~3.10 |
@@ -85,15 +92,17 @@ OnlyMonkes/
 │
 ├── src/
 │   ├── components/
-│   │   ├── CalendarModal.tsx         # Community event scheduler (default location: OnlyMonkes)
+│   │   ├── CalendarModal.tsx         # Community event scheduler
 │   │   ├── ChatInput.tsx             # Message composer: text, GIF, video, camera, reply strip
 │   │   ├── ConfettiView.tsx          # 40-particle Reanimated confetti (login streak milestones)
 │   │   ├── GifPickerModal.tsx        # GIPHY search + inline GIF picker
+│   │   ├── LiveAudioPill.tsx         # Floating blue pill: host, count, mute/unmute (minimized room)
 │   │   ├── LiveRoomBanner.tsx        # Pinned banner: host PFP, LIVE badge, count, Join/Leave
-│   │   ├── MenuDrawer.tsx            # Slide-out drawer: dApp chats, Members, Community/Events
+│   │   ├── MenuDrawer.tsx            # Slide-out drawer: dApp chats, Members, Events, Settings
 │   │   ├── MessageBubble.tsx         # Bubble: text/GIF/IMAGE/VIDEO/reactions/reply preview
 │   │   ├── MonkeToolsModal.tsx       # Ecosystem links + notification settings
 │   │   ├── NftPickerModal.tsx        # NFT avatar selector
+│   │   ├── OnboardingCarousel.tsx    # First-launch 3-slide animated explainer
 │   │   ├── SearchModal.tsx           # Message history search
 │   │   ├── TipModal.tsx              # SOL tipping flow
 │   │   ├── UserProfileModal.tsx      # Profile card: NFT, bio, wallet, DM, tip buttons
@@ -101,44 +110,42 @@ OnlyMonkes/
 │   │   └── VideoCameraModal.tsx      # Full-screen camera: record, preview, upload to Cloudinary
 │   │
 │   ├── hooks/
-│   │   ├── useDm.ts                  # 1-on-1 DM conversation hook
+│   │   ├── useDm.ts                  # 1-on-1 DM hook (includes direct push relay to recipient)
 │   │   ├── useDmInbox.ts             # DM inbox list hook
-│   │   ├── useGroupChat.ts           # Legacy group chat hook
 │   │   ├── useMobileWallet.ts        # MWA wallet connect + signMessage
 │   │   ├── useNFTVerification.ts     # NFT ownership check
-│   │   └── useXmtp.ts                # XMTP client init, stream, send, react, broadcastLiveRoom
+│   │   └── useXmtp.ts                # XMTP client init, stream, send, react, broadcastProfile, broadcastLiveRoom
 │   │
 │   ├── lib/
 │   │   ├── activityTracker.ts        # Weekly stats: sent/given/received; getLeaderboard()
 │   │   ├── backgroundSync.ts         # expo-background-fetch task registration
-│   │   ├── calendar.ts               # Event helpers (create, parse, RSVP)
+│   │   ├── calendar.ts               # Event helpers
 │   │   ├── constants.ts              # COLORS, fonts, collection config
 │   │   ├── giphy.ts                  # GIPHY search API wrapper
+│   │   ├── liveAudio.ts              # LiveKit Room singleton — persists across navigation
 │   │   ├── livekit.ts                # LiveKit JWT generation (HS256, client-side); room helpers
-│   │   ├── matrica.ts                # Matrica holder verification helper
-│   │   ├── nftColor.ts               # NFT dominant-color extractor
+│   │   ├── matrica.ts                # Matrica holder verification
 │   │   ├── nftVerification.ts        # Helius DAS API + on-chain fallback
 │   │   ├── notifications.ts          # Expo push token registration + local notifications
-│   │   ├── remoteConfig.ts           # Remote feature flags
 │   │   ├── session.ts                # Session persistence (SecureStore)
 │   │   ├── solana.ts                 # Solana RPC helpers
 │   │   ├── streaks.ts                # Daily login streak (AsyncStorage)
 │   │   ├── theme.ts                  # Extended theme tokens
-│   │   ├── userProfile.ts            # Profile cache (in-memory + AsyncStorage, 6hr freshness)
+│   │   ├── userProfile.ts            # Profile cache (in-memory + AsyncStorage, push token per user)
 │   │   ├── videoUpload.ts            # Cloudinary video + thumbnail upload
 │   │   └── xmtp.ts                   # XMTP client, message encode/decode, group/DM helpers
 │   │
 │   ├── screens/
-│   │   ├── ChatScreen.tsx            # Main group chat: header, live banner, input, leaderboard
-│   │   ├── ConnectScreen.tsx         # Wallet connect landing
+│   │   ├── ChatScreen.tsx            # Main group chat: header, live banner, floating pill, input
+│   │   ├── ConnectScreen.tsx         # Wallet connect landing + onboarding carousel
 │   │   ├── DAppChatScreen.tsx        # Per-dApp community chat
 │   │   ├── DmInboxScreen.tsx         # DM inbox list
 │   │   ├── DmScreen.tsx              # 1-on-1 DM screen
-│   │   ├── LiveAudioRoomScreen.tsx   # Twitter Spaces-style audio room (LiveKit)
-│   │   └── VerifyScreen.tsx          # NFT ownership verification
+│   │   ├── LiveAudioRoomScreen.tsx   # Spaces-style audio room; minimize ⌄ / leave ✕
+│   │   └── VerifyScreen.tsx          # NFT verification: skeleton shimmer, fun texts, not-a-holder gate
 │   │
 │   ├── store/
-│   │   ├── appStore.ts               # Zustand: wallet, NFT, push token, activeLiveRoom, streak
+│   │   ├── appStore.ts               # Zustand: wallet, NFT, push token, live room state, notif prefs
 │   │   └── chatStore.ts              # Zustand: messages, reply state, typing indicators
 │   │
 │   └── types/index.ts
@@ -147,7 +154,6 @@ OnlyMonkes/
 │   ├── icon.png
 │   ├── splash.png
 │   ├── header.png
-│   ├── ai-agent.pdf                  # AI Agent feature overview asset
 │   └── fonts/                        # Space Grotesk, Inter, JetBrains Mono
 │
 ├── app.config.ts                     # Expo config + env vars (Helius, GIPHY, Cloudinary, LiveKit)
@@ -167,22 +173,40 @@ All XMTP messages are plain UTF-8 strings with a prefix that determines type:
 | `MSG:` (reply) | `MSG:<user>:REPLYv2:<targetId>:<targetSender>:<targetUser>:<origBase64>:<content>` | Quoted reply |
 | `REACT:` | `REACT:<emoji>:<targetMsgId>` | Emoji reaction |
 | `STICKER_REACT:` | `STICKER_REACT:<url>:<targetMsgId>` | GIF sticker reaction |
-| `PROFILE_UPDATE:` | `PROFILE_UPDATE:<json>` | Profile broadcast (username, bio, NFT, push token…) |
+| `PROFILE_UPDATE:` | `PROFILE_UPDATE:<json>` | Profile broadcast (username, bio, NFT image, push token, notif prefs) |
 | `TYPING:` | `TYPING:<inboxId>:<username>` | Typing indicator |
 | `VIDEO:` | `VIDEO:<videoUrl>\|<thumbUrl>` | Video message (Cloudinary URLs) |
-| `LIVE_ROOM:` | `LIVE_ROOM:<json>` | Live audio room signal (start/end/count) |
+| `LIVE_ROOM:` | `LIVE_ROOM:<json>` | Live audio room signal (start/end) |
+
+### PROFILE_UPDATE JSON fields
+
+| Field | Key | Description |
+|---|---|---|
+| Inbox ID | `id` | XMTP inboxId |
+| Username | `u` | Display name |
+| Bio | `b` | Profile bio |
+| X Account | `x` | Twitter/X handle |
+| Wallet | `w` | Solana wallet address |
+| Tip Wallet | `tw` | Tip destination wallet |
+| NFT Image | `ni` | NFT image URI (data URI or IPFS URL) |
+| Legendary | `lg` | `1` if legendary-tier Monke |
+| Push Token | `pt` | Expo push token for direct notifications |
+| Notif Prefs | `np` | `{all, mentions, bot, dm, live}` opt-in categories |
 
 ---
 
 ## Auth Flow
 
 ```
-Connect Wallet (MWA)
+Connect Wallet (MWA / Matrica)
+        │
+        ▼
+Skeleton shimmer + fun loading texts while verifying…
         │
         ▼
 Fetch NFTs via Helius DAS API
         │
-        ├── No Saga Monkes found → Access Denied
+        ├── No Saga Monkes found → Branded gate screen (Magic Eden / Tensor CTAs)
         │
         ▼
 Sign XMTP identity (wallet sign — no transaction, no fee)
@@ -191,7 +215,7 @@ Sign XMTP identity (wallet sign — no transaction, no fee)
 Join global XMTP MLS group
         │
         ▼
-Broadcast PROFILE_UPDATE (username, NFT avatar, push token)
+Broadcast PROFILE_UPDATE (username, NFT avatar, push token, notif prefs)
         │
         ▼
 Load message history + stream live messages
@@ -213,20 +237,40 @@ Broadcast LIVE_ROOM: signal via XMTP group
         ▼
 LiveRoomBanner appears for all members (Join button)
         │
-        ├── AI Agent relays push notification to all registered tokens
+        ├── AI Agent relays push to users with live room alerts enabled
         │
         ▼
-Members tap Join → navigate to /live-room
+Members tap Join → navigate to /live-room → liveAudio singleton connects
         │
         ▼
-AudioSession.startAudioSession() → room.connect(LK_URL, token)
+Twitter Spaces UI: host card + listener grid + speaking-highlight rings
+        │
+        ├── Tap ⌄ (Minimize) → router.back() — Room stays connected in singleton
+        │       │
+        │       ▼
+        │   Floating blue pill in ChatScreen (absolute overlay on logo area)
+        │   Shows: 🔴 LIVE · @host · N Monkes · 🎤/🔇 · ⌃
+        │   Mute button works live; tap pill to expand back to full room
         │
         ▼
-Twitter Spaces UI: host card + listener grid + speaking highlights
+Host ends room → LIVE_ROOM: {active: false} → banner + pill dismissed
         │
-        ▼
-Host ends room → LIVE_ROOM: {active: false} → banner dismissed
+        └── liveAudio.disconnectFromRoom() → AudioSession.stopAudioSession()
 ```
+
+---
+
+## Notification Categories
+
+Managed per-user in Settings. Broadcast in `PROFILE_UPDATE np` field so the AI Agent filters server-side:
+
+| Category | Store field | Description |
+|---|---|---|
+| All messages | `notificationsEnabled` | Group chat messages |
+| @Mentions only | `mentionsOnly` | Only push if `@username` in body |
+| Bot / AI alerts | `botNotificationsEnabled` | Trade signals & NFT sales |
+| DM notifications | `dmNotificationsEnabled` | Peer-to-peer push from sender device |
+| Live room alerts | `liveRoomNotificationsEnabled` | When a live room starts |
 
 ---
 
@@ -262,7 +306,7 @@ LIVEKIT_API_KEY=your-livekit-api-key        # livekit.io cloud dashboard
 LIVEKIT_API_SECRET=your-livekit-api-secret
 ```
 
-These are injected into the app via `app.config.ts` → `Constants.expoConfig.extra`.
+These are injected via `app.config.ts` → `Constants.expoConfig.extra`.
 
 ### 4. Run on Android
 
@@ -316,7 +360,6 @@ Output: `android/app/build/outputs/apk/release/app-release.apk`
 | `expo-background-fetch` | Background profile + data sync |
 | `expo-task-manager` | Background task registration |
 | `expo-secure-store` | Secure XMTP credential storage |
-| `@tanstack/react-query` | Server state + caching |
 | `zustand` | Client state management |
 | `react-native-reanimated` | Animations (speaking ring, confetti, fade-in) |
 | `react-native-gesture-handler` | Swipe + gesture support |

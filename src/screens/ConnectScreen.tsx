@@ -50,6 +50,8 @@ import {
   isMatricaCallback,
 } from "@/lib/matrica";
 import { THEME, FONTS } from "@/lib/constants";
+import { OnboardingCarousel, ONBOARDING_KEY } from "@/components/OnboardingCarousel";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export default function ConnectScreen() {
   const insets = useSafeAreaInsets();
@@ -60,6 +62,7 @@ export default function ConnectScreen() {
   const [checkingSession, setCheckingSession] = useState(true);
   const [matricaLoading, setMatricaLoading] = useState(false);
   const [walletSheetOpen, setWalletSheetOpen] = useState(false);
+  const [showCarousel, setShowCarousel] = useState(false);
 
   // ─── Restore session on mount ──────────────────────────────────────────────
   useEffect(() => {
@@ -90,7 +93,9 @@ export default function ConnectScreen() {
         }
         return;
       }
-      // No session — show login screen interactively
+      // No session — check if first-ever launch (show carousel)
+      const seen = await AsyncStorage.getItem(ONBOARDING_KEY).catch(() => null);
+      if (!seen) setShowCarousel(true);
       setCheckingSession(false);
     })();
   }, []);
@@ -162,6 +167,9 @@ export default function ConnectScreen() {
 
   return (
     <View style={styles.container}>
+      {/* ── First-launch onboarding carousel ── */}
+      {showCarousel && <OnboardingCarousel onDone={() => setShowCarousel(false)} />}
+
       {/* ── Header image — bleeds behind status bar ── */}
       <Image
         // eslint-disable-next-line @typescript-eslint/no-require-imports
