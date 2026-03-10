@@ -111,9 +111,10 @@ export async function addMemberToGroup(
 const JOIN_REQUEST_PREFIX = "JOIN_REQUEST:";
 
 /**
- * Tester sends a DM to the admin's inboxId to request group membership.
+ * Tester sends a DM to the admin's inboxId (and optionally the bot) to request group membership.
  * Format: JOIN_REQUEST:<myInboxId>:<username>:<nftMint>
  * nftMint is included so the admin can verify NFT ownership without needing the wallet address.
+ * Sending to the bot allows it to auto-approve and notify the admin even when the admin app is closed.
  */
 export async function sendJoinRequestDM(
   client: XmtpClient,
@@ -121,10 +122,21 @@ export async function sendJoinRequestDM(
   myInboxId: string,
   username?: string | null,
   nftMint?: string | null,
+  botInboxId?: string | null,
 ): Promise<void> {
-  const dm = await client.conversations.findOrCreateDm(adminInboxId as any);
   const payload = `${JOIN_REQUEST_PREFIX}${myInboxId}:${username ?? ""}:${nftMint ?? ""}`;
-  await (dm as any).send(payload);
+
+  // Send to admin (so their panel still works when app is open)
+  const adminDm = await client.conversations.findOrCreateDm(adminInboxId as any);
+  await (adminDm as any).send(payload);
+
+  // Also send to bot so it can auto-approve + notify admin via DM
+  if (botInboxId && botInboxId !== adminInboxId && botInboxId !== myInboxId) {
+    try {
+      const botDm = await client.conversations.findOrCreateDm(botInboxId as any);
+      await (botDm as any).send(payload);
+    } catch { /* non-critical — admin DM already sent */ }
+  }
 }
 
 /**
@@ -510,7 +522,8 @@ export async function openOrCreateDm(client: XmtpClient, peerInboxId: string): P
 
 export async function loadDmMessages(dm: any, myInboxId: string): Promise<ChatMessage[]> {
   await dm.sync();
-  const raw: any[] = await dm.messages({ limit: 50 });
+  await dm.sync(); // second pass ensures bot replies committed before fetching
+  const raw: any[] = await dm.messages({ limit: 200 });
   return raw.map(r => decodeMessage(r, myInboxId)).filter(Boolean) as ChatMessage[];
 }
 

@@ -279,6 +279,7 @@ export function useXmtp() {
                 client.inboxId,
                 username,
                 verifiedNft?.mint ?? null,
+                config.botInboxId ?? null,
               );
               await AsyncStorage.setItem(AK_JOIN_REQUEST_SENT, "1");
               console.log("[XMTP] Join request DM sent to admin (nft:", verifiedNft?.mint ?? "none", ")");
