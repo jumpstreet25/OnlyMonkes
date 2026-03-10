@@ -15,6 +15,7 @@ import * as SecureStore from 'expo-secure-store';
 export interface AppRemoteConfig {
   globalGroupId: string;
   adminInboxId: string;
+  botInboxId?: string;
 }
 
 const REPO   = 'jumpstreet25/OnlyMonkes';
@@ -37,6 +38,7 @@ export async function fetchAppConfig(): Promise<AppRemoteConfig> {
     return {
       globalGroupId: json.globalGroupId ?? '',
       adminInboxId:  json.adminInboxId  ?? '',
+      botInboxId:    json.botInboxId    ?? undefined,
     };
   } catch {
     return EMPTY;
