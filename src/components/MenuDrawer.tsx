@@ -11,7 +11,7 @@
  *   ⚙️  App Settings   — notification toggles, push token
  *   🔧  Monke Tools    — ecosystem links
  *
- * All-Time Users count replaces the old emoji tab bar.
+ * Bot channel buttons (Bets/Trades/Sales) replace old stats row.
  * Active Monkes 24hr lives at the bottom of the main list.
  */
 
@@ -34,10 +34,11 @@ import {
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
 import * as Clipboard from "expo-clipboard";
+import Constants from "expo-constants";
 import { THEME, FONTS } from "@/lib/constants";
 import { useChatStore } from "@/store/chatStore";
 import { useAppStore } from "@/store/appStore";
-import { getCachedProfile, useProfileVersion, getAllTimeUsers } from "@/lib/userProfile";
+import { getCachedProfile, useProfileVersion } from "@/lib/userProfile";
 import { shortenAddress } from "@/lib/nftVerification";
 import { clearPushToken, registerForPushNotifications, scheduleTestNotification } from "@/lib/notifications";
 import type { ProfileTarget } from "@/components/UserProfileModal";
@@ -59,6 +60,7 @@ const VIEW_TITLES: Record<ActiveView, string> = {
   settings: "App Settings",
   tools:    "Monke Tools",
 };
+
 
 const TOOLS = [
   { name: "MonkeExplorer", url: "https://explorer.sagamonkes.com", icon: "🔭" },
@@ -97,7 +99,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSea
 
   const slideAnim = useRef(new Animated.Value(DRAWER_WIDTH)).current;
   const { messages } = useChatStore();
-  const { calendarEvents, myInboxId, username,
+  const { calendarEvents, myInboxId,
     notificationsEnabled, mentionsOnly, botNotificationsEnabled,
     dmNotificationsEnabled, liveRoomNotificationsEnabled,
     setNotificationsEnabled, setMentionsOnly, setBotNotificationsEnabled,
@@ -178,7 +180,6 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSea
     messages.filter((m) => m.senderUsername === BOT_USERNAME),
     [messages]);
 
-  const allTimeUsers = getAllTimeUsers().size;
 
   const sortedEvents = useMemo(() => {
     return [...calendarEvents].sort((a, b) => {
@@ -211,6 +212,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSea
     const cached = getCachedProfile(user.inboxId);
     const name = cached?.username ?? user.username ?? shortenAddress(user.inboxId);
     const avatarUri = cached?.nftImage ?? user.nftImage ?? null;
+    const isBot = name === 'AI Agent #9385';
     return (
       <Pressable
         key={user.inboxId}
@@ -227,6 +229,9 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSea
       >
         {avatarUri ? (
           <Image source={{ uri: avatarUri }} style={styles.userAvatar} />
+        ) : isBot ? (
+          // eslint-disable-next-line @typescript-eslint/no-require-imports
+          <Image source={require('../../assets/ai_agent_avatar.png')} style={styles.userAvatar} />
         ) : (
           <View style={styles.userAvatarFallback} />
         )}
@@ -313,19 +318,31 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSea
           </Pressable>
         </View>
 
-        {/* All-Time Users — always visible */}
-        <View style={styles.statsRow}>
-          <View style={styles.statBox}>
-            <Text style={styles.statNum}>{allTimeUsers}</Text>
-            <Text style={styles.statLabel}>All-Time Users</Text>
-          </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statBox}>
-            <Text style={styles.statNum} numberOfLines={1}>
-              {username ?? shortenAddress(myInboxId ?? "")}
-            </Text>
-            <Text style={styles.statLabel}>Logged In</Text>
-          </View>
+        {/* Bot Channel Buttons */}
+        <View style={styles.botChannelsRow}>
+          {([
+            // eslint-disable-next-line @typescript-eslint/no-require-imports
+            { key: "bets", img: require("../../assets/MonkeBets.png"), count: 0 },
+            // eslint-disable-next-line @typescript-eslint/no-require-imports
+            { key: "trades", img: require("../../assets/MonkeTrades.png"), count: 0 },
+            // eslint-disable-next-line @typescript-eslint/no-require-imports
+            { key: "sales", img: require("../../assets/MonkeSales.png"), count: 0 },
+            // eslint-disable-next-line @typescript-eslint/no-require-imports
+            { key: "predictions", img: require("../../assets/MonkePredictions.png"), count: 0 },
+          ]).map((ch) => (
+            <Pressable
+              key={ch.key}
+              style={({ pressed }) => [styles.botChannelBtn, pressed && { opacity: 0.7 }]}
+              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onClose(); setTimeout(() => router.push(`/bot-channel?channelId=${ch.key}`), 300); }}
+            >
+              <Image source={ch.img} style={styles.botChannelImg} />
+              {ch.count > 0 && (
+                <View style={styles.botChannelBadge}>
+                  <Text style={styles.botChannelBadgeText}>{ch.count > 99 ? "99+" : ch.count}</Text>
+                </View>
+              )}
+            </Pressable>
+          ))}
         </View>
 
         {/* Content */}
@@ -417,6 +434,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSea
                     const cached = getCachedProfile(u.inboxId);
                     const name = cached?.username ?? u.username ?? shortenAddress(u.inboxId);
                     const avatarUri = cached?.nftImage ?? u.nftImage ?? null;
+                    const isBot = name === 'AI Agent #9385';
                     return (
                       <Pressable
                         key={u.inboxId}
@@ -429,6 +447,9 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSea
                       >
                         {avatarUri ? (
                           <Image source={{ uri: avatarUri }} style={styles.userAvatar} />
+                        ) : isBot ? (
+                          // eslint-disable-next-line @typescript-eslint/no-require-imports
+                          <Image source={require('../../assets/ai_agent_avatar.png')} style={styles.userAvatar} />
                         ) : (
                           <View style={styles.userAvatarFallback} />
                         )}
@@ -721,6 +742,9 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSea
                   <Text style={styles.chevron}>›</Text>
                 </Pressable>
               ))}
+
+              {/* ── Support OnlyMonkes ────────────────────────────────────── */}
+              <SupportCard />
             </>
           )}
 
@@ -732,6 +756,141 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSea
     </Modal>
   );
 }
+
+// ─── Support OnlyMonkes card ──────────────────────────────────────────────────
+
+const DEV_WALLET = "7tLrnPvgcR5mLtyUcVwvmhAD1wXbAKgWcLBPWxpwyZ1J";
+
+function buildSupportLink(amount?: number): string {
+  const extra = (Constants.expoConfig?.extra ?? {}) as Record<string, string>;
+  const skrMint = extra.skrMint || "";
+  const jupApiKey = extra.jupApiKey || "";
+
+  if (skrMint) {
+    // Solana Pay: opens Seed Vault / any Solana wallet to send SKR directly
+    let uri = `solana:${DEV_WALLET}?spl-token=${skrMint}`;
+    if (amount) uri += `&amount=${amount}`;
+    uri += `&label=${encodeURIComponent("Support OnlyMonkes")}&message=${encodeURIComponent("Help build the future of OnlyMonkes 🐒")}`;
+    return uri;
+  }
+  // Fallback: Jupiter swap SOL → SKR (SKR_MINT not set yet)
+  let url = `https://jup.ag/swap/SOL-SKR?outputMint=${DEV_WALLET}`;
+  if (jupApiKey) url += `&referralKey=${DEV_WALLET}&feeBps=50`;
+  return url;
+}
+
+function SupportCard() {
+  const [amount, setAmount] = React.useState("10");
+  const amounts = ["5", "10", "25", "50"];
+
+  return (
+    <View style={supportStyles.card}>
+      <Text style={supportStyles.heading}>Help Support the Future of OnlyMonkes</Text>
+      <Text style={supportStyles.sub}>
+        Tip $SKR directly to the dev wallet and keep the 🐒 community growing.
+      </Text>
+
+      <View style={supportStyles.pills}>
+        {amounts.map((a) => (
+          <Pressable
+            key={a}
+            style={[supportStyles.pill, amount === a && supportStyles.pillActive]}
+            onPress={() => setAmount(a)}
+          >
+            <Text style={[supportStyles.pillText, amount === a && supportStyles.pillTextActive]}>
+              {a} SKR
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+
+      <Pressable
+        style={({ pressed }) => [supportStyles.btn, pressed && { opacity: 0.8 }]}
+        onPress={() => {
+          const link = buildSupportLink(parseFloat(amount));
+          Linking.openURL(link).catch(() => {});
+        }}
+      >
+        <Text style={supportStyles.btnText}>Send {amount} $SKR  🐒</Text>
+      </Pressable>
+
+      <Pressable
+        style={({ pressed }) => [supportStyles.customBtn, pressed && { opacity: 0.7 }]}
+        onPress={() => {
+          const link = buildSupportLink();
+          Linking.openURL(link).catch(() => {});
+        }}
+      >
+        <Text style={supportStyles.customBtnText}>Custom amount  ›</Text>
+      </Pressable>
+
+      <Text style={supportStyles.wallet} selectable numberOfLines={1} ellipsizeMode="middle">
+        {DEV_WALLET}
+      </Text>
+    </View>
+  );
+}
+
+const supportStyles = StyleSheet.create({
+  card: {
+    marginTop: 20,
+    marginHorizontal: 2,
+    backgroundColor: THEME.surfaceHigh,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#7C3AED44",
+    padding: 16,
+    gap: 10,
+  },
+  heading: {
+    fontFamily: FONTS.heading,
+    fontSize: 14,
+    color: THEME.text,
+    textAlign: "center",
+  },
+  sub: {
+    fontFamily: FONTS.body,
+    fontSize: 12,
+    color: THEME.textDim,
+    textAlign: "center",
+    lineHeight: 17,
+  },
+  pills: {
+    flexDirection: "row",
+    gap: 8,
+    justifyContent: "center",
+    flexWrap: "wrap",
+  },
+  pill: {
+    paddingVertical: 5,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    backgroundColor: THEME.surface,
+  },
+  pillActive: {
+    borderColor: "#7C3AED",
+    backgroundColor: "#7C3AED22",
+  },
+  pillText: { fontFamily: FONTS.body, fontSize: 12, color: THEME.textDim },
+  pillTextActive: { color: "#A78BFA", fontFamily: FONTS.bodyMed },
+  btn: {
+    backgroundColor: "#7C3AED",
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  btnText: { fontFamily: FONTS.heading, fontSize: 14, color: "#fff" },
+  customBtn: { alignItems: "center", paddingVertical: 4 },
+  customBtnText: { fontFamily: FONTS.body, fontSize: 12, color: THEME.textDim },
+  wallet: {
+    fontFamily: FONTS.mono ?? FONTS.body,
+    fontSize: 10,
+    color: THEME.textFaint,
+    textAlign: "center",
+  },
+});
 
 function formatRelative(date: Date): string {
   const diffMs = Date.now() - date.getTime();
@@ -813,39 +972,44 @@ const styles = StyleSheet.create({
     color: THEME.textMuted,
   },
 
-  // All-Time Users
-  statsRow: {
+  // Bot Channel Buttons
+  botChannelsRow: {
     flexDirection: "row",
-    borderRadius: 12,
-    backgroundColor: THEME.surface,
-    borderWidth: 1,
-    borderColor: THEME.border,
+    justifyContent: "space-evenly",
+    alignItems: "center",
     marginHorizontal: 20,
     marginBottom: 14,
-    overflow: "hidden",
+    gap: 12,
   },
-  statBox: {
-    flex: 1,
+  botChannelBtn: {
     alignItems: "center",
-    paddingVertical: 10,
-    paddingHorizontal: 6,
+    justifyContent: "center",
+    position: "relative",
   },
-  statDivider: {
-    width: 1,
-    backgroundColor: THEME.border,
+  botChannelImg: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
   },
-  statNum: {
-    fontFamily: FONTS.display,
-    fontSize: 16,
-    color: THEME.text,
-    marginBottom: 2,
+  botChannelBadge: {
+    position: "absolute",
+    top: -2,
+    right: -4,
+    backgroundColor: "#EF4444",
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 5,
+    borderWidth: 2,
+    borderColor: THEME.surfaceHigh,
   },
-  statLabel: {
+  botChannelBadgeText: {
     fontFamily: FONTS.mono,
     fontSize: 9,
-    color: THEME.textFaint,
-    letterSpacing: 1,
-    textTransform: "uppercase",
+    color: "#fff",
+    fontWeight: "700",
   },
 
   content: {

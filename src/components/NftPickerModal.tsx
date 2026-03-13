@@ -14,12 +14,9 @@ import {
   StyleSheet,
   Image,
   FlatList,
-  ActivityIndicator,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { THEME, FONTS } from "@/lib/constants";
-import { loadMatricaSession } from "@/lib/session";
-import { verifyNFTOwnership } from "@/lib/nftVerification";
 import type { OwnedNFT } from "@/types";
 
 interface NftPickerModalProps {
@@ -32,42 +29,14 @@ interface NftPickerModalProps {
 export function NftPickerModal({ visible, nfts, onSelect, onCancel }: NftPickerModalProps) {
   const [selected, setSelected] = useState<OwnedNFT | null>(null);
   const [allNfts, setAllNfts] = useState<OwnedNFT[]>(nfts);
-  const [loadingMatrica, setLoadingMatrica] = useState(false);
-  const [matricaLoaded, setMatricaLoaded] = useState(false);
 
   // Reset when modal opens with fresh nft list
   useEffect(() => {
     if (visible) {
       setAllNfts(nfts);
       setSelected(null);
-      setMatricaLoaded(false);
     }
   }, [visible, nfts]);
-
-  const handleLoadMatrica = async () => {
-    setLoadingMatrica(true);
-    try {
-      const matricaWallet = await loadMatricaSession();
-      if (!matricaWallet?.address) {
-        setMatricaLoaded(true); // no session — hide button gracefully
-        return;
-      }
-      const result = await verifyNFTOwnership(matricaWallet.address);
-      if (result.allNfts && result.allNfts.length > 0) {
-        // Merge without duplicates
-        setAllNfts((prev) => {
-          const existingMints = new Set(prev.map((n) => n.mint));
-          const fresh = result.allNfts!.filter((n) => !existingMints.has(n.mint));
-          return [...prev, ...fresh];
-        });
-      }
-      setMatricaLoaded(true);
-    } catch {
-      setMatricaLoaded(true);
-    } finally {
-      setLoadingMatrica(false);
-    }
-  };
 
   const handleConfirm = () => {
     if (selected) onSelect(selected);
@@ -90,21 +59,6 @@ export function NftPickerModal({ visible, nfts, onSelect, onCancel }: NftPickerM
               {allNfts.length} Saga Monke{allNfts.length !== 1 ? "s" : ""} found. Pick one to show in chat.
             </Text>
           </View>
-
-          {/* Matrica wallet loader */}
-          {!matricaLoaded && (
-            <Pressable
-              style={[styles.matricaBtn, loadingMatrica && { opacity: 0.6 }]}
-              onPress={handleLoadMatrica}
-              disabled={loadingMatrica}
-            >
-              {loadingMatrica ? (
-                <ActivityIndicator size="small" color={THEME.accent} />
-              ) : (
-                <Text style={styles.matricaBtnText}>🔗 Load Matrica Wallet NFTs</Text>
-              )}
-            </Pressable>
-          )}
 
           {/* NFT grid */}
           <FlatList
@@ -262,23 +216,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#fff",
     fontWeight: "700",
-  },
-  matricaBtn: {
-    marginHorizontal: 16,
-    marginBottom: 12,
-    paddingVertical: 10,
-    backgroundColor: THEME.surface,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: THEME.accent + "55",
-    alignItems: "center",
-    justifyContent: "center",
-    minHeight: 40,
-  },
-  matricaBtnText: {
-    fontFamily: FONTS.bodyMed,
-    fontSize: 13,
-    color: THEME.accent,
   },
   cancelBtn: {
     marginHorizontal: 16,

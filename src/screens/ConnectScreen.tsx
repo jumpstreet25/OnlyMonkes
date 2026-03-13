@@ -3,8 +3,7 @@
  *
  * Entry point after splash.
  *  - Checks for a valid 7-day wallet session → skip straight to verify.
- *  - Checks for a valid 7-day Matrica session → same skip.
- *  - Otherwise shows two sign-in options: Wallet (MWA) or Matrica.
+ *  - Otherwise shows wallet sign-in options.
  *
  * Layout:
  *   ┌─────────────────────────┐
@@ -13,9 +12,7 @@
  *   │   OnlyMonkes            │
  *   │   Holder-only chat      │
  *   │                         │
- *   │  [ Connect Wallet ]     │
- *   │     ── or ──            │
- *   │  [ Continue w/ Matrica ]│
+ *   │  [ Login ]              │
  *   └─────────────────────────┘
  */
 
@@ -29,8 +26,6 @@ import {
   Image,
   Modal,
   useWindowDimensions,
-  Linking,
-  Alert,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
@@ -40,15 +35,8 @@ import { useAppStore } from "@/store/appStore";
 import {
   loadSession,
   saveSession,
-  loadMatricaSession,
-  saveMatricaSession,
   loadVerifiedNft,
 } from "@/lib/session";
-import {
-  startMatricaAuth,
-  handleMatricaCallback,
-  isMatricaCallback,
-} from "@/lib/matrica";
 import { THEME, FONTS } from "@/lib/constants";
 import { OnboardingCarousel, ONBOARDING_KEY } from "@/components/OnboardingCarousel";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -60,27 +48,12 @@ export default function ConnectScreen() {
   const { connect } = useMobileWallet();
   const { isLoading, error, setError, setWallet, setVerified } = useAppStore();
   const [checkingSession, setCheckingSession] = useState(true);
-  const [matricaLoading, setMatricaLoading] = useState(false);
   const [walletSheetOpen, setWalletSheetOpen] = useState(false);
   const [showCarousel, setShowCarousel] = useState(false);
 
   // ─── Restore session on mount ──────────────────────────────────────────────
   useEffect(() => {
     (async () => {
-      // Check Matrica session first
-      const matrica = await loadMatricaSession();
-      if (matrica) {
-        setWallet(matrica);
-        const nft = await loadVerifiedNft();
-        if (nft) {
-          setVerified(true, nft);
-          router.replace("/chat");
-        } else {
-          router.replace("/verify");
-        }
-        return;
-      }
-      // Then MWA wallet session
       const wallet = await loadSession();
       if (wallet) {
         setWallet(wallet);
@@ -98,38 +71,6 @@ export default function ConnectScreen() {
       if (!seen) setShowCarousel(true);
       setCheckingSession(false);
     })();
-  }, []);
-
-  // ─── Matrica deep-link callback ────────────────────────────────────────────
-  useEffect(() => {
-    const handleUrl = async ({ url }: { url: string }) => {
-      if (!isMatricaCallback(url)) return;
-      setMatricaLoading(true);
-      try {
-        const { accessToken, walletAddress } = await handleMatricaCallback(url);
-        await saveMatricaSession(accessToken, walletAddress);
-        const account = {
-          address: walletAddress,
-          label: "Matrica",
-          chains: ["solana:mainnet"] as string[],
-          features: ["solana:signMessage", "solana:signTransaction"] as string[],
-        };
-        setWallet(account);
-        router.replace("/verify");
-      } catch (err: any) {
-        setError(err?.message ?? "Matrica login failed");
-      } finally {
-        setMatricaLoading(false);
-      }
-    };
-
-    const sub = Linking.addEventListener("url", handleUrl);
-    // Also handle cold-start callback (app launched from redirect)
-    Linking.getInitialURL().then((url) => {
-      if (url && isMatricaCallback(url)) handleUrl({ url });
-    });
-
-    return () => sub.remove();
   }, []);
 
   // ─── Wallet connect ────────────────────────────────────────────────────────
@@ -152,18 +93,7 @@ export default function ConnectScreen() {
     }
   }, [connect]);
 
-  // ─── Matrica connect ───────────────────────────────────────────────────────
-  const handleMatrica = useCallback(async () => {
-    setError(null);
-    try {
-      await startMatricaAuth();
-      // Callback handled by the Linking listener above
-    } catch (err: any) {
-      Alert.alert("Matrica", err?.message ?? "Could not open Matrica login.");
-    }
-  }, []);
-
-  const busy = isLoading || matricaLoading;
+  const busy = isLoading;
 
   return (
     <View style={styles.container}>
@@ -252,7 +182,6 @@ export default function ConnectScreen() {
             { icon: "🟣", label: "Phantom", onPress: async () => { setWalletSheetOpen(false); await handleConnectWith("phantom://"); } },
             { icon: "🔥", label: "Solflare", onPress: async () => { setWalletSheetOpen(false); await handleConnectWith("solflare://"); } },
             { icon: "📱", label: "Mobile Wallet Adapter", onPress: async () => { setWalletSheetOpen(false); await handleConnectWith(); } },
-            { icon: "M",  label: "Continue with Matrica", onPress: async () => { setWalletSheetOpen(false); await handleMatrica(); } },
           ].map(({ icon, label, onPress }) => (
             <Pressable
               key={label}

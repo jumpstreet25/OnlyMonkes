@@ -16,6 +16,12 @@ export interface AppRemoteConfig {
   globalGroupId: string;
   adminInboxId: string;
   botInboxId?: string;
+  botChannels?: {
+    bets?: string;
+    trades?: string;
+    sales?: string;
+    predictions?: string;
+  };
 }
 
 const REPO   = 'jumpstreet25/OnlyMonkes';
@@ -39,6 +45,7 @@ export async function fetchAppConfig(): Promise<AppRemoteConfig> {
       globalGroupId: json.globalGroupId ?? '',
       adminInboxId:  json.adminInboxId  ?? '',
       botInboxId:    json.botInboxId    ?? undefined,
+      botChannels:   json.botChannels   ?? undefined,
     };
   } catch {
     return EMPTY;

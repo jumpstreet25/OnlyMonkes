@@ -1,4 +1,4 @@
-package com.yourorg.onlymonkes
+package com.onlymonkes.app
 
 import android.Manifest
 import android.app.PendingIntent
