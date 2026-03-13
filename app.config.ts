@@ -3,9 +3,9 @@ import { ExpoConfig, ConfigContext } from 'expo/config';
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
   name: 'OnlyMonkes',
-  slug: 'onlymonkes',
+  slug: 'monkesonly',
   owner: process.env.EXPO_OWNER ?? undefined,
-  version: '1.0.0',
+  version: '2.15.0',
   orientation: 'portrait',
   icon: './assets/icon.png',
   userInterfaceStyle: 'dark',
@@ -15,7 +15,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     backgroundColor: '#0A0A0F',
   },
   android: {
-    package: 'com.yourorg.onlymonkes',
+    package: 'com.onlymonkes.app',
     adaptiveIcon: {
       foregroundImage: './assets/icon.png',
       backgroundColor: '#0A0A0F',
@@ -60,6 +60,9 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     livekitUrl: process.env.LIVEKIT_URL ?? '',
     livekitApiKey: process.env.LIVEKIT_API_KEY ?? '',
     livekitApiSecret: process.env.LIVEKIT_API_SECRET ?? '',
+    jupApiKey: process.env.JUP_API_KEY ?? '',
+    skrMint: process.env.SKR_MINT ?? '',
+    devWallet: process.env.DEV_WALLET ?? '7tLrnPvgcR5mLtyUcVwvmhAD1wXbAKgWcLBPWxpwyZ1J',
     eas: {
       projectId: 'e669ee53-de73-4dfb-9a36-5c22de29c67e',
     },

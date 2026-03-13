@@ -53,7 +53,7 @@ import { useChatStore } from "@/store/chatStore";
 const _typingTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
 // Throttle own typing broadcasts (one signal per 2.5 s max)
 let _lastTypingSent = 0;
-import { showLocalNotification, detectMention, getCachedPushToken, CH_ALL, CH_MENTIONS, CH_BOT } from "@/lib/notifications";
+import { showLocalNotification, detectMention, getCachedPushToken, registerForExpoPushToken, CH_ALL, CH_MENTIONS, CH_BOT } from "@/lib/notifications";
 
 const BOT_USERNAME = "AI Agent #9385";
 import type { ChatMessage, ReactionEmoji } from "@/types";
@@ -78,14 +78,25 @@ let _profileBroadcastDone = false;
  */
 export async function triggerProfileRebroadcast(pushToken: string): Promise<void> {
   if (!_group || !_myInboxId) return;
-  const { username, bio, xAccount, wallet, tipWallet, verifiedNft, isLegendary } =
-    useAppStore.getState();
+  const { username, bio, xAccount, wallet, tipWallet, verifiedNft, isLegendary,
+    notificationsEnabled, mentionsOnly, botNotificationsEnabled,
+    dmNotificationsEnabled, liveRoomNotificationsEnabled,
+  } = useAppStore.getState();
   try {
+    const expoPushToken = useAppStore.getState().expoPushToken ?? await registerForExpoPushToken();
     await sendProfileUpdate(
       _group as XmtpGroup, _myInboxId,
       username, bio, xAccount,
       wallet?.address ?? null, tipWallet ?? null,
       verifiedNft?.image ?? null, isLegendary, pushToken,
+      {
+        all: notificationsEnabled,
+        mentions: mentionsOnly,
+        bot: botNotificationsEnabled,
+        dm: dmNotificationsEnabled,
+        live: liveRoomNotificationsEnabled,
+      },
+      expoPushToken,
     );
     console.log('[XMTP] Re-broadcast profile with push token:', pushToken.slice(0, 30) + '…');
   } catch { /* non-critical */ }
@@ -155,6 +166,14 @@ export function useXmtp() {
       // ── 2. Fetch remote config (group ID + admin inboxId) ──────────────────
       const config = await fetchAppConfig();
       setRemoteGroupId(config.globalGroupId);
+      if (config.botChannels) {
+        useAppStore.getState().setBotChannelIds({
+          bets: config.botChannels.bets ?? '',
+          trades: config.botChannels.trades ?? '',
+          sales: config.botChannels.sales ?? '',
+          predictions: config.botChannels.predictions ?? '',
+        });
+      }
       console.log("[XMTP] remote config:", config);
 
       // ── 3. Find or create the global group ─────────────────────────────────
@@ -241,6 +260,22 @@ export function useXmtp() {
                     console.log("[XMTP] NFT verified for", req.inboxId, "— auto-admitting");
                   }
                   await addMemberToGroup(group as XmtpGroup, req.inboxId);
+
+                  // Also add to all bot channels
+                  const channelIds = useAppStore.getState().botChannelIds;
+                  if (channelIds) {
+                    for (const [name, chId] of Object.entries(channelIds)) {
+                      if (!chId) continue;
+                      try {
+                        const ch = await client.conversations.findGroup(chId as any);
+                        if (ch) {
+                          await (ch as any).addMembers([req.inboxId]);
+                          console.log(`[XMTP] Added ${req.inboxId.slice(0, 8)}… to ${name} channel`);
+                        }
+                      } catch { /* already a member or non-critical */ }
+                    }
+                  }
+
                   approvedSet.add(req.inboxId);
                   useAppStore.getState().removeJoinRequest(req.inboxId);
                   console.log("[XMTP] Auto-approved:", req.inboxId);
@@ -314,7 +349,7 @@ export function useXmtp() {
             try {
               const data = JSON.parse(content.slice("PROFILE_UPDATE:".length));
               if (data.id) {
-                cacheProfile(data.id, { username: data.u || undefined, bio: data.b || undefined, xAccount: data.x || undefined, walletAddress: data.w || undefined, tipWallet: data.tw || undefined, nftImage: data.ni || null, legendary: !!data.lg, pushToken: data.pt || undefined });
+                cacheProfile(data.id, { username: data.u || undefined, bio: data.b || undefined, xAccount: data.x || undefined, walletAddress: data.w || undefined, tipWallet: data.tw || undefined, nftImage: data.ni || null, legendary: !!data.lg, pushToken: data.pt || undefined, expoPushToken: data.ept || undefined });
                 trackUser(data.id, data.u || undefined);
               }
             } catch { /* ignore */ }
@@ -437,7 +472,7 @@ export function useXmtp() {
           try {
             const data = JSON.parse(content.slice("PROFILE_UPDATE:".length));
             if (data.id) {
-              cacheProfile(data.id, { username: data.u || undefined, bio: data.b || undefined, xAccount: data.x || undefined, walletAddress: data.w || undefined, tipWallet: data.tw || undefined, nftImage: data.ni || null, legendary: !!data.lg, pushToken: data.pt || undefined });
+              cacheProfile(data.id, { username: data.u || undefined, bio: data.b || undefined, xAccount: data.x || undefined, walletAddress: data.w || undefined, tipWallet: data.tw || undefined, nftImage: data.ni || null, legendary: !!data.lg, pushToken: data.pt || undefined, expoPushToken: data.ept || undefined });
               trackUser(data.id, data.u || undefined);
             }
           } catch { /* ignore */ }
@@ -524,20 +559,25 @@ export function useXmtp() {
         _profileBroadcastDone = true;
         (async () => {
           try {
-            const { username, bio, xAccount, wallet, tipWallet, verifiedNft, isLegendary } =
-              useAppStore.getState();
-            // Wait up to 8s for push token — on first launch, registerForPushNotifications()
+            const { username, bio, xAccount, wallet, tipWallet, verifiedNft, isLegendary,
+              notificationsEnabled, mentionsOnly, botNotificationsEnabled,
+              dmNotificationsEnabled, liveRoomNotificationsEnabled,
+            } = useAppStore.getState();
+            // Wait up to 8s for FCM token — on first launch, registerForPushNotifications()
             // in _layout.tsx runs concurrently with XMTP init, causing a race condition
             // where the token isn't in SecureStore yet when we broadcast.
-            let pushToken: string | null =
-              useAppStore.getState().expoPushToken ?? await getCachedPushToken();
+            let pushToken: string | null = await getCachedPushToken();
             if (!pushToken) {
               for (let i = 0; i < 8 && !pushToken; i++) {
                 await new Promise(r => setTimeout(r, 1000));
-                pushToken = useAppStore.getState().expoPushToken ?? await getCachedPushToken();
+                pushToken = await getCachedPushToken();
               }
             }
-            console.log('[XMTP] Profile broadcast, push token:', pushToken ? pushToken.slice(0, 30) + '…' : 'none');
+            // Also fetch Expo push token for client-side DM relay
+            let expoPushToken: string | null = await registerForExpoPushToken();
+            if (expoPushToken) useAppStore.getState().setExpoPushToken(expoPushToken);
+            console.log('[XMTP] Profile broadcast, FCM token:', pushToken ? pushToken.slice(0, 30) + '…' : 'none',
+              'Expo token:', expoPushToken ? expoPushToken.slice(0, 40) + '…' : 'none');
             await sendProfileUpdate(
               group as XmtpGroup,
               client.inboxId,
@@ -549,6 +589,14 @@ export function useXmtp() {
               verifiedNft?.image ?? null,
               isLegendary,
               pushToken,
+              {
+                all: notificationsEnabled,
+                mentions: mentionsOnly,
+                bot: botNotificationsEnabled,
+                dm: dmNotificationsEnabled,
+                live: liveRoomNotificationsEnabled,
+              },
+              expoPushToken,
             );
             cacheProfile(client.inboxId, {
               username: username ?? undefined,
@@ -557,6 +605,35 @@ export function useXmtp() {
           } catch { /* non-critical */ }
         })();
       }
+
+      // ── 7. Fetch bot channel message counts (fire-and-forget) ────────────
+      (async () => {
+        try {
+          const channelIds = useAppStore.getState().botChannelIds;
+          if (!channelIds) return;
+          const counts = { bets: 0, trades: 0, sales: 0, predictions: 0 };
+          for (const key of ['bets', 'trades', 'sales', 'predictions'] as const) {
+            const chId = channelIds[key];
+            if (!chId) continue;
+            try {
+              const ch = await client.conversations.findGroup(chId as any);
+              if (ch) {
+                await (ch as any).sync();
+                const msgs: any[] = await (ch as any).messages({ limit: 100 });
+                // Count only actual content messages (not profile updates etc)
+                counts[key] = msgs.filter((m: any) => {
+                  try {
+                    const c = m.content();
+                    return typeof c === 'string' && c.startsWith('MSG:');
+                  } catch { return false; }
+                }).length;
+              }
+            } catch { /* skip */ }
+          }
+          useAppStore.getState().setBotChannelCounts(counts);
+          console.log('[XMTP] Bot channel counts:', counts);
+        } catch { /* non-critical */ }
+      })();
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "XMTP initialization failed";
@@ -710,6 +787,7 @@ export function useXmtp() {
     } = useAppStore.getState();
     try {
       const pushToken = await getCachedPushToken();
+      const expoPushToken = useAppStore.getState().expoPushToken ?? await registerForExpoPushToken();
       await sendProfileUpdate(
         _group, _myInboxId,
         username, bio, xAccount,
@@ -725,6 +803,7 @@ export function useXmtp() {
           dm: dmNotificationsEnabled,
           live: liveRoomNotificationsEnabled,
         },
+        expoPushToken,
       );
       // Keep own cache entry current so PFP is always available locally
       cacheProfile(_myInboxId, {

@@ -1,4 +1,4 @@
-package com.yourorg.onlymonkes
+package com.onlymonkes.app
 
 import android.app.Application
 import android.content.res.Configuration

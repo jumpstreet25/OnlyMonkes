@@ -5,9 +5,9 @@
  *
  * Android channel structure (visible in Settings → App info → Notifications):
  *  ┌─ OnlyMonkes (group)
- *  │   ├─ All Notifications   [om_all_v3]      — every chat message
- *  │   ├─ @Mentions           [om_mentions_v3] — messages that @mention you
- *  │   └─ Bot Notifications   [om_bot_v3]      — AI Agent trade/sales alerts
+ *  │   ├─ All Notifications   [om_all_v8]      — every chat message
+ *  │   ├─ @Mentions           [om_mentions_v8] — messages that @mention you
+ *  │   └─ Bot Notifications   [om_bot_v8]      — AI Agent trade/sales alerts
  *  └─
  *
  * Legacy channels (om_all, om_bot, om_mentions, onlymonkes_chat*) are deleted
@@ -163,8 +163,6 @@ export async function requestNotificationPermissions(): Promise<boolean> {
 
 // ─── Push Token Registration ──────────────────────────────────────────────────
 
-const HARDCODED_PROJECT_ID = 'e669ee53-de73-4dfb-9a36-5c22de29c67e';
-
 export async function registerForPushNotifications(): Promise<string | null> {
   try {
     if (!Notifications) return null;
@@ -178,24 +176,22 @@ export async function registerForPushNotifications(): Promise<string | null> {
       return null;
     }
 
-    // Return cached token if we have one (tokens are stable across restarts)
+    // Return cached raw FCM token if we have one (FCM tokens are stable per install)
     const stored = await SecureStore.getItemAsync(SK_PUSH_TOKEN);
-    if (stored) {
-      console.log('[Notifications] Cached Expo push token:', stored);
+    if (stored && !stored.startsWith('ExponentPushToken')) {
+      console.log('[Notifications] Cached FCM token:', stored.slice(0, 30) + '…');
       return stored;
     }
+    // Stale Expo token or no token — clear and fetch a raw FCM token
+    if (stored) await SecureStore.deleteItemAsync(SK_PUSH_TOKEN).catch(() => {});
 
-    // Get project ID — try config first, fall back to hardcoded
-    const projectId: string =
-      ((Constants.expoConfig?.extra as Record<string, unknown>)?.eas?.projectId as string) ??
-      Constants.easConfig?.projectId ??
-      HARDCODED_PROJECT_ID;
-
-    const tokenResponse = await Notifications.getExpoPushTokenAsync({ projectId });
-    const token: string = tokenResponse.data;
+    // getDevicePushTokenAsync returns the raw FCM registration token.
+    // The bot sends push directly via FCM Legacy API — no Expo relay or credentials needed.
+    const tokenResponse = await Notifications.getDevicePushTokenAsync();
+    const token: string = tokenResponse.data as string;
 
     await SecureStore.setItemAsync(SK_PUSH_TOKEN, token);
-    console.log('[Notifications] Expo push token:', token);
+    console.log('[Notifications] FCM device token registered:', token.slice(0, 40) + '…');
     return token;
   } catch (err) {
     console.warn('[Notifications] registerForPushNotifications failed:', err);
@@ -206,6 +202,33 @@ export async function registerForPushNotifications(): Promise<string | null> {
 /** Force-clear cached token so next call to registerForPushNotifications fetches a fresh one. */
 export async function clearPushToken(): Promise<void> {
   await SecureStore.deleteItemAsync(SK_PUSH_TOKEN).catch(() => {});
+}
+
+/**
+ * Register for an Expo push token (ExponentPushToken[...]) for client-side push relay.
+ * This is separate from the raw FCM token used by the bot's server-side FCM v1 API.
+ * Requires the EAS projectId from app.config.ts.
+ */
+export async function registerForExpoPushToken(): Promise<string | null> {
+  try {
+    if (!Notifications) return null;
+    const { status } = await Notifications.requestPermissionsAsync();
+    if (status !== 'granted') return null;
+
+    const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+    if (!projectId) {
+      console.warn('[Notifications] No EAS projectId — cannot get Expo push token');
+      return null;
+    }
+
+    const tokenResponse = await Notifications.getExpoPushTokenAsync({ projectId });
+    const token: string = tokenResponse.data as string;
+    console.log('[Notifications] Expo push token:', token.slice(0, 40) + '…');
+    return token;
+  } catch (err) {
+    console.warn('[Notifications] registerForExpoPushToken failed:', err);
+    return null;
+  }
 }
 
 export async function getCachedPushToken(): Promise<string | null> {
