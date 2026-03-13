@@ -63,55 +63,15 @@ export async function clearSession(): Promise<void> {
   ]);
 }
 
-// ─── Matrica session ──────────────────────────────────────────────────────────
-
-const SK_MATRICA_TOKEN   = "matrica_access_token";
-const SK_MATRICA_WALLET  = "matrica_wallet_address";
-const SK_MATRICA_TS      = "matrica_session_ts";
-
-export async function saveMatricaSession(
-  accessToken: string,
-  walletAddress: string
-): Promise<void> {
+/**
+ * One-time cleanup: delete stale Matrica SecureStore keys left from previous builds.
+ * Safe to call multiple times — deleteItemAsync is a no-op if the key doesn't exist.
+ */
+export async function clearLegacyKeys(): Promise<void> {
   await Promise.all([
-    SecureStore.setItemAsync(SK_MATRICA_TOKEN,  accessToken),
-    SecureStore.setItemAsync(SK_MATRICA_WALLET, walletAddress),
-    SecureStore.setItemAsync(SK_MATRICA_TS,     String(Date.now())),
-  ]);
-}
-
-export async function loadMatricaSession(): Promise<WalletAccount | null> {
-  try {
-    const [token, wallet, tsStr] = await Promise.all([
-      SecureStore.getItemAsync(SK_MATRICA_TOKEN),
-      SecureStore.getItemAsync(SK_MATRICA_WALLET),
-      SecureStore.getItemAsync(SK_MATRICA_TS),
-    ]);
-
-    if (!token || !wallet || !tsStr) return null;
-
-    const age = Date.now() - parseInt(tsStr, 10);
-    if (age > SESSION_TTL_MS) {
-      await clearMatricaSession();
-      return null;
-    }
-
-    return {
-      address: wallet,
-      label: "Matrica",
-      chains: ["solana:mainnet"],
-      features: ["solana:signMessage", "solana:signTransaction"],
-    };
-  } catch {
-    return null;
-  }
-}
-
-export async function clearMatricaSession(): Promise<void> {
-  await Promise.all([
-    SecureStore.deleteItemAsync(SK_MATRICA_TOKEN),
-    SecureStore.deleteItemAsync(SK_MATRICA_WALLET),
-    SecureStore.deleteItemAsync(SK_MATRICA_TS),
+    SecureStore.deleteItemAsync("matrica_access_token").catch(() => {}),
+    SecureStore.deleteItemAsync("matrica_wallet_address").catch(() => {}),
+    SecureStore.deleteItemAsync("matrica_session_ts").catch(() => {}),
   ]);
 }
 

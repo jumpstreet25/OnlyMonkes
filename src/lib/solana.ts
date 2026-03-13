@@ -25,6 +25,7 @@ import {
   Web3MobileWallet,
 } from "@solana-mobile/mobile-wallet-adapter-protocol-web3js";
 import { HELIUS_RPC_URL, SKR_MINT, DEV_WALLET } from "./constants";
+import { useAppStore } from "@/store/appStore";
 
 const APP_IDENTITY = {
   name: "OnlyMonkes",
@@ -33,6 +34,43 @@ const APP_IDENTITY = {
 };
 
 const DEV_FEE_PERCENT = 0.05;
+
+/**
+ * Re-authorize using the cached MWA auth token (biometric prompt, no app switch).
+ * Falls back to full authorize if the token is missing or expired.
+ * Returns the sender's PublicKey derived from the auth result.
+ */
+async function mwaAuthorize(mobileWallet: Web3MobileWallet): Promise<PublicKey> {
+  const cachedToken = useAppStore.getState().mwaAuthToken;
+
+  let addrRaw: string | Uint8Array;
+
+  if (cachedToken) {
+    try {
+      // Reauthorize — shows biometric/PIN overlay without switching apps
+      const result = await mobileWallet.authorize({
+        cluster: "mainnet-beta",
+        identity: APP_IDENTITY,
+        auth_token: cachedToken,
+      } as Parameters<typeof mobileWallet.authorize>[0]);
+      // Refresh token in store in case it rotated
+      useAppStore.getState().setMwaAuthToken(result.auth_token);
+      addrRaw = result.accounts[0].address;
+    } catch {
+      // Token expired — fall through to full authorize
+      const result = await mobileWallet.authorize({ cluster: "mainnet-beta", identity: APP_IDENTITY });
+      useAppStore.getState().setMwaAuthToken(result.auth_token);
+      addrRaw = result.accounts[0].address;
+    }
+  } else {
+    const result = await mobileWallet.authorize({ cluster: "mainnet-beta", identity: APP_IDENTITY });
+    useAppStore.getState().setMwaAuthToken(result.auth_token);
+    addrRaw = result.accounts[0].address;
+  }
+
+  const pubkeyBytes = typeof addrRaw === "string" ? Buffer.from(addrRaw, "base64") : addrRaw;
+  return new PublicKey(pubkeyBytes);
+}
 
 /**
  * Send SKR tips to a recipient with a 5% dev fee.
@@ -58,18 +96,8 @@ export async function sendSkrTip(
   const userLamports  = totalLamports - devLamports;
 
   const signature = await transact(async (mobileWallet: Web3MobileWallet) => {
-    // Authorize (re-uses cached token if wallet already connected)
-    const authResult = await mobileWallet.authorize({
-      cluster: "mainnet-beta",
-      identity: APP_IDENTITY,
-    });
-
-    const addrRaw = authResult.accounts[0].address;
-    const pubkeyBytes =
-      typeof addrRaw === "string"
-        ? Buffer.from(addrRaw, "base64")
-        : addrRaw;
-    const senderPubkey = new PublicKey(pubkeyBytes);
+    // Reauthorize with cached token — biometric prompt only, no app switch
+    const senderPubkey = await mwaAuthorize(mobileWallet);
 
     // Fetch slot AFTER auth so the simulation context is always fresh
     const minContextSlot = await connection.getSlot();
@@ -155,17 +183,7 @@ export async function sendDevTip(amountUi: number): Promise<string> {
   const lamports = Math.round(amountUi * Math.pow(10, mintInfo.decimals));
 
   const signature = await transact(async (mobileWallet: Web3MobileWallet) => {
-    const authResult = await mobileWallet.authorize({
-      cluster: "mainnet-beta",
-      identity: APP_IDENTITY,
-    });
-
-    const addrRaw = authResult.accounts[0].address;
-    const pubkeyBytes =
-      typeof addrRaw === "string"
-        ? Buffer.from(addrRaw, "base64")
-        : addrRaw;
-    const senderPubkey = new PublicKey(pubkeyBytes);
+    const senderPubkey = await mwaAuthorize(mobileWallet);
 
     // Fetch slot AFTER auth so the simulation context is always fresh
     const minContextSlot = await connection.getSlot();

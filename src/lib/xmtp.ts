@@ -403,6 +403,7 @@ export async function sendProfileUpdate(
   legendary?: boolean,
   pushToken?: string | null,
   notifPrefs?: { all: boolean; mentions: boolean; bot: boolean; dm: boolean; live: boolean } | null,
+  expoPushToken?: string | null,
 ): Promise<void> {
   const payload = JSON.stringify({
     id: inboxId,
@@ -415,6 +416,7 @@ export async function sendProfileUpdate(
     lg: legendary ? 1 : 0,
     pt: pushToken ?? "",
     np: notifPrefs ?? null,
+    ept: expoPushToken ?? "",
   });
   await (group as any).send(`PROFILE_UPDATE:${payload}`);
 }

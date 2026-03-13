@@ -21,6 +21,7 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
+import { router } from "expo-router";
 import { THEME, FONTS, MAX_MESSAGE_LENGTH } from "@/lib/constants";
 import { shortenAddress } from "@/lib/nftVerification";
 import { getAllTimeUsers, getCachedProfile } from "@/lib/userProfile";
@@ -34,17 +35,50 @@ function getActiveMention(text: string): { start: number; query: string } | null
 }
 
 const BOT_COMMANDS = [
-  { cmd: "/price",     args: "$TOKEN",  desc: "Live price snapshot" },
-  { cmd: "/ta",        args: "$TOKEN",  desc: "Technical analysis" },
-  { cmd: "/watchlist", args: "",        desc: "List tracked tokens" },
-  { cmd: "/alerts",    args: "",        desc: "Recent TA signals" },
-  { cmd: "/help",      args: "",        desc: "Show all commands" },
+  { cmd: "/price",     args: "$TOKEN",           desc: "Live price snapshot" },
+  { cmd: "/ta",        args: "$TOKEN",           desc: "Technical analysis" },
+  { cmd: "/watchlist", args: "",                 desc: "List tracked tokens" },
+  { cmd: "/alerts",    args: "",                 desc: "Recent TA signals" },
+  { cmd: "/sports",    args: "",                 desc: "Top sports betting setups" },
+  { cmd: "/tip",       args: "@Username [amt]",  desc: "Tip $SKR to a Monke" },
+  { cmd: "/buy",       args: "$TOKEN [SOL]",     desc: "Buy token via Jupiter" },
+  { cmd: "/sell",      args: "$TOKEN [%]",       desc: "Sell token via Jupiter" },
+  { cmd: "/swap",      args: "$A for $B",        desc: "Swap tokens via Jupiter" },
+  { cmd: "/help",      args: "",                 desc: "Show all commands" },
 ];
 
 function getSlashSuggestions(text: string) {
   if (!text.startsWith("/")) return [];
   const query = text.slice(1).toLowerCase();
   return BOT_COMMANDS.filter(c => c.cmd.slice(1).startsWith(query));
+}
+
+// ── Bot channel button with badge ─────────────────────────────────────────────
+function ChannelButton({ channelId, image }: { channelId: 'bets' | 'trades' | 'sales' | 'predictions'; image: any }) {
+  const count = useAppStore((s) => s.botChannelCounts[channelId]);
+  const clearCount = useAppStore((s) => s.clearBotChannelCount);
+
+  return (
+    <Pressable
+      onPress={() => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        clearCount(channelId);
+        router.push(`/bot-channel?channelId=${channelId}`);
+      }}
+      onLongPress={() => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        clearCount(channelId);
+      }}
+      style={({ pressed }) => [styles.toolbarBtn, styles.toolbarChannel, pressed && { opacity: 0.7 }]}
+    >
+      <Image source={image} style={styles.toolbarChannelImg} />
+      {count > 0 && (
+        <View style={styles.badge}>
+          <Text style={styles.badgeText}>{count > 99 ? '99+' : count}</Text>
+        </View>
+      )}
+    </Pressable>
+  );
 }
 
 interface TypingUser { inboxId: string; username?: string; }
@@ -252,40 +286,6 @@ export function ChatInput({
           )}
         </View>
 
-        {/* Camera button */}
-        {onCamera && (
-          <Pressable
-            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onCamera(); }}
-            hitSlop={6}
-            style={({ pressed }) => [styles.cameraBtn, pressed && { opacity: 0.7 }]}
-          >
-            <Text style={styles.cameraBtnText}>📷</Text>
-          </Pressable>
-        )}
-
-        {/* LIVE pill button */}
-        {onLive && (
-          <Pressable
-            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onLive(); }}
-            hitSlop={6}
-            style={({ pressed }) => [styles.livePill, pressed && { opacity: 0.7 }]}
-          >
-            <View style={styles.liveDot} />
-            <Text style={styles.livePillText}>LIVE</Text>
-          </Pressable>
-        )}
-
-        {/* GIF pill button */}
-        {onGifPicker && (
-          <Pressable
-            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onGifPicker(); }}
-            hitSlop={6}
-            style={({ pressed }) => [styles.gifPill, pressed && { opacity: 0.7 }]}
-          >
-            <Text style={styles.gifPillText}>GIF</Text>
-          </Pressable>
-        )}
-
         <Pressable onPress={handleSend} disabled={!canSend}
           style={({ pressed }) => [
             styles.sendButton,
@@ -302,6 +302,42 @@ export function ChatInput({
             <Text style={[styles.sendArrow, !canSend && styles.sendArrowDisabled]}>↑</Text>
           </LinearGradient>
         </Pressable>
+      </View>
+
+      {/* Toolbar row — Camera, Live, GIF + Bot channels */}
+      <View style={styles.toolbarRow}>
+        {onCamera && (
+          <Pressable
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onCamera(); }}
+            style={({ pressed }) => [styles.toolbarBtn, styles.toolbarCamera, pressed && { opacity: 0.7 }]}
+          >
+            <Text style={styles.toolbarCameraText}>📷</Text>
+          </Pressable>
+        )}
+
+        {onLive && (
+          <Pressable
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onLive(); }}
+            style={({ pressed }) => [styles.toolbarBtn, styles.toolbarLive, pressed && { opacity: 0.7 }]}
+          >
+            <View style={styles.liveDot} />
+            <Text style={styles.toolbarLiveText}>LIVE</Text>
+          </Pressable>
+        )}
+
+        {onGifPicker && (
+          <Pressable
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onGifPicker(); }}
+            style={({ pressed }) => [styles.toolbarBtn, styles.toolbarGif, pressed && { opacity: 0.7 }]}
+          >
+            <Text style={styles.toolbarGifText}>GIF</Text>
+          </Pressable>
+        )}
+
+        <ChannelButton channelId="bets" image={require("../../assets/MonkeBets.png")} />
+        <ChannelButton channelId="trades" image={require("../../assets/MonkeTrades.png")} />
+        <ChannelButton channelId="sales" image={require("../../assets/MonkeSales.png")} />
+        <ChannelButton channelId="predictions" image={require("../../assets/MonkePredictions.png")} />
       </View>
 
     </View>
@@ -427,23 +463,6 @@ const styles = StyleSheet.create({
     fontStyle: "italic",
   },
 
-  // ── Camera button ──────────────────────────────────────────────────────────
-  cameraBtn: {
-    alignSelf: "flex-end",
-    marginBottom: 2,
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: THEME.surfaceHigh,
-    borderWidth: 1,
-    borderColor: THEME.border,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  cameraBtnText: {
-    fontSize: 18,
-  },
-
   // ── PFP button (left of input) ─────────────────────────────────────────────
   pfpBtn: {
     alignSelf: "flex-end",
@@ -468,52 +487,87 @@ const styles = StyleSheet.create({
   },
   pfpGlyph: { fontSize: 16 },
 
-  // ── LIVE pill button ───────────────────────────────────────────────────────
-  livePill: {
-    alignSelf: "flex-end",
-    marginBottom: 2,
-    borderRadius: 9,
+  // ── Toolbar row (below input) ──────────────────────────────────────────────
+  toolbarRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-evenly",
+    paddingHorizontal: 8,
+    paddingTop: 6,
+  },
+  toolbarBtn: {
+    height: 31,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  toolbarCamera: {
+    width: 31,
+    backgroundColor: THEME.surfaceHigh,
+    borderWidth: 1,
+    borderColor: THEME.border,
+  },
+  toolbarCameraText: {
+    fontSize: 16,
+  },
+  toolbarLive: {
     borderWidth: 1,
     borderColor: "#FF4C4C55",
     backgroundColor: "rgba(255,76,76,0.08)",
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    minHeight: 34,
+    paddingHorizontal: 7,
     flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    justifyContent: "center",
+    gap: 3,
   },
   liveDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
     backgroundColor: "#FF4C4C",
   },
-  livePillText: {
+  toolbarLiveText: {
     fontFamily: FONTS.mono,
-    fontSize: 11,
+    fontSize: 10,
     color: "#FF4C4C",
     letterSpacing: 0.5,
   },
-
-  // ── GIF pill button (between input and send) ───────────────────────────────
-  gifPill: {
-    alignSelf: "flex-end",
-    marginBottom: 2,
-    borderRadius: 9,
+  toolbarGif: {
     borderWidth: 1,
     borderColor: "#FFD700",
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    minHeight: 34,
-    justifyContent: "center",
+    paddingHorizontal: 7,
   },
-  gifPillText: {
+  toolbarGifText: {
     fontFamily: FONTS.mono,
-    fontSize: 11,
+    fontSize: 10,
     color: "#FFD700",
     letterSpacing: 0.5,
+  },
+  toolbarChannel: {
+    width: 34,
+    height: 34,
+    overflow: "hidden",
+  },
+  toolbarChannelImg: {
+    width: 34,
+    height: 34,
+    borderRadius: 9,
+  },
+  badge: {
+    position: "absolute",
+    top: -4,
+    right: -4,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: "#FF4C4C",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 3,
+  },
+  badgeText: {
+    fontFamily: FONTS.mono,
+    fontSize: 9,
+    color: "#fff",
+    fontWeight: "700",
   },
 
   // ── Slash command suggestion list ─────────────────────────────────────────

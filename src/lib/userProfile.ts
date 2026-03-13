@@ -60,7 +60,8 @@ export interface CachedProfile {
   nftImage?: string | null;
   cachedAt?: number;          // epoch ms of last write
   legendary?: boolean;
-  pushToken?: string;         // Expo push token for direct notifications
+  pushToken?: string;         // Raw FCM token for bot's server-side push
+  expoPushToken?: string;     // ExponentPushToken[...] for client-side DM relay
 }
 
 const AK_PROFILE_CACHE = 'profile_cache_v2';

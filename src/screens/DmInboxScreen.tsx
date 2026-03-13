@@ -47,6 +47,7 @@ function ThreadRow({ thread, myInboxId }: { thread: DmThread; myInboxId: string 
   try { profile = getCachedProfile(thread.peerInboxId); } catch { /* ignore */ }
   const name: string = profile?.username ?? thread.peerInboxId.slice(0, 8) + '…';
   const avatarUri: string | null = profile?.nftImage ?? null;
+  const isBot = name === 'AI Agent #9385';
 
   const rawMsg = thread.lastMessage;
   let preview = 'No messages yet';
@@ -75,6 +76,9 @@ function ThreadRow({ thread, myInboxId }: { thread: DmThread; myInboxId: string 
     >
       {avatarUri ? (
         <Image source={{ uri: avatarUri }} style={styles.avatar} />
+      ) : isBot ? (
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        <Image source={require('../../assets/ai_agent_avatar.png')} style={styles.avatar} />
       ) : (
         <View style={styles.avatarFallback}>
           <Text style={styles.avatarGlyph}>🐒</Text>

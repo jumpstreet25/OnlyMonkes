@@ -28,7 +28,7 @@ const APP_IDENTITY = {
 };
 
 export function useMobileWallet() {
-  const { setWallet, setLoading, setError, wallet, reset } = useAppStore();
+  const { setWallet, setLoading, setError, setMwaAuthToken, wallet, reset } = useAppStore();
   const [authToken, setAuthToken] = useState<string | null>(null);
   // Store the raw base64 address from MWA for use in subsequent MWA calls
   const [rawAddress, setRawAddress] = useState<string | null>(null);
@@ -63,6 +63,7 @@ export function useMobileWallet() {
         });
 
         setAuthToken(authResult.auth_token);
+        setMwaAuthToken(authResult.auth_token);
 
         // MWA v2 returns accounts[0].address as a base64-encoded public key.
         // We must decode it to bytes before passing to PublicKey constructor.
@@ -94,7 +95,7 @@ export function useMobileWallet() {
     } finally {
       setLoading(false);
     }
-  }, [setWallet, setLoading, setError]);
+  }, [setWallet, setLoading, setError, setMwaAuthToken]);
 
   /**
    * Sign a message — used for XMTP key derivation.

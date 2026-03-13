@@ -1,4 +1,4 @@
-package com.yourorg.onlymonkes
+package com.onlymonkes.app
 
 import android.os.Build
 import android.os.Bundle

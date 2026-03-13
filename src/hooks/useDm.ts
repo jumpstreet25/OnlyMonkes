@@ -50,6 +50,7 @@ export function useDm(peerInboxId: string) {
 
   useEffect(() => {
     let cancelled = false;
+    let syncInterval: ReturnType<typeof setInterval> | null = null;
 
     async function init() {
       const client = getXmtpClient();
@@ -80,6 +81,15 @@ export function useDm(peerInboxId: string) {
 
         setMessages(history);
         setLoading(false);
+
+        // Periodic sync every 10s to pick up bot replies that arrive between syncs
+        syncInterval = setInterval(async () => {
+          if (cancelled || !_activeDm) return;
+          try {
+            const refreshed = await loadDmMessages(_activeDm, myInboxId);
+            if (!cancelled) setMessages(refreshed);
+          } catch { /* non-fatal */ }
+        }, 10_000);
 
         const stopStream = await _activeDm.streamMessages(
           async (raw: any) => {
@@ -116,6 +126,7 @@ export function useDm(peerInboxId: string) {
     return () => {
       cancelled = true;
       if (retryTimer.current) clearTimeout(retryTimer.current);
+      if (syncInterval) clearInterval(syncInterval);
       unsubscribeStream.current?.();
       unsubscribeStream.current = null;
       _activeDm = null;
@@ -140,12 +151,13 @@ export function useDm(peerInboxId: string) {
       };
       setMessages(prev => [...prev, optimistic]);
 
-      // Relay push to recipient if they have a token cached
+      // Relay push to recipient via Expo Push API (requires ExponentPushToken)
       if (dmNotificationsEnabled) {
         const peer = getCachedProfile(peerInboxId);
-        if (peer?.pushToken) {
+        const peerExpoToken = peer?.expoPushToken;
+        if (peerExpoToken && peerExpoToken.startsWith('ExponentPushToken')) {
           void relayDmPush(
-            peer.pushToken,
+            peerExpoToken,
             username ?? 'Monke',
             text,
             verifiedNft?.image ?? null,

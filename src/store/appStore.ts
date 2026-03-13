@@ -50,6 +50,8 @@ interface AppState {
   joinRequests: JoinRequest[];
   // Remote config — fetched on init so ChatScreen knows if a group exists
   remoteGroupId: string;
+  botChannelIds: { bets: string; trades: string; sales: string; predictions: string };
+  botChannelCounts: { bets: number; trades: number; sales: number; predictions: number };
   // Chat theme
   themeId: string;
   customBubbleColor: string | null;
@@ -66,6 +68,8 @@ interface AppState {
   isInLiveRoom: boolean;
   liveRoomMuted: boolean;
   liveRoomToken: string | null;
+  // MWA reauthorize token — allows silent biometric re-auth without opening wallet app
+  mwaAuthToken: string | null;
 }
 
 interface AppActions {
@@ -91,6 +95,9 @@ interface AppActions {
   addJoinRequest: (req: JoinRequest) => void;
   removeJoinRequest: (inboxId: string) => void;
   setRemoteGroupId: (id: string) => void;
+  setBotChannelIds: (ids: { bets: string; trades: string; sales: string; predictions: string }) => void;
+  setBotChannelCounts: (counts: { bets: number; trades: number; sales: number; predictions: number }) => void;
+  clearBotChannelCount: (channel: 'bets' | 'trades' | 'sales' | 'predictions') => void;
   setThemeId: (id: string) => void;
   setCustomBubbleColor: (color: string | null) => void;
   setCalendarEvents: (events: CalendarEvent[]) => void;
@@ -102,6 +109,7 @@ interface AppActions {
   setIsInLiveRoom: (val: boolean) => void;
   setLiveRoomMuted: (val: boolean) => void;
   setLiveRoomToken: (token: string | null) => void;
+  setMwaAuthToken: (token: string | null) => void;
   reset: () => void;
 }
 
@@ -127,6 +135,8 @@ const initialState: AppState = {
   isGroupAdmin: false,
   joinRequests: [],
   remoteGroupId: '',
+  botChannelIds: { bets: '', trades: '', sales: '', predictions: '' },
+  botChannelCounts: { bets: 0, trades: 0, sales: 0, predictions: 0 },
   themeId: 'default',
   customBubbleColor: null,
   calendarEvents: [],
@@ -138,6 +148,7 @@ const initialState: AppState = {
   isInLiveRoom: false,
   liveRoomMuted: false,
   liveRoomToken: null,
+  mwaAuthToken: null,
 };
 
 export const useAppStore = create<AppState & AppActions>((set, get) => ({
@@ -170,6 +181,11 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   removeJoinRequest: (inboxId) =>
     set({ joinRequests: get().joinRequests.filter((r) => r.inboxId !== inboxId) }),
   setRemoteGroupId: (remoteGroupId) => set({ remoteGroupId }),
+  setBotChannelIds: (botChannelIds) => set({ botChannelIds }),
+  setBotChannelCounts: (botChannelCounts) => set({ botChannelCounts }),
+  clearBotChannelCount: (channel) => set((s) => ({
+    botChannelCounts: { ...s.botChannelCounts, [channel]: 0 },
+  })),
   setThemeId: (themeId) => set({ themeId }),
   setCustomBubbleColor: (customBubbleColor) => set({ customBubbleColor }),
   setCalendarEvents: (calendarEvents) => set({ calendarEvents }),
@@ -182,5 +198,6 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   setIsInLiveRoom: (isInLiveRoom) => set({ isInLiveRoom }),
   setLiveRoomMuted: (liveRoomMuted) => set({ liveRoomMuted }),
   setLiveRoomToken: (liveRoomToken) => set({ liveRoomToken }),
+  setMwaAuthToken: (mwaAuthToken) => set({ mwaAuthToken }),
   reset: () => set(initialState),
 }));
