@@ -78,6 +78,8 @@ interface MenuDrawerProps {
   onStartLive?: () => void;
   onSearch?: () => void;
   onPressUser?: (target: ProfileTarget) => void;
+  broadcastProfile?: () => void;
+  onDevTip?: (amount: number) => void;
 }
 
 interface ActiveUser {
@@ -93,7 +95,19 @@ interface SharedLink {
   sentAt: Date;
 }
 
-export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSearch, onPressUser }: MenuDrawerProps) {
+const SPORTS_LIST = [
+  { key: "nfl", label: "NFL 🏈" },
+  { key: "ncaaf", label: "NCAAF 🏈" },
+  { key: "nba", label: "NBA 🏀" },
+  { key: "ncaab", label: "NCAAB 🏀" },
+  { key: "mlb", label: "MLB ⚾" },
+  { key: "nhl", label: "NHL 🏒" },
+  { key: "epl", label: "EPL ⚽" },
+  { key: "ucl", label: "UCL ⚽" },
+  { key: "mma", label: "MMA 🥊" },
+] as const;
+
+export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSearch, onPressUser, broadcastProfile, onDevTip }: MenuDrawerProps) {
   const { width: SCREEN_WIDTH } = useWindowDimensions();
   const DRAWER_WIDTH = SCREEN_WIDTH * DRAWER_WIDTH_RATIO;
 
@@ -104,6 +118,8 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSea
     dmNotificationsEnabled, liveRoomNotificationsEnabled,
     setNotificationsEnabled, setMentionsOnly, setBotNotificationsEnabled,
     setDmNotificationsEnabled, setLiveRoomNotificationsEnabled,
+    mutedBotChannels, toggleBotChannelMute,
+    mutedSports, toggleSportMute,
     expoPushToken, setExpoPushToken,
   } = useAppStore();
   const [activeView, setActiveView] = useState<ActiveView>("list");
@@ -318,33 +334,6 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSea
           </Pressable>
         </View>
 
-        {/* Bot Channel Buttons */}
-        <View style={styles.botChannelsRow}>
-          {([
-            // eslint-disable-next-line @typescript-eslint/no-require-imports
-            { key: "bets", img: require("../../assets/MonkeBets.png"), count: 0 },
-            // eslint-disable-next-line @typescript-eslint/no-require-imports
-            { key: "trades", img: require("../../assets/MonkeTrades.png"), count: 0 },
-            // eslint-disable-next-line @typescript-eslint/no-require-imports
-            { key: "sales", img: require("../../assets/MonkeSales.png"), count: 0 },
-            // eslint-disable-next-line @typescript-eslint/no-require-imports
-            { key: "predictions", img: require("../../assets/MonkePredictions.png"), count: 0 },
-          ]).map((ch) => (
-            <Pressable
-              key={ch.key}
-              style={({ pressed }) => [styles.botChannelBtn, pressed && { opacity: 0.7 }]}
-              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onClose(); setTimeout(() => router.push(`/bot-channel?channelId=${ch.key}`), 300); }}
-            >
-              <Image source={ch.img} style={styles.botChannelImg} />
-              {ch.count > 0 && (
-                <View style={styles.botChannelBadge}>
-                  <Text style={styles.botChannelBadgeText}>{ch.count > 99 ? "99+" : ch.count}</Text>
-                </View>
-              )}
-            </Pressable>
-          ))}
-        </View>
-
         {/* Content */}
         <ScrollView showsVerticalScrollIndicator={false} style={styles.content}>
 
@@ -352,18 +341,19 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSea
           {activeView === "list" && (
             <>
               <View style={styles.menuList}>
+                {onSearch && (
+                  <MenuItem
+                    icon="🔍"
+                    title="Search"
+                    subtitle="Search messages"
+                    onPress={() => { onClose(); setTimeout(onSearch, 280); }}
+                  />
+                )}
                 <MenuItem
                   icon="💬"
                   title="Messages"
                   subtitle="Direct messages"
                   onPress={() => { onClose(); setTimeout(() => router.push('/dms'), 300); }}
-                />
-                <MenuItem
-                  icon="🤖"
-                  title="AI Agent Alerts"
-                  subtitle={agentAlerts.length > 0 ? `${agentAlerts.length} alerts` : "Trade signals & announcements"}
-                  badge={agentAlerts.length || undefined}
-                  onPress={() => setActiveView("alerts")}
                 />
                 <MenuItem
                   icon="🗓️"
@@ -385,25 +375,17 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSea
                   badge={sharedLinks.length || undefined}
                   onPress={() => setActiveView("links")}
                 />
-                {onSearch && (
-                  <MenuItem
-                    icon="🔍"
-                    title="Search"
-                    subtitle="Search messages"
-                    onPress={() => { onClose(); setTimeout(onSearch, 280); }}
-                  />
-                )}
-                <MenuItem
-                  icon="⚙️"
-                  title="App Settings"
-                  subtitle="Notifications & preferences"
-                  onPress={() => setActiveView("settings")}
-                />
                 <MenuItem
                   icon="🔧"
                   title="Monke Tools"
                   subtitle="Ecosystem links"
                   onPress={() => setActiveView("tools")}
+                />
+                <MenuItem
+                  icon="⚙️"
+                  title="App Settings"
+                  subtitle="Notifications & preferences"
+                  onPress={() => setActiveView("settings")}
                 />
               </View>
 
@@ -689,6 +671,52 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSea
                 </View>
               </View>
 
+              {/* ── Per-Bot-Channel Mutes ──────────────────────────────── */}
+              <Text style={[styles.sectionLabel, { marginTop: 20 }]}>Bot Channel Alerts</Text>
+              <View style={styles.settingsCard}>
+                {(["bets", "trades", "sales", "predictions"] as const).map((ch, i) => (
+                  <React.Fragment key={ch}>
+                    {i > 0 && <View style={styles.settingDivider} />}
+                    <View style={styles.settingRow}>
+                      <View style={styles.settingInfo}>
+                        <Text style={styles.settingTitle}>{ch.charAt(0).toUpperCase() + ch.slice(1)}</Text>
+                        <Text style={styles.settingDesc}>
+                          {mutedBotChannels[ch] ? "Muted — no push alerts" : "Push alerts enabled"}
+                        </Text>
+                      </View>
+                      <Switch
+                        value={!mutedBotChannels[ch]}
+                        onValueChange={() => { toggleBotChannelMute(ch); broadcastProfile?.(); }}
+                        trackColor={{ false: THEME.border, true: THEME.accent + "88" }}
+                        thumbColor={!mutedBotChannels[ch] ? THEME.accent : THEME.textFaint}
+                      />
+                    </View>
+                  </React.Fragment>
+                ))}
+              </View>
+
+              {/* ── MonkeBets Sports Filter ────────────────────────────── */}
+              <Text style={[styles.sectionLabel, { marginTop: 20 }]}>MonkeBets Sports Filter</Text>
+              <Text style={[styles.settingDesc, { marginBottom: 8, paddingHorizontal: 4 }]}>
+                Tap to mute sports you don't want alerts for
+              </Text>
+              <View style={styles.sportsPillRow}>
+                {SPORTS_LIST.map(({ key, label }) => {
+                  const muted = mutedSports.includes(key);
+                  return (
+                    <Pressable
+                      key={key}
+                      style={[styles.sportPill, muted && styles.sportPillMuted]}
+                      onPress={() => { toggleSportMute(key); broadcastProfile?.(); }}
+                    >
+                      <Text style={[styles.sportPillText, muted && styles.sportPillTextMuted]}>
+                        {label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
               <Text style={[styles.sectionLabel, { marginTop: 20 }]}>Push Token</Text>
               <View style={styles.tokenCard}>
                 <Text style={styles.tokenText} numberOfLines={2} selectable>
@@ -744,7 +772,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSea
               ))}
 
               {/* ── Support OnlyMonkes ────────────────────────────────────── */}
-              <SupportCard />
+              <SupportCard onDevTip={onDevTip} />
             </>
           )}
 
@@ -779,15 +807,29 @@ function buildSupportLink(amount?: number): string {
   return url;
 }
 
-function SupportCard() {
+function SupportCard({ onDevTip }: { onDevTip?: (amount: number) => void }) {
   const [amount, setAmount] = React.useState("10");
+  const [sending, setSending] = React.useState(false);
   const amounts = ["5", "10", "25", "50"];
+
+  const handleSend = React.useCallback(async () => {
+    const val = parseFloat(amount);
+    if (isNaN(val) || val <= 0) return;
+    if (onDevTip) {
+      // In-app MWA tip — one-tap biometric, never leaves the app
+      onDevTip(val);
+    } else {
+      // Fallback: Solana Pay deep link (shouldn't happen but safety net)
+      const link = buildSupportLink(val);
+      Linking.openURL(link).catch(() => {});
+    }
+  }, [amount, onDevTip]);
 
   return (
     <View style={supportStyles.card}>
       <Text style={supportStyles.heading}>Help Support the Future of OnlyMonkes</Text>
       <Text style={supportStyles.sub}>
-        Tip $SKR directly to the dev wallet and keep the 🐒 community growing.
+        One-tap $SKR tip to the dev wallet 🐒{"\n"}Biometric confirm — never leaves the app.
       </Text>
 
       <View style={supportStyles.pills}>
@@ -805,23 +847,13 @@ function SupportCard() {
       </View>
 
       <Pressable
-        style={({ pressed }) => [supportStyles.btn, pressed && { opacity: 0.8 }]}
-        onPress={() => {
-          const link = buildSupportLink(parseFloat(amount));
-          Linking.openURL(link).catch(() => {});
-        }}
+        style={({ pressed }) => [supportStyles.btn, pressed && { opacity: 0.8 }, sending && { opacity: 0.5 }]}
+        onPress={handleSend}
+        disabled={sending}
       >
-        <Text style={supportStyles.btnText}>Send {amount} $SKR  🐒</Text>
-      </Pressable>
-
-      <Pressable
-        style={({ pressed }) => [supportStyles.customBtn, pressed && { opacity: 0.7 }]}
-        onPress={() => {
-          const link = buildSupportLink();
-          Linking.openURL(link).catch(() => {});
-        }}
-      >
-        <Text style={supportStyles.customBtnText}>Custom amount  ›</Text>
+        <Text style={supportStyles.btnText}>
+          {sending ? "Sending…" : `Send ${amount} $SKR  🐒`}
+        </Text>
       </Pressable>
 
       <Text style={supportStyles.wallet} selectable numberOfLines={1} ellipsizeMode="middle">
@@ -1237,6 +1269,34 @@ const styles = StyleSheet.create({
   settingTitle: { fontFamily: FONTS.bodyMed, fontSize: 14, color: THEME.text },
   settingDesc: { fontFamily: FONTS.body, fontSize: 12, color: THEME.textMuted, lineHeight: 16 },
   settingDivider: { height: 1, backgroundColor: THEME.border, marginHorizontal: 16 },
+  sportsPillRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    paddingHorizontal: 4,
+  },
+  sportPill: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    backgroundColor: THEME.accent + "22",
+    borderWidth: 1,
+    borderColor: THEME.accent + "44",
+  },
+  sportPillMuted: {
+    backgroundColor: THEME.surface,
+    borderColor: THEME.border,
+    opacity: 0.5,
+  },
+  sportPillText: {
+    fontFamily: FONTS.bodyMed,
+    fontSize: 12,
+    color: THEME.accent,
+  },
+  sportPillTextMuted: {
+    color: THEME.textMuted,
+    textDecorationLine: "line-through" as const,
+  },
   tokenCard: {
     backgroundColor: THEME.surface,
     borderRadius: 14,

@@ -52,5 +52,5 @@ export interface ChatMessage {
   reactions: Partial<Record<ReactionEmoji, MessageReaction>>;
   stickerReactions?: StickerReaction[];
   replyTo?: { id: string; content: string; senderAddress: string; senderUsername?: string };
-  status?: 'sending' | 'sent' | 'failed';
+  status?: 'sending' | 'sent' | 'failed' | 'pending';
 }

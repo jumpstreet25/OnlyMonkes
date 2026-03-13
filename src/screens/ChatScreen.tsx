@@ -37,9 +37,7 @@ import {
   ScrollView,
   TextInput,
   Alert,
-  AppState,
   Dimensions,
-  type AppStateStatus,
 } from "react-native";
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
@@ -56,13 +54,13 @@ import { UserProfileModal, type ProfileTarget } from "@/components/UserProfileMo
 import { NftPickerModal } from "@/components/NftPickerModal";
 import { router } from "expo-router";
 import { THEME, FONTS } from "@/lib/constants";
-import { loadUserProfile, getCachedProfile, saveSelectedNftMint, cacheProfile } from "@/lib/userProfile";
+import { loadUserProfile, getCachedProfile, getAllTimeUsers, saveSelectedNftMint, cacheProfile } from "@/lib/userProfile";
 import { checkAndUpdateStreak } from "@/lib/streaks";
 import { ConfettiView } from "@/components/ConfettiView";
 import { registerForPushNotifications, setNotificationReplyHandler } from "@/lib/notifications";
 import { loadEvents } from "@/lib/calendar";
 import { loadThemeId, loadCustomColor } from "@/lib/theme";
-import { sendSkrTip, sendDevTip } from "@/lib/solana";
+import { sendSkrTip, sendDevTip, parseTipCommand, validateRecipientWallet } from "@/lib/solana";
 import { TipModal } from "@/components/TipModal";
 import { SearchModal } from "@/components/SearchModal";
 import { CalendarModal } from "@/components/CalendarModal";
@@ -78,6 +76,11 @@ import * as MediaLibrary from "expo-media-library";
 import * as FileSystem from "expo-file-system";
 import { captureRef } from "react-native-view-shot";
 import * as ImagePicker from "expo-image-picker";
+import { compressImage } from "@/lib/videoUpload";
+import { registerNetworkSync, unregisterNetworkSync, setOfflineQueueFlusher, isOnline } from "@/lib/backgroundSync";
+import { enqueueMessage, flushOfflineQueue } from "@/lib/offlineQueue";
+import { parseSwapCommand, resolveToken, getSwapQuote, executeSwap, getTokenBalance, type SwapQuote, type ParsedSwapCommand } from "@/lib/jupiterSwap";
+import { SwapConfirmModal } from "@/components/SwapConfirmModal";
 import type { ChatMessage, ReactionEmoji } from "@/types";
 import type { TipAmount } from "@/lib/constants";
 
@@ -128,6 +131,9 @@ export default function ChatScreen() {
   const [adminRecoveryPat, setAdminRecoveryPat] = useState("");
   const [adminRecoveryBusy, setAdminRecoveryBusy] = useState(false);
   const [adminRecoveryError, setAdminRecoveryError] = useState<string | null>(null);
+  const [swapQuote, setSwapQuote] = useState<SwapQuote | null>(null);
+  const [swapConfirmOpen, setSwapConfirmOpen] = useState(false);
+  const [swapExecuting, setSwapExecuting] = useState(false);
   const flatListRef = useRef<FlatList>(null);
   const initialMsgIdsRef = useRef<Set<string>>(new Set());
   const lightboxViewRef = useRef<any>(null);
@@ -172,7 +178,7 @@ export default function ChatScreen() {
     setRefreshingChat(false);
   }, [syncMessages]);
 
-  // ─── XMTP connect + foreground sync ──────────────────────────────────────────
+  // ─── XMTP connect + network-aware sync ───────────────────────────────────────
   useEffect(() => {
     initialize().then(async () => {
       const { justHitLegendary } = await checkAndUpdateStreak();
@@ -182,28 +188,39 @@ export default function ChatScreen() {
       }
     });
 
-    // Sync messages when app comes back to foreground (fixes missed msgs on Android)
-    let lastState: AppStateStatus = AppState.currentState;
-    const sub = AppState.addEventListener("change", (next: AppStateStatus) => {
-      if (lastState !== "active" && next === "active") {
-        syncMessages();
-      }
-      lastState = next;
+    // Wire offline queue flusher so it fires when network comes back
+    setOfflineQueueFlusher(async () => {
+      const { updateMessageStatus } = useChatStore.getState();
+      await flushOfflineQueue(
+        (text) => send(text),
+        (replyTo, text) => {
+          if (!replyTo) return send(text);
+          return reply(replyTo as ChatMessage, text);
+        },
+        updateMessageStatus,
+      );
     });
 
+    // Register network-aware heartbeat (replaces manual AppState + setInterval)
+    const syncOrReconnect = async () => {
+      if (!streamAlive()) await initialize();
+      else await syncMessages();
+    };
+    registerNetworkSync(syncOrReconnect, initialize);
+
     return () => {
-      sub.remove();
+      unregisterNetworkSync();
       disconnect();
     };
   }, []);
 
   // ─── Auto-retry until approved ───────────────────────────────────────────────
-  // Retries every 5s — any online group member's device auto-approves the request.
+  // Retries every 3s — bot auto-approves join requests via DM.
   useEffect(() => {
     if (isGroupMember || !remoteGroupId) return;
     const interval = setInterval(() => {
       initialize();
-    }, 5_000);
+    }, 3_000);
     return () => clearInterval(interval);
   }, [isGroupMember, remoteGroupId]);
 
@@ -216,25 +233,12 @@ export default function ChatScreen() {
   }, [isGroupMember]);
 
   // ─── Wire notification inline-reply → XMTP send ───────────────────────────
-  // When user hits "Reply" on a heads-up notification, the typed text is
-  // delivered here and sent directly to the group chat.
   useEffect(() => {
     if (!isGroupMember) return;
     setNotificationReplyHandler((text) => {
       send(text).catch((err) => console.warn("[Notifications] Reply send failed:", err));
     });
   }, [isGroupMember, send]);
-
-  // ─── Stream heartbeat ─────────────────────────────────────────────────────────
-  // Every 15s: if stream is dead → reconnect; if alive → sync missed messages.
-  useEffect(() => {
-    if (!isGroupMember) return;
-    const id = setInterval(() => {
-      if (!streamAlive()) { initialize(); }
-      else { syncMessages(); }
-    }, 15_000);
-    return () => clearInterval(id);
-  }, [isGroupMember]);
 
   // ─── Aggressive re-sync on sparse history (fresh install / epoch update) ──────
   // After a fresh install the new installation key won't see old messages until
@@ -296,6 +300,81 @@ export default function ChatScreen() {
     const text = inputText.trim();
     if (!text) return;
 
+    // ── Intercept /buy, /sell, /swap commands ──────────────────────────────────
+    const swapCmd = parseSwapCommand(text);
+    if (swapCmd) {
+      setInputText("");
+      setIsSending(true);
+      try {
+        const walletAddr = useAppStore.getState().wallet?.address;
+        if (!walletAddr) { Alert.alert("No wallet", "Connect your wallet first."); return; }
+
+        const inputToken = await resolveToken(swapCmd.inputSymbol);
+        const outputToken = await resolveToken(swapCmd.outputSymbol);
+        if (!inputToken) { Alert.alert("Unknown token", `Could not find token: ${swapCmd.inputSymbol}`); return; }
+        if (!outputToken) { Alert.alert("Unknown token", `Could not find token: ${swapCmd.outputSymbol}`); return; }
+
+        let amountRaw: string;
+        if (swapCmd.type === "sell") {
+          // /sell: amount is a percentage of holdings
+          const balance = await getTokenBalance(walletAddr, inputToken.mint, inputToken.decimals);
+          if (balance <= 0) { Alert.alert("No balance", `You have no ${inputToken.symbol} to sell.`); return; }
+          const sellAmount = balance * (swapCmd.amount / 100);
+          amountRaw = Math.floor(sellAmount * Math.pow(10, inputToken.decimals)).toString();
+        } else {
+          // /buy and /swap: amount is in input token units
+          amountRaw = Math.floor(swapCmd.amount * Math.pow(10, inputToken.decimals)).toString();
+        }
+
+        const quote = await getSwapQuote(
+          inputToken.mint, outputToken.mint, amountRaw,
+          inputToken.decimals, outputToken.decimals,
+          inputToken.symbol, outputToken.symbol
+        );
+        setSwapQuote(quote);
+        setSwapConfirmOpen(true);
+      } catch (err: any) {
+        Alert.alert("Swap error", err?.message ?? "Could not get swap quote.");
+      } finally {
+        setIsSending(false);
+      }
+      return;
+    }
+
+    // ── Intercept /tip @username [amount] ────────────────────────────────────
+    const tipCmd = parseTipCommand(text);
+    if (tipCmd) {
+      setInputText("");
+      // Resolve @username → inboxId → wallet
+      const allUsers = getAllTimeUsers();
+      let targetInboxId: string | null = null;
+      allUsers.forEach((name, inboxId) => {
+        if (name?.toLowerCase() === tipCmd.username.toLowerCase()) {
+          targetInboxId = inboxId;
+        }
+      });
+      if (!targetInboxId) {
+        Alert.alert("User not found", `Could not find @${tipCmd.username}. They may not have chatted yet.`);
+        return;
+      }
+      const cached = getCachedProfile(targetInboxId);
+      const recipientWallet = cached?.tipWallet || cached?.walletAddress;
+      if (!recipientWallet) {
+        Alert.alert("No wallet", `@${tipCmd.username} hasn't linked a wallet yet.`);
+        return;
+      }
+      // Open TipModal with pre-filled target
+      setTipTarget({
+        id: `tip-cmd-${Date.now()}`,
+        senderAddress: targetInboxId,
+        senderUsername: tipCmd.username,
+        content: "",
+        sentAt: new Date(),
+        reactions: {} as ChatMessage["reactions"],
+      });
+      return;
+    }
+
     setInputText("");
     setIsSending(true);
 
@@ -333,7 +412,21 @@ export default function ChatScreen() {
       }
       useChatStore.getState().updateMessageStatus(optimistic.id, "sent");
     } catch {
-      useChatStore.getState().updateMessageStatus(optimistic.id, "failed");
+      // If offline, queue for auto-retry when back online
+      if (!isOnline()) {
+        await enqueueMessage({
+          id: optimistic.id,
+          content: text,
+          replyTo: currentReplyingTo
+            ? { id: currentReplyingTo.id, content: currentReplyingTo.content, senderAddress: currentReplyingTo.senderAddress, senderUsername: currentReplyingTo.senderUsername }
+            : undefined,
+          queuedAt: Date.now(),
+          retryCount: 0,
+        });
+        useChatStore.getState().updateMessageStatus(optimistic.id, "pending");
+      } else {
+        useChatStore.getState().updateMessageStatus(optimistic.id, "failed");
+      }
     } finally {
       setIsSending(false);
     }
@@ -388,16 +481,16 @@ export default function ChatScreen() {
       }
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        quality: 0.25,
+        quality: 0.5,
         allowsEditing: false,
-        base64: true,
+        base64: false,
       });
       if (result.canceled || !result.assets?.[0]) return;
       const asset = result.assets[0];
-      // Embed as data URI so all users can display it (no backend upload needed)
-      const dataUri = asset.base64
-        ? `data:image/jpeg;base64,${asset.base64}`
-        : asset.uri;
+      // Compress to max 1200px wide, JPEG 70% then convert to base64 data URI
+      const compressedUri = await compressImage(asset.uri);
+      const b64 = await FileSystem.readAsStringAsync(compressedUri, { encoding: FileSystem.EncodingType.Base64 });
+      const dataUri = `data:image/jpeg;base64,${b64}`;
       const content = `IMAGE:${dataUri}`;
       const optimistic: ChatMessage = {
         id: `opt-${Date.now()}`,
@@ -563,6 +656,31 @@ export default function ChatScreen() {
     }
   }, []);
 
+  // ─── Swap execution ──────────────────────────────────────────────────────────
+
+  const handleConfirmSwap = useCallback(async () => {
+    if (!swapQuote) return;
+    setSwapExecuting(true);
+    try {
+      const result = await executeSwap(swapQuote);
+      setSwapConfirmOpen(false);
+      setSwapQuote(null);
+      // Announce the trade in chat
+      const tradeMsg = `Swapped ${result.inputAmount.toFixed(4)} ${result.inputSymbol} for ${result.outputAmount.toFixed(4)} ${result.outputSymbol}`;
+      await send(tradeMsg).catch(() => {});
+      Alert.alert("Swap complete!", tradeMsg);
+    } catch (err: any) {
+      Alert.alert("Swap failed", err?.message ?? "Transaction could not be sent.");
+    } finally {
+      setSwapExecuting(false);
+    }
+  }, [swapQuote, send]);
+
+  const handleCancelSwap = useCallback(() => {
+    setSwapConfirmOpen(false);
+    setSwapQuote(null);
+  }, []);
+
   // ─── Render ──────────────────────────────────────────────────────────────────
 
   const renderMessage: ListRenderItem<ChatMessage> = useCallback(
@@ -614,6 +732,11 @@ export default function ChatScreen() {
         onStartLive={handleStartLive}
         onSearch={() => setSearchOpen(true)}
         onPressUser={(target) => { setDrawerOpen(false); setTimeout(() => setProfileTarget(target), 300); }}
+        broadcastProfile={broadcastProfile}
+        onDevTip={(amount) => {
+          setDrawerOpen(false);
+          handleConfirmDevTip(amount);
+        }}
       />
 
       <SearchModal visible={searchOpen} onClose={() => setSearchOpen(false)} />
@@ -638,6 +761,14 @@ export default function ChatScreen() {
         onClose={() => setDevTipOpen(false)}
       />
 
+
+      <SwapConfirmModal
+        visible={swapConfirmOpen}
+        quote={swapQuote}
+        isExecuting={swapExecuting}
+        onConfirm={handleConfirmSwap}
+        onCancel={handleCancelSwap}
+      />
 
       <GifPickerModal
         visible={gifPickerOpen}
@@ -972,23 +1103,23 @@ export default function ChatScreen() {
           </View>
         )}
 
-        {/* ── Not yet a member — show Access Key so admin can add them ─── */}
+        {/* ── Not yet a member — auto-joining in progress ─────────────── */}
         {!isLoading && !isGroupMember && !error && (
           <View style={styles.pendingContainer}>
             <Text style={styles.pendingIcon}>🐒</Text>
-            <Text style={styles.pendingTitle}>Access Pending</Text>
-            <ActivityIndicator color={THEME.accent} style={{ marginTop: 4 }} />
+            <Text style={styles.pendingTitle}>Joining OnlyMonkes…</Text>
+            <ActivityIndicator color={THEME.accent} style={{ marginTop: 8 }} />
             <Text style={styles.pendingSubtitle}>
-              Share your Access Key with the admin to get added to the chat.
+              Verifying your membership — this usually takes a few seconds.
             </Text>
             {!!myAddress && (
               <View style={styles.accessKeyBox}>
-                <Text style={styles.accessKeyLabel}>YOUR ACCESS KEY</Text>
+                <Text style={styles.accessKeyLabel}>YOUR CHAT ID</Text>
                 <Text style={styles.accessKeyValue} selectable numberOfLines={3}>
                   {myAddress}
                 </Text>
                 <Text style={styles.accessKeyHint}>
-                  Long-press the key above to copy it, then send it to the admin.
+                  Saved to your device permanently. If auto-join takes longer than expected, share this with the admin.
                 </Text>
               </View>
             )}
