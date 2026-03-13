@@ -474,20 +474,32 @@ export const MessageBubble = memo(function MessageBubble({
                   {botExpanded ? "collapse" : "expand"}
                 </Text>
               )}
+              {/* Sender name + time — inside bubble, tight below text */}
+              <View style={[styles.inlineSenderRow, !isOwn && styles.inlineSenderRowOther]}>
+                <Text style={isOwn ? styles.senderOwn : styles.sender}>
+                  {isOwn ? "You" : displayName}{isLegendarySender ? ' 🌟' : ''}
+                </Text>
+                <Text style={styles.timeInline}>
+                  {format(message.sentAt, "HH:mm")}
+                  {message.status === "sending" && "  ···"}
+                </Text>
+              </View>
             </View>
           )}
         </Pressable>
 
-        {/* Header: sender name + timestamp — BELOW bubble, ABOVE reactions */}
-        <View style={[styles.msgHeader, isOwn && styles.msgHeaderOwn]}>
-          <Text style={[styles.sender, isOwn && styles.senderOwn]}>
-            {isOwn ? "You" : displayName}{isLegendarySender ? ' 🌟' : ''}
-          </Text>
-          <Text style={[styles.time, { color: THEME.textFaint }]}>
-            {format(message.sentAt, "HH:mm")}
-            {message.status === "sending" && "  ···"}
-          </Text>
-        </View>
+        {/* Media messages still need external sender + timestamp */}
+        {isMedia && (
+          <View style={[styles.msgHeader, isOwn && styles.msgHeaderOwn]}>
+            <Text style={isOwn ? styles.senderOwn : styles.sender}>
+              {isOwn ? "You" : displayName}{isLegendarySender ? ' 🌟' : ''}
+            </Text>
+            <Text style={[styles.time, { color: THEME.textFaint }]}>
+              {format(message.sentAt, "HH:mm")}
+              {message.status === "sending" && "  ···"}
+            </Text>
+          </View>
+        )}
 
         {/* Sticker reaction thumbnails — OUTSIDE bubble, below name */}
         {(message.stickerReactions ?? []).length > 0 && (
@@ -626,12 +638,29 @@ const styles = StyleSheet.create({
   sender: {
     fontFamily: FONTS.mono,
     fontSize: 11,
-    color: THEME.accent,
+    color: "#6CB4EE",
   },
   senderOwn: {
-    color: THEME.textMuted,
+    fontFamily: FONTS.mono,
+    fontSize: 11,
+    color: "#6CB4EE",
   },
   time: {
+    fontFamily: FONTS.mono,
+    fontSize: 10,
+    color: THEME.textFaint,
+  },
+  inlineSenderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 6,
+    marginTop: 2,
+  },
+  inlineSenderRowOther: {
+    justifyContent: "flex-start",
+  },
+  timeInline: {
     fontFamily: FONTS.mono,
     fontSize: 10,
     color: THEME.textFaint,

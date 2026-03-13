@@ -934,7 +934,7 @@ const styles = StyleSheet.create({
   drawerTitle: {
     fontFamily: FONTS.display,
     fontSize: 20,
-    color: THEME.text,
+    color: "#6CB4EE",
     flex: 1,
   },
   subViewTitle: {
@@ -1058,7 +1058,7 @@ const styles = StyleSheet.create({
     color: THEME.textFaint,
   },
   menuBadge: {
-    backgroundColor: THEME.accent,
+    backgroundColor: "#6CB4EE",
     borderRadius: 8,
     minWidth: 18,
     height: 18,
