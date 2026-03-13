@@ -482,6 +482,8 @@ export const MessageBubble = memo(function MessageBubble({
                 <Text style={styles.timeInline}>
                   {format(message.sentAt, "HH:mm")}
                   {message.status === "sending" && "  ···"}
+                  {message.status === "pending" && "  🕐"}
+                  {message.status === "failed" && "  ⚠️"}
                 </Text>
               </View>
             </View>

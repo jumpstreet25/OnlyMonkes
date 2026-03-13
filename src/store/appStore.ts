@@ -43,6 +43,10 @@ interface AppState {
   botNotificationsEnabled: boolean;
   dmNotificationsEnabled: boolean;
   liveRoomNotificationsEnabled: boolean;
+  // Per-bot-channel mute toggles
+  mutedBotChannels: { bets: boolean; trades: boolean; sales: boolean; predictions: boolean };
+  // MonkeBets sports filter — sports the user has opted OUT of
+  mutedSports: string[];
   // Group membership
   isGroupMember: boolean;
   // Admin
@@ -89,6 +93,8 @@ interface AppActions {
   setBotNotificationsEnabled: (enabled: boolean) => void;
   setDmNotificationsEnabled: (enabled: boolean) => void;
   setLiveRoomNotificationsEnabled: (enabled: boolean) => void;
+  toggleBotChannelMute: (channel: 'bets' | 'trades' | 'sales' | 'predictions') => void;
+  toggleSportMute: (sport: string) => void;
   setIsGroupMember: (isMember: boolean) => void;
   setIsGroupAdmin: (isAdmin: boolean) => void;
   setJoinRequests: (requests: JoinRequest[]) => void;
@@ -131,6 +137,8 @@ const initialState: AppState = {
   botNotificationsEnabled: true,
   dmNotificationsEnabled: true,
   liveRoomNotificationsEnabled: true,
+  mutedBotChannels: { bets: false, trades: false, sales: false, predictions: false },
+  mutedSports: [],
   isGroupMember: false,
   isGroupAdmin: false,
   joinRequests: [],
@@ -170,6 +178,14 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   setBotNotificationsEnabled: (botNotificationsEnabled) => set({ botNotificationsEnabled }),
   setDmNotificationsEnabled: (dmNotificationsEnabled) => set({ dmNotificationsEnabled }),
   setLiveRoomNotificationsEnabled: (liveRoomNotificationsEnabled) => set({ liveRoomNotificationsEnabled }),
+  toggleBotChannelMute: (channel) => set((s) => ({
+    mutedBotChannels: { ...s.mutedBotChannels, [channel]: !s.mutedBotChannels[channel] },
+  })),
+  toggleSportMute: (sport) => set((s) => ({
+    mutedSports: s.mutedSports.includes(sport)
+      ? s.mutedSports.filter(sp => sp !== sport)
+      : [...s.mutedSports, sport],
+  })),
   setIsGroupMember: (isGroupMember) => set({ isGroupMember }),
   setIsGroupAdmin: (isGroupAdmin) => set({ isGroupAdmin }),
   setJoinRequests: (joinRequests) => set({ joinRequests }),

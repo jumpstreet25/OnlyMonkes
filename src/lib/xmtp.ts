@@ -144,15 +144,16 @@ export async function sendJoinRequestDM(
  */
 export async function fetchJoinRequests(client: XmtpClient): Promise<JoinRequest[]> {
   await client.conversations.sync();
-  const allConvos: any[] = await (client.conversations as any).list();
+  // Use listDms with all consent states so we also see "unknown" DMs from new users
+  const allDms: any[] = await (client.conversations as any).listDms(
+    undefined, // opts
+    undefined, // limit
+    ["allowed", "unknown"], // consentStates — new users are "unknown"
+  );
 
   const requests: JoinRequest[] = [];
 
-  for (const convo of allConvos) {
-    // Skip groups — only process DM conversations.
-    if (typeof (convo as any).isGroup !== "undefined" && (convo as any).isGroup) continue;
-    if (typeof (convo as any).peerInboxId === "undefined") continue;
-
+  for (const convo of allDms) {
     try {
       await (convo as any).sync();
       const msgs: any[] = await (convo as any).messages({ limit: 20 });
@@ -402,7 +403,11 @@ export async function sendProfileUpdate(
   nftImage?: string | null,
   legendary?: boolean,
   pushToken?: string | null,
-  notifPrefs?: { all: boolean; mentions: boolean; bot: boolean; dm: boolean; live: boolean } | null,
+  notifPrefs?: {
+    all: boolean; mentions: boolean; bot: boolean; dm: boolean; live: boolean;
+    mutedChannels?: { bets: boolean; trades: boolean; sales: boolean; predictions: boolean };
+    mutedSports?: string[];
+  } | null,
   expoPushToken?: string | null,
 ): Promise<void> {
   const payload = JSON.stringify({
@@ -415,7 +420,12 @@ export async function sendProfileUpdate(
     ni: nftImage ?? "",
     lg: legendary ? 1 : 0,
     pt: pushToken ?? "",
-    np: notifPrefs ?? null,
+    np: notifPrefs ? {
+      all: notifPrefs.all, mentions: notifPrefs.mentions, bot: notifPrefs.bot,
+      dm: notifPrefs.dm, live: notifPrefs.live,
+      mc: notifPrefs.mutedChannels ?? null,
+      ms: notifPrefs.mutedSports ?? null,
+    } : null,
     ept: expoPushToken ?? "",
   });
   await (group as any).send(`PROFILE_UPDATE:${payload}`);

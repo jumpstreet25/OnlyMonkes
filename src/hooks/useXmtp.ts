@@ -56,6 +56,7 @@ let _lastTypingSent = 0;
 import { showLocalNotification, detectMention, getCachedPushToken, registerForExpoPushToken, CH_ALL, CH_MENTIONS, CH_BOT } from "@/lib/notifications";
 
 const BOT_USERNAME = "AI Agent #9385";
+import { loadCachedMessages, saveCachedMessages, appendCachedMessage, getLastReadTimestamp } from "@/lib/messageCache";
 import type { ChatMessage, ReactionEmoji } from "@/types";
 import type { XmtpClient, XmtpGroup } from "@/lib/xmtp";
 
@@ -81,6 +82,7 @@ export async function triggerProfileRebroadcast(pushToken: string): Promise<void
   const { username, bio, xAccount, wallet, tipWallet, verifiedNft, isLegendary,
     notificationsEnabled, mentionsOnly, botNotificationsEnabled,
     dmNotificationsEnabled, liveRoomNotificationsEnabled,
+    mutedBotChannels, mutedSports,
   } = useAppStore.getState();
   try {
     const expoPushToken = useAppStore.getState().expoPushToken ?? await registerForExpoPushToken();
@@ -95,6 +97,8 @@ export async function triggerProfileRebroadcast(pushToken: string): Promise<void
         bot: botNotificationsEnabled,
         dm: dmNotificationsEnabled,
         live: liveRoomNotificationsEnabled,
+        mutedChannels: mutedBotChannels,
+        mutedSports,
       },
       expoPushToken,
     );
@@ -331,6 +335,12 @@ export function useXmtp() {
       // ── 4. Load message history ────────────────────────────────────────────
       setIsGroupMember(true);
       setLoadingHistory(true);
+
+      // Load cached main chat messages immediately so Shared Images/Links are available
+      try {
+        const cached = await loadCachedMessages("main_chat");
+        if (cached.length > 0) setMessages(cached);
+      } catch { /* non-critical */ }
       // First sync the group to pull its latest messages from the network.
       // Then syncAllConversations triggers the epoch update for fresh installs
       // (new installation key needs the group to propagate its latest epoch).
@@ -409,8 +419,12 @@ export function useXmtp() {
       // Populate senderNft from profile cache so avatars always show correctly
       const historyMessages = decoded.map(enrichWithNft);
 
-      setMessages(historyMessages.reverse()); // oldest-first
+      const orderedHistory = historyMessages.reverse(); // oldest-first
+      setMessages(orderedHistory);
       setLoadingHistory(false);
+
+      // Persist main chat messages for Shared Images/Links across restarts
+      saveCachedMessages("main_chat", orderedHistory).catch(() => {});
 
       // ── 5. Stream incoming messages ────────────────────────────────────────
       _unsubscribeStream?.();
@@ -515,7 +529,11 @@ export function useXmtp() {
         // Skip own messages — already shown as optimistic bubbles
         if (msg.senderAddress === _myInboxId) return;
 
-        mergeMessage(enrichWithNft(msg));
+        const enrichedMsg = enrichWithNft(msg);
+        mergeMessage(enrichedMsg);
+
+        // Persist to cache for Shared Images/Links
+        appendCachedMessage("main_chat", enrichedMsg).catch(() => {});
 
         const { notificationsEnabled, mentionsOnly, botNotificationsEnabled, username } =
           useAppStore.getState();
@@ -562,6 +580,7 @@ export function useXmtp() {
             const { username, bio, xAccount, wallet, tipWallet, verifiedNft, isLegendary,
               notificationsEnabled, mentionsOnly, botNotificationsEnabled,
               dmNotificationsEnabled, liveRoomNotificationsEnabled,
+              mutedBotChannels, mutedSports,
             } = useAppStore.getState();
             // Wait up to 8s for FCM token — on first launch, registerForPushNotifications()
             // in _layout.tsx runs concurrently with XMTP init, causing a race condition
@@ -595,6 +614,8 @@ export function useXmtp() {
                 bot: botNotificationsEnabled,
                 dm: dmNotificationsEnabled,
                 live: liveRoomNotificationsEnabled,
+                mutedChannels: mutedBotChannels,
+                mutedSports,
               },
               expoPushToken,
             );
@@ -606,7 +627,7 @@ export function useXmtp() {
         })();
       }
 
-      // ── 7. Fetch bot channel message counts (fire-and-forget) ────────────
+      // ── 7. Fetch bot channel unread counts (using last-read timestamps) ──
       (async () => {
         try {
           const channelIds = useAppStore.getState().botChannelIds;
@@ -620,18 +641,22 @@ export function useXmtp() {
               if (ch) {
                 await (ch as any).sync();
                 const msgs: any[] = await (ch as any).messages({ limit: 100 });
-                // Count only actual content messages (not profile updates etc)
-                counts[key] = msgs.filter((m: any) => {
-                  try {
-                    const c = m.content();
-                    return typeof c === 'string' && c.startsWith('MSG:');
-                  } catch { return false; }
-                }).length;
+                // Decode and cache fresh messages
+                const decoded = msgs
+                  .map((m: any) => decodeMessage(m, client.inboxId))
+                  .filter(Boolean) as ChatMessage[];
+                const freshMessages = decoded.reverse();
+                await saveCachedMessages(key, freshMessages);
+                // Count only messages newer than last-read timestamp
+                const lastRead = await getLastReadTimestamp(key);
+                counts[key] = freshMessages.filter((m) =>
+                  m.sentAt.getTime() > lastRead
+                ).length;
               }
             } catch { /* skip */ }
           }
           useAppStore.getState().setBotChannelCounts(counts);
-          console.log('[XMTP] Bot channel counts:', counts);
+          console.log('[XMTP] Bot channel unread counts:', counts);
         } catch { /* non-critical */ }
       })();
     } catch (err) {

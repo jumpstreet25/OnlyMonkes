@@ -20,7 +20,7 @@ interface ChatActions {
   mergeMessage: (message: ChatMessage) => void;
   /** Own-message variant: upgrades opt-* in-place but NEVER appends. Prevents own-message duplicates from heartbeat sync. */
   upgradeOwnMessage: (message: ChatMessage) => void;
-  updateMessageStatus: (id: string, status: 'sending' | 'sent' | 'failed') => void;
+  updateMessageStatus: (id: string, status: 'sending' | 'sent' | 'failed' | 'pending') => void;
   applyReactionUpdate: (messages: ChatMessage[]) => void;
   setReplyingTo: (message: ChatMessage | null) => void;
   setLoadingHistory: (loading: boolean) => void;
