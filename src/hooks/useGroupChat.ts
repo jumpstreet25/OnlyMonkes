@@ -2,8 +2,11 @@
  * useGroupChat
  *
  * Generic hook for connecting to any XMTP group chat.
- * Used by dApp side chats (Alchemy Merch, etc.).
+ * Used by dApp side chats (bot channels, etc.).
  * Manages its own local message state independently of the global chatStore.
+ *
+ * Messages are persisted to AsyncStorage via messageCache so they survive
+ * app restarts. 7-day auto-expiry applies (except media/link messages).
  */
 
 import { useCallback, useRef, useState } from "react";
@@ -17,6 +20,12 @@ import {
   sendReaction,
 } from "@/lib/xmtp";
 import { useAppStore } from "@/store/appStore";
+import {
+  loadCachedMessages,
+  saveCachedMessages,
+  appendCachedMessage,
+  markChannelRead,
+} from "@/lib/messageCache";
 import type { ChatMessage, ReactionEmoji } from "@/types";
 import type { XmtpClient, XmtpGroup } from "@/lib/xmtp";
 
@@ -33,11 +42,20 @@ export function useGroupChat(groupId: string, groupName: string) {
   const unsubscribeRef = useRef<(() => void) | null>(null);
   const myInboxIdRef = useRef<string>("");
 
+  // Use groupName as the cache key (e.g. "bets", "trades", etc.)
+  const cacheKey = groupName.toLowerCase().replace(/\s+/g, "_");
+
   const initialize = useCallback(async () => {
     setIsLoading(true);
     setError(null);
 
     try {
+      // 1. Load cached messages immediately so UI isn't empty
+      const cached = await loadCachedMessages(cacheKey);
+      if (cached.length > 0) {
+        setMessages(cached);
+      }
+
       const client = await initXmtpClient();
       clientRef.current = client;
       setMyInboxId(client.inboxId);
@@ -66,9 +84,25 @@ export function useGroupChat(groupId: string, groupName: string) {
         }
       }
 
-      setMessages(enriched.reverse());
+      const freshMessages = enriched.reverse();
+
+      // 2. Merge fresh XMTP messages with cache (dedup by ID)
+      const freshIds = new Set(freshMessages.map((m) => m.id));
+      const merged = [
+        ...cached.filter((m) => !freshIds.has(m.id)),
+        ...freshMessages,
+      ].sort((a, b) => a.sentAt.getTime() - b.sentAt.getTime());
+
+      setMessages(merged);
       setIsLoadingHistory(false);
 
+      // 3. Persist merged messages
+      await saveCachedMessages(cacheKey, merged);
+
+      // 4. Mark channel as read now
+      await markChannelRead(cacheKey);
+
+      // 5. Stream new messages
       const unsub = await (group as any).streamMessages(async (raw: any) => {
         let content: string;
         try {
@@ -83,7 +117,10 @@ export function useGroupChat(groupId: string, groupName: string) {
         }
 
         const msg = decodeMessage(raw, myInboxIdRef.current);
-        if (msg) setMessages((prev) => [...prev, msg]);
+        if (msg) {
+          setMessages((prev) => [...prev, msg]);
+          await appendCachedMessage(cacheKey, msg);
+        }
       });
 
       unsubscribeRef.current = unsub;
@@ -92,7 +129,7 @@ export function useGroupChat(groupId: string, groupName: string) {
     } finally {
       setIsLoading(false);
     }
-  }, [groupId, groupName, setMyInboxId]);
+  }, [groupId, groupName, cacheKey, setMyInboxId]);
 
   const disconnect = useCallback(() => {
     unsubscribeRef.current?.();

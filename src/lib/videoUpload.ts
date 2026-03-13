@@ -1,10 +1,23 @@
 import Constants from 'expo-constants';
 import * as VideoThumbnails from 'expo-video-thumbnails';
 import * as FileSystem from 'expo-file-system';
+import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 
 const CLOUD_NAME = Constants.expoConfig?.extra?.cloudinaryCloudName as string;
 const UPLOAD_PRESET = Constants.expoConfig?.extra?.cloudinaryUploadPreset as string;
 const THUMB_DIR = FileSystem.cacheDirectory + 'video_thumbs/';
+
+/**
+ * Compress a thumbnail to 480px wide, JPEG quality 0.7.
+ */
+async function compressThumbnail(uri: string): Promise<string> {
+  const result = await manipulateAsync(
+    uri,
+    [{ resize: { width: 480 } }],
+    { compress: 0.7, format: SaveFormat.JPEG },
+  );
+  return result.uri;
+}
 
 export async function getOrGenerateThumbnail(videoUri: string): Promise<string> {
   const hash = videoUri.split('/').pop()?.replace(/\W/g, '') ?? Date.now().toString();
@@ -13,8 +26,18 @@ export async function getOrGenerateThumbnail(videoUri: string): Promise<string> 
   if (info.exists) return cachedPath;
   await FileSystem.makeDirectoryAsync(THUMB_DIR, { intermediates: true });
   const { uri } = await VideoThumbnails.getThumbnailAsync(videoUri, { time: 0 });
-  await FileSystem.copyAsync({ from: uri, to: cachedPath });
+  // Compress the thumbnail before caching
+  const compressed = await compressThumbnail(uri);
+  await FileSystem.copyAsync({ from: compressed, to: cachedPath });
   return cachedPath;
+}
+
+/**
+ * Insert Cloudinary transformation into a URL for auto quality/format.
+ * e.g. .../upload/v123/file.mp4 → .../upload/q_auto,f_auto/v123/file.mp4
+ */
+function addCloudinaryTransform(url: string, transform: string): string {
+  return url.replace('/upload/', `/upload/${transform}/`);
 }
 
 export async function uploadVideo(videoUri: string): Promise<{ videoUrl: string; thumbUrl: string }> {
@@ -40,5 +63,21 @@ export async function uploadVideo(videoUri: string): Promise<{ videoUrl: string;
   const tData = await tRes.json();
   const thumbUrl = tData.secure_url ?? vData.secure_url + '.jpg';
 
-  return { videoUrl: vData.secure_url, thumbUrl };
+  // Apply server-side transformations for optimized delivery
+  return {
+    videoUrl: addCloudinaryTransform(vData.secure_url, 'q_auto,f_auto'),
+    thumbUrl: addCloudinaryTransform(thumbUrl, 'w_480,q_auto,f_auto'),
+  };
+}
+
+/**
+ * Compress an image before upload — max 1200px wide, JPEG quality 0.7.
+ */
+export async function compressImage(uri: string): Promise<string> {
+  const result = await manipulateAsync(
+    uri,
+    [{ resize: { width: 1200 } }],
+    { compress: 0.7, format: SaveFormat.JPEG },
+  );
+  return result.uri;
 }

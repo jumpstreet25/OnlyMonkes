@@ -26,6 +26,7 @@ import { THEME, FONTS, MAX_MESSAGE_LENGTH } from "@/lib/constants";
 import { shortenAddress } from "@/lib/nftVerification";
 import { getAllTimeUsers, getCachedProfile } from "@/lib/userProfile";
 import { useAppStore } from "@/store/appStore";
+import { markChannelRead } from "@/lib/messageCache";
 import type { ChatMessage } from "@/types";
 
 function getActiveMention(text: string): { start: number; query: string } | null {
@@ -63,11 +64,13 @@ function ChannelButton({ channelId, image }: { channelId: 'bets' | 'trades' | 's
       onPress={() => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         clearCount(channelId);
+        markChannelRead(channelId).catch(() => {});
         router.push(`/bot-channel?channelId=${channelId}`);
       }}
       onLongPress={() => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         clearCount(channelId);
+        markChannelRead(channelId).catch(() => {});
       }}
       style={({ pressed }) => [styles.toolbarBtn, styles.toolbarChannel, pressed && { opacity: 0.7 }]}
     >
@@ -546,34 +549,32 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   toolbarChannel: {
-    width: 43,
-    height: 43,
+    width: 49,
+    height: 49,
     overflow: "hidden",
-    borderRadius: 11,
+    borderRadius: 13,
   },
   toolbarChannelImg: {
-    width: 43,
-    height: 43,
-    borderRadius: 11,
+    width: 49,
+    height: 49,
+    borderRadius: 13,
     resizeMode: "cover",
   },
   badge: {
     position: "absolute",
-    top: -4,
-    right: -4,
-    minWidth: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: "#FF4C4C",
+    top: -6,
+    left: 0,
+    right: 0,
     alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 3,
   },
   badgeText: {
     fontFamily: FONTS.mono,
-    fontSize: 9,
+    fontSize: 11,
     color: "#fff",
-    fontWeight: "700",
+    fontWeight: "800",
+    textShadowColor: "rgba(0,0,0,0.7)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
 
   // ── Slash command suggestion list ─────────────────────────────────────────

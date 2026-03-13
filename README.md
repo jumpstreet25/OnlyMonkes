@@ -29,6 +29,9 @@ An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect yo
 - **OnlyMonkes blue branding** — sender names, toolbar buttons (CAM/LIVE/GIF), and Community drawer title all use the signature sky blue (`#6CB4EE`) from the header logo
 - **Bot slash commands** — type `/` to autocomplete 10 bot commands: `/price`, `/ta`, `/watchlist`, `/alerts`, `/sports`, `/tip`, `/buy`, `/sell`, `/swap`, `/help`
 - **Message search** — search through chat history
+- **In-app Jupiter swaps** — `/buy $TOKEN [SOL]`, `/sell $TOKEN [%]`, `/swap $A for $B` resolve tokens via Jupiter strict list, show a confirmation modal (amounts, price impact, slippage), and execute via MWA biometric sign — all without leaving the app
+- **In-app tipping** — `/tip @username [amount]` resolves username → wallet from the profile cache, opens a confirmation modal, and sends $SKR via MWA one-tap biometric; Support OnlyMonkes button also tips the dev wallet in-app
+- **SOL → SKR swap tips** — users without $SKR can tip using SOL; Jupiter swap + SPL transfer chained in a single `transact()` session (one biometric prompt)
 
 ### Community
 - **Bot alert channels** — four dedicated read-only feeds for categorized bot alerts: Monke Bets, Monke Trades, Monke Sales, Monke Predictions; each backed by a separate XMTP group configured via remote app config; channel icons in the toolbar below the message bar with unread count badges (tap to navigate + clear, long-press to clear)
@@ -55,11 +58,12 @@ An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect yo
 ### AI Agent & TA Scanner
 - **AI Agent #9385** — XMTP bot in the group chat; delivers TA alerts (RSI, MACD, EMA) for Solana tokens, Saga Monke NFT sale alerts, and responds to DMs via Claude AI; built on ElizaOS v2 with plugin-solana for trade execution
 - **TA Savvy Monke** — professional-grade multi-timeframe TA scanner; scans all verified Solana SPL tokens every 8 min across 15m/1H/4H/daily candles; posts confluence alerts (Ichimoku, Fibonacci, Bollinger, Stochastic, ADX, OBV, candle patterns) to Main Chat when signal score ≥72/100; sentiment gate (Birdeye trending + wash trading detection)
-- **Slash commands** — `/tip @Username [amt]` (send $SKR), `/buy $TOKEN`, `/sell $TOKEN`, `/swap $A for $B` — all routed through Jupiter aggregator with referral
+- **Slash commands** — `/tip @Username [amt]` (send $SKR), `/buy $TOKEN`, `/sell $TOKEN`, `/swap $A for $B` — all execute in-app via MWA biometric sign + Jupiter aggregator
+- **Color-coded risk alerts** — 🟢 Low Risk, 🟡 Medium, 🔴 High Risk dots on all TA alerts; compact confluence tags (RSI + MACD Cross + BB Squeeze); inline chart links (DEXScreener, Birdeye, Jupiter)
 - **Per-user TA risk settings** — DM the bot `/risk` to set position size, stop-loss %, conviction threshold, blacklist, mute, and more
 - **Backtesting** — DM `/backtest $TOKEN [days]` for historical signal replay with win/loss stats, Sharpe ratio, max drawdown
 - **Portfolio tracking** — DM `/portfolio` for open positions, closed P&L, and daily summaries
-- **Support OnlyMonkes button** — in the Tools drawer; quick-tip 5/10/25/50 $SKR to the dev wallet via Solana Pay deep link
+- **Support OnlyMonkes button** — in the Tools drawer; quick-tip 5/10/25/50 $SKR to the dev wallet via in-app MWA biometric (no app switch)
 - **Per-type push titles** — 🐒 Saga Monke Sold! / 📈 Bullish Signal / 📉 Bearish Signal per alert type
 - **Enriched push payloads** — notifications include `type`, `sender`, `avatarUrl`, `preview` fields for rich display
 
@@ -74,6 +78,7 @@ An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect yo
 | Messaging | XMTP v5 MLS (`@xmtp/react-native-sdk`) |
 | Live Audio | LiveKit WebRTC (`livekit-client`, `@livekit/react-native`) |
 | Wallet | Mobile Wallet Adapter (`@solana-mobile/mobile-wallet-adapter-protocol-web3js`) |
+| Token Swaps | Jupiter v6 API (quote + swap) via MWA `VersionedTransaction` |
 | NFT Verification | Helius DAS API (`getAssetsByOwner`) |
 | State | Zustand |
 | Images | `expo-image` (disk-cached GIFs, NFT avatars) |
@@ -118,7 +123,8 @@ OnlyMonkes/
 │   │   ├── NftPickerModal.tsx        # NFT avatar selector
 │   │   ├── OnboardingCarousel.tsx    # First-launch 3-slide animated explainer
 │   │   ├── SearchModal.tsx           # Message history search
-│   │   ├── TipModal.tsx              # SOL tipping flow
+│   │   ├── SwapConfirmModal.tsx       # Jupiter swap confirmation (amounts, price impact, slippage)
+│   │   ├── TipModal.tsx              # SKR tipping flow (in-app MWA biometric)
 │   │   ├── UserProfileModal.tsx      # Profile card: NFT, bio, wallet, DM, tip buttons
 │   │   ├── UsernameModal.tsx         # First-launch username setup
 │   │   └── VideoCameraModal.tsx      # Full-screen camera: record, preview, upload to Cloudinary
@@ -144,7 +150,9 @@ OnlyMonkes/
 │   │   ├── notifications.ts          # Expo push token registration + FCM fallback + local notifications
 │   │   ├── remoteConfig.ts           # Remote app config fetch (bot channel IDs, feature flags)
 │   │   ├── session.ts                # Session persistence (SecureStore, 7-day TTL)
-│   │   ├── solana.ts                 # Solana RPC helpers
+│   │   ├── jupiterSwap.ts            # Jupiter v6 swap: token resolution, quotes, MWA execution
+│   │   ├── offlineQueue.ts           # Offline message queue + auto-flush
+│   │   ├── solana.ts                 # SKR tipping, SOL→SKR swap tips, wallet validation
 │   │   ├── streaks.ts                # Daily login streak (AsyncStorage)
 │   │   ├── theme.ts                  # Extended theme tokens
 │   │   ├── userProfile.ts            # Profile cache (in-memory + AsyncStorage, push token per user)
@@ -226,10 +234,10 @@ Fetch NFTs via Helius DAS API
         ├── No Saga Monkes found → Branded gate screen (Magic Eden / Tensor CTAs)
         │
         ▼
-Sign XMTP identity (wallet sign — no transaction, no fee)
+Create XMTP identity (persisted forever in SecureStore — no manual ID sharing)
         │
         ▼
-Join global XMTP MLS group
+Auto-send JOIN_REQUEST DM to bot → bot adds to group + all channels (3s retry)
         │
         ▼
 Broadcast PROFILE_UPDATE (username, NFT avatar, push token, notif prefs)
@@ -371,7 +379,8 @@ Output: `android/app/build/outputs/apk/release/app-release.apk`
 | `livekit-client` | WebRTC room/participant/speaker management |
 | `@livekit/react-native` | LiveKit native audio session + WebRTC globals |
 | `@solana-mobile/mobile-wallet-adapter-protocol-web3js` | MWA wallet connect |
-| `@solana/web3.js` | Solana RPC + PublicKey |
+| `@solana/web3.js` | Solana RPC + PublicKey + VersionedTransaction |
+| `@solana/spl-token` | SPL token transfers + ATA management (tipping) |
 | `expo-router` | File-based navigation |
 | `expo-notifications` | Push notifications + local alerts |
 | `expo-camera` | Video recording |
