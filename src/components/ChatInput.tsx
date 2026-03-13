@@ -311,7 +311,7 @@ export function ChatInput({
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onCamera(); }}
             style={({ pressed }) => [styles.toolbarBtn, styles.toolbarCamera, pressed && { opacity: 0.7 }]}
           >
-            <Text style={styles.toolbarCameraText}>📷</Text>
+            <Text style={styles.toolbarCamText}>CAM</Text>
           </Pressable>
         )}
 
@@ -502,18 +502,21 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   toolbarCamera: {
-    width: 31,
     backgroundColor: THEME.surfaceHigh,
     borderWidth: 1,
     borderColor: THEME.border,
+    paddingHorizontal: 7,
   },
-  toolbarCameraText: {
-    fontSize: 16,
+  toolbarCamText: {
+    fontFamily: FONTS.mono,
+    fontSize: 10,
+    color: "#6CB4EE",
+    letterSpacing: 0.5,
   },
   toolbarLive: {
     borderWidth: 1,
-    borderColor: "#FF4C4C55",
-    backgroundColor: "rgba(255,76,76,0.08)",
+    borderColor: THEME.border,
+    backgroundColor: THEME.surfaceHigh,
     paddingHorizontal: 7,
     flexDirection: "row",
     gap: 3,
@@ -522,34 +525,37 @@ const styles = StyleSheet.create({
     width: 5,
     height: 5,
     borderRadius: 2.5,
-    backgroundColor: "#FF4C4C",
+    backgroundColor: "#6CB4EE",
   },
   toolbarLiveText: {
     fontFamily: FONTS.mono,
     fontSize: 10,
-    color: "#FF4C4C",
+    color: "#6CB4EE",
     letterSpacing: 0.5,
   },
   toolbarGif: {
     borderWidth: 1,
-    borderColor: "#FFD700",
+    borderColor: THEME.border,
+    backgroundColor: THEME.surfaceHigh,
     paddingHorizontal: 7,
   },
   toolbarGifText: {
     fontFamily: FONTS.mono,
     fontSize: 10,
-    color: "#FFD700",
+    color: "#6CB4EE",
     letterSpacing: 0.5,
   },
   toolbarChannel: {
-    width: 34,
-    height: 34,
+    width: 43,
+    height: 43,
     overflow: "hidden",
+    borderRadius: 11,
   },
   toolbarChannelImg: {
-    width: 34,
-    height: 34,
-    borderRadius: 9,
+    width: 43,
+    height: 43,
+    borderRadius: 11,
+    resizeMode: "cover",
   },
   badge: {
     position: "absolute",

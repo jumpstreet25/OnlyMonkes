@@ -25,11 +25,13 @@ An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect yo
 - **Video messages** — record and send short video clips; thumbnails displayed inline with playback
 - **Direct Messages** — 1-on-1 encrypted DMs with any Monkes holder; inbox screen with compose modal, searchable user directory, message preview and timestamps
 - **Rich text links** — `@username` mentions render blue and are tappable (opens PFP modal); `$TOKEN` symbols render gold
+- **Inline sender labels** — sender name + timestamp rendered inside every chat bubble (bottom-aligned); own messages right-aligned, others left-aligned
+- **OnlyMonkes blue branding** — sender names, toolbar buttons (CAM/LIVE/GIF), and Community drawer title all use the signature sky blue (`#6CB4EE`) from the header logo
 - **Bot slash commands** — type `/` to autocomplete 10 bot commands: `/price`, `/ta`, `/watchlist`, `/alerts`, `/sports`, `/tip`, `/buy`, `/sell`, `/swap`, `/help`
 - **Message search** — search through chat history
 
 ### Community
-- **Bot alert channels** — four dedicated read-only feeds for categorized bot alerts: Monke Bets, Monke Trades, Monke Sales, Monke Predictions; each backed by a separate XMTP group configured via remote app config
+- **Bot alert channels** — four dedicated read-only feeds for categorized bot alerts: Monke Bets, Monke Trades, Monke Sales, Monke Predictions; each backed by a separate XMTP group configured via remote app config; channel icons in the toolbar below the message bar with unread count badges (tap to navigate + clear, long-press to clear)
 - **dApp side chats** — per-dApp community channels (hamburger menu)
 - **Community events calendar** — schedule, view, and RSVP to events; OnlyMonkes-tagged events support "Start Live Audio Chat" when time arrives
 - **Live Audio Rooms** — Twitter Spaces-style voice chat via LiveKit WebRTC; host/listener grid with speaking-highlight rings, mute toggle, live participant count, pinned banner in main chat
@@ -38,7 +40,7 @@ An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect yo
 - **Login streaks** 🔥 — daily login streak counter; confetti fires on the 7th day
 
 ### Notifications
-- **Push notifications (v8)** — direct FCM Legacy HTTP API relay via AI Agent bot (#9385); all channels now use MAX importance for heads-up banners (including bot alerts); legacy channels (v1–v7) auto-deleted on startup
+- **Push notifications (v8)** — FCM V1 API via service account + Expo push relay with Bearer auth; all channels use MAX importance for heads-up banners (including bot alerts); legacy channels (v1–v7) auto-deleted on startup
 - **Per-user notification prefs** — opt-in categories: All Messages, @Mentions Only, Bot/AI alerts, DM notifications, Live Room start alerts; prefs broadcast in `PROFILE_UPDATE` so the bot filters server-side
 - **Direct DM push relay** — when a user sends a DM, a push notification is sent directly to the recipient's FCM token (peer-to-peer, no bot required); includes sender NFT avatar in the data payload
 - **FCM token fallback** — direct FCM token generation (not Expo relay) for server-side bot push; cached in SecureStore and broadcast with PROFILE_UPDATE
@@ -78,7 +80,7 @@ An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect yo
 | Video | `expo-camera`, `expo-av`, `expo-video-thumbnails` |
 | Video Hosting | Cloudinary (upload preset, unsigned) |
 | GIF Search | GIPHY API |
-| Push Notifications | FCM Legacy HTTP API (direct — no Expo relay; AI Agent + peer-to-peer DM push) |
+| Push Notifications | FCM V1 API (service account) + Expo push relay (Bearer auth); AI Agent + peer-to-peer DM push |
 | Background Tasks | `expo-background-fetch` + `expo-task-manager` |
 | JWT Signing | `crypto-js` (HS256 for LiveKit tokens, client-side) |
 | Animations | `react-native-reanimated` ~3.10 |
@@ -105,7 +107,7 @@ OnlyMonkes/
 ├── src/
 │   ├── components/
 │   │   ├── CalendarModal.tsx         # Community event scheduler
-│   │   ├── ChatInput.tsx             # Message composer: text, GIF, video, camera, reply strip
+│   │   ├── ChatInput.tsx             # Message composer: text, reply strip + toolbar (CAM/LIVE/GIF + bot channel icons w/ badges)
 │   │   ├── ConfettiView.tsx          # 40-particle Reanimated confetti (login streak milestones)
 │   │   ├── GifPickerModal.tsx        # GIPHY search + inline GIF picker
 │   │   ├── LiveAudioPill.tsx         # Floating blue pill: host, count, mute/unmute (minimized room)
