@@ -144,12 +144,12 @@ const styles = StyleSheet.create({
   },
   cmdText: {
     fontFamily: FONTS.body,
-    fontSize: 13,
+    fontSize: 11,
     color: "#FFFFFF",
   },
   descText: {
     fontFamily: FONTS.body,
-    fontSize: 13,
+    fontSize: 11,
     color: "rgba(255,255,255,0.5)",
   },
   dot: {
