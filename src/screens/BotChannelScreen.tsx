@@ -5,7 +5,7 @@
  * Same layout as DAppChatScreen but without ChatInput — users only read alerts.
  */
 
-import React, { useCallback, useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import {
   View,
   Text,
@@ -39,6 +39,15 @@ const SPORTS_LIST = [
   { key: "ucl", label: "UCL ⚽" },
   { key: "mma", label: "MMA 🥊" },
 ] as const;
+
+// Map sport labels (as they appear in alert messages) → mute keys
+const SPORT_LABEL_TO_KEY: Record<string, string> = {};
+for (const s of SPORTS_LIST) {
+  // Extract text before emoji, e.g. "NFL 🏈" → "NFL"
+  const textOnly = s.label.replace(/\s*[\u{1F000}-\u{1FFFF}]/u, "").trim();
+  SPORT_LABEL_TO_KEY[textOnly.toUpperCase()] = s.key;
+  SPORT_LABEL_TO_KEY[s.label] = s.key; // full label match too
+}
 
 const CHANNEL_CONFIG = {
   bets: {
@@ -85,6 +94,21 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
 
   const flatListRef = useRef<FlatList>(null);
   const myAddress = myInboxId ?? "";
+
+  // Client-side filter: hide alerts for muted sports in the Bets channel
+  const filteredMessages = useMemo(() => {
+    if (channelId !== "bets" || mutedSports.length === 0) return messages;
+    return messages.filter((msg) => {
+      const text = msg.content ?? "";
+      // Sports alerts have "— SPORT_LABEL" on first line (e.g. "— NFL 🏈")
+      const dashMatch = text.match(/—\s*(.+)/);
+      if (!dashMatch) return true; // not a sports alert, keep it
+      const sportPart = dashMatch[1].trim().split("\n")[0]; // first line only
+      const key = SPORT_LABEL_TO_KEY[sportPart] ?? SPORT_LABEL_TO_KEY[sportPart.toUpperCase()];
+      if (!key) return true; // unknown sport, keep it
+      return !mutedSports.includes(key);
+    });
+  }, [messages, mutedSports, channelId]);
 
   useEffect(() => {
     if (groupId) initialize();
@@ -210,7 +234,7 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
           )}
 
           {/* Empty state */}
-          {!isLoadingHistory && messages.length === 0 && (
+          {!isLoadingHistory && filteredMessages.length === 0 && (
             <View style={styles.emptyState}>
               <Image source={config.img} style={styles.emptyImage} />
               <Text style={styles.emptyTitle}>No alerts yet</Text>
@@ -221,7 +245,7 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
           {/* Messages */}
           <FlatList
             ref={flatListRef}
-            data={messages}
+            data={filteredMessages}
             renderItem={renderMessage}
             keyExtractor={keyExtractor}
             contentContainerStyle={styles.listContent}

@@ -12,6 +12,9 @@ An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect yo
 - **NFT avatar** — your Monke NFT is your profile picture, verified on-chain
 - **Custom username & bio** — set a display name and bio, synced across all group members via XMTP profile broadcasts
 - **Legendary badge** 🌟 — special suffix for legendary-tier Monkes
+- **Persistent login** — wallet session persists indefinitely across app updates (SecureStore); no re-login required unless the user explicitly logs out
+- **7-day message history** — chat messages cached locally for 7 days (AsyncStorage); merged with live XMTP history on startup so older messages are never lost; media and link messages preserved indefinitely
+- **Persistent user profiles** — all user avatars, usernames, and profile data cached locally and survive app restarts/updates; enriched on every startup from profile cache
 - **Solana Mobile optimized** — built for Seeker / Saga devices (arm64-v8a only)
 - **Onboarding carousel** — animated 3-slide explainer shown once on first launch (🐒 Only Saga Monkes · 🔐 Private by Design · 🎙 Live & Growing)
 - **Not-a-holder screen** — non-holders see a branded gate with Magic Eden + Tensor marketplace CTAs and a "Why Saga Monkes?" breakdown
@@ -27,6 +30,7 @@ An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect yo
 - **Rich text links** — `@username` mentions render blue and are tappable (opens PFP modal); `$TOKEN` symbols render gold
 - **Inline sender labels** — sender name + timestamp rendered inside every chat bubble (bottom-aligned); own messages right-aligned, others left-aligned
 - **OnlyMonkes blue branding** — all blues unified to the signature sky blue (`#6CB4EE`) from the header logo: sender names, @mention links, toolbar labels (CAM/LIVE/GIF), live audio pill, default chat bubble theme, Community drawer title, and badge numbers
+- **Bot command ticker** — continuously scrolling horizontal ticker in the Main Chat header showing all bot commands (white text, blue dot separators); DM with bot shows DM-only commands (Ask anything, APPROVE, REJECT, etc.)
 - **Bot slash commands** — type `/` to autocomplete 10 bot commands: `/price`, `/ta`, `/watchlist`, `/alerts`, `/sports`, `/tip`, `/buy`, `/sell`, `/swap`, `/help`
 - **Message search** — search through chat history
 - **In-app Jupiter swaps** — `/buy $TOKEN [SOL]`, `/sell $TOKEN [%]`, `/swap $A for $B` resolve tokens via Jupiter strict list, show a confirmation modal (amounts, price impact, slippage), and execute via MWA biometric sign — all without leaving the app
@@ -35,7 +39,7 @@ An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect yo
 
 ### Community
 - **Bot alert channels** — four dedicated read-only feeds for categorized bot alerts: Monke Bets, Monke Trades, Monke Sales, Monke Predictions; each backed by a separate XMTP group configured via remote app config; channel icons in the toolbar below the message bar with white badge bubbles showing blue unread counts (tap to navigate + clear, long-press to clear); mute/unmute button in each channel header; warm cache with 60s TTL for instant re-opens without reload; real-time badge count streaming from background XMTP listeners
-- **Sports filter** — per-sport mute toggles in Monke Bets channel; persisted to AsyncStorage and broadcast in PROFILE_UPDATE so the bot filters server-side; survives app restarts
+- **Sports filter** — per-sport mute toggles in Monke Bets channel; persisted to AsyncStorage and broadcast in PROFILE_UPDATE so the bot filters server-side; client-side filtering hides muted sport alerts in the Bets feed in real time; survives app restarts
 - **dApp side chats** — per-dApp community channels (hamburger menu)
 - **Community events calendar** — schedule, view, and RSVP to events; OnlyMonkes-tagged events support "Start Live Audio Chat" when time arrives
 - **Live Audio Rooms** — Twitter Spaces-style voice chat via LiveKit WebRTC; host/listener grid with speaking-highlight rings, mute toggle, live participant count, pinned banner in main chat
@@ -113,6 +117,7 @@ OnlyMonkes/
 ├── src/
 │   ├── components/
 │   │   ├── CalendarModal.tsx         # Community event scheduler
+│   │   ├── BotCommandTicker.tsx      # Scrolling horizontal ticker: bot commands (chat variant + DM variant)
 │   │   ├── ChatInput.tsx             # Message composer: text, reply strip + toolbar (CAM/LIVE/GIF + bot channel icons w/ badges)
 │   │   ├── ConfettiView.tsx          # 40-particle Reanimated confetti (login streak milestones)
 │   │   ├── GifPickerModal.tsx        # GIPHY search + inline GIF picker
@@ -146,12 +151,12 @@ OnlyMonkes/
 │   │   ├── giphy.ts                  # GIPHY search API wrapper
 │   │   ├── liveAudio.ts              # LiveKit Room singleton — persists across navigation
 │   │   ├── livekit.ts                # LiveKit JWT generation (HS256, client-side); room helpers
-│   │   ├── messageCache.ts           # AsyncStorage message cache for bot channels (7-day expiry)
+│   │   ├── messageCache.ts           # AsyncStorage message cache (7-day expiry, 2000 msg cap, merged with XMTP history on startup)
 │   │   ├── matrica.ts                # Matrica holder verification
 │   │   ├── nftVerification.ts        # Helius DAS API + on-chain fallback
 │   │   ├── notifications.ts          # Expo push token registration + FCM fallback + local notifications
 │   │   ├── remoteConfig.ts           # Remote app config fetch (bot channel IDs, feature flags)
-│   │   ├── session.ts                # Session persistence (SecureStore, 7-day TTL)
+│   │   ├── session.ts                # Session persistence (SecureStore, indefinite — survives app updates)
 │   │   ├── jupiterSwap.ts            # Jupiter v6 swap: token resolution, quotes, MWA execution
 │   │   ├── offlineQueue.ts           # Offline message queue + auto-flush
 │   │   ├── solana.ts                 # SKR tipping, SOL→SKR swap tips, wallet validation

@@ -70,6 +70,7 @@ import { LiveRoomBanner } from "@/components/LiveRoomBanner";
 import { type LiveRoomData, createLivekitToken, createRoomName, LK_URL } from "@/lib/livekit";
 import * as liveAudio from "@/lib/liveAudio";
 import { LiveAudioPill } from "@/components/LiveAudioPill";
+import { BotCommandTicker } from "@/components/BotCommandTicker";
 import { showLocalNotification, CH_ALL } from "@/lib/notifications";
 import { Video, ResizeMode } from "expo-av";
 import * as MediaLibrary from "expo-media-library";
@@ -923,6 +924,13 @@ export default function ChatScreen() {
               <Text style={styles.menuIcon}>☰</Text>
             </Pressable>
           </View>
+
+          {/* Bot command ticker — overlaid at bottom of header, under the logo */}
+          {isGroupMember && (
+            <View style={styles.tickerWrap}>
+              <BotCommandTicker />
+            </View>
+          )}
         </View>
 
         {/* ── Admin Panel Modal ─────────────────────────────────────────────── */}
@@ -1338,6 +1346,14 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: THEME.border,
     backgroundColor: HEADER_BG,
+  },
+  tickerWrap: {
+    position: "absolute",
+    bottom: 2,
+    left: 72,
+    right: 12,
+    height: 22,
+    overflow: "hidden",
   },
   headerCenter: {
     flex: 1,

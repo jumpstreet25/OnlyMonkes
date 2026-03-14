@@ -307,10 +307,14 @@ export function useXmtp() {
         // Remote config has a group ID, but this user is not yet a member.
         setIsGroupMember(false);
 
-        // Auto-send a join request DM to the admin (once per device).
+        // Auto-send a join request DM to the bot (re-sends every 30s until approved).
+        // The bot auto-approves NFT holders and adds them to all channels.
         if (config.adminInboxId && config.adminInboxId !== client.inboxId) {
-          const alreadySent = await AsyncStorage.getItem(AK_JOIN_REQUEST_SENT);
-          if (!alreadySent) {
+          const lastSentRaw = await AsyncStorage.getItem(AK_JOIN_REQUEST_SENT);
+          const lastSent = lastSentRaw ? parseInt(lastSentRaw, 10) : 0;
+          const elapsed = Date.now() - lastSent;
+          // Re-send every 30s to handle bot restarts / missed DMs
+          if (elapsed > 30_000) {
             try {
               const { username, verifiedNft } = useAppStore.getState();
               await sendJoinRequestDM(
@@ -321,8 +325,8 @@ export function useXmtp() {
                 verifiedNft?.mint ?? null,
                 config.botInboxId ?? null,
               );
-              await AsyncStorage.setItem(AK_JOIN_REQUEST_SENT, "1");
-              console.log("[XMTP] Join request DM sent to admin (nft:", verifiedNft?.mint ?? "none", ")");
+              await AsyncStorage.setItem(AK_JOIN_REQUEST_SENT, String(Date.now()));
+              console.log("[XMTP] Join request DM sent to bot (nft:", verifiedNft?.mint ?? "none", ")");
             } catch (err) {
               console.warn("[XMTP] Could not send join request DM:", err);
             }
@@ -421,11 +425,20 @@ export function useXmtp() {
       const historyMessages = decoded.map(enrichWithNft);
 
       const orderedHistory = historyMessages.reverse(); // oldest-first
-      setMessages(orderedHistory);
+
+      // Merge cached messages (up to 7 days) with fresh XMTP history so
+      // messages older than the 200-message XMTP window are preserved.
+      const cached = await loadCachedMessages("main_chat").catch(() => [] as ChatMessage[]);
+      const freshIds = new Set(orderedHistory.map((m) => m.id));
+      const olderCached = cached.filter((m) => !freshIds.has(m.id)).map(enrichWithNft);
+      const merged = [...olderCached, ...orderedHistory].sort(
+        (a, b) => a.sentAt.getTime() - b.sentAt.getTime(),
+      );
+      setMessages(merged);
       setLoadingHistory(false);
 
-      // Persist main chat messages for Shared Images/Links across restarts
-      saveCachedMessages("main_chat", orderedHistory).catch(() => {});
+      // Persist merged messages for next restart
+      saveCachedMessages("main_chat", merged).catch(() => {});
 
       // ── 5. Stream incoming messages ────────────────────────────────────────
       _unsubscribeStream?.();

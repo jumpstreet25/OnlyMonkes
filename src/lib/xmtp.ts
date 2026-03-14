@@ -80,6 +80,8 @@ export async function getOrCreateGlobalChat(
   if (groupId) {
     // Step 1: discover conversations (fetches welcome messages / group invites)
     await client.conversations.sync();
+    // Also sync all conversations to pick up group invites from epoch updates
+    try { await client.conversations.syncAllConversations(); } catch { /* ignore */ }
     const found = await client.conversations.findGroup(groupId as any);
     if (found) return { group: found as unknown as XmtpGroup, isNewAdmin: false };
     // Group ID set but user is not yet a member — must be added by admin.
