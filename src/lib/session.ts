@@ -1,7 +1,7 @@
 /**
  * session.ts
  *
- * Persists the last-connected wallet for up to 7 days.
+ * Persists the last-connected wallet indefinitely.
  * On re-launch, if a valid session exists, the wallet state is restored
  * automatically — the user skips the Connect screen and goes straight
  * to NFT verification.
@@ -14,7 +14,7 @@ const SK_ADDRESS = "session_wallet_address";
 const SK_LABEL = "session_wallet_label";
 const SK_TIMESTAMP = "session_timestamp";
 
-const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+// No TTL — session persists indefinitely across app updates
 
 export async function saveSession(wallet: WalletAccount): Promise<void> {
   await Promise.all([
@@ -25,24 +25,17 @@ export async function saveSession(wallet: WalletAccount): Promise<void> {
 }
 
 /**
- * Returns the saved WalletAccount if the session is still valid (< 7 days).
- * Returns null if no session exists or it has expired.
+ * Returns the saved WalletAccount if a session exists.
+ * Sessions persist indefinitely — no TTL expiry.
  */
 export async function loadSession(): Promise<WalletAccount | null> {
   try {
-    const [address, label, tsStr] = await Promise.all([
+    const [address, label] = await Promise.all([
       SecureStore.getItemAsync(SK_ADDRESS),
       SecureStore.getItemAsync(SK_LABEL),
-      SecureStore.getItemAsync(SK_TIMESTAMP),
     ]);
 
-    if (!address || !tsStr) return null;
-
-    const age = Date.now() - parseInt(tsStr, 10);
-    if (age > SESSION_TTL_MS) {
-      await clearSession();
-      return null;
-    }
+    if (!address) return null;
 
     return {
       address,

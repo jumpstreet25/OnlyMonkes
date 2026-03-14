@@ -14,7 +14,7 @@ import type { ChatMessage } from "@/types";
 const AK_PREFIX = "msg_cache_v1_";
 const AK_LAST_READ = "msg_last_read_v1_";
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
-const MAX_CACHED_MESSAGES = 500;
+const MAX_CACHED_MESSAGES = 2000;
 
 const URL_REGEX = /https?:\/\/[^\s"'<>)]+/;
 

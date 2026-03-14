@@ -2,7 +2,8 @@ import React, { useRef, useCallback, useState, useEffect } from 'react';
 import { View, FlatList, StyleSheet, Text, Pressable, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { THEME, FONTS } from '@/lib/constants';
+import { THEME, FONTS, BOT_INBOX_IDS } from '@/lib/constants';
+import { BotCommandTicker } from '@/components/BotCommandTicker';
 import { getCachedProfile, useProfileVersion } from '@/lib/userProfile';
 import { useDm } from '@/hooks/useDm';
 import { MessageBubble } from '@/components/MessageBubble';
@@ -20,6 +21,7 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
   useProfileVersion();
   const peerProfile = getCachedProfile(peerInboxId);
   const peerName = peerProfile?.username ?? peerInboxId.slice(0, 8) + '…';
+  const isBotDm = BOT_INBOX_IDS.includes(peerInboxId);
 
   const handleSend = useCallback(async () => {
     const text = inputText.trim();
@@ -40,6 +42,8 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
         </Pressable>
         <Text style={styles.peerName}>{peerName}</Text>
       </View>
+
+      {isBotDm && <BotCommandTicker variant="dm" />}
 
       {loading ? (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 }}>

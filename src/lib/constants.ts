@@ -39,6 +39,12 @@ export const DAPPS = [
 
 export const MAX_MESSAGE_LENGTH = 1000;
 
+// Bot XMTP inbox IDs — used to detect DM conversations with the bot
+export const BOT_INBOX_IDS = [
+  '998001a498174b8a194110ee792b10f97de4965665eaf0d088ed2c71bdf62363', // AI Agent #9385
+  '5862dfd861978cd587c151ded8fd7fb1ccdbca45d420da99a2299e2a675707b2', // TA Savvy Monke
+];
+
 export const REACTIONS = ['🐒', '🔥', '🚀', '👍', '🍌'] as const;
 
 export const THEME = {
