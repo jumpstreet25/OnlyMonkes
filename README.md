@@ -24,8 +24,12 @@ An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect yo
 - **Emoji reactions** — react to any message with any emoji
 - **Sticker reactions** — react with GIF stickers
 - **Reply threads** — long-press any message to quote-reply
+- **Edit messages** — edit your own text messages within 1 minute of sending; `EDIT:` protocol message updates the bubble in-place with "(edited)" label
+- **Copy messages** — long-press any message to copy its text to clipboard (Main Chat & DMs)
 - **GIF search** — powered by GIPHY, inline animated GIFs in chat
 - **Video messages** — record and send short video clips; thumbnails displayed inline with playback
+- **Image watermark** — all sent photos and videos display a persistent OnlyMonkes watermark (bottom-right); watermark stays consistent size/position in both chat bubble and fullscreen lightbox
+- **Share to X/Twitter** — after sending a photo, a popup offers to share on X with auto-caption "Shot Using @xOnlyMonkes" and the watermark baked in
 - **Direct Messages** — 1-on-1 encrypted DMs with any Monkes holder; inbox screen with compose modal, searchable user directory, message preview and timestamps
 - **Rich text links** — `@username` mentions render blue and are tappable (opens PFP modal); `$TOKEN` symbols render gold
 - **Inline sender labels** — sender name + timestamp rendered inside every chat bubble (bottom-aligned); own messages right-aligned, others left-aligned
@@ -45,7 +49,10 @@ An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect yo
 - **Live Audio Rooms** — Twitter Spaces-style voice chat via LiveKit WebRTC; host/listener grid with speaking-highlight rings, mute toggle, live participant count, pinned banner in main chat
   - **Minimize to chat** — tap ⌄ to collapse the audio room back to the chat without disconnecting; a floating blue pill stays pinned at the top of the chat showing `@host · N Monkes`, a live mute/unmute button, and an expand arrow to return to the full room
 - **Activity leaderboard** — weekly stats tracking messages sent/reactions given/received; top-3 with medals in the Members tab; auto-resets on Monday UTC
-- **Login streaks** 🔥 — daily login streak counter; confetti fires on the 7th day
+- **Login streaks** — daily login streak counter; confetti fires on the 7th day
+- **Daily GMonke** — bot posts "GMonke" every morning at 8am EST to Main Chat
+- **Weekly PNL report** — bot sends hypothetical PNL for all trade alerts every Sunday at 5am EST to Monke Trades channel; tracks all signaled trades persistently with entry price, targets, and stop loss
+- **Popup modals** — all popup dialogs (edit message, X share) use dark theme (black background, OnlyMonkes blue text) matching the app aesthetic
 
 ### Notifications
 - **Push notifications (v8)** — FCM V1 API via service account + Expo push relay with Bearer auth; all channels use MAX importance for heads-up banners (including bot alerts); legacy channels (v1–v7) auto-deleted on startup; foreground heads-up alerts via native DirectNotif module (bypasses Expo groupKey silent interception)
@@ -188,6 +195,10 @@ OnlyMonkes/
 │   ├── header.png
 │   └── fonts/                        # Space Grotesk, Inter, JetBrains Mono
 │
+├── docs/
+│   ├── privacy.html                  # Privacy Policy (GitHub Pages, dedicated URL for dApp Store)
+│   └── terms.html                    # Terms and Conditions (GitHub Pages, dedicated URL for dApp Store)
+│
 ├── app.config.ts                     # Expo config + env vars (Helius, GIPHY, Cloudinary, LiveKit)
 ├── global.ts                         # Buffer / process polyfills
 └── metro.config.js                   # Node.js shims for Solana libs
@@ -208,6 +219,7 @@ All XMTP messages are plain UTF-8 strings with a prefix that determines type:
 | `PROFILE_UPDATE:` | `PROFILE_UPDATE:<json>` | Profile broadcast (username, bio, NFT image, push token, notif prefs) |
 | `TYPING:` | `TYPING:<inboxId>:<username>` | Typing indicator |
 | `VIDEO:` | `VIDEO:<videoUrl>\|<thumbUrl>` | Video message (Cloudinary URLs) |
+| `EDIT:` | `EDIT:<originalMsgId>:<username>:<newContent>` | Edit a previously sent message (within 1 min) |
 | `LIVE_ROOM:` | `LIVE_ROOM:<json>` | Live audio room signal (start/end) |
 
 ### PROFILE_UPDATE JSON fields
@@ -401,3 +413,5 @@ Output: `android/app/build/outputs/apk/release/app-release.apk`
 | `react-native-reanimated` | Animations (speaking ring, confetti, fade-in) |
 | `react-native-gesture-handler` | Swipe + gesture support |
 | `crypto-js` | HS256 JWT signing for LiveKit tokens (client-side) |
+| `@shopify/react-native-skia` | GPU-accelerated 2D rendering engine |
+| `expo-clipboard` | Copy message text to clipboard |

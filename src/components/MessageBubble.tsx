@@ -31,6 +31,7 @@ import {
   ScrollView,
   useWindowDimensions,
 } from "react-native";
+import * as Clipboard from "expo-clipboard";
 import { Image as ExpoImage } from "expo-image";
 import * as Haptics from "expo-haptics";
 import { format } from "date-fns";
@@ -109,10 +110,10 @@ const videoStyles = StyleSheet.create({
   },
   watermarkShadow: {
     position: 'absolute',
-    bottom: 6,
-    right: 6,
-    width: 128,
-    height: 64,
+    bottom: 4,
+    right: 0,
+    width: 120,
+    height: 60,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.55,
@@ -120,8 +121,8 @@ const videoStyles = StyleSheet.create({
     elevation: 6,
   },
   watermark: {
-    width: 128,
-    height: 64,
+    width: 120,
+    height: 60,
     opacity: 0.9,
   },
 });
@@ -167,6 +168,7 @@ interface MessageBubbleProps {
   onStickerReact?: (url: string, messageId: string) => void;
   onPressImage?: (url: string) => void;
   onPressVideo?: (url: string) => void;
+  onEdit?: (message: ChatMessage) => void;
 }
 
 export const MessageBubble = memo(function MessageBubble({
@@ -179,6 +181,7 @@ export const MessageBubble = memo(function MessageBubble({
   onStickerReact,
   onPressImage,
   onPressVideo,
+  onEdit,
 }: MessageBubbleProps) {
   const { verifiedNft, myInboxId } = useAppStore();
   const { width: SCREEN_W } = useWindowDimensions();
@@ -261,11 +264,41 @@ export const MessageBubble = memo(function MessageBubble({
     });
   }, [onPressUser]);
 
+  // Determine displayed content (edited or original)
+  const displayContent = message.editedContent ?? message.content;
+
+  // Can edit own text messages within 1 minute of sending
+  const isMediaContent =
+    message.content.startsWith("GIF:") ||
+    message.content.startsWith("IMAGE:") ||
+    message.content.startsWith("VIDEO:") ||
+    message.content.startsWith("STICKER:");
+  const canEdit = isOwn && !isMediaContent
+    && (Date.now() - message.sentAt.getTime()) < 60_000;
+
   const handleLongPress = useCallback(() => {
     Keyboard.dismiss();
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setPickerVisible(true);
   }, []);
+
+  const handleCopy = useCallback(() => {
+    setPickerVisible(false);
+    const text = message.editedContent ?? message.content;
+    // Strip media prefixes for copy
+    const cleaned = text.startsWith("IMAGE:") ? "[Image]"
+      : text.startsWith("GIF:") ? "[GIF]"
+      : text.startsWith("VIDEO:") ? "[Video]"
+      : text.startsWith("STICKER:") ? "[Sticker]"
+      : text;
+    Clipboard.setStringAsync(cleaned);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  }, [message]);
+
+  const handleEdit = useCallback(() => {
+    setPickerVisible(false);
+    onEdit?.(message);
+  }, [onEdit, message]);
 
   const handlePickReaction = useCallback((emoji: ReactionEmoji) => {
     setPickerVisible(false);
@@ -466,9 +499,13 @@ export const MessageBubble = memo(function MessageBubble({
               <Text
                 style={[styles.content, { color: textColor }]}
                 numberOfLines={showBotExpand && !botExpanded ? 9 : undefined}
+                selectable
               >
-                {renderRichContent(message.content, handlePressMention)}
+                {renderRichContent(displayContent, handlePressMention)}
               </Text>
+              {message.editedAt && (
+                <Text style={[styles.editedLabel, { color: textColor }]}>(edited)</Text>
+              )}
               {showBotExpand && (
                 <Text style={styles.expandText}>
                   {botExpanded ? "collapse" : "expand"}
@@ -536,15 +573,39 @@ export const MessageBubble = memo(function MessageBubble({
     >
       <Pressable style={styles.pickerOverlay} onPress={() => setPickerVisible(false)}>
         <Pressable style={styles.pickerSheet} onPress={(e) => e.stopPropagation()}>
-          <Pressable
-            onPress={handlePickReply}
-            style={({ pressed }) => [
-              styles.pickerReplyBtn,
-              pressed && styles.pickerReplyBtnPressed,
-            ]}
-          >
-            <Text style={styles.pickerReplyText}>↩  Reply</Text>
-          </Pressable>
+          <View style={styles.pickerActionRow}>
+            <Pressable
+              onPress={handlePickReply}
+              style={({ pressed }) => [
+                styles.pickerReplyBtn,
+                pressed && styles.pickerReplyBtnPressed,
+              ]}
+            >
+              <Text style={styles.pickerReplyText}>↩  Reply</Text>
+            </Pressable>
+
+            <Pressable
+              onPress={handleCopy}
+              style={({ pressed }) => [
+                styles.pickerReplyBtn,
+                pressed && styles.pickerReplyBtnPressed,
+              ]}
+            >
+              <Text style={styles.pickerReplyText}>📋  Copy</Text>
+            </Pressable>
+
+            {canEdit && onEdit && (
+              <Pressable
+                onPress={handleEdit}
+                style={({ pressed }) => [
+                  styles.pickerReplyBtn,
+                  pressed && styles.pickerReplyBtnPressed,
+                ]}
+              >
+                <Text style={styles.pickerReplyText}>✏️  Edit</Text>
+              </Pressable>
+            )}
+          </View>
 
           {/* SagaMonkes sticker grid */}
           {onStickerReact && (
@@ -715,6 +776,13 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
 
+  editedLabel: {
+    fontFamily: FONTS.mono,
+    fontSize: 9,
+    opacity: 0.5,
+    fontStyle: "italic",
+  },
+
   // ── Bot expand text ────────────────────────────────────────────────────────
   expandText: {
     fontFamily: FONTS.body,
@@ -817,9 +885,15 @@ const styles = StyleSheet.create({
     fontSize: 9,
     color: THEME.textFaint,
   },
+  pickerActionRow: {
+    flexDirection: "row",
+    gap: 8,
+    flexWrap: "wrap",
+    justifyContent: "center",
+  },
   pickerReplyBtn: {
     paddingVertical: 8,
-    paddingHorizontal: 28,
+    paddingHorizontal: 20,
     borderRadius: 12,
     backgroundColor: THEME.surfaceHigh,
     borderWidth: 1,
@@ -841,10 +915,10 @@ const styles = StyleSheet.create({
   },
   watermarkShadow: {
     position: "absolute",
-    bottom: 6,
-    right: 6,
-    width: 128,
-    height: 64,
+    bottom: 4,
+    right: 0,
+    width: 120,
+    height: 60,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.55,
@@ -852,8 +926,8 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   watermark: {
-    width: 128,
-    height: 64,
+    width: 120,
+    height: 60,
     opacity: 0.9,
   },
   gifBadge: {

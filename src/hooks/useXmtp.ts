@@ -24,10 +24,12 @@ import {
   addMemberToGroup,
   decodeMessage,
   applyReaction,
+  applyEdit,
   applyStickerReaction,
   sendMessage,
   sendReply,
   sendReaction,
+  sendEdit,
   sendStickerReaction,
   sendTypingIndicator,
   sendJoinRequestDM,
@@ -411,6 +413,8 @@ export function useXmtp() {
             decoded = applyReaction(decoded, raw, _myInboxId);
           } else if (typeof content === "string" && content.startsWith("STICKER_REACT:")) {
             decoded = applyStickerReaction(decoded, raw, _myInboxId);
+          } else if (typeof content === "string" && content.startsWith("EDIT:")) {
+            decoded = applyEdit(decoded, raw);
           }
         } catch { /* skip */ }
       }
@@ -472,6 +476,13 @@ export function useXmtp() {
         if (typeof content === "string" && content.startsWith("STICKER_REACT:")) {
           const { messages } = useChatStore.getState();
           const updated = applyStickerReaction(messages, raw, _myInboxId);
+          applyReactionUpdate(updated);
+          return;
+        }
+
+        if (typeof content === "string" && content.startsWith("EDIT:")) {
+          const { messages } = useChatStore.getState();
+          const updated = applyEdit(messages, raw);
           applyReactionUpdate(updated);
           return;
         }
@@ -814,6 +825,20 @@ export function useXmtp() {
     [initialize, applyReactionUpdate]
   );
 
+  const edit = useCallback(
+    async (originalMessageId: string, newContent: string) => {
+      if (!_group) await initialize();
+      if (!_group) throw new Error("Not connected to chat");
+      const { username } = useAppStore.getState();
+
+      // Apply optimistically
+      useChatStore.getState().updateMessageContent(originalMessageId, newContent);
+
+      await sendEdit(_group, originalMessageId, newContent, username);
+    },
+    [initialize],
+  );
+
   // Throttled typing signal — max one broadcast per 2.5 s
   const sendTyping = useCallback(async () => {
     if (!_group) return;
@@ -992,6 +1017,7 @@ export function useXmtp() {
     send,
     reply,
     react,
+    edit,
     stickerReact,
     sendTyping,
     addMember,
