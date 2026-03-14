@@ -21,11 +21,24 @@ import { router } from "expo-router";
 import { useAppStore } from "@/store/appStore";
 import { useGroupChat } from "@/hooks/useGroupChat";
 import { MessageBubble } from "@/components/MessageBubble";
+import { triggerProfileRebroadcast } from "@/hooks/useXmtp";
 import { THEME, FONTS } from "@/lib/constants";
 import type { ChatMessage } from "@/types";
 
 // No-ops for read-only channel — users can't react or reply to bot alerts
 const noop = () => {};
+
+const SPORTS_LIST = [
+  { key: "nfl", label: "NFL 🏈" },
+  { key: "ncaaf", label: "NCAAF 🏈" },
+  { key: "nba", label: "NBA 🏀" },
+  { key: "ncaab", label: "NCAAB 🏀" },
+  { key: "mlb", label: "MLB ⚾" },
+  { key: "nhl", label: "NHL 🏒" },
+  { key: "epl", label: "EPL ⚽" },
+  { key: "ucl", label: "UCL ⚽" },
+  { key: "mma", label: "MMA 🥊" },
+] as const;
 
 const CHANNEL_CONFIG = {
   bets: {
@@ -56,8 +69,9 @@ interface BotChannelScreenProps {
 
 export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
   const insets = useSafeAreaInsets();
-  const { myInboxId, botChannelIds } = useAppStore();
+  const { myInboxId, botChannelIds, mutedBotChannels, toggleBotChannelMute, mutedSports, toggleSportMute } = useAppStore();
   const groupId = botChannelIds[channelId];
+  const isMuted = mutedBotChannels[channelId];
   const config = CHANNEL_CONFIG[channelId];
 
   const {
@@ -127,8 +141,19 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
           </View>
         </View>
 
-        {/* Spacer to balance back button */}
-        <View style={styles.backBtn} />
+        {/* Mute/Unmute toggle */}
+        <Pressable
+          onPress={() => {
+            toggleBotChannelMute(channelId);
+            triggerProfileRebroadcast(useAppStore.getState().expoPushToken ?? "").catch(() => {});
+          }}
+          style={[styles.muteBtn, isMuted && styles.muteBtnMuted]}
+          hitSlop={8}
+        >
+          <Text style={[styles.muteBtnText, isMuted && styles.muteBtnTextMuted]}>
+            {isMuted ? "🔇 Muted" : "🔔 On"}
+          </Text>
+        </Pressable>
       </View>
 
       {/* Loading / connecting state */}
@@ -152,6 +177,30 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
       {/* Main content */}
       {!isLoading && !error && (
         <>
+          {/* Sports filter strip — Bets channel only */}
+          {channelId === "bets" && (
+            <View style={styles.sportsStrip}>
+              <Text style={styles.sportsLabel}>Filter:</Text>
+              {SPORTS_LIST.map(({ key, label }) => {
+                const muted = mutedSports.includes(key);
+                return (
+                  <Pressable
+                    key={key}
+                    onPress={() => {
+                      toggleSportMute(key);
+                      triggerProfileRebroadcast(useAppStore.getState().expoPushToken ?? "").catch(() => {});
+                    }}
+                    style={[styles.sportPill, muted && styles.sportPillMuted]}
+                  >
+                    <Text style={[styles.sportPillText, muted && styles.sportPillTextMuted]}>
+                      {label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
+
           {/* Loading history banner */}
           {isLoadingHistory && (
             <View style={styles.historyLoading}>
@@ -250,6 +299,25 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: THEME.textFaint,
   },
+  muteBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: "rgba(108, 180, 238, 0.15)",
+    minWidth: 44,
+    alignItems: "center",
+  },
+  muteBtnMuted: {
+    backgroundColor: "rgba(255, 80, 80, 0.15)",
+  },
+  muteBtnText: {
+    fontFamily: FONTS.bodyMed,
+    fontSize: 11,
+    color: "#6CB4EE",
+  },
+  muteBtnTextMuted: {
+    color: "#FF5050",
+  },
 
   centerState: {
     flex: 1,
@@ -321,6 +389,43 @@ const styles = StyleSheet.create({
     color: THEME.textFaint,
     textAlign: "center",
     lineHeight: 20,
+  },
+
+  sportsStrip: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: THEME.border,
+    backgroundColor: HEADER_BG,
+  },
+  sportsLabel: {
+    fontFamily: FONTS.bodyMed,
+    fontSize: 11,
+    color: THEME.textFaint,
+    marginRight: 2,
+  },
+  sportPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: "rgba(108, 180, 238, 0.15)",
+  },
+  sportPillMuted: {
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    opacity: 0.45,
+  },
+  sportPillText: {
+    fontFamily: FONTS.bodyMed,
+    fontSize: 11,
+    color: "#6CB4EE",
+  },
+  sportPillTextMuted: {
+    color: THEME.textFaint,
+    textDecorationLine: "line-through",
   },
 
   listContent: {

@@ -110,11 +110,11 @@ const styles = StyleSheet.create({
     zIndex: 50,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#1D4ED8",   // solid blue
+    backgroundColor: "#6CB4EE",   // solid blue
     borderRadius: 99,
     paddingHorizontal: 14,
     paddingVertical: 8,
-    shadowColor: "#1D4ED8",
+    shadowColor: "#6CB4EE",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.5,
     shadowRadius: 12,
