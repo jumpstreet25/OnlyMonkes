@@ -59,8 +59,8 @@ release:
   android_details:
     cert_fingerprint: 69dd4ec7fe2a906808d61f2470bb02ac1c62f9d52dbb40548a5175cc15abb693
     min_sdk: 24
-    version: '2.20'
-    version_code: 20
+    version: '2.21'
+    version_code: 21
     locales:
       - en-US
 solana_mobile_dapp_publisher_portal:
