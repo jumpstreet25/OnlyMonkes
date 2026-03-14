@@ -228,6 +228,7 @@ export function decodeMessage(raw: any, myInboxId: string): ChatMessage | null {
     if (rawContent.startsWith("TYPING:")) return null;
     if (rawContent.startsWith("PROFILE_UPDATE:")) return null;
     if (rawContent.startsWith("EVENT:")) return null;
+    if (rawContent.startsWith("EDIT:")) return null;
 
     const { username, inner } = parseContent(rawContent);
 
@@ -328,6 +329,39 @@ export function applyReaction(
   });
 }
 
+/**
+ * Apply an EDIT message to the message list.
+ * Format: EDIT:<originalMessageId>:<senderUsername>:<newContent>
+ */
+export function applyEdit(
+  messages: ChatMessage[],
+  raw: any,
+): ChatMessage[] {
+  let content: string;
+  try {
+    content = raw.content();
+  } catch {
+    return messages;
+  }
+
+  if (!content?.startsWith("EDIT:")) return messages;
+
+  // EDIT:<targetId>:<username>:<newContent>
+  const withoutPrefix = content.slice("EDIT:".length);
+  const parts = withoutPrefix.split(":");
+  const targetId = parts[0] ?? "";
+  // parts[1] = username (unused here)
+  const newContent = parts.slice(2).join(":");
+  const sender: string = raw.senderInboxId;
+
+  return messages.map((msg) => {
+    if (msg.id !== targetId) return msg;
+    // Only the original sender can edit their own message
+    if (msg.senderAddress !== sender) return msg;
+    return { ...msg, editedContent: newContent, editedAt: new Date() };
+  });
+}
+
 // ─── Generic dApp Group ───────────────────────────────────────────────────────
 
 /**
@@ -391,6 +425,20 @@ export async function sendReaction(
   targetMessageId: string
 ): Promise<void> {
   const packed = `REACT:${emoji}:${targetMessageId}`;
+  await (group as any).send(packed);
+}
+
+/**
+ * Send an edit for a previously sent message.
+ * Format: EDIT:<originalMessageId>:<newContent>
+ */
+export async function sendEdit(
+  group: XmtpGroup,
+  originalMessageId: string,
+  newContent: string,
+  username?: string | null,
+): Promise<void> {
+  const packed = `EDIT:${originalMessageId}:${username ?? ""}:${newContent}`;
   await (group as any).send(packed);
 }
 

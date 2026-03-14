@@ -38,6 +38,7 @@ import {
   TextInput,
   Alert,
   Dimensions,
+  Linking,
 } from "react-native";
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
@@ -100,7 +101,7 @@ export default function ChatScreen() {
   } = useAppStore();
   const { messages, replyingTo, isLoadingHistory, setReplyingTo, typingUsers } =
     useChatStore();
-  const { initialize, disconnect, logout, streamAlive, send, reply, react, stickerReact, sendTyping, addMember, loadJoinRequests, approveJoinRequest, publishGroupId, forceAdminInit, broadcastProfile, broadcastEvent, broadcastLiveRoom, syncMessages } = useXmtp();
+  const { initialize, disconnect, logout, streamAlive, send, reply, react, edit, stickerReact, sendTyping, addMember, loadJoinRequests, approveJoinRequest, publishGroupId, forceAdminInit, broadcastProfile, broadcastEvent, broadcastLiveRoom, syncMessages } = useXmtp();
   const [inputText, setInputText] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [showUsernameModal, setShowUsernameModal] = useState(false);
@@ -126,6 +127,7 @@ export default function ChatScreen() {
   const [gifPickerOpen, setGifPickerOpen] = useState(false);
   const [pfpGifPickerOpen, setPfpGifPickerOpen] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [lightboxSize, setLightboxSize] = useState<{ w: number; h: number } | null>(null);
   const [videoModalOpen, setVideoModalOpen] = useState(false);
   const [videoLightboxUrl, setVideoLightboxUrl] = useState<string | null>(null);
   const [adminRecoveryOpen, setAdminRecoveryOpen] = useState(false);
@@ -135,6 +137,9 @@ export default function ChatScreen() {
   const [swapQuote, setSwapQuote] = useState<SwapQuote | null>(null);
   const [swapConfirmOpen, setSwapConfirmOpen] = useState(false);
   const [swapExecuting, setSwapExecuting] = useState(false);
+  const [editTarget, setEditTarget] = useState<ChatMessage | null>(null);
+  const [editText, setEditText] = useState("");
+  const [xShareImageUri, setXShareImageUri] = useState<string | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const initialMsgIdsRef = useRef<Set<string>>(new Set());
   const lightboxViewRef = useRef<any>(null);
@@ -294,6 +299,12 @@ export default function ChatScreen() {
       initialMsgIdsRef.current = new Set(messages.map(m => m.id));
     }
   }, [isLoadingHistory, messages.length]);
+
+  // ─── Lightbox image dimensions (to position watermark on the actual image) ──
+  useEffect(() => {
+    if (!lightboxUrl) { setLightboxSize(null); return; }
+    Image.getSize(lightboxUrl, (w, h) => setLightboxSize({ w, h }), () => setLightboxSize(null));
+  }, [lightboxUrl]);
 
   // ─── Send ────────────────────────────────────────────────────────────────────
 
@@ -508,6 +519,8 @@ export default function ChatScreen() {
       try {
         await send(content);
         useChatStore.getState().updateMessageStatus(optimistic.id, "sent");
+        // Prompt to share on X
+        setXShareImageUri(dataUri);
       } catch (err: any) {
         Alert.alert("Camera error", err?.message ?? "Could not send photo.");
         useChatStore.getState().updateMessageStatus(optimistic.id, "failed");
@@ -561,6 +574,33 @@ export default function ChatScreen() {
       console.warn("Sticker react failed:", err);
     }
   }, [stickerReact]);
+
+  // ─── Edit message ──────────────────────────────────────────────────────────────
+
+  const handleEditMessage = useCallback((msg: ChatMessage) => {
+    setEditTarget(msg);
+    setEditText(msg.editedContent ?? msg.content);
+  }, []);
+
+  const handleEditSubmit = useCallback(async () => {
+    if (!editTarget || !editText.trim()) return;
+    try {
+      await edit(editTarget.id, editText.trim());
+    } catch (err) {
+      console.warn("Edit failed:", err);
+    }
+    setEditTarget(null);
+    setEditText("");
+  }, [edit, editTarget, editText]);
+
+  // ─── X / Twitter share for own images ─────────────────────────────────────────
+
+  const handleShareToX = useCallback(() => {
+    const caption = encodeURIComponent("Shot Using @xOnlyMonkes");
+    const url = `https://twitter.com/intent/tweet?text=${caption}`;
+    Linking.openURL(url);
+    setXShareImageUri(null);
+  }, []);
 
   // ─── Profile popup ────────────────────────────────────────────────────────────
 
@@ -699,11 +739,12 @@ export default function ChatScreen() {
             onStickerReact={handleStickerReact}
             onPressImage={setLightboxUrl}
             onPressVideo={setVideoLightboxUrl}
+            onEdit={handleEditMessage}
           />
         </Animated.View>
       );
     },
-    [myAddress, handleReact, setReplyingTo, handlePressUser, handleTip, handleStickerReact, setVideoLightboxUrl]
+    [myAddress, handleReact, setReplyingTo, handlePressUser, handleTip, handleStickerReact, setVideoLightboxUrl, handleEditMessage]
   );
 
   const keyExtractor = useCallback((item: ChatMessage) => item.id, []);
@@ -822,19 +863,31 @@ export default function ChatScreen() {
           style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.95)", justifyContent: "center", alignItems: "center" }}
           onPress={() => setLightboxUrl(null)}
         >
-          {/* Capturable view with watermark baked in */}
-          <View ref={lightboxViewRef} collapsable={false} style={{ width: SCREEN_W, height: SCREEN_H * 0.85 }}>
+          {/* Capturable view — sized to actual image so watermark stays on image */}
+          <View ref={lightboxViewRef} collapsable={false} style={
+            lightboxSize
+              ? (() => {
+                  const maxW = SCREEN_W;
+                  const maxH = SCREEN_H * 0.85;
+                  const imgRatio = lightboxSize.w / lightboxSize.h;
+                  const containerRatio = maxW / maxH;
+                  const fitW = imgRatio > containerRatio ? maxW : maxH * imgRatio;
+                  const fitH = imgRatio > containerRatio ? maxW / imgRatio : maxH;
+                  return { width: fitW, height: fitH };
+                })()
+              : { width: SCREEN_W, height: SCREEN_H * 0.85 }
+          }>
             <Image
               source={{ uri: lightboxUrl ?? "" }}
               style={{ width: "100%", height: "100%" }}
-              resizeMode="contain"
+              resizeMode="cover"
             />
-            {/* Watermark overlay */}
-            <View style={{ position: "absolute", bottom: 16, right: 16, opacity: 0.7 }} pointerEvents="none">
+            {/* Watermark overlay — same size/position as in-bubble */}
+            <View style={{ position: "absolute", bottom: 4, right: 0, opacity: 0.9 }} pointerEvents="none">
               <Image
                 // eslint-disable-next-line @typescript-eslint/no-require-imports
                 source={require("../../assets/watermark.png")}
-                style={{ width: 120, height: 40 }}
+                style={{ width: 192, height: 96 }}
                 resizeMode="contain"
               />
             </View>
@@ -887,11 +940,7 @@ export default function ChatScreen() {
                 <Text style={styles.headerNftGlyph}>🐒</Text>
               </View>
             )}
-            {loginStreak >= 2 && (
-              <View style={styles.streakPill}>
-                <Text style={styles.streakPillText}>🔥{loginStreak}</Text>
-              </View>
-            )}
+            {/* streak pill removed — ticker occupies this space */}
           </Pressable>
 
           {/* Center: decorative banner image */}
@@ -1327,9 +1376,208 @@ export default function ChatScreen() {
           </Pressable>
         </View>
       </Modal>
+      {/* ── Edit Message Modal ─────────────────────────────────────────────── */}
+      <Modal
+        visible={!!editTarget}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setEditTarget(null)}
+      >
+        <Pressable style={modalStyles.overlay} onPress={() => setEditTarget(null)}>
+          <Pressable style={modalStyles.sheet} onPress={(e) => e.stopPropagation()}>
+            <Text style={modalStyles.title}>Edit Message</Text>
+            <TextInput
+              style={modalStyles.input}
+              value={editText}
+              onChangeText={setEditText}
+              autoFocus
+              multiline
+              maxLength={2000}
+              placeholderTextColor={THEME.textFaint}
+            />
+            <View style={modalStyles.btnRow}>
+              <Pressable onPress={() => setEditTarget(null)} style={modalStyles.cancelBtn}>
+                <Text style={modalStyles.cancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable onPress={handleEditSubmit} style={modalStyles.confirmBtn}>
+                <Text style={modalStyles.confirmText}>Save</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* ── Share on X Popup ──────────────────────────────────────────────── */}
+      <Modal
+        visible={!!xShareImageUri}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setXShareImageUri(null)}
+      >
+        <Pressable style={modalStyles.overlay} onPress={() => setXShareImageUri(null)}>
+          <Pressable style={modalStyles.sheet} onPress={(e) => e.stopPropagation()}>
+            {/* Close X button */}
+            <Pressable
+              onPress={() => setXShareImageUri(null)}
+              style={modalStyles.closeX}
+              hitSlop={10}
+            >
+              <Text style={modalStyles.closeXText}>✕</Text>
+            </Pressable>
+
+            <Text style={modalStyles.title}>Share this Image on X?</Text>
+            {xShareImageUri && (
+              <View style={modalStyles.previewWrap}>
+                <Image
+                  source={{ uri: xShareImageUri }}
+                  style={modalStyles.previewImg}
+                  resizeMode="cover"
+                />
+                <Image
+                  source={require("../../assets/watermark.png")}
+                  style={modalStyles.previewWatermark}
+                  resizeMode="contain"
+                />
+              </View>
+            )}
+            <Text style={modalStyles.caption}>Shot Using @xOnlyMonkes</Text>
+
+            <Pressable onPress={handleShareToX} style={modalStyles.xBtn}>
+              <Text style={modalStyles.xBtnText}>Share this Image on X</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </>
   );
 }
+
+const modalStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  sheet: {
+    backgroundColor: "#000",
+    borderRadius: 20,
+    padding: 20,
+    width: "100%",
+    maxWidth: 340,
+    borderWidth: 1,
+    borderColor: "#333",
+    gap: 12,
+    alignItems: "center",
+  },
+  title: {
+    fontFamily: FONTS.displayMed,
+    fontSize: 17,
+    color: "#6CB4EE",
+    textAlign: "center",
+  },
+  input: {
+    fontFamily: FONTS.body,
+    fontSize: 15,
+    color: "#6CB4EE",
+    backgroundColor: "#111",
+    borderRadius: 12,
+    padding: 12,
+    minHeight: 60,
+    maxHeight: 140,
+    alignSelf: "stretch",
+    borderWidth: 1,
+    borderColor: "#333",
+    textAlignVertical: "top",
+  },
+  btnRow: {
+    flexDirection: "row",
+    gap: 10,
+    alignSelf: "stretch",
+  },
+  cancelBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: "#111",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#333",
+  },
+  cancelText: {
+    fontFamily: FONTS.bodyMed,
+    fontSize: 14,
+    color: "#6CB4EE",
+  },
+  confirmBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: "#6CB4EE",
+    alignItems: "center",
+  },
+  confirmText: {
+    fontFamily: FONTS.bodyMed,
+    fontSize: 14,
+    color: "#fff",
+  },
+  closeX: {
+    position: "absolute",
+    top: 12,
+    left: 12,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: "#6CB4EE",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 10,
+  },
+  closeXText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "bold",
+  },
+  previewWrap: {
+    width: 220,
+    height: 220,
+    borderRadius: 14,
+    overflow: "hidden",
+    alignSelf: "center",
+  },
+  previewImg: {
+    width: 220,
+    height: 220,
+  },
+  previewWatermark: {
+    position: "absolute",
+    bottom: 4,
+    right: 4,
+    width: 135,
+    height: 68,
+    opacity: 0.9,
+  },
+  caption: {
+    fontFamily: FONTS.mono,
+    fontSize: 12,
+    color: "#6CB4EE",
+    textAlign: "center",
+  },
+  xBtn: {
+    backgroundColor: "#6CB4EE",
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    alignSelf: "stretch",
+    alignItems: "center",
+  },
+  xBtnText: {
+    fontFamily: FONTS.bodyMed,
+    fontSize: 15,
+    color: "#000",
+  },
+});
 
 const styles = StyleSheet.create({
   container: {
@@ -1350,9 +1598,9 @@ const styles = StyleSheet.create({
   tickerWrap: {
     position: "absolute",
     bottom: 2,
-    left: 72,
+    left: 12,
     right: 12,
-    height: 22,
+    height: 18,
     overflow: "hidden",
   },
   headerCenter: {
@@ -1363,16 +1611,16 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
   },
   headerNft: {
-    width: 52,
-    height: 52,
-    borderRadius: 14,
+    width: 46,
+    height: 46,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: THEME.accent + "66",
   },
   headerNftFallback: {
-    width: 52,
-    height: 52,
-    borderRadius: 14,
+    width: 46,
+    height: 46,
+    borderRadius: 12,
     backgroundColor: THEME.accentSoft,
     borderWidth: 1,
     borderColor: THEME.accent + "44",

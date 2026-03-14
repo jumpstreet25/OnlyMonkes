@@ -53,4 +53,6 @@ export interface ChatMessage {
   stickerReactions?: StickerReaction[];
   replyTo?: { id: string; content: string; senderAddress: string; senderUsername?: string };
   status?: 'sending' | 'sent' | 'failed' | 'pending';
+  editedContent?: string;   // if edited, the updated text (original stays in content)
+  editedAt?: Date;          // timestamp of edit
 }

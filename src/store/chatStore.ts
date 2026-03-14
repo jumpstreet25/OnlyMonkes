@@ -21,6 +21,7 @@ interface ChatActions {
   /** Own-message variant: upgrades opt-* in-place but NEVER appends. Prevents own-message duplicates from heartbeat sync. */
   upgradeOwnMessage: (message: ChatMessage) => void;
   updateMessageStatus: (id: string, status: 'sending' | 'sent' | 'failed' | 'pending') => void;
+  updateMessageContent: (id: string, newContent: string) => void;
   applyReactionUpdate: (messages: ChatMessage[]) => void;
   setReplyingTo: (message: ChatMessage | null) => void;
   setLoadingHistory: (loading: boolean) => void;
@@ -100,6 +101,13 @@ export const useChatStore = create<ChatState & ChatActions>((set) => ({
   updateMessageStatus: (id, status) =>
     set((state) => ({
       messages: state.messages.map((m) => (m.id === id ? { ...m, status } : m)),
+    })),
+
+  updateMessageContent: (id, newContent) =>
+    set((state) => ({
+      messages: state.messages.map((m) =>
+        m.id === id ? { ...m, editedContent: newContent, editedAt: new Date() } : m,
+      ),
     })),
 
   applyReactionUpdate: (messages) => set({ messages }),
