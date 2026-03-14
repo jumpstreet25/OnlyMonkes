@@ -139,25 +139,30 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSea
 
   const activeUsers = useMemo<ActiveUser[]>(() => {
     const cutoff = Date.now() - ONE_DAY_MS;
+    // Dedup by username (same human can have multiple inboxIds after reinstalls)
     const seen = new Map<string, ActiveUser>();
     for (const msg of messages) {
       if (msg.sentAt.getTime() < cutoff) continue;
       const cached = getCachedProfile(msg.senderAddress);
       const msgNft = cached?.nftImage ?? msg.senderNft?.image ?? null;
       const msgUsername = cached?.username ?? msg.senderUsername;
-      if (!seen.has(msg.senderAddress)) {
-        seen.set(msg.senderAddress, {
+      // Key by username when available, fall back to inboxId
+      const key = msgUsername?.toLowerCase() || msg.senderAddress;
+      if (!seen.has(key)) {
+        seen.set(key, {
           inboxId: msg.senderAddress,
           username: msgUsername,
           nftImage: msgNft,
           lastSeen: msg.sentAt,
         });
       } else {
-        const ex = seen.get(msg.senderAddress)!;
-        seen.set(msg.senderAddress, {
-          ...ex,
-          lastSeen: msg.sentAt > ex.lastSeen ? msg.sentAt : ex.lastSeen,
-          nftImage: ex.nftImage ?? msgNft,
+        const ex = seen.get(key)!;
+        // Keep the most recent entry's inboxId
+        const isNewer = msg.sentAt > ex.lastSeen;
+        seen.set(key, {
+          inboxId: isNewer ? msg.senderAddress : ex.inboxId,
+          lastSeen: isNewer ? msg.sentAt : ex.lastSeen,
+          nftImage: msgNft ?? ex.nftImage,
           username: ex.username ?? msgUsername,
         });
       }

@@ -1,0 +1,74 @@
+publisher:
+  name: OnlyMonkes
+  website: https://github.com/jumpstreet25/OnlyMonkes
+  email: Jumpstreet25@icloud.com
+  support_email: Jumpstreet25@icloud.com
+app:
+  name: OnlyMonkes
+  address: EFfZv9iWGEtFijK3VBoJF3CnPxXJnayHjVGNMyZyoi6d
+  android_package: com.onlymonkes.app
+  urls:
+    license_url: https://github.com/jumpstreet25/OnlyMonkes/blob/main/LICENSE
+    copyright_url: https://github.com/jumpstreet25/OnlyMonkes/blob/main/LICENSE
+    privacy_policy_url: https://jumpstreet25.github.io/OnlyMonkes/privacy.html
+    terms_of_use_url: https://jumpstreet25.github.io/OnlyMonkes/terms.html
+    website: https://github.com/jumpstreet25/OnlyMonkes
+  media:
+    - purpose: icon
+      uri: dapp-store/assets/icon.png
+release:
+  address: 9BwEm8qEEYrpRoTWdzib5PBwjB5ob6fS8sbbqa4SXJF5
+  media:
+    - purpose: icon
+      uri: dapp-store/assets/icon.png
+    - purpose: banner
+      uri: dapp-store/assets/banner.png
+    - purpose: screenshot
+      uri: dapp-store/assets/screenshots/screenshot_1.png
+    - purpose: screenshot
+      uri: dapp-store/assets/screenshots/screenshot_2.png
+    - purpose: screenshot
+      uri: dapp-store/assets/screenshots/screenshot_3.png
+    - purpose: screenshot
+      uri: dapp-store/assets/screenshots/screenshot_4.png
+    - purpose: screenshot
+      uri: dapp-store/assets/screenshots/screenshot_5.png
+    - purpose: screenshot
+      uri: dapp-store/assets/screenshots/screenshot_6.png
+  files:
+    - purpose: install
+      uri: android/app/build/outputs/apk/release/app-release.apk
+  catalog:
+    en-US:
+      name: OnlyMonkes
+      short_description: NFT-gated Monkes social app
+      long_description: |-
+        OnlyMonkes is the exclusive social hub for verified Saga Monkes NFT holders on Solana Mobile.
+        Connect your Seeker wallet to prove ownership of your Saga Monkes NFT and unlock:
+        🐒 GROUP CHAT — Real-time encrypted group messaging powered by XMTP v5 MLS protocol. Send text, GIFs, images, videos, stickers and reactions. Reply to messages, mention users with @username, and track $TOKEN prices inline.
+        💬 DIRECT MESSAGES — Private 1-on-1 encrypted DMs with any verified holder. Full message history and push notifications.
+        🎙 LIVE AUDIO ROOMS — Twitter Spaces-style live audio rooms built on LiveKit WebRTC. Hosts can start a room, listeners join, raise hand, and unmute.
+        💸 TIPPING — Send $SKR tokens directly to any holder with the /tip command. Powered by Jupiter aggregator and Solana Mobile Wallet Adapter — no app switching required.
+        🤖 AI TRADING AGENT — AI Agent #9385 monitors the top Solana tokens 24/7 with multi-timeframe technical analysis (RSI, MACD, EMA, Bollinger Bands, Ichimoku). Type /ta $SOL for instant TA signals.
+        📅 COMMUNITY EVENTS — Browse and create OnlyMonkes community events via the built-in calendar.
+        🔔 PUSH NOTIFICATIONS — Real-time alerts for new messages, mentions, reactions, live rooms, NFT sales, and TA trading signals.
+        🛡 DECENTRALIZED & ENCRYPTED — All messages are end-to-end encrypted via XMTP. No central server. Your messages are yours.
+        REQUIREMENTS: Saga Monkes NFT + compatible Solana wallet (Phantom, Solflare) on Seeker or Saga device.
+      new_in_version: 'v2.20: Edit sent messages (1 min window), copy any message, share photos to X/Twitter with watermark, dark-themed popup modals, daily GMonke bot message, weekly PNL trade report, persistent login sessions, 7-day message cache, sports filter in Monke Bets, dedicated Privacy Policy and Terms pages.'
+      saga_features: Optimized for Seeker — arm64-v8a only build with minSdk 24. Live audio rooms use LiveKit WebRTC with full Bluetooth headset support. Mobile Wallet Adapter biometric prompt (no app switching for tips/swaps).
+  android_details:
+    cert_fingerprint: 69dd4ec7fe2a906808d61f2470bb02ac1c62f9d52dbb40548a5175cc15abb693
+    min_sdk: 24
+    version: '2.20'
+    version_code: 20
+    locales:
+      - en-US
+solana_mobile_dapp_publisher_portal:
+  testing_instructions: '1. Install the APK on a Seeker or Saga device with a compatible Solana wallet (Phantom or Solflare). 2. Open OnlyMonkes and tap "Connect Wallet". 3. Approve the connection in your wallet app. 4. The app will verify your Saga Monkes NFT ownership via Helius DAS API. 5. If you own a Saga Monkes NFT, select it from the picker to enter the community. 6. You will arrive at the main group chat. Send a message to confirm messaging works. 7. Tap the menu icon (top right) to access DMs, Community members, Events, and Settings. 8. Type /ta $SOL in chat to test the AI trading agent TA command. NOTE: NFT ownership is required to access the app. If you do not own a Saga Monkes NFT, the app will show a gate screen. Please contact us to arrange a test account.'
+  alpha_testers: []
+lastSubmittedVersionOnChain:
+  address: 9BwEm8qEEYrpRoTWdzib5PBwjB5ob6fS8sbbqa4SXJF5
+  version_code: 13
+  apk_hash: SLUIxFQdaMiY6GsyOB3ez4a51i+vioFyPnCdlUXPbe0=
+lastUpdatedVersionOnStore:
+  address: 9BwEm8qEEYrpRoTWdzib5PBwjB5ob6fS8sbbqa4SXJF5

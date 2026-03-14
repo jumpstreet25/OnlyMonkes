@@ -130,13 +130,13 @@ export function BotCommandTicker({ variant = "chat" }: BotCommandTickerProps) {
 const styles = StyleSheet.create({
   container: {
     overflow: "hidden",
-    height: 22,
+    height: 18,
     justifyContent: "center",
   },
   scrollRow: {
     flexDirection: "row",
     alignItems: "center",
-    height: 22,
+    height: 18,
   },
   textRow: {
     flexDirection: "row",
@@ -144,16 +144,16 @@ const styles = StyleSheet.create({
   },
   cmdText: {
     fontFamily: FONTS.body,
-    fontSize: 15,
+    fontSize: 13,
     color: "#FFFFFF",
   },
   descText: {
     fontFamily: FONTS.body,
-    fontSize: 15,
+    fontSize: 13,
     color: "rgba(255,255,255,0.5)",
   },
   dot: {
-    fontSize: 6,
+    fontSize: 5,
     color: "#6CB4EE",
   },
 });
