@@ -14,7 +14,7 @@ export const CHAT_THEMES: ChatTheme[] = [
     id: "default",
     name: "Monke Dark",
     emoji: "🐒",
-    ownBubble: "#1D8CF5",
+    ownBubble: "#6CB4EE",
     ownText: "#FFFFFF",
     accentColor: "#7C3AED",
   },

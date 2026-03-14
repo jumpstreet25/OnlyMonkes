@@ -1,6 +1,11 @@
 import { create } from 'zustand';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { WalletAccount, OwnedNFT } from '../types';
 import type { LiveRoomData } from '../lib/livekit';
+
+const AK_MUTED_SPORTS = 'om_muted_sports';
+const AK_MUTED_CHANNELS = 'om_muted_channels';
+const AK_NOTIF_PREFS = 'om_notif_prefs';
 
 export interface LiveRoomState extends LiveRoomData {
   participantCount: number;
@@ -104,6 +109,7 @@ interface AppActions {
   setBotChannelIds: (ids: { bets: string; trades: string; sales: string; predictions: string }) => void;
   setBotChannelCounts: (counts: { bets: number; trades: number; sales: number; predictions: number }) => void;
   clearBotChannelCount: (channel: 'bets' | 'trades' | 'sales' | 'predictions') => void;
+  incrementBotChannelCount: (channel: 'bets' | 'trades' | 'sales' | 'predictions') => void;
   setThemeId: (id: string) => void;
   setCustomBubbleColor: (color: string | null) => void;
   setCalendarEvents: (events: CalendarEvent[]) => void;
@@ -173,19 +179,42 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   setTipWallet: (tipWallet) => set({ tipWallet }),
   setLoading: (isLoading) => set({ isLoading }),
   setError: (error) => set({ error }),
-  setNotificationsEnabled: (notificationsEnabled) => set({ notificationsEnabled }),
-  setMentionsOnly: (mentionsOnly) => set({ mentionsOnly }),
-  setBotNotificationsEnabled: (botNotificationsEnabled) => set({ botNotificationsEnabled }),
-  setDmNotificationsEnabled: (dmNotificationsEnabled) => set({ dmNotificationsEnabled }),
-  setLiveRoomNotificationsEnabled: (liveRoomNotificationsEnabled) => set({ liveRoomNotificationsEnabled }),
-  toggleBotChannelMute: (channel) => set((s) => ({
-    mutedBotChannels: { ...s.mutedBotChannels, [channel]: !s.mutedBotChannels[channel] },
-  })),
-  toggleSportMute: (sport) => set((s) => ({
-    mutedSports: s.mutedSports.includes(sport)
-      ? s.mutedSports.filter(sp => sp !== sport)
-      : [...s.mutedSports, sport],
-  })),
+  setNotificationsEnabled: (notificationsEnabled) => {
+    set({ notificationsEnabled });
+    _persistNotifPrefs();
+  },
+  setMentionsOnly: (mentionsOnly) => {
+    set({ mentionsOnly });
+    _persistNotifPrefs();
+  },
+  setBotNotificationsEnabled: (botNotificationsEnabled) => {
+    set({ botNotificationsEnabled });
+    _persistNotifPrefs();
+  },
+  setDmNotificationsEnabled: (dmNotificationsEnabled) => {
+    set({ dmNotificationsEnabled });
+    _persistNotifPrefs();
+  },
+  setLiveRoomNotificationsEnabled: (liveRoomNotificationsEnabled) => {
+    set({ liveRoomNotificationsEnabled });
+    _persistNotifPrefs();
+  },
+  toggleBotChannelMute: (channel) => {
+    set((s) => {
+      const next = { ...s.mutedBotChannels, [channel]: !s.mutedBotChannels[channel] };
+      AsyncStorage.setItem(AK_MUTED_CHANNELS, JSON.stringify(next)).catch(() => {});
+      return { mutedBotChannels: next };
+    });
+  },
+  toggleSportMute: (sport) => {
+    set((s) => {
+      const next = s.mutedSports.includes(sport)
+        ? s.mutedSports.filter(sp => sp !== sport)
+        : [...s.mutedSports, sport];
+      AsyncStorage.setItem(AK_MUTED_SPORTS, JSON.stringify(next)).catch(() => {});
+      return { mutedSports: next };
+    });
+  },
   setIsGroupMember: (isGroupMember) => set({ isGroupMember }),
   setIsGroupAdmin: (isGroupAdmin) => set({ isGroupAdmin }),
   setJoinRequests: (joinRequests) => set({ joinRequests }),
@@ -202,6 +231,9 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   clearBotChannelCount: (channel) => set((s) => ({
     botChannelCounts: { ...s.botChannelCounts, [channel]: 0 },
   })),
+  incrementBotChannelCount: (channel) => set((s) => ({
+    botChannelCounts: { ...s.botChannelCounts, [channel]: s.botChannelCounts[channel] + 1 },
+  })),
   setThemeId: (themeId) => set({ themeId }),
   setCustomBubbleColor: (customBubbleColor) => set({ customBubbleColor }),
   setCalendarEvents: (calendarEvents) => set({ calendarEvents }),
@@ -217,3 +249,53 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   setMwaAuthToken: (mwaAuthToken) => set({ mwaAuthToken }),
   reset: () => set(initialState),
 }));
+
+// ── Persist notification prefs to AsyncStorage ──────────────────────────────
+
+function _persistNotifPrefs() {
+  const { notificationsEnabled, mentionsOnly, botNotificationsEnabled,
+    dmNotificationsEnabled, liveRoomNotificationsEnabled } = useAppStore.getState();
+  AsyncStorage.setItem(AK_NOTIF_PREFS, JSON.stringify({
+    all: notificationsEnabled,
+    mentions: mentionsOnly,
+    bot: botNotificationsEnabled,
+    dm: dmNotificationsEnabled,
+    live: liveRoomNotificationsEnabled,
+  })).catch(() => {});
+}
+
+/**
+ * Load persisted notification prefs, muted sports, and muted channels from AsyncStorage.
+ * Call once at app startup (e.g. in _layout.tsx or ChatScreen mount).
+ */
+export async function loadPersistedPrefs(): Promise<void> {
+  try {
+    const [sportsRaw, channelsRaw, notifRaw] = await Promise.all([
+      AsyncStorage.getItem(AK_MUTED_SPORTS),
+      AsyncStorage.getItem(AK_MUTED_CHANNELS),
+      AsyncStorage.getItem(AK_NOTIF_PREFS),
+    ]);
+    const state: Record<string, unknown> = {};
+    if (sportsRaw) {
+      const parsed = JSON.parse(sportsRaw);
+      if (Array.isArray(parsed)) state.mutedSports = parsed;
+    }
+    if (channelsRaw) {
+      const parsed = JSON.parse(channelsRaw);
+      if (parsed && typeof parsed === 'object') state.mutedBotChannels = parsed;
+    }
+    if (notifRaw) {
+      const parsed = JSON.parse(notifRaw);
+      if (parsed && typeof parsed === 'object') {
+        if (typeof parsed.all === 'boolean') state.notificationsEnabled = parsed.all;
+        if (typeof parsed.mentions === 'boolean') state.mentionsOnly = parsed.mentions;
+        if (typeof parsed.bot === 'boolean') state.botNotificationsEnabled = parsed.bot;
+        if (typeof parsed.dm === 'boolean') state.dmNotificationsEnabled = parsed.dm;
+        if (typeof parsed.live === 'boolean') state.liveRoomNotificationsEnabled = parsed.live;
+      }
+    }
+    if (Object.keys(state).length > 0) {
+      useAppStore.setState(state);
+    }
+  } catch { /* non-critical */ }
+}

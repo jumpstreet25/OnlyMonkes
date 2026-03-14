@@ -67,6 +67,7 @@ let _client: XmtpClient | null = null;
 
 export function getXmtpClient(): XmtpClient | null { return _client; }
 let _unsubscribeStream: (() => void) | null = null;
+let _botChannelUnsubs: (() => void)[] = [];
 let _myInboxId = "";
 let _streamAlive = false;
 let _profileBroadcastDone = false;
@@ -428,6 +429,8 @@ export function useXmtp() {
 
       // ── 5. Stream incoming messages ────────────────────────────────────────
       _unsubscribeStream?.();
+      _botChannelUnsubs.forEach(u => u());
+      _botChannelUnsubs = [];
       _streamAlive = false;
 
       const unsub = await (group as any).streamMessages(async (raw: any) => {
@@ -541,30 +544,27 @@ export function useXmtp() {
         const senderLabel = msg.senderUsername ?? msg.senderAddress.slice(0, 6);
         const isBotMessage = msg.senderUsername === BOT_USERNAME;
 
-        // Only notify when app is in the background — when in foreground,
-        // expo-notifications overrides channelId with the fallback channel and
-        // sets groupKey=silent, suppressing heads-up. Background delivery goes
-        // directly through om_all_v6 (HIGH importance) → proper heads-up banner.
-        if (AppState.currentState !== 'active') {
-          if (isBotMessage) {
-            if (botNotificationsEnabled) {
-              await showLocalNotification(`${senderLabel} 🤖`, msg.content, CH_BOT);
-            }
-            return;
+        // Show heads-up notification for all incoming messages.
+        // DirectNotif native module posts directly to the Android channel,
+        // bypassing expo's groupKey=silent interception — works in foreground.
+        if (isBotMessage) {
+          if (botNotificationsEnabled) {
+            await showLocalNotification(`${senderLabel} 🤖`, msg.content, CH_BOT);
           }
-
-          if (!notificationsEnabled) return;
-
-          const isMention = detectMention(msg.content, username ?? "");
-          if (mentionsOnly && !isMention) return;
-
-          const channelId = isMention ? CH_MENTIONS : CH_ALL;
-          const title = isMention
-            ? `${senderLabel} mentioned you 🍌`
-            : `${senderLabel} in OnlyMonkes`;
-
-          await showLocalNotification(title, msg.content, channelId);
+          return;
         }
+
+        if (!notificationsEnabled) return;
+
+        const isMention = detectMention(msg.content, username ?? "");
+        if (mentionsOnly && !isMention) return;
+
+        const channelId = isMention ? CH_MENTIONS : CH_ALL;
+        const title = isMention
+          ? `${senderLabel} mentioned you 🍌`
+          : `${senderLabel} in OnlyMonkes`;
+
+        await showLocalNotification(title, msg.content, channelId);
       });
 
       _streamAlive = true;
@@ -659,6 +659,44 @@ export function useXmtp() {
           console.log('[XMTP] Bot channel unread counts:', counts);
         } catch { /* non-critical */ }
       })();
+
+      // ── 8. Stream bot channels for real-time badge counts ──────────────────
+      (async () => {
+        try {
+          const channelIds = useAppStore.getState().botChannelIds;
+          if (!channelIds) return;
+          const channelMap = new Map<string, 'bets' | 'trades' | 'sales' | 'predictions'>();
+          for (const key of ['bets', 'trades', 'sales', 'predictions'] as const) {
+            const chId = channelIds[key];
+            if (chId) channelMap.set(chId, key);
+          }
+          for (const [chId, key] of channelMap) {
+            try {
+              const ch = await client.conversations.findGroup(chId as any);
+              if (!ch) continue;
+              const unsub = await (ch as any).streamMessages(async (raw: any) => {
+                let content: string;
+                try { content = raw.content(); } catch { return; }
+                if (typeof content !== 'string') return;
+                // Skip reactions, typing, own messages
+                if (content.startsWith('REACT:') || content.startsWith('TYPING:')) return;
+                const senderInboxId = raw.senderInboxId ?? '';
+                if (senderInboxId === client.inboxId) return;
+                useAppStore.getState().incrementBotChannelCount(key);
+                // Show heads-up notification for bot channel messages
+                const { botNotificationsEnabled } = useAppStore.getState();
+                if (botNotificationsEnabled) {
+                  const label = key === 'bets' ? 'Monke Bets' : key === 'trades' ? 'Monke Trades' : key === 'sales' ? 'Monke Sales' : 'Monke Predictions';
+                  const firstLine = content.startsWith('MSG:') ? content.split(':').slice(2).join(':').split('\n')[0] : content.split('\n')[0];
+                  await showLocalNotification(`${label} 🤖`, firstLine, CH_BOT);
+                }
+              });
+              _botChannelUnsubs.push(unsub);
+              console.log(`[XMTP] Streaming bot channel: ${key}`);
+            } catch { /* skip individual channel */ }
+          }
+        } catch { /* non-critical */ }
+      })();
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "XMTP initialization failed";
@@ -687,6 +725,8 @@ export function useXmtp() {
   const disconnect = useCallback(() => {
     _unsubscribeStream?.();
     _unsubscribeStream = null;
+    _botChannelUnsubs.forEach(u => u());
+    _botChannelUnsubs = [];
   }, []);
 
   const streamAlive = useCallback(() => _streamAlive, []);
@@ -694,6 +734,8 @@ export function useXmtp() {
   const logout = useCallback(async () => {
     _unsubscribeStream?.();
     _unsubscribeStream = null;
+    _botChannelUnsubs.forEach(u => u());
+    _botChannelUnsubs = [];
     _streamAlive = false;
     _group = null;
     _client = null;
@@ -809,6 +851,7 @@ export function useXmtp() {
     const { username, bio, xAccount, wallet, tipWallet, verifiedNft, isLegendary,
       notificationsEnabled, mentionsOnly, botNotificationsEnabled,
       dmNotificationsEnabled, liveRoomNotificationsEnabled,
+      mutedBotChannels, mutedSports,
     } = useAppStore.getState();
     try {
       const pushToken = await getCachedPushToken();
@@ -827,6 +870,8 @@ export function useXmtp() {
           bot: botNotificationsEnabled,
           dm: dmNotificationsEnabled,
           live: liveRoomNotificationsEnabled,
+          mutedChannels: mutedBotChannels,
+          mutedSports,
         },
         expoPushToken,
       );
