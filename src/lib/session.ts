@@ -8,11 +8,16 @@
  */
 
 import * as SecureStore from "expo-secure-store";
+import { AppState, AppStateStatus } from "react-native";
 import type { WalletAccount, OwnedNFT } from "@/types";
 
 const SK_ADDRESS = "session_wallet_address";
 const SK_LABEL = "session_wallet_label";
 const SK_TIMESTAMP = "session_timestamp";
+const SK_LAST_NFT_CHECK = "session_last_nft_check";
+
+/** Re-check NFT ownership every 24 hours */
+const NFT_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 // No TTL — session persists indefinitely across app updates
 
@@ -88,4 +93,85 @@ export async function loadVerifiedNft(): Promise<OwnedNFT | null> {
 
 export async function clearVerifiedNft(): Promise<void> {
   await SecureStore.deleteItemAsync(SK_VERIFIED_NFT);
+  await SecureStore.deleteItemAsync(SK_LAST_NFT_CHECK);
+}
+
+// ─── 24h NFT ownership re-validation ──────────────────────────────────────────
+
+/** Mark that we just verified NFT ownership (called after initial verify + re-checks). */
+export async function stampNftCheck(): Promise<void> {
+  await SecureStore.setItemAsync(SK_LAST_NFT_CHECK, String(Date.now()));
+}
+
+/** Returns true if 24h have elapsed since the last NFT ownership check. */
+export async function shouldRevalidateNft(): Promise<boolean> {
+  try {
+    const raw = await SecureStore.getItemAsync(SK_LAST_NFT_CHECK);
+    if (!raw) return true; // never checked
+    return Date.now() - Number(raw) >= NFT_CHECK_INTERVAL_MS;
+  } catch {
+    return true;
+  }
+}
+
+let _nftCheckAppStateSub: { remove: () => void } | null = null;
+
+/**
+ * Start a background listener that re-checks NFT ownership every 24h.
+ * Runs the check on app foreground events. If the user no longer owns
+ * their NFT, clears the session and calls `onForceLogout()`.
+ */
+export function startNftOwnershipGuard(onForceLogout: () => void): void {
+  // Avoid duplicate subscriptions
+  if (_nftCheckAppStateSub) return;
+
+  // Lazy import to avoid circular dependency
+  const doCheck = async () => {
+    try {
+      const needsCheck = await shouldRevalidateNft();
+      if (!needsCheck) return;
+
+      const wallet = await loadSession();
+      const nft = await loadVerifiedNft();
+      if (!wallet || !nft) return;
+
+      // Dynamic import to keep session.ts lightweight
+      const { verifyNFTOwnership } = await import("./nftVerification");
+      const result = await verifyNFTOwnership(wallet.address);
+
+      if (!result.verified) {
+        console.log("[NFTGuard] User no longer owns a collection NFT — forcing logout");
+        await clearSession();
+        await clearVerifiedNft();
+        onForceLogout();
+        return;
+      }
+
+      // Still owns an NFT — stamp the check
+      await stampNftCheck();
+    } catch (err) {
+      // Network errors are non-fatal — we'll retry next foreground
+      console.warn("[NFTGuard] Re-check failed, will retry:", err);
+    }
+  };
+
+  // Check immediately on registration
+  doCheck();
+
+  // Then check on every foreground return
+  let lastState: AppStateStatus = AppState.currentState;
+  _nftCheckAppStateSub = AppState.addEventListener("change", (next: AppStateStatus) => {
+    if (lastState !== "active" && next === "active") {
+      doCheck();
+    }
+    lastState = next;
+  });
+}
+
+/** Stop the NFT ownership guard listener. */
+export function stopNftOwnershipGuard(): void {
+  if (_nftCheckAppStateSub) {
+    _nftCheckAppStateSub.remove();
+    _nftCheckAppStateSub = null;
+  }
 }

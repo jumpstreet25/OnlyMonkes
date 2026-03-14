@@ -14,7 +14,7 @@ import { registerBackgroundSync } from '../src/lib/backgroundSync';
 import { registerForPushNotifications } from '../src/lib/notifications';
 import { triggerProfileRebroadcast } from '../src/hooks/useXmtp';
 import { useAppStore, loadPersistedPrefs } from '../src/store/appStore';
-import { clearLegacyKeys } from '../src/lib/session';
+import { clearLegacyKeys, startNftOwnershipGuard } from '../src/lib/session';
 
 // Register LiveKit WebRTC globals (must be called before any LiveKit usage)
 registerLiveKitGlobals();
@@ -29,6 +29,11 @@ export default function RootLayout() {
     registerBackgroundSync();
     clearLegacyKeys(); // remove stale Matrica keys from old installs
     loadPersistedPrefs(); // restore muted sports, muted channels, notification prefs
+
+    // Re-check NFT ownership every 24h; force logout if user no longer holds one
+    startNftOwnershipGuard(() => {
+      useAppStore.getState().reset();
+    });
 
     // Request notification permissions and get Expo push token on every launch.
     // After obtaining the token, re-broadcast our XMTP profile so the bot relay
