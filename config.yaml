@@ -17,7 +17,7 @@ app:
     - purpose: icon
       uri: dapp-store/assets/icon.png
 release:
-  address: 9BwEm8qEEYrpRoTWdzib5PBwjB5ob6fS8sbbqa4SXJF5
+  address: FpepF8nLo2iaJMTEwDcqHAnSWHNACueuR8Cm2Y6Ke8nw
   media:
     - purpose: icon
       uri: dapp-store/assets/icon.png
@@ -59,16 +59,16 @@ release:
   android_details:
     cert_fingerprint: 69dd4ec7fe2a906808d61f2470bb02ac1c62f9d52dbb40548a5175cc15abb693
     min_sdk: 24
-    version: '2.21'
-    version_code: 21
+    version: '2.20'
+    version_code: 20
     locales:
       - en-US
 solana_mobile_dapp_publisher_portal:
   testing_instructions: '1. Install the APK on a Seeker or Saga device with a compatible Solana wallet (Phantom or Solflare). 2. Open OnlyMonkes and tap "Connect Wallet". 3. Approve the connection in your wallet app. 4. The app will verify your Saga Monkes NFT ownership via Helius DAS API. 5. If you own a Saga Monkes NFT, select it from the picker to enter the community. 6. You will arrive at the main group chat. Send a message to confirm messaging works. 7. Tap the menu icon (top right) to access DMs, Community members, Events, and Settings. 8. Type /ta $SOL in chat to test the AI trading agent TA command. NOTE: NFT ownership is required to access the app. If you do not own a Saga Monkes NFT, the app will show a gate screen. Please contact us to arrange a test account.'
   alpha_testers: []
 lastSubmittedVersionOnChain:
-  address: 9BwEm8qEEYrpRoTWdzib5PBwjB5ob6fS8sbbqa4SXJF5
-  version_code: 13
-  apk_hash: SLUIxFQdaMiY6GsyOB3ez4a51i+vioFyPnCdlUXPbe0=
+  address: FpepF8nLo2iaJMTEwDcqHAnSWHNACueuR8Cm2Y6Ke8nw
+  version_code: 20
+  apk_hash: CKGY9aQAK5JJI8yeTk0yj36EhIoN7Klv2m7CakU7e/k=
 lastUpdatedVersionOnStore:
-  address: 9BwEm8qEEYrpRoTWdzib5PBwjB5ob6fS8sbbqa4SXJF5
+  address: FpepF8nLo2iaJMTEwDcqHAnSWHNACueuR8Cm2Y6Ke8nw
