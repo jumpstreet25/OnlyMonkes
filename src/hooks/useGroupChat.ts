@@ -7,9 +7,13 @@
  *
  * Messages are persisted to AsyncStorage via messageCache so they survive
  * app restarts. 7-day auto-expiry applies (except media/link messages).
+ *
+ * Module-level warm cache: if a channel was loaded recently (within WARM_TTL),
+ * re-opening it skips the full XMTP sync and shows cached messages instantly,
+ * then does a lightweight delta sync in the background.
  */
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useRef, useState, useEffect } from "react";
 import {
   initXmtpClient,
   getOrCreateDAppGroup,
@@ -29,6 +33,21 @@ import {
 import type { ChatMessage, ReactionEmoji } from "@/types";
 import type { XmtpClient, XmtpGroup } from "@/lib/xmtp";
 
+// ── Module-level warm cache ─────────────────────────────────────────────────
+// Keeps messages in memory so navigating back to a channel is instant.
+
+const WARM_TTL = 60_000; // 60s — skip full reload if loaded within this window
+
+interface WarmEntry {
+  messages: ChatMessage[];
+  loadedAt: number;
+  group: XmtpGroup;
+  client: XmtpClient;
+  unsub: (() => void) | null;
+}
+
+const _warmCache = new Map<string, WarmEntry>();
+
 export function useGroupChat(groupId: string, groupName: string) {
   const { setMyInboxId } = useAppStore();
 
@@ -45,7 +64,99 @@ export function useGroupChat(groupId: string, groupName: string) {
   // Use groupName as the cache key (e.g. "bets", "trades", etc.)
   const cacheKey = groupName.toLowerCase().replace(/\s+/g, "_");
 
+  // On mount: if warm cache exists, hydrate messages immediately (no loading state)
+  useEffect(() => {
+    const warm = _warmCache.get(groupId);
+    if (warm && warm.messages.length > 0) {
+      setMessages(warm.messages);
+    }
+  }, [groupId]);
+
   const initialize = useCallback(async () => {
+    const warm = _warmCache.get(groupId);
+    const isWarm = warm && (Date.now() - warm.loadedAt < WARM_TTL);
+
+    if (isWarm) {
+      // ── Warm path: show cached messages instantly, delta-sync in background ──
+      setMessages(warm.messages);
+      groupRef.current = warm.group;
+      clientRef.current = warm.client;
+      myInboxIdRef.current = warm.client.inboxId;
+      setMyInboxId(warm.client.inboxId);
+
+      // Mark as read
+      markChannelRead(cacheKey).catch(() => {});
+
+      // Background delta sync — pull only new messages since last load
+      (async () => {
+        try {
+          await (warm.group as any).sync();
+          const rawHistory: any[] = await (warm.group as any).messages({ limit: 50 });
+          const decoded = rawHistory
+            .map((m: any) => decodeMessage(m, warm.client.inboxId))
+            .filter(Boolean) as ChatMessage[];
+
+          let enriched = decoded;
+          for (const raw of rawHistory) {
+            try {
+              const content = raw.content();
+              if (typeof content === "string" && content.startsWith("REACT:")) {
+                enriched = applyReaction(enriched, raw, warm.client.inboxId);
+              }
+            } catch { /* skip */ }
+          }
+
+          const freshMessages = enriched.reverse();
+          const existingIds = new Set(warm.messages.map(m => m.id));
+          const newMsgs = freshMessages.filter(m => !existingIds.has(m.id));
+
+          if (newMsgs.length > 0) {
+            setMessages(prev => {
+              const merged = [...prev, ...newMsgs].sort((a, b) => a.sentAt.getTime() - b.sentAt.getTime());
+              // Update warm cache
+              const entry = _warmCache.get(groupId);
+              if (entry) { entry.messages = merged; entry.loadedAt = Date.now(); }
+              saveCachedMessages(cacheKey, merged).catch(() => {});
+              return merged;
+            });
+          }
+        } catch { /* non-critical */ }
+      })();
+
+      // Re-attach stream if not already streaming
+      if (!warm.unsub) {
+        try {
+          const unsub = await (warm.group as any).streamMessages(async (raw: any) => {
+            let content: string;
+            try { content = raw.content(); } catch { return; }
+
+            if (typeof content === "string" && content.startsWith("REACT:")) {
+              setMessages(prev => applyReaction(prev, raw, myInboxIdRef.current));
+              return;
+            }
+
+            const msg = decodeMessage(raw, myInboxIdRef.current);
+            if (msg) {
+              setMessages(prev => {
+                const updated = [...prev, msg];
+                const entry = _warmCache.get(groupId);
+                if (entry) entry.messages = updated;
+                return updated;
+              });
+              await appendCachedMessage(cacheKey, msg);
+            }
+          });
+          warm.unsub = unsub;
+          unsubscribeRef.current = unsub;
+        } catch { /* non-critical */ }
+      } else {
+        unsubscribeRef.current = warm.unsub;
+      }
+
+      return;
+    }
+
+    // ── Cold path: full load ──────────────────────────────────────────────────
     setIsLoading(true);
     setError(null);
 
@@ -118,12 +229,26 @@ export function useGroupChat(groupId: string, groupName: string) {
 
         const msg = decodeMessage(raw, myInboxIdRef.current);
         if (msg) {
-          setMessages((prev) => [...prev, msg]);
+          setMessages((prev) => {
+            const updated = [...prev, msg];
+            const entry = _warmCache.get(groupId);
+            if (entry) entry.messages = updated;
+            return updated;
+          });
           await appendCachedMessage(cacheKey, msg);
         }
       });
 
       unsubscribeRef.current = unsub;
+
+      // 6. Store in warm cache
+      _warmCache.set(groupId, {
+        messages: merged,
+        loadedAt: Date.now(),
+        group,
+        client,
+        unsub,
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Chat initialization failed");
     } finally {
@@ -132,7 +257,8 @@ export function useGroupChat(groupId: string, groupName: string) {
   }, [groupId, groupName, cacheKey, setMyInboxId]);
 
   const disconnect = useCallback(() => {
-    unsubscribeRef.current?.();
+    // Don't kill the stream — leave it alive in the warm cache
+    // so re-opening the channel is instant.
     unsubscribeRef.current = null;
   }, []);
 

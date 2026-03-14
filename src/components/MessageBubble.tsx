@@ -126,7 +126,7 @@ const videoStyles = StyleSheet.create({
   },
 });
 
-const MENTION_COLOR = "#6BC5F8"; // blue hyperlink for @username
+const MENTION_COLOR = "#6CB4EE"; // blue hyperlink for @username
 const TOKEN_COLOR   = "#FFD700"; // gold for $TOKEN
 const RICH_SPLIT    = /(@\w+|\$[A-Za-z]{1,15})/g;
 

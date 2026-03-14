@@ -13,7 +13,7 @@ import { COLORS } from '../src/lib/constants';
 import { registerBackgroundSync } from '../src/lib/backgroundSync';
 import { registerForPushNotifications } from '../src/lib/notifications';
 import { triggerProfileRebroadcast } from '../src/hooks/useXmtp';
-import { useAppStore } from '../src/store/appStore';
+import { useAppStore, loadPersistedPrefs } from '../src/store/appStore';
 import { clearLegacyKeys } from '../src/lib/session';
 
 // Register LiveKit WebRTC globals (must be called before any LiveKit usage)
@@ -28,6 +28,7 @@ export default function RootLayout() {
     SplashScreen.hideAsync();
     registerBackgroundSync();
     clearLegacyKeys(); // remove stale Matrica keys from old installs
+    loadPersistedPrefs(); // restore muted sports, muted channels, notification prefs
 
     // Request notification permissions and get Expo push token on every launch.
     // After obtaining the token, re-broadcast our XMTP profile so the bot relay

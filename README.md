@@ -26,7 +26,7 @@ An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect yo
 - **Direct Messages** — 1-on-1 encrypted DMs with any Monkes holder; inbox screen with compose modal, searchable user directory, message preview and timestamps
 - **Rich text links** — `@username` mentions render blue and are tappable (opens PFP modal); `$TOKEN` symbols render gold
 - **Inline sender labels** — sender name + timestamp rendered inside every chat bubble (bottom-aligned); own messages right-aligned, others left-aligned
-- **OnlyMonkes blue branding** — sender names, toolbar buttons (CAM/LIVE/GIF), and Community drawer title all use the signature sky blue (`#6CB4EE`) from the header logo
+- **OnlyMonkes blue branding** — all blues unified to the signature sky blue (`#6CB4EE`) from the header logo: sender names, @mention links, toolbar labels (CAM/LIVE/GIF), live audio pill, default chat bubble theme, Community drawer title, and badge numbers
 - **Bot slash commands** — type `/` to autocomplete 10 bot commands: `/price`, `/ta`, `/watchlist`, `/alerts`, `/sports`, `/tip`, `/buy`, `/sell`, `/swap`, `/help`
 - **Message search** — search through chat history
 - **In-app Jupiter swaps** — `/buy $TOKEN [SOL]`, `/sell $TOKEN [%]`, `/swap $A for $B` resolve tokens via Jupiter strict list, show a confirmation modal (amounts, price impact, slippage), and execute via MWA biometric sign — all without leaving the app
@@ -34,7 +34,8 @@ An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect yo
 - **SOL → SKR swap tips** — users without $SKR can tip using SOL; Jupiter swap + SPL transfer chained in a single `transact()` session (one biometric prompt)
 
 ### Community
-- **Bot alert channels** — four dedicated read-only feeds for categorized bot alerts: Monke Bets, Monke Trades, Monke Sales, Monke Predictions; each backed by a separate XMTP group configured via remote app config; channel icons in the toolbar below the message bar with unread count badges (tap to navigate + clear, long-press to clear)
+- **Bot alert channels** — four dedicated read-only feeds for categorized bot alerts: Monke Bets, Monke Trades, Monke Sales, Monke Predictions; each backed by a separate XMTP group configured via remote app config; channel icons in the toolbar below the message bar with white badge bubbles showing blue unread counts (tap to navigate + clear, long-press to clear); mute/unmute button in each channel header; warm cache with 60s TTL for instant re-opens without reload; real-time badge count streaming from background XMTP listeners
+- **Sports filter** — per-sport mute toggles in Monke Bets channel; persisted to AsyncStorage and broadcast in PROFILE_UPDATE so the bot filters server-side; survives app restarts
 - **dApp side chats** — per-dApp community channels (hamburger menu)
 - **Community events calendar** — schedule, view, and RSVP to events; OnlyMonkes-tagged events support "Start Live Audio Chat" when time arrives
 - **Live Audio Rooms** — Twitter Spaces-style voice chat via LiveKit WebRTC; host/listener grid with speaking-highlight rings, mute toggle, live participant count, pinned banner in main chat
@@ -43,8 +44,8 @@ An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect yo
 - **Login streaks** 🔥 — daily login streak counter; confetti fires on the 7th day
 
 ### Notifications
-- **Push notifications (v8)** — FCM V1 API via service account + Expo push relay with Bearer auth; all channels use MAX importance for heads-up banners (including bot alerts); legacy channels (v1–v7) auto-deleted on startup
-- **Per-user notification prefs** — opt-in categories: All Messages, @Mentions Only, Bot/AI alerts, DM notifications, Live Room start alerts; prefs broadcast in `PROFILE_UPDATE` so the bot filters server-side
+- **Push notifications (v8)** — FCM V1 API via service account + Expo push relay with Bearer auth; all channels use MAX importance for heads-up banners (including bot alerts); legacy channels (v1–v7) auto-deleted on startup; foreground heads-up alerts via native DirectNotif module (bypasses Expo groupKey silent interception)
+- **Per-user notification prefs** — opt-in categories: All Messages, @Mentions Only, Bot/AI alerts, DM notifications, Live Room start alerts; prefs persisted to AsyncStorage and broadcast in `PROFILE_UPDATE` so the bot filters server-side; muted bot channels and sports filters also persisted and survive app restarts
 - **Direct DM push relay** — when a user sends a DM, a push notification is sent directly to the recipient's FCM token (peer-to-peer, no bot required); includes sender NFT avatar in the data payload
 - **FCM token fallback** — direct FCM token generation (not Expo relay) for server-side bot push; cached in SecureStore and broadcast with PROFILE_UPDATE
 - **Background sync** — `expo-background-fetch` task keeps profile and data fresh when backgrounded
@@ -115,7 +116,7 @@ OnlyMonkes/
 │   │   ├── ChatInput.tsx             # Message composer: text, reply strip + toolbar (CAM/LIVE/GIF + bot channel icons w/ badges)
 │   │   ├── ConfettiView.tsx          # 40-particle Reanimated confetti (login streak milestones)
 │   │   ├── GifPickerModal.tsx        # GIPHY search + inline GIF picker
-│   │   ├── LiveAudioPill.tsx         # Floating blue pill: host, count, mute/unmute (minimized room)
+│   │   ├── LiveAudioPill.tsx         # Floating OnlyMonkes blue pill: host, count, mute/unmute (minimized room)
 │   │   ├── LiveRoomBanner.tsx        # Pinned banner: host PFP, LIVE badge, count, Join/Leave
 │   │   ├── MenuDrawer.tsx            # Slide-out drawer: dApp chats, Members, Events, Settings
 │   │   ├── MessageBubble.tsx         # Bubble: text/GIF/IMAGE/VIDEO/reactions/reply preview
@@ -132,7 +133,7 @@ OnlyMonkes/
 │   ├── hooks/
 │   │   ├── useDm.ts                  # 1-on-1 DM hook (includes direct push relay to recipient)
 │   │   ├── useDmInbox.ts             # DM inbox list hook
-│   │   ├── useGroupChat.ts           # Generic XMTP group chat hook (used by bot channels, dApp chats)
+│   │   ├── useGroupChat.ts           # Generic XMTP group chat hook (warm cache, 60s TTL, bot channels/dApp chats)
 │   │   ├── useMobileWallet.ts        # MWA wallet connect + signMessage + biometric re-auth
 │   │   ├── useNFTVerification.ts     # NFT ownership check
 │   │   └── useXmtp.ts                # XMTP client init, stream, send, react, broadcastProfile, broadcastLiveRoom
@@ -145,6 +146,7 @@ OnlyMonkes/
 │   │   ├── giphy.ts                  # GIPHY search API wrapper
 │   │   ├── liveAudio.ts              # LiveKit Room singleton — persists across navigation
 │   │   ├── livekit.ts                # LiveKit JWT generation (HS256, client-side); room helpers
+│   │   ├── messageCache.ts           # AsyncStorage message cache for bot channels (7-day expiry)
 │   │   ├── matrica.ts                # Matrica holder verification
 │   │   ├── nftVerification.ts        # Helius DAS API + on-chain fallback
 │   │   ├── notifications.ts          # Expo push token registration + FCM fallback + local notifications
@@ -160,7 +162,7 @@ OnlyMonkes/
 │   │   └── xmtp.ts                   # XMTP client, message encode/decode, group/DM helpers
 │   │
 │   ├── screens/
-│   │   ├── BotChannelScreen.tsx      # Read-only bot alert feed (Bets, Trades, Sales, Predictions)
+│   │   ├── BotChannelScreen.tsx      # Bot alert feed w/ mute button + sports filter (Bets, Trades, Sales, Predictions)
 │   │   ├── ChatScreen.tsx            # Main group chat: header, live banner, floating pill, input
 │   │   ├── ConnectScreen.tsx         # Wallet connect landing + onboarding carousel
 │   │   ├── DAppChatScreen.tsx        # Per-dApp community chat
