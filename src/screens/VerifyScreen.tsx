@@ -24,7 +24,7 @@ import { router } from "expo-router";
 import { useNFTVerification } from "@/hooks/useNFTVerification";
 import { useMobileWallet } from "@/hooks/useMobileWallet";
 import { useAppStore } from "@/store/appStore";
-import { saveVerifiedNft } from "@/lib/session";
+import { saveVerifiedNft, stampNftCheck } from "@/lib/session";
 import { NftPickerModal } from "@/components/NftPickerModal";
 import { THEME, FONTS } from "@/lib/constants";
 import { shortenAddress } from "@/lib/nftVerification";
@@ -97,7 +97,10 @@ export default function VerifyScreen() {
   const goToChat = async (nftOverride?: OwnedNFT) => {
     setPhase("ready");
     const nftToSave = nftOverride ?? verifiedNft;
-    if (nftToSave) await saveVerifiedNft(nftToSave);
+    if (nftToSave) {
+      await saveVerifiedNft(nftToSave);
+      await stampNftCheck();
+    }
     await new Promise((r) => setTimeout(r, 500));
     router.replace("/chat");
   };
