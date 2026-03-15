@@ -155,10 +155,8 @@ export function startNftOwnershipGuard(onForceLogout: () => void): void {
     }
   };
 
-  // Check immediately on registration
-  doCheck();
-
-  // Then check on every foreground return
+  // Don't check immediately on boot — ConnectScreen handles initial verification.
+  // Only re-check when the user backgrounds and returns to the app after 24h.
   let lastState: AppStateStatus = AppState.currentState;
   _nftCheckAppStateSub = AppState.addEventListener("change", (next: AppStateStatus) => {
     if (lastState !== "active" && next === "active") {
