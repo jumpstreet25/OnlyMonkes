@@ -21,9 +21,25 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       backgroundColor: '#0A0A0F',
     },
   },
+  updates: {
+    url: 'https://u.expo.dev/e669ee53-de73-4dfb-9a36-5c22de29c67e',
+    enabled: true,
+    fallbackToCacheTimeout: 5000,
+    checkAutomatically: 'ON_LOAD',
+  },
+  runtimeVersion: {
+    policy: 'appVersion',
+  },
   plugins: [
     'expo-router',
     'expo-secure-store',
+    [
+      '@sentry/react-native/expo',
+      {
+        organization: process.env.SENTRY_ORG ?? 'onlymonkes',
+        project: process.env.SENTRY_PROJECT ?? 'onlymonkes-app',
+      },
+    ],
     [
       'expo-notifications',
       {
@@ -63,6 +79,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     jupApiKey: process.env.JUP_API_KEY ?? '',
     skrMint: process.env.SKR_MINT ?? '',
     devWallet: process.env.DEV_WALLET ?? '7tLrnPvgcR5mLtyUcVwvmhAD1wXbAKgWcLBPWxpwyZ1J',
+    sentryDsn: process.env.SENTRY_DSN ?? '',
     eas: {
       projectId: 'e669ee53-de73-4dfb-9a36-5c22de29c67e',
     },

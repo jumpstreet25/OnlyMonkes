@@ -76,6 +76,7 @@ interface MenuDrawerProps {
   onClose: () => void;
   onCreateEvent?: () => void;
   onStartLive?: () => void;
+  onStartVideo?: () => void;
   onSearch?: () => void;
   onPressUser?: (target: ProfileTarget) => void;
   broadcastProfile?: () => void;
@@ -107,21 +108,32 @@ const SPORTS_LIST = [
   { key: "mma", label: "MMA 🥊" },
 ] as const;
 
-export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSearch, onPressUser, broadcastProfile, onDevTip }: MenuDrawerProps) {
+export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onStartVideo, onSearch, onPressUser, broadcastProfile, onDevTip }: MenuDrawerProps) {
   const { width: SCREEN_WIDTH } = useWindowDimensions();
   const DRAWER_WIDTH = SCREEN_WIDTH * DRAWER_WIDTH_RATIO;
 
   const slideAnim = useRef(new Animated.Value(DRAWER_WIDTH)).current;
   const { messages } = useChatStore();
-  const { calendarEvents, myInboxId,
-    notificationsEnabled, mentionsOnly, botNotificationsEnabled,
-    dmNotificationsEnabled, liveRoomNotificationsEnabled,
-    setNotificationsEnabled, setMentionsOnly, setBotNotificationsEnabled,
-    setDmNotificationsEnabled, setLiveRoomNotificationsEnabled,
-    mutedBotChannels, toggleBotChannelMute,
-    mutedSports, toggleSportMute,
-    expoPushToken, setExpoPushToken,
-  } = useAppStore();
+  const calendarEvents = useAppStore(s => s.calendarEvents);
+  const myInboxId = useAppStore(s => s.myInboxId);
+  const notificationsEnabled = useAppStore(s => s.notificationsEnabled);
+  const mentionsOnly = useAppStore(s => s.mentionsOnly);
+  const botNotificationsEnabled = useAppStore(s => s.botNotificationsEnabled);
+  const dmNotificationsEnabled = useAppStore(s => s.dmNotificationsEnabled);
+  const liveRoomNotificationsEnabled = useAppStore(s => s.liveRoomNotificationsEnabled);
+  const setNotificationsEnabled = useAppStore(s => s.setNotificationsEnabled);
+  const setMentionsOnly = useAppStore(s => s.setMentionsOnly);
+  const setBotNotificationsEnabled = useAppStore(s => s.setBotNotificationsEnabled);
+  const setDmNotificationsEnabled = useAppStore(s => s.setDmNotificationsEnabled);
+  const setLiveRoomNotificationsEnabled = useAppStore(s => s.setLiveRoomNotificationsEnabled);
+  const mutedBotChannels = useAppStore(s => s.mutedBotChannels);
+  const toggleBotChannelMute = useAppStore(s => s.toggleBotChannelMute);
+  const mutedSports = useAppStore(s => s.mutedSports);
+  const toggleSportMute = useAppStore(s => s.toggleSportMute);
+  const expoPushToken = useAppStore(s => s.expoPushToken);
+  const setExpoPushToken = useAppStore(s => s.setExpoPushToken);
+  const communityBadges = useAppStore(s => s.communityBadges);
+  const clearCommunityBadge = useAppStore(s => s.clearCommunityBadge);
   const [activeView, setActiveView] = useState<ActiveView>("list");
 
   useProfileVersion();
@@ -358,14 +370,15 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSea
                   icon="💬"
                   title="Messages"
                   subtitle="Direct messages"
-                  onPress={() => { onClose(); setTimeout(() => router.push('/dms'), 300); }}
+                  badge={communityBadges.dms || undefined}
+                  onPress={() => { clearCommunityBadge('dms'); onClose(); setTimeout(() => router.push('/dms'), 300); }}
                 />
                 <MenuItem
                   icon="🗓️"
                   title="Events"
                   subtitle={sortedEvents.length > 0 ? `${sortedEvents.length} upcoming` : "Community calendar"}
-                  badge={sortedEvents.length || undefined}
-                  onPress={() => setActiveView("events")}
+                  badge={communityBadges.events || undefined}
+                  onPress={() => { clearCommunityBadge('events'); setActiveView("events"); }}
                 />
                 <MenuItem
                   icon="🖼️"
@@ -377,8 +390,14 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSea
                   icon="🔗"
                   title="Shared Links"
                   subtitle={sharedLinks.length > 0 ? `${sharedLinks.length} links` : "URLs shared in chat"}
-                  badge={sharedLinks.length || undefined}
-                  onPress={() => setActiveView("links")}
+                  badge={communityBadges.links || undefined}
+                  onPress={() => { clearCommunityBadge('links'); setActiveView("links"); }}
+                />
+                <MenuItem
+                  icon="🏪"
+                  title="Marketplace"
+                  subtitle="Trade Saga Monkes P2P"
+                  onPress={() => { onClose(); setTimeout(() => router.push('/marketplace'), 300); }}
                 />
                 <MenuItem
                   icon="🔧"
@@ -518,6 +537,14 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSea
                           >
                             <View style={styles.startLiveDot} />
                             <Text style={styles.startLiveBtnText}>Start Live Audio Chat</Text>
+                          </Pressable>
+                        )}
+                        {isLive && onStartVideo && (
+                          <Pressable
+                            style={({ pressed }) => [styles.startLiveBtn, { marginTop: 6, backgroundColor: '#0096C7' }, pressed && { opacity: 0.75 }]}
+                            onPress={() => { onClose(); onStartVideo(); }}
+                          >
+                            <Text style={styles.startLiveBtnText}>Start Video Call</Text>
                           </Pressable>
                         )}
                       </View>
@@ -832,7 +859,7 @@ function SupportCard({ onDevTip }: { onDevTip?: (amount: number) => void }) {
 
   return (
     <View style={supportStyles.card}>
-      <Text style={supportStyles.heading}>Help Support the Future of OnlyMonkes</Text>
+      <Text style={supportStyles.heading}>Help Support OnlyMonkes</Text>
       <Text style={supportStyles.sub}>
         One-tap $SKR tip to the dev wallet 🐒{"\n"}Biometric confirm — never leaves the app.
       </Text>

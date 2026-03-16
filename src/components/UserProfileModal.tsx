@@ -21,6 +21,8 @@ import { useAppStore } from "@/store/appStore";
 import { THEME, FONTS } from "@/lib/constants";
 import { shortenAddress } from "@/lib/nftVerification";
 import { getCachedProfile } from "@/lib/userProfile";
+import { getLastSeenText, isUserOnline } from "@/lib/presence";
+import { OnlineDot } from "@/components/OnlineDot";
 
 export interface ProfileTarget {
   senderAddress: string;      // XMTP inboxId
@@ -103,6 +105,18 @@ export function UserProfileModal({ visible, target, onClose, onEditProfile, onCh
               {shortenAddress(target.senderAddress, 6)}
             </Text>
           </View>
+
+          {/* Online / Last seen */}
+          {(() => {
+            const lastSeen = getLastSeenText(target.senderAddress);
+            if (!lastSeen) return null;
+            const online = isUserOnline(target.senderAddress);
+            return (
+              <Text style={[styles.lastSeenText, online && { color: '#22c55e' }]}>
+                {online ? '● Online' : `Last seen ${lastSeen}`}
+              </Text>
+            );
+          })()}
 
           {/* Bio */}
           {bio ? (
@@ -268,6 +282,12 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.mono,
     fontSize: 12,
     color: THEME.textFaint,
+  },
+  lastSeenText: {
+    fontFamily: FONTS.mono,
+    fontSize: 11,
+    color: THEME.textMuted,
+    marginTop: 4,
   },
   bioBox: {
     alignSelf: "stretch",
