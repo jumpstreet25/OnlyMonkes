@@ -497,6 +497,13 @@ export async function sendLiveRoomMessage(
   await (group as any).send(`LIVE_ROOM:${roomJson}`);
 }
 
+export async function sendVideoRoomMessage(
+  group: XmtpGroup,
+  roomJson: string,
+): Promise<void> {
+  await (group as any).send(`VIDEO_ROOM:${roomJson}`);
+}
+
 // ─── Typing Indicator ─────────────────────────────────────────────────────────
 
 /**

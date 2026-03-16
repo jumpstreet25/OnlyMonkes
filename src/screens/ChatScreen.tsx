@@ -54,7 +54,7 @@ import { MonkeToolsModal } from "@/components/MonkeToolsModal";
 import { UserProfileModal, type ProfileTarget } from "@/components/UserProfileModal";
 import { NftPickerModal } from "@/components/NftPickerModal";
 import { router } from "expo-router";
-import { THEME, FONTS } from "@/lib/constants";
+import { THEME, FONTS, SKR_MINT } from "@/lib/constants";
 import { loadUserProfile, getCachedProfile, getAllTimeUsers, saveSelectedNftMint, cacheProfile } from "@/lib/userProfile";
 import { checkAndUpdateStreak } from "@/lib/streaks";
 import { ConfettiView } from "@/components/ConfettiView";
@@ -71,37 +71,93 @@ import { LiveRoomBanner } from "@/components/LiveRoomBanner";
 import { type LiveRoomData, createLivekitToken, createRoomName, LK_URL } from "@/lib/livekit";
 import * as liveAudio from "@/lib/liveAudio";
 import { LiveAudioPill } from "@/components/LiveAudioPill";
+import { VideoRoomBanner } from "@/components/VideoRoomBanner";
+import { VideoCallPip } from "@/components/VideoCallPip";
+import { createVideoRoom, joinVideoRoom, disconnectFromVideoRoom, type VideoRoomData } from "@/lib/liveVideo";
 import { BotCommandTicker } from "@/components/BotCommandTicker";
 import { showLocalNotification, CH_ALL } from "@/lib/notifications";
-import { Video, ResizeMode } from "expo-av";
-import * as MediaLibrary from "expo-media-library";
-import * as FileSystem from "expo-file-system";
-import { captureRef } from "react-native-view-shot";
-import * as ImagePicker from "expo-image-picker";
-import { compressImage } from "@/lib/videoUpload";
 import { registerNetworkSync, unregisterNetworkSync, setOfflineQueueFlusher, isOnline } from "@/lib/backgroundSync";
 import { enqueueMessage, flushOfflineQueue } from "@/lib/offlineQueue";
-import { parseSwapCommand, resolveToken, getSwapQuote, executeSwap, getTokenBalance, type SwapQuote, type ParsedSwapCommand } from "@/lib/jupiterSwap";
 import { SwapConfirmModal } from "@/components/SwapConfirmModal";
+import { PinnedBar } from "@/components/PinnedBar";
+import { loadPinnedMessages, getPinnedMessages, buildPinMessage, type PinnedMessage } from "@/lib/pinnedMessages";
+import { loadThreadMetadata } from "@/lib/threads";
+import { loadListings } from "@/lib/marketplace";
+
+// ── Lazy imports — heavy modules loaded on first use, not at startup ────────
+import type { SwapQuote, ParsedSwapCommand } from "@/lib/jupiterSwap";
+
+const getExpoAv = () => import("expo-av");
+const getMediaLibrary = () => import("expo-media-library");
+const getFileSystem = () => import("expo-file-system");
+const getViewShot = () => import("react-native-view-shot");
+const getImagePicker = () => import("expo-image-picker");
+const getVideoUpload = () => import("@/lib/videoUpload");
+const getJupiterSwap = () => import("@/lib/jupiterSwap");
 import type { ChatMessage, ReactionEmoji } from "@/types";
 import type { TipAmount } from "@/lib/constants";
 
 const HEADER_BG = "transparent";
 
+/** Lazy-loaded Video player — avoids importing expo-av at startup */
+function LazyVideo({ uri }: { uri: string }) {
+  const [Mod, setMod] = useState<{ Video: any; ResizeMode: any } | null>(null);
+  useEffect(() => { getExpoAv().then(m => setMod(m)); }, []);
+  if (!Mod) return <ActivityIndicator style={{ flex: 1 }} color="#fff" />;
+  return (
+    <Mod.Video
+      source={{ uri }}
+      style={{ flex: 1 }}
+      useNativeControls
+      shouldPlay
+      resizeMode={Mod.ResizeMode.CONTAIN}
+    />
+  );
+}
+
 export default function ChatScreen() {
   const insets = useSafeAreaInsets();
-  const {
-    verifiedNft, allNfts, myInboxId, username, bio, xAccount, tipWallet,
-    setUsername, setBio, setXAccount, setTipWallet, setVerified,
-    isGroupMember, isGroupAdmin, joinRequests, remoteGroupId,
-    setThemeId, setCustomBubbleColor, setCalendarEvents,
-    loginStreak, isLoading, error,
-    activeLiveRoom, setActiveLiveRoom,
-    isInLiveRoom, liveRoomToken, setIsInLiveRoom, setLiveRoomToken,
-  } = useAppStore();
-  const { messages, replyingTo, isLoadingHistory, setReplyingTo, typingUsers } =
-    useChatStore();
-  const { initialize, disconnect, logout, streamAlive, send, reply, react, edit, stickerReact, sendTyping, addMember, loadJoinRequests, approveJoinRequest, publishGroupId, forceAdminInit, broadcastProfile, broadcastEvent, broadcastLiveRoom, syncMessages } = useXmtp();
+  // ── Zustand selectors — subscribe only to fields this screen reads ──────────
+  const verifiedNft      = useAppStore(s => s.verifiedNft);
+  const allNfts          = useAppStore(s => s.allNfts);
+  const myInboxId        = useAppStore(s => s.myInboxId);
+  const username         = useAppStore(s => s.username);
+  const bio              = useAppStore(s => s.bio);
+  const xAccount         = useAppStore(s => s.xAccount);
+  const tipWallet        = useAppStore(s => s.tipWallet);
+  const setUsername       = useAppStore(s => s.setUsername);
+  const setBio           = useAppStore(s => s.setBio);
+  const setXAccount      = useAppStore(s => s.setXAccount);
+  const setTipWallet     = useAppStore(s => s.setTipWallet);
+  const setVerified      = useAppStore(s => s.setVerified);
+  const isGroupMember    = useAppStore(s => s.isGroupMember);
+  const isGroupAdmin     = useAppStore(s => s.isGroupAdmin);
+  const joinRequests     = useAppStore(s => s.joinRequests);
+  const remoteGroupId    = useAppStore(s => s.remoteGroupId);
+  const setThemeId       = useAppStore(s => s.setThemeId);
+  const setCustomBubbleColor = useAppStore(s => s.setCustomBubbleColor);
+  const setCalendarEvents = useAppStore(s => s.setCalendarEvents);
+  const loginStreak      = useAppStore(s => s.loginStreak);
+  const isLoading        = useAppStore(s => s.isLoading);
+  const error            = useAppStore(s => s.error);
+  const activeLiveRoom   = useAppStore(s => s.activeLiveRoom);
+  const setActiveLiveRoom = useAppStore(s => s.setActiveLiveRoom);
+  const isInLiveRoom     = useAppStore(s => s.isInLiveRoom);
+  const liveRoomToken    = useAppStore(s => s.liveRoomToken);
+  const setIsInLiveRoom  = useAppStore(s => s.setIsInLiveRoom);
+  const setLiveRoomToken = useAppStore(s => s.setLiveRoomToken);
+  const communityBadges  = useAppStore(s => s.communityBadges);
+  const activeVideoRoom  = useAppStore(s => s.activeVideoRoom);
+  const setActiveVideoRoom = useAppStore(s => s.setActiveVideoRoom);
+  const isInVideoCall    = useAppStore(s => s.isInVideoCall);
+  const setIsInVideoCall = useAppStore(s => s.setIsInVideoCall);
+
+  const messages         = useChatStore(s => s.messages);
+  const replyingTo       = useChatStore(s => s.replyingTo);
+  const isLoadingHistory = useChatStore(s => s.isLoadingHistory);
+  const setReplyingTo    = useChatStore(s => s.setReplyingTo);
+  const typingUsers      = useChatStore(s => s.typingUsers);
+  const { initialize, disconnect, logout, streamAlive, send, reply, react, edit, stickerReact, sendTyping, addMember, loadJoinRequests, approveJoinRequest, publishGroupId, forceAdminInit, broadcastProfile, broadcastEvent, broadcastLiveRoom, broadcastVideoRoom, syncMessages } = useXmtp();
   const [inputText, setInputText] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [showUsernameModal, setShowUsernameModal] = useState(false);
@@ -134,25 +190,31 @@ export default function ChatScreen() {
   const [adminRecoveryPat, setAdminRecoveryPat] = useState("");
   const [adminRecoveryBusy, setAdminRecoveryBusy] = useState(false);
   const [adminRecoveryError, setAdminRecoveryError] = useState<string | null>(null);
+  const [videoCallToken, setVideoCallToken] = useState<string | null>(null);
   const [swapQuote, setSwapQuote] = useState<SwapQuote | null>(null);
   const [swapConfirmOpen, setSwapConfirmOpen] = useState(false);
   const [swapExecuting, setSwapExecuting] = useState(false);
   const [editTarget, setEditTarget] = useState<ChatMessage | null>(null);
   const [editText, setEditText] = useState("");
   const [xShareImageUri, setXShareImageUri] = useState<string | null>(null);
+  const [skrPrice, setSkrPrice] = useState<string | null>(null);
+  const [floorPrice, setFloorPrice] = useState<string | null>(null);
+  const [pinnedMessages, setPinnedMessages] = useState<PinnedMessage[]>([]);
   const flatListRef = useRef<FlatList>(null);
   const initialMsgIdsRef = useRef<Set<string>>(new Set());
   const lightboxViewRef = useRef<any>(null);
 
   const handleDownloadImage = async () => {
-    const { status } = await MediaLibrary.requestPermissionsAsync();
+    const ML = await getMediaLibrary();
+    const { status } = await ML.requestPermissionsAsync();
     if (status !== "granted") {
       Alert.alert("Permission needed", "Allow gallery access to save images.");
       return;
     }
     try {
+      const { captureRef } = await getViewShot();
       const uri = await captureRef(lightboxViewRef, { format: "jpg", quality: 0.95 });
-      await MediaLibrary.saveToLibraryAsync(uri);
+      await ML.saveToLibraryAsync(uri);
       Alert.alert("Saved", "Image saved to your gallery.");
     } catch {
       Alert.alert("Error", "Could not save image.");
@@ -160,15 +222,17 @@ export default function ChatScreen() {
   };
 
   const handleDownloadVideo = async (uri: string) => {
-    const { status } = await MediaLibrary.requestPermissionsAsync();
+    const ML = await getMediaLibrary();
+    const { status } = await ML.requestPermissionsAsync();
     if (status !== "granted") {
       Alert.alert("Permission needed", "Allow gallery access to save videos.");
       return;
     }
     try {
-      const dest = `${FileSystem.cacheDirectory}om_video_${Date.now()}.mp4`;
-      const dl = await FileSystem.downloadAsync(uri, dest);
-      await MediaLibrary.saveToLibraryAsync(dl.uri);
+      const FS = await getFileSystem();
+      const dest = `${FS.cacheDirectory}om_video_${Date.now()}.mp4`;
+      const dl = await FS.downloadAsync(uri, dest);
+      await ML.saveToLibraryAsync(dl.uri);
       Alert.alert("Saved", "Video saved to your gallery.");
     } catch {
       Alert.alert("Error", "Could not save video.");
@@ -284,6 +348,35 @@ export default function ChatScreen() {
     loadCustomColor().then((c) => { if (c) setCustomBubbleColor(c); });
     // Load persisted calendar events
     loadEvents().then(setCalendarEvents);
+    // Load pinned messages, thread metadata, marketplace listings
+    loadPinnedMessages().then(setPinnedMessages);
+    loadThreadMetadata();
+    loadListings();
+  }, []);
+
+  // ─── Fetch $SKR price + Saga Monkes floor price (live, every 60s) ───────────
+  useEffect(() => {
+    let mounted = true;
+    const fetchPrices = () => {
+      fetch(`https://api.dexscreener.com/latest/dex/tokens/${SKR_MINT}`)
+        .then(r => r.json())
+        .then(d => {
+          if (!mounted) return;
+          const p = d?.pairs?.[0]?.priceUsd;
+          if (p) setSkrPrice(Number(p) < 0.01 ? `$${Number(p).toFixed(6)}` : `$${Number(p).toFixed(4)}`);
+        })
+        .catch(() => {});
+      fetch('https://api-mainnet.magiceden.dev/v2/collections/sagamonkes/stats')
+        .then(r => r.json())
+        .then(d => {
+          if (!mounted) return;
+          if (d?.floorPrice) setFloorPrice(`${(d.floorPrice / 1e9).toFixed(2)} SOL`);
+        })
+        .catch(() => {});
+    };
+    fetchPrices();
+    const interval = setInterval(fetchPrices, 60_000);
+    return () => { mounted = false; clearInterval(interval); };
   }, []);
 
   // ─── Keep own NFT in profile cache in sync whenever verifiedNft changes ──────
@@ -313,6 +406,7 @@ export default function ChatScreen() {
     if (!text) return;
 
     // ── Intercept /buy, /sell, /swap commands ──────────────────────────────────
+    const { parseSwapCommand, resolveToken, getSwapQuote, getTokenBalance } = await getJupiterSwap();
     const swapCmd = parseSwapCommand(text);
     if (swapCmd) {
       setInputText("");
@@ -486,13 +580,14 @@ export default function ChatScreen() {
 
   const handleCamera = useCallback(async () => {
     try {
-      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      const IP = await getImagePicker();
+      const { status } = await IP.requestCameraPermissionsAsync();
       if (status !== "granted") {
         Alert.alert("Camera permission required", "Please allow camera access in your device settings.");
         return;
       }
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      const result = await IP.launchCameraAsync({
+        mediaTypes: IP.MediaTypeOptions.Images,
         quality: 0.5,
         allowsEditing: false,
         base64: false,
@@ -500,8 +595,10 @@ export default function ChatScreen() {
       if (result.canceled || !result.assets?.[0]) return;
       const asset = result.assets[0];
       // Compress to max 1200px wide, JPEG 70% then convert to base64 data URI
+      const { compressImage } = await getVideoUpload();
       const compressedUri = await compressImage(asset.uri);
-      const b64 = await FileSystem.readAsStringAsync(compressedUri, { encoding: FileSystem.EncodingType.Base64 });
+      const FS = await getFileSystem();
+      const b64 = await FS.readAsStringAsync(compressedUri, { encoding: FS.EncodingType.Base64 });
       const dataUri = `data:image/jpeg;base64,${b64}`;
       const content = `IMAGE:${dataUri}`;
       const optimistic: ChatMessage = {
@@ -687,6 +784,54 @@ export default function ChatScreen() {
     await broadcastLiveRoom(data).catch(() => {});
   }, [activeLiveRoom, broadcastLiveRoom, setActiveLiveRoom, setIsInLiveRoom, setLiveRoomToken]);
 
+  // ── Video call handlers ─────────────────────────────────────────────────────
+
+  const handleStartVideoCall = useCallback(async () => {
+    if (!myInboxId || !username) {
+      Alert.alert("Set a username first", "Go to your profile and set a username before starting a video call.");
+      return;
+    }
+    try {
+      const { roomData, token } = createVideoRoom(myInboxId, username);
+      setActiveVideoRoom(roomData);
+      setIsInVideoCall(true);
+      setVideoCallToken(token);
+      await broadcastVideoRoom(roomData);
+      await showLocalNotification(`${username} started a Video Call`, "Live Video in OnlyMonkes", CH_ALL);
+      router.push(`/video-room?token=${encodeURIComponent(token)}&isHost=1`);
+    } catch (err: any) {
+      Alert.alert("Failed to start video call", err?.message ?? "Unknown error");
+    }
+  }, [myInboxId, username, broadcastVideoRoom, setActiveVideoRoom, setIsInVideoCall]);
+
+  const handleJoinVideoCall = useCallback(async () => {
+    if (!myInboxId || !username || !activeVideoRoom) return;
+    try {
+      const token = joinVideoRoom(activeVideoRoom.id, myInboxId, username);
+      setIsInVideoCall(true);
+      setVideoCallToken(token);
+      router.push(`/video-room?token=${encodeURIComponent(token)}&isHost=0`);
+    } catch (err: any) {
+      Alert.alert("Failed to join", err?.message ?? "Unknown error");
+    }
+  }, [myInboxId, username, activeVideoRoom, setIsInVideoCall]);
+
+  const handleLeaveVideoCall = useCallback(async () => {
+    setIsInVideoCall(false);
+    setVideoCallToken(null);
+    await disconnectFromVideoRoom().catch(() => {});
+  }, [setIsInVideoCall]);
+
+  const handleEndVideoCall = useCallback(async () => {
+    if (!activeVideoRoom) return;
+    const data: VideoRoomData = { ...activeVideoRoom, active: false };
+    setActiveVideoRoom(null);
+    setIsInVideoCall(false);
+    setVideoCallToken(null);
+    await disconnectFromVideoRoom().catch(() => {});
+    await broadcastVideoRoom(data).catch(() => {});
+  }, [activeVideoRoom, broadcastVideoRoom, setActiveVideoRoom, setIsInVideoCall]);
+
   const handleConfirmDevTip = useCallback(async (amount: TipAmount) => {
     setDevTipOpen(false);
     try {
@@ -703,6 +848,7 @@ export default function ChatScreen() {
     if (!swapQuote) return;
     setSwapExecuting(true);
     try {
+      const { executeSwap } = await getJupiterSwap();
       const result = await executeSwap(swapQuote);
       setSwapConfirmOpen(false);
       setSwapQuote(null);
@@ -740,14 +886,36 @@ export default function ChatScreen() {
             onPressImage={setLightboxUrl}
             onPressVideo={setVideoLightboxUrl}
             onEdit={handleEditMessage}
+            onPin={isGroupAdmin ? async (msg) => {
+              const { pinMessage: doPin, buildPinMessage: buildPin } = require("@/lib/pinnedMessages");
+              await doPin(msg, myAddress);
+              setPinnedMessages(getPinnedMessages());
+              send(buildPin(msg.id, 'pin')).catch(() => {});
+            } : undefined}
+            onThread={(msg) => {
+              router.push(`/thread?parentId=${msg.id}&parentContent=${encodeURIComponent(msg.content)}&parentSender=${encodeURIComponent(msg.senderUsername ?? '')}`);
+            }}
           />
         </Animated.View>
       );
     },
-    [myAddress, handleReact, setReplyingTo, handlePressUser, handleTip, handleStickerReact, setVideoLightboxUrl, handleEditMessage]
+    [myAddress, isGroupAdmin, handleReact, setReplyingTo, handlePressUser, handleTip, handleStickerReact, setVideoLightboxUrl, handleEditMessage, send]
   );
 
   const keyExtractor = useCallback((item: ChatMessage) => item.id, []);
+
+  // ── FlatList performance helpers ──────────────────────────────────────────
+  // NOTE: getItemLayout omitted — messages have variable heights (text, images, videos)
+  // and estimated heights cause visual glitches with overlapping/gaps.
+  const SCROLL_THRESHOLD = 270; // ~3 message heights
+
+  // Only auto-scroll if user is already near the bottom (within ~3 messages)
+  const isNearBottomRef = useRef(true);
+  const handleContentSizeChange = useCallback(() => {
+    if (isNearBottomRef.current) {
+      flatListRef.current?.scrollToEnd({ animated: false });
+    }
+  }, []);
 
   return (
     <>
@@ -772,6 +940,7 @@ export default function ChatScreen() {
         onClose={() => setDrawerOpen(false)}
         onCreateEvent={() => setCalendarOpen(true)}
         onStartLive={handleStartLive}
+        onStartVideo={handleStartVideoCall}
         onSearch={() => setSearchOpen(true)}
         onPressUser={(target) => { setDrawerOpen(false); setTimeout(() => setProfileTarget(target), 300); }}
         broadcastProfile={broadcastProfile}
@@ -971,6 +1140,13 @@ export default function ChatScreen() {
               hitSlop={8}
             >
               <Text style={styles.menuIcon}>☰</Text>
+              {(communityBadges.dms + communityBadges.events + communityBadges.links) > 0 && (
+                <View style={styles.communityBadge}>
+                  <Text style={styles.communityBadgeText}>
+                    {communityBadges.dms + communityBadges.events + communityBadges.links}
+                  </Text>
+                </View>
+              )}
             </Pressable>
           </View>
 
@@ -1245,6 +1421,39 @@ export default function ChatScreen() {
           />
         )}
 
+        {/* Video room banner — pinned at top of chat, below audio room */}
+        {isGroupMember && activeVideoRoom && (
+          <VideoRoomBanner
+            room={activeVideoRoom}
+            isHost={activeVideoRoom.hostId === myInboxId}
+            isInCall={isInVideoCall}
+            onJoin={handleJoinVideoCall}
+            onLeave={handleLeaveVideoCall}
+            onEnd={handleEndVideoCall}
+          />
+        )}
+
+        {/* Pinned message bar */}
+        {isGroupMember && pinnedMessages.length > 0 && (
+          <PinnedBar
+            pinnedMessages={pinnedMessages}
+            onScrollToMessage={(msgId) => {
+              const idx = messages.findIndex(m => m.id === msgId);
+              if (idx !== -1) flatListRef.current?.scrollToIndex({ index: idx, animated: true });
+            }}
+            onUnpin={isGroupAdmin ? async (msgId) => {
+              const { unpinMessage: doUnpin } = require("@/lib/pinnedMessages");
+              await doUnpin(msgId);
+              setPinnedMessages(getPinnedMessages());
+              // Broadcast unpin to group
+              if (send) {
+                send(buildPinMessage(msgId, 'unpin')).catch(() => {});
+              }
+            } : undefined}
+            isAdmin={isGroupAdmin}
+          />
+        )}
+
         {/* Floating pill — shown when this user is actively in the live audio room */}
         {isGroupMember && isInLiveRoom && activeLiveRoom && (
           <LiveAudioPill
@@ -1252,6 +1461,13 @@ export default function ChatScreen() {
             isHost={activeLiveRoom.hostId === myInboxId}
             onExpand={() => liveRoomToken && router.push(`/live-room?token=${encodeURIComponent(liveRoomToken)}&isHost=${activeLiveRoom.hostId === myInboxId ? "1" : "0"}`)}
             onEnd={handleEndLive}
+          />
+        )}
+
+        {/* iOS-style PiP bubble — shown when user is in a video call but on the chat screen */}
+        {isGroupMember && isInVideoCall && activeVideoRoom && videoCallToken && (
+          <VideoCallPip
+            onExpand={() => router.push(`/video-room?token=${encodeURIComponent(videoCallToken)}&isHost=${activeVideoRoom.hostId === myInboxId ? "1" : "0"}`)}
           />
         )}
 
@@ -1281,14 +1497,20 @@ export default function ChatScreen() {
           renderItem={renderMessage}
           keyExtractor={keyExtractor}
           contentContainerStyle={styles.listContent}
-          onContentSizeChange={() =>
-            flatListRef.current?.scrollToEnd({ animated: false })
-          }
+          onContentSizeChange={handleContentSizeChange}
           refreshing={refreshingChat}
           onRefresh={handleRefreshChat}
           removeClippedSubviews
-          maxToRenderPerBatch={20}
-          windowSize={10}
+          maxToRenderPerBatch={15}
+          initialNumToRender={15}
+          updateCellsBatchingPeriod={50}
+          windowSize={7}
+          onScroll={({ nativeEvent }) => {
+            const { contentOffset, layoutMeasurement, contentSize } = nativeEvent;
+            isNearBottomRef.current =
+              contentOffset.y + layoutMeasurement.height >= contentSize.height - SCROLL_THRESHOLD;
+          }}
+          scrollEventThrottle={200}
         />}
 
         {/* Input */}
@@ -1314,9 +1536,15 @@ export default function ChatScreen() {
             onPress={() => setDevTipOpen(true)}
             style={({ pressed }) => [styles.supportBanner, pressed && { opacity: 0.6 }]}
           >
+            {skrPrice && (
+              <Text style={styles.supportPriceText}>$SKR {skrPrice}</Text>
+            )}
             <Text style={styles.supportBannerText}>
-              Help Support the Future of OnlyMonkes
+              Help Support OnlyMonkes
             </Text>
+            {floorPrice && (
+              <Text style={styles.supportPriceText}>Floor {floorPrice}</Text>
+            )}
           </Pressable>
         )}
 
@@ -1329,7 +1557,7 @@ export default function ChatScreen() {
         onSend={handleVideoSend}
       />
 
-      {/* ── Video Lightbox ────────────────────────────────────────────── */}
+      {/* ── Video Lightbox (expo-av loaded on demand) ────────────────── */}
       <Modal
         visible={!!videoLightboxUrl}
         transparent
@@ -1338,13 +1566,7 @@ export default function ChatScreen() {
         onRequestClose={() => setVideoLightboxUrl(null)}
       >
         <View style={{ flex: 1, backgroundColor: '#000' }}>
-          <Video
-            source={{ uri: videoLightboxUrl! }}
-            style={{ flex: 1 }}
-            useNativeControls
-            shouldPlay
-            resizeMode={ResizeMode.CONTAIN}
-          />
+          <LazyVideo uri={videoLightboxUrl!} />
           {/* Watermark overlay */}
           <View style={{ position: 'absolute', bottom: 72, right: 16, opacity: 0.7 }} pointerEvents="none">
             <Image
@@ -1606,28 +1828,24 @@ const styles = StyleSheet.create({
   headerCenter: {
     flex: 1,
     alignSelf: "stretch",
+    transform: [{ scale: 0.9 }],
   },
   headerLeft: {
-    alignItems: "flex-start",
+    alignSelf: "center",
   },
   headerNft: {
-    width: 46,
-    height: 46,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: THEME.accent + "66",
+    width: 58,
+    height: 58,
+    borderRadius: 15,
   },
   headerNftFallback: {
-    width: 46,
-    height: 46,
-    borderRadius: 12,
-    backgroundColor: THEME.accentSoft,
-    borderWidth: 1,
-    borderColor: THEME.accent + "44",
+    width: 58,
+    height: 58,
+    borderRadius: 15,
     alignItems: "center",
     justifyContent: "center",
   },
-  headerNftGlyph: { fontSize: 24 },
+  headerNftGlyph: { fontSize: 28 },
   streakPill: {
     position: "absolute",
     bottom: -6,
@@ -1663,6 +1881,23 @@ const styles = StyleSheet.create({
   menuIcon: {
     fontSize: 15,
     color: THEME.text,
+  },
+  communityBadge: {
+    position: "absolute" as const,
+    top: -4,
+    right: -6,
+    backgroundColor: "#fff",
+    borderRadius: 9,
+    minWidth: 18,
+    height: 18,
+    alignItems: "center" as const,
+    justifyContent: "center" as const,
+    paddingHorizontal: 4,
+  },
+  communityBadgeText: {
+    color: "#0096C7",
+    fontSize: 10,
+    fontWeight: "700" as const,
   },
 
   // ── History / Empty ──────────────────────────────────────────────────────────
@@ -1959,17 +2194,26 @@ const styles = StyleSheet.create({
     color: THEME.textMuted,
   },
   supportBanner: {
-    paddingVertical: 9,
-    paddingHorizontal: 16,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 9,
+    paddingHorizontal: 12,
     borderTopWidth: 1,
     borderTopColor: THEME.border,
   },
   supportBannerText: {
     fontFamily: FONTS.mono,
-    fontSize: 11,
+    fontSize: 10,
     color: THEME.textFaint,
     letterSpacing: 0.4,
     textAlign: 'center',
+    flex: 1,
+  },
+  supportPriceText: {
+    fontFamily: FONTS.mono,
+    fontSize: 10,
+    color: '#fff',
+    fontWeight: '700',
   },
 });
