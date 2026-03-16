@@ -15,9 +15,15 @@ import { registerForPushNotifications } from '../src/lib/notifications';
 import { triggerProfileRebroadcast } from '../src/hooks/useXmtp';
 import { useAppStore, loadPersistedPrefs } from '../src/store/appStore';
 import { clearLegacyKeys, startNftOwnershipGuard } from '../src/lib/session';
+import { initSentry } from '../src/lib/sentry';
+import { checkForOtaUpdate } from '../src/lib/otaUpdates';
+import { logAppOpen, logDailySession } from '../src/lib/analytics';
 
 // Register LiveKit WebRTC globals (must be called before any LiveKit usage)
 registerLiveKitGlobals();
+
+// Initialize Sentry crash reporting (no-op if SENTRY_DSN not set)
+initSentry();
 
 SplashScreen.preventAutoHideAsync();
 
@@ -27,6 +33,10 @@ export default function RootLayout() {
   useEffect(() => {
     SplashScreen.hideAsync();
     registerBackgroundSync();
+    logAppOpen().catch(() => {});
+    const streak = useAppStore.getState().loginStreak;
+    logDailySession(streak).catch(() => {});
+    checkForOtaUpdate(); // OTA update check (no-op in dev)
     clearLegacyKeys(); // remove stale Matrica keys from old installs
     loadPersistedPrefs(); // restore muted sports, muted channels, notification prefs
 

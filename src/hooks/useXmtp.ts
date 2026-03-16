@@ -37,8 +37,14 @@ import {
   sendProfileUpdate,
   sendEventMessage,
   sendLiveRoomMessage,
+  sendVideoRoomMessage,
 } from "@/lib/xmtp";
 import { parseLiveRoomMessage, buildLiveRoomMessage, type LiveRoomData } from "@/lib/livekit";
+import { parsePinMessage, pinMessage, unpinMessage, getPinnedMessages } from "@/lib/pinnedMessages";
+import { parsePresenceMessage, updatePresence, buildPresenceMessage } from "@/lib/presence";
+import { parseThreadMessage, trackThreadReply } from "@/lib/threads";
+import { parseMarketplaceMessage, addListing, addBid, acceptBid, delistNft } from "@/lib/marketplace";
+import { parseVideoRoomMessage, type VideoRoomData } from "@/lib/liveVideo";
 import { verifyNftMintInCollection } from "@/lib/nftVerification";
 import { cacheProfile, getCachedProfile, loadProfileCache, trackUser, loadAllTimeUsers } from "@/lib/userProfile";
 import { loadWeeklyActivity, trackActivity } from "@/lib/activityTracker";
@@ -526,6 +532,80 @@ export function useXmtp() {
             if (event) {
               await saveEvent(event);
               useAppStore.getState().addCalendarEvent(event);
+              useAppStore.getState().incrementCommunityBadge('events');
+            }
+          } catch { /* ignore */ }
+          return;
+        }
+
+        // ── Pinned messages ──────────────────────────────────────────────────
+        if (typeof content === "string" && content.startsWith("PIN:")) {
+          const pin = parsePinMessage(content);
+          if (pin) {
+            if (pin.action === 'pin') {
+              const { messages } = useChatStore.getState();
+              const target = messages.find(m => m.id === pin.messageId);
+              if (target) {
+                await pinMessage(target, raw.senderInboxId as string);
+              }
+            } else {
+              await unpinMessage(pin.messageId);
+            }
+          }
+          return;
+        }
+
+        // ── Presence heartbeat ──────────────────────────────────────────────
+        if (typeof content === "string" && content.startsWith("PRESENCE:")) {
+          const presence = parsePresenceMessage(content);
+          if (presence) updatePresence(presence.inboxId, presence.timestamp);
+          return;
+        }
+
+        // ── Thread replies ──────────────────────────────────────────────────
+        if (typeof content === "string" && content.startsWith("THREAD:")) {
+          const thread = parseThreadMessage(content);
+          if (thread) {
+            const { messages } = useChatStore.getState();
+            const parent = messages.find(m => m.id === thread.parentMessageId);
+            trackThreadReply(
+              thread.parentMessageId,
+              raw.senderInboxId as string,
+              parent?.content,
+              parent?.senderUsername,
+            );
+          }
+          return;
+        }
+
+        // ── NFT Marketplace messages ────────────────────────────────────────
+        if (typeof content === "string" && (
+          content.startsWith("NFT_LIST:") || content.startsWith("NFT_BID:") ||
+          content.startsWith("NFT_ACCEPT:") || content.startsWith("NFT_DELIST:")
+        )) {
+          const market = parseMarketplaceMessage(content);
+          if (market) {
+            switch (market.type) {
+              case 'list': addListing(market.data); break;
+              case 'bid': addBid(market.data); break;
+              case 'accept': acceptBid(market.data.listingId); break;
+              case 'delist': delistNft(market.data.listingId); break;
+            }
+          }
+          return;
+        }
+
+        // ── Video room signaling ────────────────────────────────────────────
+        if (typeof content === "string" && content.startsWith("VIDEO_ROOM:")) {
+          try {
+            const data = parseVideoRoomMessage(content);
+            if (data) {
+              if (data.active) {
+                useAppStore.getState().setActiveVideoRoom(data);
+              } else {
+                const current = useAppStore.getState().activeVideoRoom;
+                if (current?.id === data.id) useAppStore.getState().setActiveVideoRoom(null);
+              }
             }
           } catch { /* ignore */ }
           return;
@@ -558,6 +638,11 @@ export function useXmtp() {
 
         const enrichedMsg = enrichWithNft(msg);
         mergeMessage(enrichedMsg);
+
+        // Increment links badge if message contains a URL
+        if (/https?:\/\/[^\s"'<>)]+/.test(msg.content)) {
+          useAppStore.getState().incrementCommunityBadge('links');
+        }
 
         // Persist to cache for Shared Images/Links
         appendCachedMessage("main_chat", enrichedMsg).catch(() => {});
@@ -593,6 +678,15 @@ export function useXmtp() {
 
       _streamAlive = true;
       _unsubscribeStream = () => { _streamAlive = false; unsub(); };
+
+      // ── 5b. Start presence heartbeat ─────────────────────────────────────
+      const { startHeartbeat } = require("@/lib/presence");
+      startHeartbeat(() => {
+        if (_group && _myInboxId) {
+          const msg = buildPresenceMessage(_myInboxId);
+          (_group as any).send(msg).catch(() => {});
+        }
+      });
 
       // ── 6. Auto-broadcast own profile once per session ─────────────────────
       // Ensures every user's PFP is visible in the cache of everyone in the chat,
@@ -720,6 +814,29 @@ export function useXmtp() {
             } catch { /* skip individual channel */ }
           }
         } catch { /* non-critical */ }
+      })();
+
+      // ── 9. Stream DMs for community badge count ──────────────────────────────
+      (async () => {
+        try {
+          await client.conversations.sync();
+          const unsub = await (client.conversations as any).streamAllDmMessages(async (raw: any) => {
+            try {
+              let content: string;
+              try { content = raw.content(); } catch { return; }
+              if (typeof content !== 'string') return;
+              const senderInboxId = raw.senderInboxId ?? '';
+              if (senderInboxId === client.inboxId) return;
+              // Skip protocol messages
+              if (content.startsWith('TYPING:') || content.startsWith('PROFILE_UPDATE:')) return;
+              useAppStore.getState().incrementCommunityBadge('dms');
+            } catch { /* ignore per-message errors */ }
+          });
+          _botChannelUnsubs.push(unsub);
+          console.log('[XMTP] Streaming DMs for badge count');
+        } catch (err) {
+          console.warn('[XMTP] DM badge stream failed:', err);
+        }
       })();
     } catch (err) {
       const message =
@@ -972,6 +1089,16 @@ export function useXmtp() {
     }
   }, []);
 
+  // ── Broadcast a video room signal (start / end) ───────────────────────────
+  const broadcastVideoRoom = useCallback(async (data: VideoRoomData) => {
+    if (!_group) return;
+    try {
+      await sendVideoRoomMessage(_group, JSON.stringify(data));
+    } catch (err) {
+      console.warn("[XMTP] broadcastVideoRoom failed:", err);
+    }
+  }, []);
+
   // ── Admin: publish group ID to GitHub config ───────────────────────────────
   const publishGroupId = useCallback(async (githubPat: string) => {
     if (!_client) throw new Error("XMTP client not ready");
@@ -1028,6 +1155,7 @@ export function useXmtp() {
     broadcastProfile,
     broadcastEvent,
     broadcastLiveRoom,
+    broadcastVideoRoom,
     syncMessages,
   };
 }

@@ -1,6 +1,6 @@
 # OnlyMonkes
 
-An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect your wallet, prove ownership, and chat with other verified holders — group chat, live audio rooms, direct messages, GIFs, video, reactions, tipping, community events, and an AI trading agent — all powered by on-chain identity and decentralized messaging via XMTP.
+An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect your wallet, prove ownership, and chat with other verified holders — group chat, live audio rooms, live video calls, direct messages, GIFs, video, reactions, tipping, community events, and an AI trading agent — all powered by on-chain identity and decentralized messaging via XMTP.
 
 ---
 
@@ -22,7 +22,7 @@ An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect yo
 
 ### Messaging
 - **Emoji reactions** — react to any message with any emoji
-- **Sticker reactions** — react with GIF stickers
+- **Sticker reactions** — react with GIF stickers (SagaMonkes GIPHY sticker pack)
 - **Reply threads** — long-press any message to quote-reply
 - **Edit messages** — edit your own text messages within 1 minute of sending; `EDIT:` protocol message updates the bubble in-place with "(edited)" label
 - **Copy messages** — long-press any message to copy its text to clipboard (Main Chat & DMs)
@@ -37,6 +37,10 @@ An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect yo
 - **Bot command ticker** — continuously scrolling horizontal ticker in the Main Chat header showing all bot commands (white text, blue dot separators); DM with bot shows DM-only commands (Ask anything, APPROVE, REJECT, etc.)
 - **Bot slash commands** — type `/` to autocomplete 10 bot commands: `/price`, `/ta`, `/watchlist`, `/alerts`, `/sports`, `/tip`, `/buy`, `/sell`, `/swap`, `/help`
 - **Message search** — search through chat history
+- **Pinned messages** — admins can pin important messages; pinned bar at top of chat with scroll-to and unpin controls
+- **Link previews (OpenGraph)** — URLs shared in chat show inline card previews with title, description, and thumbnail (16KB head-only fetch, in-memory cache, 5s timeout)
+- **Threads** — reply threads within the group; thread pill ("💬 N replies") below threaded messages; tap to open dedicated ThreadScreen
+- **Online indicators** — green dot on user avatars showing who's currently active; "Last seen Xm ago" in profile modal; presence heartbeat system (60s interval, 2-min online threshold)
 - **In-app Jupiter swaps** — `/buy $TOKEN [SOL]`, `/sell $TOKEN [%]`, `/swap $A for $B` resolve tokens via Jupiter strict list, show a confirmation modal (amounts, price impact, slippage), and execute via MWA biometric sign — all without leaving the app
 - **In-app tipping** — `/tip @username [amount]` resolves username → wallet from the profile cache, opens a confirmation modal, and sends $SKR via MWA one-tap biometric; Support OnlyMonkes button also tips the dev wallet in-app
 - **SOL → SKR swap tips** — users without $SKR can tip using SOL; Jupiter swap + SPL transfer chained in a single `transact()` session (one biometric prompt)
@@ -45,9 +49,17 @@ An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect yo
 - **Bot alert channels** — four dedicated read-only feeds for categorized bot alerts: Monke Bets, Monke Trades, Monke Sales, Monke Predictions; each backed by a separate XMTP group configured via remote app config; channel icons in the toolbar below the message bar with white badge bubbles showing blue unread counts (tap to navigate + clear, long-press to clear); mute/unmute button in each channel header; warm cache with 60s TTL for instant re-opens without reload; real-time badge count streaming from background XMTP listeners
 - **Sports filter** — per-sport mute toggles in Monke Bets channel; persisted to AsyncStorage and broadcast in PROFILE_UPDATE so the bot filters server-side; client-side filtering hides muted sport alerts in the Bets feed in real time; survives app restarts
 - **dApp side chats** — per-dApp community channels (hamburger menu)
-- **Community events calendar** — schedule, view, and RSVP to events; OnlyMonkes-tagged events support "Start Live Audio Chat" when time arrives
+- **Community events calendar** — schedule, view, and RSVP to events; OnlyMonkes-tagged events support "Start Live Audio Chat" and "Start Video Call" when time arrives
+- **Community badges** — white pill badges with OnlyMonkes blue count on hamburger menu items (DMs, Events, Links); total badge count on hamburger button; auto-clear on view
+- **Support banner** — live $SKR token price (DexScreener) and Saga Monkes floor price (Magic Eden) flanking the "Help Support OnlyMonkes" banner; auto-refresh every 60s
+- **NFT Marketplace** — peer-to-peer Saga Monkes trading inside the app; list, bid, accept, delist — all via XMTP protocol messages; dedicated Marketplace screen accessible from menu
 - **Live Audio Rooms** — Twitter Spaces-style voice chat via LiveKit WebRTC; host/listener grid with speaking-highlight rings, mute toggle, live participant count, pinned banner in main chat
   - **Minimize to chat** — tap ⌄ to collapse the audio room back to the chat without disconnecting; a floating blue pill stays pinned at the top of the chat showing `@host · N Monkes`, a live mute/unmute button, and an expand arrow to return to the full room
+- **Live Video Calls** — multi-person video group calls (3–15 participants) via LiveKit WebRTC SFU with 720p simulcast; adaptive grid layout (1→full, 2→1x2, 3-4→2x2, 5-6→2x3, 7-9→3x3, 10-15→3x5 scroll); controls for mic, camera, flip camera, screen share, leave; embedded TURN for NAT traversal; DTLS/SRTP media encryption
+  - **iOS-style PiP bubble** — minimize the video call to a floating picture-in-picture bubble overlaid on the ChatScreen header; shows the active speaker's NFT avatar with animated speaking ring, pulsing LIVE badge, participant count; tap to expand back to full-screen
+  - **Real-time sticker reactions** — send SagaMonkes GIPHY stickers during video calls; reactions float up from the bottom-right with scale + fade animations; broadcast to all participants in real time via LiveKit data channel; horizontal sticker tray toggled by the 🐵 button in controls
+  - **Video room banner** — pinned in-chat banner showing VIDEO badge, host PFP, participant count, Join/Leave/End buttons
+  - **XMTP signaling** — video call start/end coordinated via `VIDEO_ROOM:` protocol messages; all connected clients see the banner and can join
 - **Activity leaderboard** — weekly stats tracking messages sent/reactions given/received; top-3 with medals in the Members tab; auto-resets on Monday UTC
 - **Login streaks** — daily login streak counter; confetti fires on the 7th day
 - **Daily GMonke** — bot posts "GMonke" every morning at 8am EST to Main Chat
@@ -63,6 +75,7 @@ An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect yo
 
 ### Profiles & Wallets
 - **User profiles** — tap any username to view their NFT, bio, wallet, and social links
+- **Online status** — green dot and "Online" / "Last seen Xm ago" shown in profile modal
 - **Tipping** — send SOL tips directly to a user's tip wallet from their profile card
 - **Monke Tools** 🔧 — ecosystem links, settings, and notification controls
 - **MWA biometric re-auth** — cached wallet adapter auth tokens for silent re-authentication with biometric prompt; no app-switch needed after first connect
@@ -79,6 +92,14 @@ An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect yo
 - **Per-type push titles** — 🐒 Saga Monke Sold! / 📈 Bullish Signal / 📉 Bearish Signal per alert type
 - **Enriched push payloads** — notifications include `type`, `sender`, `avatarUrl`, `preview` fields for rich display
 
+### Infrastructure & Quality
+- **EAS Update (OTA)** — over-the-air updates via `expo-updates`; silent download on launch, prompt to restart; avoids full dApp Store resubmission for minor fixes
+- **Unit tests** — Jest with `react-native` preset; tests for appStore (8 tests) and chatStore (7 tests); `npm test` / `npm run test:coverage`
+- **E2E tests** — Detox config for end-to-end testing (requires bare workflow build)
+- **Crash reporting** — Sentry integration (`@sentry/react-native`) with PII scrubbing; captures errors, breadcrumbs, and user identification
+- **Analytics** — Firebase Analytics (`@react-native-firebase/analytics`); tracks app opens, messages sent, DMs opened, tips sent, swaps executed, daily sessions, chat duration, user properties
+- **Self-hosted LiveKit** — Docker Compose config for self-hosted LiveKit SFU on VPS; embedded TURN for NAT traversal; ~$6-10/mo on Hetzner CX22 (2 vCPU, 4GB RAM); handles 5-10 concurrent rooms with simulcast
+
 ---
 
 ## Tech Stack
@@ -89,6 +110,7 @@ An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect yo
 | Navigation | Expo Router v3 (file-based) |
 | Messaging | XMTP v5 MLS (`@xmtp/react-native-sdk`) |
 | Live Audio | LiveKit WebRTC (`livekit-client`, `@livekit/react-native`) |
+| Live Video | LiveKit WebRTC with 720p simulcast + data channels for reactions |
 | Wallet | Mobile Wallet Adapter (`@solana-mobile/mobile-wallet-adapter-protocol-web3js`) |
 | Token Swaps | Jupiter v6 API (quote + swap) via MWA `VersionedTransaction` |
 | NFT Verification | Helius DAS API (`getAssetsByOwner`) |
@@ -99,6 +121,9 @@ An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect yo
 | GIF Search | GIPHY API |
 | Push Notifications | FCM V1 API (service account) + Expo push relay (Bearer auth); AI Agent + peer-to-peer DM push |
 | Background Tasks | `expo-background-fetch` + `expo-task-manager` |
+| OTA Updates | EAS Update (`expo-updates`) |
+| Crash Reporting | Sentry (`@sentry/react-native`) |
+| Analytics | Firebase Analytics (`@react-native-firebase/analytics`) |
 | JWT Signing | `crypto-js` (HS256 for LiveKit tokens, client-side) |
 | Animations | `react-native-reanimated` ~3.10 |
 | Gestures | `react-native-gesture-handler` |
@@ -111,7 +136,7 @@ An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect yo
 ```
 OnlyMonkes/
 ├── app/                              # Expo Router screens
-│   ├── _layout.tsx                   # Root layout: LiveKit globals, push token, bg-sync
+│   ├── _layout.tsx                   # Root layout: LiveKit globals, push token, bg-sync, Sentry, analytics, OTA
 │   ├── index.tsx                     # → ConnectScreen
 │   ├── verify.tsx                    # → VerifyScreen
 │   ├── bot-channel.tsx               # → BotChannelScreen (read-only bot alert feed)
@@ -119,7 +144,10 @@ OnlyMonkes/
 │   ├── dapp-chat.tsx                 # → DAppChatScreen
 │   ├── dms.tsx                       # → DmInboxScreen
 │   ├── dm/[inboxId].tsx              # → DmScreen (1-on-1 DM route)
-│   └── live-room.tsx                 # → LiveAudioRoomScreen
+│   ├── live-room.tsx                 # → LiveAudioRoomScreen
+│   ├── video-room.tsx                # → VideoRoomScreen (multi-person video calls)
+│   ├── thread.tsx                    # → ThreadScreen (reply thread view)
+│   └── marketplace.tsx               # → MarketplaceScreen (P2P NFT trading)
 │
 ├── src/
 │   ├── components/
@@ -128,19 +156,26 @@ OnlyMonkes/
 │   │   ├── ChatInput.tsx             # Message composer: text, reply strip + toolbar (CAM/LIVE/GIF + bot channel icons w/ badges)
 │   │   ├── ConfettiView.tsx          # 40-particle Reanimated confetti (login streak milestones)
 │   │   ├── GifPickerModal.tsx        # GIPHY search + inline GIF picker
+│   │   ├── LinkPreviewCard.tsx       # OpenGraph link preview card (title, description, thumbnail)
 │   │   ├── LiveAudioPill.tsx         # Floating OnlyMonkes blue pill: host, count, mute/unmute (minimized room)
 │   │   ├── LiveRoomBanner.tsx        # Pinned banner: host PFP, LIVE badge, count, Join/Leave
-│   │   ├── MenuDrawer.tsx            # Slide-out drawer: dApp chats, Members, Events, Settings
-│   │   ├── MessageBubble.tsx         # Bubble: text/GIF/IMAGE/VIDEO/reactions/reply preview
+│   │   ├── MenuDrawer.tsx            # Slide-out drawer: dApp chats, Members, Events, Settings, community badges
+│   │   ├── MessageBubble.tsx         # Bubble: text/GIF/IMAGE/VIDEO/reactions/reply preview/link preview/thread pill/online dot
 │   │   ├── MonkeToolsModal.tsx       # Ecosystem links + notification settings
 │   │   ├── NftPickerModal.tsx        # NFT avatar selector
 │   │   ├── OnboardingCarousel.tsx    # First-launch 3-slide animated explainer
+│   │   ├── OnlineDot.tsx             # Green presence indicator dot
+│   │   ├── PinnedBar.tsx             # Pinned messages bar with scroll-to and unpin
 │   │   ├── SearchModal.tsx           # Message history search
-│   │   ├── SwapConfirmModal.tsx       # Jupiter swap confirmation (amounts, price impact, slippage)
+│   │   ├── SwapConfirmModal.tsx      # Jupiter swap confirmation (amounts, price impact, slippage)
 │   │   ├── TipModal.tsx              # SKR tipping flow (in-app MWA biometric)
-│   │   ├── UserProfileModal.tsx      # Profile card: NFT, bio, wallet, DM, tip buttons
+│   │   ├── UserProfileModal.tsx      # Profile card: NFT, bio, wallet, DM, tip buttons, online status
 │   │   ├── UsernameModal.tsx         # First-launch username setup
-│   │   └── VideoCameraModal.tsx      # Full-screen camera: record, preview, upload to Cloudinary
+│   │   ├── VideoCallPip.tsx          # iOS-style PiP bubble: active speaker avatar, speaking ring, count, tap to expand
+│   │   ├── VideoCameraModal.tsx      # Full-screen camera: record, preview, upload to Cloudinary
+│   │   ├── VideoReactionOverlay.tsx  # Floating sticker reactions with upward drift + fade animation
+│   │   ├── VideoRoomBanner.tsx       # Pinned in-chat banner: VIDEO badge, host PFP, Join/Leave/End
+│   │   └── VideoStickerTray.tsx      # Horizontal sticker picker for video calls (SagaMonkes GIPHY stickers)
 │   │
 │   ├── hooks/
 │   │   ├── useDm.ts                  # 1-on-1 DM hook (includes direct push relay to recipient)
@@ -148,44 +183,60 @@ OnlyMonkes/
 │   │   ├── useGroupChat.ts           # Generic XMTP group chat hook (warm cache, 60s TTL, bot channels/dApp chats)
 │   │   ├── useMobileWallet.ts        # MWA wallet connect + signMessage + biometric re-auth
 │   │   ├── useNFTVerification.ts     # NFT ownership check
-│   │   └── useXmtp.ts                # XMTP client init, stream, send, react, broadcastProfile, broadcastLiveRoom
+│   │   └── useXmtp.ts                # XMTP client init, stream, send, react, broadcastProfile, broadcastLiveRoom, broadcastVideoRoom
 │   │
 │   ├── lib/
 │   │   ├── activityTracker.ts        # Weekly stats: sent/given/received; getLeaderboard()
+│   │   ├── analytics.ts              # Firebase Analytics: app open, messages, DMs, tips, swaps, session duration
 │   │   ├── backgroundSync.ts         # expo-background-fetch task registration
 │   │   ├── calendar.ts               # Event helpers
 │   │   ├── constants.ts              # COLORS, fonts, collection config
-│   │   ├── giphy.ts                  # GIPHY search API wrapper
-│   │   ├── liveAudio.ts              # LiveKit Room singleton — persists across navigation
+│   │   ├── giphy.ts                  # GIPHY search + sticker API wrapper
+│   │   ├── linkPreview.ts            # OpenGraph metadata fetching (16KB head-only, in-memory cache, 5s timeout)
+│   │   ├── liveAudio.ts              # LiveKit Room singleton — audio rooms, persists across navigation
+│   │   ├── liveVideo.ts              # LiveKit Room singleton — video calls with simulcast, data channel reactions
 │   │   ├── livekit.ts                # LiveKit JWT generation (HS256, client-side); room helpers
+│   │   ├── marketplace.ts            # P2P NFT marketplace: list, bid, accept, delist via XMTP protocol
 │   │   ├── messageCache.ts           # AsyncStorage message cache (7-day expiry, 2000 msg cap, merged with XMTP history on startup)
 │   │   ├── matrica.ts                # Matrica holder verification
 │   │   ├── nftVerification.ts        # Helius DAS API + on-chain fallback
 │   │   ├── notifications.ts          # Expo push token registration + FCM fallback + local notifications
+│   │   ├── offlineQueue.ts           # Offline message queue + auto-flush
+│   │   ├── otaUpdates.ts             # EAS Update: check on launch, download silently, prompt restart
+│   │   ├── pinnedMessages.ts         # Pinned messages: PIN: protocol, AsyncStorage persistence, in-memory cache
+│   │   ├── presence.ts               # PRESENCE: heartbeat system (60s interval, 2-min online threshold)
 │   │   ├── remoteConfig.ts           # Remote app config fetch (bot channel IDs, feature flags)
+│   │   ├── sentry.ts                 # Sentry init, user identification, error capture, breadcrumbs
 │   │   ├── session.ts                # Session persistence (SecureStore, indefinite — survives app updates)
 │   │   ├── jupiterSwap.ts            # Jupiter v6 swap: token resolution, quotes, MWA execution
-│   │   ├── offlineQueue.ts           # Offline message queue + auto-flush
 │   │   ├── solana.ts                 # SKR tipping, SOL→SKR swap tips, wallet validation
 │   │   ├── streaks.ts                # Daily login streak (AsyncStorage)
 │   │   ├── theme.ts                  # Extended theme tokens
+│   │   ├── threads.ts                # Thread replies: THREAD: protocol, metadata tracking, AsyncStorage persistence
 │   │   ├── userProfile.ts            # Profile cache (in-memory + AsyncStorage, push token per user)
 │   │   ├── videoUpload.ts            # Cloudinary video + thumbnail upload
-│   │   └── xmtp.ts                   # XMTP client, message encode/decode, group/DM helpers
+│   │   └── xmtp.ts                   # XMTP client, message encode/decode, group/DM/video room helpers
 │   │
 │   ├── screens/
 │   │   ├── BotChannelScreen.tsx      # Bot alert feed w/ mute button + sports filter (Bets, Trades, Sales, Predictions)
-│   │   ├── ChatScreen.tsx            # Main group chat: header, live banner, floating pill, input
+│   │   ├── ChatScreen.tsx            # Main group chat: header, live banner, video PiP bubble, floating pill, input
 │   │   ├── ConnectScreen.tsx         # Wallet connect landing + onboarding carousel
 │   │   ├── DAppChatScreen.tsx        # Per-dApp community chat
 │   │   ├── DmInboxScreen.tsx         # DM inbox list with compose modal
 │   │   ├── DmScreen.tsx              # 1-on-1 DM screen
 │   │   ├── LiveAudioRoomScreen.tsx   # Spaces-style audio room; minimize ⌄ / leave ✕
-│   │   └── VerifyScreen.tsx          # NFT verification: skeleton shimmer, fun texts, not-a-holder gate
+│   │   ├── MarketplaceScreen.tsx     # P2P NFT trading: listings, bids, accept/delist
+│   │   ├── ThreadScreen.tsx          # Thread reply view with message history
+│   │   ├── VerifyScreen.tsx          # NFT verification: skeleton shimmer, fun texts, not-a-holder gate
+│   │   └── VideoRoomScreen.tsx       # Multi-person video calls: adaptive grid, sticker reactions, minimize to PiP
 │   │
 │   ├── store/
-│   │   ├── appStore.ts               # Zustand: wallet, NFT, push token, live room state, notif prefs, bot channel IDs, MWA auth
+│   │   ├── appStore.ts               # Zustand: wallet, NFT, push token, live room, video room, notif prefs, bot channels, MWA auth, community badges
 │   │   └── chatStore.ts              # Zustand: messages, reply state, typing indicators
+│   │
+│   ├── __tests__/
+│   │   ├── appStore.test.ts          # 8 unit tests for appStore
+│   │   └── chatStore.test.ts         # 7 unit tests for chatStore
 │   │
 │   └── types/index.ts
 │
@@ -199,7 +250,14 @@ OnlyMonkes/
 │   ├── privacy.html                  # Privacy Policy (GitHub Pages, dedicated URL for dApp Store)
 │   └── terms.html                    # Terms and Conditions (GitHub Pages, dedicated URL for dApp Store)
 │
-├── app.config.ts                     # Expo config + env vars (Helius, GIPHY, Cloudinary, LiveKit)
+├── infra/
+│   ├── docker-compose.livekit.yml    # Self-hosted LiveKit SFU Docker config
+│   └── livekit.yaml                  # LiveKit server config (TURN, simulcast, room defaults)
+│
+├── app.config.ts                     # Expo config + env vars (Helius, GIPHY, Cloudinary, LiveKit, Sentry)
+├── eas.json                          # EAS Build + Update config (preview + production channels)
+├── jest.config.js                    # Jest config (react-native preset)
+├── jest.setup.js                     # AsyncStorage mock for tests
 ├── global.ts                         # Buffer / process polyfills
 └── metro.config.js                   # Node.js shims for Solana libs
 ```
@@ -221,6 +279,14 @@ All XMTP messages are plain UTF-8 strings with a prefix that determines type:
 | `VIDEO:` | `VIDEO:<videoUrl>\|<thumbUrl>` | Video message (Cloudinary URLs) |
 | `EDIT:` | `EDIT:<originalMsgId>:<username>:<newContent>` | Edit a previously sent message (within 1 min) |
 | `LIVE_ROOM:` | `LIVE_ROOM:<json>` | Live audio room signal (start/end) |
+| `VIDEO_ROOM:` | `VIDEO_ROOM:<json>` | Live video call signal (start/end) |
+| `PIN:` | `PIN:<messageId>:<action>` | Pin/unpin message (admin only) |
+| `PRESENCE:` | `PRESENCE:<inboxId>:<timestamp>` | Online presence heartbeat |
+| `THREAD:` | `THREAD:<parentId>:<username>:<content>` | Thread reply |
+| `NFT_LIST:` | `NFT_LIST:<json>` | NFT marketplace listing |
+| `NFT_BID:` | `NFT_BID:<json>` | NFT marketplace bid |
+| `NFT_ACCEPT:` | `NFT_ACCEPT:<json>` | Accept NFT bid |
+| `NFT_DELIST:` | `NFT_DELIST:<json>` | Remove NFT listing |
 
 ### PROFILE_UPDATE JSON fields
 
@@ -304,6 +370,43 @@ Host ends room → LIVE_ROOM: {active: false} → banner + pill dismissed
 
 ---
 
+## Live Video Call Flow
+
+```
+Host taps Start Video Call (Events tab or ChatInput)
+        │
+        ▼
+createVideoRoom() → LiveKit token + VIDEO_ROOM: XMTP broadcast
+        │
+        ▼
+VideoRoomBanner appears for all members (VIDEO badge, Join button)
+        │
+        ├── Push notification: "username started a Video Call"
+        │
+        ▼
+Members tap Join → navigate to /video-room → liveVideo singleton connects
+        │
+        ▼
+Adaptive grid UI: 720p simulcast, speaking-highlight borders, NFT avatars
+        │
+        ├── 🐵 Sticker tray → tap sticker → LiveKit data channel → all see reaction
+        │       → Stickers float up from bottom-right with scale + fade animation
+        │
+        ├── Tap ⤡ (Minimize) → router.back() — Room stays connected in singleton
+        │       │
+        │       ▼
+        │   iOS-style PiP bubble (top-right of ChatScreen header)
+        │   Shows: active speaker avatar (animated ring), VIDEO label, N Monkes
+        │   Tap bubble → expand back to full-screen VideoRoomScreen
+        │
+        ▼
+Host ends room → VIDEO_ROOM: {active: false} → banner + PiP dismissed
+        │
+        └── disconnectFromVideoRoom() → AudioSession.stopAudioSession()
+```
+
+---
+
 ## Notification Categories
 
 All channels use MAX importance (v8) for heads-up banners. Legacy channels (v1–v7) are auto-deleted on startup. Managed per-user in Settings; broadcast in `PROFILE_UPDATE np` field so the AI Agent filters server-side:
@@ -352,17 +455,38 @@ LIVEKIT_API_SECRET=your-livekit-api-secret
 JUP_API_KEY=your-jupiter-api-key           # portal.jup.ag
 SKR_MINT=SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3
 DEV_WALLET=7tLrnPvgcR5mLtyUcVwvmhAD1wXbAKgWcLBPWxpwyZ1J
+
+SENTRY_DSN=your-sentry-dsn                 # sentry.io
 ```
 
 These are injected via `app.config.ts` → `Constants.expoConfig.extra`.
 
-### 4. Run on Android
+### 4. Self-Hosted LiveKit (Optional)
+
+For self-hosted video/audio infrastructure:
+
+```bash
+cd infra
+docker-compose -f docker-compose.livekit.yml up -d
+```
+
+Requires a VPS with public IP, ports 7880 (WS), 7881 (TCP), 3478/5349 (TURN), 50000-60000/UDP (RTC). Cost: ~$6-10/mo on Hetzner CX22.
+
+### 5. Run on Android
 
 ```bash
 npx expo run:android
 ```
 
 > **Requires a physical Android device** (Seeker or Saga recommended) with a Solana wallet app installed (Phantom or Solflare). Expo Go is not supported — MWA requires a custom dev build.
+
+### 6. Run Tests
+
+```bash
+npm test                # unit tests
+npm run test:watch      # watch mode
+npm run test:coverage   # coverage report
+```
 
 ---
 
@@ -395,13 +519,14 @@ Output: `android/app/build/outputs/apk/release/app-release.apk`
 | Package | Purpose |
 |---|---|
 | `@xmtp/react-native-sdk` | Decentralized E2E encrypted group messaging (MLS v5) |
-| `livekit-client` | WebRTC room/participant/speaker management |
+| `livekit-client` | WebRTC room/participant/speaker management + data channels |
 | `@livekit/react-native` | LiveKit native audio session + WebRTC globals |
 | `@solana-mobile/mobile-wallet-adapter-protocol-web3js` | MWA wallet connect |
 | `@solana/web3.js` | Solana RPC + PublicKey + VersionedTransaction |
 | `@solana/spl-token` | SPL token transfers + ATA management (tipping) |
 | `expo-router` | File-based navigation |
 | `expo-notifications` | Push notifications + local alerts |
+| `expo-updates` | OTA updates via EAS Update |
 | `expo-camera` | Video recording |
 | `expo-av` | Video playback |
 | `expo-video-thumbnails` | Video thumbnail generation |
@@ -409,8 +534,10 @@ Output: `android/app/build/outputs/apk/release/app-release.apk`
 | `expo-background-fetch` | Background profile + data sync |
 | `expo-task-manager` | Background task registration |
 | `expo-secure-store` | Secure XMTP credential storage |
+| `@sentry/react-native` | Crash reporting + error tracking |
+| `@react-native-firebase/analytics` | Usage analytics + session tracking |
 | `zustand` | Client state management |
-| `react-native-reanimated` | Animations (speaking ring, confetti, fade-in) |
+| `react-native-reanimated` | Animations (speaking ring, confetti, fade-in, PiP pulse) |
 | `react-native-gesture-handler` | Swipe + gesture support |
 | `crypto-js` | HS256 JWT signing for LiveKit tokens (client-side) |
 | `@shopify/react-native-skia` | GPU-accelerated 2D rendering engine |

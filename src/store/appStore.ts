@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { WalletAccount, OwnedNFT } from '../types';
 import type { LiveRoomData } from '../lib/livekit';
+import type { VideoRoomData } from '../lib/liveVideo';
 
 const AK_MUTED_SPORTS = 'om_muted_sports';
 const AK_MUTED_CHANNELS = 'om_muted_channels';
@@ -79,6 +80,11 @@ interface AppState {
   liveRoomToken: string | null;
   // MWA reauthorize token — allows silent biometric re-auth without opening wallet app
   mwaAuthToken: string | null;
+  // Video room
+  activeVideoRoom: VideoRoomData | null;
+  isInVideoCall: boolean;
+  // Community tab badge counts (unseen DMs, new events, unseen links)
+  communityBadges: { dms: number; events: number; links: number };
 }
 
 interface AppActions {
@@ -122,6 +128,11 @@ interface AppActions {
   setLiveRoomMuted: (val: boolean) => void;
   setLiveRoomToken: (token: string | null) => void;
   setMwaAuthToken: (token: string | null) => void;
+  setActiveVideoRoom: (room: VideoRoomData | null) => void;
+  setIsInVideoCall: (val: boolean) => void;
+  setCommunityBadge: (key: 'dms' | 'events' | 'links', count: number) => void;
+  incrementCommunityBadge: (key: 'dms' | 'events' | 'links') => void;
+  clearCommunityBadge: (key: 'dms' | 'events' | 'links') => void;
   reset: () => void;
 }
 
@@ -163,6 +174,9 @@ const initialState: AppState = {
   liveRoomMuted: false,
   liveRoomToken: null,
   mwaAuthToken: null,
+  activeVideoRoom: null,
+  isInVideoCall: false,
+  communityBadges: { dms: 0, events: 0, links: 0 },
 };
 
 export const useAppStore = create<AppState & AppActions>((set, get) => ({
@@ -247,6 +261,17 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   setLiveRoomMuted: (liveRoomMuted) => set({ liveRoomMuted }),
   setLiveRoomToken: (liveRoomToken) => set({ liveRoomToken }),
   setMwaAuthToken: (mwaAuthToken) => set({ mwaAuthToken }),
+  setActiveVideoRoom: (activeVideoRoom) => set({ activeVideoRoom }),
+  setIsInVideoCall: (isInVideoCall) => set({ isInVideoCall }),
+  setCommunityBadge: (key, count) => set((s) => ({
+    communityBadges: { ...s.communityBadges, [key]: count },
+  })),
+  incrementCommunityBadge: (key) => set((s) => ({
+    communityBadges: { ...s.communityBadges, [key]: s.communityBadges[key] + 1 },
+  })),
+  clearCommunityBadge: (key) => set((s) => ({
+    communityBadges: { ...s.communityBadges, [key]: 0 },
+  })),
   reset: () => set(initialState),
 }));
 

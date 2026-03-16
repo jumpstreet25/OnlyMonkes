@@ -43,6 +43,10 @@ import { getOrExtractNftColor, readableTextColor } from "@/lib/nftColor";
 import { searchStickers, type GiphyItem } from "@/lib/giphy";
 import type { ChatMessage, ReactionEmoji } from "@/types";
 import type { ProfileTarget } from "@/components/UserProfileModal";
+import { LinkPreviewCard } from "@/components/LinkPreviewCard";
+import { OnlineDot } from "@/components/OnlineDot";
+import { isUserOnline } from "@/lib/presence";
+import { hasThread, getThreadMeta } from "@/lib/threads";
 
 const FALLBACK_BUBBLE = THEME.accent;
 
@@ -169,6 +173,8 @@ interface MessageBubbleProps {
   onPressImage?: (url: string) => void;
   onPressVideo?: (url: string) => void;
   onEdit?: (message: ChatMessage) => void;
+  onPin?: (message: ChatMessage) => void;
+  onThread?: (message: ChatMessage) => void;
 }
 
 export const MessageBubble = memo(function MessageBubble({
@@ -182,6 +188,8 @@ export const MessageBubble = memo(function MessageBubble({
   onPressImage,
   onPressVideo,
   onEdit,
+  onPin,
+  onThread,
 }: MessageBubbleProps) {
   const { verifiedNft, myInboxId } = useAppStore();
   const { width: SCREEN_W } = useWindowDimensions();
@@ -398,6 +406,7 @@ export const MessageBubble = memo(function MessageBubble({
         ) : (
           <View style={styles.avatarFallback} />
         )}
+        {!isOwn && <OnlineDot online={isUserOnline(message.senderAddress)} />}
       </Pressable>
 
       {/* Bubble group */}
@@ -540,6 +549,23 @@ export const MessageBubble = memo(function MessageBubble({
           </View>
         )}
 
+        {/* Link preview card */}
+        {!isMedia && !isBot && (
+          <LinkPreviewCard content={message.editedContent ?? message.content} />
+        )}
+
+        {/* Thread reply count */}
+        {hasThread(message.id) && (
+          <Pressable
+            style={styles.threadPill}
+            onPress={() => onThread?.(message)}
+          >
+            <Text style={styles.threadPillText}>
+              💬 {getThreadMeta(message.id)?.replyCount ?? 0} replies
+            </Text>
+          </Pressable>
+        )}
+
         {/* Sticker reaction thumbnails — OUTSIDE bubble, below name */}
         {(message.stickerReactions ?? []).length > 0 && (
           <View style={[styles.stickerReactionRow, isOwn && styles.stickerReactionRowOwn]}>
@@ -605,6 +631,30 @@ export const MessageBubble = memo(function MessageBubble({
                 <Text style={styles.pickerReplyText}>✏️  Edit</Text>
               </Pressable>
             )}
+
+            {onPin && (
+              <Pressable
+                onPress={() => { setPickerVisible(false); onPin(message); }}
+                style={({ pressed }) => [
+                  styles.pickerReplyBtn,
+                  pressed && styles.pickerReplyBtnPressed,
+                ]}
+              >
+                <Text style={styles.pickerReplyText}>📌  Pin</Text>
+              </Pressable>
+            )}
+
+            {onThread && (
+              <Pressable
+                onPress={() => { setPickerVisible(false); onThread(message); }}
+                style={({ pressed }) => [
+                  styles.pickerReplyBtn,
+                  pressed && styles.pickerReplyBtnPressed,
+                ]}
+              >
+                <Text style={styles.pickerReplyText}>🧵  Thread</Text>
+              </Pressable>
+            )}
           </View>
 
           {/* SagaMonkes sticker grid */}
@@ -659,23 +709,18 @@ const styles = StyleSheet.create({
     alignSelf: "center",
   },
   avatar: {
-    width: 37,
-    height: 37,
-    borderRadius: 11,
-    borderWidth: 1,
-    borderColor: THEME.border,
+    width: 46,
+    height: 46,
+    borderRadius: 14,
   },
   avatarFallback: {
-    width: 37,
-    height: 37,
-    borderRadius: 11,
-    backgroundColor: THEME.accentSoft,
-    borderWidth: 1,
-    borderColor: THEME.accent + "44",
+    width: 46,
+    height: 46,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
   },
-  avatarGlyph: { fontSize: 16 },
+  avatarGlyph: { fontSize: 20 },
 
   // ── Bubble group ───────────────────────────────────────────────────────────
   bubbleGroup: {
@@ -948,6 +993,24 @@ const styles = StyleSheet.create({
   stickerImage: {
     width: 120,
     height: 120,
+  },
+
+  // ── Thread pill ─────────────────────────────────────────────────────────
+  threadPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    backgroundColor: THEME.surfaceHigh,
+    borderRadius: 8,
+    alignSelf: "flex-start",
+  },
+  threadPillText: {
+    fontFamily: FONTS.mono,
+    fontSize: 10,
+    color: "#0096C7",
+    fontWeight: "600",
   },
 
   // ── Sticker reaction row (OUTSIDE bubble, below reaction pills) ───────────

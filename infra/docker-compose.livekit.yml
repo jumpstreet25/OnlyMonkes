@@ -1,0 +1,49 @@
+# Self-hosted LiveKit SFU for OnlyMonkes video calls
+#
+# Usage:
+#   cd infra
+#   docker-compose -f docker-compose.livekit.yml up -d
+#
+# Requirements:
+#   - Docker on a VPS with a public IP (DigitalOcean, Hetzner, etc.)
+#   - Domain pointing to VPS IP (for SSL via Caddy reverse proxy)
+#   - Ports: 7880 (WS), 7881 (TCP/ICE), 3478/5349 (TURN), 50000-60000/UDP (RTC)
+#
+# Cost: ~$6-10/mo on Hetzner CX22 (2 vCPU, 4GB RAM)
+#   Handles 5-10 concurrent rooms with simulcast easily.
+
+version: '3.8'
+
+services:
+  livekit:
+    image: livekit/livekit-server:latest
+    restart: unless-stopped
+    ports:
+      - "7880:7880"       # WebSocket signaling
+      - "7881:7881"       # ICE/TCP fallback
+      - "3478:3478/udp"   # TURN UDP
+      - "5349:5349"       # TURN TLS
+      - "50000-60000:50000-60000/udp"  # RTC media ports
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml:ro
+    command: ["--config", "/etc/livekit.yaml"]
+    environment:
+      - LIVEKIT_KEYS=REDACTED_LIVEKIT_API_KEY:REDACTED_LIVEKIT_API_SECRET
+
+  # Optional: Caddy reverse proxy for SSL termination
+  # Uncomment if you want wss:// support via your domain
+  #
+  # caddy:
+  #   image: caddy:latest
+  #   restart: unless-stopped
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - ./Caddyfile:/etc/caddy/Caddyfile:ro
+  #     - caddy_data:/data
+  #     - caddy_config:/config
+
+# volumes:
+#   caddy_data:
+#   caddy_config:

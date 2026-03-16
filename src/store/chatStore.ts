@@ -8,6 +8,8 @@ export interface TypingUser {
 
 interface ChatState {
   messages: ChatMessage[];
+  /** O(1) ID lookup — kept in sync with messages array */
+  _msgIdSet: Set<string>;
   replyingTo: ChatMessage | null;
   isLoadingHistory: boolean;
   typingUsers: TypingUser[];
@@ -32,6 +34,7 @@ interface ChatActions {
 
 const initialState: ChatState = {
   messages: [],
+  _msgIdSet: new Set(),
   replyingTo: null,
   isLoadingHistory: false,
   typingUsers: [],
@@ -40,15 +43,22 @@ const initialState: ChatState = {
 export const useChatStore = create<ChatState & ChatActions>((set) => ({
   ...initialState,
 
-  setMessages: (messages) => set({ messages }),
+  setMessages: (messages) => {
+    const idSet = new Set(messages.map(m => m.id));
+    set({ messages, _msgIdSet: idSet });
+  },
 
   addMessage: (message) =>
-    set((state) => ({ messages: [...state.messages, message] })),
+    set((state) => {
+      const _msgIdSet = new Set(state._msgIdSet);
+      _msgIdSet.add(message.id);
+      return { messages: [...state.messages, message], _msgIdSet };
+    }),
 
   mergeMessage: (message) =>
     set((state) => {
-      // 1. Exact ID already in store → skip
-      if (state.messages.some((m) => m.id === message.id)) return state;
+      // 1. Exact ID already in store → skip (O(1) lookup)
+      if (state._msgIdSet.has(message.id)) return state;
 
       // 2. Matching optimistic (opt-*) by sender + content → upgrade in-place,
       //    preserving the optimistic's senderNft so the PFP stays visible.
@@ -67,17 +77,22 @@ export const useChatStore = create<ChatState & ChatActions>((set) => ({
         };
         const next = [...state.messages];
         next[optIdx] = upgraded;
-        return { messages: next };
+        const _msgIdSet = new Set(state._msgIdSet);
+        _msgIdSet.delete(opt.id);
+        _msgIdSet.add(upgraded.id);
+        return { messages: next, _msgIdSet };
       }
 
       // 3. Genuinely new message → append
-      return { messages: [...state.messages, message] };
+      const _msgIdSet = new Set(state._msgIdSet);
+      _msgIdSet.add(message.id);
+      return { messages: [...state.messages, message], _msgIdSet };
     }),
 
   upgradeOwnMessage: (message) =>
     set((state) => {
-      // Already in store with this real ID → skip
-      if (state.messages.some((m) => m.id === message.id)) return state;
+      // Already in store with this real ID → skip (O(1))
+      if (state._msgIdSet.has(message.id)) return state;
       // Find the matching opt-* bubble
       const optIdx = state.messages.findIndex(
         (m) =>
@@ -95,7 +110,10 @@ export const useChatStore = create<ChatState & ChatActions>((set) => ({
       };
       const next = [...state.messages];
       next[optIdx] = upgraded;
-      return { messages: next };
+      const _msgIdSet = new Set(state._msgIdSet);
+      _msgIdSet.delete(opt.id);
+      _msgIdSet.add(upgraded.id);
+      return { messages: next, _msgIdSet };
     }),
 
   updateMessageStatus: (id, status) =>
