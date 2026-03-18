@@ -47,8 +47,118 @@ import { LinkPreviewCard } from "@/components/LinkPreviewCard";
 import { OnlineDot } from "@/components/OnlineDot";
 import { isUserOnline } from "@/lib/presence";
 import { hasThread, getThreadMeta } from "@/lib/threads";
+import { router } from "expo-router";
 
 const FALLBACK_BUBBLE = THEME.accent;
+
+// ─── Live Room Pill ──────────────────────────────────────────────────────────
+// Content format: LIVE_PILL:<audio|video>:<hostUsername>:<roomId>
+
+function parseLivePill(content: string): { type: "audio" | "video"; host: string; roomId: string } | null {
+  if (!content.startsWith("LIVE_PILL:")) return null;
+  const parts = content.split(":");
+  if (parts.length < 4) return null;
+  return { type: parts[1] as "audio" | "video", host: parts[2], roomId: parts.slice(3).join(":") };
+}
+
+function LivePillBubble({ type, host, sentAt }: { type: "audio" | "video"; host: string; sentAt: Date }) {
+  const icon = type === "video" ? "📹" : "🎙";
+  const label = type === "video" ? "Live Video Chat" : "Live Audio Chat";
+  const handleJoin = useCallback(() => {
+    const { myInboxId, username, activeLiveRoom, activeVideoRoom } = useAppStore.getState();
+    if (!myInboxId || !username) return;
+    try {
+      if (type === "video" && activeVideoRoom) {
+        const { joinVideoRoom } = require("@/lib/liveVideo");
+        const token = joinVideoRoom(activeVideoRoom.id, myInboxId, username);
+        useAppStore.getState().setIsInVideoCall(true);
+        router.push(`/video-room?token=${encodeURIComponent(token)}&isHost=0` as any);
+      } else if (type === "audio" && activeLiveRoom) {
+        const { createLivekitToken } = require("@/lib/livekit");
+        const token = createLivekitToken(activeLiveRoom.id, myInboxId, username);
+        useAppStore.getState().setLiveRoomToken(token);
+        router.push(`/live-room?token=${encodeURIComponent(token)}&isHost=0` as any);
+      }
+    } catch (err) {
+      console.warn("[LivePill] Join failed:", err);
+    }
+  }, [type]);
+
+  return (
+    <View style={livePillStyles.container}>
+      <View style={livePillStyles.pill}>
+        <View style={livePillStyles.left}>
+          <Text style={livePillStyles.icon}>{icon}</Text>
+          <View>
+            <Text style={livePillStyles.title}>
+              @{host} started a {label}
+            </Text>
+            <Text style={livePillStyles.time}>{format(sentAt, "h:mm a")}</Text>
+          </View>
+        </View>
+        <Pressable
+          onPress={handleJoin}
+          style={({ pressed }) => [livePillStyles.joinBtn, pressed && { opacity: 0.7 }]}
+        >
+          <Text style={livePillStyles.joinText}>JOIN</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+const livePillStyles = StyleSheet.create({
+  container: {
+    alignItems: "center",
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+  },
+  pill: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "rgba(108, 180, 238, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(108, 180, 238, 0.25)",
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    width: "100%",
+  },
+  left: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flex: 1,
+  },
+  icon: {
+    fontSize: 22,
+  },
+  title: {
+    fontFamily: FONTS.bodyMed,
+    fontSize: 13,
+    color: THEME.text,
+  },
+  time: {
+    fontFamily: FONTS.mono,
+    fontSize: 10,
+    color: THEME.textFaint,
+    marginTop: 2,
+  },
+  joinBtn: {
+    backgroundColor: "#0096C7",
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    marginLeft: 10,
+  },
+  joinText: {
+    fontFamily: FONTS.displayMed,
+    fontSize: 13,
+    color: "#fff",
+    fontWeight: "700",
+  },
+});
 
 function VideoBubble({ raw, mediaWidth, onPress, onLongPress }: {
   raw: string;
@@ -364,6 +474,12 @@ export const MessageBubble = memo(function MessageBubble({
       },
     })
   ).current;
+
+  // ── Live Room Pill — early return for LIVE_PILL: messages ──────────────────
+  const livePill = parseLivePill(message.content);
+  if (livePill) {
+    return <LivePillBubble type={livePill.type} host={livePill.host} sentAt={message.sentAt} />;
+  }
 
   // Re-read from cache on every render (re-render triggered by useProfileVersion above)
   const cachedSender = getCachedProfile(message.senderAddress);

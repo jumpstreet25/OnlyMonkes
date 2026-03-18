@@ -79,6 +79,7 @@ let _botChannelUnsubs: (() => void)[] = [];
 let _myInboxId = "";
 let _streamAlive = false;
 let _profileBroadcastDone = false;
+let _initRunning = false;
 
 /**
  * Re-broadcast own profile with a push token.
@@ -152,6 +153,8 @@ export function useXmtp() {
     useChatStore();
 
   const initialize = useCallback(async () => {
+    if (_initRunning) return;
+    _initRunning = true;
     console.log("[XMTP] initialize() called");
     setLoading(true);
     setError(null);
@@ -210,25 +213,93 @@ export function useXmtp() {
         // This client just created the group — persist the admin flag.
         await AsyncStorage.setItem(AK_IS_ADMIN, "1");
         setIsGroupAdmin(true);
-        console.log("[XMTP] You are the admin. Group ID:", (group as any)?.id);
-        const groupId = (group as any)?.id ?? "";
-        setRemoteGroupId(groupId);
-        // Auto-publish if admin token is already saved.
-        try {
-          const token = await getAdminToken();
-          if (token) {
-            await publishAppConfig({ globalGroupId: groupId, adminInboxId: client.inboxId });
-            console.log("[XMTP] Auto-published config to GitHub.");
+        console.log("[XMTP] You are the admin (new). Group ID:", (group as any)?.id);
+      }
+
+      // ── Admin: ensure bot channels exist & publish config ───────────────
+      const isAdmin =
+        storedAdmin === "1" ||
+        isNewAdmin ||
+        !!(config.adminInboxId && config.adminInboxId === client.inboxId);
+      if (isAdmin && group) {
+        console.log("[XMTP] Admin detected — checking bot channels…");
+        const mainGroupId = (group as any)?.id ?? config.globalGroupId;
+        setRemoteGroupId(mainGroupId);
+
+        // Create any missing bot channels
+        const existingBotIds = useAppStore.getState().botChannelIds ?? {} as any;
+        const channelDefs = [
+          { key: "bets", name: "Monke Bets" },
+          { key: "trades", name: "Monke Trades" },
+          { key: "sales", name: "Monke Sales" },
+          { key: "predictions", name: "Monke Predictions" },
+        ] as const;
+        const botChannels: Record<string, string> = { ...existingBotIds };
+        let botChannelsChanged = false;
+        for (const ch of channelDefs) {
+          if (botChannels[ch.key]) continue; // already have it
+          try {
+            const chGroup = await client.conversations.newGroup([], {
+              permissionLevel: "all_members",
+              name: ch.name,
+            });
+            botChannels[ch.key] = (chGroup as any).id ?? "";
+            botChannelsChanged = true;
+            console.log(`[XMTP] Created missing bot channel "${ch.name}":`, botChannels[ch.key]);
+          } catch (chErr) {
+            console.warn(`[XMTP] Failed to create bot channel "${ch.name}":`, chErr);
           }
-        } catch (err) {
-          console.warn("[XMTP] Auto-publish failed:", err);
+        }
+        if (botChannelsChanged) {
+          useAppStore.getState().setBotChannelIds(botChannels as any);
+        }
+
+        // Ensure bot is a member of all groups (main + channels)
+        const BOT_INBOX = "998001a498174b8a194110ee792b10f97de4965665eaf0d088ed2c71bdf62363";
+        const allGroupsToCheck = [
+          { name: "main", ref: group },
+          ...channelDefs.map(ch => ({
+            name: ch.name,
+            ref: null as any, // will find below
+          })),
+        ];
+        // Add bot to main group
+        try {
+          await (group as any).addMembers([BOT_INBOX]);
+          console.log("[XMTP] Added bot to main group");
+        } catch { /* already a member */ }
+        // Add bot to each bot channel
+        for (const ch of channelDefs) {
+          const chId = botChannels[ch.key];
+          if (!chId) continue;
+          try {
+            const chGroup = await client.conversations.findGroup(chId as any);
+            if (chGroup) {
+              await (chGroup as any).addMembers([BOT_INBOX]);
+              console.log(`[XMTP] Added bot to ${ch.name}`);
+            }
+          } catch { /* already a member */ }
+        }
+
+        // Auto-publish config if admin token is saved and bot channels were just created
+        if (botChannelsChanged || isNewAdmin) {
+          try {
+            const token = await getAdminToken();
+            if (token) {
+              await publishAppConfig({
+                globalGroupId: mainGroupId,
+                adminInboxId: client.inboxId,
+                botChannels: botChannels as any,
+              });
+              console.log("[XMTP] Auto-published config (with bot channels) to GitHub.");
+            }
+          } catch (err) {
+            console.warn("[XMTP] Auto-publish failed:", err);
+          }
         }
       }
 
       // ── Auto-approve all pending join requests (admin) ───────────────────
-      const isAdmin =
-        storedAdmin === "1" ||
-        !!(config.adminInboxId && config.adminInboxId === client.inboxId);
       if (isAdmin && group) {
         // Fire-and-forget: approve genuinely new join requests automatically.
         // Tracks approved IDs in AsyncStorage so repeated app opens don't
@@ -313,39 +384,104 @@ export function useXmtp() {
 
       if (!group) {
         // Remote config has a group ID, but this user is not yet a member.
-        setIsGroupMember(false);
 
-        // Auto-send a join request DM to the bot (re-sends every 30s until approved).
-        // The bot auto-approves NFT holders and adds them to all channels.
-        if (config.adminInboxId && config.adminInboxId !== client.inboxId) {
-          const lastSentRaw = await AsyncStorage.getItem(AK_JOIN_REQUEST_SENT);
-          const lastSent = lastSentRaw ? parseInt(lastSentRaw, 10) : 0;
-          const elapsed = Date.now() - lastSent;
-          // Re-send every 30s to handle bot restarts / missed DMs
-          if (elapsed > 30_000) {
+        // ── Admin self-heal: if this device was admin, create all groups ──
+        const storedAdminFlag = await AsyncStorage.getItem(AK_IS_ADMIN);
+        const isAdminByConfig = config.adminInboxId === client.inboxId;
+        if (storedAdminFlag === "1" || isAdminByConfig) {
+          console.log("[XMTP] Admin device cannot find group — recreating all channels…");
+          try {
+            // Create main chat group
+            const newGroup = await client.conversations.newGroup([], {
+              permissionLevel: "all_members",
+              name: "OnlyMonkes Global Chat",
+            });
+            const newGroupId = (newGroup as any).id ?? "";
+            console.log("[XMTP] Main group created:", newGroupId);
+            setRemoteGroupId(newGroupId);
+            _group = newGroup as unknown as XmtpGroup;
+
+            // Create all 4 bot channel groups
+            const channelNames = [
+              { key: "bets", name: "Monke Bets" },
+              { key: "trades", name: "Monke Trades" },
+              { key: "sales", name: "Monke Sales" },
+              { key: "predictions", name: "Monke Predictions" },
+            ] as const;
+            const botChannels: Record<string, string> = {};
+            for (const ch of channelNames) {
+              const chGroup = await client.conversations.newGroup([], {
+                permissionLevel: "all_members",
+                name: ch.name,
+              });
+              botChannels[ch.key] = (chGroup as any).id ?? "";
+              console.log(`[XMTP] Bot channel "${ch.name}" created:`, botChannels[ch.key]);
+            }
+
+            // Store bot channel IDs in app state
+            useAppStore.getState().setBotChannelIds(botChannels as any);
+
+            // Publish full config (main group + bot channels) to GitHub
             try {
-              const { username, verifiedNft } = useAppStore.getState();
-              await sendJoinRequestDM(
-                client,
-                config.adminInboxId,
-                client.inboxId,
-                username,
-                verifiedNft?.mint ?? null,
-                config.botInboxId ?? null,
-              );
-              await AsyncStorage.setItem(AK_JOIN_REQUEST_SENT, String(Date.now()));
-              console.log("[XMTP] Join request DM sent to bot (nft:", verifiedNft?.mint ?? "none", ")");
-            } catch (err) {
-              console.warn("[XMTP] Could not send join request DM:", err);
+              const token = await getAdminToken();
+              if (token) {
+                await publishAppConfig({
+                  globalGroupId: newGroupId,
+                  adminInboxId: client.inboxId,
+                  botChannels: botChannels as any,
+                });
+                console.log("[XMTP] Auto-published full config to GitHub.");
+              }
+            } catch (pubErr) {
+              console.warn("[XMTP] Could not auto-publish config:", pubErr);
+            }
+
+            await AsyncStorage.setItem(AK_IS_ADMIN, "1");
+            setIsGroupAdmin(true);
+            setIsGroupMember(true);
+            // Fall through to load message history (group is now set)
+          } catch (createErr) {
+            console.warn("[XMTP] Admin group recreation failed:", createErr);
+            setIsGroupMember(false);
+            setLoading(false);
+            return;
+          }
+        } else {
+          // Non-admin: send join request DM and wait for bot/admin to approve
+          setIsGroupMember(false);
+
+          if (config.adminInboxId) {
+            const lastSentRaw = await AsyncStorage.getItem(AK_JOIN_REQUEST_SENT);
+            const lastSent = lastSentRaw ? parseInt(lastSentRaw, 10) : 0;
+            const elapsed = Date.now() - lastSent;
+            // Re-send every 30s to handle bot restarts / missed DMs
+            if (elapsed > 30_000) {
+              try {
+                const { username, verifiedNft } = useAppStore.getState();
+                await sendJoinRequestDM(
+                  client,
+                  config.adminInboxId,
+                  client.inboxId,
+                  username,
+                  verifiedNft?.mint ?? null,
+                  config.botInboxId ?? null,
+                );
+                await AsyncStorage.setItem(AK_JOIN_REQUEST_SENT, String(Date.now()));
+                console.log("[XMTP] Join request DM sent to bot (nft:", verifiedNft?.mint ?? "none", ")");
+              } catch (err) {
+                console.warn("[XMTP] Could not send join request DM:", err);
+              }
             }
           }
-        }
 
-        setLoading(false);
-        return;
+          setLoading(false);
+          return;
+        }
       }
 
       // ── 4. Load message history ────────────────────────────────────────────
+      // Use _group (module-level) which is set by both normal path and admin self-heal
+      const activeGroup = _group!;
       setIsGroupMember(true);
       setLoadingHistory(true);
 
@@ -357,98 +493,89 @@ export function useXmtp() {
       // First sync the group to pull its latest messages from the network.
       // Then syncAllConversations triggers the epoch update for fresh installs
       // (new installation key needs the group to propagate its latest epoch).
-      await (group as any).sync();
+      await (activeGroup as any).sync();
       try { await client.conversations.syncAllConversations(); } catch { /* ignore */ }
-      await (group as any).sync(); // second pass after epoch update
-      const rawHistory: any[] = await (group as any).messages({ limit: 200 });
+      await (activeGroup as any).sync(); // second pass after epoch update
+      const rawHistory: any[] = await (activeGroup as any).messages({ limit: 50 });
 
-      // ── Pass 1: seed profile cache + events from history ─────────────────
-      // Must run BEFORE decoding messages so enrichWithNft() has fresh cache data.
-      // Iterate oldest-first so later (newer) PROFILE_UPDATEs win over older ones.
-      for (const raw of [...rawHistory].reverse()) {
-        try {
-          const content = raw.content();
-          if (typeof content === "string" && content.startsWith("PROFILE_UPDATE:")) {
-            try {
-              const data = JSON.parse(content.slice("PROFILE_UPDATE:".length));
-              if (data.id) {
-                cacheProfile(data.id, { username: data.u || undefined, bio: data.b || undefined, xAccount: data.x || undefined, walletAddress: data.w || undefined, tipWallet: data.tw || undefined, nftImage: data.ni || null, legendary: !!data.lg, pushToken: data.pt || undefined, expoPushToken: data.ept || undefined });
-                trackUser(data.id, data.u || undefined);
-              }
-            } catch { /* ignore */ }
-          } else if (typeof content === "string" && content.startsWith("EVENT:")) {
-            try {
-              const event = parseEventMessage(content);
-              if (event) await saveEvent(event);
-            } catch { /* ignore */ }
-          } else if (typeof content === "string" && content.startsWith("LIVE_ROOM:")) {
-            try {
-              const data = parseLiveRoomMessage(content);
-              if (data) {
-                // Track the most recent active room from history
-                if (data.active) {
-                  useAppStore.getState().setActiveLiveRoom({ ...data, participantCount: 1 });
-                } else {
-                  const current = useAppStore.getState().activeLiveRoom;
-                  if (current?.id === data.id) useAppStore.getState().setActiveLiveRoom(null);
+      // ── Helper: seed profile cache + events from raw messages ────────────
+      const seedProfilesAndEvents = async (raws: any[]) => {
+        // Iterate oldest-first so later (newer) PROFILE_UPDATEs win.
+        for (const raw of [...raws].reverse()) {
+          try {
+            const content = raw.content();
+            if (typeof content === "string" && content.startsWith("PROFILE_UPDATE:")) {
+              try {
+                const data = JSON.parse(content.slice("PROFILE_UPDATE:".length));
+                if (data.id) {
+                  cacheProfile(data.id, { username: data.u || undefined, bio: data.b || undefined, xAccount: data.x || undefined, walletAddress: data.w || undefined, tipWallet: data.tw || undefined, nftImage: data.ni || null, legendary: !!data.lg, pushToken: data.pt || undefined, expoPushToken: data.ept || undefined });
+                  trackUser(data.id, data.u || undefined);
                 }
-              }
-            } catch { /* ignore */ }
-          }
-        } catch { /* skip */ }
-      }
+              } catch { /* ignore */ }
+            } else if (typeof content === "string" && content.startsWith("EVENT:")) {
+              try {
+                const event = parseEventMessage(content);
+                if (event) await saveEvent(event);
+              } catch { /* ignore */ }
+            } else if (typeof content === "string" && content.startsWith("LIVE_ROOM:")) {
+              try {
+                const data = parseLiveRoomMessage(content);
+                if (data) {
+                  if (data.active) {
+                    useAppStore.getState().setActiveLiveRoom({ ...data, participantCount: 1 });
+                  } else {
+                    const current = useAppStore.getState().activeLiveRoom;
+                    if (current?.id === data.id) useAppStore.getState().setActiveLiveRoom(null);
+                  }
+                }
+              } catch { /* ignore */ }
+            }
+          } catch { /* skip */ }
+        }
+      };
 
-      // ── Pass 2: decode messages, apply reactions, enrich with NFT images ──
-      let decoded = rawHistory
-        .map((m) => decodeMessage(m, _myInboxId))
-        .filter(Boolean) as ChatMessage[];
+      // ── Helper: decode messages + apply reactions/edits ────────────────
+      const decodeAndEnrich = (raws: any[]): ChatMessage[] => {
+        let decoded = raws
+          .map((m) => decodeMessage(m, _myInboxId))
+          .filter(Boolean) as ChatMessage[];
 
-      // Build a quick lookup: messageId → senderInboxId for reaction tracking
-      const _msgSenderMap = new Map<string, string>(decoded.map(m => [m.id, m.senderAddress]));
+        const _msgSenderMap = new Map<string, string>(decoded.map(m => [m.id, m.senderAddress]));
 
-      for (const raw of rawHistory) {
-        try {
-          const content = raw.content();
-          if (typeof content === "string" && content.startsWith("REACT:")) {
-            // Track activity: reactor gave a reaction; target sender received one
-            const parts = content.split(":");
-            const targetId = parts[2] ?? "";
-            trackActivity(raw.senderInboxId as string, 'given');
-            const targetSender = _msgSenderMap.get(targetId);
-            if (targetSender) trackActivity(targetSender, 'received');
-            decoded = applyReaction(decoded, raw, _myInboxId);
-          } else if (typeof content === "string" && content.startsWith("STICKER_REACT:")) {
-            decoded = applyStickerReaction(decoded, raw, _myInboxId);
-          } else if (typeof content === "string" && content.startsWith("EDIT:")) {
-            decoded = applyEdit(decoded, raw);
-          }
-        } catch { /* skip */ }
-      }
+        for (const raw of raws) {
+          try {
+            const content = raw.content();
+            if (typeof content === "string" && content.startsWith("REACT:")) {
+              const parts = content.split(":");
+              const targetId = parts[2] ?? "";
+              trackActivity(raw.senderInboxId as string, 'given');
+              const targetSender = _msgSenderMap.get(targetId);
+              if (targetSender) trackActivity(targetSender, 'received');
+              decoded = applyReaction(decoded, raw, _myInboxId);
+            } else if (typeof content === "string" && content.startsWith("STICKER_REACT:")) {
+              decoded = applyStickerReaction(decoded, raw, _myInboxId);
+            } else if (typeof content === "string" && content.startsWith("EDIT:")) {
+              decoded = applyEdit(decoded, raw);
+            }
+          } catch { /* skip */ }
+        }
 
-      // Track every message sender in the all-time registry + activity
-      for (const msg of decoded) {
-        trackUser(msg.senderAddress, msg.senderUsername);
-        trackActivity(msg.senderAddress, 'sent');
-      }
+        for (const msg of decoded) {
+          trackUser(msg.senderAddress, msg.senderUsername);
+          trackActivity(msg.senderAddress, 'sent');
+        }
 
-      // Populate senderNft from profile cache so avatars always show correctly
-      const historyMessages = decoded.map(enrichWithNft);
+        return decoded.map(enrichWithNft).reverse(); // oldest-first
+      };
 
-      const orderedHistory = historyMessages.reverse(); // oldest-first
+      // ── Seed profiles + decode all 50 messages ──────────────────────────
+      await seedProfilesAndEvents(rawHistory);
+      const recentMessages = decodeAndEnrich(rawHistory);
+      setMessages(recentMessages);
+      setLoadingHistory(false); // UI is ready
 
-      // Merge cached messages (up to 7 days) with fresh XMTP history so
-      // messages older than the 200-message XMTP window are preserved.
-      const cached = await loadCachedMessages("main_chat").catch(() => [] as ChatMessage[]);
-      const freshIds = new Set(orderedHistory.map((m) => m.id));
-      const olderCached = cached.filter((m) => !freshIds.has(m.id)).map(enrichWithNft);
-      const merged = [...olderCached, ...orderedHistory].sort(
-        (a, b) => a.sentAt.getTime() - b.sentAt.getTime(),
-      );
-      setMessages(merged);
-      setLoadingHistory(false);
-
-      // Persist merged messages for next restart
-      saveCachedMessages("main_chat", merged).catch(() => {});
+      // Persist to cache (capped at 50 by messageCache)
+      saveCachedMessages("main_chat", recentMessages).catch(() => {});
 
       // ── 5. Stream incoming messages ────────────────────────────────────────
       _unsubscribeStream?.();
@@ -456,7 +583,7 @@ export function useXmtp() {
       _botChannelUnsubs = [];
       _streamAlive = false;
 
-      const unsub = await (group as any).streamMessages(async (raw: any) => {
+      const unsub = await (activeGroup as any).streamMessages(async (raw: any) => {
         _streamAlive = true;
         let content: string;
         try {
@@ -602,6 +729,17 @@ export function useXmtp() {
             if (data) {
               if (data.active) {
                 useAppStore.getState().setActiveVideoRoom(data);
+                // Inject a visible pill message so users see who started the call
+                const pillMsg: ChatMessage = {
+                  id: `videopill-${data.id}`,
+                  senderAddress: raw.senderInboxId as string,
+                  senderUsername: data.host,
+                  content: `LIVE_PILL:video:${data.host}:${data.id}`,
+                  sentAt: new Date(raw.sentNs / 1_000_000),
+                  reactions: {},
+                  status: "sent",
+                };
+                mergeMessage(enrichWithNft(pillMsg));
               } else {
                 const current = useAppStore.getState().activeVideoRoom;
                 if (current?.id === data.id) useAppStore.getState().setActiveVideoRoom(null);
@@ -617,6 +755,17 @@ export function useXmtp() {
             if (data) {
               if (data.active) {
                 useAppStore.getState().setActiveLiveRoom({ ...data, participantCount: 1 });
+                // Inject a visible pill message so users see who started the room
+                const pillMsg: ChatMessage = {
+                  id: `livepill-${data.id}`,
+                  senderAddress: raw.senderInboxId as string,
+                  senderUsername: data.host,
+                  content: `LIVE_PILL:audio:${data.host}:${data.id}`,
+                  sentAt: new Date(raw.sentNs / 1_000_000),
+                  reactions: {},
+                  status: "sent",
+                };
+                mergeMessage(enrichWithNft(pillMsg));
               } else {
                 const current = useAppStore.getState().activeLiveRoom;
                 if (current?.id === data.id) useAppStore.getState().setActiveLiveRoom(null);
@@ -844,6 +993,7 @@ export function useXmtp() {
       console.error("[XMTP] initialize() failed:", message, err);
       setError(message);
     } finally {
+      _initRunning = false;
       setLoading(false);
     }
   }, [

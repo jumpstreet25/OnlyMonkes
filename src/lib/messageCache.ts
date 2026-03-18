@@ -2,10 +2,9 @@
  * messageCache.ts
  *
  * AsyncStorage-backed persistence for chat messages across app restarts.
- * - Bot channel messages persist so badges/counts are accurate
- * - Main chat messages persist for Shared Images/Links derivation
- * - Messages auto-expire after 7 days EXCEPT media (IMAGE/GIF/VIDEO) and URLs
- * - Media and link messages are kept indefinitely for Shared tabs
+ * - Main chat: caches last 50 messages (7-day TTL)
+ * - Bot channels (bets/trades/sales/predictions): 24-hour TTL, max 200
+ * - Media (IMAGE/GIF/VIDEO) and URL messages are kept indefinitely for Shared tabs
  */
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -14,7 +13,12 @@ import type { ChatMessage } from "@/types";
 const AK_PREFIX = "msg_cache_v1_";
 const AK_LAST_READ = "msg_last_read_v1_";
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
-const MAX_CACHED_MESSAGES = 2000;
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Bot channels keep only 24h of messages; main chat keeps 50 */
+const BOT_CHANNELS = new Set(["bets", "trades", "sales", "predictions"]);
+const MAX_CACHED_MAIN = 50;
+const MAX_CACHED_BOT = 200;
 
 const URL_REGEX = /https?:\/\/[^\s"'<>)]+/;
 
@@ -62,10 +66,11 @@ export async function loadCachedMessages(channelKey: string): Promise<ChatMessag
     if (!raw) return [];
     const items: SerializedMessage[] = JSON.parse(raw);
     const now = Date.now();
+    const ttl = BOT_CHANNELS.has(channelKey) ? ONE_DAY_MS : SEVEN_DAYS_MS;
     const kept = items.filter((s) => {
       const age = now - new Date(s.sentAt).getTime();
-      // Keep if under 7 days OR if it's a preservable message (media/link)
-      return age < SEVEN_DAYS_MS || isPreservable(s.content);
+      // Keep if within TTL OR if it's a preservable message (media/link)
+      return age < ttl || isPreservable(s.content);
     });
     // Save back the pruned list
     if (kept.length !== items.length) {
@@ -96,11 +101,12 @@ export async function saveCachedMessages(
     // Sort by sentAt ascending
     merged.sort((a, b) => a.sentAt.getTime() - b.sentAt.getTime());
     // Trim: keep last MAX_CACHED_MESSAGES, but never drop preservable messages
+    const maxCached = BOT_CHANNELS.has(channelKey) ? MAX_CACHED_BOT : MAX_CACHED_MAIN;
     let trimmed = merged;
-    if (trimmed.length > MAX_CACHED_MESSAGES) {
+    if (trimmed.length > maxCached) {
       const preservable = trimmed.filter((m) => isPreservable(m.content));
       const regular = trimmed.filter((m) => !isPreservable(m.content));
-      const regularKeep = regular.slice(-(MAX_CACHED_MESSAGES - preservable.length));
+      const regularKeep = regular.slice(-(maxCached - preservable.length));
       trimmed = [...preservable, ...regularKeep].sort(
         (a, b) => a.sentAt.getTime() - b.sentAt.getTime(),
       );

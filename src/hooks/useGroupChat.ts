@@ -6,7 +6,7 @@
  * Manages its own local message state independently of the global chatStore.
  *
  * Messages are persisted to AsyncStorage via messageCache so they survive
- * app restarts. 7-day auto-expiry applies (except media/link messages).
+ * app restarts. 24-hour auto-expiry for bot channels (except media/link messages).
  *
  * Module-level warm cache: if a channel was loaded recently (within WARM_TTL),
  * re-opening it skips the full XMTP sync and shows cached messages instantly,
@@ -177,7 +177,7 @@ export function useGroupChat(groupId: string, groupName: string) {
 
       setIsLoadingHistory(true);
       await (group as any).sync();
-      const rawHistory: any[] = await (group as any).messages({ limit: 100 });
+      const rawHistory: any[] = await (group as any).messages({ limit: 50 });
 
       const decoded = rawHistory
         .map((m) => decodeMessage(m, client.inboxId))
