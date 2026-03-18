@@ -54,6 +54,7 @@ import {
   type RemoteTrackPublication,
 } from 'livekit-client';
 import { AudioSession } from '@livekit/react-native';
+import { Platform, PermissionsAndroid } from 'react-native';
 import { createLivekitToken, createRoomName, LK_URL } from './livekit';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -242,6 +243,15 @@ export async function connectToVideoRoom(
       _reactionListeners.forEach(fn => fn(reaction));
     } catch { /* ignore malformed */ }
   });
+
+  // ── Request permissions ──────────────────────────────────────────────────
+
+  if (Platform.OS === 'android') {
+    await PermissionsAndroid.requestMultiple([
+      PermissionsAndroid.PERMISSIONS.CAMERA,
+      PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+    ]);
+  }
 
   // ── Connect ──────────────────────────────────────────────────────────────
 

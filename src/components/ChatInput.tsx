@@ -8,7 +8,7 @@
  *  - Send button (gradient, disabled when empty)
  */
 
-import React, { useRef, useCallback, useEffect, useMemo } from "react";
+import React, { useRef, useCallback, useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -18,6 +18,7 @@ import {
   Keyboard,
   Image,
   Animated,
+  Modal,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
@@ -100,6 +101,7 @@ interface ChatInputProps {
   onCamera?: () => void;
   typingUsers?: TypingUser[];
   onLive?: () => void;
+  onLiveVideo?: () => void;
 }
 
 export function ChatInput({
@@ -116,11 +118,13 @@ export function ChatInput({
   onCamera,
   typingUsers,
   onLive,
+  onLiveVideo,
 }: ChatInputProps) {
   const inputRef = useRef<TextInput>(null);
   const bounceAnim = useRef(new Animated.Value(0)).current;
   const hasTypers = !!(typingUsers && typingUsers.length > 0);
   const { myInboxId } = useAppStore();
+  const [livePickerOpen, setLivePickerOpen] = useState(false);
 
   const slashSuggestions = useMemo(() => getSlashSuggestions(value), [value]);
 
@@ -318,9 +322,9 @@ export function ChatInput({
           </Pressable>
         )}
 
-        {onLive && (
+        {(onLive || onLiveVideo) && (
           <Pressable
-            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onLive(); }}
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setLivePickerOpen(true); }}
             style={({ pressed }) => [styles.toolbarBtn, styles.toolbarLive, pressed && { opacity: 0.7 }]}
           >
             <View style={styles.liveDot} />
@@ -342,6 +346,61 @@ export function ChatInput({
         <ChannelButton channelId="sales" image={require("../../assets/MonkeSales.png")} />
         <ChannelButton channelId="predictions" image={require("../../assets/MonkePredictions.png")} />
       </View>
+
+      {/* Live picker popup — choose Audio or Video */}
+      <Modal
+        visible={livePickerOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setLivePickerOpen(false)}
+      >
+        <Pressable style={styles.livePickerOverlay} onPress={() => setLivePickerOpen(false)}>
+          <View style={styles.livePickerCard}>
+            <Text style={styles.livePickerTitle}>Go Live</Text>
+
+            {onLive && (
+              <Pressable
+                style={({ pressed }) => [styles.livePickerBtn, pressed && { opacity: 0.7 }]}
+                onPress={() => {
+                  setLivePickerOpen(false);
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  onLive();
+                }}
+              >
+                <Text style={styles.livePickerEmoji}>🎙</Text>
+                <View>
+                  <Text style={styles.livePickerBtnText}>Live Audio</Text>
+                  <Text style={styles.livePickerBtnSub}>Spaces-style voice chat</Text>
+                </View>
+              </Pressable>
+            )}
+
+            {onLiveVideo && (
+              <Pressable
+                style={({ pressed }) => [styles.livePickerBtn, pressed && { opacity: 0.7 }]}
+                onPress={() => {
+                  setLivePickerOpen(false);
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  onLiveVideo();
+                }}
+              >
+                <Text style={styles.livePickerEmoji}>📹</Text>
+                <View>
+                  <Text style={styles.livePickerBtnText}>Live Video</Text>
+                  <Text style={styles.livePickerBtnSub}>Video call with sticker reactions</Text>
+                </View>
+              </Pressable>
+            )}
+
+            <Pressable
+              style={({ pressed }) => [styles.livePickerCancel, pressed && { opacity: 0.7 }]}
+              onPress={() => setLivePickerOpen(false)}
+            >
+              <Text style={styles.livePickerCancelText}>Cancel</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Modal>
 
     </View>
   );
@@ -632,4 +691,68 @@ const styles = StyleSheet.create({
   mentionAvatar: { width: 28, height: 28, borderRadius: 14 },
   mentionAvatarFallback: { backgroundColor: THEME.border },
   mentionUsername: { fontFamily: FONTS.bodyMed, fontSize: 14, color: THEME.text },
+
+  // ── Live picker popup ───────────────────────────────────────────────────────
+  livePickerOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  livePickerCard: {
+    width: 260,
+    backgroundColor: "#000",
+    borderRadius: 18,
+    borderWidth: 1.5,
+    borderColor: "#0096C7",
+    paddingVertical: 20,
+    paddingHorizontal: 16,
+    alignItems: "center",
+    gap: 12,
+  },
+  livePickerTitle: {
+    fontFamily: FONTS.mono,
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#0096C7",
+    letterSpacing: 1,
+    marginBottom: 4,
+  },
+  livePickerBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    width: "100%",
+    backgroundColor: "rgba(0,150,199,0.1)",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(0,150,199,0.3)",
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+  },
+  livePickerEmoji: {
+    fontSize: 24,
+  },
+  livePickerBtnText: {
+    fontFamily: FONTS.mono,
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#0096C7",
+  },
+  livePickerBtnSub: {
+    fontFamily: FONTS.mono,
+    fontSize: 10,
+    color: "rgba(255,255,255,0.5)",
+    marginTop: 1,
+  },
+  livePickerCancel: {
+    marginTop: 4,
+    paddingVertical: 8,
+    paddingHorizontal: 20,
+  },
+  livePickerCancelText: {
+    fontFamily: FONTS.mono,
+    fontSize: 12,
+    color: "rgba(255,255,255,0.4)",
+  },
 });

@@ -82,8 +82,23 @@ export async function getOrCreateGlobalChat(
     await client.conversations.sync();
     // Also sync all conversations to pick up group invites from epoch updates
     try { await client.conversations.syncAllConversations(); } catch { /* ignore */ }
-    const found = await client.conversations.findGroup(groupId as any);
+
+    // Try findGroup first (fastest path)
+    let found = await client.conversations.findGroup(groupId as any);
     if (found) return { group: found as unknown as XmtpGroup, isNewAdmin: false };
+
+    // Fallback: list all groups and match by ID
+    // Sometimes findGroup returns null even when the group exists locally
+    try {
+      const allGroups = await client.conversations.listGroups();
+      for (const g of allGroups) {
+        if ((g as any).id === groupId) {
+          console.log("[XMTP] Found group via listGroups fallback");
+          return { group: g as unknown as XmtpGroup, isNewAdmin: false };
+        }
+      }
+    } catch { /* ignore */ }
+
     // Group ID set but user is not yet a member — must be added by admin.
     return { group: null, isNewAdmin: false };
   }
@@ -229,6 +244,16 @@ export function decodeMessage(raw: any, myInboxId: string): ChatMessage | null {
     if (rawContent.startsWith("PROFILE_UPDATE:")) return null;
     if (rawContent.startsWith("EVENT:")) return null;
     if (rawContent.startsWith("EDIT:")) return null;
+    if (rawContent.startsWith("PRESENCE:")) return null;
+    if (rawContent.startsWith("LIVE_ROOM:")) return null;
+    if (rawContent.startsWith("VIDEO_ROOM:")) return null;
+    if (rawContent.startsWith("THREAD:")) return null;
+    if (rawContent.startsWith("PIN:")) return null;
+    if (rawContent.startsWith("UNPIN:")) return null;
+    if (rawContent.startsWith("NFT_LIST:")) return null;
+    if (rawContent.startsWith("NFT_BID:")) return null;
+    if (rawContent.startsWith("NFT_ACCEPT:")) return null;
+    if (rawContent.startsWith("NFT_DELIST:")) return null;
 
     const { username, inner } = parseContent(rawContent);
 

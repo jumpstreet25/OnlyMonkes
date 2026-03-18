@@ -53,21 +53,25 @@ const CHANNEL_CONFIG = {
   bets: {
     name: "Monke Bets",
     img: require("../../assets/MonkeBets.png"),
+    banner: require("../../assets/Bets.png"),
     emptyText: "No sports bet alerts yet.",
   },
   trades: {
     name: "Monke Trades",
     img: require("../../assets/MonkeTrades.png"),
+    banner: require("../../assets/Trade.png"),
     emptyText: "No trade alerts yet.",
   },
   sales: {
     name: "Monke Sales",
     img: require("../../assets/MonkeSales.png"),
+    banner: require("../../assets/Sales.png"),
     emptyText: "No sales alerts yet.",
   },
   predictions: {
     name: "Monke Predictions",
     img: require("../../assets/MonkePredictions.png"),
+    banner: require("../../assets/Predictions.png"),
     emptyText: "No prediction alerts yet.",
   },
 } as const;
@@ -148,21 +152,15 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* Header */}
+      {/* Header — black bar with centered banner PNG */}
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={8}>
           <Text style={styles.backIcon}>{"\u2039"}</Text>
         </Pressable>
 
+        {/* Center: banner image — contain so full PNG is visible, never cropped */}
         <View style={styles.headerCenter}>
-          <Image source={config.img} style={styles.headerImage} />
-          <View>
-            <Text style={styles.headerTitle}>{config.name}</Text>
-            <View style={styles.headerStatus}>
-              <View style={styles.liveDot} />
-              <Text style={styles.headerSubtitle}>Bot Alerts · Live</Text>
-            </View>
-          </View>
+          <Image source={config.banner} style={styles.headerBanner} resizeMode="contain" />
         </View>
 
         {/* Mute/Unmute toggle */}
@@ -178,6 +176,12 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
             {isMuted ? "🔇 Muted" : "🔔 On"}
           </Text>
         </Pressable>
+      </View>
+
+      {/* Bot Alerts · Live status bar */}
+      <View style={styles.statusBar}>
+        <View style={styles.liveDot} />
+        <Text style={styles.statusText}>Bot Alerts · Live</Text>
       </View>
 
       {/* Loading / connecting state */}
@@ -264,7 +268,7 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
   );
 }
 
-const HEADER_BG = "#20203A";
+const HEADER_BG = "#000000";
 
 const styles = StyleSheet.create({
   container: {
@@ -274,43 +278,40 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
     paddingHorizontal: 12,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: THEME.border,
+    paddingVertical: 8,
     backgroundColor: HEADER_BG,
+  },
+  headerCenter: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerBanner: {
+    width: "100%",
+    height: 120,
   },
   backBtn: {
     width: 44,
     height: 44,
     alignItems: "center",
     justifyContent: "center",
+    zIndex: 1,
   },
   backIcon: {
     fontSize: 34,
-    color: THEME.textMuted,
+    color: "#fff",
     lineHeight: 38,
   },
-  headerCenter: {
+  statusBar: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-  },
-  headerImage: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-  },
-  headerTitle: {
-    fontFamily: FONTS.displayMed,
-    fontSize: 15,
-    color: THEME.text,
-  },
-  headerStatus: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: THEME.border,
+    backgroundColor: THEME.bg,
   },
   liveDot: {
     width: 6,
@@ -318,7 +319,7 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     backgroundColor: "#44ff88",
   },
-  headerSubtitle: {
+  statusText: {
     fontFamily: FONTS.mono,
     fontSize: 10,
     color: THEME.textFaint,
@@ -330,6 +331,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(108, 180, 238, 0.15)",
     minWidth: 44,
     alignItems: "center",
+    zIndex: 1,
   },
   muteBtnMuted: {
     backgroundColor: "rgba(255, 80, 80, 0.15)",
@@ -424,7 +426,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: THEME.border,
-    backgroundColor: HEADER_BG,
+    backgroundColor: THEME.bg,
   },
   sportsLabel: {
     fontFamily: FONTS.bodyMed,

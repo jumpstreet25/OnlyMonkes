@@ -9,9 +9,9 @@ app:
   address: ""
   android_package: com.onlymonkes.app
   urls:
-    license_url: https://github.com/jumpstreet25/OnlyMonkes/blob/main/LICENSE
-    copyright_url: https://github.com/jumpstreet25/OnlyMonkes/blob/main/LICENSE
-    privacy_policy_url: https://github.com/jumpstreet25/OnlyMonkes/blob/main/PRIVACY.md
+    license_url: https://jumpstreet25.github.io/OnlyMonkes/terms.html
+    copyright_url: https://jumpstreet25.github.io/OnlyMonkes/terms.html
+    privacy_policy_url: https://jumpstreet25.github.io/OnlyMonkes/privacy.html
     website: https://github.com/jumpstreet25/OnlyMonkes
   media:
     - purpose: icon
@@ -64,7 +64,7 @@ release:
 
         REQUIREMENTS: Saga Monkes NFT + compatible Solana wallet (Phantom, Solflare) on Seeker or Saga device.
       new_in_version: >-
-        v2.13: AI Agent PFP now displays correctly in Messages and Community tabs. Biometric wallet prompts for /tip and /swap — no more app switching. Improved push notification delivery. Performance and stability improvements.
+        v2.23: Bot alert channels (Bets, Trades, Sales, Predictions) with per-channel mute and sports filtering. Admin self-healing group recovery. Inverted chat for newest-first loading. Dedicated Terms of Use & Privacy Policy pages. Improved push notifications (MAX importance). Performance and stability improvements.
       saga_features: >-
         Optimized for Seeker — arm64-v8a only build with minSdk 24. Live audio rooms use LiveKit WebRTC with full Bluetooth headset support. Mobile Wallet Adapter biometric prompt (no app switching for tips/swaps).
   android_details:

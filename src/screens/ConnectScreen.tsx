@@ -46,7 +46,7 @@ export default function ConnectScreen() {
   const { width: SCREEN_W, height: SCREEN_H } = useWindowDimensions();
   const HEADER_HEIGHT = Math.round(SCREEN_H * 0.30);
   const { connect } = useMobileWallet();
-  const { isLoading, error, setError, setWallet, setVerified } = useAppStore();
+  const { isLoading, error, setError, setWallet, setVerified, setAllNfts } = useAppStore();
   const [checkingSession, setCheckingSession] = useState(true);
   const [walletSheetOpen, setWalletSheetOpen] = useState(false);
   const [showCarousel, setShowCarousel] = useState(false);
@@ -60,6 +60,7 @@ export default function ConnectScreen() {
         const nft = await loadVerifiedNft();
         if (nft) {
           setVerified(true, nft);
+          setAllNfts([nft]); // seed with verified NFT; Marketplace re-fetches full list
           router.replace("/chat");
         } else {
           router.replace("/verify");
