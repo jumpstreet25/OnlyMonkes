@@ -17,6 +17,7 @@ import {
   TextInput,
   Modal,
   ScrollView,
+  useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -30,11 +31,14 @@ import {
   type NftListing,
   type NftBid,
 } from '@/lib/marketplace';
+import { verifyNFTOwnership } from '@/lib/nftVerification';
 
 type TabKey = 'browse' | 'mine' | 'list';
 
 export default function MarketplaceScreen() {
   const insets = useSafeAreaInsets();
+  const { width: SCREEN_W } = useWindowDimensions();
+  const BANNER_H = Math.round(SCREEN_W * 0.28);
   const [tab, setTab] = useState<TabKey>('browse');
   const [listings, setListings] = useState<NftListing[]>([]);
   const [myListings, setMyListings] = useState<NftListing[]>([]);
@@ -44,6 +48,7 @@ export default function MarketplaceScreen() {
 
   const myInboxId = useAppStore(s => s.myInboxId);
   const allNfts = useAppStore(s => s.allNfts);
+  const setAllNfts = useAppStore(s => s.setAllNfts);
   const username = useAppStore(s => s.username);
   const wallet = useAppStore(s => s.wallet);
 
@@ -53,6 +58,16 @@ export default function MarketplaceScreen() {
       if (myInboxId) setMyListings(getMyListings(myInboxId));
     });
   }, [myInboxId]);
+
+  // Re-fetch full NFT list from Helius if allNfts is sparse (session restore only seeds 1)
+  useEffect(() => {
+    if (!wallet?.address || allNfts.length > 1) return;
+    verifyNFTOwnership(wallet.address).then((result) => {
+      if (result.verified && result.allNfts) {
+        setAllNfts(result.allNfts);
+      }
+    }).catch(() => {});
+  }, [wallet?.address]);
 
   const refreshListings = useCallback(() => {
     setListings(getActiveListings());
@@ -149,6 +164,13 @@ export default function MarketplaceScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
+      {/* Banner image */}
+      <Image
+        source={require("../../assets/Markets.png")}
+        style={{ width: SCREEN_W, height: BANNER_H }}
+        resizeMode="cover"
+      />
+
       {/* Header */}
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} hitSlop={12}>

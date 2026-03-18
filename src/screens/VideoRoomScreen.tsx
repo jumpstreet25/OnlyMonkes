@@ -48,12 +48,29 @@ import {
   type VideoRoomState,
   type VideoParticipant,
 } from '@/lib/liveVideo';
+import { VideoView } from '@livekit/react-native';
+import { Track, type VideoTrack as LKVideoTrack } from 'livekit-client';
 import { VideoReactionOverlay } from '@/components/VideoReactionOverlay';
 import { VideoStickerTray } from '@/components/VideoStickerTray';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
 // ─── Video tile ──────────────────────────────────────────────────────────────
+
+function useParticipantVideoTrack(identity: string, isLocal: boolean): LKVideoTrack | undefined {
+  const room = getVideoRoom();
+  if (!room) return undefined;
+  const p = isLocal
+    ? room.localParticipant
+    : room.remoteParticipants.get(identity);
+  if (!p) return undefined;
+  for (const pub of p.trackPublications.values()) {
+    if (pub.source === Track.Source.Camera && pub.track && !pub.isMuted) {
+      return pub.track as LKVideoTrack;
+    }
+  }
+  return undefined;
+}
 
 function VideoTile({
   participant,
@@ -67,11 +84,12 @@ function VideoTile({
   const profile = getCachedProfile(participant.identity);
   const pfpUri = profile?.nftImage ?? null;
   const displayName = participant.name ?? participant.identity.slice(0, 8);
+  const videoTrack = useParticipantVideoTrack(participant.identity, participant.isLocal);
 
   return (
     <View style={[styles.tile, { width, height }]}>
       {/* Video track or avatar fallback */}
-      {participant.isCameraOff ? (
+      {participant.isCameraOff || !videoTrack ? (
         <View style={styles.tileAvatarWrap}>
           {pfpUri ? (
             <Image source={{ uri: pfpUri }} style={styles.tileAvatar} />
@@ -82,12 +100,13 @@ function VideoTile({
           )}
         </View>
       ) : (
-        // LiveKit video track will be rendered here via native view
-        // For RN, we rely on the Room singleton's track subscriptions
-        // The actual video rendering uses RTCView from @livekit/react-native
-        <View style={styles.tileVideoPlaceholder}>
-          <Text style={styles.tileVideoText}>📹</Text>
-        </View>
+        <VideoView
+          videoTrack={videoTrack}
+          style={StyleSheet.absoluteFill}
+          objectFit="cover"
+          mirror={participant.isLocal}
+          zOrder={participant.isLocal ? 1 : 0}
+        />
       )}
 
       {/* Speaking indicator ring */}
@@ -464,15 +483,6 @@ const styles = StyleSheet.create({
   },
   tileAvatarGlyph: {
     fontSize: 36,
-  },
-  tileVideoPlaceholder: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#1a1a2e',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  tileVideoText: {
-    fontSize: 40,
   },
   tileSpeakingBorder: {
     ...StyleSheet.absoluteFillObject,

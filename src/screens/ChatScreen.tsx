@@ -19,7 +19,7 @@
  *  - UserProfileModal when username tapped
  */
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Animated, { FadeIn } from "react-native-reanimated";
 import {
   View,
@@ -152,7 +152,8 @@ export default function ChatScreen() {
   const isInVideoCall    = useAppStore(s => s.isInVideoCall);
   const setIsInVideoCall = useAppStore(s => s.setIsInVideoCall);
 
-  const messages         = useChatStore(s => s.messages);
+  const messagesAsc      = useChatStore(s => s.messages);
+  const messages         = useMemo(() => [...messagesAsc].reverse(), [messagesAsc]);
   const replyingTo       = useChatStore(s => s.replyingTo);
   const isLoadingHistory = useChatStore(s => s.isLoadingHistory);
   const setReplyingTo    = useChatStore(s => s.setReplyingTo);
@@ -285,13 +286,20 @@ export default function ChatScreen() {
   }, []);
 
   // ─── Auto-retry until approved ───────────────────────────────────────────────
-  // Retries every 3s — bot auto-approves join requests via DM.
+  // Retries with exponential backoff (5s → 10s → 20s → cap 30s).
   useEffect(() => {
     if (isGroupMember || !remoteGroupId) return;
-    const interval = setInterval(() => {
-      initialize();
-    }, 3_000);
-    return () => clearInterval(interval);
+    let delay = 5_000;
+    let timer: ReturnType<typeof setTimeout>;
+    const retry = () => {
+      timer = setTimeout(() => {
+        initialize();
+        delay = Math.min(delay * 2, 30_000);
+        retry();
+      }, delay);
+    };
+    retry();
+    return () => clearTimeout(timer);
   }, [isGroupMember, remoteGroupId]);
 
   // ─── Register for push notifications once member is confirmed ────────────────
@@ -508,7 +516,7 @@ export default function ChatScreen() {
     useChatStore.getState().addMessage(optimistic);
     setReplyingTo(null);
 
-    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 50);
+    setTimeout(() => flatListRef.current?.scrollToOffset({ offset: 0, animated: true }), 50);
 
     try {
       if (currentReplyingTo) {
@@ -566,7 +574,7 @@ export default function ChatScreen() {
       status: "sending",
     };
     useChatStore.getState().addMessage(optimistic);
-    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 50);
+    setTimeout(() => flatListRef.current?.scrollToOffset({ offset: 0, animated: true }), 50);
     try {
       await send(content);
       useChatStore.getState().updateMessageStatus(optimistic.id, "sent");
@@ -612,7 +620,7 @@ export default function ChatScreen() {
         status: "sending",
       };
       useChatStore.getState().addMessage(optimistic);
-      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 50);
+      setTimeout(() => flatListRef.current?.scrollToOffset({ offset: 0, animated: true }), 50);
       try {
         await send(content);
         useChatStore.getState().updateMessageStatus(optimistic.id, "sent");
@@ -652,7 +660,7 @@ export default function ChatScreen() {
       status: 'sending',
     };
     useChatStore.getState().addMessage(optimistic);
-    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 50);
+    setTimeout(() => flatListRef.current?.scrollToOffset({ offset: 0, animated: true }), 50);
     try {
       await send(content);
       useChatStore.getState().updateMessageStatus(optimistic.id, 'sent');
@@ -913,7 +921,7 @@ export default function ChatScreen() {
   const isNearBottomRef = useRef(true);
   const handleContentSizeChange = useCallback(() => {
     if (isNearBottomRef.current) {
-      flatListRef.current?.scrollToEnd({ animated: false });
+      flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
     }
   }, []);
 
@@ -1439,7 +1447,7 @@ export default function ChatScreen() {
             pinnedMessages={pinnedMessages}
             onScrollToMessage={(msgId) => {
               const idx = messages.findIndex(m => m.id === msgId);
-              if (idx !== -1) flatListRef.current?.scrollToIndex({ index: idx, animated: true });
+              if (idx !== -1) flatListRef.current?.scrollToIndex({ index: idx, animated: true, viewPosition: 0.5 });
             }}
             onUnpin={isGroupAdmin ? async (msgId) => {
               const { unpinMessage: doUnpin } = require("@/lib/pinnedMessages");
@@ -1497,6 +1505,7 @@ export default function ChatScreen() {
           renderItem={renderMessage}
           keyExtractor={keyExtractor}
           contentContainerStyle={styles.listContent}
+          inverted
           onContentSizeChange={handleContentSizeChange}
           refreshing={refreshingChat}
           onRefresh={handleRefreshChat}
@@ -1506,9 +1515,8 @@ export default function ChatScreen() {
           updateCellsBatchingPeriod={50}
           windowSize={7}
           onScroll={({ nativeEvent }) => {
-            const { contentOffset, layoutMeasurement, contentSize } = nativeEvent;
-            isNearBottomRef.current =
-              contentOffset.y + layoutMeasurement.height >= contentSize.height - SCROLL_THRESHOLD;
+            // Inverted list: offset 0 = newest messages (bottom of chat)
+            isNearBottomRef.current = nativeEvent.contentOffset.y <= SCROLL_THRESHOLD;
           }}
           scrollEventThrottle={200}
         />}
@@ -1528,24 +1536,39 @@ export default function ChatScreen() {
           onCamera={handleCameraButtonPress}
           typingUsers={typingUsers}
           onLive={!activeLiveRoom ? handleStartLive : undefined}
+          onLiveVideo={!activeVideoRoom ? handleStartVideoCall : undefined}
         />}
 
         {/* Support banner */}
         {isGroupMember && (
-          <Pressable
-            onPress={() => setDevTipOpen(true)}
-            style={({ pressed }) => [styles.supportBanner, pressed && { opacity: 0.6 }]}
-          >
+          <View style={styles.supportBanner}>
             {skrPrice && (
-              <Text style={styles.supportPriceText}>$SKR {skrPrice}</Text>
+              <Pressable
+                onPress={() => Linking.openURL(`https://jup.ag/swap/SOL-${SKR_MINT}`)}
+                style={({ pressed }) => [styles.floorBtn, pressed && { opacity: 0.7 }]}
+                hitSlop={6}
+              >
+                <Text style={styles.floorBtnText}>$SKR {skrPrice}</Text>
+              </Pressable>
             )}
-            <Text style={styles.supportBannerText}>
-              Help Support OnlyMonkes
-            </Text>
+            <Pressable
+              onPress={() => setDevTipOpen(true)}
+              style={({ pressed }) => [{ flex: 1 }, pressed && { opacity: 0.6 }]}
+            >
+              <Text style={styles.supportBannerText}>
+                Help Support OnlyMonkes
+              </Text>
+            </Pressable>
             {floorPrice && (
-              <Text style={styles.supportPriceText}>Floor {floorPrice}</Text>
+              <Pressable
+                onPress={() => router.push('/marketplace')}
+                style={({ pressed }) => [styles.floorBtn, pressed && { opacity: 0.7 }]}
+                hitSlop={6}
+              >
+                <Text style={styles.floorBtnText}>Floor {floorPrice}</Text>
+              </Pressable>
             )}
-          </Pressable>
+          </View>
         )}
 
         <View style={{ height: insets.bottom }} />
@@ -1937,8 +1960,6 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingVertical: 8,
-    flexGrow: 1,
-    justifyContent: "flex-end",
   },
 
   // ── Pending / not yet a member ───────────────────────────────────────────────
@@ -2211,6 +2232,18 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   supportPriceText: {
+    fontFamily: FONTS.mono,
+    fontSize: 10,
+    color: '#fff',
+    fontWeight: '700',
+  },
+  floorBtn: {
+    backgroundColor: '#0096C7',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  floorBtnText: {
     fontFamily: FONTS.mono,
     fontSize: 10,
     color: '#fff',

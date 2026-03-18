@@ -7,7 +7,8 @@
   <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
   <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
   <uses-permission android:name="android.permission.READ_MEDIA_VIDEO"/>
-  <!-- LiveKit / WebRTC audio -->
+  <!-- LiveKit / WebRTC audio + video -->
+  <uses-permission android:name="android.permission.CAMERA"/>
   <uses-permission android:name="android.permission.RECORD_AUDIO"/>
   <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
   <uses-permission android:name="android.permission.BLUETOOTH"/>
@@ -24,7 +25,7 @@
     <meta-data android:name="com.google.firebase.messaging.default_notification_icon" android:resource="@drawable/notification_icon"/>
     <meta-data android:name="expo.modules.notifications.default_notification_color" android:resource="@color/notification_icon_color"/>
     <meta-data android:name="expo.modules.notifications.default_notification_icon" android:resource="@drawable/notification_icon"/>
-    <meta-data android:name="expo.modules.updates.ENABLED" android:value="false"/>
+    <meta-data android:name="expo.modules.updates.ENABLED" android:value="true"/>
     <!-- Solana Mobile dApp Store metadata -->
     <meta-data android:name="solana.mobile.dapp_publisher_portal.privacy_policy_url" android:value="https://github.com/jumpstreet25/OnlyMonkes/blob/main/PRIVACY.md"/>
     <meta-data android:name="solana.mobile.dapp_publisher_portal.new_in_version" android:value="v2.13 — AI Agent PFP fix, MWA biometric prompts, push token improvements"/>
