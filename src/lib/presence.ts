@@ -59,16 +59,6 @@ export function getLastSeenText(inboxId: string): string | null {
   return null; // too old to show
 }
 
-/** Get all online users */
-export function getOnlineUsers(): string[] {
-  const now = Date.now();
-  const online: string[] = [];
-  _presenceMap.forEach((ts, id) => {
-    if (now - ts < ONLINE_THRESHOLD) online.push(id);
-  });
-  return online;
-}
-
 /** Start sending heartbeats (call once after XMTP init) */
 export function startHeartbeat(sendPresence: () => void): void {
   stopHeartbeat();

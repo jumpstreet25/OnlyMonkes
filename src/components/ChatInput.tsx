@@ -49,10 +49,38 @@ const BOT_COMMANDS = [
   { cmd: "/help",      args: "",                 desc: "Show all commands" },
 ];
 
-function getSlashSuggestions(text: string) {
+const DM_BOT_COMMANDS = [
+  { cmd: "/automonke",            args: "",              desc: "AutonoMonke status" },
+  { cmd: "/automonke start",      args: "",              desc: "Enable autonomous trading" },
+  { cmd: "/automonke stop",       args: "",              desc: "Pause trading" },
+  { cmd: "/automonke size",       args: "0.5-10",        desc: "Set position size %" },
+  { cmd: "/automonke max",        args: "SOL",           desc: "Set max wallet balance" },
+  { cmd: "/automonke confidence", args: "50-100",        desc: "Min AI confidence to trade" },
+  { cmd: "/automonke positions",  args: "",              desc: "View open positions" },
+  { cmd: "/automonke history",    args: "",              desc: "Recent trade history" },
+  { cmd: "/automonke withdraw",   args: "",              desc: "Close all & withdraw to wallet" },
+  { cmd: "/automonke fund",       args: "",              desc: "Show deposit address" },
+  { cmd: "/risk",                 args: "",              desc: "View risk settings" },
+  { cmd: "/risk size",            args: "1-25",          desc: "Position size % per trade" },
+  { cmd: "/risk stop",            args: "1-50",          desc: "Stop-loss %" },
+  { cmd: "/risk max",             args: "5-100",         desc: "Max portfolio exposure %" },
+  { cmd: "/risk auto",            args: "on|off",        desc: "Auto-execute partial sells" },
+  { cmd: "/risk conviction",      args: "50-100",        desc: "Min confluence to alert" },
+  { cmd: "/risk blacklist",       args: "$TOKEN",        desc: "Block token from alerts" },
+  { cmd: "/risk off",             args: "",              desc: "Disable all TA alerts" },
+  { cmd: "/risk on",              args: "",              desc: "Re-enable TA alerts" },
+  { cmd: "/price",                args: "$TOKEN",        desc: "Live price snapshot" },
+  { cmd: "/ta",                   args: "$TOKEN",        desc: "Technical analysis" },
+  { cmd: "/buy",                  args: "$TOKEN [SOL]",  desc: "Buy token via Jupiter" },
+  { cmd: "/sell",                 args: "$TOKEN [%]",    desc: "Sell token via Jupiter" },
+  { cmd: "/help",                 args: "",              desc: "Show all commands" },
+];
+
+function getSlashSuggestions(text: string, isDmWithBot?: boolean) {
   if (!text.startsWith("/")) return [];
   const query = text.slice(1).toLowerCase();
-  return BOT_COMMANDS.filter(c => c.cmd.slice(1).startsWith(query));
+  const commands = isDmWithBot ? DM_BOT_COMMANDS : BOT_COMMANDS;
+  return commands.filter(c => c.cmd.slice(1).startsWith(query));
 }
 
 // ── Bot channel button with badge ─────────────────────────────────────────────
@@ -102,6 +130,7 @@ interface ChatInputProps {
   typingUsers?: TypingUser[];
   onLive?: () => void;
   onLiveVideo?: () => void;
+  isDmWithBot?: boolean;
 }
 
 export function ChatInput({
@@ -119,6 +148,7 @@ export function ChatInput({
   typingUsers,
   onLive,
   onLiveVideo,
+  isDmWithBot,
 }: ChatInputProps) {
   const inputRef = useRef<TextInput>(null);
   const bounceAnim = useRef(new Animated.Value(0)).current;
@@ -126,7 +156,7 @@ export function ChatInput({
   const { myInboxId } = useAppStore();
   const [livePickerOpen, setLivePickerOpen] = useState(false);
 
-  const slashSuggestions = useMemo(() => getSlashSuggestions(value), [value]);
+  const slashSuggestions = useMemo(() => getSlashSuggestions(value, isDmWithBot), [value, isDmWithBot]);
 
   const activeMention = getActiveMention(value);
   const suggestions: { inboxId: string; username: string }[] = useMemo(() => {

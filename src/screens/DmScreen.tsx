@@ -17,6 +17,7 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
   const [retryKey, setRetryKey] = useState(0);
   const { messages, loading, error, sending, send } = useDm(peerInboxId);
   const [inputText, setInputText] = useState('');
+  const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   const flatListRef = useRef<FlatList>(null);
   useProfileVersion();
   const peerProfile = getCachedProfile(peerInboxId);
@@ -27,11 +28,16 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
     const text = inputText.trim();
     if (!text) return;
     setInputText('');
+    setReplyingTo(null);
     await send(text);
     setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 50);
   }, [inputText, send]);
 
   const noop = useCallback(async (_: ReactionEmoji, __: string) => {}, []);
+
+  const handleReply = useCallback((msg: ChatMessage) => {
+    setReplyingTo(msg);
+  }, []);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -74,11 +80,14 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
               message={item}
               isOwn={item.senderAddress === myInboxId}
               onReact={noop}
-              onReply={() => {}}
+              onReply={handleReply}
             />
           )}
           contentContainerStyle={{ paddingVertical: 8, flexGrow: 1, justifyContent: 'flex-end' }}
           onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
+          removeClippedSubviews
+          maxToRenderPerBatch={15}
+          windowSize={7}
           ListEmptyComponent={
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 60 }}>
               <Text style={{ color: THEME.textDim, fontFamily: FONTS.body, fontSize: 14 }}>
@@ -93,9 +102,10 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
         value={inputText}
         onChangeText={setInputText}
         onSend={handleSend}
-        replyingTo={null}
-        onCancelReply={() => {}}
+        replyingTo={replyingTo}
+        onCancelReply={() => setReplyingTo(null)}
         isSending={sending}
+        isDmWithBot={isBotDm}
       />
       <View style={{ height: insets.bottom }} />
     </View>

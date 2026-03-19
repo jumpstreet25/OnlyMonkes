@@ -64,7 +64,7 @@ release:
 
         REQUIREMENTS: Saga Monkes NFT + compatible Solana wallet (Phantom, Solflare) on Seeker or Saga device.
       new_in_version: >-
-        v2.23: Bot alert channels (Bets, Trades, Sales, Predictions) with per-channel mute and sports filtering. Admin self-healing group recovery. Inverted chat for newest-first loading. Dedicated Terms of Use & Privacy Policy pages. Improved push notifications (MAX importance). Performance and stability improvements.
+        v2.25: AutonoMonke autonomous trading engine. TA candlestick chart images on bullish alerts. NFT artwork in Saga Monkes sales alerts via Helius DAS. Unified push notifications (FCM v1 + Expo) with big-picture images. Groq LLM (70B, sub-second AI responses). DM slash commands for AutonoMonke + risk management (24 commands). Per-channel banner scaling. Dead code cleanup and FlatList performance optimizations.
       saga_features: >-
         Optimized for Seeker — arm64-v8a only build with minSdk 24. Live audio rooms use LiveKit WebRTC with full Bluetooth headset support. Mobile Wallet Adapter biometric prompt (no app switching for tips/swaps).
   android_details:
