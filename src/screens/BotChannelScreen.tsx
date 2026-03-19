@@ -5,7 +5,8 @@
  * Same layout as DAppChatScreen but without ChatInput — users only read alerts.
  */
 
-import React, { useCallback, useEffect, useMemo, useRef } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   View,
   Text,
@@ -14,6 +15,7 @@ import {
   Pressable,
   ActivityIndicator,
   Image,
+  ImageBackground,
   ListRenderItem,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -22,8 +24,13 @@ import { useAppStore } from "@/store/appStore";
 import { useGroupChat } from "@/hooks/useGroupChat";
 import { MessageBubble } from "@/components/MessageBubble";
 import { triggerProfileRebroadcast } from "@/hooks/useXmtp";
+import AutoMonkeDisclaimerModal from "@/components/AutoMonkeDisclaimerModal";
+import { getXmtpClient } from "@/hooks/useXmtp";
+import { sendDmMessage } from "@/lib/xmtp";
 import { THEME, FONTS } from "@/lib/constants";
 import type { ChatMessage } from "@/types";
+
+const BOT_INBOX_ID = "998001a498174b8a194110ee792b10f97de4965665eaf0d088ed2c71bdf62363";
 
 // No-ops for read-only channel — users can't react or reply to bot alerts
 const noop = () => {};
@@ -54,24 +61,28 @@ const CHANNEL_CONFIG = {
     name: "Monke Bets",
     img: require("../../assets/MonkeBets.png"),
     banner: require("../../assets/Bets.png"),
+    bannerScale: 1.8,
     emptyText: "No sports bet alerts yet.",
   },
   trades: {
     name: "Monke Trades",
     img: require("../../assets/MonkeTrades.png"),
     banner: require("../../assets/Trade.png"),
+    bannerScale: 1.8,
     emptyText: "No trade alerts yet.",
   },
   sales: {
     name: "Monke Sales",
     img: require("../../assets/MonkeSales.png"),
     banner: require("../../assets/Sales.png"),
+    bannerScale: 1.575,
     emptyText: "No sales alerts yet.",
   },
   predictions: {
     name: "Monke Predictions",
     img: require("../../assets/MonkePredictions.png"),
     banner: require("../../assets/Predictions.png"),
+    bannerScale: 1.8,
     emptyText: "No prediction alerts yet.",
   },
 } as const;
@@ -82,10 +93,22 @@ interface BotChannelScreenProps {
 
 export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
   const insets = useSafeAreaInsets();
-  const { myInboxId, botChannelIds, mutedBotChannels, toggleBotChannelMute, mutedSports, toggleSportMute } = useAppStore();
+  const { myInboxId, botChannelIds, mutedBotChannels, toggleBotChannelMute, mutedSports, toggleSportMute, username } = useAppStore();
   const groupId = botChannelIds[channelId];
   const isMuted = mutedBotChannels[channelId];
   const config = CHANNEL_CONFIG[channelId];
+  const [showAutoMonkeModal, setShowAutoMonkeModal] = useState(false);
+  const [autoMonkeEnrolled, setAutoMonkeEnrolled] = useState(false);
+  const [showAllOverride, setShowAllOverride] = useState(false);
+
+  // Check enrollment on mount
+  useEffect(() => {
+    if (channelId === "trades") {
+      AsyncStorage.getItem("automonke_enrolled").then(v => {
+        if (v === "1") setAutoMonkeEnrolled(true);
+      }).catch(() => {});
+    }
+  }, [channelId]);
 
   const {
     messages,
@@ -99,20 +122,38 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
   const flatListRef = useRef<FlatList>(null);
   const myAddress = myInboxId ?? "";
 
+  // AutonoMonke enrollment handler
+  const handleAutoMonkeEnroll = useCallback(async () => {
+    setShowAutoMonkeModal(false);
+    try {
+      const client = getXmtpClient();
+      if (!client) return;
+      const dm = await (client.conversations as any).findOrCreateDm(BOT_INBOX_ID);
+      if (dm) {
+        await sendDmMessage(dm, "/automonke start", username);
+      }
+      await AsyncStorage.setItem("automonke_enrolled", "1");
+      setAutoMonkeEnrolled(true);
+      // Navigate to bot DM
+      router.push(`/dm/${BOT_INBOX_ID}` as any);
+    } catch (err) {
+      console.warn("[AutonoMonke] Failed to send enrollment DM:", (err as Error).message);
+    }
+  }, [username]);
+
   // Client-side filter: hide alerts for muted sports in the Bets channel
   const filteredMessages = useMemo(() => {
-    if (channelId !== "bets" || mutedSports.length === 0) return messages;
+    if (channelId !== "bets" || mutedSports.length === 0 || showAllOverride) return messages;
     return messages.filter((msg) => {
       const text = msg.content ?? "";
-      // Sports alerts have "— SPORT_LABEL" on first line (e.g. "— NFL 🏈")
       const dashMatch = text.match(/—\s*(.+)/);
-      if (!dashMatch) return true; // not a sports alert, keep it
-      const sportPart = dashMatch[1].trim().split("\n")[0]; // first line only
+      if (!dashMatch) return true;
+      const sportPart = dashMatch[1].trim().split("\n")[0];
       const key = SPORT_LABEL_TO_KEY[sportPart] ?? SPORT_LABEL_TO_KEY[sportPart.toUpperCase()];
-      if (!key) return true; // unknown sport, keep it
+      if (!key) return true;
       return !mutedSports.includes(key);
     });
-  }, [messages, mutedSports, channelId]);
+  }, [messages, mutedSports, channelId, showAllOverride]);
 
   useEffect(() => {
     if (groupId) initialize();
@@ -152,16 +193,18 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* Header — black bar with centered banner PNG */}
+      {/* Header — matches Main Chat header layout exactly */}
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={8}>
           <Text style={styles.backIcon}>{"\u2039"}</Text>
         </Pressable>
 
-        {/* Center: banner image — contain so full PNG is visible, never cropped */}
-        <View style={styles.headerCenter}>
-          <Image source={config.banner} style={styles.headerBanner} resizeMode="contain" />
-        </View>
+        {/* Center: banner image — contain so wide logos aren't cropped */}
+        <ImageBackground
+          source={config.banner}
+          style={[styles.headerCenter, { transform: [{ scale: config.bannerScale }] }]}
+          resizeMode="contain"
+        />
 
         {/* Mute/Unmute toggle */}
         <Pressable
@@ -229,6 +272,24 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
             </View>
           )}
 
+          {/* AutonoMonke enrollment card — Trades channel only, hidden once enrolled */}
+          {channelId === "trades" && !autoMonkeEnrolled && (
+            <Pressable
+              style={styles.autoMonkeCard}
+              onPress={() => setShowAutoMonkeModal(true)}
+            >
+              <View style={styles.autoMonkeCardLeft}>
+                <Text style={styles.autoMonkeTitle}>AutonoMonke</Text>
+                <Text style={styles.autoMonkeDesc}>
+                  Enable autonomous trading powered by AI
+                </Text>
+              </View>
+              <View style={styles.autoMonkeBtn}>
+                <Text style={styles.autoMonkeBtnText}>Enable</Text>
+              </View>
+            </Pressable>
+          )}
+
           {/* Loading history banner */}
           {isLoadingHistory && (
             <View style={styles.historyLoading}>
@@ -237,8 +298,21 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
             </View>
           )}
 
+          {/* Filtered-out notice — all messages hidden by sport filters */}
+          {!isLoadingHistory && filteredMessages.length === 0 && messages.length > 0 && channelId === "bets" && (
+            <Pressable
+              style={styles.filteredNotice}
+              onPress={() => setShowAllOverride(true)}
+            >
+              <Text style={styles.filteredNoticeText}>
+                {messages.length} alerts hidden by sport filters
+              </Text>
+              <Text style={styles.filteredNoticeAction}>Tap to show all</Text>
+            </Pressable>
+          )}
+
           {/* Empty state */}
-          {!isLoadingHistory && filteredMessages.length === 0 && (
+          {!isLoadingHistory && filteredMessages.length === 0 && (messages.length === 0 || channelId !== "bets") && (
             <View style={styles.emptyState}>
               <Image source={config.img} style={styles.emptyImage} />
               <Text style={styles.emptyTitle}>No alerts yet</Text>
@@ -264,11 +338,16 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
       )}
 
       <View style={{ height: insets.bottom }} />
+
+      {/* AutonoMonke disclaimer modal */}
+      <AutoMonkeDisclaimerModal
+        visible={showAutoMonkeModal}
+        onClose={() => setShowAutoMonkeModal(false)}
+        onConfirm={handleAutoMonkeEnroll}
+      />
     </View>
   );
 }
-
-const HEADER_BG = "#000000";
 
 const styles = StyleSheet.create({
   container: {
@@ -279,21 +358,18 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: HEADER_BG,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: THEME.border,
+    backgroundColor: "transparent",
   },
   headerCenter: {
     flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  headerBanner: {
-    width: "100%",
-    height: 120,
+    alignSelf: "stretch",
   },
   backBtn: {
-    width: 44,
-    height: 44,
+    width: 58,
+    height: 58,
     alignItems: "center",
     justifyContent: "center",
     zIndex: 1,
@@ -454,9 +530,69 @@ const styles = StyleSheet.create({
     textDecorationLine: "line-through",
   },
 
+  filteredNotice: {
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 20,
+    margin: 12,
+    borderRadius: 12,
+    backgroundColor: "rgba(108, 180, 238, 0.1)",
+    borderWidth: 1,
+    borderColor: "rgba(108, 180, 238, 0.2)",
+  },
+  filteredNoticeText: {
+    fontFamily: FONTS.body,
+    fontSize: 14,
+    color: THEME.textMuted,
+  },
+  filteredNoticeAction: {
+    fontFamily: FONTS.bodySemi,
+    fontSize: 13,
+    color: THEME.accent,
+    marginTop: 4,
+  },
+
   listContent: {
     paddingVertical: 8,
     flexGrow: 1,
     justifyContent: "flex-end",
+  },
+
+  autoMonkeCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginHorizontal: 12,
+    marginVertical: 8,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: "rgba(124, 58, 237, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(124, 58, 237, 0.3)",
+  },
+  autoMonkeCardLeft: {
+    flex: 1,
+    marginRight: 12,
+  },
+  autoMonkeTitle: {
+    fontFamily: FONTS.displayMed,
+    fontSize: 14,
+    color: THEME.text,
+  },
+  autoMonkeDesc: {
+    fontFamily: FONTS.body,
+    fontSize: 11,
+    color: THEME.textMuted,
+    marginTop: 2,
+  },
+  autoMonkeBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: THEME.accent,
+  },
+  autoMonkeBtnText: {
+    fontFamily: FONTS.bodySemi,
+    fontSize: 12,
+    color: "#fff",
   },
 });

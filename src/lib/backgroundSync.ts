@@ -108,6 +108,3 @@ export function unregisterNetworkSync(): void {
   _reconnectFn = null;
 }
 
-// Legacy export for _layout.tsx compatibility
-export const BG_SYNC_TASK = "onlymonkes-bg-sync";
-export async function registerBackgroundSync(): Promise<void> {}

@@ -62,22 +62,6 @@ export const THEME = {
   warning: '#F59E0B',
 };
 
-export const COLORS = {
-  background: THEME.bg,
-  surface: THEME.surface,
-  surfaceAlt: THEME.surfaceHigh,
-  border: THEME.border,
-  primary: THEME.accent,
-  primaryLight: '#A78BFA',
-  primaryDim: THEME.accentSoft,
-  text: THEME.text,
-  textSecondary: THEME.textMuted,
-  textMuted: THEME.textFaint,
-  success: THEME.success,
-  error: THEME.error,
-  warning: THEME.warning,
-};
-
 export const FONTS = {
   display: 'SpaceGrotesk-Bold',
   displayMed: 'SpaceGrotesk-Medium',

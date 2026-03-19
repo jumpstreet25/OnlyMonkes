@@ -9,8 +9,7 @@ import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { COLORS } from '../src/lib/constants';
-import { registerBackgroundSync } from '../src/lib/backgroundSync';
+import { THEME } from '../src/lib/constants';
 import { registerForPushNotifications } from '../src/lib/notifications';
 import { triggerProfileRebroadcast } from '../src/hooks/useXmtp';
 import { useAppStore, loadPersistedPrefs } from '../src/store/appStore';
@@ -32,7 +31,6 @@ const queryClient = new QueryClient();
 export default function RootLayout() {
   useEffect(() => {
     SplashScreen.hideAsync();
-    registerBackgroundSync();
     logAppOpen().catch(() => {});
     const streak = useAppStore.getState().loginStreak;
     logDailySession(streak).catch(() => {});
@@ -66,7 +64,7 @@ export default function RootLayout() {
           <Stack
             screenOptions={{
               headerShown: false,
-              contentStyle: { backgroundColor: COLORS.background },
+              contentStyle: { backgroundColor: THEME.bg },
               animation: 'slide_from_right',
             }}
           />

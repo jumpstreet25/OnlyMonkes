@@ -179,6 +179,9 @@ function ComposeModal({ visible, onClose, myInboxId }: {
             }
             keyboardShouldPersistTaps="handled"
             contentContainerStyle={{ paddingBottom: 24 }}
+            removeClippedSubviews
+            maxToRenderPerBatch={20}
+            windowSize={7}
           />
         </View>
       </View>
@@ -242,6 +245,9 @@ export default function DmInboxScreen() {
           }
           contentContainerStyle={{ flexGrow: 1 }}
           ItemSeparatorComponent={() => <View style={styles.separator} />}
+          removeClippedSubviews
+          maxToRenderPerBatch={15}
+          windowSize={7}
         />
       )}
 

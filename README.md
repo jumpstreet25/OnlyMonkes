@@ -81,16 +81,22 @@ An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect yo
 - **MWA biometric re-auth** — cached wallet adapter auth tokens for silent re-authentication with biometric prompt; no app-switch needed after first connect
 
 ### AI Agent & TA Scanner
-- **AI Agent #9385** — XMTP bot in the group chat; delivers TA alerts (RSI, MACD, EMA) for Solana tokens, Saga Monke NFT sale alerts, and responds to DMs via Claude AI; built on ElizaOS v2 with plugin-solana for trade execution
-- **TA Savvy Monke** — professional-grade multi-timeframe TA scanner; scans all verified Solana SPL tokens every 8 min across 15m/1H/4H/daily candles; posts confluence alerts (Ichimoku, Fibonacci, Bollinger, Stochastic, ADX, OBV, candle patterns) to Main Chat when signal score ≥72/100; sentiment gate (Birdeye trending + wash trading detection)
+- **AI Agent #9385** — XMTP bot in the group chat; delivers TA alerts (RSI, MACD, EMA) for Solana tokens, Saga Monke NFT sale alerts, and responds to DMs via Groq LLM (70B, sub-second); built on ElizaOS v2 with plugin-solana for trade execution
+- **TA Savvy Monke** — professional-grade multi-timeframe TA scanner; scans all verified Solana SPL tokens every 8 min across 15m/1H/4H/daily candles; posts confluence alerts (Ichimoku, Fibonacci, Bollinger, Stochastic, ADX, OBV, candle patterns) to Main Chat + Monke Trades channel when signal score ≥69/100; sentiment gate (Birdeye trending + wash trading detection)
+- **TA candle charts** — every bullish TA alert includes a generated candlestick chart image (with Fibonacci levels, entry/stop/targets overlaid) sent to both Main Chat and the Monke Trades channel
+- **AutonoMonke** — autonomous trading engine; TA scanner signals with ≥69% confluence + 2+ aligned timeframes auto-execute trades via Jupiter for enrolled users; DM `/automonke start` to enroll, `/automonke size` to set position %, `/automonke positions` to view open trades, `/automonke withdraw` to close all and withdraw
 - **Slash commands** — `/tip @Username [amt]` (send $SKR), `/buy $TOKEN`, `/sell $TOKEN`, `/swap $A for $B` — all execute in-app via MWA biometric sign + Jupiter aggregator
+- **DM slash commands** — DM the bot for 24 commands: `/automonke` (status/start/stop/size/confidence/positions/history/withdraw/fund), `/risk` (size/stop/max/drawdown/auto/mincap/conviction/blacklist), `/price`, `/ta`, `/buy`
 - **Color-coded risk alerts** — 🟢 Low Risk, 🟡 Medium, 🔴 High Risk dots on all TA alerts; compact confluence tags (RSI + MACD Cross + BB Squeeze); inline chart links (DEXScreener, Birdeye, Jupiter)
 - **Per-user TA risk settings** — DM the bot `/risk` to set position size, stop-loss %, conviction threshold, blacklist, mute, and more
 - **Backtesting** — DM `/backtest $TOKEN [days]` for historical signal replay with win/loss stats, Sharpe ratio, max drawdown
 - **Portfolio tracking** — DM `/portfolio` for open positions, closed P&L, and daily summaries
+- **NFT sale images** — Saga Monkes sales alerts include the actual NFT artwork fetched via Helius DAS API, displayed in the MonkeSales channel and as a big-picture push notification
+- **Unified push notifications** — all bot alerts (TA signals, NFT sales, sports bets, predictions, GMonke, PNL reports) route through a single FCM v1 + Expo push pipeline with user preference filtering, per-channel muting, stale token pruning, and big-picture image support
+- **LLM chain** — Groq (primary, free, 70B, sub-second) → Ollama (local fallback) → Anthropic (last resort); all app users can DM the bot for free AI chat
 - **Support OnlyMonkes button** — in the Tools drawer; quick-tip 5/10/25/50 $SKR to the dev wallet via in-app MWA biometric (no app switch)
-- **Per-type push titles** — 🐒 Saga Monke Sold! / 📈 Bullish Signal / 📉 Bearish Signal per alert type
-- **Enriched push payloads** — notifications include `type`, `sender`, `avatarUrl`, `preview` fields for rich display
+- **Per-type push titles** — 🐒 MONKE #1234 Sold! / 🐒 TA Signal: $TOKEN / 🔮 Prediction Alert per alert type
+- **Rich push images** — TA trade alerts include the candlestick chart as a big-picture notification; NFT sales include the Monke artwork
 
 ### Infrastructure & Quality
 - **EAS Update (OTA)** — over-the-air updates via `expo-updates`; silent download on launch, prompt to restart; avoids full dApp Store resubmission for minor fixes
