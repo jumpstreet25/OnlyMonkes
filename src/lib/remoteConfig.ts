@@ -62,10 +62,6 @@ export async function saveAdminToken(token: string): Promise<void> {
   await SecureStore.setItemAsync(SK_TOKEN, token.trim());
 }
 
-export async function clearAdminToken(): Promise<void> {
-  await SecureStore.deleteItemAsync(SK_TOKEN);
-}
-
 // ─── Write ────────────────────────────────────────────────────────────────────
 
 export async function publishAppConfig(config: AppRemoteConfig): Promise<void> {

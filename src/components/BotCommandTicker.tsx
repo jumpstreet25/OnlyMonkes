@@ -36,14 +36,18 @@ const CHAT_COMMANDS: Command[] = [
 ];
 
 const DM_COMMANDS: Command[] = [
-  { cmd: "Ask anything", desc: "AI chat" },
+  { cmd: "/automonke", desc: "Trading status" },
+  { cmd: "/automonke start", desc: "Enable trading" },
+  { cmd: "/automonke size", desc: "Position size %" },
+  { cmd: "/automonke withdraw", desc: "Withdraw all" },
+  { cmd: "/automonke positions", desc: "Open trades" },
+  { cmd: "/risk", desc: "Risk settings" },
+  { cmd: "/risk size 5", desc: "Set trade size" },
+  { cmd: "/risk stop 8", desc: "Stop-loss %" },
+  { cmd: "/risk max 40", desc: "Max exposure" },
   { cmd: "/price $TOKEN", desc: "Live price" },
-  { cmd: "/ta $TOKEN", desc: "Technical analysis" },
-  { cmd: "/watchlist", desc: "Tracked tokens" },
-  { cmd: "/alerts", desc: "Recent signals" },
-  { cmd: "/sports", desc: "Betting edges" },
-  { cmd: "APPROVE", desc: "Confirm trade" },
-  { cmd: "REJECT", desc: "Cancel trade" },
+  { cmd: "/ta $TOKEN", desc: "Analysis" },
+  { cmd: "/buy $TOKEN", desc: "Buy via Jupiter" },
 ];
 
 function buildTickerNodes(commands: Command[], keyPrefix: string): React.ReactNode[] {
