@@ -27,7 +27,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     fallbackToCacheTimeout: 5000,
     checkAutomatically: 'ON_LOAD',
   },
-  runtimeVersion: '2.22',
+  runtimeVersion: '2.27',
   plugins: [
     'expo-router',
     'expo-secure-store',
@@ -72,8 +72,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     cloudinaryCloudName: process.env.CLOUDINARY_CLOUD_NAME ?? '',
     cloudinaryUploadPreset: process.env.CLOUDINARY_UPLOAD_PRESET ?? '',
     livekitUrl: process.env.LIVEKIT_URL ?? '',
-    livekitApiKey: process.env.LIVEKIT_API_KEY ?? '',
-    livekitApiSecret: process.env.LIVEKIT_API_SECRET ?? '',
+    livekitTokenUrl: process.env.LIVEKIT_TOKEN_URL ?? '',
     jupApiKey: process.env.JUP_API_KEY ?? '',
     skrMint: process.env.SKR_MINT ?? '',
     devWallet: process.env.DEV_WALLET ?? '7tLrnPvgcR5mLtyUcVwvmhAD1wXbAKgWcLBPWxpwyZ1J',
