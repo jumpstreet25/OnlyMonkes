@@ -23,7 +23,7 @@ Rules are added over time as issues arise.
 
 ## XMTP & Messaging
 
-- **System message prefixes** (PRESENCE:, TYPING:, PROFILE_UPDATE:, EVENT:, EDIT:, REACT:, STICKER_REACT:, LIVE_ROOM:, VIDEO_ROOM:, THREAD:, PIN:, UNPIN:, NFT_LIST:, NFT_BID:, NFT_ACCEPT:, NFT_DELIST:) must ALWAYS be filtered in `decodeMessage()` so they never appear as chat messages.
+- **System message prefixes** (PRESENCE:, TYPING:, PROFILE_UPDATE:, EVENT:, EDIT:, REACT:, STICKER_REACT:, LIVE_ROOM:, VIDEO_ROOM:, THREAD:, PIN:, UNPIN:, NFT_LIST:, NFT_BID:, NFT_OFFER:, NFT_ACCEPT:, NFT_DELIST:, NFT_SWAP:, NFT_COMPLETE:) must ALWAYS be filtered in `decodeMessage()` so they never appear as chat messages.
 - Bot message format is **always** `MSG:AI Agent #9385:<content>` — any deviation breaks display in the app.
 - PRESENCE heartbeats are sent every 60s via XMTP group `send()` — the bot must ignore them (they are not user messages).
 - After any XMTP DB wipe + group recreation, the group ID changes — update `app-config.json` and bot `.env`.
@@ -49,6 +49,84 @@ Rules are added over time as issues arise.
 - `@livekit/react-native` + `livekit-client` for audio/video rooms
 - `@xmtp/react-native-sdk` v5 MLS for messaging
 - BouncyCastle `bcprov-jdk15on` must be excluded in `build.gradle` to avoid duplicate class conflicts
+
+## Security Scanning (MANDATORY — run on every code change)
+
+Every time code is written or modified, the following security checks MUST pass before committing. These are non-negotiable and apply to all files in both the app (`OnlyMonkes/`) and bot (`Monke_Eliza/`) codebases.
+
+### Pre-commit checks
+
+1. **Secrets scan** — grep all staged files for hardcoded secrets before every commit:
+   - API keys, private keys, seed phrases, mnemonics, JWTs, bearer tokens
+   - Patterns: `/[A-Za-z0-9_-]{32,}/` near `key`, `secret`, `token`, `password`, `credential`, `mnemonic`, `seed`
+   - Firebase service account JSON files, `.p8` files, keystore passwords
+   - If ANY match is found, **block the commit** and move the value to `.env` or SecureStore
+
+2. **No secrets in source** — the following must NEVER appear in `.ts`, `.tsx`, `.js`, `.json`, or `.gradle` files:
+   - Hardcoded API keys (Helius, GIPHY, Cloudinary, LiveKit, Sentry, Jupiter, Birdeye, OpenAI, Anthropic, SharpAPI, OddsAPI)
+   - Hardcoded private keys or wallet keypairs (Solana `Uint8Array`, base58-encoded keys)
+   - Hardcoded Firebase service account credentials
+   - Hardcoded XMTP bot keys
+   - Inline connection strings with passwords
+
+3. **Sensitive data logging** — NEVER log to console or Sentry:
+   - Private keys, seed phrases, or wallet secrets
+   - Full XMTP inbox IDs in user-facing UI (debug logs OK)
+   - Push tokens, FCM tokens, or auth tokens
+   - User wallet addresses in error messages visible to other users
+   - AES encryption keys or IVs from AutonoMonke wallet vault
+
+4. **Input validation at boundaries** — all external input MUST be validated:
+   - User DM commands: sanitize before processing (no eval, no template injection)
+   - API responses: validate shape before accessing nested properties
+   - XMTP message content: always decode safely, never trust raw payload structure
+   - URL parameters: validate and sanitize before use in fetch/navigation
+   - Amounts/numbers from user input: parseFloat/parseInt with bounds checking and NaN guards
+
+5. **OWASP Top 10 for mobile** — check every code change against:
+   - **Injection**: no string concatenation in queries, RPC calls, or shell commands; use parameterized patterns
+   - **Broken auth**: wallet sessions use SecureStore (encrypted); never store session tokens in AsyncStorage or plaintext
+   - **Sensitive data exposure**: all keys in `.env` or SecureStore; never in git, logs, or state dumps
+   - **Insecure communication**: all API calls use HTTPS; LiveKit uses WSS + DTLS/SRTP; XMTP uses E2E MLS encryption
+   - **Insufficient cryptography**: AutonoMonke uses AES-256-GCM; never roll custom crypto; use established libraries
+   - **Insecure data storage**: no secrets in AsyncStorage; use SecureStore for credentials; wallet keys in encrypted vault only
+   - **Client code quality**: no `eval()`, no `Function()` constructor, no `dangerouslySetInnerHTML`, no dynamic `require()` with user input
+
+6. **Dependency audit** — when adding new packages:
+   - Run `npm audit` and resolve critical/high vulnerabilities before committing
+   - Check package last-publish date (avoid abandoned packages >2 years)
+   - Prefer packages with >1000 weekly downloads and active maintenance
+   - Never install packages that request unnecessary permissions
+
+7. **Wallet & transaction security** — for any code touching Solana transactions:
+   - NEVER sign transactions without user confirmation (MWA biometric in app, explicit DM approval for bot)
+   - NEVER expose private keys outside the encrypted vault (AutonoMonke `walletVault.ts`)
+   - Validate all transaction amounts against user-configured limits before execution
+   - Fee injection must be atomic (same transaction) — never separate transfers
+   - Stop-loss and position limits must be enforced server-side, not just in UI
+
+8. **Bot-specific security** — for Monke_Eliza code:
+   - NFT ownership gate must be checked before processing any DM command that accesses funds or trading
+   - AutonoMonke, MonkePredictions, and MonkeBets all require explicit user opt-in + disclaimer acceptance
+   - Drawdown halts ($50 max) must be enforced and cannot be bypassed
+   - OpenClaw AI confidence check is a hard gate — never skip it for autonomous trades/bets
+   - Position files (`.json`) must never contain private keys — only public keys and trade metadata
+
+### How to run the security scan
+
+Before every commit, mentally (or actually) run:
+```
+# 1. Secrets grep (run on all staged files)
+git diff --cached --name-only | xargs grep -inE '(api_key|apikey|secret|private_key|mnemonic|seed_phrase|bearer|password)\s*[:=]' || echo "✅ No secrets"
+
+# 2. Hardcoded key patterns
+git diff --cached | grep -E '[A-Za-z0-9]{32,}' | grep -ivE '(sha256|sha512|md5|hash|commit|signature|publicKey|inboxId|groupId|\.toBase58)' || echo "✅ No suspicious keys"
+
+# 3. Dangerous patterns
+git diff --cached | grep -inE '(eval\(|Function\(|dangerouslySet|\.env\.|process\.env\.)' || echo "✅ No dangerous patterns"
+```
+
+If ANY check fails, fix the issue before committing. No exceptions.
 
 ## Code Style
 
