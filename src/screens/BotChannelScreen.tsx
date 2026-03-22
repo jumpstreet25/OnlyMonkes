@@ -364,13 +364,15 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
 
       <View style={{ height: insets.bottom }} />
 
-      {/* Autonomy disclaimer modal */}
-      <AutoMonkeDisclaimerModal
-        visible={showAutoMonkeModal}
-        onClose={() => setShowAutoMonkeModal(false)}
-        onConfirm={handleAutonomyEnroll}
-        feature={channelId as AutonomyFeature}
-      />
+      {/* Autonomy disclaimer modal (only for channels with autonomy features) */}
+      {hasAutonomy && (
+        <AutoMonkeDisclaimerModal
+          visible={showAutoMonkeModal}
+          onClose={() => setShowAutoMonkeModal(false)}
+          onConfirm={handleAutonomyEnroll}
+          feature={channelId as AutonomyFeature}
+        />
+      )}
     </View>
   );
 }
