@@ -22,7 +22,11 @@ import type { NFTVerificationResult, OwnedNFT } from "@/types";
 interface DASAsset {
   id: string;
   content: {
-    metadata: { name: string; symbol: string };
+    metadata: {
+      name: string;
+      symbol: string;
+      attributes?: Array<{ trait_type: string; value: string }>;
+    };
     links?: { image?: string };
     files?: { uri?: string; cdn_uri?: string; mime?: string }[];
     json_uri?: string;
@@ -35,9 +39,12 @@ async function fetchAssetsViaHelius(walletAddress: string): Promise<DASAsset[]> 
   const url = `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`;
 
   let page = 1;
+  const MAX_PAGES = 10; // Safety cap: 10 pages × 1000 = 10k assets max
   const assets: DASAsset[] = [];
 
-  while (true) {
+  while (page <= MAX_PAGES) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10_000);
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -56,7 +63,9 @@ async function fetchAssetsViaHelius(walletAddress: string): Promise<DASAsset[]> 
           },
         },
       }),
+      signal: controller.signal,
     });
+    clearTimeout(timeoutId);
 
     if (!res.ok) throw new Error(`Helius API error: ${res.status}`);
     const json = await res.json();
@@ -77,12 +86,17 @@ function dasAssetToOwnedNFT(asset: DASAsset): OwnedNFT {
     asset.content?.files?.find((f) => f.mime?.startsWith("image/"))?.uri ??
     "";
 
+  const traits = (asset.content?.metadata?.attributes ?? [])
+    .filter(a => a.trait_type && a.value)
+    .map(a => ({ trait_type: a.trait_type, value: a.value }));
+
   return {
     mint: asset.id,
     name: asset.content?.metadata?.name ?? "Unknown NFT",
     symbol: asset.content?.metadata?.symbol ?? "",
     image,
     collectionMint: NFT_COLLECTION_ADDRESS,
+    traits: traits.length > 0 ? traits : undefined,
   };
 }
 
@@ -186,6 +200,8 @@ export async function verifyNFTOwnership(
 export async function verifyNftMintInCollection(nftMint: string): Promise<boolean> {
   if (!HELIUS_API_KEY || !NFT_COLLECTION_ADDRESS || !nftMint) return false;
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10_000);
     const res = await fetch(`https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -195,7 +211,9 @@ export async function verifyNftMintInCollection(nftMint: string): Promise<boolea
         method: "getAsset",
         params: { id: nftMint },
       }),
+      signal: controller.signal,
     });
+    clearTimeout(timeoutId);
     if (!res.ok) return false;
     const json = await res.json();
     const grouping: { group_key: string; group_value: string }[] =

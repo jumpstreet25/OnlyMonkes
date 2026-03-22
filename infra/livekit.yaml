@@ -39,9 +39,10 @@ room:
   # Empty room timeout: clean up after 5 minutes
   empty_timeout: 300s
 
-# API keys (must match LIVEKIT_API_KEY / LIVEKIT_API_SECRET in .env)
+# API keys — set via environment variable or replace before deployment
+# DO NOT commit real keys here
 keys:
-  APIGU8CYDdnqhvX: FofRagJnXUw6YNtPBFfTNnpAeLNpB9ZFZ0onTxhyE4EA
+  YOUR_API_KEY: YOUR_API_SECRET
 
 # Bandwidth management
 # Simulcast is handled client-side; server forwards only needed layers

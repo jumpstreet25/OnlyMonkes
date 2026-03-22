@@ -25,3 +25,23 @@ android/.gradle/
 
 # Environment secrets
 .env
+
+# Signing keystores
+*.keystore
+*.jks
+
+# APK binaries
+*.apk
+*.aab
+
+# Firebase Admin SDK / service account keys
+*firebase-adminsdk*
+*-firebase-adminsdk-*.json
+
+# Config files with secrets
+config.yaml
+.asset-manifest.json
+
+# Cloudflare Workers
+worker/node_modules/
+worker-actions/node_modules/

@@ -1,8 +1,9 @@
-import React from 'react';
-import { View, Text } from 'react-native';
+import React, { Suspense } from 'react';
+import { View, Text, ActivityIndicator } from 'react-native';
 import { router } from 'expo-router';
-import DmInboxScreen from '@/screens/DmInboxScreen';
 import { THEME, FONTS } from '@/lib/constants';
+
+const DmInboxScreen = React.lazy(() => import('@/screens/DmInboxScreen'));
 
 class DmsErrorBoundary extends React.Component<
   { children: React.ReactNode },
@@ -41,10 +42,18 @@ class DmsErrorBoundary extends React.Component<
   }
 }
 
+const Loading = () => (
+  <View style={{ flex: 1, backgroundColor: THEME.bg, alignItems: 'center', justifyContent: 'center' }}>
+    <ActivityIndicator size="large" color={THEME.accent} />
+  </View>
+);
+
 export default function DmsRoute() {
   return (
     <DmsErrorBoundary>
-      <DmInboxScreen />
+      <Suspense fallback={<Loading />}>
+        <DmInboxScreen />
+      </Suspense>
     </DmsErrorBoundary>
   );
 }

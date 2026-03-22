@@ -4,8 +4,13 @@ export const APP_NAME = 'OnlyMonkes';
 
 // ─── SKR Token ────────────────────────────────────────────────────────────────
 export const SKR_MINT = 'SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3';
-// Jump.skr developer wallet — receives 5% of banana tips + direct tips
+// Jump.skr developer wallet — receives tips + trading fees
 export const DEV_WALLET = '7tLrnPvgcR5mLtyUcVwvmhAD1wXbAKgWcLBPWxpwyZ1J';
+
+// Trading fees — paid to DEV_WALLET
+export const NFT_SALE_FEE_PCT = 0.02;   // 2% on NFT sales
+export const TOKEN_TRADE_FEE_PCT = 0.03; // 3% on token trades
+export const AUTO_TRADE_FEE_PCT = 0.05;  // 5% on autonomous trades
 // Tip slider range (in whole SKR units)
 export type TipAmount = number;
 export const TIP_MIN = 1;
@@ -13,7 +18,7 @@ export const TIP_MAX = 500;
 export const COLLECTION_NAME = 'Saga Monkes';
 export const NFT_COLLECTION_ADDRESS = 'GokAiStXz2Kqbxwz2oqzfEXuUhE7aXySmBGEP7uejKXF';
 export const HELIUS_API_KEY: string =
-  (Constants.expoConfig?.extra?.heliusApiKey as string) || 'b651e3ee-fd5a-48bc-9972-da56cd3c3132';
+  (Constants.expoConfig?.extra?.heliusApiKey as string) || '';
 export const HELIUS_RPC_URL = `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`;
 export const SOLANA_RPC_URL = 'https://api.mainnet-beta.solana.com';
 
@@ -42,7 +47,6 @@ export const MAX_MESSAGE_LENGTH = 1000;
 // Bot XMTP inbox IDs — used to detect DM conversations with the bot
 export const BOT_INBOX_IDS = [
   '998001a498174b8a194110ee792b10f97de4965665eaf0d088ed2c71bdf62363', // AI Agent #9385
-  '5862dfd861978cd587c151ded8fd7fb1ccdbca45d420da99a2299e2a675707b2', // TA Savvy Monke
 ];
 
 export const REACTIONS = ['🐒', '🔥', '🚀', '👍', '🍌'] as const;
@@ -56,6 +60,7 @@ export const THEME = {
   accentSoft: 'rgba(124,58,237,0.15)',
   text: '#F8F8FF',
   textMuted: '#8B8B9E',
+  textDim: '#6A6A8A',
   textFaint: '#4A4A6A',
   success: '#10B981',
   error: '#EF4444',

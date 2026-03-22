@@ -23,10 +23,14 @@ const _pendingFetches = new Map<string, Promise<LinkPreviewData | null>>();
 const URL_REGEX = /https?:\/\/[^\s"'<>)]+/;
 const OG_TIMEOUT = 5000;
 
-/** Extract the first URL from message content */
+/** Extract the first URL from message content (skips Blink/Action URLs) */
 export function extractUrl(content: string): string | null {
   // Skip media messages
   if (content.startsWith('GIF:') || content.startsWith('IMAGE:') || content.startsWith('VIDEO:')) {
+    return null;
+  }
+  // Skip Blink / Solana Action URLs (rendered by BlinkCard instead)
+  if (content.includes('solana-action:') || content.includes('/api/actions/') || content.includes('dial.to/?action=')) {
     return null;
   }
   const match = content.match(URL_REGEX);

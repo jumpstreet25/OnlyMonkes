@@ -17,6 +17,8 @@ import { clearLegacyKeys, startNftOwnershipGuard } from '../src/lib/session';
 import { initSentry } from '../src/lib/sentry';
 import { checkForOtaUpdate } from '../src/lib/otaUpdates';
 import { logAppOpen, logDailySession } from '../src/lib/analytics';
+import { loadBadgeData, setOnBadgeEarned, mintBadgeCNFT, type BadgeDef } from '../src/lib/badges';
+import { Alert } from 'react-native';
 
 // Register LiveKit WebRTC globals (must be called before any LiveKit usage)
 registerLiveKitGlobals();
@@ -37,6 +39,20 @@ export default function RootLayout() {
     checkForOtaUpdate(); // OTA update check (no-op in dev)
     clearLegacyKeys(); // remove stale Matrica keys from old installs
     loadPersistedPrefs(); // restore muted sports, muted channels, notification prefs
+
+    // Load badge progress from storage + register badge-earned callback
+    loadBadgeData().catch(() => {});
+    setOnBadgeEarned((badge: BadgeDef) => {
+      Alert.alert(
+        `${badge.emoji} Badge Earned!`,
+        `${badge.name} — ${badge.description}`,
+      );
+      // Auto-mint cNFT badge to user's wallet (fire-and-forget)
+      const wallet = useAppStore.getState().wallet;
+      if (wallet?.address) {
+        mintBadgeCNFT(wallet.address, badge).catch(() => {});
+      }
+    });
 
     // Re-check NFT ownership every 24h; force logout if user no longer holds one
     startNftOwnershipGuard(() => {

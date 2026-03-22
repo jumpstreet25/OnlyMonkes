@@ -17,6 +17,7 @@ import {
   Pressable,
   Keyboard,
   Image,
+  Alert,
   Animated,
   Modal,
 } from "react-native";
@@ -25,7 +26,7 @@ import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
 import { THEME, FONTS, MAX_MESSAGE_LENGTH } from "@/lib/constants";
 import { shortenAddress } from "@/lib/nftVerification";
-import { getAllTimeUsers, getCachedProfile } from "@/lib/userProfile";
+import { getAllTimeUsers, getCachedProfile, searchUsersByPrefix } from "@/lib/userProfile";
 import { useAppStore } from "@/store/appStore";
 import { markChannelRead } from "@/lib/messageCache";
 import type { ChatMessage } from "@/types";
@@ -161,14 +162,7 @@ export function ChatInput({
   const activeMention = getActiveMention(value);
   const suggestions: { inboxId: string; username: string }[] = useMemo(() => {
     if (!activeMention) return [];
-    const q = activeMention.query.toLowerCase();
-    const results: { inboxId: string; username: string }[] = [];
-    getAllTimeUsers().forEach((name, inboxId) => {
-      if (name && name.toLowerCase().startsWith(q) && inboxId !== myInboxId) {
-        results.push({ inboxId, username: name });
-      }
-    });
-    return results.slice(0, 6);
+    return searchUsersByPrefix(activeMention.query, myInboxId ?? undefined, 6);
   }, [activeMention?.query, value]);
 
   const insertSlashCommand = useCallback((cmd: string, args: string) => {
@@ -203,10 +197,28 @@ export function ChatInput({
 
   const handleSend = useCallback(() => {
     if (!canSend) return;
+    // Client-side guard: validate /buy and /sell amounts before sending to bot
+    const trimmed = value.trim();
+    if (/^\/buy\s/i.test(trimmed)) {
+      const parts = trimmed.split(/\s+/);
+      const amt = parts[2] ? parseFloat(parts[2]) : NaN;
+      if (!isNaN(amt) && (amt <= 0 || amt > 100)) {
+        Alert.alert("Invalid Amount", "Buy amount must be between 0 and 100 SOL.");
+        return;
+      }
+    }
+    if (/^\/sell\s/i.test(trimmed)) {
+      const parts = trimmed.split(/\s+/);
+      const pct = parts[2] ? parseFloat(parts[2]) : NaN;
+      if (!isNaN(pct) && (pct <= 0 || pct > 100)) {
+        Alert.alert("Invalid Amount", "Sell percentage must be between 0 and 100.");
+        return;
+      }
+    }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     onSend();
     inputRef.current?.focus();
-  }, [canSend, onSend]);
+  }, [canSend, onSend, value]);
 
   const handleChangeText = useCallback((text: string) => {
     onChangeText(text);
@@ -261,7 +273,11 @@ export function ChatInput({
         >
           <Text style={styles.typingDots}>●●●</Text>
           <Text style={styles.typingText}>
-            {typingUsers!.length === 1 ? "A Monke is Typing" : "Many Monkes are Typing"}
+            {typingUsers!.length === 1
+              ? `${typingUsers![0].username ?? "A Monke"} is typing`
+              : typingUsers!.length === 2
+              ? `${typingUsers![0].username ?? "Monke"} and ${typingUsers![1].username ?? "Monke"} are typing`
+              : `Chat is bananas 🍌 ${typingUsers!.length}+ Monkes typing…`}
           </Text>
         </Animated.View>
       )}

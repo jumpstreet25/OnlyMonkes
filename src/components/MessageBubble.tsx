@@ -29,6 +29,7 @@ import {
   ActivityIndicator,
   Keyboard,
   ScrollView,
+  Linking,
   useWindowDimensions,
 } from "react-native";
 import * as Clipboard from "expo-clipboard";
@@ -44,6 +45,8 @@ import { searchStickers, type GiphyItem } from "@/lib/giphy";
 import type { ChatMessage, ReactionEmoji } from "@/types";
 import type { ProfileTarget } from "@/components/UserProfileModal";
 import { LinkPreviewCard } from "@/components/LinkPreviewCard";
+import { BlinkCard } from "@/components/BlinkCard";
+import { extractBlinkUrl } from "@/lib/blinkActions";
 import { OnlineDot } from "@/components/OnlineDot";
 import { isUserOnline } from "@/lib/presence";
 import { hasThread, getThreadMeta } from "@/lib/threads";
@@ -64,18 +67,18 @@ function parseLivePill(content: string): { type: "audio" | "video"; host: string
 function LivePillBubble({ type, host, sentAt }: { type: "audio" | "video"; host: string; sentAt: Date }) {
   const icon = type === "video" ? "📹" : "🎙";
   const label = type === "video" ? "Live Video Chat" : "Live Audio Chat";
-  const handleJoin = useCallback(() => {
+  const handleJoin = useCallback(async () => {
     const { myInboxId, username, activeLiveRoom, activeVideoRoom } = useAppStore.getState();
     if (!myInboxId || !username) return;
     try {
       if (type === "video" && activeVideoRoom) {
         const { joinVideoRoom } = require("@/lib/liveVideo");
-        const token = joinVideoRoom(activeVideoRoom.id, myInboxId, username);
+        const token = await joinVideoRoom(activeVideoRoom.id, myInboxId, username);
         useAppStore.getState().setIsInVideoCall(true);
         router.push(`/video-room?token=${encodeURIComponent(token)}&isHost=0` as any);
       } else if (type === "audio" && activeLiveRoom) {
         const { createLivekitToken } = require("@/lib/livekit");
-        const token = createLivekitToken(activeLiveRoom.id, myInboxId, username);
+        const token = await createLivekitToken(activeLiveRoom.id, myInboxId, username);
         useAppStore.getState().setLiveRoomToken(token);
         router.push(`/live-room?token=${encodeURIComponent(token)}&isHost=0` as any);
       }
@@ -503,6 +506,12 @@ export const MessageBubble = memo(function MessageBubble({
     message.content.startsWith("IMAGE:") ||
     message.content.startsWith("VIDEO:");
 
+  // ── Blink / Solana Action detection ─────────────────────────────────────
+  const blinkUrl = useMemo(
+    () => (isMedia ? null : extractBlinkUrl(displayContent)),
+    [isMedia, displayContent],
+  );
+
   return (
     <>
     <Animated.View
@@ -575,6 +584,14 @@ export const MessageBubble = memo(function MessageBubble({
                   if (w > 0) setImgAspect(h / w);
                 }}
               />
+              <View style={styles.watermarkShadow}>
+                <Image
+                  // eslint-disable-next-line @typescript-eslint/no-require-imports
+                  source={require("../../assets/watermark.png")}
+                  style={styles.watermark}
+                  resizeMode="contain"
+                />
+              </View>
               <View style={styles.gifBadge}>
                 <Text style={styles.gifBadgeText}>GIF</Text>
               </View>
@@ -619,6 +636,47 @@ export const MessageBubble = memo(function MessageBubble({
               style={styles.stickerImage}
               resizeMode="contain"
             />
+          ) : message.content.startsWith("TIPLINK:") ? (
+            (() => {
+              const parts = message.content.slice(8).split("|");
+              const url = parts[0];
+              const amount = parts[1] || "?";
+              const sender = parts[2] || "Monke";
+              return (
+                <Pressable
+                  onPress={() => url && Linking.openURL(url).catch(() => {})}
+                  onLongPress={handleLongPress}
+                  delayLongPress={350}
+                  style={styles.tipLinkBubble}
+                >
+                  <Text style={styles.tipLinkEmoji}>💸</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.tipLinkTitle}>{amount} SOL Tip</Text>
+                    <Text style={styles.tipLinkHint}>from {sender} — tap to claim</Text>
+                  </View>
+                </Pressable>
+              );
+            })()
+          ) : message.content.startsWith("ATTACHMENT:") ? (
+            (() => {
+              const parts = message.content.slice(11).split("|");
+              const url = parts[0];
+              const filename = parts[1] || "file";
+              return (
+                <Pressable
+                  onPress={() => url && Linking.openURL(url).catch(() => {})}
+                  onLongPress={handleLongPress}
+                  delayLongPress={350}
+                  style={styles.attachmentBubble}
+                >
+                  <Text style={styles.attachmentIcon}>📎</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.attachmentFilename} numberOfLines={1}>{filename}</Text>
+                    <Text style={styles.attachmentHint}>Tap to open</Text>
+                  </View>
+                </Pressable>
+              );
+            })()
           ) : (
             <View style={{ gap: 4 }}>
               <Text
@@ -646,6 +704,10 @@ export const MessageBubble = memo(function MessageBubble({
                   {message.status === "sending" && "  ···"}
                   {message.status === "pending" && "  🕐"}
                   {message.status === "failed" && "  ⚠️"}
+                  {message.status === "sent" && isOwn && "  ✓"}
+                  {message.status === "read" && isOwn && (
+                    <Text style={{ color: "#6CB4EE" }}>  ✓✓</Text>
+                  )}
                 </Text>
               </View>
             </View>
@@ -661,12 +723,21 @@ export const MessageBubble = memo(function MessageBubble({
             <Text style={[styles.time, { color: THEME.textFaint }]}>
               {format(message.sentAt, "HH:mm")}
               {message.status === "sending" && "  ···"}
+              {message.status === "sent" && isOwn && "  ✓"}
+              {message.status === "read" && isOwn && (
+                <Text style={{ color: "#6CB4EE" }}>  ✓✓</Text>
+              )}
             </Text>
           </View>
         )}
 
-        {/* Link preview card */}
-        {!isMedia && !isBot && (
+        {/* Blink / Solana Action card */}
+        {!isMedia && blinkUrl && (
+          <BlinkCard actionUrl={blinkUrl} />
+        )}
+
+        {/* Link preview card (skip when Blink card is shown) */}
+        {!isMedia && !blinkUrl && !isBot && (
           <LinkPreviewCard content={message.editedContent ?? message.content} />
         )}
 
@@ -1109,6 +1180,53 @@ const styles = StyleSheet.create({
   stickerImage: {
     width: 120,
     height: 120,
+  },
+
+  // ── TipLink bubble ─────────────────────────────────────────────────────
+  tipLinkBubble: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    backgroundColor: "#1a3a1a",
+    borderRadius: 12,
+  },
+  tipLinkEmoji: {
+    fontSize: 32,
+  },
+  tipLinkTitle: {
+    color: "#4ade80",
+    fontFamily: FONTS.displayMed,
+    fontSize: 16,
+    fontWeight: "700" as const,
+  },
+  tipLinkHint: {
+    color: "#86efac",
+    fontSize: 12,
+    marginTop: 2,
+  },
+
+  // ── Attachment bubble ──────────────────────────────────────────────────
+  attachmentBubble: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+  attachmentIcon: {
+    fontSize: 28,
+  },
+  attachmentFilename: {
+    color: THEME.text,
+    fontFamily: FONTS.displayMed,
+    fontSize: 14,
+  },
+  attachmentHint: {
+    color: THEME.textDim ?? "#888",
+    fontSize: 11,
+    marginTop: 2,
   },
 
   // ── Thread pill ─────────────────────────────────────────────────────────

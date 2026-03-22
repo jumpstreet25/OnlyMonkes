@@ -16,6 +16,9 @@ import {
   Connection,
   PublicKey,
   VersionedTransaction,
+  Transaction,
+  SystemProgram,
+  LAMPORTS_PER_SOL,
 } from "@solana/web3.js";
 import {
   getAssociatedTokenAddressSync,
@@ -25,8 +28,9 @@ import {
   Web3MobileWallet,
 } from "@solana-mobile/mobile-wallet-adapter-protocol-web3js";
 import Constants from "expo-constants";
-import { HELIUS_RPC_URL } from "./constants";
+import { HELIUS_RPC_URL, DEV_WALLET, TOKEN_TRADE_FEE_PCT } from "./constants";
 import { useAppStore } from "@/store/appStore";
+import { loadCostBasis, recordBuy, getCostBasis, recordSell } from "./costBasis";
 
 const JUP_API_KEY: string =
   (Constants.expoConfig?.extra?.jupApiKey as string) || "";
@@ -173,14 +177,49 @@ export interface SwapResult {
   outputAmount: number;
   inputSymbol: string;
   outputSymbol: string;
+  profitFee?: number; // SOL fee charged on profit (0 if no profit)
 }
 
 /**
  * Execute a Jupiter swap via MWA.
  * Takes the quote from getSwapQuote() and signs/sends the transaction.
+ *
+ * Profit-based fee: 3% charged only on gains when selling back to SOL.
+ * On buys, cost basis is recorded for future profit calculation.
  */
 export async function executeSwap(quote: SwapQuote): Promise<SwapResult> {
+  if (!Number.isFinite(quote.inAmountUi) || quote.inAmountUi <= 0) {
+    throw new Error("Invalid swap input amount");
+  }
+  if (quote.priceImpactPct > 15) {
+    throw new Error("Price impact too high (>15%). Aborting swap.");
+  }
   const connection = new Connection(HELIUS_RPC_URL, "confirmed");
+  const walletAddress = useAppStore.getState().wallet?.address;
+
+  const isBuy = quote.inputMint === SOL_MINT;
+  const isSell = quote.outputMint === SOL_MINT && quote.inputMint !== SOL_MINT;
+
+  // Pre-calculate profit for sells
+  await loadCostBasis();
+  let feeSOL = 0;
+  let profitSOL = 0;
+  let proportionalCost = 0;
+  let preSellBalance = 0;
+
+  if (isSell && walletAddress) {
+    const costBasis = getCostBasis(quote.inputMint);
+    if (costBasis > 0) {
+      preSellBalance = await getTokenBalance(walletAddress, quote.inputMint, 0);
+      if (preSellBalance > 0) {
+        proportionalCost = costBasis * Math.min(quote.inAmountUi / preSellBalance, 1);
+        profitSOL = quote.outAmountUi - proportionalCost;
+        if (profitSOL > 0) {
+          feeSOL = profitSOL * TOKEN_TRADE_FEE_PCT;
+        }
+      }
+    }
+  }
 
   const signature = await transact(async (mobileWallet: Web3MobileWallet) => {
     // Re-authorize with cached token
@@ -222,8 +261,39 @@ export async function executeSwap(quote: SwapQuote): Promise<SwapResult> {
       minContextSlot,
     });
 
+    // Send profit fee in same MWA session (wallet already unlocked)
+    if (feeSOL > 0.0001) {
+      try {
+        const { blockhash } = await connection.getLatestBlockhash("confirmed");
+        const feeTx = new Transaction({
+          recentBlockhash: blockhash,
+          feePayer: senderPubkey,
+        });
+        feeTx.add(
+          SystemProgram.transfer({
+            fromPubkey: senderPubkey,
+            toPubkey: new PublicKey(DEV_WALLET),
+            lamports: Math.round(feeSOL * LAMPORTS_PER_SOL),
+          }),
+        );
+        await mobileWallet.signAndSendTransactions({
+          transactions: [feeTx as any],
+        });
+      } catch (err) {
+        console.warn("[jupiterSwap] Profit fee transfer failed:", (err as Error).message);
+        feeSOL = 0; // didn't actually charge
+      }
+    }
+
     return sig;
   });
+
+  // Post-swap: update cost basis
+  if (isBuy) {
+    recordBuy(quote.outputMint, quote.inAmountUi);
+  } else if (isSell) {
+    recordSell(quote.inputMint, quote.inAmountUi, preSellBalance);
+  }
 
   return {
     signature: typeof signature === "string"
@@ -233,6 +303,7 @@ export async function executeSwap(quote: SwapQuote): Promise<SwapResult> {
     outputAmount: quote.outAmountUi,
     inputSymbol: quote.inputSymbol,
     outputSymbol: quote.outputSymbol,
+    profitFee: feeSOL > 0.0001 ? feeSOL : undefined,
   };
 }
 

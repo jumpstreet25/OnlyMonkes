@@ -7,7 +7,7 @@
  *   Compose modal: searchable list of all known users → tap to open DM
  */
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -30,6 +30,7 @@ import { useAppStore } from '@/store/appStore';
 import { getCachedProfile, getAllTimeUsers, useProfileVersion } from '@/lib/userProfile';
 import { shortenAddress } from '@/lib/nftVerification';
 import type { DmThread } from '@/lib/xmtp';
+import { markChannelRead } from '@/lib/messageCache';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -40,7 +41,7 @@ function relativeTime(date: Date | null): string {
 
 // ─── Thread Row ───────────────────────────────────────────────────────────────
 
-function ThreadRow({ thread, myInboxId }: { thread: DmThread; myInboxId: string }) {
+function ThreadRow({ thread, myInboxId, unread }: { thread: DmThread; myInboxId: string; unread: number }) {
   if (thread.peerInboxId === myInboxId) return null;
 
   let profile: any = null;
@@ -86,12 +87,18 @@ function ThreadRow({ thread, myInboxId }: { thread: DmThread; myInboxId: string 
       )}
       <View style={styles.threadInfo}>
         <View style={styles.threadHeader}>
-          <Text style={styles.threadName} numberOfLines={1}>{name}</Text>
-          {timeStr ? <Text style={styles.threadTime}>{timeStr}</Text> : null}
+          <Text style={[styles.threadName, unread > 0 && styles.threadNameUnread]} numberOfLines={1}>{name}</Text>
+          {timeStr ? <Text style={[styles.threadTime, unread > 0 && styles.threadTimeUnread]}>{timeStr}</Text> : null}
         </View>
-        <Text style={styles.threadPreview} numberOfLines={1}>{preview}</Text>
+        <Text style={[styles.threadPreview, unread > 0 && styles.threadPreviewUnread]} numberOfLines={1}>{preview}</Text>
       </View>
-      <Text style={styles.chevron}>›</Text>
+      {unread > 0 ? (
+        <View style={styles.unreadBadge}>
+          <Text style={styles.unreadBadgeText}>{unread > 99 ? '99+' : unread}</Text>
+        </View>
+      ) : (
+        <Text style={styles.chevron}>›</Text>
+      )}
     </Pressable>
   );
 }
@@ -193,10 +200,16 @@ function ComposeModal({ visible, onClose, myInboxId }: {
 
 export default function DmInboxScreen() {
   const insets = useSafeAreaInsets();
-  const { myInboxId } = useAppStore();
+  const { myInboxId, dmUnreadCounts } = useAppStore();
   const { threads, loading, refreshing, refresh } = useDmInbox();
   const [composeOpen, setComposeOpen] = useState(false);
   useProfileVersion();
+
+  // Mark DMs as read so badge count resets on next sync
+  useEffect(() => {
+    markChannelRead('dms').catch(() => {});
+    useAppStore.getState().clearCommunityBadge('dms');
+  }, []);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -226,7 +239,7 @@ export default function DmInboxScreen() {
           data={threads}
           keyExtractor={t => t.peerInboxId}
           renderItem={({ item }) => (
-            <ThreadRow thread={item} myInboxId={myInboxId ?? ''} />
+            <ThreadRow thread={item} myInboxId={myInboxId ?? ''} unread={dmUnreadCounts[item.peerInboxId] ?? 0} />
           )}
           refreshControl={
             <RefreshControl
@@ -343,6 +356,26 @@ const styles = StyleSheet.create({
     color: THEME.textMuted,
   },
   chevron: { fontSize: 20, color: THEME.textFaint, marginLeft: 4 },
+  // Unread badge
+  unreadBadge: {
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: THEME.accent,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    paddingHorizontal: 5,
+    marginLeft: 4,
+  },
+  unreadBadgeText: {
+    fontFamily: FONTS.bodyMed,
+    fontSize: 11,
+    color: '#fff',
+    fontWeight: '700' as const,
+  },
+  threadNameUnread: { fontFamily: FONTS.displayMed, fontWeight: '700' as const },
+  threadPreviewUnread: { color: THEME.text },
+  threadTimeUnread: { color: THEME.accent },
   separator: { height: 1, backgroundColor: THEME.border, marginLeft: 76 },
 
   // Empty / loading

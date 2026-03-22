@@ -32,7 +32,8 @@ Rules are added over time as issues arise.
 
 - **solana-alert-bot is RETIRED** (archived at `~/solana-alert-bot.retired`). All bot functionality lives in Monke_Eliza.
 - Monke_Eliza is the single source of truth for TA scanning, alerts, and bot behavior. No `bot_state.json` dependency.
-- The token scanner (`tokenScanner.ts`) scans the top 40 SPL tokens by volume every 20 minutes.
+- The token scanner (`tokenScanner.ts`) scans 100 SPL tokens (53 hardcoded + dynamic discovery) across 4 rotations of 25 tokens every 10 min, using GeckoTerminal (primary) + DexPaprika (free fallback, no auth) + Birdeye (last resort). Moralis does NOT support Solana OHLCV — removed.
+- **taSavvyMonke.ts is DELETED** — all scanner/TA/AutonoMonke/Drift BET functionality merged into xmtpOnlyMonkes.ts (single unified bot identity: "AI Agent #9385").
 - Data files (`.xmtp_bot_key`, `.xmtp_welcomed.json`, `.xmtp_stale_tokens.json`) live in `~/Monke_Eliza/agents/monke-trader/`, NOT in `~/solana-alert-bot/`.
 
 ## UI / UX

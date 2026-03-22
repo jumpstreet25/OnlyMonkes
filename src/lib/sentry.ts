@@ -5,8 +5,10 @@
  * Captures unhandled exceptions, ANRs, and slow transactions automatically.
  */
 import * as Sentry from '@sentry/react-native';
+import Constants from 'expo-constants';
 
-const SENTRY_DSN = process.env.SENTRY_DSN ?? '';
+const SENTRY_DSN: string =
+  (Constants.expoConfig?.extra?.sentryDsn as string) || '';
 
 export function initSentry() {
   if (!SENTRY_DSN) {
@@ -14,10 +16,14 @@ export function initSentry() {
     return;
   }
 
+  const appVersion = Constants.expoConfig?.version ?? '0.0.0';
+  const buildNumber = Constants.expoConfig?.android?.versionCode?.toString() ?? '0';
+
   Sentry.init({
     dsn: SENTRY_DSN,
+    release: `com.onlymonkes.app@${appVersion}+${buildNumber}`,
+    dist: buildNumber,
     tracesSampleRate: 0.2, // 20% of transactions for performance monitoring
-    // profilesSampleRate: 0.1, // enable when Sentry profiling is set up
     environment: __DEV__ ? 'development' : 'production',
     enabled: !__DEV__, // disabled in dev builds
     beforeSend(event) {

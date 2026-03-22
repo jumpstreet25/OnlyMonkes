@@ -26,28 +26,32 @@ import {
   applyReaction,
   applyEdit,
   applyStickerReaction,
+  resolveReplyTargets,
   sendMessage,
   sendReply,
   sendReaction,
   sendEdit,
   sendStickerReaction,
   sendTypingIndicator,
+  sendRemoteAttachment,
   sendJoinRequestDM,
   fetchJoinRequests,
   sendProfileUpdate,
   sendEventMessage,
   sendLiveRoomMessage,
   sendVideoRoomMessage,
+  parseProfileUpdate,
 } from "@/lib/xmtp";
 import { parseLiveRoomMessage, buildLiveRoomMessage, type LiveRoomData } from "@/lib/livekit";
 import { parsePinMessage, pinMessage, unpinMessage, getPinnedMessages } from "@/lib/pinnedMessages";
 import { parsePresenceMessage, updatePresence, buildPresenceMessage } from "@/lib/presence";
 import { parseThreadMessage, trackThreadReply } from "@/lib/threads";
-import { parseMarketplaceMessage, addListing, addBid, acceptBid, delistNft } from "@/lib/marketplace";
+import { parseMarketplaceMessage, addListing, addBid, markPendingSwap, markSold, delistNft, getListingById, getBidsForListing, type NftSwapMessage } from "@/lib/marketplace";
 import { parseVideoRoomMessage, type VideoRoomData } from "@/lib/liveVideo";
 import { verifyNftMintInCollection } from "@/lib/nftVerification";
 import { cacheProfile, getCachedProfile, loadProfileCache, trackUser, loadAllTimeUsers } from "@/lib/userProfile";
 import { loadWeeklyActivity, trackActivity } from "@/lib/activityTracker";
+import { incrementProgress, updateStreak, mintBadgeCNFT, type BadgeDef } from "@/lib/badges";
 import { parseEventMessage, saveEvent } from "@/lib/calendar";
 import {
   fetchAppConfig,
@@ -74,12 +78,32 @@ let _group: XmtpGroup | null = null;
 let _client: XmtpClient | null = null;
 
 export function getXmtpClient(): XmtpClient | null { return _client; }
+
+/** Send a raw string to the global group (no MSG: wrapping). Used by marketplace. */
+export async function sendRawToGroup(raw: string): Promise<void> {
+  if (!_group) throw new Error("Not connected to chat");
+  await (_group as any).send(raw);
+}
 let _unsubscribeStream: (() => void) | null = null;
 let _botChannelUnsubs: (() => void)[] = [];
 let _myInboxId = "";
 let _streamAlive = false;
+let _lastStreamEvent = 0; // timestamp of last stream callback
 let _profileBroadcastDone = false;
 let _initRunning = false;
+// Badge mint queue — mint newly earned badges in background (fire-and-forget)
+let _mintingBadge = false;
+const _pendingMints: BadgeDef[] = [];
+function tryMintBadge(): void {
+  if (_mintingBadge || _pendingMints.length === 0) return;
+  const { wallet } = useAppStore.getState();
+  if (!wallet?.address) return;
+  _mintingBadge = true;
+  const badge = _pendingMints.shift()!;
+  mintBadgeCNFT(wallet.address, badge)
+    .catch(() => {})
+    .finally(() => { _mintingBadge = false; tryMintBadge(); });
+}
 
 /**
  * Re-broadcast own profile with a push token.
@@ -160,12 +184,14 @@ export function useXmtp() {
     setError(null);
 
     try {
-      await loadProfileCache();
-      await loadAllTimeUsers();
-      await loadWeeklyActivity();
+      // Load caches in background — don't block XMTP client boot
+      const cacheReady = Promise.all([loadProfileCache(), loadAllTimeUsers(), loadWeeklyActivity()]);
 
       // ── 1. Boot XMTP client ────────────────────────────────────────────────
       const client = await initXmtpClient();
+
+      // Ensure caches are loaded before we start processing messages
+      await cacheReady;
       console.log("[XMTP] client inboxId:", client.inboxId);
       _client = client;
       setXmtpClient(client as unknown as null);
@@ -254,8 +280,10 @@ export function useXmtp() {
           useAppStore.getState().setBotChannelIds(botChannels as any);
         }
 
-        // Ensure bot is a member of all groups (main + channels)
+        // Ensure both bots are members of all groups (main + channels)
         const BOT_INBOX = "998001a498174b8a194110ee792b10f97de4965665eaf0d088ed2c71bdf62363";
+        const TA_BOT_INBOX = "5862dfd861978cd587c151ded8fd7fb1ccdbca45d420da99a2299e2a675707b2";
+        const BOT_INBOXES = [BOT_INBOX, TA_BOT_INBOX];
         const allGroupsToCheck = [
           { name: "main", ref: group },
           ...channelDefs.map(ch => ({
@@ -263,22 +291,28 @@ export function useXmtp() {
             ref: null as any, // will find below
           })),
         ];
-        // Add bot to main group
-        try {
-          await (group as any).addMembers([BOT_INBOX]);
-          console.log("[XMTP] Added bot to main group");
-        } catch { /* already a member */ }
-        // Add bot to each bot channel
+        // Add bots to main group
+        for (const botId of BOT_INBOXES) {
+          try {
+            await (group as any).addMembers([botId]);
+            console.log(`[XMTP] Added ${botId.slice(0, 8)}… to main group`);
+          } catch { /* already a member */ }
+        }
+        // Add bots to each bot channel
         for (const ch of channelDefs) {
           const chId = botChannels[ch.key];
           if (!chId) continue;
           try {
             const chGroup = await client.conversations.findGroup(chId as any);
             if (chGroup) {
-              await (chGroup as any).addMembers([BOT_INBOX]);
-              console.log(`[XMTP] Added bot to ${ch.name}`);
+              for (const botId of BOT_INBOXES) {
+                try {
+                  await (chGroup as any).addMembers([botId]);
+                  console.log(`[XMTP] Added ${botId.slice(0, 8)}… to ${ch.name}`);
+                } catch { /* already a member */ }
+              }
             }
-          } catch { /* already a member */ }
+          } catch { /* find failed */ }
         }
 
         // Auto-publish config if admin token is saved and bot channels were just created
@@ -494,9 +528,12 @@ export function useXmtp() {
       // Then syncAllConversations triggers the epoch update for fresh installs
       // (new installation key needs the group to propagate its latest epoch).
       await (activeGroup as any).sync();
-      try { await client.conversations.syncAllConversations(); } catch { /* ignore */ }
-      await (activeGroup as any).sync(); // second pass after epoch update
-      const rawHistory: any[] = await (activeGroup as any).messages({ limit: 50 });
+      try { await client.conversations.syncAllConversations(["allowed", "unknown"] as any); } catch { /* ignore */ }
+      // Fetch only last 48 hours of messages — PRESENCE heartbeats (60s/user)
+      // flood the history, so a count-based limit misses real chat messages.
+      const TWO_DAYS_NS = 48 * 60 * 60 * 1_000_000_000;
+      const afterNs = (Date.now() * 1_000_000) - TWO_DAYS_NS;
+      const rawHistory: any[] = await (activeGroup as any).messages({ afterNs });
 
       // ── Helper: seed profile cache + events from raw messages ────────────
       const seedProfilesAndEvents = async (raws: any[]) => {
@@ -505,18 +542,33 @@ export function useXmtp() {
           try {
             const content = raw.content();
             if (typeof content === "string" && content.startsWith("PROFILE_UPDATE:")) {
-              try {
-                const data = JSON.parse(content.slice("PROFILE_UPDATE:".length));
-                if (data.id) {
-                  cacheProfile(data.id, { username: data.u || undefined, bio: data.b || undefined, xAccount: data.x || undefined, walletAddress: data.w || undefined, tipWallet: data.tw || undefined, nftImage: data.ni || null, legendary: !!data.lg, pushToken: data.pt || undefined, expoPushToken: data.ept || undefined });
-                  trackUser(data.id, data.u || undefined);
-                }
-              } catch { /* ignore */ }
+              const profile = parseProfileUpdate(content);
+              if (profile) {
+                cacheProfile(profile.id, { username: profile.username, bio: profile.bio, xAccount: profile.xAccount, walletAddress: profile.walletAddress, tipWallet: profile.tipWallet, nftImage: profile.nftImage, legendary: profile.legendary, pushToken: profile.pushToken, expoPushToken: profile.expoPushToken });
+                trackUser(profile.id, profile.username);
+              }
             } else if (typeof content === "string" && content.startsWith("EVENT:")) {
               try {
                 const event = parseEventMessage(content);
                 if (event) await saveEvent(event);
               } catch { /* ignore */ }
+            } else if (typeof content === "string" && (
+              content.startsWith("NFT_LIST:") || content.startsWith("NFT_BID:") ||
+              content.startsWith("NFT_OFFER:") || content.startsWith("NFT_ACCEPT:") ||
+              content.startsWith("NFT_DELIST:") || content.startsWith("NFT_SWAP:") ||
+              content.startsWith("NFT_COMPLETE:")
+            )) {
+              const market = parseMarketplaceMessage(content);
+              if (market) {
+                switch (market.type) {
+                  case 'list': addListing(market.data); break;
+                  case 'bid': addBid(market.data); break;
+                  case 'accept': markSold(market.data.listingId); break;
+                  case 'delist': delistNft(market.data.listingId); break;
+                  case 'complete': markSold(market.data.listingId); break;
+                  default: break;
+                }
+              }
             } else if (typeof content === "string" && content.startsWith("LIVE_ROOM:")) {
               try {
                 const data = parseLiveRoomMessage(content);
@@ -534,23 +586,77 @@ export function useXmtp() {
         }
       };
 
+      // ── Helper: check if raw content is a reaction (native or legacy) ──
+      const isReactionContent = (content: unknown): boolean => {
+        if (typeof content === "string") return content.startsWith("REACT:");
+        if (content && typeof content === "object") return !!(content as any).reaction;
+        return false;
+      };
+
+      const getReactionTargetId = (content: unknown): string => {
+        if (typeof content === "string" && content.startsWith("REACT:")) return content.split(":")[2] ?? "";
+        if (content && typeof content === "object" && (content as any).reaction) return (content as any).reaction.reference ?? "";
+        return "";
+      };
+
       // ── Helper: decode messages + apply reactions/edits ────────────────
       const decodeAndEnrich = (raws: any[]): ChatMessage[] => {
-        let decoded = raws
-          .map((m) => decodeMessage(m, _myInboxId))
-          .filter(Boolean) as ChatMessage[];
-
-        const _msgSenderMap = new Map<string, string>(decoded.map(m => [m.id, m.senderAddress]));
-
+        // Separate content messages from reactions/edits to avoid O(n²) re-scan
+        const contentRaws: any[] = [];
+        const reactionRaws: any[] = [];
         for (const raw of raws) {
           try {
             const content = raw.content();
-            if (typeof content === "string" && content.startsWith("REACT:")) {
-              const parts = content.split(":");
-              const targetId = parts[2] ?? "";
+            // Native or legacy reaction
+            if (isReactionContent(content)) {
+              reactionRaws.push(raw);
               trackActivity(raw.senderInboxId as string, 'given');
+              continue;
+            }
+            // Legacy sticker reaction / edit (still string-based)
+            if (typeof content === "string") {
+              if (content.startsWith("STICKER_REACT:") || content.startsWith("EDIT:")) {
+                reactionRaws.push(raw);
+                continue;
+              }
+            }
+            contentRaws.push(raw);
+          } catch { /* skip */ }
+        }
+
+        // Decode only content messages (skip system prefixes like TYPING, PRESENCE, etc.)
+        let decoded = contentRaws
+          .map((m) => decodeMessage(m, _myInboxId))
+          .filter(Boolean) as ChatMessage[];
+
+        // Resolve native reply targets (fill in replyTo.content from referenced messages)
+        decoded = resolveReplyTargets(decoded);
+
+        // Build sender map for activity tracking
+        const _msgSenderMap = new Map<string, string>(decoded.map(m => [m.id, m.senderAddress]));
+
+        // Track reaction targets
+        for (const raw of reactionRaws) {
+          try {
+            const content = raw.content();
+            const targetId = getReactionTargetId(content);
+            if (targetId) {
               const targetSender = _msgSenderMap.get(targetId);
               if (targetSender) trackActivity(targetSender, 'received');
+            }
+          } catch { /* skip */ }
+        }
+
+        // Trim to last 50 BEFORE applying reactions (big perf win)
+        decoded.reverse();
+        decoded = decoded.slice(0, 50);
+        const recentIds = new Set(decoded.map(m => m.id));
+
+        // Apply reactions/edits only to the 50 visible messages
+        for (const raw of reactionRaws) {
+          try {
+            const content = raw.content();
+            if (isReactionContent(content)) {
               decoded = applyReaction(decoded, raw, _myInboxId);
             } else if (typeof content === "string" && content.startsWith("STICKER_REACT:")) {
               decoded = applyStickerReaction(decoded, raw, _myInboxId);
@@ -565,17 +671,69 @@ export function useXmtp() {
           trackActivity(msg.senderAddress, 'sent');
         }
 
-        return decoded.map(enrichWithNft).reverse(); // oldest-first
+        return decoded.map(enrichWithNft).reverse();
       };
 
       // ── Seed profiles + decode all 50 messages ──────────────────────────
       await seedProfilesAndEvents(rawHistory);
       const recentMessages = decodeAndEnrich(rawHistory);
-      setMessages(recentMessages);
+      // Ensure oldest-first order for inverted FlatList (index 0 = top, last = bottom)
+      recentMessages.sort((a, b) => a.sentAt.getTime() - b.sentAt.getTime());
+
+      if (recentMessages.length > 0) {
+        setMessages(recentMessages);
+      }
+      // If network returned 0 visible messages, keep the cached set already
+      // loaded at line 503 — don't overwrite with empty array.
       setLoadingHistory(false); // UI is ready
 
+      // ── Reconstruct pinned messages from history ──────────────────────────
+      // PIN/UNPIN system messages in history must be replayed so all users see
+      // the same pinned state (not just the device that originally pinned).
+      try {
+        // Collect PIN actions and the message IDs they target
+        const pinActions: { messageId: string; action: 'pin' | 'unpin'; sender: string }[] = [];
+        const targetIds = new Set<string>();
+        for (const raw of [...rawHistory].reverse()) {
+          try {
+            const content = raw.content();
+            if (typeof content === "string" && content.startsWith("PIN:")) {
+              const pin = parsePinMessage(content);
+              if (pin) {
+                pinActions.push({ ...pin, sender: raw.senderInboxId as string });
+                if (pin.action === "pin") targetIds.add(pin.messageId);
+              }
+            }
+          } catch { /* skip */ }
+        }
+        // Only decode the specific messages that were pinned (not all 3000)
+        if (pinActions.length > 0) {
+          const msgById = new Map<string, ChatMessage>();
+          if (targetIds.size > 0) {
+            for (const raw of rawHistory) {
+              try {
+                if (targetIds.has(raw.id)) {
+                  const decoded = decodeMessage(raw, _myInboxId);
+                  if (decoded) msgById.set(decoded.id, decoded);
+                }
+              } catch { /* skip */ }
+            }
+          }
+          for (const pa of pinActions) {
+            if (pa.action === "pin") {
+              const target = msgById.get(pa.messageId);
+              if (target) await pinMessage(target, pa.sender);
+            } else {
+              await unpinMessage(pa.messageId);
+            }
+          }
+        }
+      } catch { /* non-critical */ }
+
       // Persist to cache (capped at 50 by messageCache)
-      saveCachedMessages("main_chat", recentMessages).catch(() => {});
+      if (recentMessages.length > 0) {
+        saveCachedMessages("main_chat", recentMessages).catch(() => {});
+      }
 
       // ── 5. Stream incoming messages ────────────────────────────────────────
       _unsubscribeStream?.();
@@ -585,7 +743,8 @@ export function useXmtp() {
 
       const unsub = await (activeGroup as any).streamMessages(async (raw: any) => {
         _streamAlive = true;
-        let content: string;
+        _lastStreamEvent = Date.now();
+        let content: unknown;
         try {
           content = raw.content();
         } catch {
@@ -593,14 +752,15 @@ export function useXmtp() {
           return;
         }
 
-        if (typeof content === "string" && content.startsWith("REACT:")) {
-          // Track activity for streamed reactions
-          const parts = content.split(":");
-          const targetId = parts[2] ?? "";
+        // Native or legacy reaction
+        if (isReactionContent(content)) {
+          const targetId = getReactionTargetId(content);
           trackActivity(raw.senderInboxId as string, 'given');
           const { messages } = useChatStore.getState();
-          const targetMsg = messages.find(m => m.id === targetId);
-          if (targetMsg) trackActivity(targetMsg.senderAddress, 'received');
+          if (targetId) {
+            const targetMsg = messages.find(m => m.id === targetId);
+            if (targetMsg) trackActivity(targetMsg.senderAddress, 'received');
+          }
           const updated = applyReaction(messages, raw, _myInboxId);
           applyReactionUpdate(updated);
           return;
@@ -643,13 +803,11 @@ export function useXmtp() {
         }
 
         if (typeof content === "string" && content.startsWith("PROFILE_UPDATE:")) {
-          try {
-            const data = JSON.parse(content.slice("PROFILE_UPDATE:".length));
-            if (data.id) {
-              cacheProfile(data.id, { username: data.u || undefined, bio: data.b || undefined, xAccount: data.x || undefined, walletAddress: data.w || undefined, tipWallet: data.tw || undefined, nftImage: data.ni || null, legendary: !!data.lg, pushToken: data.pt || undefined, expoPushToken: data.ept || undefined });
-              trackUser(data.id, data.u || undefined);
-            }
-          } catch { /* ignore */ }
+          const profile = parseProfileUpdate(content);
+          if (profile) {
+            cacheProfile(profile.id, { username: profile.username, bio: profile.bio, xAccount: profile.xAccount, walletAddress: profile.walletAddress, tipWallet: profile.tipWallet, nftImage: profile.nftImage, legendary: profile.legendary, pushToken: profile.pushToken, expoPushToken: profile.expoPushToken });
+            trackUser(profile.id, profile.username);
+          }
           return;
         }
 
@@ -708,15 +866,58 @@ export function useXmtp() {
         // ── NFT Marketplace messages ────────────────────────────────────────
         if (typeof content === "string" && (
           content.startsWith("NFT_LIST:") || content.startsWith("NFT_BID:") ||
-          content.startsWith("NFT_ACCEPT:") || content.startsWith("NFT_DELIST:")
+          content.startsWith("NFT_ACCEPT:") || content.startsWith("NFT_DELIST:") ||
+          content.startsWith("NFT_SWAP:") || content.startsWith("NFT_COMPLETE:")
         )) {
           const market = parseMarketplaceMessage(content);
           if (market) {
             switch (market.type) {
               case 'list': addListing(market.data); break;
-              case 'bid': addBid(market.data); break;
-              case 'accept': acceptBid(market.data.listingId); break;
+              case 'bid': {
+                addBid(market.data);
+                // Notify seller if someone bids on their listing
+                const bidListing = getListingById(market.data.listingId);
+                if (bidListing && bidListing.sellerInboxId === _myInboxId) {
+                  showLocalNotification(
+                    'New Bid',
+                    `${market.data.bidderUsername ?? 'Someone'} bid ${market.data.bidPrice} SOL on ${bidListing.name}`,
+                    CH_ALL,
+                  );
+                }
+                break;
+              }
+              case 'accept': {
+                // Seller accepted a bid — mark listing as pending_swap
+                const listing = getListingById(market.data.listingId);
+                const bids = getBidsForListing(market.data.listingId);
+                const acceptedBid = bids.find((b: any) => b.bidderInboxId === market.data.bidderInboxId);
+                if (listing && acceptedBid) {
+                  markPendingSwap(market.data.listingId, acceptedBid);
+                } else {
+                  markSold(market.data.listingId);
+                }
+                break;
+              }
               case 'delist': delistNft(market.data.listingId); break;
+              case 'swap': {
+                // Swap tx addressed to me — show buyer confirmation
+                const swap = market.data as NftSwapMessage;
+                if (swap.buyerInboxId === _myInboxId) {
+                  useAppStore.getState().setPendingNftSwap(swap);
+                  const listing = getListingById(swap.listingId);
+                  showLocalNotification(
+                    'NFT Swap Ready',
+                    `${listing?.sellerUsername ?? 'Seller'} signed the swap for ${listing?.name ?? 'NFT'} (${swap.solPrice} SOL). Open MonkeMarkets to complete.`,
+                    CH_ALL,
+                  );
+                }
+                break;
+              }
+              case 'complete': {
+                // Trade completed on-chain — mark listing sold
+                markSold(market.data.listingId);
+                break;
+              }
             }
           }
           return;
@@ -778,6 +979,20 @@ export function useXmtp() {
         const msg = decodeMessage(raw, _myInboxId);
         if (!msg) return;
 
+        // Resolve native reply target from existing messages in store
+        if (msg.replyTo?.id && !msg.replyTo.content) {
+          const { messages: existing } = useChatStore.getState();
+          const target = existing.find(m => m.id === msg.replyTo!.id);
+          if (target) {
+            msg.replyTo = {
+              ...msg.replyTo,
+              senderAddress: target.senderAddress,
+              senderUsername: target.senderUsername,
+              content: target.content,
+            };
+          }
+        }
+
         // Record every sender in the all-time registry + activity
         trackUser(msg.senderAddress, msg.senderUsername);
         trackActivity(msg.senderAddress, 'sent');
@@ -826,6 +1041,7 @@ export function useXmtp() {
       });
 
       _streamAlive = true;
+      _lastStreamEvent = Date.now();
       _unsubscribeStream = () => { _streamAlive = false; unsub(); };
 
       // ── 5b. Start presence heartbeat ─────────────────────────────────────
@@ -942,10 +1158,12 @@ export function useXmtp() {
               const ch = await client.conversations.findGroup(chId as any);
               if (!ch) continue;
               const unsub = await (ch as any).streamMessages(async (raw: any) => {
-                let content: string;
+                let content: unknown;
                 try { content = raw.content(); } catch { return; }
+                // Skip native reactions
+                if (isReactionContent(content)) return;
                 if (typeof content !== 'string') return;
-                // Skip reactions, typing, own messages
+                // Skip legacy reactions, typing, own messages
                 if (content.startsWith('REACT:') || content.startsWith('TYPING:')) return;
                 const senderInboxId = raw.senderInboxId ?? '';
                 if (senderInboxId === client.inboxId) return;
@@ -971,14 +1189,18 @@ export function useXmtp() {
           await client.conversations.sync();
           const unsub = await (client.conversations as any).streamAllDmMessages(async (raw: any) => {
             try {
-              let content: string;
+              let content: unknown;
               try { content = raw.content(); } catch { return; }
+              // Skip native reactions
+              if (isReactionContent(content)) return;
               if (typeof content !== 'string') return;
-              const senderInboxId = raw.senderInboxId ?? '';
+              const senderInboxId: string = raw.senderInboxId ?? '';
               if (senderInboxId === client.inboxId) return;
               // Skip protocol messages
               if (content.startsWith('TYPING:') || content.startsWith('PROFILE_UPDATE:')) return;
               useAppStore.getState().incrementCommunityBadge('dms');
+              // Per-DM unread — sender IS the peer in a 1:1 DM
+              useAppStore.getState().incrementDmUnread(senderInboxId);
             } catch { /* ignore per-message errors */ }
           });
           _botChannelUnsubs.push(unsub);
@@ -1044,6 +1266,8 @@ export function useXmtp() {
     if (!_group) throw new Error("Not connected to chat");
     const { username } = useAppStore.getState();
     await sendMessage(_group, content, username);
+    incrementProgress('messages_sent');
+    tryMintBadge();
   }, [initialize]);
 
   const reply = useCallback(async (target: ChatMessage, content: string) => {
@@ -1051,6 +1275,8 @@ export function useXmtp() {
     if (!_group) throw new Error("Not connected to chat");
     const { username } = useAppStore.getState();
     await sendReply(_group, target, content, username);
+    incrementProgress('messages_sent');
+    tryMintBadge();
   }, [initialize]);
 
   const react = useCallback(
@@ -1063,13 +1289,22 @@ export function useXmtp() {
 
       // Apply optimistically — XMTP does not echo own messages back in the stream.
       const fakeRaw = {
-        content: () => `REACT:${emoji}:${targetMessageId}`,
+        content: () => ({
+          reaction: {
+            reference: targetMessageId,
+            action: "added",
+            schema: "unicode",
+            content: emoji,
+          },
+        }),
         senderInboxId: _myInboxId,
       };
       const { messages } = useChatStore.getState();
       applyReactionUpdate(applyReaction(messages, fakeRaw, _myInboxId));
 
       await sendReaction(_group, emoji, targetMessageId);
+      incrementProgress('reactions_given');
+      tryMintBadge();
     },
     [initialize, applyReactionUpdate]
   );
@@ -1193,17 +1428,32 @@ export function useXmtp() {
   // ── Sync recent messages (call when app returns to foreground) ────────────
   const syncMessages = useCallback(async () => {
     if (!_group) return;
+
+    // Stream liveness check: if no stream event in 90s, the stream is dead.
+    // Force a full re-initialize to restart it (throws to trigger reconnect).
+    const STREAM_STALE_MS = 90_000;
+    if (_lastStreamEvent > 0 && Date.now() - _lastStreamEvent > STREAM_STALE_MS && !_streamAlive) {
+      console.warn("[XMTP] Stream appears dead (no events in 90s) — forcing reconnect");
+      throw new Error("Stream stale — reconnect needed");
+    }
+
     try {
       await (_group as any).sync();
-      const rawHistory: any[] = await (_group as any).messages({ limit: 50 });
+      // Use time-based window instead of count limit — PRESENCE heartbeats
+      // flood the history (one per user per 60s), so { limit: 50 } can miss
+      // all real chat messages if the group has active presence.
+      const TWO_HOURS_NS = 2 * 60 * 60 * 1_000_000_000;
+      const afterNs = (Date.now() * 1_000_000) - TWO_HOURS_NS;
+      const rawHistory: any[] = await (_group as any).messages({ afterNs });
 
       const { messages: existing } = useChatStore.getState();
       const existingIds = new Set(existing.map((m) => m.id));
 
-      const newMsgs: ChatMessage[] = rawHistory
-        .map((m) => decodeMessage(m, _myInboxId))
-        .filter((m): m is ChatMessage => !!m && !existingIds.has(m.id))
-        .reverse(); // oldest-first within the batch
+      const newMsgs: ChatMessage[] = resolveReplyTargets(
+        rawHistory
+          .map((m) => decodeMessage(m, _myInboxId))
+          .filter((m): m is ChatMessage => !!m && !existingIds.has(m.id))
+      ).reverse(); // oldest-first within the batch
 
       for (const msg of newMsgs) {
         if (msg.senderAddress === _myInboxId) {
@@ -1216,6 +1466,45 @@ export function useXmtp() {
       }
     } catch (err) {
       console.warn("[XMTP] syncMessages failed:", err);
+    }
+
+    // ── Refresh bot channel + DM unread counts on every sync ─────────────
+    // Authoritative recalculation from last-read timestamps — replaces
+    // whatever the stream incremented, eliminating double-count races.
+    // Also catches messages missed when streams silently die.
+    if (_client) {
+      try {
+        // Bot channel counts
+        const channelIds = useAppStore.getState().botChannelIds;
+        if (channelIds) {
+          const counts = { bets: 0, trades: 0, sales: 0, predictions: 0 };
+          for (const key of ['bets', 'trades', 'sales', 'predictions'] as const) {
+            const chId = channelIds[key];
+            if (!chId) continue;
+            try {
+              const ch = await _client.conversations.findGroup(chId as any);
+              if (ch) {
+                await (ch as any).sync();
+                const msgs: any[] = await (ch as any).messages({ limit: 100 });
+                const decoded = msgs
+                  .map((m: any) => decodeMessage(m, _client!.inboxId))
+                  .filter(Boolean) as ChatMessage[];
+                const freshMessages = decoded.reverse();
+                await saveCachedMessages(key, freshMessages);
+                const lastRead = await getLastReadTimestamp(key);
+                counts[key] = freshMessages.filter((m) =>
+                  m.sentAt.getTime() > lastRead
+                ).length;
+              }
+            } catch { /* skip */ }
+          }
+          useAppStore.getState().setBotChannelCounts(counts);
+        }
+
+        // DM unread count — use the existing streamAllDmMessages listener
+        // (step 9) for real-time increments. The markChannelRead('dms')
+        // call in DmInboxScreen resets the baseline for accurate counts.
+      } catch { /* non-critical */ }
     }
   }, [mergeMessage, upgradeOwnMessage]);
 
@@ -1286,6 +1575,12 @@ export function useXmtp() {
     await initialize();
   }, [initialize]);
 
+  const sendFile = useCallback(async (url: string, filename: string, size: number) => {
+    if (!_group) await initialize();
+    if (!_group) throw new Error("Not connected to chat");
+    await sendRemoteAttachment(_group, url, filename, size);
+  }, [initialize]);
+
   return {
     initialize,
     disconnect,
@@ -1296,6 +1591,7 @@ export function useXmtp() {
     react,
     edit,
     stickerReact,
+    sendFile,
     sendTyping,
     addMember,
     loadJoinRequests,

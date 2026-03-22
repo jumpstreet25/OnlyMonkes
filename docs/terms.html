@@ -23,7 +23,7 @@
 <body>
   <div class="container">
     <h1>Terms of Use &amp; End User License Agreement</h1>
-    <p class="updated">Last updated: March 17, 2026</p>
+    <p class="updated">Last updated: March 20, 2026</p>
 
     <p>Please read these Terms of Use and End User License Agreement ("Terms") carefully before using the OnlyMonkes application ("the App"). By downloading, installing, or using the App, you agree to be bound by these Terms. If you do not agree, do not use the App.</p>
 
@@ -74,10 +74,29 @@
 
     <h2>6. Digital Assets and Transactions</h2>
     <ul>
-      <li>The App enables in-app token transfers (tipping with $SKR) and token swaps via the Jupiter aggregator, using Solana Mobile Wallet Adapter.</li>
+      <li>The App enables in-app token transfers (tipping with $SKR), token swaps via the Jupiter aggregator, peer-to-peer NFT trading (MonkeMarkets), and autonomous trading (AutonoMonke), all using Solana Mobile Wallet Adapter.</li>
       <li>All blockchain transactions are <strong>irreversible</strong>. We cannot reverse, cancel, or refund any on-chain transaction.</li>
       <li>You are solely responsible for verifying transaction details before approving them in your wallet.</li>
-      <li>We are not responsible for any financial losses resulting from token swaps, tips, or trades made through the App.</li>
+      <li>We are not responsible for any financial losses resulting from token swaps, tips, NFT trades, or autonomous trades made through the App.</li>
+    </ul>
+
+    <h2>6a. Trading Fees</h2>
+    <p>The following fees apply to transactions made through the App. Fees are sent to the OnlyMonkes development wallet to support ongoing development and maintenance:</p>
+    <ul>
+      <li><strong>NFT Sales (MonkeMarkets):</strong> A <strong>2% fee</strong> is deducted from the sale price of every NFT sold through MonkeMarkets. The fee is built into the atomic swap transaction — the buyer pays the listed price, and the seller receives 98%. This fee applies to all sales regardless of profit or loss.</li>
+      <li><strong>Token Trades:</strong> A <strong>3% fee</strong> applies to <strong>profits only</strong> on token trades executed via in-app Jupiter swaps. If a trade results in a loss, no fee is charged. The fee is calculated on the gain (sell proceeds minus proportional cost basis).</li>
+      <li><strong>Autonomous Trades (AutonoMonke):</strong> A <strong>5% fee</strong> applies to <strong>profits only</strong> on trades executed by the AutonoMonke autonomous trading engine. If a trade results in a loss, no fee is charged.</li>
+    </ul>
+    <p>You will be presented with a fee agreement before your first use of each trading feature. By tapping "I Understand" you acknowledge and accept the applicable fees.</p>
+
+    <h2>6b. MonkeMarkets (Peer-to-Peer NFT Trading)</h2>
+    <ul>
+      <li>MonkeMarkets enables peer-to-peer trading of Saga Monkes NFTs directly within the App. Listings, bids, and trades are coordinated via XMTP protocol messages and executed as atomic Solana transactions.</li>
+      <li>All NFT trades are <strong>peer-to-peer</strong> — OnlyMonkes is not a party to the transaction and does not hold or custody any NFTs or funds at any time.</li>
+      <li>Non-holders may browse MonkeMarkets listings (read-only access). Bidding and listing require a verified Saga Monkes NFT.</li>
+      <li>The 2% sale fee described in Section 6a is injected atomically into the swap transaction and cannot be circumvented.</li>
+      <li>You are solely responsible for setting fair prices and verifying transaction details before approving in your wallet.</li>
+      <li>OnlyMonkes does not guarantee the authenticity, quality, or value of any NFT listed on MonkeMarkets beyond on-chain verification of the Saga Monkes collection.</li>
     </ul>
 
     <h2>7. AI Trading Agent</h2>

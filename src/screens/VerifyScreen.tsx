@@ -28,7 +28,10 @@ import { saveVerifiedNft, stampNftCheck } from "@/lib/session";
 import { NftPickerModal } from "@/components/NftPickerModal";
 import { THEME, FONTS } from "@/lib/constants";
 import { shortenAddress } from "@/lib/nftVerification";
+import { loadListings, getActiveListings } from "@/lib/marketplace";
 import type { OwnedNFT } from "@/types";
+
+const MAGIC_EDEN_URL = "https://magiceden.us/marketplace/sagamonkes";
 
 type VerifyState = "idle" | "checking-nft" | "nft-fail" | "nft-ok" | "pick-nft" | "ready";
 
@@ -57,7 +60,7 @@ const MARKETPLACES = [
 ];
 
 export default function VerifyScreen() {
-  const { wallet, verifiedNft, allNfts, error, setVerified } = useAppStore();
+  const { wallet, verifiedNft, allNfts, error, setVerified, setIsGuest } = useAppStore();
   const { verify } = useNFTVerification();
   const { disconnect } = useMobileWallet();
 
@@ -108,9 +111,22 @@ export default function VerifyScreen() {
   const runVerification = async () => {
     setPhase("checking-nft");
     const verified = await verify();
-    if (!verified) { setPhase("nft-fail"); return; }
+    if (!verified) {
+      // No Saga Monke — check if MonkeMarkets has any listed for sale
+      await loadListings();
+      const active = getActiveListings();
+      if (active.length > 0) {
+        // Listings exist → enter as guest, can only access MonkeMarkets
+        setIsGuest(true);
+        router.replace("/marketplace");
+      } else {
+        // Nothing for sale in-app → send to Magic Eden
+        Linking.openURL(MAGIC_EDEN_URL);
+        setPhase("nft-fail");
+      }
+      return;
+    }
     setPhase("nft-ok");
-    await new Promise((r) => setTimeout(r, 800));
     if (allNfts.length > 1) { setPhase("pick-nft"); return; }
     await goToChat();
   };
@@ -201,7 +217,7 @@ export default function VerifyScreen() {
             <Text style={styles.notHolderEmoji}>🔒</Text>
             <Text style={styles.notHolderTitle}>You Need a Saga Monke</Text>
             <Text style={styles.notHolderBody}>
-              {error ?? "OnlyMonkes is an exclusive club for Saga Monkes NFT holders. Own one to unlock holder-only chat, AI signals, voice rooms, and more."}
+              {error ?? "OnlyMonkes is an exclusive club for Saga Monkes NFT holders. No Monkes are listed in MonkeMarkets right now — grab one below to unlock holder-only chat, AI signals, voice rooms, and more."}
             </Text>
 
             {/* Divider */}
