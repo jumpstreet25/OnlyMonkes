@@ -38,7 +38,7 @@ export function LinkPreviewCard({ content }: LinkPreviewCardProps) {
     return () => { mounted = false; };
   }, [url]);
 
-  if (!url || !preview) return null;
+  if (!url || !preview || !preview.title) return null;
 
   return (
     <Pressable
