@@ -56,6 +56,8 @@ release:
 
         🤖 AI TRADING AGENT — AI Agent #9385 monitors the top Solana tokens 24/7 with multi-timeframe technical analysis (RSI, MACD, EMA, Bollinger Bands, Ichimoku). Type /ta $SOL for instant TA signals.
 
+        🐒 MONKEMARKETS — Peer-to-peer Saga Monkes NFT trading. List, bid, and trade NFTs with atomic Solana swaps. Trait filtering, Magic Eden floor pricing, and guest browsing. 2% sale fee supports development.
+
         📅 COMMUNITY EVENTS — Browse and create OnlyMonkes community events via the built-in calendar.
 
         🔔 PUSH NOTIFICATIONS — Real-time alerts for new messages, mentions, reactions, live rooms, NFT sales, and TA trading signals.
@@ -64,7 +66,7 @@ release:
 
         REQUIREMENTS: Saga Monkes NFT + compatible Solana wallet (Phantom, Solflare) on Seeker or Saga device.
       new_in_version: >-
-        v2.25: AutonoMonke autonomous trading engine. TA candlestick chart images on bullish alerts. NFT artwork in Saga Monkes sales alerts via Helius DAS. Unified push notifications (FCM v1 + Expo) with big-picture images. Groq LLM (70B, sub-second AI responses). DM slash commands for AutonoMonke + risk management (24 commands). Per-channel banner scaling. Dead code cleanup and FlatList performance optimizations.
+        v2.26: MonkeMarkets trait filtering (Background, Fur, Eyes, Clothes, etc.) with AND logic and trait floor pricing from Magic Eden. Trading fee system — 2% on NFT sales, 3% on token trade profits, 5% on AutonoMonke profits (no fee on losses). Unified dark-theme fee disclaimer popups. Guest access to MonkeMarkets (browse listings without NFT). Cost basis tracking for profit-based fees.
       saga_features: >-
         Optimized for Seeker — arm64-v8a only build with minSdk 24. Live audio rooms use LiveKit WebRTC with full Bluetooth headset support. Mobile Wallet Adapter biometric prompt (no app switching for tips/swaps).
   android_details:

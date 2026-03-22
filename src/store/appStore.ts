@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { WalletAccount, OwnedNFT } from '../types';
 import type { LiveRoomData } from '../lib/livekit';
 import type { VideoRoomData } from '../lib/liveVideo';
+import type { NftSwapMessage } from '../lib/marketplace';
 
 const AK_MUTED_SPORTS = 'om_muted_sports';
 const AK_MUTED_CHANNELS = 'om_muted_channels';
@@ -34,6 +35,8 @@ interface AppState {
   wallet: WalletAccount | null;
   verified: boolean;
   verifiedNft: OwnedNFT | null;
+  /** Guest mode: wallet connected but no Saga Monke — can only access MonkeMarkets */
+  isGuest: boolean;
   allNfts: OwnedNFT[];
   xmtpClient: unknown;
   myInboxId: string | null;
@@ -85,11 +88,16 @@ interface AppState {
   isInVideoCall: boolean;
   // Community tab badge counts (unseen DMs, new events, unseen links)
   communityBadges: { dms: number; events: number; links: number };
+  // Per-DM conversation unread counts (keyed by peerInboxId)
+  dmUnreadCounts: Record<string, number>;
+  // P2P Marketplace — pending swap for buyer to complete
+  pendingNftSwap: NftSwapMessage | null;
 }
 
 interface AppActions {
   setWallet: (wallet: WalletAccount | null) => void;
   setVerified: (verified: boolean, nft?: OwnedNFT | null) => void;
+  setIsGuest: (isGuest: boolean) => void;
   setAllNfts: (nfts: OwnedNFT[]) => void;
   setXmtpClient: (client: unknown) => void;
   setMyInboxId: (inboxId: string | null) => void;
@@ -133,6 +141,10 @@ interface AppActions {
   setCommunityBadge: (key: 'dms' | 'events' | 'links', count: number) => void;
   incrementCommunityBadge: (key: 'dms' | 'events' | 'links') => void;
   clearCommunityBadge: (key: 'dms' | 'events' | 'links') => void;
+  setDmUnreadCounts: (counts: Record<string, number>) => void;
+  incrementDmUnread: (peerInboxId: string) => void;
+  clearDmUnread: (peerInboxId: string) => void;
+  setPendingNftSwap: (swap: NftSwapMessage | null) => void;
   reset: () => void;
 }
 
@@ -140,6 +152,7 @@ const initialState: AppState = {
   wallet: null,
   verified: false,
   verifiedNft: null,
+  isGuest: false,
   allNfts: [],
   xmtpClient: null,
   myInboxId: null,
@@ -177,6 +190,8 @@ const initialState: AppState = {
   activeVideoRoom: null,
   isInVideoCall: false,
   communityBadges: { dms: 0, events: 0, links: 0 },
+  dmUnreadCounts: {},
+  pendingNftSwap: null,
 };
 
 export const useAppStore = create<AppState & AppActions>((set, get) => ({
@@ -184,6 +199,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
 
   setWallet: (wallet) => set({ wallet }),
   setVerified: (verified, nft) => set({ verified, verifiedNft: nft ?? null }),
+  setIsGuest: (isGuest) => set({ isGuest }),
   setAllNfts: (allNfts) => set({ allNfts }),
   setXmtpClient: (client) => set({ xmtpClient: client }),
   setMyInboxId: (myInboxId) => set({ myInboxId }),
@@ -272,6 +288,16 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   clearCommunityBadge: (key) => set((s) => ({
     communityBadges: { ...s.communityBadges, [key]: 0 },
   })),
+  setDmUnreadCounts: (dmUnreadCounts) => set({ dmUnreadCounts }),
+  incrementDmUnread: (peerInboxId) => set((s) => ({
+    dmUnreadCounts: { ...s.dmUnreadCounts, [peerInboxId]: (s.dmUnreadCounts[peerInboxId] ?? 0) + 1 },
+  })),
+  clearDmUnread: (peerInboxId) => set((s) => {
+    const next = { ...s.dmUnreadCounts };
+    delete next[peerInboxId];
+    return { dmUnreadCounts: next };
+  }),
+  setPendingNftSwap: (pendingNftSwap) => set({ pendingNftSwap }),
   reset: () => set(initialState),
 }));
 

@@ -9,12 +9,18 @@ export interface WalletAccount {
 
 // ─── NFT ──────────────────────────────────────────────────────────────────────
 
+export interface NftTrait {
+  trait_type: string;
+  value: string;
+}
+
 export interface OwnedNFT {
   mint: string;
   name: string;
   symbol: string;
   image: string | null;
   collectionMint: string;
+  traits?: NftTrait[];
 }
 
 export interface NFTVerificationResult {
@@ -52,7 +58,7 @@ export interface ChatMessage {
   reactions: Partial<Record<ReactionEmoji, MessageReaction>>;
   stickerReactions?: StickerReaction[];
   replyTo?: { id: string; content: string; senderAddress: string; senderUsername?: string };
-  status?: 'sending' | 'sent' | 'failed' | 'pending';
+  status?: 'sending' | 'sent' | 'failed' | 'pending' | 'read';
   editedContent?: string;   // if edited, the updated text (original stays in content)
   editedAt?: Date;          // timestamp of edit
 }

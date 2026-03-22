@@ -1,13 +1,14 @@
 /**
- * Live Audio Room route
+ * Live Audio Room route — lazy-loaded to avoid pulling LiveKit into initial bundle
  */
 
-import React, { useEffect } from "react";
-import { View, Text, StyleSheet } from "react-native";
+import React, { Suspense, useEffect } from "react";
+import { View, Text, StyleSheet, ActivityIndicator } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
-import LiveAudioRoomScreen from "@/screens/LiveAudioRoomScreen";
 import { useAppStore } from "@/store/appStore";
 import { THEME, FONTS } from "@/lib/constants";
+
+const LiveAudioRoomScreen = React.lazy(() => import("@/screens/LiveAudioRoomScreen"));
 
 export default function LiveRoomRoute() {
   const { token, isHost } = useLocalSearchParams<{ token: string; isHost?: string }>();
@@ -36,13 +37,21 @@ export default function LiveRoomRoute() {
   };
 
   return (
-    <LiveAudioRoomScreen
-      room={activeLiveRoom}
-      token={token}
-      isHost={isHost === "1"}
-      onLeave={handleLeave}
-      onMinimize={handleMinimize}
-    />
+    <Suspense
+      fallback={
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color={THEME.accent} />
+        </View>
+      }
+    >
+      <LiveAudioRoomScreen
+        room={activeLiveRoom}
+        token={token}
+        isHost={isHost === "1"}
+        onLeave={handleLeave}
+        onMinimize={handleMinimize}
+      />
+    </Suspense>
   );
 }
 

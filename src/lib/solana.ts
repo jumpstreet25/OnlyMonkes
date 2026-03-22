@@ -93,6 +93,9 @@ export async function sendSkrTip(
   recipientWallet: string,
   amountUi: number
 ): Promise<string> {
+  if (!Number.isFinite(amountUi) || amountUi <= 0 || amountUi > 10_000) {
+    throw new Error("Invalid tip amount");
+  }
   const connection = new Connection(HELIUS_RPC_URL, "confirmed");
   const mintPubkey = new PublicKey(SKR_MINT);
   const devPubkey  = new PublicKey(DEV_WALLET);
@@ -186,6 +189,9 @@ export async function sendSkrTip(
  * Send a direct tip to the developer wallet (100% to dev, no split).
  */
 export async function sendDevTip(amountUi: number): Promise<string> {
+  if (!Number.isFinite(amountUi) || amountUi <= 0 || amountUi > 10_000) {
+    throw new Error("Invalid tip amount");
+  }
   const connection = new Connection(HELIUS_RPC_URL, "confirmed");
   const mintPubkey = new PublicKey(SKR_MINT);
   const devPubkey  = new PublicKey(DEV_WALLET);

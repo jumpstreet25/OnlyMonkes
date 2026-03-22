@@ -381,13 +381,13 @@ export function parseVideoRoomMessage(content: string): VideoRoomData | null {
 }
 
 /** Create room name + token for a new video call */
-export function createVideoRoom(
+export async function createVideoRoom(
   hostInboxId: string,
   hostUsername: string,
   maxParticipants = 15,
-): { roomData: VideoRoomData; token: string } {
+): Promise<{ roomData: VideoRoomData; token: string }> {
   const roomName = `omv-${Date.now()}-${hostInboxId.slice(0, 8)}`;
-  const token = createLivekitToken(roomName, hostInboxId, hostUsername, true);
+  const token = await createLivekitToken(roomName, hostInboxId, hostUsername, true);
 
   const roomData: VideoRoomData = {
     id: roomName,
@@ -403,10 +403,10 @@ export function createVideoRoom(
 }
 
 /** Generate a join token for an existing video room */
-export function joinVideoRoom(
+export async function joinVideoRoom(
   roomName: string,
   inboxId: string,
   username: string,
-): string {
+): Promise<string> {
   return createLivekitToken(roomName, inboxId, username, true);
 }

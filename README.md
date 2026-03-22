@@ -87,8 +87,8 @@ An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect yo
 - **MWA biometric re-auth** — cached wallet adapter auth tokens for silent re-authentication with biometric prompt; no app-switch needed after first connect
 
 ### AI Agent & TA Scanner
-- **AI Agent #9385** — XMTP bot in the group chat; delivers TA alerts (RSI, MACD, EMA) for Solana tokens, Saga Monke NFT sale alerts, and responds to DMs via Groq LLM (70B, sub-second); built on ElizaOS v2 with plugin-solana for trade execution
-- **TA Savvy Monke** — professional-grade multi-timeframe TA scanner; scans all verified Solana SPL tokens every 8 min across 15m/1H/4H/daily candles; posts confluence alerts (Ichimoku, Fibonacci, Bollinger, Stochastic, ADX, OBV, candle patterns) to Main Chat + Monke Trades channel when signal score ≥69/100; sentiment gate (Birdeye trending + wash trading detection)
+- **AI Agent #9385** — unified XMTP bot identity powering all features: TA scanning, trade alerts, NFT sales, sports betting, prediction markets, DM commands, and LLM chat; built on ElizaOS v2 with plugin-solana for trade execution; Pyth Hermes SSE streaming for sub-second price feeds
+- **Multi-timeframe TA scanner** — professional-grade scanner covering 100 Solana SPL tokens (53 watchlist + dynamic discovery) every 10 min across 15m/1H/4H/daily candles; OHLCV from GeckoTerminal → DexPaprika → Birdeye fallback chain; posts confluence alerts (Ichimoku, Fibonacci, Bollinger, Stochastic, ADX, OBV, candle patterns) to Main Chat + Monke Trades channel when signal score ≥69/100; sentiment, whale, and chat sentiment gates
 - **TA candle charts** — every bullish TA alert includes a generated candlestick chart image (with Fibonacci levels, entry/stop/targets overlaid) sent to both Main Chat and the Monke Trades channel
 - **AutonoMonke** — autonomous trading engine; TA scanner signals with ≥69% confluence + 2+ aligned timeframes auto-execute trades via Jupiter for enrolled users; DM `/automonke start` to enroll, `/automonke size` to set position %, `/automonke positions` to view open trades, `/automonke withdraw` to close all and withdraw
 - **Slash commands** — `/tip @Username [amt]` (send $SKR), `/buy $TOKEN`, `/sell $TOKEN`, `/swap $A for $B` — all execute in-app via MWA biometric sign + Jupiter aggregator
@@ -118,17 +118,21 @@ An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect yo
 - **Combined TA** — sports alerts cross-reference both SharpAPI edge detection and TA scoring for higher-confidence signals
 - **NFT sale images** — Saga Monkes sales alerts include the actual NFT artwork fetched via Helius DAS API, displayed in the MonkeSales channel and as a big-picture push notification
 - **Unified push notifications** — all bot alerts (TA signals, NFT sales, sports bets, predictions, GMonke, PNL reports) route through a single FCM v1 + Expo push pipeline with user preference filtering, per-channel muting, stale token pruning, and big-picture image support
-- **NFT ownership gate** — both bots (AI Agent #9385 and TA Savvy Monke) verify Saga Monke NFT ownership via Helius DAS before processing any DM command; cached 24 hours per user, checked lazily on first interaction; users who sold their Monke get troll responses instead of bot services; fail-open on API errors to avoid false lockouts
+- **NFT ownership gate** — AI Agent #9385 verifies Saga Monke NFT ownership via Helius DAS before processing any DM command; cached 24 hours per user, checked lazily on first interaction; users who sold their Monke get troll responses instead of bot services; fail-open on API errors to avoid false lockouts
 - **Cross-app inbox portability** — XMTP is a decentralized protocol: your inbox is tied to your wallet identity, not to any specific app. Users can DM the bot from any XMTP-compatible app (Converse, Coinbase Wallet, etc.) and the same NFT gate applies — the verification happens bot-side, so selling your Saga Monke blocks access everywhere, not just in OnlyMonkes
-- **LLM chain** — Groq (primary, free, 70B, sub-second) → Ollama (local fallback) → Anthropic (last resort); all app users can DM the bot for free AI chat
+- **LLM chain** — OpenClaw (local, persistent memory) → Ollama → Anthropic; all app users can DM the bot for free AI chat
 - **Support OnlyMonkes button** — in the Tools drawer; quick-tip 5/10/25/50 $SKR to the dev wallet via in-app MWA biometric (no app switch)
 - **Per-type push titles** — 🐒 MONKE #1234 Sold! / 🐒 TA Signal: $TOKEN / 🔮 Prediction Alert per alert type
 - **Rich push images** — TA trade alerts include the candlestick chart as a big-picture notification; NFT sales include the Monke artwork
 
 ### Infrastructure & Quality
 - **EAS Update (OTA)** — over-the-air updates via `expo-updates`; silent download on launch, prompt to restart; avoids full dApp Store resubmission for minor fixes
-- **Unit tests** — Jest with `react-native` preset; tests for appStore (8 tests) and chatStore (7 tests); `npm test` / `npm run test:coverage`
-- **E2E tests** — Detox config for end-to-end testing (requires bare workflow build)
+- **cNFT Badges** — compressed NFT badges minted via Helius Mint API for community milestones (first message, 100 messages, 50 reactions, 7-day streak, 30-day streak, leaderboard win, and more); 9 badge types with automatic progress tracking; badges appear as on-chain cNFTs in the user's wallet
+- **TipLink** — claimable SOL links in chat; `/tiplink <amount>` generates an ephemeral Solana keypair, funds it via MWA, and sends a green-themed claim link in chat; recipients tap to sweep SOL to their wallet
+- **File sharing** — native XMTP RemoteAttachment support; share files from the camera action sheet via `expo-document-picker`; files uploaded to Cloudinary and rendered as tappable attachment bubbles in chat
+- **Pyth Hermes price streaming** — sub-second Solana token prices via Pyth Network SSE streaming (16 major tokens); used as primary price source in the TA scanner with Jupiter API fallback
+- **Unit tests** — Jest with `react-native` preset; tests for appStore (8 tests), chatStore (7 tests), badges (13 tests), and tipLink parsing (5 tests); `npm test` / `npm run test:coverage`
+- **E2E tests** — Detox config for end-to-end testing (requires bare workflow build); suites for media sharing and slash commands
 - **Crash reporting** — Sentry integration (`@sentry/react-native`) with PII scrubbing; captures errors, breadcrumbs, and user identification
 - **Analytics** — Firebase Analytics (`@react-native-firebase/analytics`); tracks app opens, messages sent, DMs opened, tips sent, swaps executed, daily sessions, chat duration, user properties
 - **Self-hosted LiveKit** — Docker Compose config for self-hosted LiveKit SFU on VPS; embedded TURN for NAT traversal; ~$6-10/mo on Hetzner CX22 (2 vCPU, 4GB RAM); handles 5-10 concurrent rooms with simulcast
@@ -223,6 +227,8 @@ OnlyMonkes/
 │   │
 │   ├── lib/
 │   │   ├── activityTracker.ts        # Weekly stats: sent/given/received; getLeaderboard()
+│   │   ├── badges.ts                # cNFT badge system: 9 badge types, progress tracking, Helius Mint API minting
+│   │   ├── tipLink.ts               # Claimable SOL links: ephemeral keypair, MWA funding, claim URL generation
 │   │   ├── analytics.ts              # Firebase Analytics: app open, messages, DMs, tips, swaps, session duration
 │   │   ├── backgroundSync.ts         # expo-background-fetch task registration
 │   │   ├── calendar.ts               # Event helpers
@@ -274,7 +280,9 @@ OnlyMonkes/
 │   │
 │   ├── __tests__/
 │   │   ├── appStore.test.ts          # 8 unit tests for appStore
-│   │   └── chatStore.test.ts         # 7 unit tests for chatStore
+│   │   ├── chatStore.test.ts         # 7 unit tests for chatStore
+│   │   ├── badges.test.ts           # 13 unit tests for badge system
+│   │   └── tipLink.test.ts          # 5 unit tests for TipLink parsing
 │   │
 │   └── types/index.ts
 │
@@ -310,6 +318,8 @@ All XMTP messages are plain UTF-8 strings with a prefix that determines type:
 |---|---|---|
 | `MSG:` | `MSG:<user>:<content>` | Regular chat message |
 | `MSG:` (reply) | `MSG:<user>:REPLYv2:<targetId>:<targetSender>:<targetUser>:<origBase64>:<content>` | Quoted reply |
+| `TIPLINK:` | `TIPLINK:<claimUrl>\|<amountSol>\|<senderUsername>` | Claimable SOL tip link |
+| `ATTACHMENT:` | `ATTACHMENT:<url>\|<filename>` | File attachment (RemoteAttachment codec) |
 | `REACT:` | `REACT:<emoji>:<targetMsgId>` | Emoji reaction |
 | `STICKER_REACT:` | `STICKER_REACT:<url>:<targetMsgId>` | GIF sticker reaction |
 | `PROFILE_UPDATE:` | `PROFILE_UPDATE:<json>` | Profile broadcast (username, bio, NFT image, push token, notif prefs) |
@@ -609,6 +619,8 @@ Output: `android/app/build/outputs/apk/release/app-release.apk`
 | `crypto-js` | HS256 JWT signing for LiveKit tokens (client-side) |
 | `@shopify/react-native-skia` | GPU-accelerated 2D rendering engine |
 | `expo-clipboard` | Copy message text to clipboard |
+| `expo-document-picker` | File selection for chat attachments |
+| `bs58` | Base58 encoding for Solana keypairs (TipLink claim URLs) |
 | `@drift-labs/sdk` | Drift Protocol prediction market integration (bot-side) |
 | `@monaco-protocol/client` | Monaco Protocol sports betting integration (bot-side) |
 | `@coral-xyz/anchor` | Anchor framework for Monaco Protocol on-chain interactions |

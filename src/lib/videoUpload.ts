@@ -71,6 +71,27 @@ export async function uploadVideo(videoUri: string): Promise<{ videoUrl: string;
 }
 
 /**
+ * Upload a generic file to Cloudinary (raw resource type).
+ * Returns the public HTTPS URL.
+ */
+export async function uploadFile(uri: string, filename: string, mimeType: string): Promise<string> {
+  const form = new FormData();
+  form.append('file', { uri, type: mimeType, name: filename } as any);
+  form.append('upload_preset', UPLOAD_PRESET);
+  // Use 'raw' resource type for generic files (PDFs, docs, etc.)
+  const resourceType = mimeType.startsWith('image/') ? 'image'
+    : mimeType.startsWith('video/') ? 'video'
+    : 'raw';
+  const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/${resourceType}/upload`, {
+    method: 'POST',
+    body: form,
+  });
+  const data = await res.json();
+  if (!data.secure_url) throw new Error(data.error?.message ?? 'File upload failed');
+  return data.secure_url;
+}
+
+/**
  * Compress an image before upload — max 1200px wide, JPEG quality 0.7.
  */
 export async function compressImage(uri: string): Promise<string> {

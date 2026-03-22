@@ -73,6 +73,9 @@ export async function clearLegacyKeys(): Promise<void> {
   ]);
 }
 
+/** Clear Matrica session keys (legacy auth system, now replaced by NFT verification). */
+export const clearMatricaSession = clearLegacyKeys;
+
 // ─── Verified NFT cache ────────────────────────────────────────────────────────
 // Stores the NFT the user selected so we can skip the verify screen on re-launch.
 

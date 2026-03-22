@@ -5,7 +5,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   name: 'OnlyMonkes',
   slug: 'monkesonly',
   owner: process.env.EXPO_OWNER ?? undefined,
-  version: '2.25.0',
+  version: '2.29.0',
   orientation: 'portrait',
   icon: './assets/icon.png',
   userInterfaceStyle: 'dark',
@@ -27,7 +27,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     fallbackToCacheTimeout: 5000,
     checkAutomatically: 'ON_LOAD',
   },
-  runtimeVersion: '2.27',
+  runtimeVersion: '2.29',
   plugins: [
     'expo-router',
     'expo-secure-store',
@@ -35,7 +35,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       '@sentry/react-native/expo',
       {
         organization: process.env.SENTRY_ORG ?? 'onlymonkes',
-        project: process.env.SENTRY_PROJECT ?? 'onlymonkes-app',
+        project: process.env.SENTRY_PROJECT ?? 'onlymonkes',
       },
     ],
     [

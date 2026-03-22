@@ -60,13 +60,15 @@ export const useChatStore = create<ChatState & ChatActions>((set) => ({
       // 1. Exact ID already in store → skip (O(1) lookup)
       if (state._msgIdSet.has(message.id)) return state;
 
-      // 2. Matching optimistic (opt-*) by sender + content → upgrade in-place,
+      // 2. Matching optimistic (opt-*) by sender + content + time proximity → upgrade in-place,
       //    preserving the optimistic's senderNft so the PFP stays visible.
+      //    Time window (10s) ensures identical messages sent >10s apart are not deduped.
       const optIdx = state.messages.findIndex(
         (m) =>
           m.id.startsWith('opt-') &&
           m.senderAddress === message.senderAddress &&
-          m.content === message.content
+          m.content === message.content &&
+          Math.abs(m.sentAt.getTime() - message.sentAt.getTime()) < 10_000
       );
       if (optIdx !== -1) {
         const opt = state.messages[optIdx];
@@ -83,22 +85,28 @@ export const useChatStore = create<ChatState & ChatActions>((set) => ({
         return { messages: next, _msgIdSet };
       }
 
-      // 3. Genuinely new message → append
+      // 3. Genuinely new message → append (cap at 500 to prevent unbounded growth)
       const _msgIdSet = new Set(state._msgIdSet);
       _msgIdSet.add(message.id);
-      return { messages: [...state.messages, message], _msgIdSet };
+      let next = [...state.messages, message];
+      if (next.length > 500) {
+        const removed = next.splice(0, next.length - 500);
+        for (const r of removed) _msgIdSet.delete(r.id);
+      }
+      return { messages: next, _msgIdSet };
     }),
 
   upgradeOwnMessage: (message) =>
     set((state) => {
       // Already in store with this real ID → skip (O(1))
       if (state._msgIdSet.has(message.id)) return state;
-      // Find the matching opt-* bubble
+      // Find the matching opt-* bubble (within 10s time window)
       const optIdx = state.messages.findIndex(
         (m) =>
           m.id.startsWith('opt-') &&
           m.senderAddress === message.senderAddress &&
-          m.content === message.content
+          m.content === message.content &&
+          Math.abs(m.sentAt.getTime() - message.sentAt.getTime()) < 10_000
       );
       // No opt-* match → do NOT append own messages (they are only added via handleSend)
       if (optIdx === -1) return state;

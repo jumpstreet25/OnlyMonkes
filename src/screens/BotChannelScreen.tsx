@@ -24,7 +24,7 @@ import { useAppStore } from "@/store/appStore";
 import { useGroupChat } from "@/hooks/useGroupChat";
 import { MessageBubble } from "@/components/MessageBubble";
 import { triggerProfileRebroadcast } from "@/hooks/useXmtp";
-import AutoMonkeDisclaimerModal from "@/components/AutoMonkeDisclaimerModal";
+import AutoMonkeDisclaimerModal, { type AutonomyFeature } from "@/components/AutoMonkeDisclaimerModal";
 import { getXmtpClient } from "@/hooks/useXmtp";
 import { sendDmMessage } from "@/lib/xmtp";
 import { THEME, FONTS } from "@/lib/constants";
@@ -32,8 +32,14 @@ import type { ChatMessage } from "@/types";
 
 const BOT_INBOX_ID = "998001a498174b8a194110ee792b10f97de4965665eaf0d088ed2c71bdf62363";
 
+const AUTONOMY_CONFIG: Record<string, { command: string; storageKey: string }> = {
+  trades:      { command: "/automonke start",      storageKey: "automonke_enrolled" },
+  bets:        { command: "/monkebets start",      storageKey: "monkebets_enrolled" },
+  predictions: { command: "/monkepredictions start", storageKey: "monkepredictions_enrolled" },
+};
+
 // No-ops for read-only channel — users can't react or reply to bot alerts
-const noop = () => {};
+const noop = (..._args: any[]) => {};
 
 const SPORTS_LIST = [
   { key: "nfl", label: "NFL 🏈" },
@@ -61,14 +67,14 @@ const CHANNEL_CONFIG = {
     name: "Monke Bets",
     img: require("../../assets/MonkeBets.png"),
     banner: require("../../assets/Bets.png"),
-    bannerScale: 1.8,
+    bannerScale: 1.98,
     emptyText: "No sports bet alerts yet.",
   },
   trades: {
     name: "Monke Trades",
     img: require("../../assets/MonkeTrades.png"),
     banner: require("../../assets/Trade.png"),
-    bannerScale: 1.8,
+    bannerScale: 2.016,
     emptyText: "No trade alerts yet.",
   },
   sales: {
@@ -82,7 +88,7 @@ const CHANNEL_CONFIG = {
     name: "Monke Predictions",
     img: require("../../assets/MonkePredictions.png"),
     banner: require("../../assets/Predictions.png"),
-    bannerScale: 1.8,
+    bannerScale: 2.07,
     emptyText: "No prediction alerts yet.",
   },
 } as const;
@@ -98,14 +104,16 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
   const isMuted = mutedBotChannels[channelId];
   const config = CHANNEL_CONFIG[channelId];
   const [showAutoMonkeModal, setShowAutoMonkeModal] = useState(false);
-  const [autoMonkeEnrolled, setAutoMonkeEnrolled] = useState(false);
+  const [autonomyEnrolled, setAutonomyEnrolled] = useState(false);
   const [showAllOverride, setShowAllOverride] = useState(false);
+  const hasAutonomy = channelId in AUTONOMY_CONFIG;
 
   // Check enrollment on mount
   useEffect(() => {
-    if (channelId === "trades") {
-      AsyncStorage.getItem("automonke_enrolled").then(v => {
-        if (v === "1") setAutoMonkeEnrolled(true);
+    if (hasAutonomy) {
+      const key = AUTONOMY_CONFIG[channelId].storageKey;
+      AsyncStorage.getItem(key).then(v => {
+        if (v === "1") setAutonomyEnrolled(true);
       }).catch(() => {});
     }
   }, [channelId]);
@@ -122,29 +130,34 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
   const flatListRef = useRef<FlatList>(null);
   const myAddress = myInboxId ?? "";
 
-  // AutonoMonke enrollment handler
-  const handleAutoMonkeEnroll = useCallback(async () => {
+  // Autonomy enrollment handler — works for trades, bets, predictions
+  const handleAutonomyEnroll = useCallback(async () => {
     setShowAutoMonkeModal(false);
+    if (!hasAutonomy) return;
+    const { command, storageKey } = AUTONOMY_CONFIG[channelId];
     try {
       const client = getXmtpClient();
       if (!client) return;
       const dm = await (client.conversations as any).findOrCreateDm(BOT_INBOX_ID);
       if (dm) {
-        await sendDmMessage(dm, "/automonke start", username);
+        await sendDmMessage(dm, command, username);
       }
-      await AsyncStorage.setItem("automonke_enrolled", "1");
-      setAutoMonkeEnrolled(true);
+      await AsyncStorage.setItem(storageKey, "1");
+      setAutonomyEnrolled(true);
       // Navigate to bot DM
       router.push(`/dm/${BOT_INBOX_ID}` as any);
     } catch (err) {
-      console.warn("[AutonoMonke] Failed to send enrollment DM:", (err as Error).message);
+      console.warn(`[Autonomy:${channelId}] Failed to send enrollment DM:`, (err as Error).message);
     }
-  }, [username]);
+  }, [username, channelId, hasAutonomy]);
+
+  // Reverse messages for inverted FlatList (newest first in array = bottom of screen)
+  const reversedMessages = useMemo(() => [...messages].reverse(), [messages]);
 
   // Client-side filter: hide alerts for muted sports in the Bets channel
   const filteredMessages = useMemo(() => {
-    if (channelId !== "bets" || mutedSports.length === 0 || showAllOverride) return messages;
-    return messages.filter((msg) => {
+    if (channelId !== "bets" || mutedSports.length === 0 || showAllOverride) return reversedMessages;
+    return reversedMessages.filter((msg) => {
       const text = msg.content ?? "";
       const dashMatch = text.match(/—\s*(.+)/);
       if (!dashMatch) return true;
@@ -153,24 +166,33 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
       if (!key) return true;
       return !mutedSports.includes(key);
     });
-  }, [messages, mutedSports, channelId, showAllOverride]);
+  }, [reversedMessages, mutedSports, channelId, showAllOverride]);
 
   useEffect(() => {
-    if (groupId) initialize();
+    if (groupId) initialize().catch((err) => {
+      console.warn(`[BotChannel:${channelId}] init failed:`, err?.message ?? err);
+    });
     return () => disconnect();
   }, [groupId]);
 
   // ─── Render ──────────────────────────────────────────────────────────────────
 
   const renderMessage: ListRenderItem<ChatMessage> = useCallback(
-    ({ item }) => (
-      <MessageBubble
-        message={item}
-        isOwn={item.senderAddress === myAddress}
-        onReact={noop}
-        onReply={noop}
-      />
-    ),
+    ({ item }) => {
+      try {
+        return (
+          <MessageBubble
+            message={item}
+            isOwn={item.senderAddress === myAddress}
+            onReact={noop}
+            onReply={noop}
+          />
+        );
+      } catch (err) {
+        console.warn(`[BotChannel] Failed to render message ${item.id}:`, err);
+        return null;
+      }
+    },
     [myAddress]
   );
 
@@ -206,19 +228,42 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
           resizeMode="contain"
         />
 
-        {/* Mute/Unmute toggle */}
-        <Pressable
-          onPress={() => {
-            toggleBotChannelMute(channelId);
-            triggerProfileRebroadcast(useAppStore.getState().expoPushToken ?? "").catch(() => {});
-          }}
-          style={[styles.muteBtn, isMuted && styles.muteBtnMuted]}
-          hitSlop={8}
-        >
-          <Text style={[styles.muteBtnText, isMuted && styles.muteBtnTextMuted]}>
-            {isMuted ? "🔇 Muted" : "🔔 On"}
-          </Text>
-        </Pressable>
+        {/* Right column: Alert bell + Autonomy button */}
+        <View style={styles.headerRight}>
+          <Pressable
+            onPress={() => {
+              toggleBotChannelMute(channelId);
+              triggerProfileRebroadcast(useAppStore.getState().expoPushToken ?? "").catch(() => {});
+            }}
+            style={[styles.muteBtn, isMuted && styles.muteBtnMuted]}
+            hitSlop={8}
+          >
+            <Text style={[styles.muteBtnText, isMuted && styles.muteBtnTextMuted]}>
+              {isMuted ? "🔇 Muted" : "🔔 On"}
+            </Text>
+          </Pressable>
+
+          {hasAutonomy && (
+            <Pressable
+              onPress={() => {
+                if (autonomyEnrolled) {
+                  router.push(`/dm/${BOT_INBOX_ID}` as any);
+                } else {
+                  setShowAutoMonkeModal(true);
+                }
+              }}
+              style={[styles.autonomyBtn, autonomyEnrolled && styles.autonomyBtnActive]}
+              hitSlop={8}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                {autonomyEnrolled && <View style={styles.blueCheck}><Text style={styles.blueCheckText}>✓</Text></View>}
+                <Text style={[styles.autonomyBtnText, autonomyEnrolled && styles.autonomyBtnTextActive]}>
+                  AutonoMonke
+                </Text>
+              </View>
+            </Pressable>
+          )}
+        </View>
       </View>
 
       {/* Bot Alerts · Live status bar */}
@@ -272,24 +317,6 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
             </View>
           )}
 
-          {/* AutonoMonke enrollment card — Trades channel only, hidden once enrolled */}
-          {channelId === "trades" && !autoMonkeEnrolled && (
-            <Pressable
-              style={styles.autoMonkeCard}
-              onPress={() => setShowAutoMonkeModal(true)}
-            >
-              <View style={styles.autoMonkeCardLeft}>
-                <Text style={styles.autoMonkeTitle}>AutonoMonke</Text>
-                <Text style={styles.autoMonkeDesc}>
-                  Enable autonomous trading powered by AI
-                </Text>
-              </View>
-              <View style={styles.autoMonkeBtn}>
-                <Text style={styles.autoMonkeBtnText}>Enable</Text>
-              </View>
-            </Pressable>
-          )}
-
           {/* Loading history banner */}
           {isLoadingHistory && (
             <View style={styles.historyLoading}>
@@ -327,9 +354,7 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
             renderItem={renderMessage}
             keyExtractor={keyExtractor}
             contentContainerStyle={styles.listContent}
-            onContentSizeChange={() =>
-              flatListRef.current?.scrollToEnd({ animated: false })
-            }
+            inverted
             removeClippedSubviews
             maxToRenderPerBatch={20}
             windowSize={10}
@@ -339,11 +364,12 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
 
       <View style={{ height: insets.bottom }} />
 
-      {/* AutonoMonke disclaimer modal */}
+      {/* Autonomy disclaimer modal */}
       <AutoMonkeDisclaimerModal
         visible={showAutoMonkeModal}
         onClose={() => setShowAutoMonkeModal(false)}
-        onConfirm={handleAutoMonkeEnroll}
+        onConfirm={handleAutonomyEnroll}
+        feature={channelId as AutonomyFeature}
       />
     </View>
   );
@@ -400,6 +426,11 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: THEME.textFaint,
   },
+  headerRight: {
+    alignItems: "center",
+    gap: 6,
+    zIndex: 1,
+  },
   muteBtn: {
     paddingHorizontal: 10,
     paddingVertical: 6,
@@ -407,7 +438,6 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(108, 180, 238, 0.15)",
     minWidth: 44,
     alignItems: "center",
-    zIndex: 1,
   },
   muteBtnMuted: {
     backgroundColor: "rgba(255, 80, 80, 0.15)",
@@ -554,45 +584,39 @@ const styles = StyleSheet.create({
 
   listContent: {
     paddingVertical: 8,
-    flexGrow: 1,
-    justifyContent: "flex-end",
   },
 
-  autoMonkeCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginHorizontal: 12,
-    marginVertical: 8,
-    padding: 12,
-    borderRadius: 12,
-    backgroundColor: "rgba(124, 58, 237, 0.12)",
-    borderWidth: 1,
-    borderColor: "rgba(124, 58, 237, 0.3)",
-  },
-  autoMonkeCardLeft: {
-    flex: 1,
-    marginRight: 12,
-  },
-  autoMonkeTitle: {
-    fontFamily: FONTS.displayMed,
-    fontSize: 14,
-    color: THEME.text,
-  },
-  autoMonkeDesc: {
-    fontFamily: FONTS.body,
-    fontSize: 11,
-    color: THEME.textMuted,
-    marginTop: 2,
-  },
-  autoMonkeBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+  autonomyBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderRadius: 8,
-    backgroundColor: THEME.accent,
+    backgroundColor: "rgba(124, 58, 237, 0.15)",
+    minWidth: 44,
+    alignItems: "center",
   },
-  autoMonkeBtnText: {
-    fontFamily: FONTS.bodySemi,
-    fontSize: 12,
+  autonomyBtnActive: {
+    backgroundColor: "rgba(124, 58, 237, 0.3)",
+  },
+  autonomyBtnText: {
+    fontFamily: FONTS.bodyMed,
+    fontSize: 10,
+    color: "#A78BFA",
+  },
+  autonomyBtnTextActive: {
+    color: "#C4B5FD",
+  },
+  blueCheck: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: "#1D9BF0",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  blueCheckText: {
+    fontSize: 9,
     color: "#fff",
+    fontWeight: "700",
+    lineHeight: 13,
   },
 });

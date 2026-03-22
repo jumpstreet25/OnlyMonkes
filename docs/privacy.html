@@ -23,7 +23,7 @@
 <body>
   <div class="container">
     <h1>Privacy Policy</h1>
-    <p class="updated">Last updated: March 17, 2026</p>
+    <p class="updated">Last updated: March 20, 2026</p>
 
     <h2>Overview</h2>
     <p>OnlyMonkes is an NFT-gated social application for verified Saga Monkes holders on Solana Mobile. We are committed to protecting your privacy and being transparent about the data we handle.</p>
@@ -79,10 +79,17 @@
       <li>Browsing history or app usage patterns</li>
     </ul>
 
+    <h3>Trading Data</h3>
+    <ul>
+      <li>If you use in-app token swaps, your per-token cost basis (amount of SOL spent per token) is stored locally on your device via AsyncStorage. This data is used solely to calculate profit-based trading fees and is never transmitted off-device.</li>
+      <li>Your acceptance of fee agreements (MonkeMarkets, token trades, AutonoMonke) is stored locally on your device via AsyncStorage so you are not prompted repeatedly. This data is never shared externally.</li>
+    </ul>
+
     <h2>Data Storage</h2>
     <ul>
       <li>All message data is stored on the decentralized XMTP network and cached locally on your device.</li>
       <li>Session credentials are stored in your device's secure storage (SecureStore) and persist until you log out.</li>
+      <li>Trading cost basis and fee acceptance flags are stored locally on your device via AsyncStorage.</li>
       <li>No user data is stored on centralized servers controlled by OnlyMonkes.</li>
     </ul>
 

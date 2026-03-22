@@ -41,6 +41,7 @@ import { useAppStore } from "@/store/appStore";
 import { getCachedProfile, useProfileVersion } from "@/lib/userProfile";
 import { shortenAddress } from "@/lib/nftVerification";
 import { clearPushToken, registerForPushNotifications, scheduleTestNotification } from "@/lib/notifications";
+import { markChannelRead } from "@/lib/messageCache";
 import type { ProfileTarget } from "@/components/UserProfileModal";
 
 const DRAWER_WIDTH_RATIO = 0.82;
@@ -371,7 +372,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                   title="Messages"
                   subtitle="Direct messages"
                   badge={communityBadges.dms || undefined}
-                  onPress={() => { clearCommunityBadge('dms'); onClose(); setTimeout(() => router.push('/dms'), 300); }}
+                  onPress={() => { clearCommunityBadge('dms'); markChannelRead('dms').catch(() => {}); onClose(); setTimeout(() => router.push('/dms'), 300); }}
                 />
                 <MenuItem
                   icon="🗓️"

@@ -65,6 +65,7 @@ export interface CachedProfile {
 }
 
 const AK_PROFILE_CACHE = 'profile_cache_v2';
+const MAX_PROFILE_CACHE = 500;
 const _profileCache = new Map<string, CachedProfile>();
 let _persistTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -122,6 +123,15 @@ export function cacheProfile(inboxId: string, profile: CachedProfile): void {
 
   const merged = { ...existing, ...profile, cachedAt: Date.now() };
   _profileCache.set(inboxId, merged);
+  // Evict oldest entries when cache exceeds max size
+  if (_profileCache.size > MAX_PROFILE_CACHE) {
+    let oldestKey: string | null = null;
+    let oldestAt = Infinity;
+    for (const [k, v] of _profileCache) {
+      if ((v.cachedAt ?? 0) < oldestAt) { oldestAt = v.cachedAt ?? 0; oldestKey = k; }
+    }
+    if (oldestKey) _profileCache.delete(oldestKey);
+  }
   _schedulePersist();
   _notifyProfileListeners();
 }
@@ -172,6 +182,9 @@ export async function loadAllTimeUsers(): Promise<void> {
       _allTimeUsers.set(inboxId, profile.username ?? "");
     }
   });
+
+  // Build prefix index after loading all users
+  _rebuildPrefixIndex();
 }
 
 /**
@@ -186,12 +199,14 @@ export function trackUser(inboxId: string, username?: string): void {
     // Already tracked — only update name if we now have one
     if (username && !existing) {
       _allTimeUsers.set(inboxId, username);
+      _indexUser(inboxId, username);
       _scheduleAllTimePersist();
       _notifyProfileListeners();
     }
     return;
   }
   _allTimeUsers.set(inboxId, username ?? "");
+  if (username) _indexUser(inboxId, username);
   _scheduleAllTimePersist();
   _notifyProfileListeners();
 }
@@ -199,4 +214,49 @@ export function trackUser(inboxId: string, username?: string): void {
 /** Returns the full all-time user map: inboxId → name. */
 export function getAllTimeUsers(): Map<string, string> {
   return _allTimeUsers;
+}
+
+// ─── Username prefix index for fast @mention lookups ─────────────────────
+// Maps lowercase prefix (2 chars) → Set of inboxIds with matching usernames.
+const _prefixIndex = new Map<string, Set<string>>();
+
+function _indexUser(inboxId: string, username: string) {
+  if (!username) return;
+  const prefix = username.toLowerCase().slice(0, 2);
+  if (!prefix) return;
+  let set = _prefixIndex.get(prefix);
+  if (!set) { set = new Set(); _prefixIndex.set(prefix, set); }
+  set.add(inboxId);
+}
+
+function _rebuildPrefixIndex() {
+  _prefixIndex.clear();
+  _allTimeUsers.forEach((name, id) => _indexUser(id, name));
+}
+
+/**
+ * Fast @mention lookup — returns up to `limit` users whose username starts with `query`.
+ * Uses a 2-char prefix index to avoid scanning all 300+ users.
+ */
+export function searchUsersByPrefix(
+  query: string,
+  excludeInboxId?: string,
+  limit = 6,
+): { inboxId: string; username: string }[] {
+  if (!query) return [];
+  const q = query.toLowerCase();
+  const prefix = q.slice(0, 2);
+  const candidates = _prefixIndex.get(prefix);
+  if (!candidates) return [];
+
+  const results: { inboxId: string; username: string }[] = [];
+  for (const inboxId of candidates) {
+    if (inboxId === excludeInboxId) continue;
+    const name = _allTimeUsers.get(inboxId);
+    if (name && name.toLowerCase().startsWith(q)) {
+      results.push({ inboxId, username: name });
+      if (results.length >= limit) break;
+    }
+  }
+  return results;
 }

@@ -1,20 +1,31 @@
 /**
- * NFT Marketplace — P2P Saga Monkes Trading
+ * NFT Marketplace — P2P Saga Monkes Trading (Atomic Swap)
  *
- * Message formats:
- *   NFT_LIST:<json>    — seller lists an NFT for sale
- *   NFT_BID:<json>     — buyer places a bid
- *   NFT_ACCEPT:<json>  — seller accepts a bid
- *   NFT_DELIST:<json>  — seller removes listing
+ * Architecture:
+ *   PUBLIC (group broadcast):
+ *     NFT_LIST:<json>      — seller lists an NFT (all users see it)
+ *     NFT_DELIST:<json>    — seller removes listing (all users see removal)
  *
- * Listings are broadcast to the group chat as system messages.
- * Actual transfer happens via MWA (Mobile Wallet Adapter).
+ *   PRIVATE (DM to seller):
+ *     NFT_BID:<json>       — buyer places a SOL bid
+ *     NFT_OFFER:<json>     — buyer offers an NFT-for-NFT swap
+ *     NFT_ACCEPT:<json>    — seller accepts (triggers atomic swap)
+ *     NFT_SWAP:<json>      — partially-signed swap tx
+ *     NFT_COMPLETE:<json>  — swap completed on-chain
  *
+ *   BROADCAST (MonkeSales channel):
+ *     Completed sales/swaps are announced to the MonkeSales bot channel.
+ *
+ * Actual transfer uses atomic swap: NFT + SOL in a single Solana transaction.
  * All prices are in SOL.
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import type { NftTrait } from '@/types';
 
 const AK_LISTINGS = 'om_nft_listings';
+
+// Swap transactions expire after 90 seconds (Solana blockhash TTL)
+const SWAP_EXPIRY_MS = 90_000;
 
 export interface NftListing {
   id: string;               // unique listing ID (mint + timestamp)
@@ -25,8 +36,11 @@ export interface NftListing {
   sellerUsername?: string;
   sellerWallet: string;     // seller's Solana wallet address
   askPrice: number;         // asking price in SOL
+  traits?: NftTrait[];      // NFT attributes (Background, Fur, Eyes, etc.)
   listedAt: Date;
-  status: 'active' | 'sold' | 'delisted';
+  status: 'active' | 'pending_swap' | 'sold' | 'delisted';
+  acceptedBid?: NftBid;     // which bid was accepted (during pending_swap)
+  swapExpiresAt?: number;   // timestamp when pending_swap auto-reverts
 }
 
 export interface NftBid {
@@ -38,17 +52,61 @@ export interface NftBid {
   bidAt: Date;
 }
 
+/** NFT-for-NFT swap offer (Monke Swap) */
+export interface NftSwapOffer {
+  listingId: string;        // listing being offered on
+  offererInboxId: string;
+  offererUsername?: string;
+  offererWallet: string;
+  offeredMint: string;      // the NFT the buyer is offering
+  offeredName: string;
+  offeredImage: string | null;
+  solTopUp?: number;        // optional SOL added on top of NFT swap
+  offeredAt: Date;
+}
+
+export interface NftSwapMessage {
+  listingId: string;
+  sellerInboxId: string;
+  buyerInboxId: string;
+  mint: string;
+  solPrice: number;
+  sellerWallet: string;
+  buyerWallet: string;
+  serializedTx: string;     // base64-encoded partially-signed transaction
+  createdAt: number;
+}
+
+export interface NftCompleteMessage {
+  listingId: string;
+  signature: string;        // on-chain tx signature
+  mint: string;
+  solPrice: number;
+  sellerInboxId?: string;
+  sellerUsername?: string;
+  buyerInboxId?: string;
+  buyerUsername?: string;
+  nftName?: string;
+  nftImage?: string | null;
+  completedAt: number;
+}
+
 let _listings: NftListing[] = [];
 let _bids: Map<string, NftBid[]> = new Map(); // listingId → bids
 
 // ── Message parsing ─────────────────────────────────────────────────────────
 
 export function parseMarketplaceMessage(raw: string): {
-  type: 'list' | 'bid' | 'accept' | 'delist';
+  type: 'list' | 'bid' | 'offer' | 'accept' | 'delist' | 'swap' | 'complete';
   data: any;
 } | null {
-  const prefixes = ['NFT_LIST:', 'NFT_BID:', 'NFT_ACCEPT:', 'NFT_DELIST:'] as const;
-  const types = ['list', 'bid', 'accept', 'delist'] as const;
+  const prefixes = [
+    'NFT_LIST:', 'NFT_BID:', 'NFT_OFFER:', 'NFT_ACCEPT:',
+    'NFT_DELIST:', 'NFT_SWAP:', 'NFT_COMPLETE:',
+  ] as const;
+  const types = ['list', 'bid', 'offer', 'accept', 'delist', 'swap', 'complete'] as const;
+  // Reject oversized messages (DoS protection)
+  if (raw.length > 50_000) return null;
   for (let i = 0; i < prefixes.length; i++) {
     if (raw.startsWith(prefixes[i])) {
       try {
@@ -60,26 +118,61 @@ export function parseMarketplaceMessage(raw: string): {
   return null;
 }
 
+// ── Public message builders (group broadcast) ───────────────────────────────
+
 export function buildListMessage(listing: Omit<NftListing, 'id' | 'listedAt' | 'status'>): string {
   const id = `${listing.mint}-${Date.now()}`;
   return `NFT_LIST:${JSON.stringify({ ...listing, id, listedAt: Date.now() })}`;
-}
-
-export function buildBidMessage(bid: Omit<NftBid, 'bidAt'>): string {
-  return `NFT_BID:${JSON.stringify({ ...bid, bidAt: Date.now() })}`;
-}
-
-export function buildAcceptMessage(listingId: string, bidderInboxId: string): string {
-  return `NFT_ACCEPT:${JSON.stringify({ listingId, bidderInboxId, acceptedAt: Date.now() })}`;
 }
 
 export function buildDelistMessage(listingId: string): string {
   return `NFT_DELIST:${JSON.stringify({ listingId })}`;
 }
 
+// ── Private message builders (DM to seller/buyer) ───────────────────────────
+
+export function buildBidMessage(
+  bid: Omit<NftBid, 'bidAt'>,
+  extra?: { sellerInboxId?: string; listingName?: string },
+): string {
+  return `NFT_BID:${JSON.stringify({ ...bid, ...extra, bidAt: Date.now() })}`;
+}
+
+export function buildOfferMessage(
+  offer: Omit<NftSwapOffer, 'offeredAt'>,
+  extra?: { sellerInboxId?: string; listingName?: string },
+): string {
+  return `NFT_OFFER:${JSON.stringify({ ...offer, ...extra, offeredAt: Date.now() })}`;
+}
+
+export function buildAcceptMessage(listingId: string, bidderInboxId: string): string {
+  return `NFT_ACCEPT:${JSON.stringify({ listingId, bidderInboxId, acceptedAt: Date.now() })}`;
+}
+
+export function buildSwapMessage(swap: NftSwapMessage): string {
+  return `NFT_SWAP:${JSON.stringify(swap)}`;
+}
+
+export function buildCompleteMessage(complete: NftCompleteMessage): string {
+  return `NFT_COMPLETE:${JSON.stringify(complete)}`;
+}
+
+/** Build the MonkeSales channel broadcast for a completed trade */
+export function buildSaleAnnouncement(complete: NftCompleteMessage): string {
+  const buyer = complete.buyerUsername ?? 'anon';
+  const seller = complete.sellerUsername ?? 'anon';
+  const name = complete.nftName ?? 'Saga Monke';
+  const price = complete.solPrice;
+  const sig = complete.signature.slice(0, 8);
+  return `MSG:AI Agent #9385:🐒 **SOLD** — ${name}\n${seller} → ${buyer} for ${price} SOL\ntx: ${sig}…`;
+}
+
 // ── State management ────────────────────────────────────────────────────────
 
 export function addListing(data: any): NftListing {
+  if (!Number.isFinite(data.askPrice) || data.askPrice <= 0 || data.askPrice > 100_000) {
+    throw new Error("Invalid ask price");
+  }
   const listing: NftListing = {
     id: data.id,
     mint: data.mint,
@@ -89,6 +182,7 @@ export function addListing(data: any): NftListing {
     sellerUsername: data.sellerUsername,
     sellerWallet: data.sellerWallet,
     askPrice: data.askPrice,
+    traits: data.traits ?? undefined,
     listedAt: new Date(data.listedAt),
     status: 'active',
   };
@@ -102,6 +196,7 @@ export function addListing(data: any): NftListing {
 }
 
 export function addBid(data: any): NftBid | null {
+  if (!Number.isFinite(data.bidPrice) || data.bidPrice <= 0 || data.bidPrice > 100_000) return null;
   const listing = _listings.find(l => l.id === data.listingId);
   if (!listing || listing.status !== 'active') return null;
   const bid: NftBid = {
@@ -118,9 +213,29 @@ export function addBid(data: any): NftBid | null {
   return bid;
 }
 
-export function acceptBid(listingId: string): void {
+export function markPendingSwap(listingId: string, bid: NftBid): void {
+  const listing = _listings.find(l => l.id === listingId);
+  if (listing) {
+    listing.status = 'pending_swap';
+    listing.acceptedBid = bid;
+    listing.swapExpiresAt = Date.now() + SWAP_EXPIRY_MS;
+  }
+  _persist();
+}
+
+export function markSold(listingId: string): void {
   const listing = _listings.find(l => l.id === listingId);
   if (listing) listing.status = 'sold';
+  _persist();
+}
+
+export function revertPendingSwap(listingId: string): void {
+  const listing = _listings.find(l => l.id === listingId);
+  if (listing && listing.status === 'pending_swap') {
+    listing.status = 'active';
+    listing.acceptedBid = undefined;
+    listing.swapExpiresAt = undefined;
+  }
   _persist();
 }
 
@@ -130,10 +245,18 @@ export function delistNft(listingId: string): void {
   _persist();
 }
 
-/** Get all active listings */
+/** Get all active listings (auto-revert expired pending_swap) */
 export function getActiveListings(): NftListing[] {
+  const now = Date.now();
+  for (const l of _listings) {
+    if (l.status === 'pending_swap' && l.swapExpiresAt && now > l.swapExpiresAt) {
+      l.status = 'active';
+      l.acceptedBid = undefined;
+      l.swapExpiresAt = undefined;
+    }
+  }
   return _listings
-    .filter(l => l.status === 'active')
+    .filter(l => l.status === 'active' || l.status === 'pending_swap')
     .sort((a, b) => b.listedAt.getTime() - a.listedAt.getTime());
 }
 
@@ -145,6 +268,11 @@ export function getBidsForListing(listingId: string): NftBid[] {
 /** Get listings by a specific seller */
 export function getMyListings(inboxId: string): NftListing[] {
   return _listings.filter(l => l.sellerInboxId === inboxId);
+}
+
+/** Find listing by ID */
+export function getListingById(listingId: string): NftListing | undefined {
+  return _listings.find(l => l.id === listingId);
 }
 
 /** Load listings from disk */

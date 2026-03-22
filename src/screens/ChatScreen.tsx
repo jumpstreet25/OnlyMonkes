@@ -57,6 +57,7 @@ import { router } from "expo-router";
 import { THEME, FONTS, SKR_MINT } from "@/lib/constants";
 import { loadUserProfile, getCachedProfile, getAllTimeUsers, saveSelectedNftMint, cacheProfile } from "@/lib/userProfile";
 import { checkAndUpdateStreak } from "@/lib/streaks";
+import { updateStreak as updateBadgeStreak } from "@/lib/badges";
 import { ConfettiView } from "@/components/ConfettiView";
 import { registerForPushNotifications, setNotificationReplyHandler } from "@/lib/notifications";
 import { loadEvents } from "@/lib/calendar";
@@ -86,6 +87,7 @@ import { loadListings } from "@/lib/marketplace";
 
 // ── Lazy imports — heavy modules loaded on first use, not at startup ────────
 import type { SwapQuote, ParsedSwapCommand } from "@/lib/jupiterSwap";
+import ImageLightbox from "@/components/ImageLightbox";
 
 const getExpoAv = () => import("expo-av");
 const getMediaLibrary = () => import("expo-media-library");
@@ -94,6 +96,8 @@ const getViewShot = () => import("react-native-view-shot");
 const getImagePicker = () => import("expo-image-picker");
 const getVideoUpload = () => import("@/lib/videoUpload");
 const getJupiterSwap = () => import("@/lib/jupiterSwap");
+const getLiveAudio = () => import("@/lib/liveAudio");
+const getLiveVideo = () => import("@/lib/liveVideo");
 import type { ChatMessage, ReactionEmoji } from "@/types";
 import type { TipAmount } from "@/lib/constants";
 
@@ -158,7 +162,7 @@ export default function ChatScreen() {
   const isLoadingHistory = useChatStore(s => s.isLoadingHistory);
   const setReplyingTo    = useChatStore(s => s.setReplyingTo);
   const typingUsers      = useChatStore(s => s.typingUsers);
-  const { initialize, disconnect, logout, streamAlive, send, reply, react, edit, stickerReact, sendTyping, addMember, loadJoinRequests, approveJoinRequest, publishGroupId, forceAdminInit, broadcastProfile, broadcastEvent, broadcastLiveRoom, broadcastVideoRoom, syncMessages } = useXmtp();
+  const { initialize, disconnect, logout, streamAlive, send, reply, react, edit, stickerReact, sendFile, sendTyping, addMember, loadJoinRequests, approveJoinRequest, publishGroupId, forceAdminInit, broadcastProfile, broadcastEvent, broadcastLiveRoom, broadcastVideoRoom, syncMessages } = useXmtp();
   const [inputText, setInputText] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [showUsernameModal, setShowUsernameModal] = useState(false);
@@ -184,7 +188,6 @@ export default function ChatScreen() {
   const [gifPickerOpen, setGifPickerOpen] = useState(false);
   const [pfpGifPickerOpen, setPfpGifPickerOpen] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
-  const [lightboxSize, setLightboxSize] = useState<{ w: number; h: number } | null>(null);
   const [videoModalOpen, setVideoModalOpen] = useState(false);
   const [videoLightboxUrl, setVideoLightboxUrl] = useState<string | null>(null);
   const [adminRecoveryOpen, setAdminRecoveryOpen] = useState(false);
@@ -203,24 +206,6 @@ export default function ChatScreen() {
   const [pinnedMessages, setPinnedMessages] = useState<PinnedMessage[]>([]);
   const flatListRef = useRef<FlatList>(null);
   const initialMsgIdsRef = useRef<Set<string>>(new Set());
-  const lightboxViewRef = useRef<any>(null);
-
-  const handleDownloadImage = async () => {
-    const ML = await getMediaLibrary();
-    const { status } = await ML.requestPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert("Permission needed", "Allow gallery access to save images.");
-      return;
-    }
-    try {
-      const { captureRef } = await getViewShot();
-      const uri = await captureRef(lightboxViewRef, { format: "jpg", quality: 0.95 });
-      await ML.saveToLibraryAsync(uri);
-      Alert.alert("Saved", "Image saved to your gallery.");
-    } catch {
-      Alert.alert("Error", "Could not save image.");
-    }
-  };
 
   const handleDownloadVideo = async (uri: string) => {
     const ML = await getMediaLibrary();
@@ -253,6 +238,9 @@ export default function ChatScreen() {
   useEffect(() => {
     initialize().then(async () => {
       const { justHitLegendary } = await checkAndUpdateStreak();
+      // Sync streak into badge progress so streak badges auto-earn
+      const { loginStreak, bestStreak } = useAppStore.getState();
+      updateBadgeStreak(loginStreak, bestStreak);
       if (justHitLegendary) {
         setShowConfetti(true);
         broadcastProfile();
@@ -289,7 +277,7 @@ export default function ChatScreen() {
   // Retries with exponential backoff (5s → 10s → 20s → cap 30s).
   useEffect(() => {
     if (isGroupMember || !remoteGroupId) return;
-    let delay = 5_000;
+    let delay = 3_000;
     let timer: ReturnType<typeof setTimeout>;
     const retry = () => {
       timer = setTimeout(() => {
@@ -401,11 +389,6 @@ export default function ChatScreen() {
     }
   }, [isLoadingHistory, messages.length]);
 
-  // ─── Lightbox image dimensions (to position watermark on the actual image) ──
-  useEffect(() => {
-    if (!lightboxUrl) { setLightboxSize(null); return; }
-    Image.getSize(lightboxUrl, (w, h) => setLightboxSize({ w, h }), () => setLightboxSize(null));
-  }, [lightboxUrl]);
 
   // ─── Send ────────────────────────────────────────────────────────────────────
 
@@ -486,6 +469,28 @@ export default function ChatScreen() {
         sentAt: new Date(),
         reactions: {} as ChatMessage["reactions"],
       });
+      return;
+    }
+
+    // ── Intercept /tiplink <amount> — claimable SOL link ─────────────────────
+    const tipLinkMatch = text.match(/^\/tiplink\s+([\d.]+)/i);
+    if (tipLinkMatch) {
+      setInputText("");
+      const amount = parseFloat(tipLinkMatch[1]);
+      if (!amount || amount <= 0 || amount > 10) {
+        Alert.alert("Invalid amount", "Tip link amount must be between 0.001 and 10 SOL.");
+        return;
+      }
+      setIsSending(true);
+      try {
+        const { createTipLink } = await import("@/lib/tipLink");
+        const result = await createTipLink(amount);
+        await send(`TIPLINK:${result.claimUrl}|${amount}|${username ?? "Monke"}`);
+      } catch (err: any) {
+        Alert.alert("TipLink failed", err?.message ?? "Could not create tip link.");
+      } finally {
+        setIsSending(false);
+      }
       return;
     }
 
@@ -635,15 +640,33 @@ export default function ChatScreen() {
     }
   }, [send, myAddress, username, verifiedNft]);
 
-  // ─── Camera button — alert for Photo vs Video ────────────────────────────────
+  // ─── File picker (RemoteAttachment) ──────────────────────────────────────────
+
+  const handleFilePicker = useCallback(async () => {
+    try {
+      const DP = await import('expo-document-picker');
+      const result = await DP.getDocumentAsync({ copyToCacheDirectory: true });
+      if (result.canceled || !result.assets?.[0]) return;
+      const file = result.assets[0];
+      // Upload to Cloudinary as raw file
+      const { uploadFile } = await import('@/lib/videoUpload');
+      const url = await uploadFile(file.uri, file.name ?? 'file', file.mimeType ?? 'application/octet-stream');
+      await sendFile(url, file.name ?? 'file', file.size ?? 0);
+    } catch (err: any) {
+      Alert.alert('File error', err?.message ?? 'Could not send file.');
+    }
+  }, [sendFile]);
+
+  // ─── Camera button — alert for Photo vs Video vs File ──────────────────────
 
   const handleCameraButtonPress = useCallback(() => {
     Alert.alert('Share media', 'Choose an option', [
       { text: '📷 Photo', onPress: handleCamera },
       { text: '🎥 Video', onPress: () => setVideoModalOpen(true) },
+      { text: '📎 File', onPress: handleFilePicker },
       { text: 'Cancel', style: 'cancel' },
     ]);
-  }, [handleCamera]);
+  }, [handleCamera, handleFilePicker]);
 
   // ─── Video send (from VideoCameraModal) ──────────────────────────────────────
 
@@ -763,7 +786,7 @@ export default function ChatScreen() {
       await broadcastLiveRoom(data);
       await showLocalNotification(`${username} started a Live`, "Live Audio in OnlyMonkes", CH_ALL);
       // Generate token and navigate to live room screen
-      const token = createLivekitToken(roomId, myInboxId, username);
+      const token = await createLivekitToken(roomId, myInboxId, username);
       setLiveRoomToken(token);
       router.push(`/live-room?token=${encodeURIComponent(token)}&isHost=1`);
     } catch (err: any) {
@@ -774,7 +797,7 @@ export default function ChatScreen() {
   const handleJoinLive = useCallback(async () => {
     if (!myInboxId || !username || !activeLiveRoom) return;
     try {
-      const token = createLivekitToken(activeLiveRoom.id, myInboxId, username);
+      const token = await createLivekitToken(activeLiveRoom.id, myInboxId, username);
       setLiveRoomToken(token);
       router.push(`/live-room?token=${encodeURIComponent(token)}&isHost=0`);
     } catch (err: any) {
@@ -800,7 +823,7 @@ export default function ChatScreen() {
       return;
     }
     try {
-      const { roomData, token } = createVideoRoom(myInboxId, username);
+      const { roomData, token } = await createVideoRoom(myInboxId, username);
       setActiveVideoRoom(roomData);
       setIsInVideoCall(true);
       setVideoCallToken(token);
@@ -815,7 +838,7 @@ export default function ChatScreen() {
   const handleJoinVideoCall = useCallback(async () => {
     if (!myInboxId || !username || !activeVideoRoom) return;
     try {
-      const token = joinVideoRoom(activeVideoRoom.id, myInboxId, username);
+      const token = await joinVideoRoom(activeVideoRoom.id, myInboxId, username);
       setIsInVideoCall(true);
       setVideoCallToken(token);
       router.push(`/video-room?token=${encodeURIComponent(token)}&isHost=0`);
@@ -1028,67 +1051,8 @@ export default function ChatScreen() {
         }}
       />
 
-      {/* ── Image Lightbox ──────────────────────────────────────────────── */}
-      <Modal
-        visible={!!lightboxUrl}
-        transparent
-        animationType="fade"
-        statusBarTranslucent
-        onRequestClose={() => setLightboxUrl(null)}
-      >
-        <Pressable
-          style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.95)", justifyContent: "center", alignItems: "center" }}
-          onPress={() => setLightboxUrl(null)}
-        >
-          {/* Capturable view — sized to actual image so watermark stays on image */}
-          <View ref={lightboxViewRef} collapsable={false} style={
-            lightboxSize
-              ? (() => {
-                  const maxW = SCREEN_W;
-                  const maxH = SCREEN_H * 0.85;
-                  const imgRatio = lightboxSize.w / lightboxSize.h;
-                  const containerRatio = maxW / maxH;
-                  const fitW = imgRatio > containerRatio ? maxW : maxH * imgRatio;
-                  const fitH = imgRatio > containerRatio ? maxW / imgRatio : maxH;
-                  return { width: fitW, height: fitH };
-                })()
-              : { width: SCREEN_W, height: SCREEN_H * 0.85 }
-          }>
-            <Image
-              source={{ uri: lightboxUrl ?? "" }}
-              style={{ width: "100%", height: "100%" }}
-              resizeMode="cover"
-            />
-            {/* Watermark overlay — same size/position as in-bubble */}
-            <View style={{ position: "absolute", bottom: 4, right: 0, opacity: 0.9 }} pointerEvents="none">
-              <Image
-                // eslint-disable-next-line @typescript-eslint/no-require-imports
-                source={require("../../assets/watermark.png")}
-                style={{ width: 192, height: 96 }}
-                resizeMode="contain"
-              />
-            </View>
-          </View>
-        </Pressable>
-        {/* Close button */}
-        <Pressable
-          onPress={() => setLightboxUrl(null)}
-          style={{ position: "absolute", top: 52, right: 16, width: 36, height: 36, borderRadius: 18,
-                   backgroundColor: "rgba(255,255,255,0.15)", alignItems: "center", justifyContent: "center" }}
-          hitSlop={10}
-        >
-          <Text style={{ color: "#FFF", fontSize: 18, fontWeight: "bold" }}>✕</Text>
-        </Pressable>
-        {/* Download button */}
-        <Pressable
-          onPress={handleDownloadImage}
-          style={{ position: "absolute", top: 52, right: 62, width: 36, height: 36, borderRadius: 18,
-                   backgroundColor: "rgba(255,255,255,0.15)", alignItems: "center", justifyContent: "center" }}
-          hitSlop={10}
-        >
-          <Text style={{ color: "#FFF", fontSize: 16 }}>⬇</Text>
-        </Pressable>
-      </Modal>
+      {/* ── Image Lightbox (pinch-to-zoom, swipe dismiss, watermark) ─── */}
+      <ImageLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
 
       <KeyboardAvoidingView
         style={[styles.container, { paddingTop: insets.top }]}
@@ -1351,19 +1315,8 @@ export default function ChatScreen() {
             <Text style={styles.pendingTitle}>Joining OnlyMonkes…</Text>
             <ActivityIndicator color={THEME.accent} style={{ marginTop: 8 }} />
             <Text style={styles.pendingSubtitle}>
-              Verifying your membership — this usually takes a few seconds.
+              NFT verified — joining the group automatically. Hang tight!
             </Text>
-            {!!myAddress && (
-              <View style={styles.accessKeyBox}>
-                <Text style={styles.accessKeyLabel}>YOUR CHAT ID</Text>
-                <Text style={styles.accessKeyValue} selectable numberOfLines={3}>
-                  {myAddress}
-                </Text>
-                <Text style={styles.accessKeyHint}>
-                  Saved to your device permanently. If auto-join takes longer than expected, share this with the admin.
-                </Text>
-              </View>
-            )}
             <Pressable onPress={async () => { await logout(); router.replace("/"); }} hitSlop={8}>
               <Text style={styles.pendingLogoutLink}>Log out</Text>
             </Pressable>
@@ -1512,8 +1465,8 @@ export default function ChatScreen() {
           removeClippedSubviews
           maxToRenderPerBatch={15}
           initialNumToRender={15}
-          updateCellsBatchingPeriod={50}
-          windowSize={7}
+          updateCellsBatchingPeriod={100}
+          windowSize={10}
           onScroll={({ nativeEvent }) => {
             // Inverted list: offset 0 = newest messages (bottom of chat)
             isNearBottomRef.current = nativeEvent.contentOffset.y <= SCROLL_THRESHOLD;
@@ -2005,36 +1958,6 @@ const styles = StyleSheet.create({
     textDecorationLine: "underline",
     marginTop: 16,
   },
-  accessKeyBox: {
-    backgroundColor: THEME.surface,
-    borderWidth: 1,
-    borderColor: THEME.border,
-    borderRadius: 12,
-    padding: 16,
-    alignSelf: "stretch",
-    gap: 8,
-    marginTop: 8,
-  },
-  accessKeyLabel: {
-    fontFamily: FONTS.mono,
-    fontSize: 10,
-    color: THEME.textFaint,
-    letterSpacing: 2,
-    textTransform: "uppercase",
-  },
-  accessKeyValue: {
-    fontFamily: FONTS.mono,
-    fontSize: 12,
-    color: THEME.accent,
-    lineHeight: 18,
-  },
-  accessKeyHint: {
-    fontFamily: FONTS.body,
-    fontSize: 11,
-    color: THEME.textMuted,
-    fontStyle: "italic",
-  },
-
   // ── Admin recovery (pending screen) ──────────────────────────────────────────
   adminRecoveryLink: {
     fontFamily: FONTS.mono,

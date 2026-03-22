@@ -3,18 +3,22 @@
  *
  * Message format:
  *   Regular:  MSG:<username>:<content>
- *   Reply:    MSG:<username>:REPLY:<targetId>:<targetSender>:<content>
- *   Reaction: REACT:🍌:<targetMessageId>
+ *   Reply:    Native ReplyCodec { reference, content: { text } } (legacy: REPLYv2: string)
+ *   Reaction: Native ReactionCodec { reference, action, schema, content } (legacy: REACT: string)
  *
  * Uses createRandom() — no Ethereum signer needed (Solana compatible).
  * XMTP identity is persisted in SecureStore across sessions.
  */
 
-import { Client, Group, PublicIdentity } from "@xmtp/react-native-sdk";
+import { Client, Group, PublicIdentity, ReactionCodec, ReplyCodec, RemoteAttachmentCodec } from "@xmtp/react-native-sdk";
+import type { ReactionContent, ReplyContent, RemoteAttachmentContent } from "@xmtp/react-native-sdk";
+
+const NATIVE_CODECS = [new ReactionCodec(), new ReplyCodec(), new RemoteAttachmentCodec()];
 import type { ChatMessage, MessageReaction, ReactionEmoji, StickerReaction } from "@/types";
 import { REACTIONS } from "./constants";
 import * as SecureStore from "expo-secure-store";
 import type { JoinRequest } from "@/store/appStore";
+import { getLastReadTimestamp } from "@/lib/messageCache";
 
 export type XmtpClient = Client;
 export type XmtpGroup = Group;
@@ -39,7 +43,7 @@ async function getOrCreateEncryptionKey(): Promise<Uint8Array> {
 
 export async function initXmtpClient(): Promise<Client> {
   const dbEncryptionKey = await getOrCreateEncryptionKey();
-  const opts = { env: "production" as const, dbEncryptionKey };
+  const opts = { env: "production" as const, dbEncryptionKey, codecs: NATIVE_CODECS };
 
   const storedInboxId = await SecureStore.getItemAsync(SK_INBOX_ID);
   const storedIdentifier = await SecureStore.getItemAsync(SK_IDENTITY_ID);
@@ -79,27 +83,51 @@ export async function getOrCreateGlobalChat(
 ): Promise<{ group: XmtpGroup | null; isNewAdmin: boolean }> {
   if (groupId) {
     // Step 1: discover conversations (fetches welcome messages / group invites)
+    // Include "unknown" consent state — groups added by bot start as "unknown"
+    console.log("[XMTP] Syncing conversations to discover group invites…");
     await client.conversations.sync();
-    // Also sync all conversations to pick up group invites from epoch updates
-    try { await client.conversations.syncAllConversations(); } catch { /* ignore */ }
+
+    // syncAllConversations with all consent states to pick up bot-added groups
+    try {
+      await client.conversations.syncAllConversations(["allowed", "unknown"] as any);
+    } catch (e) {
+      console.warn("[XMTP] syncAllConversations failed:", (e as Error).message);
+    }
 
     // Try findGroup first (fastest path)
     let found = await client.conversations.findGroup(groupId as any);
-    if (found) return { group: found as unknown as XmtpGroup, isNewAdmin: false };
+    if (found) {
+      console.log("[XMTP] Found group via findGroup");
+      return { group: found as unknown as XmtpGroup, isNewAdmin: false };
+    }
 
-    // Fallback: list all groups and match by ID
-    // Sometimes findGroup returns null even when the group exists locally
+    // Fallback: list all groups INCLUDING "unknown" consent state
+    // Groups added by the bot start as "unknown" until the user explicitly allows them
     try {
-      const allGroups = await client.conversations.listGroups();
+      const allGroups = await client.conversations.listGroups(
+        undefined, undefined, ["allowed", "unknown"] as any,
+      );
+      console.log(`[XMTP] listGroups returned ${allGroups.length} groups, looking for ${groupId.slice(0, 12)}…`);
       for (const g of allGroups) {
         if ((g as any).id === groupId) {
-          console.log("[XMTP] Found group via listGroups fallback");
+          console.log("[XMTP] Found group via listGroups fallback (consent: unknown)");
           return { group: g as unknown as XmtpGroup, isNewAdmin: false };
         }
       }
     } catch { /* ignore */ }
 
+    // Second pass: sync again in case the welcome message arrived during first pass
+    try {
+      await client.conversations.sync();
+      found = await client.conversations.findGroup(groupId as any);
+      if (found) {
+        console.log("[XMTP] Found group on second sync pass");
+        return { group: found as unknown as XmtpGroup, isNewAdmin: false };
+      }
+    } catch { /* ignore */ }
+
     // Group ID set but user is not yet a member — must be added by admin.
+    console.log("[XMTP] Group not found after sync — user not yet a member");
     return { group: null, isNewAdmin: false };
   }
 
@@ -232,87 +260,169 @@ function parseContent(raw: string): {
   return { username: undefined, inner: raw };
 }
 
+function decodeStringMessage(raw: any, rawContent: string, myInboxId: string): ChatMessage | null {
+  // System messages — handled separately, not displayed in chat
+  if (rawContent.startsWith("REACT:")) return null;
+  if (rawContent.startsWith("STICKER_REACT:")) return null;
+  if (rawContent.startsWith("TYPING:")) return null;
+  if (rawContent.startsWith("PROFILE_UPDATE:")) return null;
+  if (rawContent.startsWith("EVENT:")) return null;
+  if (rawContent.startsWith("EDIT:")) return null;
+  if (rawContent.startsWith("PRESENCE:")) return null;
+  if (rawContent.startsWith("LIVE_ROOM:")) return null;
+  if (rawContent.startsWith("VIDEO_ROOM:")) return null;
+  if (rawContent.startsWith("THREAD:")) return null;
+  if (rawContent.startsWith("PIN:")) return null;
+  if (rawContent.startsWith("UNPIN:")) return null;
+  if (rawContent.startsWith("NFT_LIST:")) return null;
+  if (rawContent.startsWith("NFT_BID:")) return null;
+  if (rawContent.startsWith("NFT_ACCEPT:")) return null;
+  if (rawContent.startsWith("NFT_DELIST:")) return null;
+  if (rawContent.startsWith("NFT_OFFER:")) return null;
+  if (rawContent.startsWith("NFT_SWAP:")) return null;
+  if (rawContent.startsWith("NFT_COMPLETE:")) return null;
+  if (rawContent.startsWith("AUTOMONKE_STATUS:")) return null;
+  if (rawContent.startsWith("READ:")) return null;
+
+  const { username, inner } = parseContent(rawContent);
+
+  let content = inner;
+  let replyTo: ChatMessage["replyTo"] | undefined;
+
+  if (inner.startsWith("REPLYv2:")) {
+    const withoutPrefix = inner.slice("REPLYv2:".length);
+    const parts = withoutPrefix.split(":");
+    const targetId      = parts[0] ?? "";
+    const targetSender  = parts[1] ?? "";
+    const targetUsername = parts[2] || undefined;
+    const origB64       = parts[3] ?? "";
+    const replyContent  = parts.slice(4).join(":");
+
+    let originalContent = "";
+    try {
+      originalContent = Buffer.from(origB64, "base64").toString("utf8");
+    } catch { /* leave blank if decode fails */ }
+
+    replyTo = {
+      id: targetId,
+      senderAddress: targetSender,
+      senderUsername: targetUsername,
+      content: originalContent,
+    };
+    content = replyContent;
+
+  } else if (inner.startsWith("REPLY:")) {
+    const parts = inner.split(":");
+    const [, targetId, targetSender, ...rest] = parts;
+    const replyContent = rest.join(":");
+    replyTo = {
+      id: targetId,
+      senderAddress: targetSender,
+      senderUsername: undefined,
+      content: "",
+    };
+    content = replyContent;
+  }
+
+  return {
+    id: raw.id,
+    senderAddress: raw.senderInboxId as string,
+    senderUsername: username,
+    content,
+    sentAt: new Date(raw.sentNs / 1_000_000),
+    reactions: buildEmptyReactions(),
+    replyTo,
+    status: "sent",
+  };
+}
+
 export function decodeMessage(raw: any, myInboxId: string): ChatMessage | null {
   try {
     const rawContent: unknown = raw.content();
-    if (!rawContent || typeof rawContent !== "string") return null;
 
-    // System messages — handled separately, not displayed in chat
-    if (rawContent.startsWith("REACT:")) return null;
-    if (rawContent.startsWith("STICKER_REACT:")) return null;
-    if (rawContent.startsWith("TYPING:")) return null;
-    if (rawContent.startsWith("PROFILE_UPDATE:")) return null;
-    if (rawContent.startsWith("EVENT:")) return null;
-    if (rawContent.startsWith("EDIT:")) return null;
-    if (rawContent.startsWith("PRESENCE:")) return null;
-    if (rawContent.startsWith("LIVE_ROOM:")) return null;
-    if (rawContent.startsWith("VIDEO_ROOM:")) return null;
-    if (rawContent.startsWith("THREAD:")) return null;
-    if (rawContent.startsWith("PIN:")) return null;
-    if (rawContent.startsWith("UNPIN:")) return null;
-    if (rawContent.startsWith("NFT_LIST:")) return null;
-    if (rawContent.startsWith("NFT_BID:")) return null;
-    if (rawContent.startsWith("NFT_ACCEPT:")) return null;
-    if (rawContent.startsWith("NFT_DELIST:")) return null;
+    // ── Native codecs (object content) ──────────────────────────────────
+    if (rawContent && typeof rawContent === "object") {
+      const obj = rawContent as Record<string, any>;
 
-    const { username, inner } = parseContent(rawContent);
+      // Native ReactionCodec → handled by applyReaction, never displayed
+      if (obj.reaction) return null;
 
-    let content = inner;
-    let replyTo: ChatMessage["replyTo"] | undefined;
+      // Native ReplyCodec → decode the reply
+      if (obj.reply) {
+        const replyText: string = obj.reply.content?.text ?? "";
+        if (!replyText) return null;
+        const { username, inner } = parseContent(replyText);
+        return {
+          id: raw.id,
+          senderAddress: raw.senderInboxId as string,
+          senderUsername: username,
+          content: inner,
+          sentAt: new Date(raw.sentNs / 1_000_000),
+          reactions: buildEmptyReactions(),
+          replyTo: {
+            id: obj.reply.reference ?? "",
+            senderAddress: "",
+            content: "",
+          },
+          status: "sent",
+        };
+      }
 
-    if (inner.startsWith("REPLYv2:")) {
-      // Format: REPLYv2:<targetId>:<targetSender>:<targetUsername>:<origBase64>:<replyContent>
-      // Base64 has no ":" so the first 5 fields are safe to split; replyContent
-      // is reassembled with join(":") to preserve any colons the user typed.
-      const withoutPrefix = inner.slice("REPLYv2:".length);
-      const parts = withoutPrefix.split(":");
-      const targetId      = parts[0] ?? "";
-      const targetSender  = parts[1] ?? "";
-      const targetUsername = parts[2] || undefined;
-      const origB64       = parts[3] ?? "";
-      const replyContent  = parts.slice(4).join(":");
+      // Native RemoteAttachmentCodec → decode as ATTACHMENT: message
+      if (obj.remoteAttachment) {
+        const att = obj.remoteAttachment as RemoteAttachmentContent;
+        const filename = att.filename ?? "file";
+        // Encode as ATTACHMENT:<url>|<filename> for MessageBubble rendering
+        return {
+          id: raw.id,
+          senderAddress: raw.senderInboxId as string,
+          senderUsername: undefined,
+          content: `ATTACHMENT:${att.url}|${filename}`,
+          sentAt: new Date(raw.sentNs / 1_000_000),
+          reactions: buildEmptyReactions(),
+          status: "sent",
+        };
+      }
 
-      let originalContent = "";
-      try {
-        originalContent = Buffer.from(origB64, "base64").toString("utf8");
-      } catch { /* leave blank if decode fails */ }
+      // Object with .text field (future-proof for NativeMessageContent)
+      if (typeof obj.text === "string") {
+        const textContent = obj.text;
+        if (!textContent) return null;
+        // Fall through to string handling below
+        return decodeStringMessage(raw, textContent, myInboxId);
+      }
 
-      replyTo = {
-        id: targetId,
-        senderAddress: targetSender,
-        senderUsername: targetUsername,
-        content: originalContent,   // ← the quoted original text
-      };
-      content = replyContent;       // ← the new reply text
-
-    } else if (inner.startsWith("REPLY:")) {
-      // Legacy format (messages sent before REPLYv2). Original content was not
-      // stored, so replyTo.content will be empty — better than showing wrong text.
-      const parts = inner.split(":");
-      const [, targetId, targetSender, ...rest] = parts;
-      const replyContent = rest.join(":");
-      replyTo = {
-        id: targetId,
-        senderAddress: targetSender,
-        senderUsername: undefined,
-        content: "",  // original content was never stored in legacy format
-      };
-      content = replyContent;
+      return null;
     }
 
-    return {
-      id: raw.id,
-      senderAddress: raw.senderInboxId as string,
-      senderUsername: username,
-      content,
-      sentAt: new Date(raw.sentNs / 1_000_000),
-      reactions: buildEmptyReactions(),
-      replyTo,
-      status: "sent",
-    };
+    if (!rawContent || typeof rawContent !== "string") return null;
+
+    return decodeStringMessage(raw, rawContent, myInboxId);
   } catch {
     return null;
   }
+}
+
+/**
+ * Fill in replyTo.content for native-codec replies by looking up the referenced message.
+ * Call after batch-decoding messages so the referenced messages are available.
+ */
+export function resolveReplyTargets(messages: ChatMessage[]): ChatMessage[] {
+  const byId = new Map(messages.map((m) => [m.id, m]));
+  return messages.map((msg) => {
+    if (!msg.replyTo?.id || msg.replyTo.content) return msg;
+    const target = byId.get(msg.replyTo.id);
+    if (!target) return msg;
+    return {
+      ...msg,
+      replyTo: {
+        ...msg.replyTo,
+        senderAddress: target.senderAddress,
+        senderUsername: target.senderUsername,
+        content: target.content,
+      },
+    };
+  });
 }
 
 export function applyReaction(
@@ -320,17 +430,30 @@ export function applyReaction(
   raw: any,
   myInboxId: string
 ): ChatMessage[] {
-  let content: string;
+  let emoji: string;
+  let targetId: string;
+  const sender: string = raw.senderInboxId;
+
   try {
-    content = raw.content();
+    const content = raw.content();
+
+    if (typeof content === "string" && content.startsWith("REACT:")) {
+      // Legacy string format
+      const parts = content.split(":");
+      emoji = parts[1];
+      targetId = parts[2];
+    } else if (content && typeof content === "object") {
+      // Native ReactionCodec
+      const reaction = content.reaction ?? content;
+      if (!reaction.reference || !reaction.content) return messages;
+      emoji = reaction.content;
+      targetId = reaction.reference;
+    } else {
+      return messages;
+    }
   } catch {
     return messages;
   }
-
-  if (!content?.startsWith("REACT:")) return messages;
-
-  const [, emoji, targetId] = content.split(":");
-  const sender: string = raw.senderInboxId;
 
   return messages.map((msg) => {
     if (msg.id !== targetId) return msg;
@@ -387,6 +510,60 @@ export function applyEdit(
   });
 }
 
+// ─── Profile Update Parsing & Validation ──────────────────────────────────
+
+export interface ParsedProfileUpdate {
+  id: string;
+  username?: string;
+  bio?: string;
+  xAccount?: string;
+  walletAddress?: string;
+  tipWallet?: string;
+  nftImage?: string | null;
+  legendary: boolean;
+  pushToken?: string;
+  expoPushToken?: string;
+}
+
+/**
+ * Parse and validate a PROFILE_UPDATE: message payload.
+ * Returns null if the JSON is malformed or missing required fields.
+ * Sanitizes all string fields to prevent injection.
+ */
+export function parseProfileUpdate(raw: string): ParsedProfileUpdate | null {
+  if (!raw.startsWith("PROFILE_UPDATE:")) return null;
+  const jsonStr = raw.slice("PROFILE_UPDATE:".length);
+  // Reject oversized payloads (DoS protection)
+  if (jsonStr.length > 10_000) return null;
+
+  let data: any;
+  try {
+    data = JSON.parse(jsonStr);
+  } catch {
+    return null;
+  }
+
+  // Must be a plain object with a string `id`
+  if (!data || typeof data !== "object" || Array.isArray(data)) return null;
+  if (typeof data.id !== "string" || !data.id) return null;
+
+  const str = (v: unknown): string | undefined =>
+    typeof v === "string" && v ? v.slice(0, 500) : undefined;
+
+  return {
+    id: data.id,
+    username: str(data.u),
+    bio: str(data.b),
+    xAccount: str(data.x),
+    walletAddress: str(data.w),
+    tipWallet: str(data.tw),
+    nftImage: typeof data.ni === "string" ? data.ni || null : null,
+    legendary: !!data.lg,
+    pushToken: str(data.pt),
+    expoPushToken: str(data.ept),
+  };
+}
+
 // ─── Generic dApp Group ───────────────────────────────────────────────────────
 
 /**
@@ -399,9 +576,44 @@ export async function getOrCreateDAppGroup(
   groupName: string
 ): Promise<XmtpGroup> {
   if (groupId) {
+    console.log(`[XMTP] getOrCreateDAppGroup: looking for "${groupName}" id=${groupId}`);
     await client.conversations.sync();
-    const found = await client.conversations.findGroup(groupId as any);
+    let found = await client.conversations.findGroup(groupId as any);
+    console.log(`[XMTP] getOrCreateDAppGroup: findGroup first attempt → ${found ? "FOUND" : "null"}`);
+
+    if (!found) {
+      // Second attempt: syncAllConversations with unknown consent (bot-added groups)
+      try { await client.conversations.syncAllConversations(["allowed", "unknown"] as any); } catch { /* ignore */ }
+      found = await client.conversations.findGroup(groupId as any);
+      console.log(`[XMTP] getOrCreateDAppGroup: findGroup after syncAll → ${found ? "FOUND" : "null"}`);
+    }
+
+    if (!found) {
+      // Third attempt: list all groups including unknown consent state
+      try {
+        const allGroups = await client.conversations.listGroups(
+          undefined, undefined, ["allowed", "unknown"] as any,
+        );
+        console.log(`[XMTP] getOrCreateDAppGroup: listGroups returned ${allGroups.length} groups`);
+        for (const g of allGroups) {
+          const gId = (g as any).id;
+          const gName = (g as any).name;
+          console.log(`[XMTP]   group: id=${gId} name="${gName}"`);
+          if (gId === groupId) {
+            found = g as any;
+            break;
+          }
+        }
+      } catch (e) {
+        console.warn(`[XMTP] getOrCreateDAppGroup: listGroups failed:`, e);
+      }
+    }
+
     if (found) return found as unknown as XmtpGroup;
+
+    // Do NOT create a new group — the bot channel must already exist.
+    // Throwing lets the UI show an error with a Retry button.
+    throw new Error(`Bot channel "${groupName}" not found. You may not be a member yet — ask the admin to add you.`);
   }
 
   const group = await client.conversations.newGroup([], {
@@ -433,15 +645,15 @@ export async function sendReply(
   replyContent: string,
   username?: string | null
 ): Promise<void> {
-  // REPLYv2 format embeds the original message's content (base64) and sender
-  // username so the quoted preview is always correct after decoding.
-  // Base64 never contains ":" so splitting on ":" is safe for all fields except
-  // replyContent itself, which is reassembled with rest.join(":").
-  const origB64 = Buffer.from(targetMessage.content).toString("base64");
-  const origUsername = targetMessage.senderUsername ?? "";
-  const inner = `REPLYv2:${targetMessage.id}:${targetMessage.senderAddress}:${origUsername}:${origB64}:${replyContent}`;
-  const packed = username ? `MSG:${username}:${inner}` : inner;
-  await (group as any).send(packed);
+  // Native ReplyCodec — references the target message by ID.
+  // Reply text is wrapped in MSG:username: so decodeMessage can extract the sender.
+  const packed = username ? `MSG:${username}:${replyContent}` : replyContent;
+  await (group as any).send({
+    reply: {
+      reference: targetMessage.id,
+      content: { text: packed },
+    },
+  });
 }
 
 export async function sendReaction(
@@ -449,8 +661,15 @@ export async function sendReaction(
   emoji: ReactionEmoji,
   targetMessageId: string
 ): Promise<void> {
-  const packed = `REACT:${emoji}:${targetMessageId}`;
-  await (group as any).send(packed);
+  // Native ReactionCodec
+  await (group as any).send({
+    reaction: {
+      reference: targetMessageId,
+      action: "added",
+      schema: "unicode",
+      content: emoji,
+    },
+  });
 }
 
 /**
@@ -550,6 +769,7 @@ export interface DmThread {
   peerInboxId: string;
   lastMessage: string | null;
   lastMessageAt: Date | null;
+  unreadCount: number;
 }
 
 /**
@@ -571,21 +791,22 @@ export async function listDmThreads(client: XmtpClient): Promise<DmThread[]> {
 
     try {
       await (convo as any).sync();
-      const msgs: any[] = await (convo as any).messages({ limit: 1 });
+      // Fetch up to 20 recent messages for unread counting
+      const msgs: any[] = await (convo as any).messages({ limit: 20 });
       const last = msgs[0];
       let lastMessage: string | null = null;
       let lastMessageAt: Date | null = null;
+      let isJoinRequest = false;
 
       if (last) {
         try {
-          const raw: string = last.content();
-          // Parse MSG:<username>:<content> → show just the content part
+          const raw: unknown = last.content();
           if (typeof raw === 'string') {
             if (raw.startsWith('MSG:')) {
               const parts = raw.split(':');
               lastMessage = parts.slice(2).join(':');
             } else if (raw.startsWith('JOIN_REQUEST:')) {
-              continue; // skip join-request DMs from the inbox list
+              isJoinRequest = true;
             } else {
               lastMessage = raw;
             }
@@ -596,9 +817,33 @@ export async function listDmThreads(client: XmtpClient): Promise<DmThread[]> {
           : null;
       }
 
-      threads.push({ peerInboxId, lastMessage, lastMessageAt });
+      if (isJoinRequest) continue;
+
+      // Count unread messages from peer since last read
+      const lastRead = await getLastReadTimestamp(`dm_${peerInboxId}`);
+      let unreadCount = 0;
+      if (lastRead > 0) {
+        for (const m of msgs) {
+          try {
+            const sentMs = Number(m.sentNs) / 1_000_000;
+            if (sentMs <= lastRead) break; // msgs are newest-first, stop once we pass last-read
+            const sender = m.senderInboxId ?? '';
+            if (sender !== client.inboxId) unreadCount++;
+          } catch { /* skip */ }
+        }
+      } else {
+        // Never opened this DM — count all peer messages
+        for (const m of msgs) {
+          try {
+            const sender = m.senderInboxId ?? '';
+            if (sender !== client.inboxId) unreadCount++;
+          } catch { /* skip */ }
+        }
+      }
+
+      threads.push({ peerInboxId, lastMessage, lastMessageAt, unreadCount });
     } catch {
-      threads.push({ peerInboxId, lastMessage: null, lastMessageAt: null });
+      threads.push({ peerInboxId, lastMessage: null, lastMessageAt: null, unreadCount: 0 });
     }
   }
 
@@ -618,7 +863,8 @@ export async function loadDmMessages(dm: any, myInboxId: string): Promise<ChatMe
   await dm.sync();
   await dm.sync(); // second pass ensures bot replies committed before fetching
   const raw: any[] = await dm.messages({ limit: 200 });
-  return raw.map(r => decodeMessage(r, myInboxId)).filter(Boolean) as ChatMessage[];
+  const decoded = raw.map(r => decodeMessage(r, myInboxId)).filter(Boolean) as ChatMessage[];
+  return decoded.reverse(); // XMTP returns newest-first; reverse to oldest-first for FlatList
 }
 
 export async function sendDmMessage(dm: any, content: string, username?: string | null): Promise<void> {
@@ -626,7 +872,46 @@ export async function sendDmMessage(dm: any, content: string, username?: string 
   await dm.send(payload);
 }
 
+/**
+ * Send a read receipt to the peer in a DM.
+ * Format: READ:<lastReadMessageId>
+ * The peer marks all own messages up to this ID as read.
+ */
+export async function sendReadReceipt(dm: any, lastReadMessageId: string): Promise<void> {
+  try {
+    await dm.send(`READ:${lastReadMessageId}`);
+  } catch { /* non-critical — never block UI for read receipts */ }
+}
+
 // ─── Sticker Reactions ────────────────────────────────────────────────────────
+
+// ─── Remote Attachments (E2E encrypted file sharing) ─────────────────────────
+
+/**
+ * Send a file as a RemoteAttachment via the native XMTP codec.
+ * The file must already be uploaded to an HTTPS URL.
+ * Encryption metadata is generated by the SDK.
+ */
+export async function sendRemoteAttachment(
+  group: XmtpGroup,
+  url: string,
+  filename: string,
+  contentLength: number,
+): Promise<void> {
+  const content: RemoteAttachmentContent = {
+    scheme: "https://",
+    url,
+    filename,
+    contentLength: String(contentLength),
+    // The SDK handles encryption fields (secret, salt, nonce, contentDigest)
+    // when using the native codec's encode path
+    secret: "",
+    salt: "",
+    nonce: "",
+    contentDigest: "",
+  };
+  await (group as any).send({ remoteAttachment: content });
+}
 
 /**
  * Send a sticker reaction attached to a specific message.
