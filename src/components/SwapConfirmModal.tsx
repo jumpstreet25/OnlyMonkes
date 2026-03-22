@@ -1,8 +1,10 @@
 /**
  * SwapConfirmModal
  *
- * Shows swap details (input → output, price impact, slippage) and
- * lets the user confirm or cancel before signing via MWA.
+ * Shows swap details (input → output, price impact, slippage, fee policy)
+ * and lets the user confirm or cancel before signing via MWA.
+ *
+ * Black background, OnlyMonkes blue text — consistent disclaimer styling.
  */
 
 import React from "react";
@@ -14,8 +16,17 @@ import {
   Pressable,
   ActivityIndicator,
 } from "react-native";
-import { THEME, FONTS } from "@/lib/constants";
+import { FONTS, TOKEN_TRADE_FEE_PCT } from "@/lib/constants";
 import type { SwapQuote } from "@/lib/jupiterSwap";
+
+const OM_BLUE = "#0096C7";
+const OM_BLUE_DIM = "rgba(0, 150, 199, 0.55)";
+const BG = "#000000";
+const SURFACE = "#0A0A0F";
+const BORDER = "rgba(0, 150, 199, 0.15)";
+const RED = "#EF4444";
+const GOLD = "#F59E0B";
+const GREEN = "#10B981";
 
 interface SwapConfirmModalProps {
   visible: boolean;
@@ -34,12 +45,15 @@ export function SwapConfirmModal({
 }: SwapConfirmModalProps) {
   if (!quote) return null;
 
+  const feePct = TOKEN_TRADE_FEE_PCT * 100;
+  const isBuy = quote.inputSymbol === "SOL";
+
   const impactColor =
     quote.priceImpactPct > 3
-      ? THEME.error
+      ? RED
       : quote.priceImpactPct > 1
-        ? THEME.warning
-        : THEME.success;
+        ? GOLD
+        : GREEN;
 
   return (
     <Modal
@@ -47,71 +61,84 @@ export function SwapConfirmModal({
       transparent
       animationType="fade"
       onRequestClose={onCancel}
+      statusBarTranslucent
     >
-      <Pressable style={styles.backdrop} onPress={onCancel}>
-        <Pressable style={styles.card} onPress={() => {}}>
-          <Text style={styles.title}>Confirm Swap</Text>
+      <Pressable style={s.backdrop} onPress={onCancel}>
+        <Pressable style={s.card} onPress={() => {}}>
+          <Text style={s.title}>Confirm Swap</Text>
 
-          <View style={styles.row}>
-            <Text style={styles.label}>You pay</Text>
-            <Text style={styles.value}>
+          <View style={s.row}>
+            <Text style={s.label}>You pay</Text>
+            <Text style={s.value}>
               {quote.inAmountUi.toFixed(6)} {quote.inputSymbol}
             </Text>
           </View>
 
-          <View style={styles.arrowRow}>
-            <Text style={styles.arrow}>↓</Text>
+          <View style={s.arrowRow}>
+            <Text style={s.arrow}>↓</Text>
           </View>
 
-          <View style={styles.row}>
-            <Text style={styles.label}>You receive</Text>
-            <Text style={styles.value}>
+          <View style={s.row}>
+            <Text style={s.label}>You receive</Text>
+            <Text style={s.value}>
               {quote.outAmountUi.toFixed(6)} {quote.outputSymbol}
             </Text>
           </View>
 
-          <View style={styles.divider} />
+          <View style={s.divider} />
 
-          <View style={styles.row}>
-            <Text style={styles.detailLabel}>Price Impact</Text>
-            <Text style={[styles.detailValue, { color: impactColor }]}>
+          <View style={s.row}>
+            <Text style={s.detailLabel}>Price Impact</Text>
+            <Text style={[s.detailValue, { color: impactColor }]}>
               {quote.priceImpactPct.toFixed(2)}%
             </Text>
           </View>
 
-          <View style={styles.row}>
-            <Text style={styles.detailLabel}>Slippage</Text>
-            <Text style={styles.detailValue}>
+          <View style={s.row}>
+            <Text style={s.detailLabel}>Slippage</Text>
+            <Text style={s.detailValue}>
               {(quote.slippageBps / 100).toFixed(1)}%
             </Text>
           </View>
 
+          <View style={s.feeInfoBox}>
+            <Text style={s.feeInfoText}>
+              {isBuy
+                ? `A ${feePct}% fee applies to profits when you sell`
+                : `A ${feePct}% fee applies to profits only — no fee if you lost money on this trade`}
+            </Text>
+          </View>
+
           {quote.priceImpactPct > 5 && (
-            <View style={styles.warningBox}>
-              <Text style={styles.warningText}>
+            <View style={s.warningBox}>
+              <Text style={s.warningText}>
                 High price impact! You may lose significant value on this trade.
               </Text>
             </View>
           )}
 
-          <View style={styles.buttonRow}>
+          <View style={s.buttonRow}>
             <Pressable
-              style={[styles.btn, styles.cancelBtn]}
+              style={({ pressed }) => [s.btn, s.declineBtn, pressed && s.btnPressed]}
               onPress={onCancel}
               disabled={isExecuting}
             >
-              <Text style={styles.cancelBtnText}>Cancel</Text>
+              <Text style={s.declineText}>Decline</Text>
             </Pressable>
 
             <Pressable
-              style={[styles.btn, styles.confirmBtn, isExecuting && styles.btnDisabled]}
+              style={({ pressed }) => [
+                s.btn, s.acceptBtn,
+                isExecuting && s.btnDisabled,
+                pressed && s.btnPressed,
+              ]}
               onPress={onConfirm}
               disabled={isExecuting}
             >
               {isExecuting ? (
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
-                <Text style={styles.confirmBtnText}>Swap</Text>
+                <Text style={s.acceptText}>I Understand</Text>
               )}
             </Pressable>
           </View>
@@ -121,10 +148,10 @@ export function SwapConfirmModal({
   );
 }
 
-const styles = StyleSheet.create({
+const s = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.7)",
+    backgroundColor: BG,
     justifyContent: "center",
     alignItems: "center",
     padding: 24,
@@ -132,16 +159,16 @@ const styles = StyleSheet.create({
   card: {
     width: "100%",
     maxWidth: 360,
-    backgroundColor: THEME.surface,
+    backgroundColor: SURFACE,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: THEME.border,
+    borderColor: BORDER,
     padding: 20,
   },
   title: {
     fontFamily: FONTS.display,
-    fontSize: 18,
-    color: THEME.text,
+    fontSize: 20,
+    color: OM_BLUE,
     textAlign: "center",
     marginBottom: 16,
   },
@@ -154,47 +181,56 @@ const styles = StyleSheet.create({
   label: {
     fontFamily: FONTS.bodyMed,
     fontSize: 14,
-    color: THEME.textMuted,
+    color: OM_BLUE_DIM,
   },
   value: {
     fontFamily: FONTS.mono,
     fontSize: 16,
-    color: THEME.text,
+    color: OM_BLUE,
     fontWeight: "600",
   },
-  arrowRow: {
-    alignItems: "center",
-    paddingVertical: 4,
-  },
-  arrow: {
-    fontSize: 20,
-    color: THEME.accent,
-  },
+  arrowRow: { alignItems: "center", paddingVertical: 4 },
+  arrow: { fontSize: 20, color: OM_BLUE },
   divider: {
     height: 1,
-    backgroundColor: THEME.border,
+    backgroundColor: BORDER,
     marginVertical: 12,
   },
   detailLabel: {
     fontFamily: FONTS.body,
     fontSize: 13,
-    color: THEME.textMuted,
+    color: OM_BLUE_DIM,
   },
   detailValue: {
     fontFamily: FONTS.mono,
     fontSize: 13,
-    color: THEME.text,
+    color: OM_BLUE,
+  },
+  feeInfoBox: {
+    backgroundColor: "rgba(0, 150, 199, 0.06)",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: BORDER,
+    padding: 10,
+    marginTop: 10,
+  },
+  feeInfoText: {
+    fontFamily: FONTS.body,
+    fontSize: 11,
+    color: OM_BLUE_DIM,
+    textAlign: "center",
+    lineHeight: 16,
   },
   warningBox: {
-    backgroundColor: "rgba(239,68,68,0.15)",
+    backgroundColor: "rgba(239,68,68,0.12)",
     borderRadius: 8,
     padding: 10,
-    marginTop: 12,
+    marginTop: 10,
   },
   warningText: {
     fontFamily: FONTS.body,
     fontSize: 12,
-    color: THEME.error,
+    color: RED,
     textAlign: "center",
   },
   buttonRow: {
@@ -204,31 +240,29 @@ const styles = StyleSheet.create({
   },
   btn: {
     flex: 1,
-    height: 44,
+    height: 46,
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
   },
-  cancelBtn: {
-    backgroundColor: THEME.surfaceHigh,
+  btnPressed: { opacity: 0.7 },
+  btnDisabled: { opacity: 0.5 },
+  declineBtn: {
+    backgroundColor: "transparent",
     borderWidth: 1,
-    borderColor: THEME.border,
+    borderColor: "rgba(239, 68, 68, 0.35)",
   },
-  cancelBtnText: {
-    fontFamily: FONTS.bodyMed,
+  declineText: {
+    fontFamily: FONTS.bodySemi,
     fontSize: 15,
-    color: THEME.textMuted,
+    color: RED,
   },
-  confirmBtn: {
-    backgroundColor: THEME.accent,
+  acceptBtn: {
+    backgroundColor: OM_BLUE,
   },
-  confirmBtnText: {
-    fontFamily: FONTS.bodyMed,
+  acceptText: {
+    fontFamily: FONTS.bodySemi,
     fontSize: 15,
     color: "#fff",
-    fontWeight: "600",
-  },
-  btnDisabled: {
-    opacity: 0.6,
   },
 });

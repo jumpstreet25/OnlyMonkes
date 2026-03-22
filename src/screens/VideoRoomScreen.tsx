@@ -23,11 +23,11 @@ import {
   Text,
   StyleSheet,
   Pressable,
-  Dimensions,
   ScrollView,
   ActivityIndicator,
   StatusBar,
   Alert,
+  useWindowDimensions,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -52,8 +52,6 @@ import { VideoView } from '@livekit/react-native';
 import { Track, type VideoTrack as LKVideoTrack } from 'livekit-client';
 import { VideoReactionOverlay } from '@/components/VideoReactionOverlay';
 import { VideoStickerTray } from '@/components/VideoStickerTray';
-
-const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
 // ─── Video tile ──────────────────────────────────────────────────────────────
 
@@ -143,6 +141,7 @@ function calcGrid(count: number, screenW: number, screenH: number): { cols: numb
 
 export default function VideoRoomScreen() {
   const insets = useSafeAreaInsets();
+  const { width: SCREEN_W, height: SCREEN_H } = useWindowDimensions();
   const params = useLocalSearchParams<{ token: string; isHost: string }>();
 
   const myInboxId = useAppStore(s => s.myInboxId);
@@ -452,6 +451,8 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     flexWrap: 'wrap',
+    alignContent: 'center',
+    justifyContent: 'center',
   },
 
   // Tile

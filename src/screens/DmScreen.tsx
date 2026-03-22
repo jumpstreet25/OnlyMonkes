@@ -8,6 +8,7 @@ import { getCachedProfile, useProfileVersion } from '@/lib/userProfile';
 import { useDm } from '@/hooks/useDm';
 import { MessageBubble } from '@/components/MessageBubble';
 import { ChatInput } from '@/components/ChatInput';
+import ImageLightbox from '@/components/ImageLightbox';
 import { useAppStore } from '@/store/appStore';
 import type { ChatMessage, ReactionEmoji } from '@/types';
 
@@ -15,9 +16,10 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
   const insets = useSafeAreaInsets();
   const { myInboxId } = useAppStore();
   const [retryKey, setRetryKey] = useState(0);
-  const { messages, loading, error, sending, send } = useDm(peerInboxId);
+  const { messages, loading, error, sending, send, sendTyping, typingUsers } = useDm(peerInboxId);
   const [inputText, setInputText] = useState('');
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const flatListRef = useRef<FlatList>(null);
   useProfileVersion();
   const peerProfile = getCachedProfile(peerInboxId);
@@ -81,6 +83,7 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
               isOwn={item.senderAddress === myInboxId}
               onReact={noop}
               onReply={handleReply}
+              onPressImage={setLightboxUrl}
             />
           )}
           contentContainerStyle={{ paddingVertical: 8, flexGrow: 1, justifyContent: 'flex-end' }}
@@ -106,8 +109,11 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
         onCancelReply={() => setReplyingTo(null)}
         isSending={sending}
         isDmWithBot={isBotDm}
+        onTyping={sendTyping}
+        typingUsers={typingUsers}
       />
       <View style={{ height: insets.bottom }} />
+      <ImageLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
     </View>
   );
 }

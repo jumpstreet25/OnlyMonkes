@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getXmtpClient } from '@/hooks/useXmtp';
 import { listDmThreads, type DmThread } from '@/lib/xmtp';
+import { useAppStore } from '@/store/appStore';
 
 export function useDmInbox() {
   const [threads, setThreads]       = useState<DmThread[]>([]);
@@ -22,7 +23,15 @@ export function useDmInbox() {
     if (isRefresh) setRefreshing(true);
     try {
       const t = await listDmThreads(client);
-      if (mountedRef.current) setThreads(t);
+      if (mountedRef.current) {
+        setThreads(t);
+        // Seed per-DM unread counts from thread data
+        const counts: Record<string, number> = {};
+        for (const thread of t) {
+          if (thread.unreadCount > 0) counts[thread.peerInboxId] = thread.unreadCount;
+        }
+        useAppStore.getState().setDmUnreadCounts(counts);
+      }
     } catch (e) {
       console.warn('[useDmInbox] load error:', e);
     } finally {

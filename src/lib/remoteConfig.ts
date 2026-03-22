@@ -38,7 +38,10 @@ const EMPTY: AppRemoteConfig = { globalGroupId: '', adminInboxId: '' };
 export async function fetchAppConfig(): Promise<AppRemoteConfig> {
   try {
     // Cache-bust so testers always get the latest group ID.
-    const res = await fetch(`${RAW}?t=${Date.now()}`);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5_000);
+    const res = await fetch(`${RAW}?t=${Date.now()}`, { signal: controller.signal });
+    clearTimeout(timer);
     if (!res.ok) return EMPTY;
     const json = await res.json();
     return {
