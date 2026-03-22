@@ -1,6 +1,7 @@
 {
   "globalGroupId": "8683255a7e4af637917b7abd33b58d46",
   "adminInboxId": "931475426aed924bc7dd19d9dcee1cab6a74d1ee238a402685888bd66811e20a",
+  "botInboxId": "998001a498174b8a194110ee792b10f97de4965665eaf0d088ed2c71bdf62363",
   "botChannels": {
     "bets": "95d2ccab33833f99e9f80cc0aa78b951",
     "trades": "8700f7559b1ad28498c04d7af0db1465",
