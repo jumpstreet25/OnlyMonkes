@@ -129,6 +129,21 @@ git diff --cached | grep -inE '(eval\(|Function\(|dangerouslySet|\.env\.|process
 
 If ANY check fails, fix the issue before committing. No exceptions.
 
+## Solana Actions / Blinks
+
+- **Actions worker**: `https://onlymonkes-actions.jumpstreet25.workers.dev` (Cloudflare Worker)
+- Worker source: `worker-actions/src/index.ts` — swap and tip endpoints
+- **Jupiter API**: Use `api.jup.ag/swap/v1/quote` and `api.jup.ag/swap/v1/swap` — the old `quote-api.jup.ag/v6/` endpoints are deprecated and return DNS errors from CF Workers.
+- Swap amount capped at **5 SOL max** for safety. Tips capped at 10 SOL.
+- All wallet addresses and token mints MUST be validated via `new PublicKey()` before use.
+- Worker secrets: `HELIUS_API_KEY`, `JUP_API_KEY` (set via `wrangler secret put`)
+
+## Message Loading
+
+- XMTP `messages({ afterNs })` returns messages **newest-first**.
+- When trimming to N most recent: `slice(0, N)` FIRST, then `reverse()` for oldest-first processing. Never reverse then slice (that keeps the N oldest).
+- Main Chat loads 48 hours of messages, trims to 50 newest content messages (PRESENCE/TYPING/system filtered out).
+
 ## Code Style
 
 - Path alias: `@/` maps to `src/`
