@@ -1,11 +1,10 @@
 {
-  "globalGroupId": "8683255a7e4af637917b7abd33b58d46",
+  "globalGroupId": "721864535e7e5828e302004e074cfe15",
   "adminInboxId": "931475426aed924bc7dd19d9dcee1cab6a74d1ee238a402685888bd66811e20a",
-  "botInboxId": "998001a498174b8a194110ee792b10f97de4965665eaf0d088ed2c71bdf62363",
   "botChannels": {
-    "bets": "95d2ccab33833f99e9f80cc0aa78b951",
-    "trades": "8700f7559b1ad28498c04d7af0db1465",
-    "sales": "a930e27eb12b6d1181ef227e08d3fddd",
-    "predictions": "61e4b4249687ebb5b8954363455bc52d"
+    "bets": "49436e91597126409762cecdc2377d31",
+    "trades": "f7ea98c9238c479b8740eae44837d167",
+    "sales": "21c187e4c22dcc032eb3178ff033114d",
+    "predictions": "ee1d3d88d8ccfd72f6424a876ce0f00f"
   }
 }
