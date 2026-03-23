@@ -118,7 +118,7 @@ export function BlinkCard({ actionUrl }: BlinkCardProps) {
         const sig = await transact(async (mobileWallet: Web3MobileWallet) => {
           const cachedToken = useAppStore.getState().mwaAuthToken;
           let authResult;
-          if (cachedToken) {
+          if (cachedToken && typeof cachedToken === "string") {
             try {
               authResult = await mobileWallet.authorize({
                 cluster: "mainnet-beta",
@@ -137,7 +137,9 @@ export function BlinkCard({ actionUrl }: BlinkCardProps) {
               identity: APP_IDENTITY,
             });
           }
-          useAppStore.getState().setMwaAuthToken(authResult.auth_token);
+          if (authResult.auth_token) {
+            useAppStore.getState().setMwaAuthToken(authResult.auth_token);
+          }
 
           const result = await mobileWallet.signAndSendTransactions({
             transactions: [Buffer.from(tx.serialize())],

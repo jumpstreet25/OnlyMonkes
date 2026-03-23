@@ -280,10 +280,9 @@ export function useXmtp() {
           useAppStore.getState().setBotChannelIds(botChannels as any);
         }
 
-        // Ensure both bots are members of all groups (main + channels)
+        // Ensure bot is a member of all groups (main + channels)
         const BOT_INBOX = "998001a498174b8a194110ee792b10f97de4965665eaf0d088ed2c71bdf62363";
-        const TA_BOT_INBOX = "5862dfd861978cd587c151ded8fd7fb1ccdbca45d420da99a2299e2a675707b2";
-        const BOT_INBOXES = [BOT_INBOX, TA_BOT_INBOX];
+        const BOT_INBOXES = [BOT_INBOX];
         const allGroupsToCheck = [
           { name: "main", ref: group },
           ...channelDefs.map(ch => ({
@@ -647,9 +646,11 @@ export function useXmtp() {
           } catch { /* skip */ }
         }
 
-        // Trim to last 50 BEFORE applying reactions (big perf win)
-        decoded.reverse();
+        // Trim to most recent 50 BEFORE applying reactions (big perf win)
+        // rawHistory arrives newest-first from XMTP, so decoded is also newest-first.
+        // slice(0, 50) keeps the 50 newest, then reverse for oldest-first processing.
         decoded = decoded.slice(0, 50);
+        decoded.reverse();
         const recentIds = new Set(decoded.map(m => m.id));
 
         // Apply reactions/edits only to the 50 visible messages
