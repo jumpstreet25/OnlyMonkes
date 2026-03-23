@@ -320,7 +320,8 @@ export default function ChatScreen() {
       if (count >= 15) clearInterval(id); // stop after 2 min
     }, 8_000);
     return () => clearInterval(id);
-  }, [isGroupMember, messages.length >= 10]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isGroupMember, messages.length >= 10 ? 1 : 0]);
 
   // ─── Load saved profile, show modal if no username yet ───────────────────
 
