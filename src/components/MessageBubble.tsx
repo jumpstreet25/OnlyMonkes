@@ -1,13 +1,14 @@
 /**
- * MessageBubble
+ * MessageBubble — Dark Glassmorphism
  *
  * Layout:
- *   Row: [Avatar] [BubbleGroup] [BananaPill]
- *   - For own messages (row-reverse): [BananaPill] [BubbleGroup] [Avatar]
+ *   Row: [Avatar(backlit)] [BubbleGroup] [Timestamp]
+ *   - Own messages (row-reverse): [Timestamp] [BubbleGroup] [Avatar(backlit)]
+ *   - Bot channel: centered bubbles
  *   BubbleGroup:
- *     [SenderName ────── Timestamp]  ← header row
+ *     [SenderName]
  *     ReplyPreview (if any)
- *     Bubble (content + non-banana reaction pills)
+ *     Bubble (frosted glass, inner gradient, soft glow)
  *
  * Interactions:
  *   - Long-press → emoji picker modal
@@ -32,6 +33,7 @@ import {
   Linking,
   useWindowDimensions,
 } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import * as Clipboard from "expo-clipboard";
 import { Image as ExpoImage } from "expo-image";
 import * as Haptics from "expo-haptics";
@@ -40,7 +42,7 @@ import { THEME, FONTS } from "@/lib/constants";
 import { shortenAddress } from "@/lib/nftVerification";
 import { useAppStore } from "@/store/appStore";
 import { getCachedProfile, useProfileVersion, getAllTimeUsers } from "@/lib/userProfile";
-import { getOrExtractNftColor, readableTextColor } from "@/lib/nftColor";
+// nftColor no longer needed — glass bubbles use fixed semi-transparent backgrounds
 import { searchStickers, type GiphyItem } from "@/lib/giphy";
 import type { ChatMessage, ReactionEmoji } from "@/types";
 import type { ProfileTarget } from "@/components/UserProfileModal";
@@ -52,7 +54,17 @@ import { isUserOnline } from "@/lib/presence";
 import { hasThread, getThreadMeta } from "@/lib/threads";
 import { router } from "expo-router";
 
-const FALLBACK_BUBBLE = THEME.accent;
+// ─── Glassmorphism constants ─────────────────────────────────────────────────
+const GLASS_BLUE = "#6CB4EE";                    // OnlyMonkes blue
+const SOLANA_PURPLE = "#9945FF";                  // Solana brand purple for PFP glow
+// Unified bubble style — all bubbles use the same dark glass tint (rugdoctor 12:37 style)
+const GLASS_OWN_BG = "rgba(26, 26, 40, 0.65)";    // Same as other — unified look
+const GLASS_OTHER_BG = "rgba(26, 26, 40, 0.65)";   // Dark glass tint
+const GLASS_BOT_BG = "rgba(26, 26, 40, 0.65)";     // Same for bot channels
+const GLASS_BORDER_OWN = "rgba(248, 248, 255, 0.08)";
+const GLASS_BORDER_OTHER = "rgba(248, 248, 255, 0.08)";
+
+// Removed FALLBACK_BUBBLE — glass bubbles don't use solid NFT-derived colors
 
 // ─── Live Room Pill ──────────────────────────────────────────────────────────
 // Content format: LIVE_PILL:<audio|video>:<hostUsername>:<roomId>
@@ -288,6 +300,7 @@ interface MessageBubbleProps {
   onEdit?: (message: ChatMessage) => void;
   onPin?: (message: ChatMessage) => void;
   onThread?: (message: ChatMessage) => void;
+  isBotChannel?: boolean;
 }
 
 export const MessageBubble = memo(function MessageBubble({
@@ -303,8 +316,10 @@ export const MessageBubble = memo(function MessageBubble({
   onEdit,
   onPin,
   onThread,
+  isBotChannel,
 }: MessageBubbleProps) {
-  const { verifiedNft, myInboxId } = useAppStore();
+  const verifiedNft = useAppStore(s => s.verifiedNft);
+  const myInboxId = useAppStore(s => s.myInboxId);
   const { width: SCREEN_W } = useWindowDimensions();
   // Max bubble width is 72% of screen minus horizontal padding (14px each side)
   const mediaWidth = Math.round(SCREEN_W * 0.72 - 28);
@@ -312,33 +327,8 @@ export const MessageBubble = memo(function MessageBubble({
   // Re-render instantly whenever any profile cache entry changes (PFP updates)
   useProfileVersion();
 
-  // ── Bubble color: own messages use NFT-derived color, others use flat surface ─
-  // Others get THEME.surfaceHigh so the chat doesn't look like a purple rainbow.
-  const senderImageUrl = isOwn ? (verifiedNft?.image ?? null) : null;
-  const colorCacheKey  = myInboxId ?? "own";
-
-  const [bubbleColor, setBubbleColor] = useState<string>(
-    isOwn ? FALLBACK_BUBBLE : THEME.surfaceHigh
-  );
-  const [textColor, setTextColor] = useState<string>(
-    isOwn ? "#FFFFFF" : THEME.text
-  );
-
-  useEffect(() => {
-    if (!isOwn) {
-      setBubbleColor(THEME.surfaceHigh);
-      setTextColor(THEME.text);
-      return;
-    }
-    let cancelled = false;
-    getOrExtractNftColor(senderImageUrl, colorCacheKey).then((color) => {
-      if (!cancelled) {
-        setBubbleColor(color);
-        setTextColor(readableTextColor(color));
-      }
-    });
-    return () => { cancelled = true; };
-  }, [isOwn, senderImageUrl, colorCacheKey]);
+  // Glass bubbles use semi-transparent backgrounds; text is always light
+  const textColor = THEME.text;
 
   // Dynamic aspect ratio for GIF / IMAGE — computed from actual image dimensions on load
   const [imgAspect, setImgAspect] = useState<number>(3 / 4); // sensible portrait default
@@ -489,7 +479,10 @@ export const MessageBubble = memo(function MessageBubble({
   const displayName  = cachedSender?.username ?? message.senderUsername ?? shortenAddress(message.senderAddress);
   const isBot = message.senderUsername === "AI Agent #9385";
   // Show expand control when bot message likely exceeds 9 lines
-  const showBotExpand = isBot && (message.content.split("\n").length > 9 || message.content.length > 380);
+  const showBotExpand = useMemo(
+    () => isBot && (message.content.split("\n").length > 9 || message.content.length > 380),
+    [isBot, message.content],
+  );
   const isLegendarySender = isOwn
     ? useAppStore.getState().isLegendary
     : !!(cachedSender?.legendary);
@@ -512,30 +505,58 @@ export const MessageBubble = memo(function MessageBubble({
     [isMedia, displayContent],
   );
 
+  // Center bot messages in bot channels
+  const centerBubble = isBotChannel && isBot;
+
   return (
     <>
     <Animated.View
-      style={[styles.row, isOwn && styles.rowOwn, { transform: [{ translateX: swipeAnim }] }]}
+      style={[
+        styles.row,
+        isOwn && !centerBubble && styles.rowOwn,
+        centerBubble && styles.rowCenter,
+        { transform: [{ translateX: swipeAnim }] },
+      ]}
       {...panResponder.panHandlers}
     >
-      {/* Avatar — tappable → opens profile */}
-      <Pressable
-        style={styles.avatarContainer}
-        onPress={handlePressAvatar}
-        hitSlop={6}
-      >
-        {avatarUri ? (
-          <Image source={{ uri: avatarUri }} style={styles.avatar} />
-        ) : isBot ? (
-          <Image source={require('../../assets/ai_agent_avatar.png')} style={styles.avatar} />
-        ) : (
-          <View style={styles.avatarFallback} />
-        )}
-        {!isOwn && <OnlineDot online={isUserOnline(message.senderAddress)} />}
-      </Pressable>
+      {/* ── PFP — purple hue on chat layer + PFP floating above ────────── */}
+      {!isMedia && !centerBubble && (
+        <Pressable onPress={handlePressAvatar} hitSlop={6} style={styles.avatarOuter}>
+          {/* Layer 1: subtle purple hue wash (sits on the chat layer) */}
+          <View style={styles.avatarHue} />
+          {/* Layer 2: PFP image floating above the hue with depth shadow */}
+          <View style={styles.avatarFloat}>
+            {avatarUri ? (
+              <Image source={{ uri: avatarUri }} style={styles.avatarImg} />
+            ) : isBot ? (
+              <Image source={require('../../assets/ai_agent_avatar.png')} style={styles.avatarImg} />
+            ) : (
+              <View style={[styles.avatarImg, styles.avatarFallback]} />
+            )}
+          </View>
+        </Pressable>
+      )}
 
-      {/* Bubble group */}
-      <View style={[styles.bubbleGroup, isOwn && styles.bubbleGroupOwn]}>
+      {/* ── Bubble column ────────────────────────────────────────────── */}
+      <View style={[
+        styles.bubbleGroup,
+        isOwn && !centerBubble && styles.bubbleGroupOwn,
+        centerBubble && styles.bubbleGroupCenter,
+      ]}>
+
+        {/* Sender name row (outside bubble, above it) */}
+        {!isMedia && (
+          <View style={[
+            styles.senderRow,
+            isOwn && !centerBubble && styles.senderRowOwn,
+            centerBubble && styles.senderRowCenter,
+          ]}>
+            <Text style={styles.sender}>
+              {isOwn ? "You" : displayName}{isLegendarySender ? ' 🌟' : ''}
+            </Text>
+            {!isOwn && <OnlineDot online={isUserOnline(message.senderAddress)} />}
+          </View>
+        )}
 
         {/* Reply preview */}
         {message.replyTo && (
@@ -554,179 +575,200 @@ export const MessageBubble = memo(function MessageBubble({
           </View>
         )}
 
-        {/* Main bubble — no background/padding for GIF/IMAGE */}
+        {/* ── Main glass bubble ─────────────────────────────────────── */}
         <Pressable
           onLongPress={handleLongPress}
           delayLongPress={350}
           onPress={showBotExpand ? () => setBotExpanded(e => !e) : undefined}
-          style={isMedia ? styles.mediaBubble : [
-            styles.bubble,
-            isOwn ? styles.bubbleOwn : styles.bubbleOther,
-            { backgroundColor: bubbleColor },
-          ]}
+          style={isMedia ? styles.mediaBubble : undefined}
         >
-          {/* GIF content */}
-          {message.content.startsWith("GIF:") ? (
-            <Pressable
-              onPress={() => onPressImage?.(message.content.slice(4))}
-              onLongPress={handleLongPress}
-              delayLongPress={350}
-              style={{ width: mediaWidth, borderRadius: 14, overflow: "hidden" }}
-            >
-              <ExpoImage
-                source={{ uri: message.content.slice(4) }}
-                style={{ width: mediaWidth, height: mediaWidth * imgAspect }}
-                contentFit="contain"
-                cachePolicy="disk"
-                priority="normal"
-                onLoad={(e: any) => {
-                  const { width: w, height: h } = e.source;
-                  if (w > 0) setImgAspect(h / w);
-                }}
-              />
-              <View style={styles.watermarkShadow}>
+          {!isMedia ? (
+            /* Glow wrapper — shadow radiates BEHIND the bubble, no background */
+            <View style={[
+              styles.glassGlow,
+              isOwn && !centerBubble ? styles.glassGlowOwn : null,
+              !isOwn && !centerBubble ? styles.glassGlowOther : null,
+              centerBubble && styles.glassGlowBot,
+            ]}>
+              {/* Actual bubble — background, border, gradient, content */}
+              <View style={[
+                styles.glassBubble,
+                isOwn && !centerBubble ? styles.glassBubbleOwn : null,
+                !isOwn && !centerBubble ? styles.glassBubbleOther : null,
+                centerBubble && styles.glassBubbleBot,
+              ]}>
+                {/* Inner gradient overlay — top lighter, bottom darker */}
+                <LinearGradient
+                  colors={[
+                    "rgba(248,248,255,0.08)",
+                    "rgba(0,0,0,0.15)",
+                  ]}
+                  start={{ x: 0.5, y: 0 }}
+                  end={{ x: 0.5, y: 1 }}
+                  style={[StyleSheet.absoluteFill, { borderRadius: 22 }]}
+                />
+                {/* Top-edge highlight — "backlit panel" effect */}
+                <View style={styles.glassHighlight} />
+
+              {/* Non-media content rendered inside glass bubble */}
+              {message.content.startsWith("STICKER:") ? (
                 <Image
-                  // eslint-disable-next-line @typescript-eslint/no-require-imports
-                  source={require("../../assets/watermark.png")}
-                  style={styles.watermark}
+                  source={{ uri: message.content.slice(8) }}
+                  style={styles.stickerImage}
                   resizeMode="contain"
                 />
-              </View>
-              <View style={styles.gifBadge}>
-                <Text style={styles.gifBadgeText}>GIF</Text>
-              </View>
-            </Pressable>
-          ) : message.content.startsWith("IMAGE:") ? (
-            <Pressable
-              onPress={() => onPressImage?.(message.content.slice(6))}
-              onLongPress={handleLongPress}
-              delayLongPress={350}
-              style={{ width: mediaWidth, borderRadius: 14, overflow: "hidden" }}
-            >
-              <ExpoImage
-                source={{ uri: message.content.slice(6) }}
-                style={{ width: mediaWidth, height: mediaWidth * imgAspect }}
-                contentFit="contain"
-                cachePolicy="disk"
-                priority="normal"
-                onLoad={(e: any) => {
-                  const { width: w, height: h } = e.source;
-                  if (w > 0) setImgAspect(h / w);
-                }}
-              />
-              <View style={styles.watermarkShadow}>
-                <Image
-                  // eslint-disable-next-line @typescript-eslint/no-require-imports
-                  source={require("../../assets/watermark.png")}
-                  style={styles.watermark}
-                  resizeMode="contain"
-                />
-              </View>
-            </Pressable>
-          ) : message.content.startsWith("VIDEO:") ? (
-            <VideoBubble
-              raw={message.content.slice(6)}
-              mediaWidth={mediaWidth}
-              onPress={onPressVideo}
-              onLongPress={handleLongPress}
-            />
-          ) : message.content.startsWith("STICKER:") ? (
-            <Image
-              source={{ uri: message.content.slice(8) }}
-              style={styles.stickerImage}
-              resizeMode="contain"
-            />
-          ) : message.content.startsWith("TIPLINK:") ? (
-            (() => {
-              const parts = message.content.slice(8).split("|");
-              const url = parts[0];
-              const amount = parts[1] || "?";
-              const sender = parts[2] || "Monke";
-              return (
-                <Pressable
-                  onPress={() => url && Linking.openURL(url).catch(() => {})}
-                  onLongPress={handleLongPress}
-                  delayLongPress={350}
-                  style={styles.tipLinkBubble}
-                >
-                  <Text style={styles.tipLinkEmoji}>💸</Text>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.tipLinkTitle}>{amount} SOL Tip</Text>
-                    <Text style={styles.tipLinkHint}>from {sender} — tap to claim</Text>
-                  </View>
-                </Pressable>
-              );
-            })()
-          ) : message.content.startsWith("ATTACHMENT:") ? (
-            (() => {
-              const parts = message.content.slice(11).split("|");
-              const url = parts[0];
-              const filename = parts[1] || "file";
-              return (
-                <Pressable
-                  onPress={() => url && Linking.openURL(url).catch(() => {})}
-                  onLongPress={handleLongPress}
-                  delayLongPress={350}
-                  style={styles.attachmentBubble}
-                >
-                  <Text style={styles.attachmentIcon}>📎</Text>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.attachmentFilename} numberOfLines={1}>{filename}</Text>
-                    <Text style={styles.attachmentHint}>Tap to open</Text>
-                  </View>
-                </Pressable>
-              );
-            })()
-          ) : (
-            <View style={{ gap: 4 }}>
-              <Text
-                style={[styles.content, { color: textColor }]}
-                numberOfLines={showBotExpand && !botExpanded ? 9 : undefined}
-                selectable
-              >
-                {renderRichContent(displayContent, handlePressMention)}
-              </Text>
-              {message.editedAt && (
-                <Text style={[styles.editedLabel, { color: textColor }]}>(edited)</Text>
-              )}
-              {showBotExpand && (
-                <Text style={styles.expandText}>
-                  {botExpanded ? "collapse" : "expand"}
-                </Text>
-              )}
-              {/* Sender name + time — inside bubble, tight below text */}
-              <View style={[styles.inlineSenderRow, !isOwn && styles.inlineSenderRowOther]}>
-                <Text style={isOwn ? styles.senderOwn : styles.sender}>
-                  {isOwn ? "You" : displayName}{isLegendarySender ? ' 🌟' : ''}
-                </Text>
-                <Text style={styles.timeInline}>
-                  {format(message.sentAt, "HH:mm")}
-                  {message.status === "sending" && "  ···"}
-                  {message.status === "pending" && "  🕐"}
-                  {message.status === "failed" && "  ⚠️"}
-                  {message.status === "sent" && isOwn && "  ✓"}
-                  {message.status === "read" && isOwn && (
-                    <Text style={{ color: "#6CB4EE" }}>  ✓✓</Text>
+              ) : message.content.startsWith("TIPLINK:") ? (
+                (() => {
+                  const parts = message.content.slice(8).split("|");
+                  const url = parts[0];
+                  const amount = parts[1] || "?";
+                  const sender = parts[2] || "Monke";
+                  return (
+                    <Pressable
+                      onPress={() => url && Linking.openURL(url).catch(() => {})}
+                      onLongPress={handleLongPress}
+                      delayLongPress={350}
+                      style={styles.tipLinkBubble}
+                    >
+                      <Text style={styles.tipLinkEmoji}>💸</Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.tipLinkTitle}>{amount} SOL Tip</Text>
+                        <Text style={styles.tipLinkHint}>from {sender} — tap to claim</Text>
+                      </View>
+                    </Pressable>
+                  );
+                })()
+              ) : message.content.startsWith("ATTACHMENT:") ? (
+                (() => {
+                  const parts = message.content.slice(11).split("|");
+                  const url = parts[0];
+                  const filename = parts[1] || "file";
+                  return (
+                    <Pressable
+                      onPress={() => url && Linking.openURL(url).catch(() => {})}
+                      onLongPress={handleLongPress}
+                      delayLongPress={350}
+                      style={styles.attachmentBubble}
+                    >
+                      <Text style={styles.attachmentIcon}>📎</Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.attachmentFilename} numberOfLines={1}>{filename}</Text>
+                        <Text style={styles.attachmentHint}>Tap to open</Text>
+                      </View>
+                    </Pressable>
+                  );
+                })()
+              ) : (
+                <View style={{ gap: 4 }}>
+                  <Text
+                    style={[styles.content, { color: textColor }]}
+                    numberOfLines={showBotExpand && !botExpanded ? 9 : undefined}
+                    selectable
+                  >
+                    {renderRichContent(displayContent, handlePressMention)}
+                  </Text>
+                  {message.editedAt && (
+                    <Text style={[styles.editedLabel, { color: textColor }]}>(edited)</Text>
                   )}
-                </Text>
+                  {showBotExpand && (
+                    <Text style={styles.expandText}>
+                      {botExpanded ? "collapse" : "expand"}
+                    </Text>
+                  )}
+                </View>
+              )}
               </View>
             </View>
+          ) : (
+            <>
+              {/* GIF/IMAGE/VIDEO — rendered without glass bubble */}
+              {message.content.startsWith("GIF:") ? (
+                <Pressable
+                  onPress={() => onPressImage?.(message.content.slice(4))}
+                  onLongPress={handleLongPress}
+                  delayLongPress={350}
+                  style={{ width: mediaWidth, borderRadius: 22, overflow: "hidden" }}
+                >
+                  <ExpoImage
+                    source={{ uri: message.content.slice(4) }}
+                    style={{ width: mediaWidth, height: mediaWidth * imgAspect }}
+                    contentFit="contain"
+                    cachePolicy="disk"
+                    priority="normal"
+                    onLoad={(e: any) => {
+                      const { width: w, height: h } = e.source;
+                      if (w > 0) setImgAspect(h / w);
+                    }}
+                  />
+                  <View style={styles.watermarkShadow}>
+                    <Image
+                      source={require("../../assets/watermark.png")}
+                      style={styles.watermark}
+                      resizeMode="contain"
+                    />
+                  </View>
+                  <View style={styles.gifBadge}>
+                    <Text style={styles.gifBadgeText}>GIF</Text>
+                  </View>
+                </Pressable>
+              ) : message.content.startsWith("IMAGE:") ? (
+                <Pressable
+                  onPress={() => onPressImage?.(message.content.slice(6))}
+                  onLongPress={handleLongPress}
+                  delayLongPress={350}
+                  style={{ width: mediaWidth, borderRadius: 22, overflow: "hidden" }}
+                >
+                  <ExpoImage
+                    source={{ uri: message.content.slice(6) }}
+                    style={{ width: mediaWidth, height: mediaWidth * imgAspect }}
+                    contentFit="contain"
+                    cachePolicy="disk"
+                    priority="normal"
+                    onLoad={(e: any) => {
+                      const { width: w, height: h } = e.source;
+                      if (w > 0) setImgAspect(h / w);
+                    }}
+                  />
+                  <View style={styles.watermarkShadow}>
+                    <Image
+                      source={require("../../assets/watermark.png")}
+                      style={styles.watermark}
+                      resizeMode="contain"
+                    />
+                  </View>
+                </Pressable>
+              ) : message.content.startsWith("VIDEO:") ? (
+                <VideoBubble
+                  raw={message.content.slice(6)}
+                  mediaWidth={mediaWidth}
+                  onPress={onPressVideo}
+                  onLongPress={handleLongPress}
+                />
+              ) : null}
+            </>
           )}
         </Pressable>
 
-        {/* Media messages still need external sender + timestamp */}
+        {/* Media messages — avatar + sender + timestamp below */}
         {isMedia && (
           <View style={[styles.msgHeader, isOwn && styles.msgHeaderOwn]}>
-            <Text style={isOwn ? styles.senderOwn : styles.sender}>
+            <Pressable onPress={handlePressAvatar} hitSlop={6} style={styles.avatarOuterSmall}>
+              <View style={styles.avatarHueSmall} />
+              <View style={styles.avatarFloatSmall}>
+                {avatarUri ? (
+                  <Image source={{ uri: avatarUri }} style={styles.avatarImgSmall} />
+                ) : isBot ? (
+                  <Image source={require('../../assets/ai_agent_avatar.png')} style={styles.avatarImgSmall} />
+                ) : (
+                  <View style={[styles.avatarImgSmall, styles.avatarFallback]} />
+                )}
+              </View>
+            </Pressable>
+            <Text style={styles.sender}>
               {isOwn ? "You" : displayName}{isLegendarySender ? ' 🌟' : ''}
             </Text>
-            <Text style={[styles.time, { color: THEME.textFaint }]}>
+            <Text style={styles.timeOutside}>
               {format(message.sentAt, "HH:mm")}
-              {message.status === "sending" && "  ···"}
-              {message.status === "sent" && isOwn && "  ✓"}
-              {message.status === "read" && isOwn && (
-                <Text style={{ color: "#6CB4EE" }}>  ✓✓</Text>
-              )}
             </Text>
           </View>
         )}
@@ -741,41 +783,63 @@ export const MessageBubble = memo(function MessageBubble({
           <LinkPreviewCard content={message.editedContent ?? message.content} />
         )}
 
-        {/* Thread reply count */}
-        {hasThread(message.id) && (
-          <Pressable
-            style={styles.threadPill}
-            onPress={() => onThread?.(message)}
-          >
-            <Text style={styles.threadPillText}>
-              💬 {getThreadMeta(message.id)?.replyCount ?? 0} replies
-            </Text>
-          </Pressable>
-        )}
-
-        {/* Sticker reaction thumbnails — OUTSIDE bubble, below name */}
-        {(message.stickerReactions ?? []).length > 0 && (
-          <View style={[styles.stickerReactionRow, isOwn && styles.stickerReactionRowOwn]}>
-            {(message.stickerReactions ?? []).map((sr) => (
-              <Pressable
-                key={sr.url}
-                onPress={() => onStickerReact?.(sr.url, message.id)}
-                hitSlop={6}
-                style={[styles.stickerReactionPill, sr.reactedByMe && styles.stickerReactionPillActive]}
-              >
-                <Image source={{ uri: sr.url }} style={styles.stickerReactionImg} />
-                {sr.count > 1 && (
-                  <Text style={styles.stickerReactionCount}>{sr.count}</Text>
-                )}
-              </Pressable>
-            ))}
-          </View>
-        )}
-
       </View>
 
+      {/* ── Timestamp outside bubble ─────────────────────────────────── */}
+      {!isMedia && (
+        <View style={[
+          styles.timestampOuter,
+          centerBubble && styles.timestampOuterCenter,
+        ]}>
+          <Text style={styles.timeOutside}>
+            {format(message.sentAt, "HH:mm")}
+            {message.status === "sending" && " ···"}
+            {message.status === "pending" && " 🕐"}
+            {message.status === "failed" && " ⚠️"}
+            {message.status === "sent" && isOwn && " ✓"}
+            {message.status === "read" && isOwn && (
+              <Text style={{ color: GLASS_BLUE }}> ✓✓</Text>
+            )}
+          </Text>
+        </View>
+      )}
 
     </Animated.View>
+
+    {/* ── Reactions + extras: rendered OUTSIDE the row so PFP stays
+         pinned to the bottom of the message bubble, not the reactions ── */}
+    {hasThread(message.id) && (
+      <View style={[styles.extrasRow, isOwn && !centerBubble && styles.extrasRowOwn]}>
+        <Pressable
+          style={styles.threadPill}
+          onPress={() => onThread?.(message)}
+        >
+          <Text style={styles.threadPillText}>
+            💬 {getThreadMeta(message.id)?.replyCount ?? 0} replies
+          </Text>
+        </Pressable>
+      </View>
+    )}
+
+    {(message.stickerReactions ?? []).length > 0 && (
+      <View style={[styles.extrasRow, isOwn && !centerBubble && styles.extrasRowOwn]}>
+        <View style={[styles.stickerReactionRow, isOwn && styles.stickerReactionRowOwn]}>
+          {(message.stickerReactions ?? []).map((sr) => (
+            <Pressable
+              key={sr.url}
+              onPress={() => onStickerReact?.(sr.url, message.id)}
+              hitSlop={6}
+              style={[styles.stickerReactionPill, sr.reactedByMe && styles.stickerReactionPillActive]}
+            >
+              <Image source={{ uri: sr.url }} style={styles.stickerReactionImg} />
+              {sr.count > 1 && (
+                <Text style={styles.stickerReactionCount}>{sr.count}</Text>
+              )}
+            </Pressable>
+          ))}
+        </View>
+      </View>
+    )}
 
     {/* ── Reaction picker Modal ──────────────────────────────────────── */}
     <Modal
@@ -879,129 +943,257 @@ export const MessageBubble = memo(function MessageBubble({
 });
 
 const styles = StyleSheet.create({
-  // ── Row ────────────────────────────────────────────────────────────────────
+  // ── Row layout ─────────────────────────────────────────────────────────────
   row: {
     flexDirection: "row",
-    alignItems: "center",
-    marginVertical: 1,
-    paddingHorizontal: 12,
+    alignItems: "flex-end",
+    marginVertical: 2,
+    paddingHorizontal: 8,
     gap: 6,
   },
   rowOwn: {
     flexDirection: "row-reverse",
   },
+  rowCenter: {
+    justifyContent: "center",
+  },
 
-  // ── Avatars ────────────────────────────────────────────────────────────────
-  avatarContainer: {
-    alignSelf: "center",
-  },
-  avatar: {
-    width: 46,
-    height: 46,
-    borderRadius: 14,
-  },
-  avatarFallback: {
-    width: 46,
-    height: 46,
-    borderRadius: 14,
+  // ── Avatar: diffused purple hue (from shadow) + floating PFP ───────────────
+  avatarOuter: {
+    alignSelf: "flex-end",
+    marginBottom: 2,
+    width: 40,
+    height: 40,
     alignItems: "center",
     justifyContent: "center",
   },
-  avatarGlyph: { fontSize: 20 },
+  // Layer 1: NO solid shape — just a large diffused purple shadow blob on the chat layer
+  avatarHue: {
+    position: "absolute",
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    // No backgroundColor, no border — purely a shadow diffusion
+    shadowColor: SOLANA_PURPLE,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.55,
+    shadowRadius: 14,
+    elevation: 0,
+  },
+  // Layer 2: PFP image floating above with its own downward shadow for depth
+  avatarFloat: {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.4,
+    shadowRadius: 4,
+    elevation: 8,
+  },
+  avatarImg: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+  },
+  avatarOuterSmall: {
+    width: 30,
+    height: 30,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarHueSmall: {
+    position: "absolute",
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    shadowColor: SOLANA_PURPLE,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.45,
+    shadowRadius: 10,
+    elevation: 0,
+  },
+  avatarFloatSmall: {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.35,
+    shadowRadius: 3,
+    elevation: 6,
+  },
+  avatarImgSmall: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+  },
+  avatarFallback: {
+    backgroundColor: "rgba(153, 69, 255, 0.2)",
+  },
+
+  // ── Extras row (reactions, threads) — outside main row so PFP stays fixed ─
+  extrasRow: {
+    paddingLeft: 54, // avatar width (40) + gap (6) + padding (8)
+    paddingRight: 8,
+    marginTop: -1,
+  },
+  extrasRowOwn: {
+    paddingLeft: 8,
+    paddingRight: 54,
+    alignItems: "flex-end",
+  },
 
   // ── Bubble group ───────────────────────────────────────────────────────────
   bubbleGroup: {
-    maxWidth: "72%",
-    gap: 2,
+    maxWidth: "78%",
+    gap: 3,
     alignItems: "flex-start",
   },
-  bubbleGroupOwn: { alignItems: "flex-end" },
+  bubbleGroupOwn: {
+    alignItems: "flex-end",
+  },
+  bubbleGroupCenter: {
+    alignItems: "center",
+    maxWidth: "85%",
+  },
 
-  // ── Header row: sender name + timestamp ───────────────────────────────────
+  // ── Sender name row (above bubble) ─────────────────────────────────────────
+  senderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginLeft: 6,
+    marginBottom: 1,
+  },
+  senderRowOwn: {
+    flexDirection: "row-reverse",
+    marginLeft: 0,
+    marginRight: 6,
+  },
+  senderRowCenter: {
+    justifyContent: "center",
+    marginLeft: 0,
+  },
+  sender: {
+    fontFamily: FONTS.mono,
+    fontSize: 11,
+    color: GLASS_BLUE,
+    textShadowColor: "rgba(108, 180, 238, 0.4)",
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 4,
+  },
+
+  // ── Timestamp (outside bubble) ─────────────────────────────────────────────
+  timestampOuter: {
+    justifyContent: "flex-end",
+    paddingBottom: 4,
+    minWidth: 36,
+  },
+  timestampOuterCenter: {
+    position: "absolute",
+    right: 8,
+    bottom: 4,
+  },
+  timeOutside: {
+    fontFamily: FONTS.mono,
+    fontSize: 9,
+    color: THEME.textFaint,
+    letterSpacing: 0.3,
+  },
+
+  // ── Media header ───────────────────────────────────────────────────────────
   msgHeader: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
     marginLeft: 4,
-    marginTop: 3,
+    marginTop: 4,
   },
   msgHeaderOwn: {
     flexDirection: "row-reverse",
     marginLeft: 0,
     marginRight: 4,
   },
-  sender: {
-    fontFamily: FONTS.mono,
-    fontSize: 11,
-    color: "#6CB4EE",
-  },
-  senderOwn: {
-    fontFamily: FONTS.mono,
-    fontSize: 11,
-    color: "#6CB4EE",
-  },
-  time: {
-    fontFamily: FONTS.mono,
-    fontSize: 10,
-    color: THEME.textFaint,
-  },
-  inlineSenderRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-end",
-    gap: 6,
-    marginTop: 2,
-  },
-  inlineSenderRowOther: {
-    justifyContent: "flex-start",
-  },
-  timeInline: {
-    fontFamily: FONTS.mono,
-    fontSize: 10,
-    color: THEME.textFaint,
-  },
 
   // ── Reply preview ──────────────────────────────────────────────────────────
   replyPreview: {
     flexDirection: "row",
-    backgroundColor: THEME.surfaceHigh,
-    borderRadius: 8,
+    backgroundColor: "rgba(26, 26, 40, 0.6)",
+    borderRadius: 16,
     overflow: "hidden",
     maxWidth: "100%",
     marginBottom: 2,
+    borderWidth: 1,
+    borderColor: "rgba(248, 248, 255, 0.05)",
   },
   replyPreviewOwn: {},
-  replyBar: { width: 3, backgroundColor: THEME.accent },
-  replyBarOwn: { backgroundColor: "rgba(255,255,255,0.5)" },
+  replyBar: { width: 3, backgroundColor: GLASS_BLUE },
+  replyBarOwn: { backgroundColor: "rgba(108, 180, 238, 0.5)" },
   replyContent: { padding: 8, gap: 2, flex: 1 },
   replySender: {
     fontFamily: FONTS.mono,
     fontSize: 10,
-    color: THEME.accent,
+    color: GLASS_BLUE,
   },
-  replySenderOwn: { color: "rgba(255,255,255,0.6)" },
+  replySenderOwn: { color: "rgba(108, 180, 238, 0.7)" },
   replyText: {
     fontFamily: FONTS.body,
     fontSize: 12,
     color: THEME.textMuted,
   },
 
-  // ── Bubble ─────────────────────────────────────────────────────────────────
-  bubble: {
-    borderRadius: 18,
-    borderTopLeftRadius: 4,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+  // ── Glow wrapper — subtle uniform glow behind all bubbles ──────────────────
+  // iOS: shadowColor produces colored glow. Android: elevation only does grey
+  // shadows, so we skip elevation and rely on the border + background tint instead.
+  glassGlow: {
+    borderRadius: 22,
+    // iOS colored glow
+    shadowColor: GLASS_BLUE,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    // No elevation — Android elevation renders grey shadow ON TOP of content
+  },
+  glassGlowOwn: {
+    // unified — same as base
+  },
+  glassGlowOther: {
+    // unified — same as base
+  },
+  glassGlowBot: {
+    // unified — same as base
+  },
+
+  // ── Glass Bubble — the actual visible bubble with background + content ────
+  glassBubble: {
+    borderRadius: 22,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     gap: 4,
+    overflow: "hidden",
   },
-  bubbleOwn: {
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 4,
+  glassBubbleOwn: {
+    backgroundColor: GLASS_OWN_BG,
+    borderWidth: 1,
+    borderColor: GLASS_BORDER_OWN,
   },
-  bubbleOther: {
-    borderTopLeftRadius: 4,
-    borderTopRightRadius: 18,
+  glassBubbleOther: {
+    backgroundColor: GLASS_OTHER_BG,
+    borderWidth: 1,
+    borderColor: GLASS_BORDER_OTHER,
   },
+  glassBubbleBot: {
+    backgroundColor: GLASS_BOT_BG,
+    borderWidth: 1,
+    borderColor: GLASS_BORDER_OTHER,
+  },
+
+  // Top-edge highlight (backlit panel effect)
+  glassHighlight: {
+    position: "absolute",
+    top: 0,
+    left: 12,
+    right: 12,
+    height: 1.5,
+    backgroundColor: "rgba(255, 255, 255, 0.18)",
+    borderRadius: 1,
+  },
+
   content: {
     fontFamily: FONTS.body,
     fontSize: 15,
@@ -1020,17 +1212,14 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.body,
     fontSize: 11,
     fontStyle: "italic",
-    color: THEME.accent,
+    color: GLASS_BLUE,
     opacity: 0.75,
     fontWeight: "300",
     alignSelf: "flex-start",
   },
 
   // ── Media bubble (GIF / photo — no background or padding) ─────────────────
-  mediaBubble: {
-    // No background, no padding — just the image with rounded corners applied
-    // directly on the inner View wrapping each media type.
-  },
+  mediaBubble: {},
 
   // ── Bubble footer (reaction pills — now OUTSIDE bubble) ───────────────────
   bubbleFooter: {
@@ -1047,18 +1236,21 @@ const styles = StyleSheet.create({
     marginRight: 4,
   },
 
-  // ── Reaction pills (non-banana, inside bubble) ─────────────────────────────
+  // ── Reaction pills ─────────────────────────────────────────────────────────
   reactionPill: {
     flexDirection: "row",
     alignItems: "center",
     gap: 3,
-    backgroundColor: "rgba(255,255,255,0.08)",
-    borderRadius: 10,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderRadius: 12,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.05)",
   },
   reactionPillActive: {
-    backgroundColor: "rgba(255,213,79,0.28)",
+    backgroundColor: "rgba(255,213,79,0.2)",
+    borderColor: "rgba(255,213,79,0.15)",
   },
   pillEmoji: { fontSize: 12 },
   pillCount: {
@@ -1071,22 +1263,28 @@ const styles = StyleSheet.create({
   // ── Reaction picker Modal ──────────────────────────────────────────────────
   pickerOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.55)",
+    backgroundColor: "rgba(0,0,0,0.6)",
     justifyContent: "flex-end",
     paddingBottom: 40,
     alignItems: "center",
   },
   pickerSheet: {
-    backgroundColor: THEME.surface,
-    borderRadius: 20,
+    backgroundColor: "rgba(18, 18, 26, 0.95)",
+    borderRadius: 24,
     paddingVertical: 16,
     paddingHorizontal: 20,
     alignItems: "center",
     gap: 12,
     borderWidth: 1,
-    borderColor: THEME.border,
+    borderColor: "rgba(108, 180, 238, 0.15)",
     minWidth: 280,
     maxHeight: "75%",
+    // Glass glow on picker sheet
+    shadowColor: GLASS_BLUE,
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+    elevation: 8,
   },
   pickerEmojiRow: {
     flexDirection: "row",
@@ -1095,21 +1293,21 @@ const styles = StyleSheet.create({
   pickerEmojiBtn: {
     width: 52,
     height: 58,
-    borderRadius: 14,
-    backgroundColor: THEME.surfaceHigh,
+    borderRadius: 16,
+    backgroundColor: "rgba(255,255,255,0.06)",
     alignItems: "center",
     justifyContent: "center",
     gap: 2,
     borderWidth: 1,
-    borderColor: "transparent",
+    borderColor: "rgba(255,255,255,0.05)",
   },
   pickerEmojiBtnPressed: {
-    backgroundColor: THEME.accentSoft,
+    backgroundColor: "rgba(108, 180, 238, 0.15)",
     transform: [{ scale: 1.15 }],
   },
   pickerEmojiBtnActive: {
-    backgroundColor: "rgba(255,213,79,0.22)",
-    borderColor: "#FFD54F55",
+    backgroundColor: "rgba(255,213,79,0.18)",
+    borderColor: "rgba(255,213,79,0.2)",
   },
   pickerEmoji: { fontSize: 26 },
   pickerEmojiCount: {
@@ -1126,14 +1324,14 @@ const styles = StyleSheet.create({
   pickerReplyBtn: {
     paddingVertical: 8,
     paddingHorizontal: 20,
-    borderRadius: 12,
-    backgroundColor: THEME.surfaceHigh,
+    borderRadius: 16,
+    backgroundColor: "rgba(255,255,255,0.06)",
     borderWidth: 1,
-    borderColor: THEME.border,
+    borderColor: "rgba(255,255,255,0.05)",
   },
   pickerReplyBtnPressed: {
-    backgroundColor: THEME.accentSoft,
-    borderColor: THEME.accent,
+    backgroundColor: "rgba(108, 180, 238, 0.15)",
+    borderColor: "rgba(108, 180, 238, 0.3)",
   },
   pickerReplyText: {
     fontFamily: FONTS.bodySemi,
@@ -1143,7 +1341,7 @@ const styles = StyleSheet.create({
 
   // ── GIF & Sticker in bubble ─────────────────────────────────────────────────
   gifImage: {
-    borderRadius: 12,
+    borderRadius: 22,
   },
   watermarkShadow: {
     position: "absolute",
@@ -1167,9 +1365,9 @@ const styles = StyleSheet.create({
     bottom: 6,
     right: 6,
     backgroundColor: "rgba(0,0,0,0.65)",
-    borderRadius: 4,
-    paddingHorizontal: 4,
-    paddingVertical: 1,
+    borderRadius: 8,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
   },
   gifBadgeText: {
     fontFamily: FONTS.mono,
@@ -1189,8 +1387,10 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingVertical: 12,
     paddingHorizontal: 14,
-    backgroundColor: "#1a3a1a",
-    borderRadius: 12,
+    backgroundColor: "rgba(26, 58, 26, 0.7)",
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "rgba(74, 222, 128, 0.2)",
   },
   tipLinkEmoji: {
     fontSize: 32,
@@ -1234,10 +1434,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     marginTop: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    backgroundColor: THEME.surfaceHigh,
-    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    backgroundColor: "rgba(0, 150, 199, 0.1)",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(0, 150, 199, 0.15)",
     alignSelf: "flex-start",
   },
   threadPillText: {
@@ -1247,7 +1449,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 
-  // ── Sticker reaction row (OUTSIDE bubble, below reaction pills) ───────────
+  // ── Sticker reaction row (OUTSIDE bubble) ──────────────────────────────────
   stickerReactionRow: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -1264,17 +1466,20 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 3,
-    backgroundColor: "rgba(255,255,255,0.08)",
-    borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderRadius: 12,
     padding: 3,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.05)",
   },
   stickerReactionPillActive: {
-    backgroundColor: "rgba(255,213,79,0.28)",
+    backgroundColor: "rgba(255,213,79,0.2)",
+    borderColor: "rgba(255,213,79,0.15)",
   },
   stickerReactionImg: {
     width: 32,
     height: 32,
-    borderRadius: 4,
+    borderRadius: 6,
   },
   stickerReactionCount: {
     fontFamily: FONTS.mono,
@@ -1307,17 +1512,17 @@ const styles = StyleSheet.create({
   reactorToggleBtn: {
     marginTop: 10,
     alignSelf: "stretch",
-    backgroundColor: THEME.accentSoft,
-    borderRadius: 10,
+    backgroundColor: "rgba(108, 180, 238, 0.1)",
+    borderRadius: 14,
     paddingVertical: 10,
     alignItems: "center",
     borderWidth: 1,
-    borderColor: THEME.accent + "55",
+    borderColor: "rgba(108, 180, 238, 0.2)",
   },
   reactorToggleBtnText: {
     fontFamily: FONTS.displayMed,
     fontSize: 13,
-    color: THEME.accent,
+    color: GLASS_BLUE,
   },
 
   // ── Sticker picker inside long-press sheet ─────────────────────────────────
@@ -1346,7 +1551,7 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
   stickerGridCell: {
-    borderRadius: 10,
+    borderRadius: 12,
     overflow: "hidden",
   },
   stickerGridImg: {
