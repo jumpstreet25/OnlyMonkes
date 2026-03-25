@@ -44,6 +44,7 @@ An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect yo
 - **In-app Jupiter swaps** — `/buy $TOKEN [SOL]`, `/sell $TOKEN [%]`, `/swap $A for $B` resolve tokens via Jupiter strict list, show a confirmation modal (amounts, price impact, slippage), and execute via MWA biometric sign — all without leaving the app; 3% profit-based fee on sells (no fee if the trade lost money)
 - **Trading fee system** — transparent profit-based fees to support development: 2% on NFT sales (deducted from sale price), 3% on token trade profits, 5% on AutonoMonke autonomous trade profits; fees are only charged on gains — no fee if you lose money; cost basis tracked per token via AsyncStorage
 - **Fee disclaimer popups** — all fee agreements use unified dark theme (black background, OnlyMonkes blue `#0096C7` text) with "I Understand" / "Decline" buttons; MarketplaceFeeModal (one-time before first listing), SwapConfirmModal (per-swap with fee policy), AutoMonkeDisclaimerModal (before enrollment)
+- **Solana Actions / Blinks** — bot trade alerts embed interactive Blink cards in chat; one-tap swap execution via Cloudflare Worker (`onlymonkes-actions.jumpstreet25.workers.dev`); cards show icon, title, amount buttons (0.05 / 0.1 / 0.5 SOL); tapping a button POSTs to the worker which builds a Jupiter v2 swap transaction, client refreshes the blockhash for reliability, then signs and sends via MWA biometric; also supports tip actions; swap capped at 5 SOL, tips at 10 SOL; worker secrets: `HELIUS_API_KEY`, `JUP_API_KEY`
 - **In-app tipping** — `/tip @username [amount]` resolves username → wallet from the profile cache, opens a confirmation modal, and sends $SKR via MWA one-tap biometric; Support OnlyMonkes button also tips the dev wallet in-app
 - **SOL → SKR swap tips** — users without $SKR can tip using SOL; Jupiter swap + SPL transfer chained in a single `transact()` session (one biometric prompt)
 
@@ -87,16 +88,31 @@ An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect yo
 - **MWA biometric re-auth** — cached wallet adapter auth tokens for silent re-authentication with biometric prompt; no app-switch needed after first connect
 
 ### AI Agent & TA Scanner
-- **AI Agent #9385** — unified XMTP bot identity powering all features: TA scanning, trade alerts, NFT sales, sports betting, prediction markets, DM commands, and LLM chat; built on ElizaOS v2 with plugin-solana for trade execution; Pyth Hermes SSE streaming for sub-second price feeds
-- **Multi-timeframe TA scanner** — professional-grade scanner covering 100 Solana SPL tokens (53 watchlist + dynamic discovery) every 10 min across 15m/1H/4H/daily candles; OHLCV from GeckoTerminal → DexPaprika → Birdeye fallback chain; posts confluence alerts (Ichimoku, Fibonacci, Bollinger, Stochastic, ADX, OBV, candle patterns) to Main Chat + Monke Trades channel when signal score ≥69/100; sentiment, whale, and chat sentiment gates
-- **TA candle charts** — every bullish TA alert includes a generated candlestick chart image (with Fibonacci levels, entry/stop/targets overlaid) sent to both Main Chat and the Monke Trades channel
-- **AutonoMonke** — autonomous trading engine; TA scanner signals with ≥69% confluence + 2+ aligned timeframes auto-execute trades via Jupiter for enrolled users; DM `/automonke start` to enroll, `/automonke size` to set position %, `/automonke positions` to view open trades, `/automonke withdraw` to close all and withdraw
+- **AI Agent #9385 (Monke)** — unified XMTP bot identity with a confident, ball-busting, banana-obsessed persona; powers all features: TA scanning, trade alerts, NFT sales, sports betting, prediction markets, DM commands, and LLM chat; built on ElizaOS v2 with plugin-solana for trade execution; Pyth Hermes SSE streaming for sub-second price feeds
+- **Multi-LLM brain chain** — Hermes Agent (Groq llama-3.3-70b, persistent per-user sessions) → OpenClaw (local gateway) → Groq direct → Ollama local → Anthropic; each fallback preserves the Monke persona
+- **Multi-timeframe TA scanner** — professional-grade scanner covering 100+ Solana SPL tokens (53 watchlist + Birdeye discovery + Hermes Solana Toolkit discoveries) every 10 min across 15m/1H/4H/daily candles; OHLCV from GeckoTerminal → DexPaprika → Birdeye fallback chain; posts confluence alerts to Monke Trades channel when signal score ≥45 (bipolar scale) with medium+ conviction; sentiment, whale, and chat sentiment gates; low-conviction signals automatically filtered
+- **Hermes Alert Quality Badge** — every TA alert includes a Hermes confidence overlay: "🧠 Hermes: 🟢 72% — similar setups: 8/11 hit T1 in ~3.8h | $NOS: 3W/1L"; scores each signal against historical outcomes by matching confluence bracket + TF alignment + token track record
+- **TA candle charts** — every bullish TA alert includes a generated candlestick chart image (with Fibonacci levels, entry/stop/targets overlaid, EMA12/26, Bollinger Bands, volume bars) sent to the Monke Trades channel
+- **AutonoMonke** — autonomous trading engine with 12-step gate: disclaimer → wallet → TA score ≥50 → 2+ aligned TFs → RSI guard → bearish factor gate → 4h cooldown → max positions (3) → max exposure (20%) → position sizing (2%) → OpenClaw AI confidence ≥60% → Jupiter execution; stop loss clamped 5-12%; Fibonacci targets validated against entry price
 - **Slash commands** — `/tip @Username [amt]` (send $SKR), `/buy $TOKEN`, `/sell $TOKEN`, `/swap $A for $B` — all execute in-app via MWA biometric sign + Jupiter aggregator
-- **DM slash commands** — DM the bot for 40+ commands: `/automonke` (status/start/stop/size/confidence/positions/history/withdraw/fund), `/risk` (size/stop/max/drawdown/auto/mincap/conviction/blacklist), `/predictions` (start/stop/resume/confidence/size/max/positions/history/markets/withdraw/delete), `/bets` (start/stop/resume/edge/confidence/size/max/sports/positions/history/markets/cancel/delete), `/price`, `/ta`, `/buy`
-- **Color-coded risk alerts** — 🟢 Low Risk, 🟡 Medium, 🔴 High Risk dots on all TA alerts; compact confluence tags (RSI + MACD Cross + BB Squeeze); inline chart links (DEXScreener, Birdeye, Jupiter)
+- **DM slash commands** — DM the bot for 40+ commands: `/automonke`, `/risk`, `/predictions`, `/bets`, `/price`, `/ta`, `/buy`, `/portfolio`, `/hermes`, `/backtest`
+- **Color-coded risk alerts** — 🟢 Low Risk, 🟡 Medium, 🔴 High Risk dots on all TA alerts; compact confluence tags (RSI + MACD Cross + BB Squeeze); inline chart links (DEXScreener, Birdeye, Jupiter); Solana Actions Blink cards for one-tap execution
 - **Per-user TA risk settings** — DM the bot `/risk` to set position size, stop-loss %, conviction threshold, blacklist, mute, and more
 - **Backtesting** — DM `/backtest $TOKEN [days]` for historical signal replay with win/loss stats, Sharpe ratio, max drawdown
-- **Portfolio tracking** — DM `/portfolio` for open positions, closed P&L, and daily summaries
+- **Portfolio Copilot** — DM `/portfolio` for open positions, closed P&L, Sharpe ratio, and Hermes-powered analysis: personal win rate vs community, best/worst tokens, actionable suggestions
+
+### Hermes Intelligence Layer
+- **Per-user encrypted memory** — AES-256-GCM encrypted trading history per user (buys, sells, PNL, config changes, streaks); max 200 entries; decrypted only for the requesting user
+- **Global learning engine** — aggregates all users' outcomes: win rate, avg PNL, best confluence ranges, best TF alignment, best/worst tokens, avg win duration; recalculates after every outcome
+- **Alert Outcome Monitor** — every 10 min, checks current prices against all open alerts; auto-closes when T1, T2, or stop is hit; expires after 48h; feeds outcomes into the learning engine automatically — no paper trading needed
+- **Personalized DM warnings** — when an alert fires for a token a user has a poor track record on (3+ trades, <40% WR), they get a DM warning before the alert
+- **Auto-Tuning** — weekly (Sunday 6am) Hermes analyzes win rate by score bracket and recommends threshold adjustments; posts report to Trades channel
+- **Weekly Digest** — Hermes posts what it learned: token performance, accuracy trend, best/worst setups
+- **Bot Self-Awareness** — LLM system prompt includes Hermes learning data so the bot explicitly cites its own track record when users ask about trades
+- **Social Signals** — alerts show "🐒 4 Monkes bought $NOS in the last 2h" (anonymized cross-user crowd wisdom)
+- **Streaks & Achievements** — Hot Streak (3 wins), Sharpshooter (5), Monke Legend (7), Diamond Hands (10), AI Monke, Meme Lord
+- **`/hermes` DM command** — users query their own memory: `/hermes stats`, `/hermes best`, `/hermes worst`, `/hermes history`, `/hermes achievements`
+- **Hermes Solana Toolkit** — OpenClaw extension with `solana_trending` (discover trending SPL tokens) and `solana_token_chart` (OHLCV + EMA + RSI + Fib for any token); discoveries auto-feed into the bot's scanner universe
 
 ### MonkePredictions (Drift BET)
 - **Autonomous prediction markets** — AI-powered prediction market engine on Drift Protocol (Solana); scans active BET markets with full TA analysis (MACD, RSI, EMA, Ichimoku, Bollinger, Fibonacci, candlestick patterns); fires alerts to Monke Predictions channel when signal score ≥65/100
@@ -149,7 +165,8 @@ An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect yo
 | Live Audio | LiveKit WebRTC (`livekit-client`, `@livekit/react-native`) |
 | Live Video | LiveKit WebRTC with 720p simulcast + data channels for reactions |
 | Wallet | Mobile Wallet Adapter (`@solana-mobile/mobile-wallet-adapter-protocol-web3js`) |
-| Token Swaps | Jupiter v6 API (quote + swap) via MWA `VersionedTransaction` |
+| Token Swaps | Jupiter v2 `/build` API (fee-free instructions) via MWA `VersionedTransaction` |
+| Solana Actions | Cloudflare Worker serving Blinks (interactive swap/tip cards in chat) |
 | NFT Verification | Helius DAS API (`getAssetsByOwner`) |
 | State | Zustand |
 | Images | `expo-image` (disk-cached GIFs, NFT avatars) |
@@ -191,6 +208,7 @@ OnlyMonkes/
 ├── src/
 │   ├── components/
 │   │   ├── CalendarModal.tsx         # Community event scheduler
+│   │   ├── BlinkCard.tsx             # Solana Actions card: fetches metadata, renders interactive swap/tip buttons, signs via MWA
 │   │   ├── BotCommandTicker.tsx      # Scrolling horizontal ticker: bot commands (chat variant + DM variant)
 │   │   ├── ChatInput.tsx             # Message composer: text, reply strip + toolbar (CAM/LIVE/GIF + bot channel icons w/ badges)
 │   │   ├── ConfettiView.tsx          # 40-particle Reanimated confetti (login streak milestones)
@@ -252,7 +270,8 @@ OnlyMonkes/
 │   │   ├── remoteConfig.ts           # Remote app config fetch (bot channel IDs, feature flags)
 │   │   ├── sentry.ts                 # Sentry init, user identification, error capture, breadcrumbs
 │   │   ├── session.ts                # Session persistence (SecureStore, indefinite — survives app updates)
-│   │   ├── jupiterSwap.ts            # Jupiter v6 swap: token resolution, quotes, MWA execution, profit-based fees
+│   │   ├── blinkActions.ts            # Solana Actions / Blinks client: URL detection, metadata fetch, POST execute
+│   │   ├── jupiterSwap.ts            # Jupiter v2 swap: token resolution, /build instructions, MWA execution, profit-based fees
 │   │   ├── solana.ts                 # SKR tipping, SOL→SKR swap tips, wallet validation
 │   │   ├── streaks.ts                # Daily login streak (AsyncStorage)
 │   │   ├── theme.ts                  # Extended theme tokens
@@ -299,6 +318,9 @@ OnlyMonkes/
 ├── infra/
 │   ├── docker-compose.livekit.yml    # Self-hosted LiveKit SFU Docker config
 │   └── livekit.yaml                  # LiveKit server config (TURN, simulcast, room defaults)
+│
+├── worker-actions/
+│   └── src/index.ts                  # Cloudflare Worker — Solana Actions server (swap + tip endpoints via Jupiter v2 /build)
 │
 ├── app.config.ts                     # Expo config + env vars (Helius, GIPHY, Cloudinary, LiveKit, Sentry)
 ├── eas.json                          # EAS Build + Update config (preview + production channels)
@@ -452,6 +474,43 @@ Host ends room → VIDEO_ROOM: {active: false} → banner + PiP dismissed
         │
         └── disconnectFromVideoRoom() → AudioSession.stopAudioSession()
 ```
+
+---
+
+## Solana Actions / Blinks Flow
+
+```
+Bot sends trade alert with Action URL
+        │
+        ▼
+MessageBubble detects Action URL → renders <BlinkCard>
+        │
+        ▼
+BlinkCard GETs metadata from worker → shows icon, title, amount buttons
+        │
+        ▼
+User taps "Buy TOKEN (0.1 SOL)"
+        │
+        ▼
+BlinkCard POSTs {account: wallet} to worker
+        │
+        ▼
+Worker: Jupiter v2 /build → assemble VersionedTransaction → return base64
+        │
+        ▼
+Client: deserialize → fetch fresh blockhash → decompile → recompile with fresh blockhash
+        │
+        ▼
+MWA transact(): authorize → signAndSendTransactions(freshTx)
+        │
+        ▼
+✓ Transaction sent → "confirmed" state shown on card
+```
+
+Worker: `https://onlymonkes-actions.jumpstreet25.workers.dev`
+Source: `worker-actions/src/index.ts`
+Deploy: `cd worker-actions && npx wrangler deploy`
+Secrets: `wrangler secret put HELIUS_API_KEY` / `wrangler secret put JUP_API_KEY`
 
 ---
 

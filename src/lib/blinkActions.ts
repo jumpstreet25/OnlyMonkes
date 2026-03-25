@@ -176,6 +176,11 @@ export async function executeAction(
   actionHref: string,
   walletAddress: string,
 ): Promise<ActionPostResponse> {
+  // Validate wallet address before sending to remote server
+  if (!walletAddress || walletAddress.length < 32 || walletAddress.length > 44) {
+    throw new Error("Invalid wallet address");
+  }
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15_000);
 

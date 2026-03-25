@@ -34,14 +34,10 @@ import {
   Platform,
   ListRenderItem,
   Modal,
-  ScrollView,
   TextInput,
   Alert,
-  Dimensions,
   Linking,
 } from "react-native";
-
-const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAppStore } from "@/store/appStore";
 import { useChatStore } from "@/store/chatStore";
@@ -62,19 +58,18 @@ import { ConfettiView } from "@/components/ConfettiView";
 import { registerForPushNotifications, setNotificationReplyHandler } from "@/lib/notifications";
 import { loadEvents } from "@/lib/calendar";
 import { loadThemeId, loadCustomColor } from "@/lib/theme";
-import { sendSkrTip, sendDevTip, parseTipCommand, validateRecipientWallet } from "@/lib/solana";
+import { sendSkrTip, sendDevTip, parseTipCommand } from "@/lib/solana";
 import { TipModal } from "@/components/TipModal";
 import { SearchModal } from "@/components/SearchModal";
 import { CalendarModal } from "@/components/CalendarModal";
 import { GifPickerModal } from "@/components/GifPickerModal";
 import { VideoCameraModal } from "@/components/VideoCameraModal";
 import { LiveRoomBanner } from "@/components/LiveRoomBanner";
-import { type LiveRoomData, createLivekitToken, createRoomName, LK_URL } from "@/lib/livekit";
-import * as liveAudio from "@/lib/liveAudio";
+import { type LiveRoomData, createLivekitToken, createRoomName } from "@/lib/livekit";
 import { LiveAudioPill } from "@/components/LiveAudioPill";
 import { VideoRoomBanner } from "@/components/VideoRoomBanner";
 import { VideoCallPip } from "@/components/VideoCallPip";
-import { createVideoRoom, joinVideoRoom, disconnectFromVideoRoom, type VideoRoomData } from "@/lib/liveVideo";
+import type { VideoRoomData } from "@/lib/liveVideo";
 import { BotCommandTicker } from "@/components/BotCommandTicker";
 import { showLocalNotification, CH_ALL } from "@/lib/notifications";
 import { registerNetworkSync, unregisterNetworkSync, setOfflineQueueFlusher, isOnline } from "@/lib/backgroundSync";
@@ -86,18 +81,20 @@ import { loadThreadMetadata } from "@/lib/threads";
 import { loadListings } from "@/lib/marketplace";
 
 // ── Lazy imports — heavy modules loaded on first use, not at startup ────────
-import type { SwapQuote, ParsedSwapCommand } from "@/lib/jupiterSwap";
+import type { SwapQuote } from "@/lib/jupiterSwap";
 import ImageLightbox from "@/components/ImageLightbox";
 
 const getExpoAv = () => import("expo-av");
 const getMediaLibrary = () => import("expo-media-library");
 const getFileSystem = () => import("expo-file-system");
-const getViewShot = () => import("react-native-view-shot");
 const getImagePicker = () => import("expo-image-picker");
 const getVideoUpload = () => import("@/lib/videoUpload");
 const getJupiterSwap = () => import("@/lib/jupiterSwap");
 const getLiveAudio = () => import("@/lib/liveAudio");
 const getLiveVideo = () => import("@/lib/liveVideo");
+const getCreateVideoRoom = async () => (await getLiveVideo()).createVideoRoom;
+const getJoinVideoRoom = async () => (await getLiveVideo()).joinVideoRoom;
+const getDisconnectVideoRoom = async () => (await getLiveVideo()).disconnectFromVideoRoom;
 import type { ChatMessage, ReactionEmoji } from "@/types";
 import type { TipAmount } from "@/lib/constants";
 
@@ -129,6 +126,7 @@ export default function ChatScreen() {
   const bio              = useAppStore(s => s.bio);
   const xAccount         = useAppStore(s => s.xAccount);
   const tipWallet        = useAppStore(s => s.tipWallet);
+  const userLocation     = useAppStore(s => s.location);
   const setUsername       = useAppStore(s => s.setUsername);
   const setBio           = useAppStore(s => s.setBio);
   const setXAccount      = useAppStore(s => s.setXAccount);
@@ -136,7 +134,6 @@ export default function ChatScreen() {
   const setVerified      = useAppStore(s => s.setVerified);
   const isGroupMember    = useAppStore(s => s.isGroupMember);
   const isGroupAdmin     = useAppStore(s => s.isGroupAdmin);
-  const joinRequests     = useAppStore(s => s.joinRequests);
   const remoteGroupId    = useAppStore(s => s.remoteGroupId);
   const setThemeId       = useAppStore(s => s.setThemeId);
   const setCustomBubbleColor = useAppStore(s => s.setCustomBubbleColor);
@@ -162,7 +159,7 @@ export default function ChatScreen() {
   const isLoadingHistory = useChatStore(s => s.isLoadingHistory);
   const setReplyingTo    = useChatStore(s => s.setReplyingTo);
   const typingUsers      = useChatStore(s => s.typingUsers);
-  const { initialize, disconnect, logout, streamAlive, send, reply, react, edit, stickerReact, sendFile, sendTyping, addMember, loadJoinRequests, approveJoinRequest, publishGroupId, forceAdminInit, broadcastProfile, broadcastEvent, broadcastLiveRoom, broadcastVideoRoom, syncMessages } = useXmtp();
+  const { initialize, disconnect, logout, streamAlive, send, reply, react, edit, stickerReact, sendFile, sendTyping, forceAdminInit, broadcastProfile, broadcastEvent, broadcastLiveRoom, broadcastVideoRoom, syncMessages } = useXmtp();
   const [inputText, setInputText] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [showUsernameModal, setShowUsernameModal] = useState(false);
@@ -174,15 +171,7 @@ export default function ChatScreen() {
   const [devTipOpen, setDevTipOpen] = useState(false);
   const [pfpPickerOpen, setPfpPickerOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [adminOpen, setAdminOpen] = useState(false);
   const [profileTarget, setProfileTarget] = useState<ProfileTarget | null>(null);
-  const [approvingId, setApprovingId] = useState<string | null>(null);
-  const [patInput, setPatInput] = useState("");
-  const [patSaving, setPatSaving] = useState(false);
-  const [patSaved, setPatSaved] = useState(false);
-  const [addByIdInput, setAddByIdInput] = useState("");
-  const [addByIdBusy, setAddByIdBusy] = useState(false);
-  const [refreshingRequests, setRefreshingRequests] = useState(false);
   const [refreshingChat, setRefreshingChat] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
   const [gifPickerOpen, setGifPickerOpen] = useState(false);
@@ -326,13 +315,14 @@ export default function ChatScreen() {
   // ─── Load saved profile, show modal if no username yet ───────────────────
 
   useEffect(() => {
-    loadUserProfile().then(({ username: saved, bio, xAccount: savedX, tipWallet: savedTip }) => {
+    loadUserProfile().then(({ username: saved, bio, xAccount: savedX, tipWallet: savedTip, location: savedLoc }) => {
       if (saved) {
         setUsername(saved);
         if (bio) setBio(bio);
         if (savedX) setXAccount(savedX);
         const effectiveTip = savedTip || useAppStore.getState().wallet?.address || null;
         if (effectiveTip) setTipWallet(effectiveTip);
+        if (savedLoc) useAppStore.getState().setLocation(savedLoc);
       } else {
         setShowUsernameModal(true);
       }
@@ -812,7 +802,7 @@ export default function ChatScreen() {
     setActiveLiveRoom(null);
     setIsInLiveRoom(false);
     setLiveRoomToken(null);
-    await liveAudio.disconnectFromRoom().catch(() => {});
+    await getLiveAudio().then(la => la.disconnectFromRoom()).catch(() => {});
     await broadcastLiveRoom(data).catch(() => {});
   }, [activeLiveRoom, broadcastLiveRoom, setActiveLiveRoom, setIsInLiveRoom, setLiveRoomToken]);
 
@@ -824,7 +814,8 @@ export default function ChatScreen() {
       return;
     }
     try {
-      const { roomData, token } = await createVideoRoom(myInboxId, username);
+      const createVR = await getCreateVideoRoom();
+      const { roomData, token } = await createVR(myInboxId, username);
       setActiveVideoRoom(roomData);
       setIsInVideoCall(true);
       setVideoCallToken(token);
@@ -839,7 +830,8 @@ export default function ChatScreen() {
   const handleJoinVideoCall = useCallback(async () => {
     if (!myInboxId || !username || !activeVideoRoom) return;
     try {
-      const token = await joinVideoRoom(activeVideoRoom.id, myInboxId, username);
+      const joinVR = await getJoinVideoRoom();
+      const token = await joinVR(activeVideoRoom.id, myInboxId, username);
       setIsInVideoCall(true);
       setVideoCallToken(token);
       router.push(`/video-room?token=${encodeURIComponent(token)}&isHost=0`);
@@ -851,7 +843,7 @@ export default function ChatScreen() {
   const handleLeaveVideoCall = useCallback(async () => {
     setIsInVideoCall(false);
     setVideoCallToken(null);
-    await disconnectFromVideoRoom().catch(() => {});
+    await getDisconnectVideoRoom().then(fn => fn()).catch(() => {});
   }, [setIsInVideoCall]);
 
   const handleEndVideoCall = useCallback(async () => {
@@ -860,7 +852,7 @@ export default function ChatScreen() {
     setActiveVideoRoom(null);
     setIsInVideoCall(false);
     setVideoCallToken(null);
-    await disconnectFromVideoRoom().catch(() => {});
+    await getDisconnectVideoRoom().then(fn => fn()).catch(() => {});
     await broadcastVideoRoom(data).catch(() => {});
   }, [activeVideoRoom, broadcastVideoRoom, setActiveVideoRoom, setIsInVideoCall]);
 
@@ -965,6 +957,7 @@ export default function ChatScreen() {
         initialBio={editingProfile ? (bio ?? "") : ""}
         initialXAccount={editingProfile ? (xAccount ?? "") : ""}
         initialTipWallet={editingProfile ? (tipWallet ?? "") : ""}
+        initialLocation={editingProfile ? (userLocation ?? "") : ""}
       />
 
       <MenuDrawer
@@ -1095,17 +1088,13 @@ export default function ChatScreen() {
 
           {/* Right: admin badge (admin only) + ☰ menu */}
           <View style={styles.headerRight}>
-            {isGroupAdmin && (
-              <Pressable
-                onPress={() => { loadJoinRequests(); setAdminOpen(true); }}
-                style={[styles.iconBtn, joinRequests.length > 0 && styles.iconBtnAlert]}
-                hitSlop={8}
-              >
-                <Text style={styles.iconBtnText}>
-                  {joinRequests.length > 0 ? `👥 ${joinRequests.length}` : "👥"}
-                </Text>
-              </Pressable>
-            )}
+            <Pressable
+              onPress={() => router.push("/globe" as any)}
+              style={styles.iconBtn}
+              hitSlop={8}
+            >
+              <Text style={styles.iconBtnText}>🌍</Text>
+            </Pressable>
 
             <Pressable
               onPress={() => setDrawerOpen(true)}
@@ -1130,161 +1119,6 @@ export default function ChatScreen() {
             </View>
           )}
         </View>
-
-        {/* ── Admin Panel Modal ─────────────────────────────────────────────── */}
-        <Modal
-          visible={adminOpen}
-          transparent
-          animationType="slide"
-          onRequestClose={() => setAdminOpen(false)}
-          statusBarTranslucent
-        >
-          <Pressable style={styles.adminOverlay} onPress={() => setAdminOpen(false)} />
-          <View style={styles.adminSheet}>
-            <View style={styles.adminSheetHandle} />
-            <Text style={styles.adminTitle}>Admin Panel</Text>
-
-            {/* Publish group ID section */}
-            <Text style={styles.adminSectionLabel}>PUBLISH GROUP TO GITHUB</Text>
-            <Text style={styles.adminHint}>
-              Enter a GitHub PAT (classic, repo scope) once to let testers find this group.
-            </Text>
-            <TextInput
-              style={styles.adminInput}
-              placeholder="ghp_…"
-              placeholderTextColor={THEME.textFaint}
-              value={patInput}
-              onChangeText={setPatInput}
-              secureTextEntry
-              autoCapitalize="none"
-            />
-            <Pressable
-              style={[styles.adminPrimaryBtn, patSaving && styles.adminBtnDisabled]}
-              onPress={async () => {
-                if (!patInput.trim()) return;
-                setPatSaving(true);
-                try {
-                  await publishGroupId(patInput.trim());
-                  setPatSaved(true);
-                  setPatInput("");
-                  setTimeout(() => setPatSaved(false), 3000);
-                } catch (err: any) {
-                  Alert.alert("Publish failed", err?.message ?? String(err));
-                } finally {
-                  setPatSaving(false);
-                }
-              }}
-            >
-              <Text style={styles.adminPrimaryBtnText}>
-                {patSaving ? "Publishing…" : patSaved ? "✓ Published!" : "Publish Group ID"}
-              </Text>
-            </Pressable>
-
-            {/* Pending join requests section */}
-            <Text style={[styles.adminSectionLabel, { marginTop: 20 }]}>
-              PENDING JOIN REQUESTS ({joinRequests.length})
-            </Text>
-            {joinRequests.length === 0 ? (
-              <Text style={styles.adminHint}>No pending requests. Tap "Refresh" below to check again.</Text>
-            ) : (
-              <ScrollView style={styles.adminRequestList}>
-                {joinRequests.map((req) => (
-                  <View key={req.inboxId} style={styles.adminRequestRow}>
-                    <View style={styles.adminRequestInfo}>
-                      <Text style={styles.adminRequestUsername}>
-                        {req.username ?? "Unknown"}
-                      </Text>
-                      <Text style={styles.adminRequestInboxId} numberOfLines={1}>
-                        {req.inboxId}
-                      </Text>
-                    </View>
-                    <Pressable
-                      style={[
-                        styles.adminAddBtn,
-                        approvingId === req.inboxId && styles.adminBtnDisabled,
-                      ]}
-                      onPress={async () => {
-                        setApprovingId(req.inboxId);
-                        try {
-                          await approveJoinRequest(req.inboxId);
-                        } catch (err: any) {
-                          Alert.alert("Error", err?.message ?? String(err));
-                        } finally {
-                          setApprovingId(null);
-                        }
-                      }}
-                    >
-                      <Text style={styles.adminAddBtnText}>
-                        {approvingId === req.inboxId ? "Adding…" : "Add"}
-                      </Text>
-                    </Pressable>
-                  </View>
-                ))}
-              </ScrollView>
-            )}
-
-            <Pressable
-              style={styles.adminRefreshBtn}
-              disabled={refreshingRequests}
-              onPress={async () => {
-                setRefreshingRequests(true);
-                try {
-                  await loadJoinRequests();
-                } finally {
-                  setRefreshingRequests(false);
-                }
-              }}
-            >
-              {refreshingRequests ? (
-                <ActivityIndicator size="small" color={THEME.textMuted} />
-              ) : (
-                <Text style={styles.adminRefreshBtnText}>↻ Refresh Requests</Text>
-              )}
-            </Pressable>
-
-            {/* Add user manually by inbox ID */}
-            <Text style={[styles.adminSectionLabel, { marginTop: 20 }]}>
-              ADD USER MANUALLY
-            </Text>
-            <Text style={styles.adminHint}>
-              Paste the user's Access Key (XMTP inbox ID) shown on their pending screen.
-            </Text>
-            <TextInput
-              style={styles.adminInput}
-              placeholder="Paste inbox ID…"
-              placeholderTextColor={THEME.textFaint}
-              value={addByIdInput}
-              onChangeText={setAddByIdInput}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-            <Pressable
-              style={[
-                styles.adminPrimaryBtn,
-                (!addByIdInput.trim() || addByIdBusy) && styles.adminBtnDisabled,
-              ]}
-              onPress={async () => {
-                const id = addByIdInput.trim();
-                if (!id) return;
-                setAddByIdBusy(true);
-                try {
-                  await addMember(id);
-                  Alert.alert("✓ Added!", `User has been added to the group.`);
-                  setAddByIdInput("");
-                } catch (err: any) {
-                  Alert.alert("Error", err?.message ?? String(err));
-                } finally {
-                  setAddByIdBusy(false);
-                }
-              }}
-              disabled={!addByIdInput.trim() || addByIdBusy}
-            >
-              <Text style={styles.adminPrimaryBtnText}>
-                {addByIdBusy ? "Adding…" : "Add User"}
-              </Text>
-            </Pressable>
-          </View>
-        </Modal>
 
         {/* ── Connecting… spinner (before group state is known) ──────────── */}
         {isLoading && !isGroupMember && (
@@ -1813,12 +1647,12 @@ const styles = StyleSheet.create({
   headerNft: {
     width: 58,
     height: 58,
-    borderRadius: 15,
+    borderRadius: 29,
   },
   headerNftFallback: {
     width: 58,
     height: 58,
-    borderRadius: 15,
+    borderRadius: 29,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -2023,121 +1857,6 @@ const styles = StyleSheet.create({
     backgroundColor: THEME.accentSoft,
   },
 
-  // ── Admin Panel ───────────────────────────────────────────────────────────────
-  adminOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.55)",
-  },
-  adminSheet: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: THEME.surfaceHigh,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    borderTopWidth: 1,
-    borderColor: THEME.border,
-    padding: 20,
-    paddingBottom: 36,
-    maxHeight: "80%",
-  },
-  adminSheetHandle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: THEME.border,
-    alignSelf: "center",
-    marginBottom: 16,
-  },
-  adminTitle: {
-    fontFamily: FONTS.display,
-    fontSize: 18,
-    color: THEME.text,
-    marginBottom: 16,
-  },
-  adminSectionLabel: {
-    fontFamily: FONTS.mono,
-    fontSize: 10,
-    color: THEME.textFaint,
-    letterSpacing: 2,
-    textTransform: "uppercase",
-    marginBottom: 8,
-  },
-  adminHint: {
-    fontFamily: FONTS.body,
-    fontSize: 12,
-    color: THEME.textMuted,
-    marginBottom: 10,
-    lineHeight: 18,
-  },
-  adminInput: {
-    backgroundColor: THEME.surface,
-    borderWidth: 1,
-    borderColor: THEME.border,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    fontFamily: FONTS.mono,
-    fontSize: 13,
-    color: THEME.text,
-    marginBottom: 10,
-  },
-  adminPrimaryBtn: {
-    backgroundColor: THEME.accent,
-    borderRadius: 10,
-    paddingVertical: 12,
-    alignItems: "center",
-  },
-  adminBtnDisabled: { opacity: 0.5 },
-  adminPrimaryBtnText: {
-    fontFamily: FONTS.displayMed,
-    fontSize: 14,
-    color: "#fff",
-  },
-  adminRequestList: {
-    maxHeight: 200,
-  },
-  adminRequestRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: THEME.border,
-  },
-  adminRequestInfo: { flex: 1, gap: 2 },
-  adminRequestUsername: {
-    fontFamily: FONTS.displayMed,
-    fontSize: 13,
-    color: THEME.text,
-  },
-  adminRequestInboxId: {
-    fontFamily: FONTS.mono,
-    fontSize: 10,
-    color: THEME.textFaint,
-  },
-  adminAddBtn: {
-    backgroundColor: THEME.accent,
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-  },
-  adminAddBtnText: {
-    fontFamily: FONTS.displayMed,
-    fontSize: 13,
-    color: "#fff",
-  },
-  adminRefreshBtn: {
-    marginTop: 14,
-    alignItems: "center",
-    paddingVertical: 10,
-  },
-  adminRefreshBtnText: {
-    fontFamily: FONTS.body,
-    fontSize: 13,
-    color: THEME.textMuted,
-  },
   supportBanner: {
     flexDirection: 'row',
     alignItems: 'center',

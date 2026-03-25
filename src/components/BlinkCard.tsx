@@ -21,6 +21,7 @@ import {
 import { Image as ExpoImage } from "expo-image";
 import {
   VersionedTransaction,
+  TransactionMessage,
   Connection,
   PublicKey,
 } from "@solana/web3.js";
@@ -29,6 +30,8 @@ import {
   type Web3MobileWallet,
 } from "@solana-mobile/mobile-wallet-adapter-protocol-web3js";
 import { THEME, FONTS, HELIUS_RPC_URL } from "@/lib/constants";
+
+const connection = new Connection(HELIUS_RPC_URL, "confirmed");
 import { useAppStore } from "@/store/appStore";
 import {
   fetchActionMetadata,
@@ -114,7 +117,29 @@ export function BlinkCard({ actionUrl }: BlinkCardProps) {
           throw new Error("Transaction fee payer does not match your wallet");
         }
 
-        // Sign via MWA
+        // Fetch fresh blockhash — the worker-built tx may have a stale one
+        const { blockhash, lastValidBlockHeight } =
+          await connection.getLatestBlockhash("confirmed");
+
+        // Decompile, replace blockhash, recompile
+        const lookupTableAccounts = await Promise.all(
+          tx.message.addressTableLookups.map(async (lookup) => {
+            const res = await connection.getAddressLookupTable(lookup.accountKey);
+            return res.value;
+          }),
+        );
+        const validLuts = lookupTableAccounts.filter(
+          (a): a is NonNullable<typeof a> => a !== null,
+        );
+        const decompiled = TransactionMessage.decompile(tx.message, {
+          addressLookupTableAccounts: validLuts,
+        });
+        decompiled.recentBlockhash = blockhash;
+        const freshMessage = decompiled.compileToV0Message(validLuts);
+        const freshTx = new VersionedTransaction(freshMessage);
+
+        // Sign via MWA — pass VersionedTransaction object (not serialized bytes)
+        const minContextSlot = await connection.getSlot();
         const sig = await transact(async (mobileWallet: Web3MobileWallet) => {
           const cachedToken = useAppStore.getState().mwaAuthToken;
           let authResult;
@@ -142,7 +167,8 @@ export function BlinkCard({ actionUrl }: BlinkCardProps) {
           }
 
           const result = await mobileWallet.signAndSendTransactions({
-            transactions: [Buffer.from(tx.serialize())],
+            transactions: [freshTx as any],
+            minContextSlot,
           });
           return result[0];
         });

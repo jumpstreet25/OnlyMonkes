@@ -32,8 +32,14 @@ Rules are added over time as issues arise.
 
 - **solana-alert-bot is RETIRED** (archived at `~/solana-alert-bot.retired`). All bot functionality lives in Monke_Eliza.
 - Monke_Eliza is the single source of truth for TA scanning, alerts, and bot behavior. No `bot_state.json` dependency.
-- The token scanner (`tokenScanner.ts`) scans 100 SPL tokens (53 hardcoded + dynamic discovery) across 4 rotations of 25 tokens every 10 min, using GeckoTerminal (primary) + DexPaprika (free fallback, no auth) + Birdeye (last resort). Moralis does NOT support Solana OHLCV — removed.
+- The token scanner (`tokenScanner.ts`) scans 100+ SPL tokens (53 hardcoded + Birdeye discovery + Hermes Solana Toolkit discoveries) across 4 rotations of 25 tokens every 10 min, using GeckoTerminal (primary) + DexPaprika (free fallback, no auth) + Birdeye (last resort). Moralis does NOT support Solana OHLCV — removed.
 - **taSavvyMonke.ts is DELETED** — all scanner/TA/AutonoMonke/Drift BET functionality merged into xmtpOnlyMonkes.ts (single unified bot identity: "AI Agent #9385").
+- **Alert threshold**: 45 (bipolar scale -100 to +100). Regime-adaptive: bull=40, bear=55, ranging=48, volatile=50. Low conviction signals filtered.
+- **AutonoMonke min composite**: 50 (only medium+ conviction). Stop loss clamped 5-12%. Fib targets validated ±50% from entry.
+- **Hermes Memory** (`hermesMemory.ts`): per-user AES-256-GCM encrypted trading memory + global learning engine. Auto-closes alert outcomes every scan cycle by monitoring real prices against T1/T2/stop. Feeds: Alert Quality Badge, Personalized DM Warnings, Portfolio Copilot, Auto-Tune, Weekly Digest, Bot Self-Awareness, Social Signals, Streaks, `/hermes` command.
+- **Hermes Solana Toolkit**: OpenClaw extension at `~/.openclaw/extensions/solana-toolkit/` — `solana_trending` + `solana_token_chart`. Discoveries written to `~/.hermes_memory/hermes_signals.json`, ingested by bot scanner.
+- **LLM chain**: Hermes Agent (Groq 70B, `~/.hermes/`) → OpenClaw (port 18789) → Groq direct → Ollama (port 11434) → Anthropic.
+- **Bot persona**: "Monke" — ball-busting, banana-obsessed, confident. Defined in `~/.hermes/SOUL.md` + `buildSystemPrompt()`.
 - Data files (`.xmtp_bot_key`, `.xmtp_welcomed.json`, `.xmtp_stale_tokens.json`) live in `~/Monke_Eliza/agents/monke-trader/`, NOT in `~/solana-alert-bot/`.
 
 ## UI / UX
