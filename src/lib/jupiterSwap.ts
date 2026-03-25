@@ -1,13 +1,13 @@
 /**
  * jupiterSwap.ts
  *
- * Jupiter v6 swap integration via Mobile Wallet Adapter.
+ * Jupiter Swap v2 integration via Mobile Wallet Adapter.
  *
  * Flow:
  *  1. Resolve token mint from symbol (via Jupiter strict token list)
- *  2. Fetch swap quote (Jupiter Quote API)
- *  3. Get serialized transaction (Jupiter Swap API)
- *  4. Deserialize → sign via MWA → send to Solana
+ *  2. Fetch swap instructions (Jupiter v2 /build — fee-free)
+ *  3. Assemble VersionedTransaction from raw instructions
+ *  4. Sign via MWA → send to Solana
  *
  * Supports /buy, /sell, /swap slash commands.
  */
@@ -16,9 +16,13 @@ import {
   Connection,
   PublicKey,
   VersionedTransaction,
+  TransactionMessage,
+  TransactionInstruction,
+  AddressLookupTableAccount,
   Transaction,
   SystemProgram,
   LAMPORTS_PER_SOL,
+  ComputeBudgetProgram,
 } from "@solana/web3.js";
 import {
   getAssociatedTokenAddressSync,
@@ -31,12 +35,12 @@ import Constants from "expo-constants";
 import { HELIUS_RPC_URL, DEV_WALLET, TOKEN_TRADE_FEE_PCT } from "./constants";
 import { useAppStore } from "@/store/appStore";
 import { loadCostBasis, recordBuy, getCostBasis, recordSell } from "./costBasis";
+import bs58 from "bs58";
 
 const JUP_API_KEY: string =
   (Constants.expoConfig?.extra?.jupApiKey as string) || "";
 
-const JUP_QUOTE_URL = "https://quote-api.jup.ag/v6/quote";
-const JUP_SWAP_URL = "https://quote-api.jup.ag/v6/swap";
+const JUP_BUILD_URL = "https://api.jup.ag/swap/v2/build";
 const JUP_TOKEN_LIST_URL = "https://token.jup.ag/strict";
 
 const SOL_MINT = "So11111111111111111111111111111111111111112";
@@ -101,6 +105,42 @@ export async function resolveToken(
   return { mint: match.address, decimals: match.decimals, symbol: match.symbol };
 }
 
+// ── Jupiter v2 /build types ─────────────────────────────────────────────────
+
+interface JupBuildInstruction {
+  programId: string;
+  accounts: { pubkey: string; isSigner: boolean; isWritable: boolean }[];
+  data: string; // base64
+}
+
+interface JupBuildResponse {
+  setupInstructions: JupBuildInstruction[];
+  swapInstruction: JupBuildInstruction;
+  cleanupInstruction: JupBuildInstruction | null;
+  otherInstructions: JupBuildInstruction[];
+  computeBudgetInstructions: JupBuildInstruction[];
+  addressesByLookupTableAddress: Record<string, string[]>;
+  blockhashWithMetadata: { blockhash: string | number[]; lastValidBlockHeight: number };
+  inputMint: string;
+  outputMint: string;
+  inAmount: string;
+  outAmount: string;
+  slippageBps: number;
+  priceImpactPct?: string;
+}
+
+function toInstruction(ix: JupBuildInstruction): TransactionInstruction {
+  return new TransactionInstruction({
+    programId: new PublicKey(ix.programId),
+    keys: ix.accounts.map(a => ({
+      pubkey: new PublicKey(a.pubkey),
+      isSigner: a.isSigner,
+      isWritable: a.isWritable,
+    })),
+    data: Buffer.from(ix.data, "base64"),
+  });
+}
+
 // ── Quote ───────────────────────────────────────────────────────────────────
 
 export interface SwapQuote {
@@ -114,17 +154,18 @@ export interface SwapQuote {
   outAmountUi: number;   // human-readable
   priceImpactPct: number;
   slippageBps: number;
-  /** Full Jupiter quote response — pass to executeSwap */
-  raw: any;
+  /** Jupiter v2 /build response — used by executeSwap to assemble transaction */
+  raw: JupBuildResponse;
 }
 
 /**
- * Get a swap quote from Jupiter.
+ * Get a swap quote + build instructions from Jupiter v2 /build.
+ * Returns both quote data AND raw instructions in one call (fee-free path).
  *
- * @param inputMint   Input token mint address
- * @param outputMint  Output token mint address
- * @param amountRaw   Amount in smallest units (lamports/token-lamports)
- * @param slippageBps Slippage tolerance in basis points (default 50 = 0.5%)
+ * NOTE: `taker` is required by v2 — we pass a placeholder here since
+ * the actual signer pubkey comes from MWA during executeSwap().
+ * The /build endpoint uses taker for ATA resolution; we re-fetch inside
+ * executeSwap with the real wallet address.
  */
 export async function getSwapQuote(
   inputMint: string,
@@ -136,27 +177,42 @@ export async function getSwapQuote(
   outputSymbol: string,
   slippageBps = 50
 ): Promise<SwapQuote> {
+  // Use stored wallet if available; v2 /build needs a taker address for ATA creation
+  const taker = useAppStore.getState().wallet?.address || "11111111111111111111111111111111";
+
   const params = new URLSearchParams({
     inputMint,
     outputMint,
     amount: amountRaw,
+    taker,
     slippageBps: String(slippageBps),
+    wrapAndUnwrapSol: "true",
   });
 
   const headers: Record<string, string> = {};
   if (JUP_API_KEY) headers["x-api-key"] = JUP_API_KEY;
 
-  const res = await fetch(`${JUP_QUOTE_URL}?${params}`, { headers });
+  const res = await fetch(`${JUP_BUILD_URL}?${params}`, { headers });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     throw new Error(`Jupiter quote failed (${res.status}): ${body}`);
   }
 
-  const data = await res.json();
+  const data = await res.json() as JupBuildResponse;
+
+  if (!data.swapInstruction || !data.blockhashWithMetadata?.blockhash) {
+    throw new Error("Jupiter build response missing swapInstruction or blockhash");
+  }
+
+  // Normalize blockhash: Jupiter v2 returns byte array, web3.js needs base58 string
+  const bh = data.blockhashWithMetadata.blockhash;
+  if (Array.isArray(bh)) {
+    data.blockhashWithMetadata.blockhash = bs58.encode(Uint8Array.from(bh));
+  }
 
   return {
-    inputMint,
-    outputMint,
+    inputMint: data.inputMint || inputMint,
+    outputMint: data.outputMint || outputMint,
     inputSymbol,
     outputSymbol,
     inAmount: data.inAmount,
@@ -224,35 +280,86 @@ export async function executeSwap(quote: SwapQuote): Promise<SwapResult> {
   const signature = await transact(async (mobileWallet: Web3MobileWallet) => {
     // Re-authorize with cached token
     const senderPubkey = await mwaAuthorize(mobileWallet);
+    const build = quote.raw;
 
-    // Request serialized swap transaction from Jupiter
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-    };
-    if (JUP_API_KEY) headers["x-api-key"] = JUP_API_KEY;
-
-    const swapRes = await fetch(JUP_SWAP_URL, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        quoteResponse: quote.raw,
-        userPublicKey: senderPubkey.toBase58(),
-        wrapAndUnwrapSol: true,
-        dynamicComputeUnitLimit: true,
-        prioritizationFeeLamports: "auto",
-      }),
-    });
-
-    if (!swapRes.ok) {
-      const body = await swapRes.text().catch(() => "");
-      throw new Error(`Jupiter swap API failed (${swapRes.status}): ${body}`);
+    // If the taker in the /build response doesn't match the actual wallet,
+    // re-fetch with the real address (ATAs may differ)
+    let buildData = build;
+    const realWallet = senderPubkey.toBase58();
+    const quoteTaker = useAppStore.getState().wallet?.address || "";
+    if (quoteTaker !== realWallet) {
+      const rebuildHeaders: Record<string, string> = {};
+      if (JUP_API_KEY) rebuildHeaders["x-api-key"] = JUP_API_KEY;
+      const params = new URLSearchParams({
+        inputMint: quote.inputMint,
+        outputMint: quote.outputMint,
+        amount: quote.inAmount,
+        taker: realWallet,
+        slippageBps: String(quote.slippageBps),
+        wrapAndUnwrapSol: "true",
+      });
+      const rebuildRes = await fetch(`${JUP_BUILD_URL}?${params}`, { headers: rebuildHeaders });
+      if (rebuildRes.ok) {
+        buildData = await rebuildRes.json() as JupBuildResponse;
+      }
     }
 
-    const { swapTransaction } = await swapRes.json();
+    // Assemble instructions from /build response
+    const instructions: TransactionInstruction[] = [];
 
-    // Deserialize the versioned transaction
-    const txBuf = Buffer.from(swapTransaction, "base64");
-    const tx = VersionedTransaction.deserialize(txBuf);
+    // 1. Compute budget — use Jupiter's instructions, add CU limit only if not present
+    const SET_CU_LIMIT_DISC = 2;
+    let hasCuLimit = false;
+    for (const ix of buildData.computeBudgetInstructions) {
+      const decoded = Buffer.from(ix.data, "base64");
+      if (decoded.length >= 1 && decoded[0] === SET_CU_LIMIT_DISC) {
+        hasCuLimit = true;
+      }
+      instructions.push(toInstruction(ix));
+    }
+    if (!hasCuLimit) {
+      instructions.push(ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }));
+    }
+
+    // 2. Setup (ATA creation, etc.)
+    for (const ix of buildData.setupInstructions) {
+      instructions.push(toInstruction(ix));
+    }
+
+    // 3. Swap
+    instructions.push(toInstruction(buildData.swapInstruction));
+
+    // 4. Cleanup
+    if (buildData.cleanupInstruction) {
+      instructions.push(toInstruction(buildData.cleanupInstruction));
+    }
+
+    // 5. Other
+    for (const ix of buildData.otherInstructions) {
+      instructions.push(toInstruction(ix));
+    }
+
+    // Resolve address lookup tables for v0 transaction
+    const lutAddresses = Object.keys(buildData.addressesByLookupTableAddress);
+    let lookupTables: AddressLookupTableAccount[] = [];
+    if (lutAddresses.length > 0) {
+      const lutAccounts = await Promise.all(
+        lutAddresses.map(async (addr) => {
+          const res = await connection.getAddressLookupTable(new PublicKey(addr));
+          return res.value;
+        }),
+      );
+      lookupTables = lutAccounts.filter((a): a is AddressLookupTableAccount => a !== null);
+    }
+
+    // Build VersionedTransaction (v0)
+    const messageV0 = new TransactionMessage({
+      payerKey: senderPubkey,
+      recentBlockhash: buildData.blockhashWithMetadata.blockhash,
+      instructions,
+    }).compileToV0Message(lookupTables);
+
+    const tx = new VersionedTransaction(messageV0);
 
     // Sign and send via MWA
     const minContextSlot = await connection.getSlot();
