@@ -134,7 +134,7 @@ echo "- Load: $(uptime | grep -o 'load averages:.*')" >> "$REPORT"
 # ── 8. Hermes Memory Stats ───────────────────────────────────────────────────
 echo "" >> "$REPORT"
 echo "## Hermes Memory" >> "$REPORT"
-hermes_dir="${HOME}/.hermes_memory"
+hermes_dir="${HOME}/Monke_Eliza/agents/monke-trader/.hermes_memory"
 if [ -d "$hermes_dir" ]; then
   user_count=$(ls "$hermes_dir/users/"*.enc 2>/dev/null | wc -l | tr -d ' ')
   learning_size=$(du -h "$hermes_dir/learning.json" 2>/dev/null | awk '{print $1}' || echo "N/A")

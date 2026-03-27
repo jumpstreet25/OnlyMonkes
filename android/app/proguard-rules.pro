@@ -36,4 +36,18 @@
 -dontwarn uniffi.**
 -dontwarn org.xmtp.**
 
+# expo-gl — view classes are instantiated via reflection by Expo's view manager.
+# R8 obfuscates constructors that are only called reflectively, causing
+# "Didn't find a correct constructor" crash.
+-keep class expo.modules.gl.** { *; }
+-keep class expo.modules.gl.GLView { *; }
+
+# expo-three / Three.js support
+-keep class expo.modules.** { *; }
+-dontwarn expo.modules.**
+
+# react-native-webview
+-keep class com.reactnativecommunity.webview.** { *; }
+-dontwarn com.reactnativecommunity.webview.**
+
 # Add any project specific keep options here:

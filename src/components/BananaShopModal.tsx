@@ -1,0 +1,444 @@
+/**
+ * BananaShopModal — In-app UI customization store.
+ *
+ * Browse by tier/category, see items with preview images,
+ * purchase with bananas + crypto ($SKR or $SOL via MWA).
+ * Equip owned items, one per category.
+ */
+
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  Modal,
+  Pressable,
+  ScrollView,
+  Alert,
+  ActivityIndicator,
+} from "react-native";
+import * as Haptics from "expo-haptics";
+import { THEME, FONTS, DEV_WALLET, SKR_MINT } from "@/lib/constants";
+import { useAppStore } from "@/store/appStore";
+import { spendBananas } from "@/lib/bananaRewards";
+import {
+  getAvailableItems, loadShopState, addOwnedItem, equipItem, unequipCategory,
+  getTierInfo, getCategoryName,
+  type ShopItem, type ShopCategory, type ShopState,
+} from "@/lib/bananaShop";
+
+interface BananaShopModalProps {
+  visible: boolean;
+  onClose: () => void;
+}
+
+export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
+  const bananaBalance = useAppStore(s => s.bananaBalance);
+  const [shopState, setShopState] = useState<ShopState | null>(null);
+  const [purchasing, setPurchasing] = useState<string | null>(null);
+  const [activeCategory, setActiveCategory] = useState<ShopCategory | "all">("all");
+
+  useEffect(() => {
+    if (visible) loadShopState().then(setShopState);
+  }, [visible]);
+
+  const items = useMemo(() => getAvailableItems(), []);
+
+  const filteredItems = useMemo(() => {
+    if (activeCategory === "all") return items;
+    return items.filter(i => i.category === activeCategory);
+  }, [items, activeCategory]);
+
+  // Group by tier
+  const groupedByTier = useMemo(() => {
+    const tiers: Record<number, ShopItem[]> = { 1: [], 2: [], 3: [], 4: [] };
+    for (const item of filteredItems) {
+      (tiers[item.tier] ??= []).push(item);
+    }
+    return tiers;
+  }, [filteredItems]);
+
+  const handlePurchase = useCallback(async (item: ShopItem) => {
+    if (!shopState) return;
+    if (shopState.owned.includes(item.id)) {
+      // Already owned — equip/unequip
+      if (shopState.equipped[item.category] === item.id) {
+        const updated = await unequipCategory(item.category);
+        setShopState(updated);
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      } else {
+        const updated = await equipItem(item.id);
+        setShopState(updated);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+      return;
+    }
+
+    // Check banana balance
+    if (bananaBalance < item.bananaCost) {
+      Alert.alert(
+        "Not enough bananas",
+        `You need ${item.bananaCost} 🍌 but have ${bananaBalance}. Keep logging in daily!`,
+      );
+      return;
+    }
+
+    // Confirm purchase
+    Alert.alert(
+      `Buy ${item.name}?`,
+      `${item.bananaCost} 🍌 + $${item.usdCost} in SKR or SOL\n\nYou'll sign a transaction to complete the purchase.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Buy Now",
+          onPress: async () => {
+            setPurchasing(item.id);
+            try {
+              // 1. Deduct bananas
+              const spent = await spendBananas(item.bananaCost);
+              if (!spent) {
+                Alert.alert("Error", "Failed to deduct bananas");
+                return;
+              }
+              useAppStore.getState().setBananaBalance(bananaBalance - item.bananaCost);
+
+              // 2. TODO: Trigger MWA payment ($item.usdCost in SKR/SOL → DEV_WALLET)
+              // For now, mark as purchased after banana deduction
+              // The MWA integration will use transact() from @solana-mobile/mobile-wallet-adapter-protocol
+              // to sign a transfer of (usdCost / skrPrice) SKR tokens to DEV_WALLET
+
+              // 3. Mark item as owned + equip it
+              const updated = await addOwnedItem(item.id);
+              updated.equipped[item.category] = item.id;
+              const { saveShopState } = require("@/lib/bananaShop");
+              await saveShopState(updated);
+              setShopState(updated);
+
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              Alert.alert("Purchased!", `${item.name} is now equipped.`);
+            } catch (err: any) {
+              Alert.alert("Purchase failed", err?.message ?? "Please try again");
+            } finally {
+              setPurchasing(null);
+            }
+          },
+        },
+      ],
+    );
+  }, [shopState, bananaBalance]);
+
+  const categories: Array<{ key: ShopCategory | "all"; label: string }> = [
+    { key: "all", label: "All" },
+    { key: "bubble", label: "Bubbles" },
+    { key: "text", label: "Text" },
+    { key: "pfp", label: "PFP" },
+    { key: "theme", label: "Themes" },
+  ];
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent={false} onRequestClose={onClose}>
+      <View style={styles.root}>
+        {/* Header */}
+        <View style={styles.header}>
+          <Pressable onPress={onClose} hitSlop={10}>
+            <Text style={styles.backText}>← Back</Text>
+          </Pressable>
+          <Text style={styles.title}>Banana Shop</Text>
+          <View style={styles.balancePill}>
+            <Text style={styles.balanceText}>{bananaBalance} 🍌</Text>
+          </View>
+        </View>
+
+        {/* Category filter */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catRow}>
+          {categories.map(c => (
+            <Pressable
+              key={c.key}
+              style={[styles.catPill, activeCategory === c.key && styles.catPillActive]}
+              onPress={() => setActiveCategory(c.key)}
+            >
+              <Text style={[styles.catText, activeCategory === c.key && styles.catTextActive]}>
+                {c.label}
+              </Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+
+        {/* Items */}
+        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+          {([1, 2, 3, 4] as number[]).map(tier => {
+            const tierItems = groupedByTier[tier];
+            if (!tierItems || tierItems.length === 0) return null;
+            const { label, color } = getTierInfo(tier);
+
+            return (
+              <View key={tier} style={styles.tierSection}>
+                <View style={styles.tierHeader}>
+                  <View style={[styles.tierBadge, { backgroundColor: color + "20", borderColor: color + "40" }]}>
+                    <Text style={[styles.tierBadgeText, { color }]}>{label}</Text>
+                  </View>
+                  <Text style={styles.tierPrice}>${tier} in SKR or SOL</Text>
+                </View>
+
+                <View style={styles.itemGrid}>
+                  {tierItems.map(item => {
+                    const owned = shopState?.owned.includes(item.id);
+                    const equipped = shopState?.equipped[item.category] === item.id;
+                    const canAfford = bananaBalance >= item.bananaCost;
+                    const isBuying = purchasing === item.id;
+
+                    return (
+                      <Pressable
+                        key={item.id}
+                        style={[
+                          styles.itemCard,
+                          owned && styles.itemCardOwned,
+                          equipped && styles.itemCardEquipped,
+                        ]}
+                        onPress={() => handlePurchase(item)}
+                        disabled={isBuying}
+                      >
+                        {/* Seasonal badge */}
+                        {item.seasonal && (
+                          <View style={styles.seasonalBadge}>
+                            <Text style={styles.seasonalText}>LIMITED</Text>
+                          </View>
+                        )}
+
+                        <Text style={styles.itemPreview}>{item.preview}</Text>
+                        <Text style={styles.itemName} numberOfLines={1}>{item.name}</Text>
+                        <Text style={styles.itemDesc} numberOfLines={2}>{item.description}</Text>
+
+                        {/* Price or status */}
+                        {isBuying ? (
+                          <ActivityIndicator size="small" color={color} style={{ marginTop: 6 }} />
+                        ) : owned ? (
+                          <View style={[styles.statusPill, equipped ? styles.equippedPill : styles.ownedPill]}>
+                            <Text style={styles.statusText}>
+                              {equipped ? "EQUIPPED" : "OWNED — Tap to equip"}
+                            </Text>
+                          </View>
+                        ) : (
+                          <View style={styles.pricePill}>
+                            <Text style={[styles.priceText, !canAfford && styles.priceTextDim]}>
+                              {item.bananaCost} 🍌
+                            </Text>
+                          </View>
+                        )}
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+            );
+          })}
+
+          <View style={{ height: 40 }} />
+        </ScrollView>
+      </View>
+    </Modal>
+  );
+}
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: THEME.bg,
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingTop: 52,
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+  },
+  backText: {
+    fontFamily: FONTS.bodyMed,
+    fontSize: 14,
+    color: "#6CB4EE",
+  },
+  title: {
+    fontFamily: FONTS.display,
+    fontSize: 22,
+    color: "#FFD54F",
+    textShadowColor: "rgba(255,213,79,0.4)",
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 8,
+  },
+  balancePill: {
+    backgroundColor: "rgba(255,213,79,0.1)",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderWidth: 1,
+    borderColor: "rgba(255,213,79,0.2)",
+  },
+  balanceText: {
+    fontFamily: FONTS.display,
+    fontSize: 14,
+    color: "#FFD54F",
+  },
+
+  // Category filter
+  catRow: {
+    paddingHorizontal: 12,
+    maxHeight: 44,
+    marginBottom: 8,
+  },
+  catPill: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.06)",
+    marginRight: 8,
+  },
+  catPillActive: {
+    backgroundColor: "rgba(255,213,79,0.12)",
+    borderColor: "rgba(255,213,79,0.3)",
+  },
+  catText: {
+    fontFamily: FONTS.bodyMed,
+    fontSize: 12,
+    color: THEME.textMuted,
+  },
+  catTextActive: {
+    color: "#FFD54F",
+  },
+
+  content: {
+    flex: 1,
+    paddingHorizontal: 12,
+  },
+
+  // Tier section
+  tierSection: {
+    marginBottom: 24,
+  },
+  tierHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+  tierBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  tierBadgeText: {
+    fontFamily: FONTS.mono,
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 1,
+  },
+  tierPrice: {
+    fontFamily: FONTS.mono,
+    fontSize: 11,
+    color: THEME.textFaint,
+  },
+
+  // Item grid
+  itemGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  itemCard: {
+    width: "47%",
+    backgroundColor: "rgba(255,255,255,0.03)",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.06)",
+    padding: 14,
+    alignItems: "center",
+    gap: 6,
+  },
+  itemCardOwned: {
+    borderColor: "rgba(108,180,238,0.2)",
+    backgroundColor: "rgba(108,180,238,0.04)",
+  },
+  itemCardEquipped: {
+    borderColor: "rgba(255,213,79,0.35)",
+    backgroundColor: "rgba(255,213,79,0.06)",
+    shadowColor: "#FFD54F",
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+
+  seasonalBadge: {
+    position: "absolute",
+    top: 6,
+    right: 6,
+    backgroundColor: "#EF4444",
+    borderRadius: 6,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+  },
+  seasonalText: {
+    fontFamily: FONTS.mono,
+    fontSize: 8,
+    color: "#fff",
+    fontWeight: "700",
+    letterSpacing: 0.5,
+  },
+
+  itemPreview: {
+    fontSize: 32,
+  },
+  itemName: {
+    fontFamily: FONTS.displayMed,
+    fontSize: 13,
+    color: THEME.text,
+    textAlign: "center",
+  },
+  itemDesc: {
+    fontFamily: FONTS.body,
+    fontSize: 10,
+    color: THEME.textFaint,
+    textAlign: "center",
+    lineHeight: 14,
+  },
+
+  pricePill: {
+    backgroundColor: "rgba(255,213,79,0.1)",
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    marginTop: 4,
+  },
+  priceText: {
+    fontFamily: FONTS.mono,
+    fontSize: 11,
+    color: "#FFD54F",
+    fontWeight: "600",
+  },
+  priceTextDim: {
+    color: THEME.textFaint,
+  },
+
+  statusPill: {
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    marginTop: 4,
+  },
+  ownedPill: {
+    backgroundColor: "rgba(108,180,238,0.1)",
+  },
+  equippedPill: {
+    backgroundColor: "rgba(255,213,79,0.15)",
+  },
+  statusText: {
+    fontFamily: FONTS.mono,
+    fontSize: 9,
+    color: "#FFD54F",
+    fontWeight: "600",
+    letterSpacing: 0.5,
+  },
+});

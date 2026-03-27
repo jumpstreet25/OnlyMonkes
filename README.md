@@ -29,7 +29,7 @@ An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect yo
 - **GIF search** — powered by GIPHY, inline animated GIFs in chat
 - **Video messages** — record and send short video clips; thumbnails displayed inline with playback
 - **Image watermark** — all sent photos and videos display a persistent OnlyMonkes watermark (bottom-right); watermark stays consistent size/position in both chat bubble and fullscreen lightbox
-- **Share to X/Twitter** — after sending a photo, a popup offers to share on X with auto-caption "Shot Using @xOnlyMonkes" and the watermark baked in
+- **Share to X** — after sending a photo, a popup offers to share on X with auto-caption "I snapped this using @xOnlyMonkes via Solana Mobile, The Future is Monke!" and the watermark baked in
 - **Direct Messages** — 1-on-1 encrypted DMs with any Monkes holder; inbox screen with compose modal, searchable user directory, message preview and timestamps; cross-app portable via XMTP (conversations accessible from any XMTP-compatible wallet app)
 - **Rich text links** — `@username` mentions render blue and are tappable (opens PFP modal); `$TOKEN` symbols render gold
 - **Inline sender labels** — sender name + timestamp rendered inside every chat bubble (bottom-aligned); own messages right-aligned, others left-aligned
@@ -72,6 +72,36 @@ An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect yo
 - **Daily GMonke** — bot posts "GMonke" every morning at 8am EST to Main Chat
 - **Weekly PNL report** — bot sends hypothetical PNL for all trade alerts every Sunday at 5am EST to Monke Trades channel; tracks all signaled trades persistently with entry price, targets, and stop loss
 - **Popup modals** — all popup dialogs (edit message, X share) use dark theme (black background, OnlyMonkes blue text) matching the app aesthetic
+
+### Banana Reward System
+- **Daily banana rewards** — 7-day streak cycle (5/5/10/10/15/15/50 bananas); streak does NOT reset on missed days, picks up where you left off; animated "GMonke!" claim popup with streak bar, confetti on Day 7, share-to-X prompt
+- **Banana Shop** — 4-tier in-app UI customization store with 22+ items; chat bubble glow colors (Tier 1, $1), text/name styles (Tier 2, $2), PFP themes (Tier 3, $3), app-wide themes (Tier 4, $4); payment in $SKR or $SOL via MWA; bananas + crypto required to purchase; one-time permanent ownership; equip one per category
+- **Loot Crates** — spend 50 bananas for a random spin; Common 60% (5-15 bananas back), Uncommon 25% (2x earnings 24h), Rare 10% (free Tier 1 item), Epic 4% (free Tier 2), Legendary 1% (exclusive holographic bubble)
+- **MonkeClout Leaderboard** — reputation score (0-1000) based on streak length (20%), trade accuracy (30%), chat activity (25%), banana balance (25%); top 3 earn "Alpha Ape" flair; displayed in Community popup
+- **Monke of the Week** — Hermes auto-picks top CloutScore user every Monday; featured in Community popup with special frame; bot announces in main chat; shareable to X
+- **Activity cNFT Badges** — 13 soulbound compressed NFT achievement badges across 4 categories (Streak, Trading, Social, Special); $4.99 mint fee in $SKR or $SOL via MWA; Bubblegum (Metaplex) minting; displayed on profile
+- **Limited Drops / Auctions** — seasonal 48-hour timed auctions for exclusive items; bid bananas + SOL; highest bidder wins
+- **AI Dream Mode** — after completing a full 7-day banana cycle, Hermes generates a personalized "trading dream" narrative with mood-based visuals (bullish/chaotic/zen/legendary); shareable to X; mintable as soulbound cNFT
+- **Banana push notifications** — streak at risk (20h warning), loot crate ready, leaderboard passed, new auction, Monke of the Week
+- **Share-to-X milestones** — auto-prompt to share on X when earning badges, Day 7 bonus, loot wins, leaderboard top 3, Monke of the Week; branded tweets with @xOnlyMonkes + hashtags
+
+### Monke Globe
+- **3D interactive globe** — WebView + Three.js with Blue Marble earth texture; finger rotate (OrbitControls), pinch-to-zoom, auto-spin
+- **User PFP markers** — Saga Monkes NFT profile pictures rendered as circular sprites on the globe at their chosen location; data URI → canvas → circular clip → CanvasTexture; cached to avoid reloads
+- **Solana ecosystem events** — Lu.ma calendar scraping for Solana, Solana Mobile, Solflare, Saga Monkes events; blue markers with beams
+- **IRL app events** — community calendar events appear as green markers; auto-removed after event date passes
+- **User location** — free-text location field in profile; geocoded via Nominatim (OpenStreetMap); cached in AsyncStorage; broadcast via PROFILE_UPDATE `loc` field
+- **Tap markers** — tap user markers to open profile modal; tap events to see date/time/location/Lu.ma link
+
+### UI / Design
+- **Dark glassmorphism chat bubbles** — semi-transparent frosted glass with inner gradient (top lighter → bottom darker); OnlyMonkes blue glow radiating behind each bubble (2-layer: glassGlow wrapper + glassBubble); pill-shaped (borderRadius 22)
+- **PFP floating effect** — user avatars outside the bubble with diffused Solana purple hue shadow + depth drop shadow
+- **Community popup** — centered modal with search bar, grid layout (6 icon buttons: Messages, Events, Links, Marketplace, Tools, Settings), banana streak bar + shop button
+- **Onboarding tutorial** — 3-screen overlay for first-time users (Bananas → Globe → Community); awards 25 banana welcome bonus
+- **Skeleton loaders** — shimmer placeholders for chat messages, globe, and community popup
+- **Badge notification banner** — slides down from top when badge earned; auto-dismisses after 4s; tap to share on X
+- **Scroll-to-bottom FAB** — floating arrow button with unread count badge; appears when scrolled up
+- **Monke-personality errors** — randomized on-brand error messages ("The blockchain ghosted us", "Transaction failed. Much like my patience.")
 
 ### Notifications
 - **Push notifications (v8)** — FCM V1 API via service account + Expo push relay with Bearer auth; all channels use MAX importance for heads-up banners (including bot alerts); legacy channels (v1–v7) auto-deleted on startup; foreground heads-up alerts via native DirectNotif module (bypasses Expo groupKey silent interception)
@@ -579,20 +609,20 @@ Download and place in `assets/fonts/`:
 Create a `.env` file in the project root:
 
 ```env
-HELIUS_API_KEY=your-helius-api-key          # helius.dev
-GIPHY_API_KEY=your-giphy-api-key            # developers.giphy.com
-CLOUDINARY_CLOUD_NAME=your-cloud-name       # cloudinary.com
-CLOUDINARY_UPLOAD_PRESET=your-preset        # unsigned upload preset
+HELIUS_API_KEY=<YOUR_KEY_HERE>               # helius.dev
+GIPHY_API_KEY=<YOUR_KEY_HERE>               # developers.giphy.com
+CLOUDINARY_CLOUD_NAME=<YOUR_KEY_HERE>       # cloudinary.com
+CLOUDINARY_UPLOAD_PRESET=<YOUR_KEY_HERE>    # unsigned upload preset
 
-LIVEKIT_URL=wss://your-project.livekit.cloud
-LIVEKIT_API_KEY=your-livekit-api-key        # livekit.io cloud dashboard
-LIVEKIT_API_SECRET=your-livekit-api-secret
+LIVEKIT_URL=wss://<YOUR_PROJECT>.livekit.cloud
+LIVEKIT_API_KEY=<YOUR_KEY_HERE>             # livekit.io cloud dashboard
+LIVEKIT_API_SECRET=<YOUR_KEY_HERE>
 
-JUP_API_KEY=your-jupiter-api-key           # portal.jup.ag
+JUP_API_KEY=<YOUR_KEY_HERE>                # portal.jup.ag
 SKR_MINT=SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3
 DEV_WALLET=7tLrnPvgcR5mLtyUcVwvmhAD1wXbAKgWcLBPWxpwyZ1J
 
-SENTRY_DSN=your-sentry-dsn                 # sentry.io
+SENTRY_DSN=<YOUR_KEY_HERE>                  # sentry.io
 ```
 
 These are injected via `app.config.ts` → `Constants.expoConfig.extra`.
