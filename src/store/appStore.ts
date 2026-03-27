@@ -44,6 +44,7 @@ interface AppState {
   bio: string | null;
   xAccount: string | null;
   tipWallet: string | null;
+  location: string | null;
   isLoading: boolean;
   error: string | null;
   // Notification preferences
@@ -74,6 +75,8 @@ interface AppState {
   loginStreak: number;
   bestStreak: number;
   isLegendary: boolean;
+  // Banana rewards
+  bananaBalance: number;
   // Push notifications
   expoPushToken: string | null;
   // Live audio room
@@ -105,6 +108,7 @@ interface AppActions {
   setBio: (bio: string) => void;
   setXAccount: (xAccount: string) => void;
   setTipWallet: (tipWallet: string) => void;
+  setLocation: (location: string) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
   setNotificationsEnabled: (enabled: boolean) => void;
@@ -129,6 +133,7 @@ interface AppActions {
   setCalendarEvents: (events: CalendarEvent[]) => void;
   addCalendarEvent: (event: CalendarEvent) => void;
   setLoginStreak: (streak: number, best: number, legendary: boolean) => void;
+  setBananaBalance: (balance: number) => void;
   setExpoPushToken: (token: string | null) => void;
   setActiveLiveRoom: (room: LiveRoomState | null) => void;
   updateLiveRoomCount: (count: number) => void;
@@ -160,6 +165,7 @@ const initialState: AppState = {
   bio: null,
   xAccount: null,
   tipWallet: null,
+  location: null,
   isLoading: false,
   error: null,
   notificationsEnabled: true,
@@ -181,6 +187,7 @@ const initialState: AppState = {
   loginStreak: 0,
   bestStreak: 0,
   isLegendary: false,
+  bananaBalance: 0,
   expoPushToken: null,
   activeLiveRoom: null,
   isInLiveRoom: false,
@@ -207,6 +214,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   setBio: (bio) => set({ bio }),
   setXAccount: (xAccount) => set({ xAccount }),
   setTipWallet: (tipWallet) => set({ tipWallet }),
+  setLocation: (location) => set({ location }),
   setLoading: (isLoading) => set({ isLoading }),
   setError: (error) => set({ error }),
   setNotificationsEnabled: (notificationsEnabled) => {
@@ -269,6 +277,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   setCalendarEvents: (calendarEvents) => set({ calendarEvents }),
   addCalendarEvent: (event) => set((s) => ({ calendarEvents: [...s.calendarEvents, event] })),
   setLoginStreak: (loginStreak, bestStreak, isLegendary) => set({ loginStreak, bestStreak, isLegendary }),
+  setBananaBalance: (bananaBalance) => set({ bananaBalance }),
   setExpoPushToken: (expoPushToken) => set({ expoPushToken }),
   setActiveLiveRoom: (activeLiveRoom) => set({ activeLiveRoom }),
   updateLiveRoomCount: (count) =>

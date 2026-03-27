@@ -9,7 +9,7 @@ set -uo pipefail
 
 APP_DIR="${HOME}/AndroidStudioProjects/OnlyMonkes"
 BOT_DIR="${HOME}/Monke_Eliza/agents/monke-trader"
-HERMES_DIR="${HOME}/.hermes_memory"
+HERMES_DIR="${HOME}/Monke_Eliza/agents/monke-trader/.hermes_memory"
 REPORT="/tmp/security-report.md"
 ARCHIVE="/tmp/security-report-$(date +%Y%m%d-%H%M).md"
 

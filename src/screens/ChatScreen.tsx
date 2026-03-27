@@ -53,6 +53,14 @@ import { router } from "expo-router";
 import { THEME, FONTS, SKR_MINT } from "@/lib/constants";
 import { loadUserProfile, getCachedProfile, getAllTimeUsers, saveSelectedNftMint, cacheProfile } from "@/lib/userProfile";
 import { checkAndUpdateStreak } from "@/lib/streaks";
+import { claimDailyBananas, type ClaimResult } from "@/lib/bananaRewards";
+import { BananaClaimModal } from "@/components/BananaClaimModal";
+import { checkBananaNotifications } from "@/lib/bananaNotifications";
+import { OnboardingOverlay, hasCompletedOnboarding } from "@/components/OnboardingOverlay";
+import { BadgeNotificationBanner } from "@/components/BadgeNotificationBanner";
+import { ScrollToBottomFab } from "@/components/ScrollToBottomFab";
+import { updateStats, type Badge } from "@/lib/activityBadges";
+import { loadBananaState } from "@/lib/bananaRewards";
 import { updateStreak as updateBadgeStreak } from "@/lib/badges";
 import { ConfettiView } from "@/components/ConfettiView";
 import { registerForPushNotifications, setNotificationReplyHandler } from "@/lib/notifications";
@@ -174,6 +182,11 @@ export default function ChatScreen() {
   const [profileTarget, setProfileTarget] = useState<ProfileTarget | null>(null);
   const [refreshingChat, setRefreshingChat] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
+  const [bananaClaim, setBananaClaim] = useState<ClaimResult | null>(null);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [earnedBadge, setEarnedBadge] = useState<Badge | null>(null);
+  const [showScrollFab, setShowScrollFab] = useState(false);
+  const [unreadWhileScrolled, setUnreadWhileScrolled] = useState(0);
   const [gifPickerOpen, setGifPickerOpen] = useState(false);
   const [pfpGifPickerOpen, setPfpGifPickerOpen] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
@@ -234,6 +247,24 @@ export default function ChatScreen() {
         setShowConfetti(true);
         broadcastProfile();
       }
+      // Banana daily reward
+      const claim = await claimDailyBananas();
+      useAppStore.getState().setBananaBalance(claim.balance);
+      if (claim.claimed) setBananaClaim(claim);
+      // Schedule banana-related push notifications
+      checkBananaNotifications().catch(() => {});
+      // Check for new badges
+      const bananaState = await loadBananaState();
+      const { newBadges } = await updateStats({
+        totalDaysActive: bananaState.totalCycles * 7 + bananaState.streakDay,
+        currentStreak: bananaState.streakDay,
+        totalCycles: bananaState.totalCycles,
+        bananaBalance: bananaState.balance,
+      });
+      if (newBadges.length > 0) setEarnedBadge(newBadges[0]);
+      // Show onboarding for first-time users
+      const onboarded = await hasCompletedOnboarding();
+      if (!onboarded) setShowOnboarding(true);
     });
 
     // Wire offline queue flusher so it fires when network comes back
@@ -328,7 +359,7 @@ export default function ChatScreen() {
       }
       // Always keep own entry in the profile cache so PFP shows everywhere
       const { myInboxId: id, verifiedNft: nft } = useAppStore.getState();
-      if (id) cacheProfile(id, { username: saved ?? undefined, nftImage: nft?.image ?? null });
+      if (id) cacheProfile(id, { username: saved ?? undefined, nftImage: nft?.image ?? null, location: savedLoc ?? undefined });
     });
     // Load persisted theme
     loadThemeId().then(setThemeId);
@@ -369,7 +400,7 @@ export default function ChatScreen() {
   // ─── Keep own NFT in profile cache in sync whenever verifiedNft changes ──────
   useEffect(() => {
     if (myInboxId && verifiedNft?.image) {
-      cacheProfile(myInboxId, { nftImage: verifiedNft.image });
+      cacheProfile(myInboxId, { nftImage: verifiedNft.image, location: useAppStore.getState().location ?? undefined });
     }
   }, [myInboxId, verifiedNft]);
 
@@ -715,8 +746,8 @@ export default function ChatScreen() {
   // ─── X / Twitter share for own images ─────────────────────────────────────────
 
   const handleShareToX = useCallback(() => {
-    const caption = encodeURIComponent("Shot Using @xOnlyMonkes");
-    const url = `https://twitter.com/intent/tweet?text=${caption}`;
+    const caption = encodeURIComponent("I snapped this using @xOnlyMonkes via Solana Mobile, The Future is Monke! 🐒");
+    const url = `https://x.com/intent/tweet?text=${caption}`;
     Linking.openURL(url);
     setXShareImageUri(null);
   }, []);
@@ -945,6 +976,36 @@ export default function ChatScreen() {
     <>
       {showConfetti && <ConfettiView onDone={() => setShowConfetti(false)} />}
 
+      <BananaClaimModal
+        visible={!!bananaClaim}
+        claim={bananaClaim}
+        onDismiss={() => setBananaClaim(null)}
+      />
+
+      <OnboardingOverlay
+        visible={showOnboarding}
+        onComplete={(bonus) => {
+          setShowOnboarding(false);
+          const cur = useAppStore.getState().bananaBalance;
+          useAppStore.getState().setBananaBalance(cur + bonus);
+        }}
+      />
+
+      <BadgeNotificationBanner
+        badge={earnedBadge}
+        onDismiss={() => setEarnedBadge(null)}
+      />
+
+      <ScrollToBottomFab
+        visible={showScrollFab}
+        unreadCount={unreadWhileScrolled}
+        onPress={() => {
+          flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+          setShowScrollFab(false);
+          setUnreadWhileScrolled(0);
+        }}
+      />
+
       <UsernameModal
         visible={showUsernameModal || editingProfile}
         onDone={async () => {
@@ -1055,28 +1116,28 @@ export default function ChatScreen() {
       >
         {/* ── Header ────────────────────────────────────────────────────────── */}
         <View style={styles.header}>
-          {/* Left: avatar (tappable — opens own profile) + streak pill */}
-          <Pressable
-            style={styles.headerLeft}
-            onPress={() => setProfileTarget({
-              senderAddress: myAddress,
-              senderUsername: username ?? undefined,
-              senderNft: verifiedNft ?? undefined,
-            })}
-            hitSlop={6}
-          >
-            {verifiedNft?.image ? (
-              <Image
-                source={{ uri: verifiedNft.image }}
-                style={styles.headerNft}
-              />
-            ) : (
-              <View style={styles.headerNftFallback}>
-                <Text style={styles.headerNftGlyph}>🐒</Text>
-              </View>
-            )}
-            {/* streak pill removed — ticker occupies this space */}
-          </Pressable>
+          {/* Left: avatar + banana count */}
+          <View style={styles.headerLeft}>
+            <Pressable
+              onPress={() => setProfileTarget({
+                senderAddress: myAddress,
+                senderUsername: username ?? undefined,
+                senderNft: verifiedNft ?? undefined,
+              })}
+              hitSlop={6}
+            >
+              {verifiedNft?.image ? (
+                <Image
+                  source={{ uri: verifiedNft.image }}
+                  style={styles.headerNft}
+                />
+              ) : (
+                <View style={styles.headerNftFallback}>
+                  <Text style={styles.headerNftGlyph}>🐒</Text>
+                </View>
+              )}
+            </Pressable>
+          </View>
 
           {/* Center: decorative banner image */}
           <ImageBackground
@@ -1086,7 +1147,7 @@ export default function ChatScreen() {
             resizeMode="cover"
           />
 
-          {/* Right: admin badge (admin only) + ☰ menu */}
+          {/* Right: globe + banana pill (opens community popup) */}
           <View style={styles.headerRight}>
             <Pressable
               onPress={() => router.push("/globe" as any)}
@@ -1097,11 +1158,11 @@ export default function ChatScreen() {
             </Pressable>
 
             <Pressable
+              style={styles.bananaHeaderPill}
               onPress={() => setDrawerOpen(true)}
-              style={styles.iconBtn}
-              hitSlop={8}
+              hitSlop={6}
             >
-              <Text style={styles.menuIcon}>☰</Text>
+              <Text style={styles.bananaHeaderText}>{useAppStore.getState().bananaBalance} 🍌</Text>
               {(communityBadges.dms + communityBadges.events + communityBadges.links) > 0 && (
                 <View style={styles.communityBadge}>
                   <Text style={styles.communityBadgeText}>
@@ -1304,7 +1365,10 @@ export default function ChatScreen() {
           windowSize={10}
           onScroll={({ nativeEvent }) => {
             // Inverted list: offset 0 = newest messages (bottom of chat)
-            isNearBottomRef.current = nativeEvent.contentOffset.y <= SCROLL_THRESHOLD;
+            const nearBottom = nativeEvent.contentOffset.y <= SCROLL_THRESHOLD;
+            isNearBottomRef.current = nearBottom;
+            setShowScrollFab(!nearBottom);
+            if (nearBottom) setUnreadWhileScrolled(0);
           }}
           scrollEventThrottle={200}
         />}
@@ -1642,7 +1706,9 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.9 }],
   },
   headerLeft: {
-    alignSelf: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
   },
   headerNft: {
     width: 58,
@@ -1677,6 +1743,20 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
+  },
+  bananaHeaderPill: {
+    backgroundColor: "rgba(255,213,79,0.1)",
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: "rgba(255,213,79,0.15)",
+  },
+  bananaHeaderText: {
+    fontFamily: FONTS.mono,
+    fontSize: 11,
+    color: "#FFD54F",
+    fontWeight: "600",
   },
   iconBtn: {
     width: 34,
