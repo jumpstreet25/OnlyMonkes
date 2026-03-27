@@ -26,6 +26,7 @@ import {
   useWindowDimensions,
   Image,
   ScrollView,
+  TextInput,
   Linking,
   Switch,
   Alert,
@@ -42,6 +43,8 @@ import { getCachedProfile, useProfileVersion } from "@/lib/userProfile";
 import { shortenAddress } from "@/lib/nftVerification";
 import { clearPushToken, registerForPushNotifications, scheduleTestNotification } from "@/lib/notifications";
 import { markChannelRead } from "@/lib/messageCache";
+import { loadBananaState, type BananaState } from "@/lib/bananaRewards";
+import { BananaShopModal } from "@/components/BananaShopModal";
 import type { ProfileTarget } from "@/components/UserProfileModal";
 
 const DRAWER_WIDTH_RATIO = 0.82;
@@ -111,9 +114,6 @@ const SPORTS_LIST = [
 
 export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onStartVideo, onSearch, onPressUser, broadcastProfile, onDevTip }: MenuDrawerProps) {
   const { width: SCREEN_WIDTH } = useWindowDimensions();
-  const DRAWER_WIDTH = SCREEN_WIDTH * DRAWER_WIDTH_RATIO;
-
-  const slideAnim = useRef(new Animated.Value(DRAWER_WIDTH)).current;
   const { messages } = useChatStore();
   const calendarEvents = useAppStore(s => s.calendarEvents);
   const myInboxId = useAppStore(s => s.myInboxId);
@@ -140,13 +140,8 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
   useProfileVersion();
 
   useEffect(() => {
-    Animated.timing(slideAnim, {
-      toValue: visible ? 0 : DRAWER_WIDTH,
-      duration: 260,
-      useNativeDriver: true,
-    }).start();
     if (!visible) setActiveView("list");
-  }, [visible, DRAWER_WIDTH]);
+  }, [visible]);
 
   // ── Derived data ──────────────────────────────────────────────────────────
 
@@ -310,9 +305,42 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
     );
   }
 
+  function GridButton({
+    icon, label, badge, onPress,
+  }: {
+    icon: string;
+    label: string;
+    badge?: number;
+    onPress: () => void;
+  }) {
+    return (
+      <Pressable
+        style={({ pressed }) => [styles.gridBtn, pressed && { opacity: 0.7, transform: [{ scale: 0.95 }] }]}
+        onPress={onPress}
+      >
+        <Text style={styles.gridIcon}>{icon}</Text>
+        <Text style={styles.gridLabel}>{label}</Text>
+        {badge !== undefined && badge > 0 && (
+          <View style={styles.gridBadge}>
+            <Text style={styles.gridBadgeText}>{badge}</Text>
+          </View>
+        )}
+      </Pressable>
+    );
+  }
+
   // ── Back / close header ───────────────────────────────────────────────────
 
   const isList = activeView === "list";
+
+  const [searchText, setSearchText] = useState("");
+  const [shopOpen, setShopOpen] = useState(false);
+  const [bananaState, setBananaState] = useState<BananaState | null>(null);
+  const bananaBalance = useAppStore(s => s.bananaBalance);
+
+  useEffect(() => {
+    if (visible) loadBananaState().then(setBananaState);
+  }, [visible]);
 
   return (
     <Modal
@@ -324,12 +352,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
     >
       <Pressable style={styles.overlay} onPress={onClose} />
 
-      <Animated.View
-        style={[
-          styles.drawer,
-          { width: DRAWER_WIDTH, transform: [{ translateX: slideAnim }] },
-        ]}
-      >
+      <View style={styles.popup}>
         {/* Header */}
         <View style={styles.drawerHeader}>
           {!isList ? (
@@ -355,74 +378,97 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
         {/* Content */}
         <ScrollView showsVerticalScrollIndicator={false} style={styles.content}>
 
-          {/* ── Main list ──────────────────────────────────────────────────── */}
+          {/* ── Main grid ──────────────────────────────────────────────────── */}
           {activeView === "list" && (
             <>
-              <View style={styles.menuList}>
-                {onSearch && (
-                  <MenuItem
-                    icon="🔍"
-                    title="Search"
-                    subtitle="Search messages"
-                    onPress={() => { onClose(); setTimeout(onSearch, 280); }}
-                  />
-                )}
-                <MenuItem
-                  icon="💬"
-                  title="Messages"
-                  subtitle="Direct messages"
-                  badge={communityBadges.dms || undefined}
-                  onPress={() => { clearCommunityBadge('dms'); markChannelRead('dms').catch(() => {}); onClose(); setTimeout(() => router.push('/dms'), 300); }}
-                />
-                <MenuItem
-                  icon="🗓️"
-                  title="Events"
-                  subtitle={sortedEvents.length > 0 ? `${sortedEvents.length} upcoming` : "Community calendar"}
-                  badge={communityBadges.events || undefined}
-                  onPress={() => { clearCommunityBadge('events'); setActiveView("events"); }}
-                />
-                <MenuItem
-                  icon="🖼️"
-                  title="Shared Images"
-                  subtitle={sharedMedia.length > 0 ? `${sharedMedia.length} shared` : "Photos, GIFs & videos"}
-                  onPress={() => setActiveView("images")}
-                />
-                <MenuItem
-                  icon="🔗"
-                  title="Shared Links"
-                  subtitle={sharedLinks.length > 0 ? `${sharedLinks.length} links` : "URLs shared in chat"}
-                  badge={communityBadges.links || undefined}
-                  onPress={() => { clearCommunityBadge('links'); setActiveView("links"); }}
-                />
-                <MenuItem
-                  icon="🏪"
-                  title="Marketplace"
-                  subtitle="Trade Saga Monkes P2P"
-                  onPress={() => { onClose(); setTimeout(() => router.push('/marketplace'), 300); }}
-                />
-                <MenuItem
-                  icon="🔧"
-                  title="Monke Tools"
-                  subtitle="Ecosystem links"
-                  onPress={() => setActiveView("tools")}
-                />
-                <MenuItem
-                  icon="⚙️"
-                  title="App Settings"
-                  subtitle="Notifications & preferences"
-                  onPress={() => setActiveView("settings")}
+              {/* Banana Streak Bar + Balance + Shop */}
+              {bananaState && (
+                <View style={styles.bananaSection}>
+                  <View style={styles.bananaHeader}>
+                    <Text style={styles.bananaTitle}>Daily Streak</Text>
+                    <View style={styles.bananaBalancePill}>
+                      <Text style={styles.bananaBalanceText}>{bananaBalance} 🍌</Text>
+                    </View>
+                  </View>
+                  <View style={styles.bananaBar}>
+                    {[1, 2, 3, 4, 5, 6, 7].map(day => {
+                      const filled = day <= bananaState.streakDay;
+                      return (
+                        <View key={day} style={[
+                          styles.bananaSlot,
+                          filled && styles.bananaSlotFilled,
+                        ]}>
+                          <Text style={[styles.bananaSlotEmoji, !filled && { opacity: 0.2 }]}>🍌</Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                  <Pressable
+                    style={({ pressed }) => [styles.shopBtn, pressed && { opacity: 0.8 }]}
+                    onPress={() => setShopOpen(true)}
+                  >
+                    <Text style={styles.shopBtnText}>🛒 Banana Shop</Text>
+                  </Pressable>
+                </View>
+              )}
+
+              {/* Search bar */}
+              <View style={styles.searchBar}>
+                <Text style={styles.searchIcon}>🔍</Text>
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="Search messages…"
+                  placeholderTextColor={THEME.textFaint}
+                  value={searchText}
+                  onChangeText={setSearchText}
+                  onSubmitEditing={() => {
+                    if (searchText.trim() && onSearch) {
+                      onClose();
+                      setTimeout(onSearch, 280);
+                    }
+                  }}
+                  returnKeyType="search"
+                  autoCapitalize="none"
+                  autoCorrect={false}
                 />
               </View>
 
-              {/* Active Monkes 24hr */}
-              <Text style={styles.sectionLabel}>
-                Active last 24h · {activeUsers.length}
-              </Text>
-              {activeUsers.length === 0 ? (
-                <Text style={styles.emptyText}>No activity in the last 24 hours.</Text>
-              ) : (
-                activeUsers.map((u) => renderUserRow(u))
-              )}
+              {/* Grid of icon buttons */}
+              <View style={styles.gridContainer}>
+                <GridButton
+                  icon="✉️"
+                  label="Messages"
+                  badge={communityBadges.dms || undefined}
+                  onPress={() => { clearCommunityBadge('dms'); markChannelRead('dms').catch(() => {}); onClose(); setTimeout(() => router.push('/dms'), 300); }}
+                />
+                <GridButton
+                  icon="📅"
+                  label="Events"
+                  badge={communityBadges.events || undefined}
+                  onPress={() => { clearCommunityBadge('events'); setActiveView("events"); }}
+                />
+                <GridButton
+                  icon="🔗"
+                  label="Links"
+                  badge={communityBadges.links || undefined}
+                  onPress={() => { clearCommunityBadge('links'); setActiveView("links"); }}
+                />
+                <GridButton
+                  icon="🏪"
+                  label="Marketplace"
+                  onPress={() => { onClose(); setTimeout(() => router.push('/marketplace'), 300); }}
+                />
+                <GridButton
+                  icon="🔧"
+                  label="Tools"
+                  onPress={() => setActiveView("tools")}
+                />
+                <GridButton
+                  icon="⚙️"
+                  label="Settings"
+                  onPress={() => setActiveView("settings")}
+                />
+              </View>
             </>
           )}
 
@@ -813,7 +859,9 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
         </ScrollView>
 
         <Text style={styles.footerHint}>OnlyMonkes · Saga Monkes holders</Text>
-      </Animated.View>
+      </View>
+
+      <BananaShopModal visible={shopOpen} onClose={() => setShopOpen(false)} />
     </Modal>
   );
 }
@@ -972,17 +1020,20 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(0,0,0,0.55)",
   },
-  drawer: {
+  popup: {
     position: "absolute",
+    left: 0,
     right: 0,
-    top: 0,
-    bottom: 0,
+    // Sit below the header bar (~100pt) and above the message bar (~80pt)
+    top: 100,
+    bottom: 80,
     backgroundColor: THEME.surfaceHigh,
-    paddingTop: 56,
-    borderLeftWidth: 1,
-    borderLeftColor: THEME.border,
-    shadowColor: "#000",
-    shadowOffset: { width: -4, height: 0 },
+    borderRadius: 20,
+    marginHorizontal: 8,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    shadowColor: "#6CB4EE",
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.4,
     shadowRadius: 16,
     elevation: 20,
@@ -1098,7 +1149,145 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
 
-  // Menu list
+  // Banana streak section
+  bananaSection: {
+    marginBottom: 16,
+    backgroundColor: "rgba(255, 213, 79, 0.04)",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(255, 213, 79, 0.1)",
+    padding: 14,
+    gap: 10,
+  },
+  bananaHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  bananaTitle: {
+    fontFamily: FONTS.displayMed,
+    fontSize: 13,
+    color: "#FFD54F",
+  },
+  bananaBalancePill: {
+    backgroundColor: "rgba(255, 213, 79, 0.1)",
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: "rgba(255, 213, 79, 0.15)",
+  },
+  bananaBalanceText: {
+    fontFamily: FONTS.mono,
+    fontSize: 12,
+    color: "#FFD54F",
+    fontWeight: "600",
+  },
+  bananaBar: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 4,
+  },
+  bananaSlot: {
+    flex: 1,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: "rgba(255,255,255,0.03)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.05)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  bananaSlotFilled: {
+    backgroundColor: "rgba(255, 213, 79, 0.12)",
+    borderColor: "rgba(255, 213, 79, 0.25)",
+  },
+  bananaSlotEmoji: {
+    fontSize: 16,
+  },
+  shopBtn: {
+    backgroundColor: "rgba(255, 213, 79, 0.1)",
+    borderRadius: 12,
+    paddingVertical: 10,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255, 213, 79, 0.2)",
+  },
+  shopBtnText: {
+    fontFamily: FONTS.displayMed,
+    fontSize: 13,
+    color: "#FFD54F",
+  },
+
+  // Search bar
+  searchBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: THEME.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 20,
+    gap: 8,
+  },
+  searchIcon: { fontSize: 16 },
+  searchInput: {
+    flex: 1,
+    fontFamily: FONTS.body,
+    fontSize: 14,
+    color: THEME.text,
+    padding: 0,
+    margin: 0,
+  },
+
+  // Grid buttons
+  gridContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    gap: 12,
+    marginBottom: 24,
+  },
+  gridBtn: {
+    width: "30%",
+    aspectRatio: 1,
+    backgroundColor: "rgba(108, 180, 238, 0.06)",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(108, 180, 238, 0.1)",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+  },
+  gridIcon: { fontSize: 28 },
+  gridLabel: {
+    fontFamily: FONTS.bodyMed,
+    fontSize: 11,
+    color: THEME.textMuted,
+    textAlign: "center",
+  },
+  gridBadge: {
+    position: "absolute",
+    top: 6,
+    right: 6,
+    backgroundColor: "#EF4444",
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 4,
+  },
+  gridBadgeText: {
+    fontFamily: FONTS.mono,
+    fontSize: 10,
+    color: "#fff",
+    fontWeight: "700",
+  },
+
+  // Menu list (for sub-views)
   menuList: {
     marginBottom: 20,
   },
@@ -1150,10 +1339,10 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: THEME.border,
   },
-  userAvatar: { width: 38, height: 38, borderRadius: 10, borderWidth: 1, borderColor: THEME.border },
+  userAvatar: { width: 38, height: 38, borderRadius: 19 },
   userAvatarFallback: {
-    width: 38, height: 38, borderRadius: 10,
-    backgroundColor: THEME.accentSoft, borderWidth: 1, borderColor: THEME.accent + "44",
+    width: 38, height: 38, borderRadius: 19,
+    backgroundColor: THEME.accentSoft,
     alignItems: "center", justifyContent: "center",
   },
   userAvatarGlyph: { fontSize: 16 },

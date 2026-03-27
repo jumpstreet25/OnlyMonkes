@@ -519,12 +519,10 @@ export const MessageBubble = memo(function MessageBubble({
       ]}
       {...panResponder.panHandlers}
     >
-      {/* ── PFP — purple hue on chat layer + PFP floating above ────────── */}
-      {!isMedia && !centerBubble && (
+      {/* ── PFP — always shown beside bubble/media ────────────────────── */}
+      {!centerBubble && (
         <Pressable onPress={handlePressAvatar} hitSlop={6} style={styles.avatarOuter}>
-          {/* Layer 1: subtle purple hue wash (sits on the chat layer) */}
           <View style={styles.avatarHue} />
-          {/* Layer 2: PFP image floating above the hue with depth shadow */}
           <View style={styles.avatarFloat}>
             {avatarUri ? (
               <Image source={{ uri: avatarUri }} style={styles.avatarImg} />
@@ -544,8 +542,8 @@ export const MessageBubble = memo(function MessageBubble({
         centerBubble && styles.bubbleGroupCenter,
       ]}>
 
-        {/* Sender name row (outside bubble, above it) */}
-        {!isMedia && (
+        {/* Sender name row (outside bubble, above it — for all message types) */}
+        {(
           <View style={[
             styles.senderRow,
             isOwn && !centerBubble && styles.senderRowOwn,
@@ -749,30 +747,6 @@ export const MessageBubble = memo(function MessageBubble({
           )}
         </Pressable>
 
-        {/* Media messages — avatar + sender + timestamp below */}
-        {isMedia && (
-          <View style={[styles.msgHeader, isOwn && styles.msgHeaderOwn]}>
-            <Pressable onPress={handlePressAvatar} hitSlop={6} style={styles.avatarOuterSmall}>
-              <View style={styles.avatarHueSmall} />
-              <View style={styles.avatarFloatSmall}>
-                {avatarUri ? (
-                  <Image source={{ uri: avatarUri }} style={styles.avatarImgSmall} />
-                ) : isBot ? (
-                  <Image source={require('../../assets/ai_agent_avatar.png')} style={styles.avatarImgSmall} />
-                ) : (
-                  <View style={[styles.avatarImgSmall, styles.avatarFallback]} />
-                )}
-              </View>
-            </Pressable>
-            <Text style={styles.sender}>
-              {isOwn ? "You" : displayName}{isLegendarySender ? ' 🌟' : ''}
-            </Text>
-            <Text style={styles.timeOutside}>
-              {format(message.sentAt, "HH:mm")}
-            </Text>
-          </View>
-        )}
-
         {/* Blink / Solana Action card */}
         {!isMedia && blinkUrl && (
           <BlinkCard actionUrl={blinkUrl} />
@@ -786,7 +760,7 @@ export const MessageBubble = memo(function MessageBubble({
       </View>
 
       {/* ── Timestamp outside bubble ─────────────────────────────────── */}
-      {!isMedia && (
+      {(
         <View style={[
           styles.timestampOuter,
           centerBubble && styles.timestampOuterCenter,
@@ -1023,7 +997,7 @@ const styles = StyleSheet.create({
     borderRadius: 13,
   },
   avatarFallback: {
-    backgroundColor: "rgba(153, 69, 255, 0.2)",
+    backgroundColor: "transparent",
   },
 
   // ── Extras row (reactions, threads) — outside main row so PFP stays fixed ─
@@ -1097,6 +1071,26 @@ const styles = StyleSheet.create({
   },
 
   // ── Media header ───────────────────────────────────────────────────────────
+  // Media footer — PFP beside media at bottom edge
+  mediaFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: -14,
+    marginLeft: 4,
+  },
+  mediaFooterOwn: {
+    flexDirection: "row-reverse",
+    marginLeft: 0,
+    marginRight: 4,
+  },
+  mediaFooterText: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+
+  // Legacy msgHeader (kept for non-media usage)
   msgHeader: {
     flexDirection: "row",
     alignItems: "center",
@@ -1454,27 +1448,24 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 4,
-    marginTop: 4,
-    marginLeft: 4,
+    marginTop: -6,
+    marginLeft: 8,
   },
   stickerReactionRowOwn: {
     justifyContent: "flex-end",
     marginLeft: 0,
-    marginRight: 4,
+    marginRight: 8,
   },
   stickerReactionPill: {
     flexDirection: "row",
     alignItems: "center",
     gap: 3,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: "transparent",
     borderRadius: 12,
     padding: 3,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.05)",
   },
   stickerReactionPillActive: {
-    backgroundColor: "rgba(255,213,79,0.2)",
-    borderColor: "rgba(255,213,79,0.15)",
+    backgroundColor: "transparent",
   },
   stickerReactionImg: {
     width: 32,
