@@ -526,6 +526,7 @@ export interface ParsedProfileUpdate {
   legendary: boolean;
   pushToken?: string;
   expoPushToken?: string;
+  badges?: string[];
 }
 
 /**
@@ -565,6 +566,7 @@ export function parseProfileUpdate(raw: string): ParsedProfileUpdate | null {
     legendary: !!data.lg,
     pushToken: str(data.pt),
     expoPushToken: str(data.ept),
+    badges: Array.isArray(data.bd) ? data.bd.filter((b: unknown) => typeof b === "string").slice(0, 20) : undefined,
   };
 }
 
@@ -708,6 +710,7 @@ export async function sendProfileUpdate(
   } | null,
   expoPushToken?: string | null,
   location?: string | null,
+  badges?: string[] | null,
 ): Promise<void> {
   const payload = JSON.stringify({
     id: inboxId,
@@ -727,6 +730,7 @@ export async function sendProfileUpdate(
       ms: notifPrefs.mutedSports ?? null,
     } : null,
     ept: expoPushToken ?? "",
+    bd: badges ?? [],
   });
   await (group as any).send(`PROFILE_UPDATE:${payload}`);
 }

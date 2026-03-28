@@ -23,6 +23,7 @@ import { shortenAddress } from "@/lib/nftVerification";
 import { getCachedProfile } from "@/lib/userProfile";
 import { getLastSeenText, isUserOnline } from "@/lib/presence";
 import { OnlineDot } from "@/components/OnlineDot";
+import { getEarnedBadges, getBadgeDef, BADGE_DEFS } from "@/lib/badges";
 
 export interface ProfileTarget {
   senderAddress: string;      // XMTP inboxId
@@ -134,6 +135,29 @@ export function UserProfileModal({ visible, target, onClose, onEditProfile, onCh
               </Text>
             </View>
           ) : null}
+
+          {/* Earned badges (own profile only — cosmetic achievements) */}
+          {isOwnProfile && (() => {
+            const earned = getEarnedBadges();
+            if (earned.length === 0) return null;
+            return (
+              <View style={styles.badgeSection}>
+                <Text style={styles.badgeSectionTitle}>Achievements</Text>
+                <View style={styles.badgeGrid}>
+                  {earned.map(id => {
+                    const def = getBadgeDef(id);
+                    if (!def) return null;
+                    return (
+                      <View key={id} style={styles.badgePill}>
+                        <Text style={styles.badgeEmoji}>{def.emoji}</Text>
+                        <Text style={styles.badgeName}>{def.name}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              </View>
+            );
+          })()}
 
           {/* Message button (other profiles only) */}
           {!isOwnProfile && onMessage && (
@@ -396,6 +420,45 @@ const styles = StyleSheet.create({
   closeBtnText: {
     fontFamily: FONTS.bodyMed,
     fontSize: 14,
+    color: THEME.textMuted,
+  },
+  // ── Badge achievements ──────────────────────────────────────────────────────
+  badgeSection: {
+    alignSelf: "stretch",
+    marginTop: 4,
+  },
+  badgeSectionTitle: {
+    fontFamily: FONTS.mono,
+    fontSize: 10,
+    color: THEME.textFaint,
+    marginBottom: 6,
+    textAlign: "center",
+    letterSpacing: 1,
+    textTransform: "uppercase",
+  },
+  badgeGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    gap: 6,
+  },
+  badgePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+  },
+  badgeEmoji: {
+    fontSize: 13,
+  },
+  badgeName: {
+    fontFamily: FONTS.mono,
+    fontSize: 10,
     color: THEME.textMuted,
   },
 });

@@ -17,7 +17,8 @@ import { clearLegacyKeys, startNftOwnershipGuard } from '../src/lib/session';
 import { initSentry } from '../src/lib/sentry';
 import { checkForOtaUpdate } from '../src/lib/otaUpdates';
 import { logAppOpen, logDailySession } from '../src/lib/analytics';
-import { loadBadgeData, setOnBadgeEarned, mintBadgeCNFT, type BadgeDef } from '../src/lib/badges';
+import { loadBadgeData, setOnBadgeEarned, getBadgeBananaReward, type BadgeDef } from '../src/lib/badges';
+import { addBananas } from '../src/lib/bananaRewards';
 import { Alert } from 'react-native';
 
 // Register LiveKit WebRTC globals (must be called before any LiveKit usage)
@@ -42,16 +43,16 @@ export default function RootLayout() {
 
     // Load badge progress from storage + register badge-earned callback
     loadBadgeData().catch(() => {});
-    setOnBadgeEarned((badge: BadgeDef) => {
+    setOnBadgeEarned(async (badge: BadgeDef) => {
+      const reward = getBadgeBananaReward(badge.id);
+      await addBananas(reward).catch(() => {});
+      useAppStore.getState().setBananaBalance(
+        (useAppStore.getState().bananaBalance ?? 0) + reward,
+      );
       Alert.alert(
         `${badge.emoji} Badge Earned!`,
-        `${badge.name} — ${badge.description}`,
+        `${badge.name} — ${badge.description}\n+${reward} bananas!`,
       );
-      // Auto-mint cNFT badge to user's wallet (fire-and-forget)
-      const wallet = useAppStore.getState().wallet;
-      if (wallet?.address) {
-        mintBadgeCNFT(wallet.address, badge).catch(() => {});
-      }
     });
 
     // Re-check NFT ownership every 24h; force logout if user no longer holds one

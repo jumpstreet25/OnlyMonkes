@@ -21,6 +21,7 @@ import {
   Image,
   ActivityIndicator,
   useWindowDimensions,
+  Dimensions,
 } from "react-native";
 import { GlassModal } from "@/components/GlassModal";
 import { THEME, FONTS } from "@/lib/constants";
@@ -93,7 +94,13 @@ export function GifPickerModal({
   );
 
   return (
-    <GlassModal visible={visible} onClose={onClose} position="bottom" animationType="slide">
+    <GlassModal
+      visible={visible}
+      onClose={onClose}
+      position="bottom"
+      animationType="slide"
+      cardStyle={{ height: Dimensions.get("window").height * 0.55 }}
+    >
         <Text style={styles.title}>GIF</Text>
 
         {!sagaMonkesOnly && (
@@ -114,6 +121,7 @@ export function GifPickerModal({
           </View>
         ) : (
           <FlatList
+            style={{ flex: 1 }}
             data={items}
             keyExtractor={(item) => item.id}
             numColumns={2}
