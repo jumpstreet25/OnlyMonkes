@@ -9,13 +9,13 @@ import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
-  Modal,
   Pressable,
   StyleSheet,
   Image,
   FlatList,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import { GlassModal } from "@/components/GlassModal";
 import { THEME, FONTS } from "@/lib/constants";
 import type { OwnedNFT } from "@/types";
 
@@ -43,15 +43,7 @@ export function NftPickerModal({ visible, nfts, onSelect, onCancel }: NftPickerM
   };
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      statusBarTranslucent
-      onRequestClose={onCancel}
-    >
-      <View style={styles.backdrop}>
-        <View style={styles.sheet}>
+    <GlassModal visible={visible} onClose={onCancel ?? (() => {})} cardStyle={styles.sheet}>
           {/* Header */}
           <View style={styles.header}>
             <Text style={styles.title}>Choose Your Monke PFP</Text>
@@ -121,26 +113,15 @@ export function NftPickerModal({ visible, nfts, onSelect, onCancel }: NftPickerM
               </Text>
             </LinearGradient>
           </Pressable>
-        </View>
-      </View>
-    </Modal>
+    </GlassModal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.85)",
-    justifyContent: "center",
-    padding: 20,
-  },
   sheet: {
-    backgroundColor: THEME.surfaceHigh,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: THEME.border,
     overflow: "hidden",
     maxHeight: "90%",
+    padding: 0,
   },
   header: {
     paddingHorizontal: 24,

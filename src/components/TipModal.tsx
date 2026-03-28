@@ -10,7 +10,6 @@ import React, { useState } from "react";
 import {
   View,
   Text,
-  Modal,
   Pressable,
   StyleSheet,
   ActivityIndicator,
@@ -20,6 +19,7 @@ import {
 import Slider from "@react-native-community/slider";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
+import { GlassModal } from "@/components/GlassModal";
 import { THEME, FONTS, TIP_MIN, TIP_MAX, type TipAmount } from "@/lib/constants";
 
 interface TipModalProps {
@@ -55,18 +55,7 @@ export function TipModal({ visible, recipientName, onConfirm, onClose }: TipModa
   };
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
-      statusBarTranslucent
-    >
-      <Pressable style={styles.overlay} onPress={onClose} />
-
-      <View style={styles.sheet}>
-        <View style={styles.handle} />
-
+    <GlassModal visible={visible} onClose={onClose} position="bottom" animationType="slide">
         <Text style={styles.title}>🍌  Tip with SKR</Text>
         <Text style={styles.subtitle}>
           Tipping <Text style={styles.recipientName}>{recipientName}</Text>
@@ -100,12 +89,9 @@ export function TipModal({ visible, recipientName, onConfirm, onClose }: TipModa
               tapToSeek
             />
             {trackWidth > 0 && (
-              <Text
-                style={[styles.bananaThumb, { left: bananaLeft }]}
-                pointerEvents="none"
-              >
-                🍌
-              </Text>
+              <View style={[styles.bananaThumb, { left: bananaLeft }]} pointerEvents="none">
+                <Text style={styles.bananaEmoji}>🍌</Text>
+              </View>
             )}
           </View>
           <View style={[styles.sliderEndLabels, { width: SCREEN_W - 64 }]}>
@@ -139,17 +125,12 @@ export function TipModal({ visible, recipientName, onConfirm, onClose }: TipModa
         <Pressable onPress={onClose} style={styles.cancelBtn}>
           <Text style={styles.cancelText}>Cancel</Text>
         </Pressable>
-      </View>
-    </Modal>
+    </GlassModal>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.6)",
-  },
-  sheet: {
+  sheet_unused: {
     position: "absolute",
     bottom: 0,
     left: 0,
@@ -209,6 +190,8 @@ const styles = StyleSheet.create({
   bananaThumb: {
     position: "absolute",
     top: 13,
+  },
+  bananaEmoji: {
     fontSize: 22,
   },
   sliderValue: {

@@ -46,6 +46,8 @@ import { markChannelRead } from "@/lib/messageCache";
 import { loadBananaState, type BananaState } from "@/lib/bananaRewards";
 import { BananaShopModal } from "@/components/BananaShopModal";
 import type { ProfileTarget } from "@/components/UserProfileModal";
+import { BlurView } from "expo-blur";
+import { LinearGradient } from "expo-linear-gradient";
 
 const DRAWER_WIDTH_RATIO = 0.82;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
@@ -350,9 +352,21 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
       onRequestClose={onClose}
       statusBarTranslucent
     >
-      <Pressable style={styles.overlay} onPress={onClose} />
+      <Pressable style={StyleSheet.absoluteFill} onPress={onClose}>
+        <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
+        <View style={styles.overlay} />
+      </Pressable>
 
       <View style={styles.popup}>
+        {/* Glass gradient overlay */}
+        <LinearGradient
+          colors={["rgba(248,248,255,0.06)", "rgba(0,0,0,0.12)"]}
+          start={{ x: 0.5, y: 0 }}
+          end={{ x: 0.5, y: 1 }}
+          style={[StyleSheet.absoluteFill, { borderRadius: 20 }]}
+        />
+        {/* Top highlight */}
+        <View style={styles.glassHighlight} />
         {/* Header */}
         <View style={styles.drawerHeader}>
           {!isList ? (
@@ -382,10 +396,22 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
           {activeView === "list" && (
             <>
               {/* Banana Streak Bar + Balance + Shop */}
-              {bananaState && (
+              {bananaState && (() => {
+                const msLeft = bananaState.lastClaimTs > 0
+                  ? Math.max(0, (bananaState.lastClaimTs + 24 * 60 * 60 * 1000) - Date.now())
+                  : 0;
+                const hrsLeft = Math.floor(msLeft / 3600000);
+                const minsLeft = Math.floor((msLeft % 3600000) / 60000);
+                const canClaim = msLeft === 0;
+                return (
                 <View style={styles.bananaSection}>
                   <View style={styles.bananaHeader}>
-                    <Text style={styles.bananaTitle}>Daily Streak</Text>
+                    <Text style={styles.bananaTitle}>
+                      Daily Streak{" "}
+                      <Text style={{ fontSize: 11, fontFamily: FONTS.mono, color: canClaim ? "#22c55e" : THEME.textMuted }}>
+                        {canClaim ? "Ready!" : `${hrsLeft}h ${minsLeft}m`}
+                      </Text>
+                    </Text>
                     <View style={styles.bananaBalancePill}>
                       <Text style={styles.bananaBalanceText}>{bananaBalance} 🍌</Text>
                     </View>
@@ -410,7 +436,8 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                     <Text style={styles.shopBtnText}>🛒 Banana Shop</Text>
                   </Pressable>
                 </View>
-              )}
+                );
+              })()}
 
               {/* Search bar */}
               <View style={styles.searchBar}>
@@ -1018,25 +1045,30 @@ function formatRelative(date: Date): string {
 const styles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.55)",
+    backgroundColor: "rgba(0,0,0,0.35)",
   },
   popup: {
     position: "absolute",
     left: 0,
     right: 0,
-    // Sit below the header bar (~100pt) and above the message bar (~80pt)
     top: 100,
     bottom: 80,
-    backgroundColor: THEME.surfaceHigh,
+    backgroundColor: "rgba(18, 18, 32, 0.82)",
     borderRadius: 20,
     marginHorizontal: 8,
     borderWidth: 1,
-    borderColor: THEME.border,
-    shadowColor: "#6CB4EE",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 16,
-    elevation: 20,
+    borderColor: "rgba(248, 248, 255, 0.10)",
+    overflow: "hidden",
+  },
+  glassHighlight: {
+    position: "absolute",
+    top: 0,
+    left: 16,
+    right: 16,
+    height: 1.5,
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    borderRadius: 1,
+    zIndex: 1,
   },
 
   // Header

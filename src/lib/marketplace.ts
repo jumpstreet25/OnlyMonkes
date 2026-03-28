@@ -118,6 +118,12 @@ export function parseMarketplaceMessage(raw: string): {
     if (raw.startsWith(prefixes[i])) {
       try {
         const data = JSON.parse(raw.slice(prefixes[i].length));
+        // Validate required fields to prevent malformed payloads from crashing the app
+        if (!data || typeof data !== "object") return null;
+        if (types[i] === "list" && (!data.mint || !data.seller || typeof data.priceSol !== "number")) return null;
+        if (types[i] === "bid" && (!data.listingId || !data.bidder || typeof data.bidSol !== "number")) return null;
+        if (types[i] === "accept" && (!data.listingId || !data.buyer)) return null;
+        if (types[i] === "delist" && !data.listingId) return null;
         return { type: types[i], data };
       } catch { return null; }
     }

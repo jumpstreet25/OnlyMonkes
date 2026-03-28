@@ -132,7 +132,7 @@ An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect yo
 ### AI Agent & TA Scanner
 - **AI Agent #9385 (Monke)** — unified XMTP bot identity with a confident, ball-busting, banana-obsessed persona; powers all features: TA scanning, trade alerts, NFT sales, sports betting, prediction markets, DM commands, and LLM chat; built on ElizaOS v2 with plugin-solana for trade execution; Pyth Hermes SSE streaming for sub-second price feeds
 - **Multi-LLM brain chain** — Hermes Agent (Cerebras Qwen-3-235B, persistent per-user sessions) → OpenClaw (local gateway) → Groq direct → Ollama local → Anthropic; each fallback preserves the Monke persona
-- **Multi-timeframe TA scanner** — professional-grade scanner covering 100+ Solana SPL tokens (53 watchlist + Birdeye discovery + Hermes Solana Toolkit discoveries) every 10 min across 15m/1H/4H/daily candles; OHLCV from GeckoTerminal → DexPaprika → Birdeye fallback chain; posts confluence alerts to Monke Trades channel when signal score ≥45 (bipolar scale) with medium+ conviction; sentiment, whale, and chat sentiment gates; low-conviction signals automatically filtered
+- **Multi-timeframe TA scanner** — professional-grade scanner covering 100+ Solana SPL tokens (53 watchlist + Birdeye discovery + Hermes Solana Toolkit discoveries) every 10 min across 15m/1H/4H/daily candles; OHLCV from GeckoTerminal → DexPaprika → Birdeye fallback chain; posts confluence alerts to Monke Trades channel when signal score ≥50 (bipolar scale) with medium+ conviction; sentiment gate on ALL alert types (TA, sports, predictions, Drift); whale and chat sentiment gates; low-conviction signals and bad Fib data alerts automatically filtered
 - **Hermes Alert Quality Badge** — every TA alert includes a Hermes confidence overlay: "🧠 Hermes: 🟢 72% — similar setups: 8/11 hit T1 in ~3.8h | $NOS: 3W/1L"; scores each signal against historical outcomes by matching confluence bracket + TF alignment + token track record
 - **TA candle charts** — every bullish TA alert includes a generated candlestick chart image (with Fibonacci levels, entry/stop/targets overlaid, EMA12/26, Bollinger Bands, volume bars) sent to the Monke Trades channel
 - **AutonoMonke** — autonomous trading engine with 12-step gate: disclaimer → wallet → TA score ≥50 → 2+ aligned TFs → RSI guard → bearish factor gate → 4h cooldown → max positions (3) → max exposure (20%) → position sizing (2%) → OpenClaw AI confidence ≥60% → Jupiter execution; stop loss clamped 5-12%; Fibonacci targets validated against entry price
@@ -182,6 +182,25 @@ An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect yo
 - **Support OnlyMonkes button** — in the Tools drawer; quick-tip 5/10/25/50 $SKR to the dev wallet via in-app MWA biometric (no app switch)
 - **Per-type push titles** — 🐒 MONKE #1234 Sold! / 🐒 TA Signal: $TOKEN / 🔮 Prediction Alert per alert type
 - **Rich push images** — TA trade alerts include the candlestick chart as a big-picture notification; NFT sales include the Monke artwork
+
+### Reliability & Hardening (31-point audit, 2026-03-28)
+- **XMTP sync timeouts** — 15s timeout on all group.sync() calls prevents app freeze on poor network
+- **Stream error boundaries** — top-level try-catch on all XMTP stream callbacks prevents one bad message from killing the stream
+- **Stream reconnect backoff** — exponential 5s→60s (was fixed 5s), shared resync gate, max 20 attempts per stream
+- **Own messages cached** — sent messages now persisted to AsyncStorage immediately; survives force close
+- **Typing timeout cap** — Map capped at 100 entries with LRU eviction; prevents memory leak in long sessions
+- **Message store cap** — reduced 500→300 for 8GB devices
+- **Reaction cap** — 50 reactors per emoji per message; prevents O(n²) rendering
+- **Profile cache LRU** — evicts least-recently-accessed profiles instead of oldest-written
+- **Profile broadcast debounce** — 500ms coalesce prevents simultaneous calls from racing
+- **Blink fetch rate limit** — max 2 concurrent metadata requests; overflow queued
+- **Jupiter token list timeout** — 8s AbortSignal + response validation
+- **Notification error logging** — all silent catches replaced with console.warn
+- **Marketplace payload validation** — required fields checked on all NFT_LIST/BID/ACCEPT/DELIST messages
+- **SKR tip pre-flight** — checks sender balance before opening MWA; "Insufficient SKR" thrown early
+- **@mention sanitization** — strips non-printable Unicode before username lookup
+- **Bot inbox from remote config** — reads `config.botInboxId`, falls back to hardcoded
+- **Glassmorphism modals** — all 13+ popups use shared GlassModal with BlurView backdrop
 
 ### Infrastructure & Quality
 - **EAS Update (OTA)** — over-the-air updates via `expo-updates`; silent download on launch, prompt to restart; avoids full dApp Store resubmission for minor fixes

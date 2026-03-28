@@ -12,18 +12,16 @@ import {
   View,
   Text,
   StyleSheet,
-  Modal,
   Pressable,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { GlassModal } from "@/components/GlassModal";
 import { FONTS } from "@/lib/constants";
 
 const AK_FEE_ACCEPTED = "om_nft_fee_accepted_v1";
 
 const OM_BLUE = "#0096C7";
 const OM_BLUE_DIM = "rgba(0, 150, 199, 0.55)";
-const BG = "#000000";
-const SURFACE = "#0A0A0F";
 const BORDER = "rgba(0, 150, 199, 0.15)";
 const RED = "#EF4444";
 const GOLD = "#F59E0B";
@@ -54,9 +52,7 @@ export default function MarketplaceFeeModal({
   onDecline,
 }: MarketplaceFeeModalProps) {
   return (
-    <Modal visible={visible} animationType="fade" transparent statusBarTranslucent>
-      <View style={s.backdrop}>
-        <View style={s.card}>
+    <GlassModal visible={visible} onClose={onDecline}>
           <Text style={s.title}>MonkeMarkets Fee Agreement</Text>
 
           <Text style={s.body}>
@@ -100,29 +96,11 @@ export default function MarketplaceFeeModal({
               <Text style={s.acceptText}>I Understand</Text>
             </Pressable>
           </View>
-        </View>
-      </View>
-    </Modal>
+    </GlassModal>
   );
 }
 
 const s = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: BG,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 24,
-  },
-  card: {
-    width: "100%",
-    maxWidth: 380,
-    backgroundColor: SURFACE,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: BORDER,
-    padding: 22,
-  },
   title: {
     fontFamily: FONTS.display,
     fontSize: 20,

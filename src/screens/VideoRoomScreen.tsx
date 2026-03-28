@@ -100,7 +100,7 @@ function VideoTile({
       ) : (
         <VideoView
           videoTrack={videoTrack}
-          style={StyleSheet.absoluteFill}
+          style={StyleSheet.absoluteFill as any}
           objectFit="cover"
           mirror={participant.isLocal}
           zOrder={participant.isLocal ? 1 : 0}

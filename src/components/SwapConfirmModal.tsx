@@ -12,17 +12,15 @@ import {
   View,
   Text,
   StyleSheet,
-  Modal,
   Pressable,
   ActivityIndicator,
 } from "react-native";
+import { GlassModal } from "@/components/GlassModal";
 import { FONTS, TOKEN_TRADE_FEE_PCT } from "@/lib/constants";
 import type { SwapQuote } from "@/lib/jupiterSwap";
 
 const OM_BLUE = "#0096C7";
 const OM_BLUE_DIM = "rgba(0, 150, 199, 0.55)";
-const BG = "#000000";
-const SURFACE = "#0A0A0F";
 const BORDER = "rgba(0, 150, 199, 0.15)";
 const RED = "#EF4444";
 const GOLD = "#F59E0B";
@@ -56,15 +54,7 @@ export function SwapConfirmModal({
         : GREEN;
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onCancel}
-      statusBarTranslucent
-    >
-      <Pressable style={s.backdrop} onPress={onCancel}>
-        <Pressable style={s.card} onPress={() => {}}>
+    <GlassModal visible={visible} onClose={onCancel}>
           <Text style={s.title}>Confirm Swap</Text>
 
           <View style={s.row}>
@@ -142,29 +132,11 @@ export function SwapConfirmModal({
               )}
             </Pressable>
           </View>
-        </Pressable>
-      </Pressable>
-    </Modal>
+    </GlassModal>
   );
 }
 
 const s = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: BG,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 24,
-  },
-  card: {
-    width: "100%",
-    maxWidth: 360,
-    backgroundColor: SURFACE,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: BORDER,
-    padding: 20,
-  },
   title: {
     fontFamily: FONTS.display,
     fontSize: 20,

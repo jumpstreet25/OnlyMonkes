@@ -14,6 +14,10 @@ interface Env {
   LK_API_SECRET: string;
 }
 
+type ExportedHandler<E = unknown> = {
+  fetch: (request: Request, env: E) => Promise<Response>;
+};
+
 interface TokenRequest {
   roomName: string;
   identity: string;
