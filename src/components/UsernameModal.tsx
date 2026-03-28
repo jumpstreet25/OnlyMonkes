@@ -33,6 +33,7 @@ interface UsernameModalProps {
   initialBio?: string;
   initialXAccount?: string;
   initialTipWallet?: string;
+  initialLocation?: string;
   editMode?: boolean;
 }
 
@@ -40,6 +41,7 @@ const MAX_USERNAME = 20;
 const MAX_BIO = 100;
 const MAX_X = 30;
 const MAX_WALLET = 48;
+const MAX_LOCATION = 50;
 
 export function UsernameModal({
   visible,
@@ -48,13 +50,15 @@ export function UsernameModal({
   initialBio = "",
   initialXAccount = "",
   initialTipWallet = "",
+  initialLocation = "",
   editMode = false,
 }: UsernameModalProps) {
-  const { setUsername, setBio, setXAccount, setTipWallet } = useAppStore();
+  const { setUsername, setBio, setXAccount, setTipWallet, setLocation } = useAppStore();
   const [name, setName] = useState(initialUsername);
   const [bio, setBioLocal] = useState(initialBio);
   const [xAccount, setXAccountLocal] = useState(initialXAccount);
   const [tipWallet, setTipWalletLocal] = useState(initialTipWallet);
+  const [location, setLocationLocal] = useState(initialLocation);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -65,9 +69,10 @@ export function UsernameModal({
       setBioLocal(initialBio);
       setXAccountLocal(initialXAccount);
       setTipWalletLocal(initialTipWallet);
+      setLocationLocal(initialLocation);
       setError("");
     }
-  }, [visible, initialUsername, initialBio, initialXAccount, initialTipWallet]);
+  }, [visible, initialUsername, initialBio, initialXAccount, initialTipWallet, initialLocation]);
 
   const trimmedName = name.trim();
   const canSave = trimmedName.length >= 2 && !saving;
@@ -85,20 +90,22 @@ export function UsernameModal({
 
     const cleanX   = xAccount.trim().replace(/^@/, ""); // strip leading @
     const cleanTip = tipWallet.trim();
+    const cleanLoc = location.trim();
 
     try {
-      await saveUserProfile(trimmedName, bio.trim(), cleanX, cleanTip);
+      await saveUserProfile(trimmedName, bio.trim(), cleanX, cleanTip, cleanLoc);
       setUsername(trimmedName);
       setBio(bio.trim());
       setXAccount(cleanX);
       setTipWallet(cleanTip);
+      setLocation(cleanLoc);
       onDone();
     } catch {
       setError("Failed to save — please try again.");
     } finally {
       setSaving(false);
     }
-  }, [canSave, trimmedName, bio, xAccount, tipWallet, setUsername, setBio, setXAccount, setTipWallet, onDone]);
+  }, [canSave, trimmedName, bio, xAccount, tipWallet, location, setUsername, setBio, setXAccount, setTipWallet, setLocation, onDone]);
 
   return (
     <Modal visible={visible} animationType="slide" transparent={false}>
@@ -211,6 +218,32 @@ export function UsernameModal({
               {tipWallet.trim().length > 0 && (
                 <Text style={styles.counter}>
                   {shortenAddress(tipWallet.trim())}
+                </Text>
+              )}
+            </View>
+          </View>
+
+          {/* Location */}
+          <View style={styles.fieldGroup}>
+            <Text style={styles.label}>Location  (optional)</Text>
+            <Text style={styles.fieldHint}>
+              City, country, or anywhere you call home
+            </Text>
+            <View style={styles.inputWrap}>
+              <TextInput
+                style={styles.input}
+                value={location}
+                onChangeText={setLocationLocal}
+                placeholder="e.g. Miami, Tokyo, The Moon…"
+                placeholderTextColor={THEME.textFaint}
+                maxLength={MAX_LOCATION}
+                autoCapitalize="words"
+                autoCorrect={false}
+                returnKeyType="done"
+              />
+              {location.trim().length > 0 && (
+                <Text style={styles.counter}>
+                  {location.trim().length}/{MAX_LOCATION}
                 </Text>
               )}
             </View>

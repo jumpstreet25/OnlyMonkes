@@ -32,22 +32,50 @@ const CHAT_COMMANDS: Command[] = [
   { cmd: "/buy $TOKEN", desc: "Buy via Jupiter" },
   { cmd: "/sell $TOKEN", desc: "Sell via Jupiter" },
   { cmd: "/swap $A for $B", desc: "Swap tokens" },
+  { cmd: "@AI Agent #9385", desc: "Ask the bot anything" },
+  { cmd: "APPROVE", desc: "Confirm trade" },
+  { cmd: "REJECT", desc: "Cancel trade" },
+  { cmd: "CONFIRM $TOKEN", desc: "Track position" },
   { cmd: "/help", desc: "All commands" },
 ];
 
 const DM_COMMANDS: Command[] = [
+  // AutonoMonke
   { cmd: "/automonke", desc: "Trading status" },
   { cmd: "/automonke start", desc: "Enable trading" },
-  { cmd: "/automonke size", desc: "Position size %" },
-  { cmd: "/automonke withdraw", desc: "Withdraw all" },
+  { cmd: "/automonke stop", desc: "Pause trading" },
   { cmd: "/automonke positions", desc: "Open trades" },
-  { cmd: "/risk", desc: "Risk settings" },
-  { cmd: "/risk size 5", desc: "Set trade size" },
+  { cmd: "/automonke history", desc: "Trade history" },
+  { cmd: "/automonke size", desc: "Position size %" },
+  { cmd: "/automonke confidence", desc: "Min AI confidence" },
+  { cmd: "/automonke fund", desc: "Deposit address" },
+  { cmd: "/automonke withdraw", desc: "Close all & withdraw" },
+  { cmd: "/automonke max", desc: "Max wallet balance" },
+  // Risk management
+  { cmd: "/risk", desc: "View risk settings" },
+  { cmd: "/risk size 5", desc: "Position size %" },
   { cmd: "/risk stop 8", desc: "Stop-loss %" },
-  { cmd: "/risk max 40", desc: "Max exposure" },
+  { cmd: "/risk max 40", desc: "Max exposure %" },
+  { cmd: "/risk auto on", desc: "Auto partial sells" },
+  { cmd: "/risk conviction 60", desc: "Min score to alert" },
+  { cmd: "/risk blacklist $TOKEN", desc: "Block token" },
+  // Trading
   { cmd: "/price $TOKEN", desc: "Live price" },
-  { cmd: "/ta $TOKEN", desc: "Analysis" },
+  { cmd: "/ta $TOKEN", desc: "Full TA analysis" },
   { cmd: "/buy $TOKEN", desc: "Buy via Jupiter" },
+  { cmd: "/sell $TOKEN", desc: "Sell via Jupiter" },
+  { cmd: "/portfolio", desc: "PNL & holdings" },
+  // Hermes / AI
+  { cmd: "/hermes", desc: "Hermes memory status" },
+  { cmd: "/backtest $TOKEN", desc: "Historical signals" },
+  // Predictions & Bets
+  { cmd: "/predictions", desc: "Drift predictions" },
+  { cmd: "/bets", desc: "Sports betting status" },
+  // General
+  { cmd: "Ask anything", desc: "Chat freely with the bot" },
+  { cmd: "APPROVE", desc: "Confirm pending trade" },
+  { cmd: "REJECT", desc: "Cancel pending trade" },
+  { cmd: "/help", desc: "All commands" },
 ];
 
 function buildTickerNodes(commands: Command[], keyPrefix: string): React.ReactNode[] {

@@ -17,8 +17,8 @@ interface CostBasisEntry {
 let _cache: Map<string, number> = new Map();
 let _loaded = false;
 
-export async function loadCostBasis(): Promise<void> {
-  if (_loaded) return;
+export async function loadCostBasis(force = false): Promise<void> {
+  if (_loaded && !force) return;
   try {
     const raw = await AsyncStorage.getItem(AK_COST_BASIS);
     if (raw) {

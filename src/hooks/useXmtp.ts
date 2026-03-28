@@ -16,7 +16,6 @@
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useCallback } from "react";
-import { AppState } from "react-native";
 import { clearSession, clearMatricaSession, clearVerifiedNft } from "@/lib/session";
 import {
   initXmtpClient,
@@ -543,7 +542,7 @@ export function useXmtp() {
             if (typeof content === "string" && content.startsWith("PROFILE_UPDATE:")) {
               const profile = parseProfileUpdate(content);
               if (profile) {
-                cacheProfile(profile.id, { username: profile.username, bio: profile.bio, xAccount: profile.xAccount, walletAddress: profile.walletAddress, tipWallet: profile.tipWallet, nftImage: profile.nftImage, legendary: profile.legendary, pushToken: profile.pushToken, expoPushToken: profile.expoPushToken });
+                cacheProfile(profile.id, { username: profile.username, bio: profile.bio, xAccount: profile.xAccount, walletAddress: profile.walletAddress, tipWallet: profile.tipWallet, location: profile.location, nftImage: profile.nftImage, legendary: profile.legendary, pushToken: profile.pushToken, expoPushToken: profile.expoPushToken });
                 trackUser(profile.id, profile.username);
               }
             } else if (typeof content === "string" && content.startsWith("EVENT:")) {
@@ -806,7 +805,7 @@ export function useXmtp() {
         if (typeof content === "string" && content.startsWith("PROFILE_UPDATE:")) {
           const profile = parseProfileUpdate(content);
           if (profile) {
-            cacheProfile(profile.id, { username: profile.username, bio: profile.bio, xAccount: profile.xAccount, walletAddress: profile.walletAddress, tipWallet: profile.tipWallet, nftImage: profile.nftImage, legendary: profile.legendary, pushToken: profile.pushToken, expoPushToken: profile.expoPushToken });
+            cacheProfile(profile.id, { username: profile.username, bio: profile.bio, xAccount: profile.xAccount, walletAddress: profile.walletAddress, tipWallet: profile.tipWallet, location: profile.location, nftImage: profile.nftImage, legendary: profile.legendary, pushToken: profile.pushToken, expoPushToken: profile.expoPushToken });
             trackUser(profile.id, profile.username);
           }
           return;
@@ -1389,7 +1388,7 @@ export function useXmtp() {
   // ── Broadcast own profile to the group ────────────────────────────────────
   const broadcastProfile = useCallback(async () => {
     if (!_group || !_myInboxId) return;
-    const { username, bio, xAccount, wallet, tipWallet, verifiedNft, isLegendary,
+    const { username, bio, xAccount, wallet, tipWallet, location, verifiedNft, isLegendary,
       notificationsEnabled, mentionsOnly, botNotificationsEnabled,
       dmNotificationsEnabled, liveRoomNotificationsEnabled,
       mutedBotChannels, mutedSports,
@@ -1415,11 +1414,13 @@ export function useXmtp() {
           mutedSports,
         },
         expoPushToken,
+        location,
       );
       // Keep own cache entry current so PFP is always available locally
       cacheProfile(_myInboxId, {
         username: username ?? undefined,
         nftImage: verifiedNft?.image ?? null,
+        location: location ?? undefined,
       });
     } catch (err) {
       console.warn("[XMTP] broadcastProfile failed:", err);
@@ -1569,7 +1570,8 @@ export function useXmtp() {
     await AsyncStorage.setItem(AK_IS_ADMIN, "1");
 
     // Publish new config — all clients will pick this up on next launch.
-    await publishAppConfig({ globalGroupId: groupId, adminInboxId: _client.inboxId });
+    // force:true because forceAdminInit is explicit manual recovery.
+    await publishAppConfig({ globalGroupId: groupId, adminInboxId: _client.inboxId }, { force: true });
     console.log("[XMTP] forceAdminInit: new group", groupId, "published.");
 
     // Re-run full initialize — it will find the new group and complete setup.

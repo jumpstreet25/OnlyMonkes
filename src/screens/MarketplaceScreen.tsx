@@ -191,9 +191,9 @@ export default function MarketplaceScreen() {
       items = items.filter(item => {
         if (!item.traits?.length) return false;
         for (const [traitType, values] of selectedTraits) {
-          const match = item.traits!.some(
+          const match = item.traits?.some(
             t => t.trait_type === traitType && values.has(t.value),
-          );
+          ) ?? false;
           if (!match) return false;
         }
         return true;

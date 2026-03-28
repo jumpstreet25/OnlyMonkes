@@ -1,0 +1,8 @@
+name = "onlymonkes-actions"
+main = "src/index.ts"
+compatibility_date = "2026-03-23"
+compatibility_flags = ["nodejs_compat"]
+
+# Secrets (set via `wrangler secret put`):
+#   HELIUS_API_KEY  — Helius RPC API key
+#   JUP_API_KEY     — Jupiter Swap v2 API key (portal.jup.ag)

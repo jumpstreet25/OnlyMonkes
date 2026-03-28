@@ -79,7 +79,7 @@ async function mwaAuthorize(mobileWallet: Web3MobileWallet): Promise<PublicKey> 
 
 // ─── Ownership verification ──────────────────────────────────────────────────
 
-const HELIUS_API_KEY = HELIUS_RPC_URL.split("api-key=")[1] ?? "";
+const HELIUS_API_KEY = (HELIUS_RPC_URL.split("api-key=")[1] ?? "").split("&")[0];
 
 /**
  * Verify the current on-chain owner of a specific NFT mint via Helius DAS.

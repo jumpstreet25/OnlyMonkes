@@ -28,7 +28,9 @@ services:
       - ./livekit.yaml:/etc/livekit.yaml:ro
     command: ["--config", "/etc/livekit.yaml"]
     environment:
-      - LIVEKIT_KEYS=APIGU8CYDdnqhvX:FofRagJnXUw6YNtPBFfTNnpAeLNpB9ZFZ0onTxhyE4EA
+      # Set LIVEKIT_KEYS in a .env file or pass via shell:
+      #   LIVEKIT_KEYS=<apiKey>:<apiSecret> docker-compose up
+      - LIVEKIT_KEYS=${LIVEKIT_KEYS:?Set LIVEKIT_KEYS in .env or environment}
 
   # Optional: Caddy reverse proxy for SSL termination
   # Uncomment if you want wss:// support via your domain
