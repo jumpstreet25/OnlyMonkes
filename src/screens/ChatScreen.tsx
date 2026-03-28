@@ -53,10 +53,11 @@ import { router } from "expo-router";
 import { THEME, FONTS, SKR_MINT } from "@/lib/constants";
 import { loadUserProfile, getCachedProfile, getAllTimeUsers, saveSelectedNftMint, cacheProfile } from "@/lib/userProfile";
 import { checkAndUpdateStreak } from "@/lib/streaks";
-import { claimDailyBananas, type ClaimResult } from "@/lib/bananaRewards";
+import { claimDailyBananas, addBananas, type ClaimResult } from "@/lib/bananaRewards";
 import { BananaClaimModal } from "@/components/BananaClaimModal";
 import { checkBananaNotifications } from "@/lib/bananaNotifications";
 import { OnboardingOverlay, hasCompletedOnboarding } from "@/components/OnboardingOverlay";
+import { txError, networkError, llmError } from "@/lib/monkeCopy";
 import { BadgeNotificationBanner } from "@/components/BadgeNotificationBanner";
 import { ScrollToBottomFab } from "@/components/ScrollToBottomFab";
 import { updateStats, type Badge } from "@/lib/activityBadges";
@@ -135,6 +136,7 @@ export default function ChatScreen() {
   const xAccount         = useAppStore(s => s.xAccount);
   const tipWallet        = useAppStore(s => s.tipWallet);
   const userLocation     = useAppStore(s => s.location);
+  const bananaBalance    = useAppStore(s => s.bananaBalance);
   const setUsername       = useAppStore(s => s.setUsername);
   const setBio           = useAppStore(s => s.setBio);
   const setXAccount      = useAppStore(s => s.setXAccount);
@@ -453,7 +455,7 @@ export default function ChatScreen() {
         setSwapQuote(quote);
         setSwapConfirmOpen(true);
       } catch (err: any) {
-        Alert.alert("Swap error", err?.message ?? "Could not get swap quote.");
+        Alert.alert("Swap error", txError());
       } finally {
         setIsSending(false);
       }
@@ -509,7 +511,7 @@ export default function ChatScreen() {
         const result = await createTipLink(amount);
         await send(`TIPLINK:${result.claimUrl}|${amount}|${username ?? "Monke"}`);
       } catch (err: any) {
-        Alert.alert("TipLink failed", err?.message ?? "Could not create tip link.");
+        Alert.alert("TipLink failed", txError());
       } finally {
         setIsSending(false);
       }
@@ -782,7 +784,7 @@ export default function ChatScreen() {
       Alert.alert("🍌 Tip sent!", `${amount} SKR sent to ${tipTarget.senderUsername ?? "this user"}`);
       setTipTarget(null);
     } catch (err: any) {
-      Alert.alert("Tip failed", err?.message ?? "Transaction could not be sent.");
+      Alert.alert("Tip failed", txError());
     } finally {
       setTipSending(false);
     }
@@ -812,7 +814,7 @@ export default function ChatScreen() {
       setLiveRoomToken(token);
       router.push(`/live-room?token=${encodeURIComponent(token)}&isHost=1`);
     } catch (err: any) {
-      Alert.alert("Failed to start live", err?.message ?? "Unknown error");
+      Alert.alert("Failed to start live", networkError());
     }
   }, [myInboxId, username, broadcastLiveRoom, setActiveLiveRoom, setLiveRoomToken]);
 
@@ -823,7 +825,7 @@ export default function ChatScreen() {
       setLiveRoomToken(token);
       router.push(`/live-room?token=${encodeURIComponent(token)}&isHost=0`);
     } catch (err: any) {
-      Alert.alert("Failed to join", err?.message ?? "Unknown error");
+      Alert.alert("Failed to join", networkError());
     }
   }, [myInboxId, username, activeLiveRoom, setLiveRoomToken]);
 
@@ -867,7 +869,7 @@ export default function ChatScreen() {
       setVideoCallToken(token);
       router.push(`/video-room?token=${encodeURIComponent(token)}&isHost=0`);
     } catch (err: any) {
-      Alert.alert("Failed to join", err?.message ?? "Unknown error");
+      Alert.alert("Failed to join", networkError());
     }
   }, [myInboxId, username, activeVideoRoom, setIsInVideoCall]);
 
@@ -893,7 +895,7 @@ export default function ChatScreen() {
       await sendDevTip(amount);
       Alert.alert("Thank you!", `${amount} SKR sent to Jump.skr. Your support keeps OnlyMonkes alive!`);
     } catch (err: any) {
-      Alert.alert("Tip failed", err?.message ?? "Transaction could not be sent.");
+      Alert.alert("Tip failed", txError());
     }
   }, []);
 
@@ -984,10 +986,11 @@ export default function ChatScreen() {
 
       <OnboardingOverlay
         visible={showOnboarding}
-        onComplete={(bonus) => {
+        onComplete={async (bonus) => {
           setShowOnboarding(false);
-          const cur = useAppStore.getState().bananaBalance;
-          useAppStore.getState().setBananaBalance(cur + bonus);
+          // Persist bonus to AsyncStorage + update Zustand
+          const newBalance = await addBananas(bonus);
+          useAppStore.getState().setBananaBalance(newBalance);
         }}
       />
 
@@ -1162,7 +1165,7 @@ export default function ChatScreen() {
               onPress={() => setDrawerOpen(true)}
               hitSlop={6}
             >
-              <Text style={styles.bananaHeaderText}>{useAppStore.getState().bananaBalance} 🍌</Text>
+              <Text style={styles.bananaHeaderText}>{bananaBalance} 🍌</Text>
               {(communityBadges.dms + communityBadges.events + communityBadges.links) > 0 && (
                 <View style={styles.communityBadge}>
                   <Text style={styles.communityBadgeText}>

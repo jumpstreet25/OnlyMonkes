@@ -17,6 +17,10 @@ import {
   PublicKey,
   Transaction,
   VersionedTransaction,
+  TransactionMessage,
+  TransactionInstruction,
+  AddressLookupTableAccount,
+  ComputeBudgetProgram,
 } from "@solana/web3.js";
 import {
   createTransferInstruction,
@@ -33,6 +37,7 @@ import {
 import Constants from "expo-constants";
 import { HELIUS_RPC_URL, SKR_MINT, DEV_WALLET } from "./constants";
 import { useAppStore } from "@/store/appStore";
+import bs58 from "bs58";
 
 const APP_IDENTITY = {
   name: "OnlyMonkes",
@@ -272,8 +277,7 @@ export async function getSkrBalance(walletAddress: string): Promise<number> {
 
 // ── SOL → SKR swap tip (for users without SKR) ───────────────────────────────
 
-const JUP_QUOTE_URL = "https://quote-api.jup.ag/v6/quote";
-const JUP_SWAP_URL = "https://quote-api.jup.ag/v6/swap";
+const JUP_BUILD_URL = "https://api.jup.ag/swap/v2/build";
 
 /**
  * Tip a recipient by swapping SOL → SKR via Jupiter, then transferring the SKR.
@@ -295,50 +299,84 @@ export async function sendSolTipAsSkr(
   const devPubkey = new PublicKey(DEV_WALLET);
   const recipientPubkey = new PublicKey(recipientWallet);
 
-  // 1. Get Jupiter quote: SOL → SKR
+  // 1. Get Jupiter v2 /build: SOL → SKR (quote + instructions in one call)
   const solLamports = Math.floor(solAmount * 1e9);
-  const params = new URLSearchParams({
-    inputMint: SOL_MINT,
-    outputMint: SKR_MINT,
-    amount: String(solLamports),
-    slippageBps: String(slippageBps),
-  });
-  const headers: Record<string, string> = {};
-  if (JUP_API_KEY) headers["x-api-key"] = JUP_API_KEY;
-
-  const quoteRes = await fetch(`${JUP_QUOTE_URL}?${params}`, { headers });
-  if (!quoteRes.ok) throw new Error(`Jupiter quote failed (${quoteRes.status})`);
-  const quoteData = await quoteRes.json();
 
   const result = await transact(async (mobileWallet: Web3MobileWallet) => {
     const senderPubkey = await mwaAuthorize(mobileWallet);
 
-    // 2. Get swap transaction from Jupiter
-    const swapHeaders: Record<string, string> = { "Content-Type": "application/json" };
-    if (JUP_API_KEY) swapHeaders["x-api-key"] = JUP_API_KEY;
-
-    const swapRes = await fetch(JUP_SWAP_URL, {
-      method: "POST",
-      headers: swapHeaders,
-      body: JSON.stringify({
-        quoteResponse: quoteData,
-        userPublicKey: senderPubkey.toBase58(),
-        wrapAndUnwrapSol: true,
-        dynamicComputeUnitLimit: true,
-        prioritizationFeeLamports: "auto",
-      }),
+    // Fetch build with real wallet address for correct ATA resolution
+    const buildParams = new URLSearchParams({
+      inputMint: SOL_MINT,
+      outputMint: SKR_MINT,
+      amount: String(solLamports),
+      taker: senderPubkey.toBase58(),
+      slippageBps: String(slippageBps),
+      wrapAndUnwrapSol: "true",
     });
-    if (!swapRes.ok) throw new Error(`Jupiter swap API failed (${swapRes.status})`);
-    const { swapTransaction } = await swapRes.json();
+    const buildHeaders: Record<string, string> = {};
+    if (JUP_API_KEY) buildHeaders["x-api-key"] = JUP_API_KEY;
 
-    // Sign and send the swap transaction
-    const swapTxBuf = Buffer.from(swapTransaction, "base64");
-    const swapTx = VersionedTransaction.deserialize(swapTxBuf);
+    const buildRes = await fetch(`${JUP_BUILD_URL}?${buildParams}`, { headers: buildHeaders });
+    if (!buildRes.ok) throw new Error(`Jupiter build failed (${buildRes.status})`);
+    const buildData = await buildRes.json() as any;
+
+    if (!buildData.swapInstruction || !buildData.blockhashWithMetadata?.blockhash) {
+      throw new Error("Jupiter build response missing required fields");
+    }
+
+    // Normalize blockhash: Jupiter v2 returns byte array, web3.js needs base58 string
+    const bh = buildData.blockhashWithMetadata.blockhash;
+    if (Array.isArray(bh)) {
+      buildData.blockhashWithMetadata.blockhash = bs58.encode(Uint8Array.from(bh));
+    }
+
+    // Helper to convert Jupiter instruction to web3.js
+    const toIx = (ix: any): TransactionInstruction => new TransactionInstruction({
+      programId: new PublicKey(ix.programId),
+      keys: ix.accounts.map((a: any) => ({
+        pubkey: new PublicKey(a.pubkey),
+        isSigner: a.isSigner,
+        isWritable: a.isWritable,
+      })),
+      data: Buffer.from(ix.data, "base64"),
+    });
+
+    // Assemble swap instructions
+    const swapInstructions: TransactionInstruction[] = [];
+    for (const ix of buildData.computeBudgetInstructions) swapInstructions.push(toIx(ix));
+    swapInstructions.push(ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }));
+    for (const ix of buildData.setupInstructions) swapInstructions.push(toIx(ix));
+    swapInstructions.push(toIx(buildData.swapInstruction));
+    if (buildData.cleanupInstruction) swapInstructions.push(toIx(buildData.cleanupInstruction));
+    for (const ix of buildData.otherInstructions) swapInstructions.push(toIx(ix));
+
+    // Resolve lookup tables
+    const lutAddrs = Object.keys(buildData.addressesByLookupTableAddress || {});
+    let luts: AddressLookupTableAccount[] = [];
+    if (lutAddrs.length > 0) {
+      const results = await Promise.all(
+        lutAddrs.map(a => connection.getAddressLookupTable(new PublicKey(a))),
+      );
+      luts = results.map(r => r.value).filter((a): a is AddressLookupTableAccount => a !== null);
+    }
+
+    // Build v0 swap transaction
+    const msgV0 = new TransactionMessage({
+      payerKey: senderPubkey,
+      recentBlockhash: buildData.blockhashWithMetadata.blockhash,
+      instructions: swapInstructions,
+    }).compileToV0Message(luts);
+    const swapTx = new VersionedTransaction(msgV0);
+
     const minContextSlot = await connection.getSlot();
     const [swapSig] = await mobileWallet.signAndSendTransactions({
       transactions: [swapTx as any],
       minContextSlot,
     });
+
+    // Use outAmount from the build response
+    const quoteData = { outAmount: buildData.outAmount };
 
     // 3. Build tip transfer: SKR now in user's ATA
     const outAmount = BigInt(quoteData.outAmount);

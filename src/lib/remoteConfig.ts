@@ -67,9 +67,41 @@ export async function saveAdminToken(token: string): Promise<void> {
 
 // ─── Write ────────────────────────────────────────────────────────────────────
 
-export async function publishAppConfig(config: AppRemoteConfig): Promise<void> {
+/**
+ * Publish config to GitHub. By default, refuses to overwrite an existing valid
+ * config (one with a non-empty globalGroupId AND all 4 bot channels populated).
+ * Pass `force: true` to bypass the guard — use only for intentional manual recovery.
+ */
+export async function publishAppConfig(
+  config: AppRemoteConfig,
+  opts?: { force?: boolean },
+): Promise<void> {
   const token = await getAdminToken();
   if (!token) throw new Error('No admin token — enter your GitHub PAT in Admin Settings.');
+
+  // ── Safety guard: don't overwrite a working config ────────────────────────
+  if (!opts?.force) {
+    const existing = await fetchAppConfig();
+    const hasGroup = !!existing.globalGroupId;
+    const hasAllChannels =
+      !!existing.botChannels?.bets &&
+      !!existing.botChannels?.trades &&
+      !!existing.botChannels?.sales &&
+      !!existing.botChannels?.predictions;
+
+    if (hasGroup && hasAllChannels) {
+      // Remote config is already complete — refuse silent overwrite.
+      // This prevents admin self-heal from clobbering the bot's working group IDs
+      // when the admin's local XMTP DB is wiped but everyone else is fine.
+      console.warn(
+        '[remoteConfig] BLOCKED auto-publish — remote config already has valid group IDs.',
+        'Existing:', existing.globalGroupId.slice(0, 8) + '…',
+        'Attempted:', config.globalGroupId.slice(0, 8) + '…',
+        'Use force:true to override.',
+      );
+      return;
+    }
+  }
 
   // Fetch current SHA (required by GitHub API to update a file).
   const infoRes = await fetch(API, {
@@ -79,7 +111,8 @@ export async function publishAppConfig(config: AppRemoteConfig): Promise<void> {
     },
   });
   if (!infoRes.ok) throw new Error(`GitHub API error ${infoRes.status} — check your PAT.`);
-  const info = await infoRes.json();
+  const info = await infoRes.json() as { sha?: string };
+  if (!info.sha) throw new Error('GitHub API response missing SHA — cannot update config.');
 
   const content = Buffer.from(JSON.stringify(config, null, 2), 'utf8').toString('base64');
 

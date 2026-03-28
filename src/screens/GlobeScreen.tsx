@@ -19,6 +19,7 @@ import {
   Image,
   ActivityIndicator,
   Modal,
+  ScrollView,
   Linking,
   StatusBar,
 } from "react-native";
@@ -98,9 +99,10 @@ function init() {
   controls.minDistance = 1.3;
   controls.maxDistance = 4.5;
   controls.enableDamping = true;
-  controls.dampingFactor = 0.08;
+  controls.dampingFactor = 0.04;
+  controls.rotateSpeed = 0.5;
   controls.autoRotate = true;
-  controls.autoRotateSpeed = 0.5;
+  controls.autoRotateSpeed = 0.4;
 
   // Lights
   scene.add(new THREE.AmbientLight(0xffffff, 0.5));
@@ -159,36 +161,132 @@ function init() {
     img.src = imgSrc;
   }
 
-  // ── addMarkers: called from RN via postMessage — adds new markers without reloading globe
+  // ── Hybrid cluster system: orbital ring (2-3 users), cluster bubble (4+) ──
   var existingIds = {};
+  var locationGroups = {}; // "lat,lng" → array of markers
+  var clusterMeshes = {}; // locKey → cluster mesh (for 4+ groups)
+
+  function addUserMarker(m, pos) {
+    if (m.nftImage) {
+      var spriteMat = new THREE.SpriteMaterial({ transparent: true });
+      var sprite = new THREE.Sprite(spriteMat);
+      sprite.position.copy(pos);
+      sprite.scale.set(0.09, 0.09, 1);
+      sprite.userData = m;
+      globe.add(sprite);
+      markerMeshes.push(sprite);
+      loadPfpTexture(m.id, m.nftImage, function(tex) {
+        spriteMat.map = tex;
+        spriteMat.needsUpdate = true;
+      });
+    } else {
+      var uGeo = new THREE.SphereGeometry(0.018, 12, 12);
+      var uMat = new THREE.MeshBasicMaterial({ color:0x9945FF });
+      var uMesh = new THREE.Mesh(uGeo, uMat);
+      uMesh.position.copy(pos);
+      uMesh.userData = m;
+      globe.add(uMesh);
+      markerMeshes.push(uMesh);
+    }
+  }
+
+  // Create a cluster bubble (purple sphere with white count text sprite)
+  function createClusterBubble(locKey, centerPos, count) {
+    // Remove old cluster if exists
+    if (clusterMeshes[locKey]) {
+      globe.remove(clusterMeshes[locKey]);
+      var idx = markerMeshes.indexOf(clusterMeshes[locKey]);
+      if (idx >= 0) markerMeshes.splice(idx, 1);
+    }
+
+    // Purple sphere
+    var cGeo = new THREE.SphereGeometry(0.04, 16, 16);
+    var cMat = new THREE.MeshBasicMaterial({ color:0x9945FF, transparent:true, opacity:0.8 });
+    var cluster = new THREE.Mesh(cGeo, cMat);
+    cluster.position.copy(centerPos);
+    // Store all markers in this cluster for tap handling
+    cluster.userData = { type: "cluster", locKey: locKey, count: count, markers: locationGroups[locKey] };
+    globe.add(cluster);
+    markerMeshes.push(cluster);
+    clusterMeshes[locKey] = cluster;
+
+    // Count badge as canvas sprite
+    var canvas = document.createElement("canvas");
+    canvas.width = 32; canvas.height = 32;
+    var ctx = canvas.getContext("2d");
+    ctx.clearRect(0,0,32,32);
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 18px Arial";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(String(count), 16, 16);
+    var tex = new THREE.CanvasTexture(canvas);
+    var badgeMat = new THREE.SpriteMaterial({ map:tex, transparent:true });
+    var badge = new THREE.Sprite(badgeMat);
+    badge.position.copy(centerPos);
+    var dir = centerPos.clone().normalize();
+    badge.position.add(dir.multiplyScalar(0.03));
+    badge.scale.set(0.05, 0.05, 1);
+    globe.add(badge);
+  }
+
+  // Rebuild a location group's visuals
+  function rebuildLocationGroup(locKey) {
+    var group = locationGroups[locKey];
+    if (!group || group.length === 0) return;
+
+    var baseLat = group[0].lat;
+    var baseLng = group[0].lng;
+    var centerPos = latLngToXYZ(baseLat, baseLng, 1.01);
+
+    if (group.length === 1) {
+      // Single user — just show PFP at center
+      addUserMarker(group[0], centerPos);
+    } else if (group.length <= 3) {
+      // 2-3 users — orbital ring
+      var spread = 1.2; // degrees offset
+      for (var i = 0; i < group.length; i++) {
+        var angle = (i / group.length) * Math.PI * 2;
+        var oLat = baseLat + spread * Math.cos(angle);
+        var oLng = baseLng + spread * Math.sin(angle);
+        var oPos = latLngToXYZ(oLat, oLng, 1.01);
+        addUserMarker(group[i], oPos);
+      }
+    } else {
+      // 4+ users — cluster bubble with count
+      createClusterBubble(locKey, centerPos, group.length);
+    }
+  }
+
   window.addMarkers = function(newMarkers) {
+    // Separate users from events
+    var userMarkers = [];
+    var eventMarkers = [];
     newMarkers.forEach(function(m) {
-      if (existingIds[m.id]) return; // skip duplicates
+      if (existingIds[m.id]) return;
       existingIds[m.id] = true;
       MARKERS.push(m);
+      if (m.type === "user") userMarkers.push(m);
+      else eventMarkers.push(m);
+    });
 
+    // Group users by location and rebuild
+    var changedLocKeys = {};
+    userMarkers.forEach(function(m) {
+      var locKey = Math.round(m.lat*10) + "," + Math.round(m.lng*10);
+      if (!locationGroups[locKey]) locationGroups[locKey] = [];
+      locationGroups[locKey].push(m);
+      changedLocKeys[locKey] = true;
+    });
+
+    // Rebuild only changed location groups
+    for (var locKey in changedLocKeys) {
+      rebuildLocationGroup(locKey);
+    }
+
+    // Events — add normally (no clustering needed)
+    eventMarkers.forEach(function(m) {
       var pos = latLngToXYZ(m.lat, m.lng, 1.01);
-
-      if (m.type === "user" && m.nftImage) {
-        var spriteMat = new THREE.SpriteMaterial({ transparent: true });
-        var sprite = new THREE.Sprite(spriteMat);
-        sprite.position.copy(pos);
-        sprite.scale.set(0.09, 0.09, 1);
-        sprite.userData = m;
-        globe.add(sprite);
-        markerMeshes.push(sprite);
-        loadPfpTexture(m.id, m.nftImage, function(tex) {
-          spriteMat.map = tex;
-          spriteMat.needsUpdate = true;
-        });
-      } else if (m.type === "user") {
-        var uGeo = new THREE.SphereGeometry(0.018, 12, 12);
-        var uMat = new THREE.MeshBasicMaterial({ color:0x9945FF });
-        var uMesh = new THREE.Mesh(uGeo, uMat);
-        uMesh.position.copy(pos);
-        uMesh.userData = m;
-        globe.add(uMesh);
-        markerMeshes.push(uMesh);
       } else {
         var color = m.type === "luma-event" ? 0x6CB4EE : 0x10B981;
         var eGeo = new THREE.SphereGeometry(0.022, 12, 12);
@@ -263,12 +361,21 @@ function onTap(e) {
   var hits = raycaster.intersectObjects(markerMeshes);
   if (hits.length > 0) {
     var data = hits[0].object.userData;
-    // Send to React Native
     if (window.ReactNativeWebView) {
-      window.ReactNativeWebView.postMessage(JSON.stringify({
-        action: "markerTap",
-        marker: data
-      }));
+      if (data.type === "cluster") {
+        // Cluster tap — send all markers in this group to RN for bottom sheet
+        window.ReactNativeWebView.postMessage(JSON.stringify({
+          action: "clusterTap",
+          markers: data.markers,
+          count: data.count
+        }));
+      } else {
+        // Single marker tap
+        window.ReactNativeWebView.postMessage(JSON.stringify({
+          action: "markerTap",
+          marker: data
+        }));
+      }
     }
   }
 }
@@ -318,6 +425,7 @@ export default function GlobeScreen({ onPressUser }: GlobeScreenProps) {
   const [loading, setLoading] = useState(true);
   const [markers, setMarkers] = useState<GlobeMarker[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<LumaEvent | CalendarEvent | null>(null);
+  const [clusterUsers, setClusterUsers] = useState<GlobeMarker[]>([]);
   const webViewRef = useRef<WebView>(null);
 
   // ── Load markers (users + events) ─────────────────────────────────────────
@@ -459,9 +567,14 @@ export default function GlobeScreen({ onPressUser }: GlobeScreenProps) {
   const handleMessage = useCallback((event: any) => {
     try {
       const data = JSON.parse(event.nativeEvent.data);
-      if (data.action === "markerTap" && data.marker) {
+      if (data.action === "clusterTap" && data.markers) {
+        // Cluster tapped — show bottom sheet with all users
+        const fullMarkers = data.markers
+          .map((m: any) => markers.find(mk => mk.id === m.id) ?? m)
+          .filter(Boolean);
+        setClusterUsers(fullMarkers);
+      } else if (data.action === "markerTap" && data.marker) {
         const m = data.marker;
-        // Find full marker with event data
         const full = markers.find(mk => mk.id === m.id);
 
         if (m.type === "user" && m.inboxId && onPressUser) {
@@ -618,6 +731,49 @@ export default function GlobeScreen({ onPressUser }: GlobeScreenProps) {
           </Pressable>
         </Pressable>
       </Modal>
+
+      {/* Cluster bottom sheet — shows all users at a location */}
+      <Modal
+        visible={clusterUsers.length > 0}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setClusterUsers([])}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setClusterUsers([])}>
+          <Pressable style={styles.clusterSheet} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.clusterHandle} />
+            <Text style={styles.clusterTitle}>
+              {clusterUsers.length} Monkes at this location
+            </Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.clusterScroll}>
+              {clusterUsers.map((m: GlobeMarker) => (
+                <Pressable
+                  key={m.id}
+                  style={styles.clusterUser}
+                  onPress={() => {
+                    setClusterUsers([]);
+                    if (m.inboxId && onPressUser) {
+                      const profile = getCachedProfile(m.inboxId);
+                      onPressUser({
+                        senderAddress: m.inboxId,
+                        senderUsername: m.username ?? m.label,
+                        senderNft: profile?.nftImage ? { mint: "", name: "", image: profile.nftImage } : null,
+                      });
+                    }
+                  }}
+                >
+                  {m.nftImage ? (
+                    <Image source={{ uri: m.nftImage }} style={styles.clusterPfp} />
+                  ) : (
+                    <View style={[styles.clusterPfp, styles.clusterPfpFallback]} />
+                  )}
+                  <Text style={styles.clusterName} numberOfLines={1}>{m.label}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -704,4 +860,63 @@ const styles = StyleSheet.create({
   eventLinkText: { fontFamily: FONTS.bodySemi, fontSize: 14, color: "#6CB4EE" },
   eventCloseBtn: { paddingVertical: 8, alignItems: "center" },
   eventCloseText: { fontFamily: FONTS.body, fontSize: 13, color: THEME.textFaint },
+
+  // Cluster bottom sheet
+  clusterSheet: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: "rgba(18, 18, 26, 0.97)",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    paddingBottom: 36,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(153, 69, 255, 0.2)",
+    shadowColor: "#9945FF",
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    elevation: 12,
+  },
+  clusterHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    alignSelf: "center",
+    marginBottom: 14,
+  },
+  clusterTitle: {
+    fontFamily: FONTS.display,
+    fontSize: 16,
+    color: THEME.text,
+    marginBottom: 14,
+  },
+  clusterScroll: {
+    maxHeight: 120,
+  },
+  clusterUser: {
+    alignItems: "center",
+    gap: 6,
+    marginRight: 16,
+    width: 70,
+  },
+  clusterPfp: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    borderWidth: 2,
+    borderColor: "rgba(153, 69, 255, 0.3)",
+  },
+  clusterPfpFallback: {
+    backgroundColor: "rgba(153, 69, 255, 0.15)",
+  },
+  clusterName: {
+    fontFamily: FONTS.bodyMed,
+    fontSize: 11,
+    color: THEME.textMuted,
+    textAlign: "center",
+  },
 });

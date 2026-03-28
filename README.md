@@ -109,6 +109,18 @@ An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect yo
 - **Direct DM push relay** — when a user sends a DM, a push notification is sent directly to the recipient's FCM token (peer-to-peer, no bot required); includes sender NFT avatar in the data payload
 - **FCM token fallback** — direct FCM token generation (not Expo relay) for server-side bot push; cached in SecureStore and broadcast with PROFILE_UPDATE
 - **Background sync** — `expo-background-fetch` task keeps profile and data fresh when backgrounded
+- **Smart notification timing** — learns each user's historically active hours from message timestamps; high-priority alerts push during active hours, medium batch during inactive, low-priority deliver in-app only; batched notifications summarized and flushed when user comes online
+
+### Intelligence & Monitoring
+- **Prediction accuracy tracking** — MonkePredictions (Drift) outcomes tracked separately from trade accuracy; per-user win rate feeds into MonkeClout scoring
+- **Sports bet accuracy tracking** — MonkeBets outcomes tracked per user and per sport; feeds into CloutScore
+- **Community Alpha** — users whose CONFIRM commands precede winning trades get bonus Clout; "Community Alpha" flair for 60%+ WR on 5+ confirms; leaderboard of top alpha callers
+- **Alert auto-tuning** — rolling 7-day accuracy tracking per market condition (trending_bull/bear, ranging, volatile); dynamic threshold adjustment based on win rate; posts to MonkeTrades: "🧠 Hermes Confidence Adjustment: raised threshold from 45 → 48 (last 20 signals hit 54% WR)"
+- **Token auto-blacklist** — 3 consecutive losses = blacklisted (skipped for signals); auto-whitelisted after 48h or market condition change
+- **Daily Saga Monkes holder snapshot** — noon EST daily; fetches holder count via Helius DAS API; witty "Good Afternoon" message + holder count + daily % change (green ↑ / red ↓) + 7-day trend
+- **Helius RPC health monitor** — checks every 5 min; auto-switches to public Solana RPC if Helius degraded (>2s latency); switches back when recovered
+- **Cloudflare Worker monitor** — pings Actions worker every 15 min; DMs dev if down
+- **Globe marker clustering** — 2-3 users at same location: orbital ring (PFPs spread in circle); 4+ users: cluster bubble with count badge → tap for bottom sheet with all PFPs
 
 ### Profiles & Wallets
 - **User profiles** — tap any username to view their NFT, bio, wallet, and social links
@@ -119,7 +131,7 @@ An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect yo
 
 ### AI Agent & TA Scanner
 - **AI Agent #9385 (Monke)** — unified XMTP bot identity with a confident, ball-busting, banana-obsessed persona; powers all features: TA scanning, trade alerts, NFT sales, sports betting, prediction markets, DM commands, and LLM chat; built on ElizaOS v2 with plugin-solana for trade execution; Pyth Hermes SSE streaming for sub-second price feeds
-- **Multi-LLM brain chain** — Hermes Agent (Groq llama-3.3-70b, persistent per-user sessions) → OpenClaw (local gateway) → Groq direct → Ollama local → Anthropic; each fallback preserves the Monke persona
+- **Multi-LLM brain chain** — Hermes Agent (Cerebras Qwen-3-235B, persistent per-user sessions) → OpenClaw (local gateway) → Groq direct → Ollama local → Anthropic; each fallback preserves the Monke persona
 - **Multi-timeframe TA scanner** — professional-grade scanner covering 100+ Solana SPL tokens (53 watchlist + Birdeye discovery + Hermes Solana Toolkit discoveries) every 10 min across 15m/1H/4H/daily candles; OHLCV from GeckoTerminal → DexPaprika → Birdeye fallback chain; posts confluence alerts to Monke Trades channel when signal score ≥45 (bipolar scale) with medium+ conviction; sentiment, whale, and chat sentiment gates; low-conviction signals automatically filtered
 - **Hermes Alert Quality Badge** — every TA alert includes a Hermes confidence overlay: "🧠 Hermes: 🟢 72% — similar setups: 8/11 hit T1 in ~3.8h | $NOS: 3W/1L"; scores each signal against historical outcomes by matching confluence bracket + TF alignment + token track record
 - **TA candle charts** — every bullish TA alert includes a generated candlestick chart image (with Fibonacci levels, entry/stop/targets overlaid, EMA12/26, Bollinger Bands, volume bars) sent to the Monke Trades channel

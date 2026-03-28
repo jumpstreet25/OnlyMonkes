@@ -47,6 +47,7 @@ const BOT_COMMANDS = [
   { cmd: "/buy",       args: "$TOKEN [SOL]",     desc: "Buy token via Jupiter" },
   { cmd: "/sell",      args: "$TOKEN [%]",       desc: "Sell token via Jupiter" },
   { cmd: "/swap",      args: "$A for $B",        desc: "Swap tokens via Jupiter" },
+  { cmd: "/globe",     args: "",                 desc: "Open the Monke Globe" },
   { cmd: "/help",      args: "",                 desc: "Show all commands" },
 ];
 
@@ -74,6 +75,11 @@ const DM_BOT_COMMANDS = [
   { cmd: "/ta",                   args: "$TOKEN",        desc: "Technical analysis" },
   { cmd: "/buy",                  args: "$TOKEN [SOL]",  desc: "Buy token via Jupiter" },
   { cmd: "/sell",                 args: "$TOKEN [%]",    desc: "Sell token via Jupiter" },
+  { cmd: "/portfolio",            args: "",              desc: "PNL & holdings overview" },
+  { cmd: "/hermes",               args: "",              desc: "Hermes memory & learning status" },
+  { cmd: "/backtest",             args: "$TOKEN",        desc: "Historical signal performance" },
+  { cmd: "/predictions",          args: "",              desc: "Drift prediction markets" },
+  { cmd: "/bets",                 args: "",              desc: "Sports betting status" },
   { cmd: "/help",                 args: "",              desc: "Show all commands" },
 ];
 

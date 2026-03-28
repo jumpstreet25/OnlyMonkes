@@ -6,6 +6,7 @@ const SK_USERNAME      = 'profile_username';
 const SK_BIO           = 'profile_bio';
 const SK_XACCOUNT      = 'profile_xaccount';
 const SK_TIP_WALLET    = 'profile_tip_wallet';
+const SK_LOCATION      = 'profile_location';
 const SK_SELECTED_MINT = 'profile_selected_nft_mint';
 
 export interface UserProfile {
@@ -13,29 +14,33 @@ export interface UserProfile {
   bio: string | null;
   xAccount: string | null;
   tipWallet: string | null;
+  location: string | null;
 }
 
 export async function loadUserProfile(): Promise<UserProfile> {
-  const [username, bio, xAccount, tipWallet] = await Promise.all([
+  const [username, bio, xAccount, tipWallet, location] = await Promise.all([
     SecureStore.getItemAsync(SK_USERNAME),
     SecureStore.getItemAsync(SK_BIO),
     SecureStore.getItemAsync(SK_XACCOUNT),
     SecureStore.getItemAsync(SK_TIP_WALLET),
+    SecureStore.getItemAsync(SK_LOCATION),
   ]);
-  return { username, bio, xAccount, tipWallet };
+  return { username, bio, xAccount, tipWallet, location };
 }
 
 export async function saveUserProfile(
   username: string,
   bio: string,
   xAccount: string = '',
-  tipWallet: string = ''
+  tipWallet: string = '',
+  location: string = '',
 ): Promise<void> {
   await Promise.all([
     SecureStore.setItemAsync(SK_USERNAME, username.trim()),
     SecureStore.setItemAsync(SK_BIO, bio.trim()),
     SecureStore.setItemAsync(SK_XACCOUNT, xAccount.trim()),
     SecureStore.setItemAsync(SK_TIP_WALLET, tipWallet.trim()),
+    SecureStore.setItemAsync(SK_LOCATION, location.trim()),
   ]);
 }
 
@@ -57,6 +62,7 @@ export interface CachedProfile {
   xAccount?: string;
   walletAddress?: string;
   tipWallet?: string;
+  location?: string;
   nftImage?: string | null;
   cachedAt?: number;          // epoch ms of last write
   legendary?: boolean;

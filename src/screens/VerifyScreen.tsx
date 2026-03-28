@@ -369,7 +369,7 @@ const styles = StyleSheet.create({
 
   // ── NFT OK ───────────────────────────────────────────────────────────────
   statusInner: { alignItems: "center", gap: 16 },
-  nftImage: { width: 120, height: 120, borderRadius: 16, borderWidth: 2, borderColor: THEME.accent },
+  nftImage: { width: 120, height: 120, borderRadius: 60 },
   nftFoundLabel: { fontFamily: FONTS.mono, fontSize: 12, color: "#44ff88", letterSpacing: 1 },
   nftName: { fontFamily: FONTS.display, fontSize: 18, color: THEME.text },
 

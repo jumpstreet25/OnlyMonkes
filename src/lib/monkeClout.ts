@@ -21,8 +21,14 @@ export interface CloutProfile {
   reactionsGiven: number;
   tradeAccuracyPct: number;  // From Hermes learning (0-100)
   tradesExecuted: number;
+  predictionAccuracyPct: number; // MonkePredictions win rate (0-100)
+  predictionsTotal: number;
+  betAccuracyPct: number;    // MonkeBets win rate (0-100)
+  betsTotal: number;
+  communityAlphaWins: number; // CONFIRM commands that preceded winners
+  communityAlphaTotal: number;
   // Computed
-  cloutScore: number;        // 0-1000
+  cloutScore: number;        // 0-1200 (expanded from 1000)
   rank: number;              // 1 = top
   flair: string | null;      // "Alpha Ape" for top 3, null otherwise
 }
@@ -34,26 +40,42 @@ export interface CloutLeaderboard {
 
 /**
  * Calculate clout score from inputs.
- * Weighted: streaks 20%, trade accuracy 30%, activity 25%, bananas 25%
+ * Weighted: streaks 15%, trades 20%, predictions 10%, bets 10%,
+ *           community alpha 10%, activity 15%, bananas 20%
  */
 function calculateScore(p: Omit<CloutProfile, "cloutScore" | "rank" | "flair">): number {
-  // Streak score (0-200): cycles * 20 + current day * 5
-  const streakScore = Math.min(200, p.totalCycles * 20 + p.streakDays * 5);
+  // Streak score (0-180): cycles * 20 + current day * 5
+  const streakScore = Math.min(180, p.totalCycles * 20 + p.streakDays * 5);
 
-  // Trade accuracy score (0-300): accuracy% * 3, bonus for volume
-  const tradeScore = Math.min(300,
-    p.tradeAccuracyPct * 2 + Math.min(100, p.tradesExecuted * 10)
+  // Trade accuracy score (0-240): accuracy% * 2 + volume bonus
+  const tradeScore = Math.min(240,
+    p.tradeAccuracyPct * 1.5 + Math.min(90, p.tradesExecuted * 10)
   );
 
-  // Activity score (0-250): messages + reactions
-  const activityScore = Math.min(250,
-    Math.min(150, p.messagesThisWeek * 3) + Math.min(100, p.reactionsGiven * 5)
+  // Prediction accuracy (0-120): WR * 1 + volume bonus (min 3 predictions)
+  const predScore = p.predictionsTotal >= 3
+    ? Math.min(120, p.predictionAccuracyPct * 0.8 + Math.min(40, p.predictionsTotal * 5))
+    : 0;
+
+  // Bet accuracy (0-120): WR * 1 + volume bonus (min 3 bets)
+  const betScore = p.betsTotal >= 3
+    ? Math.min(120, p.betAccuracyPct * 0.8 + Math.min(40, p.betsTotal * 5))
+    : 0;
+
+  // Community Alpha (0-120): early CONFIRM wins
+  const alphaScore = p.communityAlphaTotal >= 3
+    ? Math.min(120, (p.communityAlphaWins / Math.max(1, p.communityAlphaTotal)) * 100 + p.communityAlphaWins * 5)
+    : 0;
+
+  // Activity score (0-180): messages + reactions
+  const activityScore = Math.min(180,
+    Math.min(120, p.messagesThisWeek * 3) + Math.min(60, p.reactionsGiven * 4)
   );
 
-  // Banana score (0-250): log scale so whales don't dominate
-  const bananaScore = Math.min(250, Math.log2(Math.max(1, p.bananaBalance)) * 20);
+  // Banana score (0-240): log scale
+  const bananaScore = Math.min(240, Math.log2(Math.max(1, p.bananaBalance)) * 20);
 
-  return Math.round(streakScore + tradeScore + activityScore + bananaScore);
+  return Math.round(streakScore + tradeScore + predScore + betScore + alphaScore + activityScore + bananaScore);
 }
 
 /** Load the leaderboard from AsyncStorage. */
@@ -85,6 +107,12 @@ export async function updateCloutProfile(
     reactionsGiven?: number;
     tradeAccuracyPct?: number;
     tradesExecuted?: number;
+    predictionAccuracyPct?: number;
+    predictionsTotal?: number;
+    betAccuracyPct?: number;
+    betsTotal?: number;
+    communityAlphaWins?: number;
+    communityAlphaTotal?: number;
   },
 ): Promise<CloutLeaderboard> {
   const lb = await loadLeaderboard();
@@ -96,6 +124,9 @@ export async function updateCloutProfile(
       streakDays: 0, totalCycles: 0, bananaBalance: 0,
       messagesThisWeek: 0, reactionsGiven: 0,
       tradeAccuracyPct: 0, tradesExecuted: 0,
+      predictionAccuracyPct: 0, predictionsTotal: 0,
+      betAccuracyPct: 0, betsTotal: 0,
+      communityAlphaWins: 0, communityAlphaTotal: 0,
       cloutScore: 0, rank: 0, flair: null,
     };
     lb.profiles.push(profile);
@@ -109,6 +140,12 @@ export async function updateCloutProfile(
   if (data.reactionsGiven !== undefined) profile.reactionsGiven = data.reactionsGiven;
   if (data.tradeAccuracyPct !== undefined) profile.tradeAccuracyPct = data.tradeAccuracyPct;
   if (data.tradesExecuted !== undefined) profile.tradesExecuted = data.tradesExecuted;
+  if (data.predictionAccuracyPct !== undefined) profile.predictionAccuracyPct = data.predictionAccuracyPct;
+  if (data.predictionsTotal !== undefined) profile.predictionsTotal = data.predictionsTotal;
+  if (data.betAccuracyPct !== undefined) profile.betAccuracyPct = data.betAccuracyPct;
+  if (data.betsTotal !== undefined) profile.betsTotal = data.betsTotal;
+  if (data.communityAlphaWins !== undefined) profile.communityAlphaWins = data.communityAlphaWins;
+  if (data.communityAlphaTotal !== undefined) profile.communityAlphaTotal = data.communityAlphaTotal;
   profile.username = username;
 
   // Recalculate all scores and rank

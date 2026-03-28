@@ -519,6 +519,7 @@ export interface ParsedProfileUpdate {
   xAccount?: string;
   walletAddress?: string;
   tipWallet?: string;
+  location?: string;
   nftImage?: string | null;
   legendary: boolean;
   pushToken?: string;
@@ -557,6 +558,7 @@ export function parseProfileUpdate(raw: string): ParsedProfileUpdate | null {
     xAccount: str(data.x),
     walletAddress: str(data.w),
     tipWallet: str(data.tw),
+    location: str(data.loc),
     nftImage: typeof data.ni === "string" ? data.ni || null : null,
     legendary: !!data.lg,
     pushToken: str(data.pt),
@@ -703,6 +705,7 @@ export async function sendProfileUpdate(
     mutedSports?: string[];
   } | null,
   expoPushToken?: string | null,
+  location?: string | null,
 ): Promise<void> {
   const payload = JSON.stringify({
     id: inboxId,
@@ -711,6 +714,7 @@ export async function sendProfileUpdate(
     x: xAccount ?? "",
     w: walletAddress ?? "",
     tw: tipWallet ?? "",
+    loc: location ?? "",
     ni: nftImage ?? "",
     lg: legendary ? 1 : 0,
     pt: pushToken ?? "",

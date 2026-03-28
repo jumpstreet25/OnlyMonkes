@@ -20,9 +20,16 @@
  * All prices are in SOL.
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { PublicKey } from '@solana/web3.js';
 import type { NftTrait } from '@/types';
 
 const AK_LISTINGS = 'om_nft_listings';
+
+/** Validate a Solana base58 address. Returns true if valid. */
+function isValidSolAddress(addr: unknown): boolean {
+  if (typeof addr !== 'string' || !addr) return false;
+  try { new PublicKey(addr); return true; } catch { return false; }
+}
 
 // Swap transactions expire after 90 seconds (Solana blockhash TTL)
 const SWAP_EXPIRY_MS = 90_000;
@@ -173,6 +180,8 @@ export function addListing(data: any): NftListing {
   if (!Number.isFinite(data.askPrice) || data.askPrice <= 0 || data.askPrice > 100_000) {
     throw new Error("Invalid ask price");
   }
+  if (!isValidSolAddress(data.mint)) throw new Error("Invalid NFT mint address");
+  if (!isValidSolAddress(data.sellerWallet)) throw new Error("Invalid seller wallet address");
   const listing: NftListing = {
     id: data.id,
     mint: data.mint,

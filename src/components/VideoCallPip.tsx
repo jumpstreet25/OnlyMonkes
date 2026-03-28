@@ -131,7 +131,7 @@ const styles = StyleSheet.create({
   avatarRing: {
     width: 48,
     height: 48,
-    borderRadius: 14,
+    borderRadius: 24,
     borderWidth: 2,
     borderColor: '#22c55e',
     justifyContent: 'center',
@@ -141,12 +141,12 @@ const styles = StyleSheet.create({
   avatar: {
     width: 44,
     height: 44,
-    borderRadius: 12,
+    borderRadius: 22,
   },
   avatarFallback: {
     width: 44,
     height: 44,
-    borderRadius: 12,
+    borderRadius: 22,
     backgroundColor: '#1a1a2e',
     justifyContent: 'center',
     alignItems: 'center',

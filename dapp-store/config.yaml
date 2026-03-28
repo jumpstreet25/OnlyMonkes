@@ -32,6 +32,10 @@ release:
       uri: dapp-store/assets/screenshots/screenshot_3.png
     - purpose: screenshot
       uri: dapp-store/assets/screenshots/screenshot_4.png
+    - purpose: screenshot
+      uri: dapp-store/assets/screenshots/screenshot_5.png
+    - purpose: screenshot
+      uri: dapp-store/assets/screenshots/screenshot_6.png
   files:
     - purpose: install
       uri: ../android/app/build/outputs/apk/release/app-release.apk
@@ -40,7 +44,7 @@ release:
       name: >-
         OnlyMonkes
       short_description: >-
-        NFT-gated Monkes social app
+        NFT-gated Monkes social app with AI trading, live rooms & P2P marketplace
       long_description: >-
         OnlyMonkes is the exclusive social hub for verified Saga Monkes NFT holders on Solana Mobile.
 
@@ -48,27 +52,31 @@ release:
 
         🐒 GROUP CHAT — Real-time encrypted group messaging powered by XMTP v5 MLS protocol. Send text, GIFs, images, videos, stickers and reactions. Reply to messages, mention users with @username, and track $TOKEN prices inline.
 
-        💬 DIRECT MESSAGES — Private 1-on-1 encrypted DMs with any verified holder. Full message history and push notifications.
+        💬 DIRECT MESSAGES — Private 1-on-1 encrypted DMs with any verified holder. Full message history, typing indicators, and push notifications.
 
-        🎙 LIVE AUDIO ROOMS — Twitter Spaces-style live audio rooms built on LiveKit WebRTC. Hosts can start a room, listeners join, raise hand, and unmute.
+        🎙 LIVE AUDIO & VIDEO ROOMS — Twitter Spaces-style live audio rooms and multi-person video calls built on LiveKit WebRTC. Sticker reactions via data channel, PiP mode, and speaking indicators.
 
-        💸 TIPPING — Send $SKR tokens directly to any holder with the /tip command. Powered by Jupiter aggregator and Solana Mobile Wallet Adapter — no app switching required.
+        💸 TIPPING & SWAPS — Send $SKR tokens with /tip, swap any Solana token with /buy and /sell via Jupiter. One-tap Solana Actions (Blinks) render interactive swap cards directly in chat. Powered by Mobile Wallet Adapter — no app switching required.
 
-        🤖 AI TRADING AGENT — AI Agent #9385 monitors the top Solana tokens 24/7 with multi-timeframe technical analysis (RSI, MACD, EMA, Bollinger Bands, Ichimoku). Type /ta $SOL for instant TA signals.
+        🤖 AI TRADING AGENT — AI Agent #9385 monitors 100+ Solana tokens 24/7 with multi-timeframe technical analysis (RSI, MACD, EMA, Bollinger Bands, Ichimoku, Fibonacci). Dedicated MonkeTrades, MonkeBets, and MonkePredictions alert channels. DM the bot for personalized trade proposals with one-tap execution via Solana Actions.
 
-        🐒 MONKEMARKETS — Peer-to-peer Saga Monkes NFT trading. List, bid, and trade NFTs with atomic Solana swaps. Trait filtering, Magic Eden floor pricing, and guest browsing. 2% sale fee supports development.
+        🐒 MONKEMARKETS — Peer-to-peer Saga Monkes NFT trading with atomic Solana swaps. Trait filtering, Magic Eden floor pricing, and guest browsing.
+
+        🏆 cNFT BADGES — Earn compressed NFT milestone badges (First Message, Legendary Streak, Top Monke) minted to your wallet via Helius.
+
+        📎 E2E FILE SHARING — Send files with native XMTP RemoteAttachment codec for end-to-end encrypted file transfers.
 
         📅 COMMUNITY EVENTS — Browse and create OnlyMonkes community events via the built-in calendar.
 
-        🔔 PUSH NOTIFICATIONS — Real-time alerts for new messages, mentions, reactions, live rooms, NFT sales, and TA trading signals.
+        🔔 PUSH NOTIFICATIONS — Real-time alerts for messages, mentions, reactions, live rooms, NFT sales, and TA trading signals.
 
-        🛡 DECENTRALIZED & ENCRYPTED — All messages are end-to-end encrypted via XMTP. No central server. Your messages are yours.
+        🛡 DECENTRALIZED & ENCRYPTED — All messages are end-to-end encrypted via XMTP MLS. No central server. Your messages are yours.
 
         REQUIREMENTS: Saga Monkes NFT + compatible Solana wallet (Phantom, Solflare) on Seeker or Saga device.
       new_in_version: >-
-        v2.26: MonkeMarkets trait filtering (Background, Fur, Eyes, Clothes, etc.) with AND logic and trait floor pricing from Magic Eden. Trading fee system — 2% on NFT sales, 3% on token trade profits, 5% on AutonoMonke profits (no fee on losses). Unified dark-theme fee disclaimer popups. Guest access to MonkeMarkets (browse listings without NFT). Cost basis tracking for profit-based fees.
+        v2.29: cNFT milestone badges via Helius Mint API. Solana Blinks/Actions — interactive swap cards in chat with one-tap execution. E2E encrypted file sharing via XMTP RemoteAttachment codec. Pyth Hermes SSE live price feeds. Polymarket prediction cards. Image lightbox viewer. Jupiter API v1 migration. DM typing indicators. Failed message retry. Marketplace error boundary with retry. Video room grid reflow fix. Profile update JSON validation.
       saga_features: >-
-        Optimized for Seeker — arm64-v8a only build with minSdk 24. Live audio rooms use LiveKit WebRTC with full Bluetooth headset support. Mobile Wallet Adapter biometric prompt (no app switching for tips/swaps).
+        Optimized for Seeker — arm64-v8a only build with minSdk 24. Live audio/video rooms use LiveKit WebRTC with full Bluetooth headset support and PiP mode. Mobile Wallet Adapter biometric prompt for tips, swaps, and Blink Actions (no app switching). Solana Actions server returns serialized transactions signed directly via MWA.
   android_details:
     locales:
       - en-US
@@ -81,7 +89,9 @@ solana_mobile_dapp_publisher_portal:
     4. The app will verify your Saga Monkes NFT ownership via Helius DAS API.
     5. If you own a Saga Monkes NFT, select it from the picker to enter the community.
     6. You will arrive at the main group chat. Send a message to confirm messaging works.
-    7. Tap the menu icon (top right) to access DMs, Community members, Events, and Settings.
+    7. Tap the menu icon (top right) to access DMs, Community members, Events, Marketplace, and Settings.
     8. Type /ta $SOL in chat to test the AI trading agent TA command.
-    NOTE: NFT ownership is required to access the app. If you do not own a Saga Monkes NFT, the app will show a gate screen. Please contact us to arrange a test account.
+    9. Open a bot channel (MonkeTrades) from the drawer to see live trade alerts with Blink Action cards.
+    10. Tap any Blink card "Buy" button to test the one-tap swap flow via MWA.
+    NOTE: NFT ownership is required to access the app. If you do not own a Saga Monkes NFT, the app will show a gate screen. Please contact Jumpstreet25@icloud.com to arrange a test account.
   alpha_testers: []
