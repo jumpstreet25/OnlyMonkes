@@ -18,7 +18,6 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { HELIUS_API_KEY } from './constants';
 
 const AK_BADGES = 'om_badges_v1';
 const AK_BADGE_PROGRESS = 'om_badge_progress_v1';
@@ -34,6 +33,19 @@ export interface BadgeDef {
   metric: 'messages_sent' | 'reactions_given' | 'login_streak' | 'best_streak' | 'leaderboard_wins' | 'special';
 }
 
+// Banana reward per badge tier (earned once per badge)
+const BADGE_BANANA_REWARDS: Record<string, number> = {
+  first_message: 5,
+  messages_100: 15,
+  messages_500: 30,
+  messages_1000: 50,
+  reactions_50: 10,
+  reactions_100: 25,
+  streak_7: 20,
+  streak_30: 75,
+  top_monke: 100,
+};
+
 export const BADGE_DEFS: BadgeDef[] = [
   { id: 'first_message',   name: 'First Ooh',       description: 'Sent your first message',    emoji: '🐒', threshold: 1,    metric: 'messages_sent' },
   { id: 'messages_100',    name: 'Chatterbox',       description: 'Sent 100 messages',          emoji: '💬', threshold: 100,  metric: 'messages_sent' },
@@ -45,6 +57,11 @@ export const BADGE_DEFS: BadgeDef[] = [
   { id: 'streak_30',       name: 'Diamond Hands',    description: '30-day login streak',        emoji: '💎', threshold: 30,   metric: 'best_streak' },
   { id: 'top_monke',       name: 'Top Monke',        description: '#1 on weekly leaderboard',   emoji: '🏆', threshold: 1,    metric: 'leaderboard_wins' },
 ];
+
+/** Get banana reward amount for a badge. */
+export function getBadgeBananaReward(badgeId: string): number {
+  return BADGE_BANANA_REWARDS[badgeId] ?? 10;
+}
 
 // ─── Badge progress tracking ─────────────────────────────────────────────────
 
@@ -166,81 +183,4 @@ export function recordLeaderboardWin(): BadgeDef[] {
   return incrementProgress('leaderboard_wins', 1);
 }
 
-// ─── Helius cNFT minting ─────────────────────────────────────────────────────
-
-const HELIUS_MINT_URL = `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`;
-
-export interface MintResult {
-  signature: string;
-  assetId: string;
-}
-
-/**
- * Mint a compressed NFT badge to the user's wallet via Helius Mint API.
- * Uses DAS `mintCompressedNft` method.
- *
- * @param recipientWallet - Solana wallet address to receive the badge
- * @param badge - Badge definition to mint
- * @returns Mint result with signature and asset ID, or null on failure
- */
-export async function mintBadgeCNFT(
-  recipientWallet: string,
-  badge: BadgeDef,
-): Promise<MintResult | null> {
-  if (!HELIUS_API_KEY) {
-    console.warn('[badges] No HELIUS_API_KEY — cannot mint cNFT');
-    return null;
-  }
-
-  try {
-    const res = await fetch(HELIUS_MINT_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: `badge-${badge.id}-${Date.now()}`,
-        method: 'mintCompressedNft',
-        params: {
-          name: `OnlyMonkes: ${badge.name}`,
-          symbol: 'OMBADGE',
-          owner: recipientWallet,
-          description: badge.description,
-          attributes: [
-            { trait_type: 'Badge ID', value: badge.id },
-            { trait_type: 'Badge Type', value: badge.metric },
-            { trait_type: 'Threshold', value: String(badge.threshold) },
-            { trait_type: 'Earned At', value: new Date().toISOString() },
-          ],
-          imageUrl: `https://raw.githubusercontent.com/jumpstreet25/OnlyMonkes/master/assets/badges/${badge.id}.png`,
-          externalUrl: 'https://onlymonkes.com',
-          sellerFeeBasisPoints: 0,
-        },
-      }),
-      signal: AbortSignal.timeout(15_000),
-    });
-
-    if (!res.ok) {
-      const errText = await res.text().catch(() => '');
-      console.warn('[badges] Helius mint failed:', res.status, errText.slice(0, 200));
-      return null;
-    }
-
-    const data = await res.json() as {
-      result?: { signature?: string; assetId?: string };
-    };
-
-    if (data.result?.signature && data.result?.assetId) {
-      console.log(`[badges] Minted cNFT badge "${badge.name}" → ${recipientWallet.slice(0, 8)}… asset=${data.result.assetId}`);
-      return {
-        signature: data.result.signature,
-        assetId: data.result.assetId,
-      };
-    }
-
-    console.warn('[badges] Mint response missing signature/assetId:', JSON.stringify(data).slice(0, 200));
-    return null;
-  } catch (err) {
-    console.warn('[badges] Mint error:', (err as Error).message);
-    return null;
-  }
-}
+// cNFT minting removed — badges are now cosmetic achievements that reward bananas.

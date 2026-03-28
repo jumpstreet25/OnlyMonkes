@@ -14,7 +14,7 @@ import {
   TextInput,
   FlatList,
   ListRenderItem,
-} from "react-native";
+  Dimensions,} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { format } from "date-fns";
 import { GlassModal } from "@/components/GlassModal";
@@ -70,7 +70,7 @@ export function SearchModal({ visible, onClose }: SearchModalProps) {
   };
 
   return (
-    <GlassModal visible={visible} onClose={onClose} position="bottom" animationType="slide">
+    <GlassModal visible={visible} onClose={onClose} position="bottom" animationType="slide" cardStyle={{ height: Dimensions.get("window").height * 0.7 }}>
       <View style={[styles.container, { paddingTop: insets.top }]}>
         {/* Search bar */}
         <View style={styles.searchBar}>

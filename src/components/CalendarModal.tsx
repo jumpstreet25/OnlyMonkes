@@ -17,7 +17,7 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
-} from "react-native";
+  Dimensions,} from "react-native";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { GlassModal } from "@/components/GlassModal";
@@ -77,7 +77,7 @@ export function CalendarModal({ visible, onClose, onBroadcast }: CalendarModalPr
   };
 
   return (
-    <GlassModal visible={visible} onClose={() => { reset(); onClose(); }} position="bottom" animationType="slide">
+    <GlassModal visible={visible} onClose={() => { reset(); onClose(); }} position="bottom" animationType="slide" cardStyle={{ height: Dimensions.get("window").height * 0.7 }}>
       <KeyboardAvoidingView
         style={styles.root}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
