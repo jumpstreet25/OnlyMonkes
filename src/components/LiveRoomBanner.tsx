@@ -130,8 +130,6 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 19,
-    borderWidth: 1.5,
-    borderColor: THEME.accent + "88",
   },
   avatarFallback: {
     backgroundColor: THEME.surfaceHigh,

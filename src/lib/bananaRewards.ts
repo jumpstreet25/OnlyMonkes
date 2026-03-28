@@ -119,6 +119,15 @@ export async function claimDailyBananas(): Promise<ClaimResult> {
   };
 }
 
+/** Add bananas to the balance (persists to AsyncStorage). Used for welcome bonus, loot wins, etc. */
+export async function addBananas(amount: number): Promise<number> {
+  const state = await loadBananaState();
+  state.balance += amount;
+  state.totalEarned += amount;
+  await saveBananaState(state);
+  return state.balance;
+}
+
 /** Get current balance without claiming. */
 export async function getBananaBalance(): Promise<number> {
   const state = await loadBananaState();
