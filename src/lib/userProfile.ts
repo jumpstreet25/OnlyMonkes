@@ -64,6 +64,7 @@ export interface CachedProfile {
   tipWallet?: string;
   location?: string;
   nftImage?: string | null;
+  badges?: string[];           // earned badge IDs (broadcast via PROFILE_UPDATE)
   cachedAt?: number;          // epoch ms of last write
   accessedAt?: number;        // epoch ms of last read (LRU eviction)
   legendary?: boolean;

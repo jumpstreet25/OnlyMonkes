@@ -43,6 +43,7 @@ import { THEME, FONTS } from "@/lib/constants";
 import { shortenAddress } from "@/lib/nftVerification";
 import { useAppStore } from "@/store/appStore";
 import { getCachedProfile, useProfileVersion, getAllTimeUsers } from "@/lib/userProfile";
+import { getEarnedBadges, getBadgeDef } from "@/lib/badges";
 // nftColor no longer needed — glass bubbles use fixed semi-transparent backgrounds
 import { searchStickers, type GiphyItem } from "@/lib/giphy";
 import type { ChatMessage, ReactionEmoji } from "@/types";
@@ -492,6 +493,17 @@ export const MessageBubble = memo(function MessageBubble({
     ? useAppStore.getState().isLegendary
     : !!(cachedSender?.legendary);
 
+  // Earned badge emojis — own: from local storage, others: from PROFILE_UPDATE cache
+  const badgeEmojis = useMemo(() => {
+    const earned = isOwn
+      ? getEarnedBadges()
+      : (cachedSender?.badges ?? []);
+    if (earned.length === 0) return "";
+    // Show up to 3 most recent badge emojis after the name
+    const defs = earned.slice(-3).map(id => getBadgeDef(id)).filter(Boolean);
+    return defs.map(d => d!.emoji).join("");
+  }, [isOwn, cachedSender?.badges]);
+
   // ── Avatar ────────────────────────────────────────────────────────────────
   // Own: use live verifiedNft. Others: always prefer fresh profile cache.
   const avatarUri = isOwn
@@ -555,7 +567,7 @@ export const MessageBubble = memo(function MessageBubble({
             centerBubble && styles.senderRowCenter,
           ]}>
             <Text style={styles.sender}>
-              {isOwn ? "You" : displayName}{isLegendarySender ? ' 🌟' : ''}
+              {isOwn ? "You" : displayName}{isLegendarySender ? ' 🌟' : ''}{badgeEmojis ? ` ${badgeEmojis}` : ''}
             </Text>
             {!isOwn && <OnlineDot online={isUserOnline(message.senderAddress)} />}
           </View>

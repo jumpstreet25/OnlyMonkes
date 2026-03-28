@@ -14,7 +14,7 @@ import Constants from 'expo-constants';
 const extra = (Constants.expoConfig?.extra as Record<string, string>) ?? {};
 
 export const LK_URL       = extra.livekitUrl      || '';
-const LK_TOKEN_URL        = extra.livekitTokenUrl  || '';
+const LK_TOKEN_URL        = extra.livekitTokenUrl  || 'https://onlymonkes-livekit-token.jumpstreet25.workers.dev';
 
 export function livekitConfigured(): boolean {
   return !!(LK_URL && LK_TOKEN_URL);

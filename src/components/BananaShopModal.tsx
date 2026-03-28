@@ -15,6 +15,7 @@ import {
   ScrollView,
   Alert,
   ActivityIndicator,
+  Dimensions,
 } from "react-native";
 import * as Haptics from "expo-haptics";
 import { GlassModal } from "@/components/GlassModal";
@@ -136,7 +137,13 @@ export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
   ];
 
   return (
-    <GlassModal visible={visible} onClose={onClose} position="bottom" animationType="slide">
+    <GlassModal
+      visible={visible}
+      onClose={onClose}
+      position="bottom"
+      animationType="slide"
+      cardStyle={{ height: Dimensions.get("window").height * 0.75 }}
+    >
       <View style={styles.root}>
         {/* Header */}
         <View style={styles.header}>
@@ -165,7 +172,7 @@ export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
         </ScrollView>
 
         {/* Items */}
-        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        <ScrollView style={[styles.content, { flex: 1 }]} showsVerticalScrollIndicator={false}>
           {([1, 2, 3, 4] as number[]).map(tier => {
             const tierItems = groupedByTier[tier];
             if (!tierItems || tierItems.length === 0) return null;
@@ -243,7 +250,6 @@ export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: THEME.bg,
   },
   header: {
     flexDirection: "row",

@@ -16,7 +16,7 @@ import {
   Platform,
   ActivityIndicator,
   ScrollView,
-} from "react-native";
+  Dimensions,} from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { GlassModal } from "@/components/GlassModal";
@@ -108,7 +108,7 @@ export function UsernameModal({
   }, [canSave, trimmedName, bio, xAccount, tipWallet, location, setUsername, setBio, setXAccount, setTipWallet, setLocation, onDone]);
 
   return (
-    <GlassModal visible={visible} onClose={onDone} position="bottom" animationType="slide">
+    <GlassModal visible={visible} onClose={onDone} position="bottom" animationType="slide" cardStyle={{ height: Dimensions.get("window").height * 0.7 }}>
       <KeyboardAvoidingView
         style={styles.root}
         behavior={Platform.OS === "ios" ? "padding" : "height"}

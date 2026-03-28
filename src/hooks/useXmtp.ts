@@ -50,7 +50,7 @@ import { parseVideoRoomMessage, type VideoRoomData } from "@/lib/liveVideo";
 import { verifyNftMintInCollection } from "@/lib/nftVerification";
 import { cacheProfile, getCachedProfile, loadProfileCache, trackUser, loadAllTimeUsers } from "@/lib/userProfile";
 import { loadWeeklyActivity, trackActivity } from "@/lib/activityTracker";
-import { incrementProgress, updateStreak, mintBadgeCNFT, type BadgeDef } from "@/lib/badges";
+import { incrementProgress, updateStreak, getEarnedBadges, type BadgeDef } from "@/lib/badges";
 import { parseEventMessage, saveEvent } from "@/lib/calendar";
 import {
   fetchAppConfig,
@@ -111,19 +111,9 @@ let _streamAlive = false;
 let _lastStreamEvent = 0; // timestamp of last stream callback
 let _profileBroadcastDone = false;
 let _initRunning = false;
-// Badge mint queue — mint newly earned badges in background (fire-and-forget)
-let _mintingBadge = false;
-const _pendingMints: BadgeDef[] = [];
-function tryMintBadge(): void {
-  if (_mintingBadge || _pendingMints.length === 0) return;
-  const { wallet } = useAppStore.getState();
-  if (!wallet?.address) return;
-  _mintingBadge = true;
-  const badge = _pendingMints.shift()!;
-  mintBadgeCNFT(wallet.address, badge)
-    .catch(() => {})
-    .finally(() => { _mintingBadge = false; tryMintBadge(); });
-}
+// Badge minting removed — badges now award bananas via _layout.tsx callback.
+// tryMintBadge kept as no-op for existing call sites.
+function tryMintBadge(): void { /* no-op */ }
 
 /**
  * Re-broadcast own profile with a push token.
@@ -168,6 +158,8 @@ async function _doProfileRebroadcast(pushToken: string): Promise<void> {
         mutedSports,
       },
       expoPushToken,
+      undefined, // location (not available here)
+      getEarnedBadges(),
     );
     console.log('[XMTP] Re-broadcast profile with push token:', pushToken.slice(0, 30) + '…');
   } catch { /* non-critical */ }
@@ -577,7 +569,7 @@ export function useXmtp() {
             if (typeof content === "string" && content.startsWith("PROFILE_UPDATE:")) {
               const profile = parseProfileUpdate(content);
               if (profile) {
-                cacheProfile(profile.id, { username: profile.username, bio: profile.bio, xAccount: profile.xAccount, walletAddress: profile.walletAddress, tipWallet: profile.tipWallet, location: profile.location, nftImage: profile.nftImage, legendary: profile.legendary, pushToken: profile.pushToken, expoPushToken: profile.expoPushToken });
+                cacheProfile(profile.id, { username: profile.username, bio: profile.bio, xAccount: profile.xAccount, walletAddress: profile.walletAddress, tipWallet: profile.tipWallet, location: profile.location, nftImage: profile.nftImage, legendary: profile.legendary, pushToken: profile.pushToken, expoPushToken: profile.expoPushToken, badges: profile.badges });
                 trackUser(profile.id, profile.username);
               }
             } else if (typeof content === "string" && content.startsWith("EVENT:")) {
@@ -856,7 +848,7 @@ export function useXmtp() {
         if (typeof content === "string" && content.startsWith("PROFILE_UPDATE:")) {
           const profile = parseProfileUpdate(content);
           if (profile) {
-            cacheProfile(profile.id, { username: profile.username, bio: profile.bio, xAccount: profile.xAccount, walletAddress: profile.walletAddress, tipWallet: profile.tipWallet, location: profile.location, nftImage: profile.nftImage, legendary: profile.legendary, pushToken: profile.pushToken, expoPushToken: profile.expoPushToken });
+            cacheProfile(profile.id, { username: profile.username, bio: profile.bio, xAccount: profile.xAccount, walletAddress: profile.walletAddress, tipWallet: profile.tipWallet, location: profile.location, nftImage: profile.nftImage, legendary: profile.legendary, pushToken: profile.pushToken, expoPushToken: profile.expoPushToken, badges: profile.badges });
             trackUser(profile.id, profile.username);
           }
           return;
@@ -1083,9 +1075,8 @@ export function useXmtp() {
         // DirectNotif native module posts directly to the Android channel,
         // bypassing expo's groupKey=silent interception — works in foreground.
         if (isBotMessage) {
-          if (botNotificationsEnabled) {
-            await showLocalNotification(`${senderLabel} 🤖`, msg.content, CH_BOT);
-          }
+          // Bot messages get FCM push from the server — no local notification needed.
+          // Local was causing duplicate pushes (FCM + local for same message).
           return;
         }
 
@@ -1233,13 +1224,8 @@ export function useXmtp() {
                 const senderInboxId = raw.senderInboxId ?? '';
                 if (senderInboxId === client.inboxId) return;
                 useAppStore.getState().incrementBotChannelCount(key);
-                // Show heads-up notification for bot channel messages
-                const { botNotificationsEnabled } = useAppStore.getState();
-                if (botNotificationsEnabled) {
-                  const label = key === 'bets' ? 'Monke Bets' : key === 'trades' ? 'Monke Trades' : key === 'sales' ? 'Monke Sales' : 'Monke Predictions';
-                  const firstLine = content.startsWith('MSG:') ? content.split(':').slice(2).join(':').split('\n')[0] : content.split('\n')[0];
-                  await showLocalNotification(`${label} 🤖`, firstLine, CH_BOT);
-                }
+                // Bot channel notifications handled by FCM push from the bot server.
+                // Local notification removed — was causing duplicate pushes.
               });
               _botChannelUnsubs.push(unsub);
               console.log(`[XMTP] Streaming bot channel: ${key}`);
@@ -1480,6 +1466,7 @@ export function useXmtp() {
         },
         expoPushToken,
         location,
+        getEarnedBadges(),
       );
       // Keep own cache entry current so PFP is always available locally
       cacheProfile(_myInboxId, {

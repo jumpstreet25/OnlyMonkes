@@ -17,7 +17,7 @@ import {
   ScrollView,
   Alert,
   Platform,
-} from "react-native";
+  Dimensions,} from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { GlassModal } from "@/components/GlassModal";
 import { THEME, FONTS } from "@/lib/constants";
@@ -64,7 +64,7 @@ export function MonkeToolsModal({ visible, onClose }: MonkeToolsModalProps) {
   }
 
   return (
-    <GlassModal visible={visible} onClose={onClose} position="bottom" animationType="slide">
+    <GlassModal visible={visible} onClose={onClose} position="bottom" animationType="slide" cardStyle={{ height: Dimensions.get("window").height * 0.7 }}>
 
         {/* Header */}
         <View style={styles.header}>
