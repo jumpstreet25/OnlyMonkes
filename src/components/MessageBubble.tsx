@@ -34,6 +34,7 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import { BlurView } from "expo-blur";
 import * as Clipboard from "expo-clipboard";
 import { Image as ExpoImage } from "expo-image";
 import * as Haptics from "expo-haptics";
@@ -324,8 +325,9 @@ export const MessageBubble = memo(function MessageBubble({
   // Max bubble width is 72% of screen minus horizontal padding (14px each side)
   const mediaWidth = Math.round(SCREEN_W * 0.72 - 28);
 
-  // Re-render instantly whenever any profile cache entry changes (PFP updates)
-  useProfileVersion();
+  // NOTE: removed global useProfileVersion() — it re-rendered ALL visible bubbles
+  // when ANY user's PFP changed. Profile data is now read via getCachedProfile()
+  // which updates on the next natural re-render (message arrival, scroll, etc.).
 
   // Glass bubbles use semi-transparent backgrounds; text is always light
   const textColor = THEME.text;
@@ -357,10 +359,13 @@ export const MessageBubble = memo(function MessageBubble({
   // Look up @mentioned username → open their profile
   const handlePressMention = useCallback((mentionedUsername: string) => {
     if (!onPressUser) return;
-    const allUsers = getAllTimeUsers(); // Map<inboxId, username>
+    // Sanitize: strip non-printable Unicode, normalize for comparison
+    const sanitized = mentionedUsername.replace(/[^\w\s.-]/g, "").trim();
+    if (!sanitized) return;
+    const allUsers = getAllTimeUsers();
     let foundInboxId: string | null = null;
     for (const [inboxId, uname] of allUsers.entries()) {
-      if (uname.toLowerCase() === mentionedUsername.toLowerCase()) {
+      if (uname.toLowerCase() === sanitized.toLowerCase()) {
         foundInboxId = inboxId;
         break;
       }
@@ -823,6 +828,7 @@ export const MessageBubble = memo(function MessageBubble({
       onRequestClose={() => setPickerVisible(false)}
     >
       <Pressable style={styles.pickerOverlay} onPress={() => setPickerVisible(false)}>
+        <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
         <Pressable style={styles.pickerSheet} onPress={(e) => e.stopPropagation()}>
           <View style={styles.pickerActionRow}>
             <Pressable
@@ -1257,20 +1263,20 @@ const styles = StyleSheet.create({
   // ── Reaction picker Modal ──────────────────────────────────────────────────
   pickerOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.6)",
+    backgroundColor: "rgba(0,0,0,0.35)",
     justifyContent: "flex-end",
     paddingBottom: 40,
     alignItems: "center",
   },
   pickerSheet: {
-    backgroundColor: "rgba(18, 18, 26, 0.95)",
+    backgroundColor: "rgba(18, 18, 32, 0.82)",
     borderRadius: 24,
     paddingVertical: 16,
     paddingHorizontal: 20,
     alignItems: "center",
     gap: 12,
     borderWidth: 1,
-    borderColor: "rgba(108, 180, 238, 0.15)",
+    borderColor: "rgba(248, 248, 255, 0.10)",
     minWidth: 280,
     maxHeight: "75%",
     // Glass glow on picker sheet

@@ -11,12 +11,12 @@ import React from "react";
 import {
   View,
   Text,
-  Modal,
   Pressable,
   StyleSheet,
   Image,
   Linking,
 } from "react-native";
+import { GlassModal } from "@/components/GlassModal";
 import { useAppStore } from "@/store/appStore";
 import { THEME, FONTS } from "@/lib/constants";
 import { shortenAddress } from "@/lib/nftVerification";
@@ -68,15 +68,7 @@ export function UserProfileModal({ visible, target, onClose, onEditProfile, onCh
   };
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onClose}
-      statusBarTranslucent
-    >
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable style={styles.card} onPress={() => {}}>
+    <GlassModal visible={visible} onClose={onClose} cardStyle={styles.card}>
           {/* NFT Avatar */}
           <View style={styles.avatarArea}>
             {nftImage ? (
@@ -195,31 +187,13 @@ export function UserProfileModal({ visible, target, onClose, onEditProfile, onCh
           <Pressable onPress={onClose} style={styles.closeBtn}>
             <Text style={styles.closeBtnText}>Close</Text>
           </Pressable>
-        </Pressable>
-      </Pressable>
-    </Modal>
+    </GlassModal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.75)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 32,
-  },
   card: {
-    width: "100%",
-    maxWidth: 320,
-    backgroundColor: THEME.surfaceHigh,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: THEME.border,
     alignItems: "center",
-    paddingHorizontal: 24,
-    paddingTop: 32,
-    paddingBottom: 24,
     gap: 10,
   },
   avatarArea: {
@@ -235,7 +209,7 @@ const styles = StyleSheet.create({
     width: 90,
     height: 90,
     borderRadius: 45,
-    backgroundColor: THEME.accentSoft,
+    backgroundColor: "rgba(108, 180, 238, 0.15)",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -244,7 +218,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     bottom: -6,
     right: -6,
-    backgroundColor: THEME.accent,
+    backgroundColor: "#6CB4EE",
     borderRadius: 8,
     paddingHorizontal: 6,
     paddingVertical: 2,
@@ -263,7 +237,7 @@ const styles = StyleSheet.create({
   nftName: {
     fontFamily: FONTS.mono,
     fontSize: 11,
-    color: THEME.accent,
+    color: "#6CB4EE",
     textAlign: "center",
   },
   addressPill: {
@@ -327,7 +301,7 @@ const styles = StyleSheet.create({
   xHandle: {
     fontFamily: FONTS.mono,
     fontSize: 13,
-    color: THEME.accent,
+    color: "#6CB4EE",
   },
   tipRow: {
     flexDirection: "row",
@@ -353,7 +327,7 @@ const styles = StyleSheet.create({
   },
   editBtn: {
     alignSelf: "stretch",
-    backgroundColor: THEME.accentSoft,
+    backgroundColor: "rgba(108, 180, 238, 0.15)",
     borderRadius: 12,
     paddingVertical: 12,
     alignItems: "center",
@@ -361,7 +335,7 @@ const styles = StyleSheet.create({
   editBtnText: {
     fontFamily: FONTS.displayMed,
     fontSize: 14,
-    color: THEME.accent,
+    color: "#6CB4EE",
   },
   changePfpBtn: {
     alignSelf: "stretch",
@@ -401,7 +375,7 @@ const styles = StyleSheet.create({
   },
   messageBtn: {
     alignSelf: 'stretch',
-    backgroundColor: THEME.accent,
+    backgroundColor: "#6CB4EE",
     borderRadius: 12,
     paddingVertical: 12,
     alignItems: 'center',

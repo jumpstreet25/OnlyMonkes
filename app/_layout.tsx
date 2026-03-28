@@ -59,17 +59,16 @@ export default function RootLayout() {
       useAppStore.getState().reset();
     });
 
-    // Request notification permissions and get Expo push token on every launch.
-    // After obtaining the token, re-broadcast our XMTP profile so the bot relay
-    // always has a fresh valid ExponentPushToken (fixes first-launch race condition).
-    registerForPushNotifications().then(async token => {
-      if (token) {
-        useAppStore.getState().setExpoPushToken(token);
-        // If XMTP is already initialized (common on second+ launch), push the token
-        // to the group immediately so the relay bot picks it up right away.
-        await triggerProfileRebroadcast(token);
-      }
-    }).catch(err => console.warn('[Layout] Push token error:', err));
+    // Defer push notification registration — runs after 2s to avoid blocking startup.
+    // XMTP init doesn't need the token; profile rebroadcast sends it when ready.
+    setTimeout(() => {
+      registerForPushNotifications().then(async token => {
+        if (token) {
+          useAppStore.getState().setExpoPushToken(token);
+          await triggerProfileRebroadcast(token);
+        }
+      }).catch(err => console.warn('[Layout] Push token error:', err));
+    }, 2000);
   }, []);
 
   return (

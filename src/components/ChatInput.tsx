@@ -40,6 +40,8 @@ function getActiveMention(text: string): { start: number; query: string } | null
 const BOT_COMMANDS = [
   { cmd: "/price",     args: "$TOKEN",           desc: "Live price snapshot" },
   { cmd: "/ta",        args: "$TOKEN",           desc: "Technical analysis" },
+  { cmd: "/hottest",   args: "",                 desc: "Top 10 tokens by score" },
+  { cmd: "/coldest",   args: "",                 desc: "Bottom 10 contrarian watch" },
   { cmd: "/watchlist", args: "",                 desc: "List tracked tokens" },
   { cmd: "/alerts",    args: "",                 desc: "Recent TA signals" },
   { cmd: "/sports",    args: "",                 desc: "Top sports betting setups" },
@@ -52,35 +54,42 @@ const BOT_COMMANDS = [
 ];
 
 const DM_BOT_COMMANDS = [
-  { cmd: "/automonke",            args: "",              desc: "AutonoMonke status" },
-  { cmd: "/automonke start",      args: "",              desc: "Enable autonomous trading" },
-  { cmd: "/automonke stop",       args: "",              desc: "Pause trading" },
-  { cmd: "/automonke size",       args: "0.5-10",        desc: "Set position size %" },
-  { cmd: "/automonke max",        args: "SOL",           desc: "Set max wallet balance" },
-  { cmd: "/automonke confidence", args: "50-100",        desc: "Min AI confidence to trade" },
-  { cmd: "/automonke positions",  args: "",              desc: "View open positions" },
-  { cmd: "/automonke history",    args: "",              desc: "Recent trade history" },
-  { cmd: "/automonke withdraw",   args: "",              desc: "Close all & withdraw to wallet" },
-  { cmd: "/automonke fund",       args: "",              desc: "Show deposit address" },
-  { cmd: "/risk",                 args: "",              desc: "View risk settings" },
-  { cmd: "/risk size",            args: "1-25",          desc: "Position size % per trade" },
-  { cmd: "/risk stop",            args: "1-50",          desc: "Stop-loss %" },
-  { cmd: "/risk max",             args: "5-100",         desc: "Max portfolio exposure %" },
-  { cmd: "/risk auto",            args: "on|off",        desc: "Auto-execute partial sells" },
-  { cmd: "/risk conviction",      args: "50-100",        desc: "Min confluence to alert" },
-  { cmd: "/risk blacklist",       args: "$TOKEN",        desc: "Block token from alerts" },
-  { cmd: "/risk off",             args: "",              desc: "Disable all TA alerts" },
-  { cmd: "/risk on",              args: "",              desc: "Re-enable TA alerts" },
+  // Quick intel
+  { cmd: "/hottest",              args: "",              desc: "Top 10 tokens by score" },
+  { cmd: "/coldest",              args: "",              desc: "Bottom 10 contrarian watch" },
+  { cmd: "/whale",                args: "$TOKEN",        desc: "Whale activity & net flow" },
+  { cmd: "/chart",                args: "$TOKEN",        desc: "Generate TA chart image" },
+  { cmd: "/compare",              args: "$A $B",         desc: "Side-by-side TA comparison" },
+  // Trading
   { cmd: "/price",                args: "$TOKEN",        desc: "Live price snapshot" },
   { cmd: "/ta",                   args: "$TOKEN",        desc: "Technical analysis" },
   { cmd: "/buy",                  args: "$TOKEN [SOL]",  desc: "Buy token via Jupiter" },
   { cmd: "/sell",                 args: "$TOKEN [%]",    desc: "Sell token via Jupiter" },
-  { cmd: "/portfolio",            args: "",              desc: "PNL & holdings overview" },
-  { cmd: "/hermes",               args: "",              desc: "Hermes memory & learning status" },
-  { cmd: "/backtest",             args: "$TOKEN",        desc: "Historical signal performance" },
-  { cmd: "/predictions",          args: "",              desc: "Drift prediction markets" },
-  { cmd: "/bets",                 args: "",              desc: "Sports betting status" },
-  { cmd: "/help",                 args: "",              desc: "Show all commands" },
+  { cmd: "/portfolio",            args: "",              desc: "PNL + Hermes analysis" },
+  { cmd: "/positions",            args: "",              desc: "Open trades" },
+  { cmd: "/backtest",             args: "$TOKEN",        desc: "Historical signal replay" },
+  // Hermes
+  { cmd: "/hermes stats",         args: "",              desc: "Your trading stats" },
+  { cmd: "/hermes best",          args: "",              desc: "Your best tokens" },
+  { cmd: "/hermes worst",         args: "",              desc: "Your worst tokens" },
+  { cmd: "/hermes achievements",  args: "",              desc: "Badges & streaks" },
+  // AutonoMonke
+  { cmd: "/automonke",            args: "",              desc: "AutonoMonke status" },
+  { cmd: "/automonke start",      args: "",              desc: "Enable auto-trading" },
+  { cmd: "/automonke stop",       args: "",              desc: "Pause auto-trading" },
+  { cmd: "/automonke positions",  args: "",              desc: "Auto positions" },
+  { cmd: "/automonke fund",       args: "",              desc: "Deposit address" },
+  { cmd: "/automonke withdraw",   args: "",              desc: "Close all & withdraw" },
+  // Risk
+  { cmd: "/risk",                 args: "",              desc: "View risk settings" },
+  { cmd: "/risk size",            args: "1-25",          desc: "Position size %" },
+  { cmd: "/risk stop",            args: "1-50",          desc: "Stop-loss %" },
+  { cmd: "/risk conviction",      args: "50-100",        desc: "Min score to alert" },
+  { cmd: "/risk blacklist",       args: "$TOKEN",        desc: "Block token" },
+  // Predictions & Bets
+  { cmd: "/predictions",          args: "",              desc: "Drift predictions" },
+  { cmd: "/bets",                 args: "",              desc: "Sports betting" },
+  { cmd: "/help",                 args: "",              desc: "All commands" },
 ];
 
 function getSlashSuggestions(text: string, isDmWithBot?: boolean) {
@@ -616,9 +625,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   toolbarCamera: {
-    backgroundColor: THEME.surfaceHigh,
+    backgroundColor: "rgba(10, 10, 15, 0.8)",
     borderWidth: 1,
-    borderColor: THEME.border,
+    borderColor: "rgba(108, 180, 238, 0.12)",
     paddingHorizontal: 7,
   },
   toolbarCamText: {
@@ -629,8 +638,8 @@ const styles = StyleSheet.create({
   },
   toolbarLive: {
     borderWidth: 1,
-    borderColor: THEME.border,
-    backgroundColor: THEME.surfaceHigh,
+    borderColor: "rgba(108, 180, 238, 0.12)",
+    backgroundColor: "rgba(10, 10, 15, 0.8)",
     paddingHorizontal: 7,
     flexDirection: "row",
     gap: 3,
@@ -649,8 +658,8 @@ const styles = StyleSheet.create({
   },
   toolbarGif: {
     borderWidth: 1,
-    borderColor: THEME.border,
-    backgroundColor: THEME.surfaceHigh,
+    borderColor: "rgba(108, 180, 238, 0.12)",
+    backgroundColor: "rgba(10, 10, 15, 0.8)",
     paddingHorizontal: 7,
   },
   toolbarGifText: {

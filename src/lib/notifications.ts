@@ -113,13 +113,13 @@ try {
     Notifications.setNotificationChannelAsync(CH_MENTIONS, {
       ...BASE,
       name: "@Mentions",
-    }).catch(() => {});
+    }).catch((e: unknown) => console.warn('[Notifications] CH_MENTIONS error:', e));
 
     Notifications.setNotificationChannelAsync(CH_BOT, {
       ...BASE,
       importance: 7,      // AndroidImportance.MAX — heads-up for bot alerts
       name: "Bot Notifications",
-    }).catch(() => {});
+    }).catch((e: unknown) => console.warn('[Notifications] CH_BOT error:', e));
 
     // ── Reply action (attached to chat channels only) ─────────────────────────
     Notifications.setNotificationCategoryAsync("chat_message", [
@@ -132,7 +132,7 @@ try {
         },
         options: { opensAppToForeground: true },
       },
-    ]).catch(() => {});
+    ]).catch((e: unknown) => console.warn('[Notifications] category error:', e));
 
     // ── Response listener (module-level, registered once) ─────────────────────
     Notifications.addNotificationResponseReceivedListener((response: any) => {

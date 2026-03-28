@@ -108,6 +108,9 @@ export function extractBlinkUrl(content: string): string | null {
 const _metadataCache = new Map<string, ActionMetadata | null>();
 const _pendingFetches = new Map<string, Promise<ActionMetadata | null>>();
 const FETCH_TIMEOUT = 8000;
+const MAX_CONCURRENT_BLINK_FETCHES = 2;
+let _activeFetches = 0;
+const _fetchQueue: Array<() => void> = [];
 
 /**
  * Fetch Action metadata via GET request.
@@ -119,6 +122,12 @@ export async function fetchActionMetadata(
   if (_metadataCache.has(actionUrl)) return _metadataCache.get(actionUrl)!;
   if (_pendingFetches.has(actionUrl)) return _pendingFetches.get(actionUrl)!;
 
+  // Concurrency gate — max 2 simultaneous Blink fetches
+  if (_activeFetches >= MAX_CONCURRENT_BLINK_FETCHES) {
+    await new Promise<void>((resolve) => _fetchQueue.push(resolve));
+  }
+  _activeFetches++;
+
   const promise = _doFetchMetadata(actionUrl);
   _pendingFetches.set(actionUrl, promise);
 
@@ -128,6 +137,8 @@ export async function fetchActionMetadata(
     return result;
   } finally {
     _pendingFetches.delete(actionUrl);
+    _activeFetches--;
+    if (_fetchQueue.length > 0) _fetchQueue.shift()!();
   }
 }
 

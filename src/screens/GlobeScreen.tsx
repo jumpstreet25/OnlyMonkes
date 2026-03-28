@@ -28,7 +28,7 @@ import { router } from "expo-router";
 import { format } from "date-fns";
 import { THEME, FONTS } from "@/lib/constants";
 import { useAppStore } from "@/store/appStore";
-import { getAllTimeUsers, getCachedProfile } from "@/lib/userProfile";
+import { getAllTimeUsers, getCachedProfile, useProfileVersion } from "@/lib/userProfile";
 import { geocodeLocation, getCachedGeodata } from "@/lib/geocode";
 import { fetchSolanaEvents, type LumaEvent } from "@/lib/lumaEvents";
 import type { CalendarEvent } from "@/store/appStore";
@@ -50,369 +50,35 @@ interface GlobeMarker {
 
 // ─── Globe HTML (Three.js rendered in WebView) ──────────────────────────────
 
-// Globe HTML is built ONCE — markers are injected later via postMessage
+// Globe HTML loaded from static asset file — avoids Hermes template literal escaping issues
+import { Asset } from "expo-asset";
+import * as FileSystem from "expo-file-system";
+
+let _cachedGlobeHtml: string | null = null;
+
+async function loadGlobeHtml(): Promise<string> {
+  if (_cachedGlobeHtml) return _cachedGlobeHtml;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const asset = Asset.fromModule(require("../../assets/globe.html"));
+    await asset.downloadAsync();
+    const uri = asset.localUri ?? asset.uri;
+    const html = await FileSystem.readAsStringAsync(uri);
+    _cachedGlobeHtml = html;
+    return html;
+  } catch {
+    return "<html><body style='background:#0A0A0F;color:#6CB4EE;padding:40px;font:16px sans-serif'>Globe failed to load. Check assets/globe.html</body></html>";
+  }
+}
+
+// Keep the old function signature for compatibility but it now returns a placeholder
 function buildGlobeHtml(): string {
-
-  return `<!DOCTYPE html>
-<html><head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no"/>
-<style>
-  *{margin:0;padding:0}
-  body{background:#0A0A0F;overflow:hidden;touch-action:none}
-  canvas{display:block}
-  #tooltip{
-    position:absolute;display:none;
-    background:rgba(10,10,15,0.9);color:#F8F8FF;
-    padding:8px 12px;border-radius:10px;font:12px sans-serif;
-    border:1px solid rgba(108,180,238,0.3);
-    pointer-events:none;z-index:10;max-width:200px;
-    box-shadow:0 0 12px rgba(108,180,238,0.2);
-  }
-</style>
-</head><body>
-<div id="tooltip"></div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"><\/script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128/examples/js/controls/OrbitControls.js"><\/script>
-<script>
-var MARKERS = [];
-let scene, camera, renderer, globe, controls, raycaster, mouse;
-let markerMeshes = [];
-var pfpCache = {}; // PFP texture cache — persists for lifetime of WebView
-
-init();
-animate();
-
-function init() {
-  scene = new THREE.Scene();
-  camera = new THREE.PerspectiveCamera(55, window.innerWidth/window.innerHeight, 0.1, 1000);
-  camera.position.set(0, 0, 2.5);
-
-  renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
-  renderer.setPixelRatio(window.devicePixelRatio);
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.setClearColor(0x0A0A0F, 1);
-  document.body.appendChild(renderer.domElement);
-
-  controls = new THREE.OrbitControls(camera, renderer.domElement);
-  controls.enablePan = false;
-  controls.minDistance = 1.3;
-  controls.maxDistance = 4.5;
-  controls.enableDamping = true;
-  controls.dampingFactor = 0.04;
-  controls.rotateSpeed = 0.5;
-  controls.autoRotate = true;
-  controls.autoRotateSpeed = 0.4;
-
-  // Lights
-  scene.add(new THREE.AmbientLight(0xffffff, 0.5));
-  var dir = new THREE.DirectionalLight(0xffffff, 0.9);
-  dir.position.set(5, 3, 5);
-  scene.add(dir);
-  var blue = new THREE.PointLight(0x6CB4EE, 0.4, 10);
-  blue.position.set(-3, 2, 3);
-  scene.add(blue);
-
-  // Globe
-  var geo = new THREE.SphereGeometry(1, 64, 64);
-  var tex = new THREE.TextureLoader().load(
-    "https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg"
-  );
-  var mat = new THREE.MeshStandardMaterial({ map:tex, metalness:0.1, roughness:0.7 });
-  globe = new THREE.Mesh(geo, mat);
-  scene.add(globe);
-
-  // Atmosphere
-  var atmosGeo = new THREE.SphereGeometry(1.04, 48, 48);
-  var atmosMat = new THREE.MeshBasicMaterial({
-    color:0x6CB4EE, transparent:true, opacity:0.06, side:THREE.BackSide
-  });
-  scene.add(new THREE.Mesh(atmosGeo, atmosMat));
-
-  // Raycaster for tap detection
-  raycaster = new THREE.Raycaster();
-  mouse = new THREE.Vector2();
-
-  // Load a PFP image into a circular canvas texture (cached in global pfpCache)
-  function loadPfpTexture(id, imgSrc, callback) {
-    if (pfpCache[id]) { callback(pfpCache[id]); return; }
-    var img = new Image();
-    img.crossOrigin = "anonymous";
-    img.onload = function() {
-      var canvas = document.createElement("canvas");
-      canvas.width = 64;
-      canvas.height = 64;
-      var ctx = canvas.getContext("2d");
-      // Clear canvas to fully transparent
-      ctx.clearRect(0, 0, 64, 64);
-      // Circular clip — only the circle area gets drawn
-      ctx.beginPath();
-      ctx.arc(32, 32, 30, 0, Math.PI * 2);
-      ctx.closePath();
-      ctx.clip();
-      ctx.drawImage(img, 0, 0, 64, 64);
-      var tex = new THREE.CanvasTexture(canvas);
-      tex.minFilter = THREE.LinearFilter;
-      tex.needsUpdate = true;
-      pfpCache[id] = tex;
-      callback(tex);
-    };
-    img.onerror = function() { /* skip — no PFP shown */ };
-    img.src = imgSrc;
-  }
-
-  // ── Hybrid cluster system: orbital ring (2-3 users), cluster bubble (4+) ──
-  var existingIds = {};
-  var locationGroups = {}; // "lat,lng" → array of markers
-  var clusterMeshes = {}; // locKey → cluster mesh (for 4+ groups)
-
-  function addUserMarker(m, pos) {
-    if (m.nftImage) {
-      var spriteMat = new THREE.SpriteMaterial({ transparent: true });
-      var sprite = new THREE.Sprite(spriteMat);
-      sprite.position.copy(pos);
-      sprite.scale.set(0.09, 0.09, 1);
-      sprite.userData = m;
-      globe.add(sprite);
-      markerMeshes.push(sprite);
-      loadPfpTexture(m.id, m.nftImage, function(tex) {
-        spriteMat.map = tex;
-        spriteMat.needsUpdate = true;
-      });
-    } else {
-      var uGeo = new THREE.SphereGeometry(0.018, 12, 12);
-      var uMat = new THREE.MeshBasicMaterial({ color:0x9945FF });
-      var uMesh = new THREE.Mesh(uGeo, uMat);
-      uMesh.position.copy(pos);
-      uMesh.userData = m;
-      globe.add(uMesh);
-      markerMeshes.push(uMesh);
-    }
-  }
-
-  // Create a cluster bubble (purple sphere with white count text sprite)
-  function createClusterBubble(locKey, centerPos, count) {
-    // Remove old cluster if exists
-    if (clusterMeshes[locKey]) {
-      globe.remove(clusterMeshes[locKey]);
-      var idx = markerMeshes.indexOf(clusterMeshes[locKey]);
-      if (idx >= 0) markerMeshes.splice(idx, 1);
-    }
-
-    // Purple sphere
-    var cGeo = new THREE.SphereGeometry(0.04, 16, 16);
-    var cMat = new THREE.MeshBasicMaterial({ color:0x9945FF, transparent:true, opacity:0.8 });
-    var cluster = new THREE.Mesh(cGeo, cMat);
-    cluster.position.copy(centerPos);
-    // Store all markers in this cluster for tap handling
-    cluster.userData = { type: "cluster", locKey: locKey, count: count, markers: locationGroups[locKey] };
-    globe.add(cluster);
-    markerMeshes.push(cluster);
-    clusterMeshes[locKey] = cluster;
-
-    // Count badge as canvas sprite
-    var canvas = document.createElement("canvas");
-    canvas.width = 32; canvas.height = 32;
-    var ctx = canvas.getContext("2d");
-    ctx.clearRect(0,0,32,32);
-    ctx.fillStyle = "#ffffff";
-    ctx.font = "bold 18px Arial";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(String(count), 16, 16);
-    var tex = new THREE.CanvasTexture(canvas);
-    var badgeMat = new THREE.SpriteMaterial({ map:tex, transparent:true });
-    var badge = new THREE.Sprite(badgeMat);
-    badge.position.copy(centerPos);
-    var dir = centerPos.clone().normalize();
-    badge.position.add(dir.multiplyScalar(0.03));
-    badge.scale.set(0.05, 0.05, 1);
-    globe.add(badge);
-  }
-
-  // Rebuild a location group's visuals
-  function rebuildLocationGroup(locKey) {
-    var group = locationGroups[locKey];
-    if (!group || group.length === 0) return;
-
-    var baseLat = group[0].lat;
-    var baseLng = group[0].lng;
-    var centerPos = latLngToXYZ(baseLat, baseLng, 1.01);
-
-    if (group.length === 1) {
-      // Single user — just show PFP at center
-      addUserMarker(group[0], centerPos);
-    } else if (group.length <= 3) {
-      // 2-3 users — orbital ring
-      var spread = 1.2; // degrees offset
-      for (var i = 0; i < group.length; i++) {
-        var angle = (i / group.length) * Math.PI * 2;
-        var oLat = baseLat + spread * Math.cos(angle);
-        var oLng = baseLng + spread * Math.sin(angle);
-        var oPos = latLngToXYZ(oLat, oLng, 1.01);
-        addUserMarker(group[i], oPos);
-      }
-    } else {
-      // 4+ users — cluster bubble with count
-      createClusterBubble(locKey, centerPos, group.length);
-    }
-  }
-
-  window.addMarkers = function(newMarkers) {
-    // Separate users from events
-    var userMarkers = [];
-    var eventMarkers = [];
-    newMarkers.forEach(function(m) {
-      if (existingIds[m.id]) return;
-      existingIds[m.id] = true;
-      MARKERS.push(m);
-      if (m.type === "user") userMarkers.push(m);
-      else eventMarkers.push(m);
-    });
-
-    // Group users by location and rebuild
-    var changedLocKeys = {};
-    userMarkers.forEach(function(m) {
-      var locKey = Math.round(m.lat*10) + "," + Math.round(m.lng*10);
-      if (!locationGroups[locKey]) locationGroups[locKey] = [];
-      locationGroups[locKey].push(m);
-      changedLocKeys[locKey] = true;
-    });
-
-    // Rebuild only changed location groups
-    for (var locKey in changedLocKeys) {
-      rebuildLocationGroup(locKey);
-    }
-
-    // Events — add normally (no clustering needed)
-    eventMarkers.forEach(function(m) {
-      var pos = latLngToXYZ(m.lat, m.lng, 1.01);
-      } else {
-        var color = m.type === "luma-event" ? 0x6CB4EE : 0x10B981;
-        var eGeo = new THREE.SphereGeometry(0.022, 12, 12);
-        var eMat = new THREE.MeshBasicMaterial({ color:color });
-        var eMesh = new THREE.Mesh(eGeo, eMat);
-        eMesh.position.copy(pos);
-        eMesh.userData = m;
-        globe.add(eMesh);
-        markerMeshes.push(eMesh);
-
-        var erGeo = new THREE.RingGeometry(0.025, 0.04, 16);
-        var erMat = new THREE.MeshBasicMaterial({ color:color, transparent:true, opacity:0.25, side:THREE.DoubleSide });
-        var ering = new THREE.Mesh(erGeo, erMat);
-        ering.position.copy(pos);
-        ering.lookAt(0,0,0);
-        globe.add(ering);
-
-        var bGeo = new THREE.CylinderGeometry(0.003,0.003,0.15,6);
-        var bMat = new THREE.MeshBasicMaterial({color:color, transparent:true, opacity:0.5});
-        var beam = new THREE.Mesh(bGeo, bMat);
-        var d = pos.clone().normalize();
-        beam.position.copy(pos.clone().add(d.multiplyScalar(0.075)));
-        beam.lookAt(0,0,0);
-        beam.rotateX(Math.PI/2);
-        globe.add(beam);
-      }
-    });
-  };
-
-  // Listen for marker data from React Native
-  document.addEventListener("message", function(e) {
-    try {
-      var data = JSON.parse(e.data);
-      if (data.action === "addMarkers" && data.markers) {
-        window.addMarkers(data.markers);
-      }
-    } catch(err) {}
-  });
-  // Android WebView uses window.document for message events
-  window.addEventListener("message", function(e) {
-    try {
-      var data = JSON.parse(e.data);
-      if (data.action === "addMarkers" && data.markers) {
-        window.addMarkers(data.markers);
-      }
-    } catch(err) {}
-  });
-
-  // Tap handler
-  renderer.domElement.addEventListener("pointerup", onTap, false);
-  window.addEventListener("resize", function() {
-    camera.aspect = window.innerWidth/window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-  });
+  return _cachedGlobeHtml ?? "<html><body style='background:#0A0A0F;color:#6CB4EE;padding:40px;font:16px sans-serif'>Loading globe...</body></html>";
 }
 
-function latLngToXYZ(lat, lng, r) {
-  var phi = (90 - lat) * Math.PI / 180;
-  var theta = (lng + 180) * Math.PI / 180;
-  return new THREE.Vector3(
-    -(r * Math.sin(phi) * Math.cos(theta)),
-    r * Math.cos(phi),
-    r * Math.sin(phi) * Math.sin(theta)
-  );
-}
-
-function onTap(e) {
-  mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
-  mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
-  raycaster.setFromCamera(mouse, camera);
-  var hits = raycaster.intersectObjects(markerMeshes);
-  if (hits.length > 0) {
-    var data = hits[0].object.userData;
-    if (window.ReactNativeWebView) {
-      if (data.type === "cluster") {
-        // Cluster tap — send all markers in this group to RN for bottom sheet
-        window.ReactNativeWebView.postMessage(JSON.stringify({
-          action: "clusterTap",
-          markers: data.markers,
-          count: data.count
-        }));
-      } else {
-        // Single marker tap
-        window.ReactNativeWebView.postMessage(JSON.stringify({
-          action: "markerTap",
-          marker: data
-        }));
-      }
-    }
-  }
-}
-
-var tooltip = document.getElementById("tooltip");
-function showTooltip(x, y, text) {
-  tooltip.style.display = "block";
-  tooltip.style.left = x + "px";
-  tooltip.style.top = (y - 40) + "px";
-  tooltip.textContent = text;
-}
-
-function animate() {
-  requestAnimationFrame(animate);
-  controls.update();
-  renderer.render(scene, camera);
-
-  // Hover tooltip (only on desktop, skip on mobile)
-  if (mouse && !("ontouchstart" in window)) {
-    raycaster.setFromCamera(mouse, camera);
-    var hits = raycaster.intersectObjects(markerMeshes);
-    if (hits.length > 0) {
-      var d = hits[0].object.userData;
-      var emoji = d.type==="user"?"🐒":d.type==="luma-event"?"📍":"🟢";
-      showTooltip(
-        (hits[0].point.x + 1) * window.innerWidth / 2,
-        (-hits[0].point.y + 1) * window.innerHeight / 2,
-        emoji + " " + d.label
-      );
-    } else {
-      tooltip.style.display = "none";
-    }
-  }
-}
-<\/script>
-</body></html>`;
-}
+// Old template literal removed — see assets/globe.html
+const _DEAD = "";
+// Dead template removed
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
@@ -422,6 +88,7 @@ interface GlobeScreenProps {
 
 export default function GlobeScreen({ onPressUser }: GlobeScreenProps) {
   const calendarEvents = useAppStore(s => s.calendarEvents);
+  const profileVersion = useProfileVersion(); // Re-run when any profile cache changes
   const [loading, setLoading] = useState(true);
   const [markers, setMarkers] = useState<GlobeMarker[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<LumaEvent | CalendarEvent | null>(null);
@@ -435,12 +102,37 @@ export default function GlobeScreen({ onPressUser }: GlobeScreenProps) {
     async function load() {
       const allMarkers: GlobeMarker[] = [];
       const uncachedUserLocs: { inboxId: string; username: string; profile: any; location: string }[] = [];
+      const seenInboxIds = new Set<string>();
 
-      // 1. User locations — Phase 1: show cached locations instantly
-      const allUsers = getAllTimeUsers();
+      // 0. Always include own location from Zustand (most reliable source)
+      const { myInboxId, username: myUsername, verifiedNft, location: myLocation } = useAppStore.getState();
       const cachedGeo = await getCachedGeodata();
 
+      if (myInboxId && myLocation) {
+        seenInboxIds.add(myInboxId);
+        const key = myLocation.trim().toLowerCase();
+        const cached = cachedGeo[key];
+        if (cached) {
+          allMarkers.push({
+            id: `user-${myInboxId}`, lat: cached.lat, lng: cached.lng,
+            type: "user", label: myUsername ?? "You", inboxId: myInboxId,
+            username: myUsername ?? "You", nftImage: verifiedNft?.image ?? null,
+          });
+        } else {
+          uncachedUserLocs.push({
+            inboxId: myInboxId, username: myUsername ?? "You",
+            profile: { nftImage: verifiedNft?.image ?? null },
+            location: myLocation,
+          });
+        }
+      }
+
+      // 1. Other user locations from profile cache
+      const allUsers = getAllTimeUsers();
+
       for (const [inboxId, username] of allUsers.entries()) {
+        if (seenInboxIds.has(inboxId)) continue; // skip self (already added)
+        seenInboxIds.add(inboxId);
         const profile = getCachedProfile(inboxId);
         if (!profile?.location) continue;
         const key = profile.location.trim().toLowerCase();
@@ -520,16 +212,31 @@ export default function GlobeScreen({ onPressUser }: GlobeScreenProps) {
 
     load();
     return () => { cancelled = true; };
-  }, [calendarEvents]);
+  }, [calendarEvents, profileVersion]);
 
-  // Globe HTML built ONCE — markers injected via postMessage
-  const globeHtml = useMemo(() => buildGlobeHtml(), []);
+  // Globe HTML loaded from asset file — avoids Hermes escaping issues
+  const [globeHtml, setGlobeHtml] = useState<string>(buildGlobeHtml());
+
+  useEffect(() => {
+    loadGlobeHtml().then(html => {
+      _cachedGlobeHtml = html;
+      setGlobeHtml(html);
+    });
+  }, []);
   const sentMarkerIds = useRef(new Set<string>());
   const webViewReady = useRef(false);
 
-  // Send markers to WebView
+  // Send markers to WebView — resends all if set changed
+  const prevMarkerCount = useRef(0);
   const sendMarkersToWebView = useCallback((markersToSend: GlobeMarker[]) => {
     if (!webViewRef.current || !webViewReady.current) return;
+
+    // If marker count changed, clear tracking to force full resend
+    if (markersToSend.length !== prevMarkerCount.current) {
+      sentMarkerIds.current.clear();
+      prevMarkerCount.current = markersToSend.length;
+    }
+
     const newMarkers = markersToSend.filter(m => !sentMarkerIds.current.has(m.id));
     if (newMarkers.length === 0) return;
 
@@ -623,8 +330,13 @@ export default function GlobeScreen({ onPressUser }: GlobeScreenProps) {
             originWhitelist={["*"]}
             javaScriptEnabled
             domStorageEnabled
+            allowFileAccess
+            allowUniversalAccessFromFileURLs
+            mixedContentMode="always"
+            androidLayerType="hardware"
             onMessage={handleMessage}
             onLoad={handleWebViewLoad}
+            onError={(e) => console.warn("[Globe WebView error]", e.nativeEvent)}
             scrollEnabled={false}
             bounces={false}
             overScrollMode="never"

@@ -11,17 +11,14 @@ import {
   View,
   Text,
   StyleSheet,
-  Modal,
   Pressable,
   ScrollView,
 } from "react-native";
+import { GlassModal } from "@/components/GlassModal";
 import { FONTS } from "@/lib/constants";
 
 const OM_BLUE = "#0096C7";
-const OM_BLUE_SOFT = "rgba(0, 150, 199, 0.12)";
 const OM_BLUE_DIM = "rgba(0, 150, 199, 0.55)";
-const BG = "#000000";
-const SURFACE = "#0A0A0F";
 const BORDER = "rgba(0, 150, 199, 0.15)";
 const RED = "#EF4444";
 const GOLD = "#F59E0B";
@@ -49,9 +46,7 @@ export default function AutoMonkeDisclaimerModal({
 }: AutoMonkeDisclaimerModalProps) {
   const labels = FEATURE_LABELS[feature];
   return (
-    <Modal visible={visible} animationType="fade" transparent statusBarTranslucent>
-      <View style={s.overlay}>
-        <View style={s.container}>
+    <GlassModal visible={visible} onClose={onClose} cardStyle={s.container}>
           <ScrollView
             style={s.scrollArea}
             contentContainerStyle={s.scrollContent}
@@ -123,9 +118,7 @@ export default function AutoMonkeDisclaimerModal({
               <Text style={s.acceptText}>I Understand</Text>
             </Pressable>
           </View>
-        </View>
-      </View>
-    </Modal>
+    </GlassModal>
   );
 }
 
@@ -152,21 +145,10 @@ function FeeRow({ label, value, last }: { label: string; value: string; last?: b
 // ── Styles ────────────────────────────────────────────────────────────────────
 
 const s = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: BG,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 16,
-  },
   container: {
-    width: "100%",
     maxHeight: "92%",
-    backgroundColor: SURFACE,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: BORDER,
     overflow: "hidden",
+    padding: 0,
   },
   scrollArea: { flexShrink: 1 },
   scrollContent: { padding: 20, paddingBottom: 8 },

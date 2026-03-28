@@ -70,9 +70,11 @@ async function getTokenList(): Promise<JupToken[]> {
   if (_tokenListCache && Date.now() - _tokenListFetchedAt < TOKEN_LIST_TTL) {
     return _tokenListCache;
   }
-  const res = await fetch(JUP_TOKEN_LIST_URL);
+  const res = await fetch(JUP_TOKEN_LIST_URL, { signal: AbortSignal.timeout(8000) });
   if (!res.ok) throw new Error("Failed to fetch Jupiter token list");
-  _tokenListCache = (await res.json()) as JupToken[];
+  const list = (await res.json()) as JupToken[];
+  if (!Array.isArray(list) || list.length === 0) throw new Error("Invalid Jupiter token list");
+  _tokenListCache = list;
   _tokenListFetchedAt = Date.now();
   return _tokenListCache;
 }
@@ -355,7 +357,7 @@ export async function executeSwap(quote: SwapQuote): Promise<SwapResult> {
     // Build VersionedTransaction (v0)
     const messageV0 = new TransactionMessage({
       payerKey: senderPubkey,
-      recentBlockhash: buildData.blockhashWithMetadata.blockhash,
+      recentBlockhash: buildData.blockhashWithMetadata.blockhash as string,
       instructions,
     }).compileToV0Message(lookupTables);
 
