@@ -12,7 +12,6 @@ import {
   TextInput,
   StyleSheet,
   Pressable,
-  Modal,
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
@@ -20,6 +19,7 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
+import { GlassModal } from "@/components/GlassModal";
 import { THEME, FONTS } from "@/lib/constants";
 import { saveUserProfile } from "@/lib/userProfile";
 import { useAppStore } from "@/store/appStore";
@@ -108,7 +108,7 @@ export function UsernameModal({
   }, [canSave, trimmedName, bio, xAccount, tipWallet, location, setUsername, setBio, setXAccount, setTipWallet, setLocation, onDone]);
 
   return (
-    <Modal visible={visible} animationType="slide" transparent={false}>
+    <GlassModal visible={visible} onClose={onDone} position="bottom" animationType="slide">
       <KeyboardAvoidingView
         style={styles.root}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -290,7 +290,7 @@ export function UsernameModal({
           </Text>
         </ScrollView>
       </KeyboardAvoidingView>
-    </Modal>
+    </GlassModal>
   );
 }
 

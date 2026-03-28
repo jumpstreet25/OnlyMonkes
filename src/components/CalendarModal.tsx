@@ -9,7 +9,6 @@ import React, { useState } from "react";
 import {
   View,
   Text,
-  Modal,
   Pressable,
   StyleSheet,
   TextInput,
@@ -21,6 +20,7 @@ import {
 } from "react-native";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
+import { GlassModal } from "@/components/GlassModal";
 import { THEME, FONTS } from "@/lib/constants";
 import { saveEvent, buildEventMessage } from "@/lib/calendar";
 import { useAppStore, type CalendarEvent } from "@/store/appStore";
@@ -77,13 +77,7 @@ export function CalendarModal({ visible, onClose, onBroadcast }: CalendarModalPr
   };
 
   return (
-    <Modal
-      visible={visible}
-      transparent={false}
-      animationType="slide"
-      onRequestClose={() => { reset(); onClose(); }}
-      statusBarTranslucent
-    >
+    <GlassModal visible={visible} onClose={() => { reset(); onClose(); }} position="bottom" animationType="slide">
       <KeyboardAvoidingView
         style={styles.root}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -136,7 +130,7 @@ export function CalendarModal({ visible, onClose, onBroadcast }: CalendarModalPr
           <View style={{ height: 24 }} />
         </ScrollView>
       </KeyboardAvoidingView>
-    </Modal>
+    </GlassModal>
   );
 }
 

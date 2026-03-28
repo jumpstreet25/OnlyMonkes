@@ -34,6 +34,11 @@ interface Env {
   JUP_API_KEY: string;
 }
 
+// Cloudflare Worker handler type (declared locally to avoid @cloudflare/workers-types dependency in app tsconfig)
+type ExportedHandler<E = unknown> = {
+  fetch: (request: Request, env: E) => Promise<Response>;
+};
+
 const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
@@ -240,7 +245,7 @@ async function buildSwapTransaction(
   const payerKey = new PublicKey(taker);
   const messageV0 = new TransactionMessage({
     payerKey,
-    recentBlockhash: build.blockhashWithMetadata.blockhash,
+    recentBlockhash: build.blockhashWithMetadata.blockhash as string,
     instructions,
   }).compileToV0Message(lookupTables);
 

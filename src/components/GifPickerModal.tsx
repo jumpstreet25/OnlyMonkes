@@ -14,7 +14,6 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   View,
   Text,
-  Modal,
   Pressable,
   StyleSheet,
   TextInput,
@@ -23,6 +22,7 @@ import {
   ActivityIndicator,
   useWindowDimensions,
 } from "react-native";
+import { GlassModal } from "@/components/GlassModal";
 import { THEME, FONTS } from "@/lib/constants";
 import { searchGifs, type GiphyItem } from "@/lib/giphy";
 
@@ -93,18 +93,7 @@ export function GifPickerModal({
   );
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
-      statusBarTranslucent
-    >
-      <Pressable style={styles.overlay} onPress={onClose} />
-
-      <View style={styles.sheet}>
-        <View style={styles.handle} />
-
+    <GlassModal visible={visible} onClose={onClose} position="bottom" animationType="slide">
         <Text style={styles.title}>GIF</Text>
 
         {!sagaMonkesOnly && (
@@ -156,39 +145,11 @@ export function GifPickerModal({
         <Pressable onPress={onClose} style={styles.cancelBtn}>
           <Text style={styles.cancelText}>Close</Text>
         </Pressable>
-      </View>
-    </Modal>
+    </GlassModal>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.6)",
-  },
-  sheet: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: THEME.surfaceHigh,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    borderTopWidth: 1,
-    borderColor: THEME.border,
-    paddingHorizontal: 24,
-    paddingTop: 16,
-    paddingBottom: 36,
-    maxHeight: "72%",
-  },
-  handle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: THEME.border,
-    alignSelf: "center",
-    marginBottom: 14,
-  },
   title: {
     fontFamily: FONTS.display,
     fontSize: 18,

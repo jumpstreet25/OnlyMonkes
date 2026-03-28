@@ -193,7 +193,7 @@ export function useDm(peerInboxId: string) {
     const sub = AppState.addEventListener('change', async (state) => {
       if (state === 'active' && dmRef.current && !cancelled) {
         try {
-          const refreshed = await loadDmMessages(dmRef.current, myInboxId);
+          const refreshed = await loadDmMessages(dmRef.current, myInboxId!);
           if (cancelled) return;
           const newMsgs = refreshed.filter(m => !seenIds.current.has(m.id));
           if (newMsgs.length > 0) {

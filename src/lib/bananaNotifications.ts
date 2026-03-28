@@ -22,17 +22,10 @@ export async function checkBananaNotifications(): Promise<void> {
   const state = await loadBananaState();
   const now = Date.now();
 
-  // Streak at risk — logged in 20+ hours ago but less than 24
-  if (state.lastClaimTs > 0) {
-    const timeSince = now - state.lastClaimTs;
-    if (timeSince >= TWENTY_HOURS && timeSince < 24 * 60 * 60 * 1000) {
-      await showLocalNotification(
-        "Your streak is at risk! 🔥",
-        `Day ${state.streakDay}/7 — log in before midnight to keep your banana streak going!`,
-        CH_ALL,
-      );
-    }
-  }
+  // Streak at risk — only notify if app is NOT currently being opened
+  // (This function is called on app open, so the user IS here — don't nag them)
+  // The notification is for background/push scenarios only
+  // Skip the at-risk check when called from foreground
 
   // Loot crate reminder — balance >= 50 and hasn't spun recently
   if (state.balance >= 50) {

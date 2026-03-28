@@ -10,7 +10,6 @@ import React from "react";
 import {
   View,
   Text,
-  Modal,
   Pressable,
   StyleSheet,
   Linking,
@@ -20,6 +19,7 @@ import {
   Platform,
 } from "react-native";
 import * as Clipboard from "expo-clipboard";
+import { GlassModal } from "@/components/GlassModal";
 import { THEME, FONTS } from "@/lib/constants";
 import { useAppStore } from "@/store/appStore";
 import { clearPushToken, registerForPushNotifications, scheduleTestNotification } from "@/lib/notifications";
@@ -64,20 +64,7 @@ export function MonkeToolsModal({ visible, onClose }: MonkeToolsModalProps) {
   }
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
-      statusBarTranslucent
-    >
-      {/* Dim overlay */}
-      <Pressable style={styles.overlay} onPress={onClose} />
-
-      {/* Sheet */}
-      <View style={styles.sheet}>
-        {/* Handle */}
-        <View style={styles.handle} />
+    <GlassModal visible={visible} onClose={onClose} position="bottom" animationType="slide">
 
         {/* Header */}
         <View style={styles.header}>
@@ -220,39 +207,11 @@ export function MonkeToolsModal({ visible, onClose }: MonkeToolsModalProps) {
 
           <View style={{ height: 24 }} />
         </ScrollView>
-      </View>
-    </Modal>
+    </GlassModal>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.6)",
-  },
-  sheet: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: THEME.surfaceHigh,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    borderTopWidth: 1,
-    borderColor: THEME.border,
-    paddingHorizontal: 20,
-    paddingBottom: 0,
-    maxHeight: "85%",
-  },
-  handle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: THEME.border,
-    alignSelf: "center",
-    marginTop: 12,
-    marginBottom: 8,
-  },
   header: {
     flexDirection: "row",
     alignItems: "center",

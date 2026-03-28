@@ -10,4 +10,7 @@ config.resolver.extraNodeModules = {
   process: require.resolve('process'),
 };
 
+// Register .html as an asset extension so require('assets/globe.html') works
+config.resolver.assetExts = [...(config.resolver.assetExts ?? []), 'html'];
+
 module.exports = config;

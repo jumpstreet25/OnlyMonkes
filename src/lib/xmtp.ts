@@ -266,6 +266,7 @@ function decodeStringMessage(raw: any, rawContent: string, myInboxId: string): C
   if (rawContent.startsWith("STICKER_REACT:")) return null;
   if (rawContent.startsWith("TYPING:")) return null;
   if (rawContent.startsWith("PROFILE_UPDATE:")) return null;
+  if (rawContent.startsWith("LOCATION_SYNC:")) return null;
   if (rawContent.startsWith("EVENT:")) return null;
   if (rawContent.startsWith("EDIT:")) return null;
   if (rawContent.startsWith("PRESENCE:")) return null;
@@ -463,14 +464,15 @@ export function applyReaction(
     if (!existing) return msg;
 
     const alreadyReacted = existing.reactors.includes(sender);
+    const newReactors = alreadyReacted
+      ? existing.reactors.filter((r) => r !== sender)
+      : [...existing.reactors, sender].slice(-50); // Cap at 50 reactors per emoji
     reactions[emoji as ReactionEmoji] = {
       ...existing,
-      count: alreadyReacted ? existing.count - 1 : existing.count + 1,
+      count: newReactors.length,
       reactedByMe:
         sender === myInboxId ? !existing.reactedByMe : existing.reactedByMe,
-      reactors: alreadyReacted
-        ? existing.reactors.filter((r) => r !== sender)
-        : [...existing.reactors, sender],
+      reactors: newReactors,
     };
 
     return { ...msg, reactions };

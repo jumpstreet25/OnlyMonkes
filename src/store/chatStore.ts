@@ -85,12 +85,12 @@ export const useChatStore = create<ChatState & ChatActions>((set) => ({
         return { messages: next, _msgIdSet };
       }
 
-      // 3. Genuinely new message → append (cap at 500 to prevent unbounded growth)
+      // 3. Genuinely new message → append (cap at 300 for memory on 8GB devices)
       const _msgIdSet = new Set(state._msgIdSet);
       _msgIdSet.add(message.id);
       let next = [...state.messages, message];
-      if (next.length > 500) {
-        const removed = next.splice(0, next.length - 500);
+      if (next.length > 300) {
+        const removed = next.splice(0, next.length - 300);
         for (const r of removed) _msgIdSet.delete(r.id);
       }
       return { messages: next, _msgIdSet };

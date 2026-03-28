@@ -11,12 +11,12 @@ import {
   View,
   Text,
   StyleSheet,
-  Modal,
   Pressable,
   Animated,
   Alert,
 } from "react-native";
 import * as Haptics from "expo-haptics";
+import { GlassModal } from "@/components/GlassModal";
 import { THEME, FONTS } from "@/lib/constants";
 import { ConfettiView } from "@/components/ConfettiView";
 import { shareDay7Bonus } from "@/lib/shareToX";
@@ -91,12 +91,11 @@ export function BananaClaimModal({ visible, claim, onDismiss }: BananaClaimModal
   const streakDays = Array.from({ length: 7 }, (_, i) => i + 1);
 
   return (
-    <Modal visible transparent animationType="fade" statusBarTranslucent>
+    <GlassModal visible={visible} onClose={onDismiss} cardStyle={styles.card}>
       {/* Day 7 confetti */}
       {claim.isBonus && <ConfettiView onDone={() => {}} />}
 
-      <View style={styles.overlay}>
-        <Animated.View style={[styles.card, { transform: [{ scale: scaleAnim }] }]}>
+        <Animated.View style={[styles.cardInner, { transform: [{ scale: scaleAnim }] }]}>
 
           {/* Header */}
           <Text style={styles.gmonke}>
@@ -182,34 +181,18 @@ export function BananaClaimModal({ visible, claim, onDismiss }: BananaClaimModal
 
           <Text style={styles.hint}>Come back daily to fill the banana bar</Text>
         </Animated.View>
-      </View>
-    </Modal>
+    </GlassModal>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.7)",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 24,
-  },
   card: {
-    backgroundColor: THEME.surface,
-    borderRadius: 24,
+    padding: 0,
+  },
+  cardInner: {
     padding: 28,
     alignItems: "center",
     gap: 16,
-    borderWidth: 1,
-    borderColor: "rgba(255, 213, 79, 0.2)",
-    shadowColor: "#FFD54F",
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.3,
-    shadowRadius: 24,
-    elevation: 12,
-    width: "100%",
-    maxWidth: 340,
   },
 
   gmonke: {

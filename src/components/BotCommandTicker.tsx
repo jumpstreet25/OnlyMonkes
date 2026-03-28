@@ -25,6 +25,8 @@ interface Command {
 const CHAT_COMMANDS: Command[] = [
   { cmd: "/price $TOKEN", desc: "Live price" },
   { cmd: "/ta $TOKEN", desc: "Technical analysis" },
+  { cmd: "/hottest", desc: "Top 10 by score" },
+  { cmd: "/coldest", desc: "Contrarian watch" },
   { cmd: "/watchlist", desc: "Tracked tokens" },
   { cmd: "/alerts", desc: "Recent signals" },
   { cmd: "/sports", desc: "Betting edges" },
@@ -40,39 +42,43 @@ const CHAT_COMMANDS: Command[] = [
 ];
 
 const DM_COMMANDS: Command[] = [
-  // AutonoMonke
-  { cmd: "/automonke", desc: "Trading status" },
-  { cmd: "/automonke start", desc: "Enable trading" },
-  { cmd: "/automonke stop", desc: "Pause trading" },
-  { cmd: "/automonke positions", desc: "Open trades" },
-  { cmd: "/automonke history", desc: "Trade history" },
-  { cmd: "/automonke size", desc: "Position size %" },
-  { cmd: "/automonke confidence", desc: "Min AI confidence" },
-  { cmd: "/automonke fund", desc: "Deposit address" },
-  { cmd: "/automonke withdraw", desc: "Close all & withdraw" },
-  { cmd: "/automonke max", desc: "Max wallet balance" },
-  // Risk management
-  { cmd: "/risk", desc: "View risk settings" },
-  { cmd: "/risk size 5", desc: "Position size %" },
-  { cmd: "/risk stop 8", desc: "Stop-loss %" },
-  { cmd: "/risk max 40", desc: "Max exposure %" },
-  { cmd: "/risk auto on", desc: "Auto partial sells" },
-  { cmd: "/risk conviction 60", desc: "Min score to alert" },
-  { cmd: "/risk blacklist $TOKEN", desc: "Block token" },
+  // Quick intel
+  { cmd: "/hottest", desc: "Top 10 by score" },
+  { cmd: "/coldest", desc: "Contrarian watch" },
+  { cmd: "/whale $TOKEN", desc: "Whale activity" },
+  { cmd: "/chart $TOKEN", desc: "TA chart image" },
+  { cmd: "/compare $A $B", desc: "Side-by-side TA" },
   // Trading
   { cmd: "/price $TOKEN", desc: "Live price" },
   { cmd: "/ta $TOKEN", desc: "Full TA analysis" },
   { cmd: "/buy $TOKEN", desc: "Buy via Jupiter" },
   { cmd: "/sell $TOKEN", desc: "Sell via Jupiter" },
-  { cmd: "/portfolio", desc: "PNL & holdings" },
-  // Hermes / AI
-  { cmd: "/hermes", desc: "Hermes memory status" },
+  { cmd: "/portfolio", desc: "PNL + Hermes analysis" },
+  { cmd: "/positions", desc: "Open trades" },
   { cmd: "/backtest $TOKEN", desc: "Historical signals" },
+  // Hermes
+  { cmd: "/hermes stats", desc: "Your trading stats" },
+  { cmd: "/hermes best", desc: "Your best tokens" },
+  { cmd: "/hermes worst", desc: "Your worst tokens" },
+  { cmd: "/hermes achievements", desc: "Badges & streaks" },
+  // AutonoMonke
+  { cmd: "/automonke", desc: "Trading status" },
+  { cmd: "/automonke start", desc: "Enable auto-trading" },
+  { cmd: "/automonke stop", desc: "Pause auto-trading" },
+  { cmd: "/automonke positions", desc: "Auto positions" },
+  { cmd: "/automonke fund", desc: "Deposit address" },
+  { cmd: "/automonke withdraw", desc: "Close all & withdraw" },
+  // Risk management
+  { cmd: "/risk", desc: "View risk settings" },
+  { cmd: "/risk size 5", desc: "Position size %" },
+  { cmd: "/risk stop 8", desc: "Stop-loss %" },
+  { cmd: "/risk conviction 60", desc: "Min score to alert" },
+  { cmd: "/risk blacklist $TOKEN", desc: "Block token" },
   // Predictions & Bets
   { cmd: "/predictions", desc: "Drift predictions" },
-  { cmd: "/bets", desc: "Sports betting status" },
+  { cmd: "/bets", desc: "Sports betting" },
   // General
-  { cmd: "Ask anything", desc: "Chat freely with the bot" },
+  { cmd: "Ask anything", desc: "Chat with Monke" },
   { cmd: "APPROVE", desc: "Confirm pending trade" },
   { cmd: "REJECT", desc: "Cancel pending trade" },
   { cmd: "/help", desc: "All commands" },

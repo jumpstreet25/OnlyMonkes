@@ -129,23 +129,27 @@ export function useGroupChat(groupId: string, groupName: string) {
       if (!warm.unsub) {
         try {
           const unsub = await (warm.group as any).streamMessages(async (raw: any) => {
-            let content: string;
-            try { content = raw.content(); } catch { return; }
+            try {
+              let content: string;
+              try { content = raw.content(); } catch { return; }
 
-            if (typeof content === "string" && content.startsWith("REACT:")) {
-              setMessages(prev => applyReaction(prev, raw, myInboxIdRef.current));
-              return;
-            }
+              if (typeof content === "string" && content.startsWith("REACT:")) {
+                setMessages(prev => applyReaction(prev, raw, myInboxIdRef.current));
+                return;
+              }
 
-            const msg = decodeMessage(raw, myInboxIdRef.current);
-            if (msg) {
-              setMessages(prev => {
-                const updated = [...prev, msg];
-                const entry = _warmCache.get(groupId);
-                if (entry) entry.messages = updated;
-                return updated;
-              });
-              await appendCachedMessage(cacheKey, msg);
+              const msg = decodeMessage(raw, myInboxIdRef.current);
+              if (msg) {
+                setMessages(prev => {
+                  const updated = [...prev, msg];
+                  const entry = _warmCache.get(groupId);
+                  if (entry) entry.messages = updated;
+                  return updated;
+                });
+                await appendCachedMessage(cacheKey, msg);
+              }
+            } catch (err) {
+              console.warn("[useGroupChat] Stream handler error:", (err as Error).message);
             }
           });
           warm.unsub = unsub;

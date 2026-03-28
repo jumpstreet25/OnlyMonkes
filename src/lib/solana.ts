@@ -110,6 +110,23 @@ export async function sendSkrTip(
   const mintInfo = await getMint(connection, mintPubkey);
   const decimals = mintInfo.decimals;
 
+  // Pre-flight balance check — fail early before opening MWA
+  const senderWallet = useAppStore.getState().wallet?.address;
+  if (senderWallet) {
+    try {
+      const senderAta = getAssociatedTokenAddressSync(mintPubkey, new PublicKey(senderWallet));
+      const balanceInfo = await connection.getTokenAccountBalance(senderAta);
+      const balance = parseFloat(balanceInfo.value.uiAmountString ?? "0");
+      if (balance < amountUi) {
+        throw new Error(`Insufficient SKR balance: ${balance.toFixed(1)} < ${amountUi}`);
+      }
+    } catch (err) {
+      if ((err as Error).message.includes("Insufficient")) throw err;
+      // ATA doesn't exist = 0 balance
+      throw new Error("No SKR balance found — you need SKR tokens to tip");
+    }
+  }
+
   const totalLamports = Math.round(amountUi * Math.pow(10, decimals));
   const devLamports   = Math.round(totalLamports * DEV_FEE_PERCENT);
   const userLamports  = totalLamports - devLamports;

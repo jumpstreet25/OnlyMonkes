@@ -65,13 +65,14 @@ export interface CachedProfile {
   location?: string;
   nftImage?: string | null;
   cachedAt?: number;          // epoch ms of last write
+  accessedAt?: number;        // epoch ms of last read (LRU eviction)
   legendary?: boolean;
   pushToken?: string;         // Raw FCM token for bot's server-side push
   expoPushToken?: string;     // ExponentPushToken[...] for client-side DM relay
 }
 
 const AK_PROFILE_CACHE = 'profile_cache_v2';
-const MAX_PROFILE_CACHE = 500;
+const MAX_PROFILE_CACHE = 200; // Reduced from 500 — avatar base64 URIs eat ~50KB each; 200 × 50KB = 10MB vs 25MB
 const _profileCache = new Map<string, CachedProfile>();
 let _persistTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -129,21 +130,24 @@ export function cacheProfile(inboxId: string, profile: CachedProfile): void {
 
   const merged = { ...existing, ...profile, cachedAt: Date.now() };
   _profileCache.set(inboxId, merged);
-  // Evict oldest entries when cache exceeds max size
+  // LRU eviction — remove least recently accessed entry when cache exceeds max
   if (_profileCache.size > MAX_PROFILE_CACHE) {
-    let oldestKey: string | null = null;
-    let oldestAt = Infinity;
+    let lruKey: string | null = null;
+    let lruAt = Infinity;
     for (const [k, v] of _profileCache) {
-      if ((v.cachedAt ?? 0) < oldestAt) { oldestAt = v.cachedAt ?? 0; oldestKey = k; }
+      const lastUsed = v.accessedAt ?? v.cachedAt ?? 0;
+      if (lastUsed < lruAt) { lruAt = lastUsed; lruKey = k; }
     }
-    if (oldestKey) _profileCache.delete(oldestKey);
+    if (lruKey) _profileCache.delete(lruKey);
   }
   _schedulePersist();
   _notifyProfileListeners();
 }
 
 export function getCachedProfile(inboxId: string): CachedProfile | null {
-  return _profileCache.get(inboxId) ?? null;
+  const profile = _profileCache.get(inboxId);
+  if (profile) profile.accessedAt = Date.now(); // LRU touch
+  return profile ?? null;
 }
 
 // ─── All-time user registry ───────────────────────────────────────────────────

@@ -61,7 +61,18 @@ import {
 import { useAppStore } from "@/store/appStore";
 import { useChatStore } from "@/store/chatStore";
 // Typing-indicator timeout map — module-level so it survives re-renders
+// Capped at 100 to prevent memory leak in long sessions
 const _typingTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
+const MAX_TYPING_ENTRIES = 100;
+function setTypingTimeout(key: string, timer: ReturnType<typeof setTimeout>) {
+  if (_typingTimeouts.has(key)) clearTimeout(_typingTimeouts.get(key)!);
+  _typingTimeouts.set(key, timer);
+  // Evict oldest if over cap
+  if (_typingTimeouts.size > MAX_TYPING_ENTRIES) {
+    const oldest = _typingTimeouts.keys().next().value;
+    if (oldest) { clearTimeout(_typingTimeouts.get(oldest)!); _typingTimeouts.delete(oldest); }
+  }
+}
 // Throttle own typing broadcasts (one signal per 2.5 s max)
 let _lastTypingSent = 0;
 import { showLocalNotification, detectMention, getCachedPushToken, registerForExpoPushToken, CH_ALL, CH_MENTIONS, CH_BOT } from "@/lib/notifications";
@@ -70,6 +81,16 @@ const BOT_USERNAME = "AI Agent #9385";
 import { loadCachedMessages, saveCachedMessages, appendCachedMessage, getLastReadTimestamp } from "@/lib/messageCache";
 import type { ChatMessage, ReactionEmoji } from "@/types";
 import type { XmtpClient, XmtpGroup } from "@/lib/xmtp";
+
+// ─── Timeout helper (prevents XMTP sync from hanging on poor network) ────────
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms),
+    ),
+  ]);
+}
 
 // ─── Module-level singletons ──────────────────────────────────────────────────
 
@@ -110,7 +131,20 @@ function tryMintBadge(): void {
  * ensuring the bot always receives a valid ExponentPushToken.
  * Safe to call even if XMTP isn't ready yet — exits silently.
  */
+let _profileDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
 export async function triggerProfileRebroadcast(pushToken: string): Promise<void> {
+  // Debounce 500ms — coalesces simultaneous calls (token change + push token)
+  if (_profileDebounceTimer) clearTimeout(_profileDebounceTimer);
+  return new Promise((resolve) => {
+    _profileDebounceTimer = setTimeout(() => {
+      _profileDebounceTimer = null;
+      _doProfileRebroadcast(pushToken).then(resolve).catch(() => resolve());
+    }, 500);
+  });
+}
+
+async function _doProfileRebroadcast(pushToken: string): Promise<void> {
   if (!_group || !_myInboxId) return;
   const { username, bio, xAccount, wallet, tipWallet, verifiedNft, isLegendary,
     notificationsEnabled, mentionsOnly, botNotificationsEnabled,
@@ -280,7 +314,8 @@ export function useXmtp() {
         }
 
         // Ensure bot is a member of all groups (main + channels)
-        const BOT_INBOX = "998001a498174b8a194110ee792b10f97de4965665eaf0d088ed2c71bdf62363";
+        // Bot inbox ID from remote config (fallback to hardcoded for offline startup)
+        const BOT_INBOX = config?.botInboxId ?? "998001a498174b8a194110ee792b10f97de4965665eaf0d088ed2c71bdf62363";
         const BOT_INBOXES = [BOT_INBOX];
         const allGroupsToCheck = [
           { name: "main", ref: group },
@@ -525,12 +560,12 @@ export function useXmtp() {
       // First sync the group to pull its latest messages from the network.
       // Then syncAllConversations triggers the epoch update for fresh installs
       // (new installation key needs the group to propagate its latest epoch).
-      await (activeGroup as any).sync();
-      try { await client.conversations.syncAllConversations(["allowed", "unknown"] as any); } catch { /* ignore */ }
-      // Fetch only last 48 hours of messages — PRESENCE heartbeats (60s/user)
-      // flood the history, so a count-based limit misses real chat messages.
-      const TWO_DAYS_NS = 48 * 60 * 60 * 1_000_000_000;
-      const afterNs = (Date.now() * 1_000_000) - TWO_DAYS_NS;
+      await withTimeout((activeGroup as any).sync(), 15_000, "group.sync");
+      try { await withTimeout(client.conversations.syncAllConversations(["allowed", "unknown"] as any), 15_000, "syncAll"); } catch { /* ignore */ }
+      // Fetch only last 24 hours of messages — reduced from 48h to cut PRESENCE
+      // heartbeat flood in half (~50% fewer messages to decode on startup).
+      const ONE_DAY_NS = 24 * 60 * 60 * 1_000_000_000;
+      const afterNs = (Date.now() * 1_000_000) - ONE_DAY_NS;
       const rawHistory: any[] = await (activeGroup as any).messages({ afterNs });
 
       // ── Helper: seed profile cache + events from raw messages ────────────
@@ -549,6 +584,22 @@ export function useXmtp() {
               try {
                 const event = parseEventMessage(content);
                 if (event) await saveEvent(event);
+              } catch { /* ignore */ }
+            } else if (typeof content === "string" && content.startsWith("LOCATION_SYNC:")) {
+              // Bot broadcasts all known user locations every 12h
+              try {
+                const locs = JSON.parse(content.slice("LOCATION_SYNC:".length));
+                for (const [inboxId, data] of Object.entries(locs)) {
+                  const d = data as { u?: string; loc?: string; ni?: string };
+                  if (d.loc) {
+                    cacheProfile(inboxId, {
+                      username: d.u || undefined,
+                      location: d.loc,
+                      nftImage: d.ni || undefined,
+                    });
+                  }
+                }
+                console.log(`[XMTP] Location sync: updated ${Object.keys(locs).length} users`);
               } catch { /* ignore */ }
             } else if (typeof content === "string" && (
               content.startsWith("NFT_LIST:") || content.startsWith("NFT_BID:") ||
@@ -751,6 +802,8 @@ export function useXmtp() {
           _streamAlive = false;
           return;
         }
+        // Top-level error boundary — prevents stream crash from killing all message processing
+        try {
 
         // Native or legacy reaction
         if (isReactionContent(content)) {
@@ -789,9 +842,7 @@ export function useXmtp() {
           if (typerId && typerId !== _myInboxId) {
             useChatStore.getState().setTypingUser(typerId, typerUsername);
             // Auto-clear after 4 s of silence
-            const existing = _typingTimeouts.get(typerId);
-            if (existing) clearTimeout(existing);
-            _typingTimeouts.set(
+            setTypingTimeout(
               typerId,
               setTimeout(() => {
                 useChatStore.getState().clearTypingUser(typerId);
@@ -808,6 +859,17 @@ export function useXmtp() {
             cacheProfile(profile.id, { username: profile.username, bio: profile.bio, xAccount: profile.xAccount, walletAddress: profile.walletAddress, tipWallet: profile.tipWallet, location: profile.location, nftImage: profile.nftImage, legendary: profile.legendary, pushToken: profile.pushToken, expoPushToken: profile.expoPushToken });
             trackUser(profile.id, profile.username);
           }
+          return;
+        }
+
+        if (typeof content === "string" && content.startsWith("LOCATION_SYNC:")) {
+          try {
+            const locs = JSON.parse(content.slice("LOCATION_SYNC:".length));
+            for (const [inboxId, data] of Object.entries(locs)) {
+              const d = data as { u?: string; loc?: string; ni?: string };
+              if (d.loc) cacheProfile(inboxId, { username: d.u || undefined, location: d.loc, nftImage: d.ni || undefined });
+            }
+          } catch { /* ignore */ }
           return;
         }
 
@@ -1038,6 +1100,9 @@ export function useXmtp() {
           : `${senderLabel} in OnlyMonkes`;
 
         await showLocalNotification(title, msg.content, channelId);
+        } catch (streamErr) {
+          console.warn("[XMTP] Stream handler error:", (streamErr as Error).message);
+        }
       });
 
       _streamAlive = true;

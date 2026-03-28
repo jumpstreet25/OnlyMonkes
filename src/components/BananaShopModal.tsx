@@ -11,13 +11,13 @@ import {
   View,
   Text,
   StyleSheet,
-  Modal,
   Pressable,
   ScrollView,
   Alert,
   ActivityIndicator,
 } from "react-native";
 import * as Haptics from "expo-haptics";
+import { GlassModal } from "@/components/GlassModal";
 import { THEME, FONTS, DEV_WALLET, SKR_MINT } from "@/lib/constants";
 import { useAppStore } from "@/store/appStore";
 import { spendBananas } from "@/lib/bananaRewards";
@@ -136,7 +136,7 @@ export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
   ];
 
   return (
-    <Modal visible={visible} animationType="slide" transparent={false} onRequestClose={onClose}>
+    <GlassModal visible={visible} onClose={onClose} position="bottom" animationType="slide">
       <View style={styles.root}>
         {/* Header */}
         <View style={styles.header}>
@@ -236,7 +236,7 @@ export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
           <View style={{ height: 40 }} />
         </ScrollView>
       </View>
-    </Modal>
+    </GlassModal>
   );
 }
 

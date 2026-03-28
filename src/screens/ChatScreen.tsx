@@ -83,6 +83,7 @@ import { BotCommandTicker } from "@/components/BotCommandTicker";
 import { showLocalNotification, CH_ALL } from "@/lib/notifications";
 import { registerNetworkSync, unregisterNetworkSync, setOfflineQueueFlusher, isOnline } from "@/lib/backgroundSync";
 import { enqueueMessage, flushOfflineQueue } from "@/lib/offlineQueue";
+import { appendCachedMessage } from "@/lib/messageCache";
 import { SwapConfirmModal } from "@/components/SwapConfirmModal";
 import { PinnedBar } from "@/components/PinnedBar";
 import { loadPinnedMessages, getPinnedMessages, buildPinMessage, type PinnedMessage } from "@/lib/pinnedMessages";
@@ -107,7 +108,7 @@ const getDisconnectVideoRoom = async () => (await getLiveVideo()).disconnectFrom
 import type { ChatMessage, ReactionEmoji } from "@/types";
 import type { TipAmount } from "@/lib/constants";
 
-const HEADER_BG = "transparent";
+const HEADER_BG = "rgba(10, 10, 15, 0.85)";
 
 /** Lazy-loaded Video player — avoids importing expo-av at startup */
 function LazyVideo({ uri }: { uri: string }) {
@@ -554,6 +555,9 @@ export default function ChatScreen() {
         await send(text);
       }
       useChatStore.getState().updateMessageStatus(optimistic.id, "sent");
+      // Persist own message to cache — stream handler skips own messages,
+      // so without this they're lost on force close + reopen
+      appendCachedMessage("main_chat", { ...optimistic, status: "sent" }).catch(() => {});
     } catch {
       // If offline, queue for auto-retry when back online
       if (!isOnline()) {
@@ -607,6 +611,7 @@ export default function ChatScreen() {
     try {
       await send(content);
       useChatStore.getState().updateMessageStatus(optimistic.id, "sent");
+      appendCachedMessage("main_chat", { ...optimistic, status: "sent" }).catch(() => {});
     } catch (err) {
       console.warn("GIF send failed:", err);
       useChatStore.getState().updateMessageStatus(optimistic.id, "failed");
@@ -653,6 +658,7 @@ export default function ChatScreen() {
       try {
         await send(content);
         useChatStore.getState().updateMessageStatus(optimistic.id, "sent");
+        appendCachedMessage("main_chat", { ...optimistic, status: "sent" }).catch(() => {});
         // Prompt to share on X
         setXShareImageUri(dataUri);
       } catch (err: any) {
@@ -925,6 +931,22 @@ export default function ChatScreen() {
     setSwapQuote(null);
   }, []);
 
+  // ─── Stable callbacks for FlatList renderItem (avoids re-creating on every render) ──
+
+  const handlePin = useCallback(async (msg: ChatMessage) => {
+    if (!isGroupAdmin) return;
+    const { pinMessage: doPin, buildPinMessage: buildPin } = require("@/lib/pinnedMessages");
+    await doPin(msg, myAddress);
+    setPinnedMessages(getPinnedMessages());
+    send(buildPin(msg.id, "pin")).catch(() => {});
+  }, [isGroupAdmin, myAddress, send]);
+
+  const handleThread = useCallback((msg: ChatMessage) => {
+    router.push(
+      `/thread?parentId=${msg.id}&parentContent=${encodeURIComponent(msg.content)}&parentSender=${encodeURIComponent(msg.senderUsername ?? "")}`,
+    );
+  }, []);
+
   // ─── Render ──────────────────────────────────────────────────────────────────
 
   const renderMessage: ListRenderItem<ChatMessage> = useCallback(
@@ -943,20 +965,13 @@ export default function ChatScreen() {
             onPressImage={setLightboxUrl}
             onPressVideo={setVideoLightboxUrl}
             onEdit={handleEditMessage}
-            onPin={isGroupAdmin ? async (msg) => {
-              const { pinMessage: doPin, buildPinMessage: buildPin } = require("@/lib/pinnedMessages");
-              await doPin(msg, myAddress);
-              setPinnedMessages(getPinnedMessages());
-              send(buildPin(msg.id, 'pin')).catch(() => {});
-            } : undefined}
-            onThread={(msg) => {
-              router.push(`/thread?parentId=${msg.id}&parentContent=${encodeURIComponent(msg.content)}&parentSender=${encodeURIComponent(msg.senderUsername ?? '')}`);
-            }}
+            onPin={isGroupAdmin ? handlePin : undefined}
+            onThread={handleThread}
           />
         </Animated.View>
       );
     },
-    [myAddress, isGroupAdmin, handleReact, setReplyingTo, handlePressUser, handleTip, handleStickerReact, setVideoLightboxUrl, handleEditMessage, send]
+    [myAddress, isGroupAdmin, handleReact, setReplyingTo, handlePressUser, handleTip, handleStickerReact, setVideoLightboxUrl, handleEditMessage, handlePin, handleThread]
   );
 
   const keyExtractor = useCallback((item: ChatMessage) => item.id, []);
@@ -1964,15 +1979,17 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   floorBtn: {
-    backgroundColor: '#0096C7',
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    backgroundColor: 'rgba(108, 180, 238, 0.12)',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(108, 180, 238, 0.2)',
   },
   floorBtnText: {
     fontFamily: FONTS.mono,
     fontSize: 10,
-    color: '#fff',
+    color: '#6CB4EE',
     fontWeight: '700',
   },
 });

@@ -9,7 +9,6 @@ import React, { useState, useMemo } from "react";
 import {
   View,
   Text,
-  Modal,
   Pressable,
   StyleSheet,
   TextInput,
@@ -18,6 +17,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { format } from "date-fns";
+import { GlassModal } from "@/components/GlassModal";
 import { THEME, FONTS } from "@/lib/constants";
 import { useChatStore } from "@/store/chatStore";
 import { shortenAddress } from "@/lib/nftVerification";
@@ -70,13 +70,7 @@ export function SearchModal({ visible, onClose }: SearchModalProps) {
   };
 
   return (
-    <Modal
-      visible={visible}
-      transparent={false}
-      animationType="slide"
-      onRequestClose={onClose}
-      statusBarTranslucent
-    >
+    <GlassModal visible={visible} onClose={onClose} position="bottom" animationType="slide">
       <View style={[styles.container, { paddingTop: insets.top }]}>
         {/* Search bar */}
         <View style={styles.searchBar}>
@@ -123,7 +117,7 @@ export function SearchModal({ visible, onClose }: SearchModalProps) {
           </>
         )}
       </View>
-    </Modal>
+    </GlassModal>
   );
 }
 
