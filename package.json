@@ -12,7 +12,10 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "e2e:build": "detox build --configuration android.emu.debug",
-    "e2e:test": "detox test --configuration android.emu.debug"
+    "e2e:test": "detox test --configuration android.emu.debug",
+    "lightrag:start": "bash infra/start-lightrag.sh",
+    "lightrag:backfill": "cd ~/Monke_Eliza/agents/monke-trader && bun scripts/backfill-lightrag.ts",
+    "lightrag:logs": "docker compose -f infra/docker-compose.lightrag.yml logs -f"
   },
   "dependencies": {
     "@livekit/react-native": "^2.9.6",
