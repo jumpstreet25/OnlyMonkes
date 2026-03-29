@@ -1,0 +1,109 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "title": "Bot Uptime",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "targets": [{
+        "expr": "time() - monke_bot_start_timestamp_seconds",
+        "legendFormat": "Uptime"
+      }],
+      "fieldConfig": {
+        "defaults": { "unit": "s", "thresholds": { "steps": [{ "color": "green", "value": null }] } }
+      }
+    },
+    {
+      "title": "Messages Received (5m rate)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "targets": [
+        { "expr": "rate(monke_xmtp_messages_received_total[5m])", "legendFormat": "{{type}}" }
+      ]
+    },
+    {
+      "title": "Messages Sent (5m rate)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "targets": [
+        { "expr": "rate(monke_xmtp_messages_sent_total[5m])", "legendFormat": "{{type}}" }
+      ]
+    },
+    {
+      "title": "Scanner Cycle Duration",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "targets": [
+        { "expr": "monke_scanner_cycle_duration_seconds", "legendFormat": "p50" },
+        { "expr": "histogram_quantile(0.95, rate(monke_scanner_cycle_duration_seconds_bucket[10m]))", "legendFormat": "p95" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "title": "Alerts Generated",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 12 },
+      "targets": [
+        { "expr": "monke_scanner_alerts_generated_total", "legendFormat": "Total Alerts" }
+      ]
+    },
+    {
+      "title": "Tokens Scanned",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 12 },
+      "targets": [
+        { "expr": "monke_scanner_tokens_processed_total", "legendFormat": "Total Scanned" }
+      ]
+    },
+    {
+      "title": "DM Rate Limited",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 16 },
+      "targets": [
+        { "expr": "monke_dm_rate_limited_total", "legendFormat": "Rate Limited" }
+      ],
+      "fieldConfig": {
+        "defaults": { "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 10 }, { "color": "red", "value": 50 }] } }
+      }
+    },
+    {
+      "title": "NFT Sales Detected",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+      "targets": [
+        { "expr": "rate(monke_nft_sales_detected_total[1h])", "legendFormat": "{{source}}" }
+      ]
+    },
+    {
+      "title": "Node.js Memory (RSS)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
+      "targets": [
+        { "expr": "monke_process_resident_memory_bytes", "legendFormat": "RSS" },
+        { "expr": "monke_nodejs_heap_size_used_bytes", "legendFormat": "Heap Used" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes" } }
+    },
+    {
+      "title": "Event Loop Lag",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 28 },
+      "targets": [
+        { "expr": "monke_nodejs_eventloop_lag_seconds", "legendFormat": "Lag" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["monke", "bot"],
+  "templating": { "list": [] },
+  "time": { "from": "now-6h", "to": "now" },
+  "title": "Monke Trader Bot",
+  "uid": "monke-trader-overview"
+}

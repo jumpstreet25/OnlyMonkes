@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 import type { WalletAccount, OwnedNFT } from '../types';
 import type { LiveRoomData } from '../lib/livekit';
 import type { VideoRoomData } from '../lib/liveVideo';
@@ -8,6 +9,7 @@ import type { NftSwapMessage } from '../lib/marketplace';
 const AK_MUTED_SPORTS = 'om_muted_sports';
 const AK_MUTED_CHANNELS = 'om_muted_channels';
 const AK_NOTIF_PREFS = 'om_notif_prefs';
+const SK_MWA_TOKEN = 'om_mwa_auth_token';
 
 export interface LiveRoomState extends LiveRoomData {
   participantCount: number;
@@ -285,7 +287,14 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   setIsInLiveRoom: (isInLiveRoom) => set({ isInLiveRoom }),
   setLiveRoomMuted: (liveRoomMuted) => set({ liveRoomMuted }),
   setLiveRoomToken: (liveRoomToken) => set({ liveRoomToken }),
-  setMwaAuthToken: (mwaAuthToken) => set({ mwaAuthToken }),
+  setMwaAuthToken: (mwaAuthToken) => {
+    set({ mwaAuthToken });
+    if (mwaAuthToken) {
+      void SecureStore.setItemAsync(SK_MWA_TOKEN, mwaAuthToken).catch(() => {});
+    } else {
+      void SecureStore.deleteItemAsync(SK_MWA_TOKEN).catch(() => {});
+    }
+  },
   setActiveVideoRoom: (activeVideoRoom) => set({ activeVideoRoom }),
   setIsInVideoCall: (isInVideoCall) => set({ isInVideoCall }),
   setCommunityBadge: (key, count) => set((s) => ({
@@ -307,8 +316,19 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
     return { dmUnreadCounts: next };
   }),
   setPendingNftSwap: (pendingNftSwap) => set({ pendingNftSwap }),
-  reset: () => set(initialState),
+  reset: () => {
+    set(initialState);
+    void SecureStore.deleteItemAsync(SK_MWA_TOKEN).catch(() => {});
+  },
 }));
+
+/** Load MWA auth token from SecureStore into Zustand (call on app startup). */
+export async function loadMwaAuthToken(): Promise<void> {
+  try {
+    const token = await SecureStore.getItemAsync(SK_MWA_TOKEN);
+    if (token) useAppStore.getState().setMwaAuthToken(token);
+  } catch { /* SecureStore unavailable */ }
+}
 
 // ── Persist notification prefs to AsyncStorage ──────────────────────────────
 
