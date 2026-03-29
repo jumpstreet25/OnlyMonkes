@@ -67,28 +67,24 @@ const CHANNEL_CONFIG = {
     name: "Monke Bets",
     img: require("../../assets/MonkeBets.png"),
     banner: require("../../assets/Bets.png"),
-    bannerScale: 1.98,
     emptyText: "No sports bet alerts yet.",
   },
   trades: {
     name: "Monke Trades",
     img: require("../../assets/MonkeTrades.png"),
     banner: require("../../assets/Trade.png"),
-    bannerScale: 2.016,
     emptyText: "No trade alerts yet.",
   },
   sales: {
     name: "Monke Sales",
     img: require("../../assets/MonkeSales.png"),
     banner: require("../../assets/Sales.png"),
-    bannerScale: 1.575,
     emptyText: "No sales alerts yet.",
   },
   predictions: {
     name: "Monke Predictions",
     img: require("../../assets/MonkePredictions.png"),
     banner: require("../../assets/Predictions.png"),
-    bannerScale: 2.07,
     emptyText: "No prediction alerts yet.",
   },
 } as const;
@@ -222,11 +218,11 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
           <Text style={styles.backIcon}>{"\u2039"}</Text>
         </Pressable>
 
-        {/* Center: banner image — contain so wide logos aren't cropped */}
+        {/* Center: banner image — matches Main Chat header layout */}
         <ImageBackground
           source={config.banner}
-          style={[styles.headerCenter, { transform: [{ scale: config.bannerScale }] }]}
-          resizeMode="contain"
+          style={styles.headerCenter}
+          resizeMode="cover"
         />
 
         {/* Right column: Alert bell + Autonomy button */}
@@ -395,6 +391,7 @@ const styles = StyleSheet.create({
   headerCenter: {
     flex: 1,
     alignSelf: "stretch",
+    transform: [{ scale: 0.9 }],
   },
   backBtn: {
     width: 58,
