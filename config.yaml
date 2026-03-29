@@ -54,13 +54,13 @@ release:
         🔔 PUSH NOTIFICATIONS — Real-time alerts for new messages, mentions, reactions, live rooms, NFT sales, and TA trading signals.
         🛡 DECENTRALIZED & ENCRYPTED — All messages are end-to-end encrypted via XMTP. No central server. Your messages are yours.
         REQUIREMENTS: Saga Monkes NFT + compatible Solana wallet (Phantom, Solflare) on Seeker or Saga device.
-      new_in_version: 'v2.20: Edit sent messages (1 min window), copy any message, share photos to X/Twitter with watermark, dark-themed popup modals, daily GMonke bot message, weekly PNL trade report, persistent login sessions, 7-day message cache, sports filter in Monke Bets, dedicated Privacy Policy and Terms pages.'
+      new_in_version: 'v2.32: Banana economy with badge rewards. 3D Monke Globe showing user locations and Solana events. Dark glassmorphic chat bubbles. LightRAG knowledge graph memory for AI. Live audio rooms (LiveKit WebRTC). Video messages with camera capture. Prediction tracking and community alpha alerts. Smart notifications with channel routing. Security hardening: NFT gate fail-closed, PBKDF2 600k, CLI sanitization, DM rate limiter, fetch timeouts.'
       saga_features: Optimized for Seeker — arm64-v8a only build with minSdk 24. Live audio rooms use LiveKit WebRTC with full Bluetooth headset support. Mobile Wallet Adapter biometric prompt (no app switching for tips/swaps).
   android_details:
     cert_fingerprint: 69dd4ec7fe2a906808d61f2470bb02ac1c62f9d52dbb40548a5175cc15abb693
     min_sdk: 24
-    version: '2.20'
-    version_code: 20
+    version: '2.32'
+    version_code: 32
     locales:
       - en-US
 solana_mobile_dapp_publisher_portal:
