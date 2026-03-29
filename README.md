@@ -213,6 +213,7 @@ An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect yo
 - **Crash reporting** — Sentry integration (`@sentry/react-native`) with PII scrubbing; captures errors, breadcrumbs, and user identification
 - **Analytics** — Firebase Analytics (`@react-native-firebase/analytics`); tracks app opens, messages sent, DMs opened, tips sent, swaps executed, daily sessions, chat duration, user properties
 - **Self-hosted LiveKit** — Docker Compose config for self-hosted LiveKit SFU on VPS; embedded TURN for NAT traversal; ~$6-10/mo on Hetzner CX22 (2 vCPU, 4GB RAM); handles 5-10 concurrent rooms with simulcast
+- **LightRAG** — Local Docker knowledge graph memory for Hermes bot; port 9621 (localhost only); Groq llama-3.3-70b-versatile LLM + OpenAI text-embedding-3-small; ingests TA alerts, outcomes, chat, NFT sales, bets, predictions; enriches DM commands and LLM context via 3s-timeout RAG queries
 
 ---
 
@@ -378,10 +379,14 @@ OnlyMonkes/
 │
 ├── infra/
 │   ├── docker-compose.livekit.yml    # Self-hosted LiveKit SFU Docker config
+│   ├── docker-compose.lightrag.yml   # LightRAG knowledge graph (local Docker, port 9621)
+│   ├── .env.lightrag.example         # LightRAG env template (Groq LLM + OpenAI embeddings)
+│   ├── start-lightrag.sh             # Launch script for LightRAG container
 │   └── livekit.yaml                  # LiveKit server config (TURN, simulcast, room defaults)
 │
 ├── worker-actions/
-│   └── src/index.ts                  # Cloudflare Worker — Solana Actions server (swap + tip endpoints via Jupiter v2 /build)
+│   ├── src/index.ts                  # Cloudflare Worker — Solana Actions server (swap + tip endpoints via Jupiter v2 /build)
+│   └── src/lightrag-pipeline.ts      # LightRAG ingestion + query pipeline (canonical module)
 │
 ├── app.config.ts                     # Expo config + env vars (Helius, GIPHY, Cloudinary, LiveKit, Sentry)
 ├── eas.json                          # EAS Build + Update config (preview + production channels)
@@ -669,7 +674,17 @@ docker-compose -f docker-compose.livekit.yml up -d
 
 Requires a VPS with public IP, ports 7880 (WS), 7881 (TCP), 3478/5349 (TURN), 50000-60000/UDP (RTC). Cost: ~$6-10/mo on Hetzner CX22.
 
-### 5. Run on Android
+### 5. Start LightRAG (local knowledge graph)
+
+```bash
+cp infra/.env.lightrag.example infra/.env.lightrag
+# Add your API keys to infra/.env.lightrag
+npm run lightrag:start
+# First time only — seed with historical data:
+npm run lightrag:backfill
+```
+
+### 6. Run on Android
 
 ```bash
 npx expo run:android

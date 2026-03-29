@@ -45,3 +45,7 @@ config.yaml
 # Cloudflare Workers
 worker/node_modules/
 worker-actions/node_modules/
+
+# LightRAG
+infra/.env.lightrag
+infra/data/lightrag/

@@ -1,0 +1,19 @@
+version: "3.8"
+
+services:
+  lightrag:
+    image: ghcr.io/hkuds/lightrag:latest
+    container_name: onlymonkes-lightrag
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9621:9621"
+    volumes:
+      - ./data/lightrag:/app/data
+    env_file:
+      - .env.lightrag
+    environment:
+      - HOST=0.0.0.0
+      - PORT=9621
+      - WORKING_DIR=/app/data
+      - MAX_ASYNC=16
+      - TIMEOUT=150
