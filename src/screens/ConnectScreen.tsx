@@ -31,7 +31,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import { useMobileWallet } from "@/hooks/useMobileWallet";
-import { useAppStore } from "@/store/appStore";
+import { useAppStore, loadMwaAuthToken } from "@/store/appStore";
 import {
   loadSession,
   saveSession,
@@ -54,6 +54,7 @@ export default function ConnectScreen() {
   // ─── Restore session on mount ──────────────────────────────────────────────
   useEffect(() => {
     (async () => {
+      await loadMwaAuthToken();
       const wallet = await loadSession();
       if (wallet) {
         setWallet(wallet);
