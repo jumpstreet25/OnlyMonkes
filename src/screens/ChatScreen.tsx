@@ -25,7 +25,6 @@ import {
   View,
   Text,
   StyleSheet,
-  FlatList,
   Pressable,
   Image,
   ImageBackground,
@@ -37,7 +36,9 @@ import {
   TextInput,
   Alert,
   Linking,
+  FlatList,
 } from "react-native";
+import { FlashList } from "@shopify/flash-list";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAppStore } from "@/store/appStore";
 import { useChatStore } from "@/store/chatStore";
@@ -74,10 +75,13 @@ import { CalendarModal } from "@/components/CalendarModal";
 import { GifPickerModal } from "@/components/GifPickerModal";
 import { VideoCameraModal } from "@/components/VideoCameraModal";
 import { LiveRoomBanner } from "@/components/LiveRoomBanner";
-import { type LiveRoomData, createLivekitToken, createRoomName } from "@/lib/livekit";
-import { LiveAudioPill } from "@/components/LiveAudioPill";
+import { createLivekitToken, createRoomName } from "@/lib/livekit";
 import { VideoRoomBanner } from "@/components/VideoRoomBanner";
 import { VideoCallPip } from "@/components/VideoCallPip";
+import { AvatarRoomPill } from "@/components/AvatarRoomPill";
+import { VideoReactionOverlay } from "@/components/VideoReactionOverlay";
+import { addReactionListener as addAvatarReactionListener, disconnectFromAvatarRoom, type AvatarRoomData } from "@/lib/avatarRoom";
+import { ChartModal } from "@/components/ChartModal";
 import type { VideoRoomData } from "@/lib/liveVideo";
 import { BotCommandTicker } from "@/components/BotCommandTicker";
 import { showLocalNotification, CH_ALL } from "@/lib/notifications";
@@ -100,7 +104,6 @@ const getFileSystem = () => import("expo-file-system");
 const getImagePicker = () => import("expo-image-picker");
 const getVideoUpload = () => import("@/lib/videoUpload");
 const getJupiterSwap = () => import("@/lib/jupiterSwap");
-const getLiveAudio = () => import("@/lib/liveAudio");
 const getLiveVideo = () => import("@/lib/liveVideo");
 const getCreateVideoRoom = async () => (await getLiveVideo()).createVideoRoom;
 const getJoinVideoRoom = async () => (await getLiveVideo()).joinVideoRoom;
@@ -152,17 +155,17 @@ export default function ChatScreen() {
   const loginStreak      = useAppStore(s => s.loginStreak);
   const isLoading        = useAppStore(s => s.isLoading);
   const error            = useAppStore(s => s.error);
-  const activeLiveRoom   = useAppStore(s => s.activeLiveRoom);
-  const setActiveLiveRoom = useAppStore(s => s.setActiveLiveRoom);
-  const isInLiveRoom     = useAppStore(s => s.isInLiveRoom);
-  const liveRoomToken    = useAppStore(s => s.liveRoomToken);
-  const setIsInLiveRoom  = useAppStore(s => s.setIsInLiveRoom);
-  const setLiveRoomToken = useAppStore(s => s.setLiveRoomToken);
   const communityBadges  = useAppStore(s => s.communityBadges);
   const activeVideoRoom  = useAppStore(s => s.activeVideoRoom);
   const setActiveVideoRoom = useAppStore(s => s.setActiveVideoRoom);
   const isInVideoCall    = useAppStore(s => s.isInVideoCall);
   const setIsInVideoCall = useAppStore(s => s.setIsInVideoCall);
+  const activeAvatarRoom   = useAppStore(s => s.activeAvatarRoom);
+  const setActiveAvatarRoom = useAppStore(s => s.setActiveAvatarRoom);
+  const isInAvatarRoom     = useAppStore(s => s.isInAvatarRoom);
+  const setIsInAvatarRoom  = useAppStore(s => s.setIsInAvatarRoom);
+  const avatarRoomToken    = useAppStore(s => s.avatarRoomToken);
+  const setAvatarRoomToken = useAppStore(s => s.setAvatarRoomToken);
 
   const messagesAsc      = useChatStore(s => s.messages);
   const messages         = useMemo(() => [...messagesAsc].reverse(), [messagesAsc]);
@@ -170,7 +173,7 @@ export default function ChatScreen() {
   const isLoadingHistory = useChatStore(s => s.isLoadingHistory);
   const setReplyingTo    = useChatStore(s => s.setReplyingTo);
   const typingUsers      = useChatStore(s => s.typingUsers);
-  const { initialize, disconnect, logout, streamAlive, send, reply, react, edit, stickerReact, sendFile, sendTyping, forceAdminInit, broadcastProfile, broadcastEvent, broadcastLiveRoom, broadcastVideoRoom, syncMessages } = useXmtp();
+  const { initialize, disconnect, logout, streamAlive, send, reply, react, edit, stickerReact, sendFile, sendTyping, forceAdminInit, broadcastProfile, broadcastEvent, broadcastVideoRoom, broadcastAvatarRoom, syncMessages } = useXmtp();
   const [inputText, setInputText] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [showUsernameModal, setShowUsernameModal] = useState(false);
@@ -195,6 +198,7 @@ export default function ChatScreen() {
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [videoModalOpen, setVideoModalOpen] = useState(false);
   const [videoLightboxUrl, setVideoLightboxUrl] = useState<string | null>(null);
+  const [chartSymbol, setChartSymbol] = useState<string | null>(null);
   const [adminRecoveryOpen, setAdminRecoveryOpen] = useState(false);
   const [adminRecoveryPat, setAdminRecoveryPat] = useState("");
   const [adminRecoveryBusy, setAdminRecoveryBusy] = useState(false);
@@ -798,53 +802,6 @@ export default function ChatScreen() {
 
   // ─── Live audio room handlers ───────────────────────────────────────────────
 
-  const handleStartLive = useCallback(async () => {
-    if (!myInboxId || !username) {
-      Alert.alert("Set a username first", "Go to your profile and set a username before starting a live.");
-      return;
-    }
-    try {
-      const roomId = createRoomName(myInboxId);
-      const data: LiveRoomData = {
-        id:     roomId,
-        host:   username,
-        hostId: myInboxId,
-        ts:     Date.now(),
-        active: true,
-      };
-      setActiveLiveRoom({ ...data, participantCount: 1 });
-      await broadcastLiveRoom(data);
-      await showLocalNotification(`${username} started a Live`, "Live Audio in OnlyMonkes", CH_ALL);
-      // Generate token and navigate to live room screen
-      const token = await createLivekitToken(roomId, myInboxId, username);
-      setLiveRoomToken(token);
-      router.push(`/live-room?token=${encodeURIComponent(token)}&isHost=1`);
-    } catch (err: any) {
-      Alert.alert("Failed to start live", networkError());
-    }
-  }, [myInboxId, username, broadcastLiveRoom, setActiveLiveRoom, setLiveRoomToken]);
-
-  const handleJoinLive = useCallback(async () => {
-    if (!myInboxId || !username || !activeLiveRoom) return;
-    try {
-      const token = await createLivekitToken(activeLiveRoom.id, myInboxId, username);
-      setLiveRoomToken(token);
-      router.push(`/live-room?token=${encodeURIComponent(token)}&isHost=0`);
-    } catch (err: any) {
-      Alert.alert("Failed to join", networkError());
-    }
-  }, [myInboxId, username, activeLiveRoom, setLiveRoomToken]);
-
-  const handleEndLive = useCallback(async () => {
-    if (!activeLiveRoom) return;
-    const data: LiveRoomData = { ...activeLiveRoom, active: false };
-    setActiveLiveRoom(null);
-    setIsInLiveRoom(false);
-    setLiveRoomToken(null);
-    await getLiveAudio().then(la => la.disconnectFromRoom()).catch(() => {});
-    await broadcastLiveRoom(data).catch(() => {});
-  }, [activeLiveRoom, broadcastLiveRoom, setActiveLiveRoom, setIsInLiveRoom, setLiveRoomToken]);
-
   // ── Video call handlers ─────────────────────────────────────────────────────
 
   const handleStartVideoCall = useCallback(async () => {
@@ -894,6 +851,62 @@ export default function ChatScreen() {
     await getDisconnectVideoRoom().then(fn => fn()).catch(() => {});
     await broadcastVideoRoom(data).catch(() => {});
   }, [activeVideoRoom, broadcastVideoRoom, setActiveVideoRoom, setIsInVideoCall]);
+
+  // ── Avatar room handlers ────────────────────────────────────────────────────
+
+  const handleStartAvatarRoom = useCallback(async () => {
+    if (!myInboxId || !username) {
+      Alert.alert("Set a username first", "Go to your profile and set a username before starting a live.");
+      return;
+    }
+    try {
+      const roomId = createRoomName(myInboxId);
+      const data: AvatarRoomData = {
+        id: roomId,
+        host: username,
+        hostId: myInboxId,
+        ts: Date.now(),
+        active: true,
+      };
+      setActiveAvatarRoom(data);
+      await broadcastAvatarRoom(data);
+      await showLocalNotification(`${username} started a Live`, "Avatar Room in OnlyMonkes", CH_ALL);
+      const token = await createLivekitToken(roomId, myInboxId, username);
+      setAvatarRoomToken(token);
+      setIsInAvatarRoom(true);
+      router.push(`/avatar-room?token=${encodeURIComponent(token)}&isHost=true`);
+    } catch {
+      Alert.alert("Failed to start", "Could not create the avatar room.");
+    }
+  }, [myInboxId, username, broadcastAvatarRoom, setActiveAvatarRoom, setAvatarRoomToken, setIsInAvatarRoom]);
+
+  const handleJoinAvatarRoom = useCallback(async () => {
+    if (!myInboxId || !username || !activeAvatarRoom) return;
+    try {
+      const token = await createLivekitToken(activeAvatarRoom.id, myInboxId, username);
+      setAvatarRoomToken(token);
+      setIsInAvatarRoom(true);
+      router.push(`/avatar-room?token=${encodeURIComponent(token)}&isHost=false`);
+    } catch {
+      Alert.alert("Failed to join", "Could not join the avatar room.");
+    }
+  }, [myInboxId, username, activeAvatarRoom, setAvatarRoomToken, setIsInAvatarRoom]);
+
+  const handleLeaveAvatarRoom = useCallback(async () => {
+    await disconnectFromAvatarRoom();
+    setIsInAvatarRoom(false);
+    setAvatarRoomToken(null);
+  }, [setIsInAvatarRoom, setAvatarRoomToken]);
+
+  const handleEndAvatarRoom = useCallback(async () => {
+    if (!activeAvatarRoom) return;
+    const data: AvatarRoomData = { ...activeAvatarRoom, active: false };
+    setActiveAvatarRoom(null);
+    setIsInAvatarRoom(false);
+    setAvatarRoomToken(null);
+    await disconnectFromAvatarRoom();
+    await broadcastAvatarRoom(data).catch(() => {});
+  }, [activeAvatarRoom, broadcastAvatarRoom, setActiveAvatarRoom, setIsInAvatarRoom, setAvatarRoomToken]);
 
   const handleConfirmDevTip = useCallback(async (amount: TipAmount) => {
     setDevTipOpen(false);
@@ -949,8 +962,8 @@ export default function ChatScreen() {
 
   // ─── Render ──────────────────────────────────────────────────────────────────
 
-  const renderMessage: ListRenderItem<ChatMessage> = useCallback(
-    ({ item }) => {
+  const renderMessage = useCallback(
+    ({ item }: { item: ChatMessage }) => {
       const isNew = !initialMsgIdsRef.current.has(item.id);
       return (
         <Animated.View entering={isNew ? FadeIn.duration(220) : undefined}>
@@ -964,6 +977,7 @@ export default function ChatScreen() {
             onStickerReact={handleStickerReact}
             onPressImage={setLightboxUrl}
             onPressVideo={setVideoLightboxUrl}
+            onTokenPress={setChartSymbol}
             onEdit={handleEditMessage}
             onPin={isGroupAdmin ? handlePin : undefined}
             onThread={handleThread}
@@ -1043,7 +1057,7 @@ export default function ChatScreen() {
         visible={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         onCreateEvent={() => setCalendarOpen(true)}
-        onStartLive={handleStartLive}
+        onStartLive={handleStartAvatarRoom}
         onStartVideo={handleStartVideoCall}
         onSearch={() => setSearchOpen(true)}
         onPressUser={(target) => { setDrawerOpen(false); setTimeout(() => setProfileTarget(target), 300); }}
@@ -1055,6 +1069,12 @@ export default function ChatScreen() {
       />
 
       <SearchModal visible={searchOpen} onClose={() => setSearchOpen(false)} />
+
+      <ChartModal
+        visible={!!chartSymbol}
+        symbol={chartSymbol ?? ''}
+        onClose={() => setChartSymbol(null)}
+      />
 
       <CalendarModal
         visible={calendarOpen}
@@ -1286,17 +1306,7 @@ export default function ChatScreen() {
           </View>
         )}
 
-        {/* Live room banner — pinned at top of chat, like a pinned tweet */}
-        {isGroupMember && activeLiveRoom && (
-          <LiveRoomBanner
-            room={activeLiveRoom}
-            isHost={activeLiveRoom.hostId === myInboxId}
-            onEnd={handleEndLive}
-            onJoin={handleJoinLive}
-          />
-        )}
-
-        {/* Video room banner — pinned at top of chat, below audio room */}
+        {/* Video room banner — pinned at top of chat */}
         {isGroupMember && activeVideoRoom && (
           <VideoRoomBanner
             room={activeVideoRoom}
@@ -1305,6 +1315,16 @@ export default function ChatScreen() {
             onJoin={handleJoinVideoCall}
             onLeave={handleLeaveVideoCall}
             onEnd={handleEndVideoCall}
+          />
+        )}
+
+        {/* Avatar room banner — pinned at top of chat, below video room */}
+        {isGroupMember && activeAvatarRoom && !isInAvatarRoom && (
+          <LiveRoomBanner
+            room={{ ...activeAvatarRoom, participantCount: 0 }}
+            isHost={activeAvatarRoom.hostId === myInboxId}
+            onEnd={handleEndAvatarRoom}
+            onJoin={handleJoinAvatarRoom}
           />
         )}
 
@@ -1329,14 +1349,19 @@ export default function ChatScreen() {
           />
         )}
 
-        {/* Floating pill — shown when this user is actively in the live audio room */}
-        {isGroupMember && isInLiveRoom && activeLiveRoom && (
-          <LiveAudioPill
-            hostName={activeLiveRoom.host}
-            isHost={activeLiveRoom.hostId === myInboxId}
-            onExpand={() => liveRoomToken && router.push(`/live-room?token=${encodeURIComponent(liveRoomToken)}&isHost=${activeLiveRoom.hostId === myInboxId ? "1" : "0"}`)}
-            onEnd={handleEndLive}
-          />
+        {/* Avatar room pill — shown when user is in an avatar room but on chat screen */}
+        {isGroupMember && isInAvatarRoom && activeAvatarRoom && (
+          <>
+            <AvatarRoomPill
+              hostName={activeAvatarRoom.host}
+              isHost={activeAvatarRoom.hostId === myInboxId}
+              onExpand={() => avatarRoomToken && router.push(`/avatar-room?token=${encodeURIComponent(avatarRoomToken)}&isHost=${activeAvatarRoom.hostId === myInboxId ? "true" : "false"}`)}
+              onEnd={handleEndAvatarRoom}
+              onLeave={handleLeaveAvatarRoom}
+              onReaction={() => {/* TODO: open sticker tray above pill */}}
+            />
+            <VideoReactionOverlay reactionSource={addAvatarReactionListener} />
+          </>
         )}
 
         {/* iOS-style PiP bubble — shown when user is in a video call but on the chat screen */}
@@ -1366,22 +1391,17 @@ export default function ChatScreen() {
         )}
 
         {/* Messages */}
-        {isGroupMember && <FlatList
-          ref={flatListRef}
+        {isGroupMember && <FlashList
+          ref={flatListRef as any}
           data={messages}
-          renderItem={renderMessage}
+          renderItem={renderMessage as any}
           keyExtractor={keyExtractor}
           contentContainerStyle={styles.listContent}
           inverted
           onContentSizeChange={handleContentSizeChange}
           refreshing={refreshingChat}
           onRefresh={handleRefreshChat}
-          removeClippedSubviews
-          maxToRenderPerBatch={15}
-          initialNumToRender={15}
-          updateCellsBatchingPeriod={100}
-          windowSize={10}
-          onScroll={({ nativeEvent }) => {
+          onScroll={({ nativeEvent }: any) => {
             // Inverted list: offset 0 = newest messages (bottom of chat)
             const nearBottom = nativeEvent.contentOffset.y <= SCROLL_THRESHOLD;
             isNearBottomRef.current = nearBottom;
@@ -1405,8 +1425,8 @@ export default function ChatScreen() {
           onTyping={sendTyping}
           onCamera={handleCameraButtonPress}
           typingUsers={typingUsers}
-          onLive={!activeLiveRoom ? handleStartLive : undefined}
           onLiveVideo={!activeVideoRoom ? handleStartVideoCall : undefined}
+          onAvatarRoom={!activeAvatarRoom ? handleStartAvatarRoom : undefined}
         />}
 
         {/* Support banner */}

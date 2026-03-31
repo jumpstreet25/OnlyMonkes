@@ -16,9 +16,11 @@ import { THEME } from '@/lib/constants';
 interface VideoStickerTrayProps {
   senderName: string;
   senderId: string;
+  /** Optional custom send function (e.g., avatarRoom.sendReaction). Defaults to liveVideo.sendVideoReaction. */
+  onSend?: (stickerUrl: string) => void;
 }
 
-export function VideoStickerTray({ senderName, senderId }: VideoStickerTrayProps) {
+export function VideoStickerTray({ senderName, senderId, onSend }: VideoStickerTrayProps) {
   const [stickers, setStickers] = useState<GiphyItem[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -30,7 +32,11 @@ export function VideoStickerTray({ senderName, senderId }: VideoStickerTrayProps
   }, []);
 
   const handlePress = (item: GiphyItem) => {
-    sendVideoReaction(item.displayUrl, senderName, senderId).catch(() => {});
+    if (onSend) {
+      onSend(item.displayUrl);
+    } else {
+      sendVideoReaction(item.displayUrl, senderName, senderId).catch(() => {});
+    }
   };
 
   if (loading) {

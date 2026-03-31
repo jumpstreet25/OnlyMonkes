@@ -20,6 +20,8 @@ import { logAppOpen, logDailySession } from '../src/lib/analytics';
 import { loadBadgeData, setOnBadgeEarned, getBadgeBananaReward, type BadgeDef } from '../src/lib/badges';
 import { addBananas } from '../src/lib/bananaRewards';
 import { Alert } from 'react-native';
+import { useFreeRasp } from 'freerasp-react-native';
+import { RASP_CONFIG, THREAT_ACTIONS } from '../src/lib/security';
 
 // Register LiveKit WebRTC globals (must be called before any LiveKit usage)
 registerLiveKitGlobals();
@@ -32,6 +34,8 @@ SplashScreen.preventAutoHideAsync();
 const queryClient = new QueryClient();
 
 export default function RootLayout() {
+  useFreeRasp(RASP_CONFIG, THREAT_ACTIONS);
+
   useEffect(() => {
     SplashScreen.hideAsync();
     logAppOpen().catch(() => {});

@@ -50,4 +50,13 @@
 -keep class com.reactnativecommunity.webview.** { *; }
 -dontwarn com.reactnativecommunity.webview.**
 
+# javax.lang.model — annotation processor classes referenced by AutoValue/JavaPoet
+# (pulled in transitively by react-native-mediapipe or livekit dependencies)
+-dontwarn javax.lang.model.SourceVersion
+-dontwarn javax.lang.model.element.Element
+-dontwarn javax.lang.model.element.ElementKind
+-dontwarn javax.lang.model.type.TypeMirror
+-dontwarn javax.lang.model.type.TypeVisitor
+-dontwarn javax.lang.model.util.SimpleTypeVisitor8
+
 # Add any project specific keep options here:

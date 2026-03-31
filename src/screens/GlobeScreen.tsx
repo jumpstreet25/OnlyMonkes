@@ -223,26 +223,20 @@ export default function GlobeScreen({ onPressUser }: GlobeScreenProps) {
       setGlobeHtml(html);
     });
   }, []);
-  const sentMarkerIds = useRef(new Set<string>());
   const webViewReady = useRef(false);
 
-  // Send markers to WebView — resends all if set changed
-  const prevMarkerCount = useRef(0);
+  // Send markers to WebView — always sends all markers so WebGL can rebuild clusters correctly.
+  // WebGL deduplicates internally and re-groups co-located users on each call.
+  const prevMarkerJson = useRef("");
   const sendMarkersToWebView = useCallback((markersToSend: GlobeMarker[]) => {
     if (!webViewRef.current || !webViewReady.current) return;
 
-    // If marker count changed, clear tracking to force full resend
-    if (markersToSend.length !== prevMarkerCount.current) {
-      sentMarkerIds.current.clear();
-      prevMarkerCount.current = markersToSend.length;
-    }
+    // Only resend if the marker set actually changed
+    const ids = markersToSend.map(m => m.id).sort().join(",");
+    if (ids === prevMarkerJson.current) return;
+    prevMarkerJson.current = ids;
 
-    const newMarkers = markersToSend.filter(m => !sentMarkerIds.current.has(m.id));
-    if (newMarkers.length === 0) return;
-
-    newMarkers.forEach(m => sentMarkerIds.current.add(m.id));
-
-    const payload = newMarkers.map(m => {
+    const payload = markersToSend.map(m => {
       let img = m.nftImage ?? null;
       if (img && img.length > 150000) img = null;
       return {
@@ -265,8 +259,8 @@ export default function GlobeScreen({ onPressUser }: GlobeScreenProps) {
   // When WebView finishes loading, send all current markers
   const handleWebViewLoad = useCallback(() => {
     webViewReady.current = true;
-    // Resend ALL markers since the WebView just loaded
-    sentMarkerIds.current.clear();
+    // Force resend ALL markers since the WebView just loaded
+    prevMarkerJson.current = "";
     if (markers.length > 0) sendMarkersToWebView(markers);
   }, [markers, sendMarkersToWebView]);
 

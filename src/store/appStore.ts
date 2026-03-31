@@ -4,6 +4,7 @@ import * as SecureStore from 'expo-secure-store';
 import type { WalletAccount, OwnedNFT } from '../types';
 import type { LiveRoomData } from '../lib/livekit';
 import type { VideoRoomData } from '../lib/liveVideo';
+import type { AvatarRoomData } from '../lib/avatarRoom';
 import type { NftSwapMessage } from '../lib/marketplace';
 
 const AK_MUTED_SPORTS = 'om_muted_sports';
@@ -91,6 +92,10 @@ interface AppState {
   // Video room
   activeVideoRoom: VideoRoomData | null;
   isInVideoCall: boolean;
+  // Avatar room (animated PFP live rooms)
+  activeAvatarRoom: AvatarRoomData | null;
+  isInAvatarRoom: boolean;
+  avatarRoomToken: string | null;
   // Community tab badge counts (unseen DMs, new events, unseen links)
   communityBadges: { dms: number; events: number; links: number };
   // Per-DM conversation unread counts (keyed by peerInboxId)
@@ -145,6 +150,9 @@ interface AppActions {
   setMwaAuthToken: (token: string | null) => void;
   setActiveVideoRoom: (room: VideoRoomData | null) => void;
   setIsInVideoCall: (val: boolean) => void;
+  setActiveAvatarRoom: (room: AvatarRoomData | null) => void;
+  setIsInAvatarRoom: (val: boolean) => void;
+  setAvatarRoomToken: (token: string | null) => void;
   setCommunityBadge: (key: 'dms' | 'events' | 'links', count: number) => void;
   incrementCommunityBadge: (key: 'dms' | 'events' | 'links') => void;
   clearCommunityBadge: (key: 'dms' | 'events' | 'links') => void;
@@ -198,6 +206,9 @@ const initialState: AppState = {
   mwaAuthToken: null,
   activeVideoRoom: null,
   isInVideoCall: false,
+  activeAvatarRoom: null,
+  isInAvatarRoom: false,
+  avatarRoomToken: null,
   communityBadges: { dms: 0, events: 0, links: 0 },
   dmUnreadCounts: {},
   pendingNftSwap: null,
@@ -297,6 +308,9 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   },
   setActiveVideoRoom: (activeVideoRoom) => set({ activeVideoRoom }),
   setIsInVideoCall: (isInVideoCall) => set({ isInVideoCall }),
+  setActiveAvatarRoom: (activeAvatarRoom) => set({ activeAvatarRoom }),
+  setIsInAvatarRoom: (isInAvatarRoom) => set({ isInAvatarRoom }),
+  setAvatarRoomToken: (avatarRoomToken) => set({ avatarRoomToken }),
   setCommunityBadge: (key, count) => set((s) => ({
     communityBadges: { ...s.communityBadges, [key]: count },
   })),
