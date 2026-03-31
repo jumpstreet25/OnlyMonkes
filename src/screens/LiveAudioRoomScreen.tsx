@@ -16,7 +16,6 @@ import {
   StyleSheet,
   Pressable,
   ScrollView,
-  Animated,
   Alert,
   ActivityIndicator,
   StatusBar,
@@ -31,6 +30,7 @@ import { useAppStore, type LiveRoomState } from "@/store/appStore";
 import { LK_URL } from "@/lib/livekit";
 import * as liveAudio from "@/lib/liveAudio";
 import type { LiveAudioState } from "@/lib/liveAudio";
+import { AnimatedNftAvatar } from "@/components/AnimatedNftAvatar";
 
 interface LiveAudioRoomScreenProps {
   room: LiveRoomState;
@@ -38,45 +38,6 @@ interface LiveAudioRoomScreenProps {
   isHost: boolean;
   onLeave: () => void;
   onMinimize: () => void;
-}
-
-// ─── Speaking pulse animation ─────────────────────────────────────────────────
-
-function SpeakingRing({ speaking }: { speaking: boolean }) {
-  const scale = useRef(new Animated.Value(1)).current;
-  const opacity = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    if (speaking) {
-      Animated.loop(
-        Animated.parallel([
-          Animated.sequence([
-            Animated.timing(scale,   { toValue: 1.18, duration: 600, useNativeDriver: true }),
-            Animated.timing(scale,   { toValue: 1,    duration: 600, useNativeDriver: true }),
-          ]),
-          Animated.sequence([
-            Animated.timing(opacity, { toValue: 0.9,  duration: 300, useNativeDriver: true }),
-            Animated.timing(opacity, { toValue: 0.3,  duration: 600, useNativeDriver: true }),
-            Animated.timing(opacity, { toValue: 0,    duration: 300, useNativeDriver: true }),
-          ]),
-        ])
-      ).start();
-    } else {
-      scale.setValue(1);
-      opacity.setValue(0);
-    }
-  }, [speaking]);
-
-  return (
-    <Animated.View
-      pointerEvents="none"
-      style={[
-        StyleSheet.absoluteFillObject,
-        styles.speakingRing,
-        { transform: [{ scale }], opacity },
-      ]}
-    />
-  );
 }
 
 // ─── Participant card ─────────────────────────────────────────────────────────
@@ -104,26 +65,13 @@ function ParticipantCard({
   return (
     <View style={[styles.card, large && styles.cardLarge]}>
       <View style={{ position: "relative", width: size, height: size }}>
-        {avatarUri ? (
-          <Image
-            source={{ uri: avatarUri }}
-            style={[styles.cardAvatar, { width: size, height: size, borderRadius: size / 2 }]}
-            contentFit="cover"
-          />
-        ) : (
-          <View
-            style={[
-              styles.cardAvatar,
-              styles.cardAvatarFallback,
-              { width: size, height: size, borderRadius: size / 2 },
-            ]}
-          >
-            <Text style={[styles.cardInitial, large && { fontSize: 26 }]}>
-              {displayName[0]?.toUpperCase() ?? "?"}
-            </Text>
-          </View>
-        )}
-        <SpeakingRing speaking={isSpeaking} />
+        <AnimatedNftAvatar
+          uri={avatarUri}
+          size={size}
+          isSpeaking={isSpeaking}
+          fallbackName={displayName}
+          ringColor="#7C3AED"
+        />
         {isSpeaking && (
           <View style={styles.speakingDot} />
         )}
@@ -468,20 +416,6 @@ const styles = StyleSheet.create({
   cardLarge: {
     width: 100,
   },
-  cardAvatar: {
-    borderWidth: 2,
-    borderColor: THEME.border,
-  },
-  cardAvatarFallback: {
-    backgroundColor: THEME.surfaceHigh,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  cardInitial: {
-    fontFamily: FONTS.display,
-    fontSize: 18,
-    color: THEME.text,
-  },
   cardName: {
     fontFamily: FONTS.bodyMed,
     fontSize: 11,
@@ -499,11 +433,6 @@ const styles = StyleSheet.create({
     marginTop: -4,
   },
   muteIcon: { fontSize: 12 },
-  speakingRing: {
-    borderRadius: 999,
-    borderWidth: 2.5,
-    borderColor: THEME.accent,
-  },
   speakingDot: {
     position: "absolute",
     bottom: 2,

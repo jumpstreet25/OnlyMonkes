@@ -48,27 +48,11 @@ import {
   type VideoRoomState,
   type VideoParticipant,
 } from '@/lib/liveVideo';
-import { VideoView } from '@livekit/react-native';
-import { Track, type VideoTrack as LKVideoTrack } from 'livekit-client';
 import { VideoReactionOverlay } from '@/components/VideoReactionOverlay';
 import { VideoStickerTray } from '@/components/VideoStickerTray';
+import { AnimatedNftAvatar } from '@/components/AnimatedNftAvatar';
 
 // ─── Video tile ──────────────────────────────────────────────────────────────
-
-function useParticipantVideoTrack(identity: string, isLocal: boolean): LKVideoTrack | undefined {
-  const room = getVideoRoom();
-  if (!room) return undefined;
-  const p = isLocal
-    ? room.localParticipant
-    : room.remoteParticipants.get(identity);
-  if (!p) return undefined;
-  for (const pub of p.trackPublications.values()) {
-    if (pub.source === Track.Source.Camera && pub.track && !pub.isMuted) {
-      return pub.track as LKVideoTrack;
-    }
-  }
-  return undefined;
-}
 
 function VideoTile({
   participant,
@@ -82,33 +66,18 @@ function VideoTile({
   const profile = getCachedProfile(participant.identity);
   const pfpUri = profile?.nftImage ?? null;
   const displayName = participant.name ?? participant.identity.slice(0, 8);
-  const videoTrack = useParticipantVideoTrack(participant.identity, participant.isLocal);
 
   return (
     <View style={[styles.tile, { width, height }]}>
-      {/* Video track or avatar fallback */}
-      {participant.isCameraOff || !videoTrack ? (
-        <View style={styles.tileAvatarWrap}>
-          {pfpUri ? (
-            <Image source={{ uri: pfpUri }} style={styles.tileAvatar} />
-          ) : (
-            <View style={styles.tileAvatarFallback}>
-              <Text style={styles.tileAvatarGlyph}>🐒</Text>
-            </View>
-          )}
-        </View>
-      ) : (
-        <VideoView
-          videoTrack={videoTrack}
-          style={StyleSheet.absoluteFill as any}
-          objectFit="cover"
-          mirror={participant.isLocal}
-          zOrder={participant.isLocal ? 1 : 0}
+      {/* Animated NFT avatar — always shown, jaw-drop + pulse when speaking */}
+      <View style={styles.tileAvatarWrap}>
+        <AnimatedNftAvatar
+          uri={pfpUri}
+          size={72}
+          isSpeaking={participant.isSpeaking}
+          fallbackName={displayName}
         />
-      )}
-
-      {/* Speaking indicator ring */}
-      {participant.isSpeaking && <View style={styles.tileSpeakingBorder} />}
+      </View>
 
       {/* Bottom info bar */}
       <View style={styles.tileInfo}>
@@ -468,22 +437,6 @@ const styles = StyleSheet.create({
   tileAvatarWrap: {
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  tileAvatar: {
-    width: 72,
-    height: 72,
-    borderRadius: 20,
-  },
-  tileAvatarFallback: {
-    width: 72,
-    height: 72,
-    borderRadius: 20,
-    backgroundColor: THEME.surfaceHigh,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tileAvatarGlyph: {
-    fontSize: 36,
   },
   tileSpeakingBorder: {
     ...StyleSheet.absoluteFillObject,

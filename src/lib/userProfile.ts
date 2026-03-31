@@ -70,6 +70,7 @@ export interface CachedProfile {
   legendary?: boolean;
   pushToken?: string;         // Raw FCM token for bot's server-side push
   expoPushToken?: string;     // ExponentPushToken[...] for client-side DM relay
+  mouthTrait?: string;        // Saga Monke Mouth trait: 'Beaming' | 'Doobie' | 'None' | 'OwO'
 }
 
 const AK_PROFILE_CACHE = 'profile_cache_v2';

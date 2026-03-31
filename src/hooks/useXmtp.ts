@@ -39,6 +39,7 @@ import {
   sendEventMessage,
   sendLiveRoomMessage,
   sendVideoRoomMessage,
+  sendAvatarRoomMessage,
   parseProfileUpdate,
 } from "@/lib/xmtp";
 import { parseLiveRoomMessage, buildLiveRoomMessage, type LiveRoomData } from "@/lib/livekit";
@@ -47,6 +48,7 @@ import { parsePresenceMessage, updatePresence, buildPresenceMessage } from "@/li
 import { parseThreadMessage, trackThreadReply } from "@/lib/threads";
 import { parseMarketplaceMessage, addListing, addBid, markPendingSwap, markSold, delistNft, getListingById, getBidsForListing, type NftSwapMessage } from "@/lib/marketplace";
 import { parseVideoRoomMessage, type VideoRoomData } from "@/lib/liveVideo";
+import { parseAvatarRoomMessage, type AvatarRoomData } from "@/lib/avatarRoom";
 import { verifyNftMintInCollection } from "@/lib/nftVerification";
 import { cacheProfile, getCachedProfile, loadProfileCache, trackUser, loadAllTimeUsers } from "@/lib/userProfile";
 import { loadWeeklyActivity, trackActivity } from "@/lib/activityTracker";
@@ -1004,6 +1006,31 @@ export function useXmtp() {
           return;
         }
 
+        if (typeof content === "string" && content.startsWith("AVATAR_ROOM:")) {
+          try {
+            const data = parseAvatarRoomMessage(content);
+            if (data) {
+              if (data.active) {
+                useAppStore.getState().setActiveAvatarRoom(data);
+                const pillMsg: ChatMessage = {
+                  id: `avatarpill-${data.id}`,
+                  senderAddress: raw.senderInboxId as string,
+                  senderUsername: data.host,
+                  content: `LIVE_PILL:avatar:${data.host}:${data.id}`,
+                  sentAt: new Date(raw.sentNs / 1_000_000),
+                  reactions: {},
+                  status: "sent",
+                };
+                mergeMessage(enrichWithNft(pillMsg));
+              } else {
+                const current = useAppStore.getState().activeAvatarRoom;
+                if (current?.id === data.id) useAppStore.getState().setActiveAvatarRoom(null);
+              }
+            }
+          } catch { /* ignore */ }
+          return;
+        }
+
         if (typeof content === "string" && content.startsWith("LIVE_ROOM:")) {
           try {
             const data = parseLiveRoomMessage(content);
@@ -1592,6 +1619,16 @@ export function useXmtp() {
     }
   }, []);
 
+  // ── Broadcast an avatar room signal (start / end) ─────────────────────────
+  const broadcastAvatarRoom = useCallback(async (data: AvatarRoomData) => {
+    if (!_group) return;
+    try {
+      await sendAvatarRoomMessage(_group, JSON.stringify(data));
+    } catch (err) {
+      console.warn("[XMTP] broadcastAvatarRoom failed:", err);
+    }
+  }, []);
+
   // ── Admin: publish group ID to GitHub config ───────────────────────────────
   const publishGroupId = useCallback(async (githubPat: string) => {
     if (!_client) throw new Error("XMTP client not ready");
@@ -1657,6 +1694,7 @@ export function useXmtp() {
     broadcastEvent,
     broadcastLiveRoom,
     broadcastVideoRoom,
+    broadcastAvatarRoom,
     syncMessages,
   };
 }

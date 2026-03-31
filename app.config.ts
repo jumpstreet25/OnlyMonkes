@@ -5,7 +5,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   name: 'OnlyMonkes',
   slug: 'monkesonly',
   owner: process.env.EXPO_OWNER ?? undefined,
-  version: '2.32.0',
+  version: '3.0.0',
   orientation: 'portrait',
   icon: './assets/icon.png',
   userInterfaceStyle: 'dark',
@@ -27,7 +27,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     fallbackToCacheTimeout: 5000,
     checkAutomatically: 'ON_LOAD',
   },
-  runtimeVersion: '2.32',
+  runtimeVersion: '3.0',
   plugins: [
     'expo-router',
     'expo-secure-store',

@@ -1,5 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
           xmlns:tools="http://schemas.android.com/tools">
+  <uses-sdk tools:overrideLibrary="com.visioncamerafacedetector"/>
   <uses-permission android:name="android.permission.INTERNET"/>
   <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
   <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
@@ -27,11 +28,11 @@
     <meta-data android:name="expo.modules.notifications.default_notification_icon" android:resource="@drawable/notification_icon"/>
     <meta-data android:name="expo.modules.updates.ENABLED" android:value="true"/>
     <meta-data android:name="expo.modules.updates.EXPO_UPDATE_URL" android:value="https://u.expo.dev/e669ee53-de73-4dfb-9a36-5c22de29c67e"/>
-    <meta-data android:name="expo.modules.updates.EXPO_RUNTIME_VERSION" android:value="2.32"/>
+    <meta-data android:name="expo.modules.updates.EXPO_RUNTIME_VERSION" android:value="3.0"/>
     <meta-data android:name="expo.modules.updates.EXPO_UPDATES_REQUEST_HEADERS" android:value="{&quot;expo-channel-name&quot;:&quot;production&quot;}"/>
     <!-- Solana Mobile dApp Store metadata -->
     <meta-data android:name="solana.mobile.dapp_publisher_portal.privacy_policy_url" android:value="https://jumpstreet25.github.io/OnlyMonkes/privacy.html"/>
-    <meta-data android:name="solana.mobile.dapp_publisher_portal.new_in_version" android:value="v2.30 — Jupiter v2 swaps, Helius webhooks, circular PFPs, edge-to-edge bubbles"/>
+    <meta-data android:name="solana.mobile.dapp_publisher_portal.new_in_version" android:value="v3.0 — New Architecture (Fabric), Expo SDK 53, React 19, FlashList v2, Skia v2, Free-RASP"/>
     <meta-data android:name="expo.modules.updates.EXPO_UPDATES_CHECK_ON_LAUNCH" android:value="ALWAYS"/>
     <meta-data android:name="expo.modules.updates.EXPO_UPDATES_LAUNCH_WAIT_MS" android:value="5000"/>
     <!-- Remove ARCore meta-data entirely — we don't use AR and Seeker doesn't support it -->
