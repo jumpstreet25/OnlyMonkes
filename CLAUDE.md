@@ -23,7 +23,7 @@ Rules are added over time as issues arise.
 
 ## XMTP & Messaging
 
-- **System message prefixes** (PRESENCE:, TYPING:, PROFILE_UPDATE:, EVENT:, EDIT:, REACT:, STICKER_REACT:, LIVE_ROOM:, VIDEO_ROOM:, THREAD:, PIN:, UNPIN:, NFT_LIST:, NFT_BID:, NFT_OFFER:, NFT_ACCEPT:, NFT_DELIST:, NFT_SWAP:, NFT_COMPLETE:) must ALWAYS be filtered in `decodeMessage()` so they never appear as chat messages.
+- **System message prefixes** (PRESENCE:, TYPING:, PROFILE_UPDATE:, EVENT:, EDIT:, REACT:, STICKER_REACT:, LIVE_ROOM:, VIDEO_ROOM:, AVATAR_ROOM:, THREAD:, PIN:, UNPIN:, NFT_LIST:, NFT_BID:, NFT_OFFER:, NFT_ACCEPT:, NFT_DELIST:, NFT_SWAP:, NFT_COMPLETE:) must ALWAYS be filtered in `decodeMessage()` so they never appear as chat messages.
 - Bot message format is **always** `MSG:AI Agent #9385:<content>` — any deviation breaks display in the app.
 - PRESENCE heartbeats are sent every 60s via XMTP group `send()` — the bot must ignore them (they are not user messages).
 - After any XMTP DB wipe + group recreation, the group ID changes — update `app-config.json` and bot `.env`.
@@ -38,23 +38,38 @@ Rules are added over time as issues arise.
 - **AutonoMonke min composite**: 50 (only medium+ conviction). Stop loss clamped 5-12%. Fib targets validated ±50% from entry.
 - **Hermes Memory** (`hermesMemory.ts`): per-user AES-256-GCM encrypted trading memory + global learning engine. Auto-closes alert outcomes every scan cycle by monitoring real prices against T1/T2/stop. Feeds: Alert Quality Badge, Personalized DM Warnings, Portfolio Copilot, Auto-Tune, Weekly Digest, Bot Self-Awareness, Social Signals, Streaks, `/hermes` command.
 - **Hermes Solana Toolkit**: OpenClaw extension at `~/.openclaw/extensions/solana-toolkit/` — `solana_trending` + `solana_token_chart`. Discoveries written to `~/.hermes_memory/hermes_signals.json`, ingested by bot scanner.
-- **LLM chain**: Hermes Agent (Groq 70B, `~/.hermes/`) → OpenClaw (port 18789) → Groq direct → Ollama (port 11434) → Anthropic.
+- **Chat LLM chain**: Hermes/Groq (Llama 70B) → Cerebras (Llama 70B) → Ollama (DeepSeek R1/Qwen 2.5) → Anthropic (last resort).
+- **Trade confidence**: Multi-perspective analysis (Bull/Bear/Risk) via Groq+Cerebras+Ollama in parallel — replaced OpenClaw gate in engine.ts. Synthesis: `bull*0.4 + (100-bear)*0.3 + risk*0.3`.
+- **Solana Agent Kit** (`src/lib/sak/`): DM commands `/limit`, `/stake`, `/unstake` via `solana-agent-kit@2.0.10`. Borrow-and-return keypair pattern via `withSAK()`. Risk-gated through existing `riskManager.ts`.
 - **Bot persona**: "Monke" — ball-busting, banana-obsessed, confident. Defined in `~/.hermes/SOUL.md` + `buildSystemPrompt()`.
 - Data files (`.xmtp_bot_key`, `.xmtp_welcomed.json`, `.xmtp_stale_tokens.json`) live in `~/Monke_Eliza/agents/monke-trader/`, NOT in `~/solana-alert-bot/`.
 
 ## UI / UX
 
-- Live audio/video room signaling (`LIVE_ROOM:`, `VIDEO_ROOM:`) must NEVER show raw JSON in chat. Use `LIVE_PILL:` synthetic messages to display a styled pill with JOIN button.
+- Live room signaling (`AVATAR_ROOM:`, `VIDEO_ROOM:`, `LIVE_ROOM:`) must NEVER show raw JSON in chat. Use `LIVE_PILL:` synthetic messages to display a styled pill with JOIN button.
+- **Live Audio rooms are DISCONTINUED** (v2.33). Replaced by Avatar Rooms. `LIVE_ROOM:` messages still parsed for backward compat but no new audio rooms can be started. Files kept but unused: `liveAudio.ts`, `LiveAudioRoomScreen.tsx`, `LiveAudioPill.tsx`, `app/live-room.tsx`.
+- **Avatar Rooms** (`avatarRoom.ts`): Animated NFT PFP avatars driven by MediaPipe face tracking (52 blendshapes). Skia canvas overlay for continuous expressions (mouth, eyes, brows). Minimize to pill in Main Chat. Sticker reactions via data channel.
 - Messages load newest-first on app open. Older messages load in background without visible flicker.
 - `react-native-svg` is NOT installed — do not use SVG components. Use View-based alternatives.
-- FlatList uses `maintainVisibleContentPosition` to prevent scroll jumps when older messages are prepended.
+- **FlashList** replaces FlatList in ChatScreen for message list (cell recycling, 3-5x fewer frame drops).
+- **$TOKEN mentions are tappable** in chat — opens ChartModal with candlestick chart (react-native-wagmi-charts).
+- **Free-RASP** runtime security: root/jailbreak detection, Frida hook detection, app tampering, emulator detection. `useFreeRasp()` in `_layout.tsx`. Check `isDeviceCompromised()` before sensitive operations.
+- **Krisp noise filter** enabled in Avatar Room audio (`@livekit/react-native-krisp-noise-filter`).
 
 ## Dependencies & Compatibility
 
 - Expo SDK 51, React Native (bare workflow)
 - `expo-router` file-based routing under `app/` — no v3+ features
-- `@livekit/react-native` + `livekit-client` for audio/video rooms
+- `@livekit/react-native` + `livekit-client` for audio/video/avatar rooms
+- `@livekit/react-native-krisp-noise-filter` for AI noise cancellation
 - `@xmtp/react-native-sdk` v5 MLS for messaging
+- `@shopify/react-native-skia` for GPU-rendered avatar expression overlays
+- `@shopify/flash-list` for high-performance message list
+- `react-native-mediapipe` for 52-blendshape face tracking
+- `react-native-vision-camera` v4.3.2 + `react-native-worklets-core` for camera frame processing
+- `react-native-wagmi-charts` for candlestick token charts
+- `freerasp-react-native` for runtime application self-protection
+- `solana-agent-kit` + `@solana-agent-kit/plugin-token` for DeFi DM commands (bot)
 - BouncyCastle `bcprov-jdk15on` must be excluded in `build.gradle` to avoid duplicate class conflicts
 
 ## Security Scanning (MANDATORY — run on every code change)

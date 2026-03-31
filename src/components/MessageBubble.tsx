@@ -262,10 +262,11 @@ const MENTION_COLOR = "#6CB4EE"; // blue hyperlink for @username
 const TOKEN_COLOR   = "#FFD700"; // gold for $TOKEN
 const RICH_SPLIT    = /(@\w+|\$[A-Za-z]{1,15})/g;
 
-/** Render text with @mention (blue, tappable) and $TOKEN (gold) highlighting. */
+/** Render text with @mention (blue, tappable) and $TOKEN (gold, tappable) highlighting. */
 function renderRichContent(
   content: string,
   onPressMention?: (username: string) => void,
+  onPressToken?: (symbol: string) => void,
 ): React.ReactNode[] {
   const parts = content.split(RICH_SPLIT);
   return parts.map((part, i) => {
@@ -282,7 +283,13 @@ function renderRichContent(
     }
     if (/^\$[A-Za-z]{1,15}$/.test(part)) {
       return (
-        <Text key={i} style={{ color: TOKEN_COLOR }}>{part}</Text>
+        <Text
+          key={i}
+          style={{ color: TOKEN_COLOR }}
+          onPress={() => onPressToken?.(part.slice(1))}
+        >
+          {part}
+        </Text>
       );
     }
     return part ? <React.Fragment key={i}>{part}</React.Fragment> : null;
@@ -299,6 +306,7 @@ interface MessageBubbleProps {
   onStickerReact?: (url: string, messageId: string) => void;
   onPressImage?: (url: string) => void;
   onPressVideo?: (url: string) => void;
+  onTokenPress?: (symbol: string) => void;
   onEdit?: (message: ChatMessage) => void;
   onPin?: (message: ChatMessage) => void;
   onThread?: (message: ChatMessage) => void;
@@ -315,6 +323,7 @@ export const MessageBubble = memo(function MessageBubble({
   onStickerReact,
   onPressImage,
   onPressVideo,
+  onTokenPress,
   onEdit,
   onPin,
   onThread,
@@ -680,7 +689,7 @@ export const MessageBubble = memo(function MessageBubble({
                     numberOfLines={showBotExpand && !botExpanded ? 9 : undefined}
                     selectable
                   >
-                    {renderRichContent(displayContent, handlePressMention)}
+                    {renderRichContent(displayContent, handlePressMention, onTokenPress)}
                   </Text>
                   {message.editedAt && (
                     <Text style={[styles.editedLabel, { color: textColor }]}>(edited)</Text>

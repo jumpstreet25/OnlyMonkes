@@ -230,23 +230,39 @@ function init() {
     var userMarkers = [];
     var eventMarkers = [];
     newMarkers.forEach(function(m) {
-      if (existingIds[m.id]) return;
+      if (existingIds[m.id]) {
+        // Already known — but re-check if it needs to be re-grouped
+        // (e.g., user was added before co-located user arrived)
+        if (m.type === 'user') userMarkers.push(m);
+        return;
+      }
       existingIds[m.id] = true;
       MARKERS.push(m);
       if (m.type === 'user') userMarkers.push(m);
       else eventMarkers.push(m);
     });
 
-    // Group users by location and rebuild
+    // Re-group ALL user markers at affected locations (not just new ones)
+    // This ensures co-located users cluster correctly even when arriving in separate batches
     var changedLocKeys = {};
     userMarkers.forEach(function(m) {
       var locKey = Math.round(m.lat*10) + ',' + Math.round(m.lng*10);
-      if (!locationGroups[locKey]) locationGroups[locKey] = [];
-      locationGroups[locKey].push(m);
       changedLocKeys[locKey] = true;
     });
 
-    // Rebuild only changed location groups
+    // Rebuild location groups from scratch for changed keys using ALL known markers
+    for (var locKey in changedLocKeys) {
+      locationGroups[locKey] = [];
+    }
+    MARKERS.forEach(function(m) {
+      if (m.type !== 'user') return;
+      var locKey = Math.round(m.lat*10) + ',' + Math.round(m.lng*10);
+      if (changedLocKeys[locKey]) {
+        locationGroups[locKey].push(m);
+      }
+    });
+
+    // Rebuild visual for each changed location group
     for (var locKey in changedLocKeys) {
       rebuildLocationGroup(locKey);
     }

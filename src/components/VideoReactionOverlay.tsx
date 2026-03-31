@@ -9,7 +9,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { View, StyleSheet, Animated, Dimensions } from 'react-native';
 import { Image } from 'expo-image';
-import { addReactionListener, type VideoReaction } from '@/lib/liveVideo';
+import { addReactionListener as addVideoReactionListener, type VideoReaction } from '@/lib/liveVideo';
 
 const { height: SCREEN_H } = Dimensions.get('window');
 const MAX_VISIBLE = 8;
@@ -23,7 +23,12 @@ interface FloatingReaction extends VideoReaction {
   xOffset: number;
 }
 
-export function VideoReactionOverlay() {
+interface VideoReactionOverlayProps {
+  /** Optional custom listener source (e.g., avatarRoom.addReactionListener). Defaults to liveVideo. */
+  reactionSource?: (fn: (r: VideoReaction) => void) => () => void;
+}
+
+export function VideoReactionOverlay({ reactionSource }: VideoReactionOverlayProps = {}) {
   const [reactions, setReactions] = useState<FloatingReaction[]>([]);
   const keyRef = useRef(0);
 
@@ -73,9 +78,10 @@ export function VideoReactionOverlay() {
   }, []);
 
   useEffect(() => {
-    const unsub = addReactionListener(spawnReaction);
+    const listenFn = reactionSource ?? addVideoReactionListener;
+    const unsub = listenFn(spawnReaction);
     return unsub;
-  }, [spawnReaction]);
+  }, [spawnReaction, reactionSource]);
 
   return (
     <View style={styles.container} pointerEvents="none">

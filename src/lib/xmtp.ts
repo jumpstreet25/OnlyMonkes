@@ -272,6 +272,7 @@ function decodeStringMessage(raw: any, rawContent: string, myInboxId: string): C
   if (rawContent.startsWith("PRESENCE:")) return null;
   if (rawContent.startsWith("LIVE_ROOM:")) return null;
   if (rawContent.startsWith("VIDEO_ROOM:")) return null;
+  if (rawContent.startsWith("AVATAR_ROOM:")) return null;
   if (rawContent.startsWith("THREAD:")) return null;
   if (rawContent.startsWith("PIN:")) return null;
   if (rawContent.startsWith("UNPIN:")) return null;
@@ -756,6 +757,13 @@ export async function sendVideoRoomMessage(
   roomJson: string,
 ): Promise<void> {
   await (group as any).send(`VIDEO_ROOM:${roomJson}`);
+}
+
+export async function sendAvatarRoomMessage(
+  group: XmtpGroup,
+  roomJson: string,
+): Promise<void> {
+  await (group as any).send(`AVATAR_ROOM:${roomJson}`);
 }
 
 // ─── Typing Indicator ─────────────────────────────────────────────────────────

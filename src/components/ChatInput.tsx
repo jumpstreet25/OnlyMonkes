@@ -144,8 +144,8 @@ interface ChatInputProps {
   onTyping?: () => void;
   onCamera?: () => void;
   typingUsers?: TypingUser[];
-  onLive?: () => void;
   onLiveVideo?: () => void;
+  onAvatarRoom?: () => void;
   isDmWithBot?: boolean;
 }
 
@@ -162,8 +162,8 @@ export function ChatInput({
   onTyping,
   onCamera,
   typingUsers,
-  onLive,
   onLiveVideo,
+  onAvatarRoom,
   isDmWithBot,
 }: ChatInputProps) {
   const inputRef = useRef<TextInput>(null);
@@ -383,7 +383,7 @@ export function ChatInput({
           </Pressable>
         )}
 
-        {(onLive || onLiveVideo) && (
+        {(onLiveVideo || onAvatarRoom) && (
           <Pressable
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setLivePickerOpen(true); }}
             style={({ pressed }) => [styles.toolbarBtn, styles.toolbarLive, pressed && { opacity: 0.7 }]}
@@ -419,23 +419,6 @@ export function ChatInput({
           <View style={styles.livePickerCard}>
             <Text style={styles.livePickerTitle}>Go Live</Text>
 
-            {onLive && (
-              <Pressable
-                style={({ pressed }) => [styles.livePickerBtn, pressed && { opacity: 0.7 }]}
-                onPress={() => {
-                  setLivePickerOpen(false);
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                  onLive();
-                }}
-              >
-                <Text style={styles.livePickerEmoji}>🎙</Text>
-                <View>
-                  <Text style={styles.livePickerBtnText}>Live Audio</Text>
-                  <Text style={styles.livePickerBtnSub}>Spaces-style voice chat</Text>
-                </View>
-              </Pressable>
-            )}
-
             {onLiveVideo && (
               <Pressable
                 style={({ pressed }) => [styles.livePickerBtn, pressed && { opacity: 0.7 }]}
@@ -449,6 +432,23 @@ export function ChatInput({
                 <View>
                   <Text style={styles.livePickerBtnText}>Live Video</Text>
                   <Text style={styles.livePickerBtnSub}>Video call with sticker reactions</Text>
+                </View>
+              </Pressable>
+            )}
+
+            {onAvatarRoom && (
+              <Pressable
+                style={({ pressed }) => [styles.livePickerBtn, pressed && { opacity: 0.7 }]}
+                onPress={() => {
+                  setLivePickerOpen(false);
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  onAvatarRoom();
+                }}
+              >
+                <Text style={styles.livePickerEmoji}>🐵</Text>
+                <View>
+                  <Text style={styles.livePickerBtnText}>Avatar Room</Text>
+                  <Text style={styles.livePickerBtnSub}>Animated Monke avatar chat</Text>
                 </View>
               </Pressable>
             )}
