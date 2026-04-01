@@ -147,6 +147,10 @@ function _notify() {
   _listeners.forEach(fn => fn(state));
 }
 
+// Exponential smoothing factor: 0 = no smoothing (raw), 1 = frozen.
+// 0.65 gives responsive yet smooth mouth movement at 30fps.
+const AUDIO_SMOOTH = 0.65;
+
 function _startEnergyPolling() {
   if (_energyPollTimer) return;
   _energyPollTimer = setInterval(() => {
@@ -162,20 +166,26 @@ function _startEnergyPolling() {
     for (const p of allParticipants) {
       // LiveKit exposes audioLevel as a 0-1 float on Participant.
       // On React Native, audioLevel may not be populated — fallback to
-      // binary speaking state (0.6 if speaking, 0 if not).
-      let energy = (p as any).audioLevel ?? 0;
-      if (energy === 0 && _speakers.has(p.identity)) {
-        energy = 0.6; // binary fallback: "speaking" maps to "open" mouth state
+      // binary speaking state with natural-feeling energy levels.
+      let rawEnergy = (p as any).audioLevel ?? 0;
+      if (rawEnergy === 0 && _speakers.has(p.identity)) {
+        // Binary fallback: simulate natural speech energy variation
+        rawEnergy = 0.45 + Math.random() * 0.35; // 0.45-0.80 range
       }
+
+      // Exponential smoothing: smoothed = prev * α + raw * (1 - α)
       const prev = _participantEnergy.get(p.identity) ?? 0;
-      if (Math.abs(energy - prev) > 0.02) {
-        _participantEnergy.set(p.identity, energy);
+      const smoothed = prev * AUDIO_SMOOTH + rawEnergy * (1 - AUDIO_SMOOTH);
+
+      // Only update if meaningful change (prevents unnecessary re-renders)
+      if (Math.abs(smoothed - prev) > 0.008) {
+        _participantEnergy.set(p.identity, smoothed);
         changed = true;
       }
     }
 
     if (changed) _notify();
-  }, 67); // ~15fps
+  }, 33); // ~30fps for smooth mouth animation
 }
 
 function _stopEnergyPolling() {
