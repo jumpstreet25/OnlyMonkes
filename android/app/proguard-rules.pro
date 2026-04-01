@@ -59,4 +59,8 @@
 -dontwarn javax.lang.model.type.TypeVisitor
 -dontwarn javax.lang.model.util.SimpleTypeVisitor8
 
+# React Native feature flags — JNI native lib loaded at startup
+-keep class com.facebook.react.internal.featureflags.** { *; }
+-keep class com.facebook.react.defaults.** { *; }
+
 # Add any project specific keep options here:

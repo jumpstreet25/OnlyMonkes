@@ -218,16 +218,12 @@ export const AnimatedAvatar = React.memo(function AnimatedAvatar({
           cachePolicy="disk"
         />
 
-        {/* Expression overlay: Skia canvas when blendshapes available, sprite fallback */}
-        {hasBlendshapes ? (
-          <SkiaAvatarOverlay blendshapes={blendshapes} size={size} />
-        ) : (
-          <Image
-            source={mouthSpriteSource}
-            style={mouthStyle}
-            contentFit="contain"
-          />
-        )}
+        {/* Mouth overlay sprite — driven by face tracking openness or audio energy */}
+        <Image
+          source={mouthSpriteSource}
+          style={mouthStyle}
+          contentFit="contain"
+        />
       </View>
     </Animated.View>
   );

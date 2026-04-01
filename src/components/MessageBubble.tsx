@@ -483,12 +483,6 @@ export const MessageBubble = memo(function MessageBubble({
     })
   ).current;
 
-  // ── Live Room Pill — early return for LIVE_PILL: messages ──────────────────
-  const livePill = parseLivePill(message.content);
-  if (livePill) {
-    return <LivePillBubble type={livePill.type} host={livePill.host} sentAt={message.sentAt} />;
-  }
-
   // Re-read from cache on every render (re-render triggered by useProfileVersion above)
   const cachedSender = getCachedProfile(message.senderAddress);
   const displayName  = cachedSender?.username ?? message.senderUsername ?? shortenAddress(message.senderAddress);
@@ -530,6 +524,12 @@ export const MessageBubble = memo(function MessageBubble({
     () => (isMedia ? null : extractBlinkUrl(displayContent)),
     [isMedia, displayContent],
   );
+
+  // ── Live Room Pill — early return for LIVE_PILL: messages ──────────────────
+  const livePill = parseLivePill(message.content);
+  if (livePill) {
+    return <LivePillBubble type={livePill.type} host={livePill.host} sentAt={message.sentAt} />;
+  }
 
   // Center bot messages in bot channels
   const centerBubble = isBotChannel && isBot;

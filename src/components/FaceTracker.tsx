@@ -35,23 +35,37 @@ interface FaceTrackerProps {
 export function FaceTracker({ enabled, onBlendshapes }: FaceTrackerProps) {
   const { hasPermission } = useCameraPermission();
   const lastFrameRef = useRef(0);
+  const errorCountRef = useRef(0);
+  const disabledRef = useRef(false);
 
   const handleResults = useCallback(
     (result: FaceLandmarkDetectionResultBundle, _viewSize: any, _mirrored: boolean) => {
+      if (disabledRef.current) return;
+
       // Throttle to ~20fps (50ms between frames)
       const now = Date.now();
       if (now - lastFrameRef.current < 50) return;
       lastFrameRef.current = now;
 
-      if (result.results.length === 0) return;
-      const face = result.results[0];
+      try {
+        if (!result.results || result.results.length === 0) return;
+        const face = result.results[0];
+        if (!face?.faceBlendshapes) return;
 
-      // Extract blendshapes
-      const blendshapes = mediapipeToBlendshapes(
-        face.faceBlendshapes,
-        face.facialTransformationMatrixes?.[0] as unknown as number[][],
-      );
-      onBlendshapes(blendshapes);
+        // Extract blendshapes
+        const blendshapes = mediapipeToBlendshapes(
+          face.faceBlendshapes,
+          face.facialTransformationMatrixes?.[0] as unknown as number[][],
+        );
+        onBlendshapes(blendshapes);
+        errorCountRef.current = 0; // reset on success
+      } catch (e) {
+        errorCountRef.current++;
+        if (errorCountRef.current > 10) {
+          console.warn('[FaceTracker] Too many errors, disabling');
+          disabledRef.current = true;
+        }
+      }
     },
     [onBlendshapes],
   );

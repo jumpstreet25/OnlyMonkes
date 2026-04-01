@@ -1,0 +1,42 @@
+{$DUCKDNS_SUBDOMAIN}.duckdns.org {
+	# ── Health (public — for UptimeRobot) ──
+	handle /health {
+		reverse_proxy bot:3001
+	}
+
+	# ── Bot push status (public) ──
+	handle /push-status {
+		reverse_proxy bot:3001
+	}
+
+	# ── Prometheus metrics (basic auth) ──
+	handle /metrics {
+		basicauth {
+			{$METRICS_USER} {$METRICS_BCRYPT_HASH}
+		}
+		reverse_proxy bot:3001
+	}
+
+	# ── Grafana (own auth layer) ──
+	handle /grafana* {
+		reverse_proxy grafana:3000
+	}
+
+	# ── Bot API endpoints ──
+	handle /join {
+		reverse_proxy bot:3001
+	}
+
+	handle /push {
+		reverse_proxy bot:3001
+	}
+
+	handle /helius-webhook {
+		reverse_proxy bot:3001
+	}
+
+	# ── Default deny ──
+	handle {
+		respond "🐵" 404
+	}
+}
