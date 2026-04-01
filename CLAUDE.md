@@ -20,6 +20,12 @@ Rules are added over time as issues arise.
 - The project debug keystore lives at `android/app/debug.keystore` — if it changes between builds, signature mismatch occurs.
 - AAPT2 rejects JPEG files with `.png` extensions — always verify image format with `file` command before adding assets.
 - Bare workflow: `runtimeVersion` must be a static string (e.g., `'2.22'`), NOT `{ policy: 'appVersion' }`.
+- **Expo SDK 53 + RN 0.79.6** requires: Gradle 8.11.1, Kotlin 2.0.21, compileSdk 35, NDK 26.1.10909125.
+- **SoLoader must use merged SO mapping**: `SoLoader.init(this, OpenSourceMergedSoMapping)` — NOT `SoLoader.init(this, false)`. RN 0.79 merges native libs into `libreactnative.so`; without the mapping, `libreact_featureflagsjni.so` crash on startup.
+- **R8/ProGuard disabled** for release builds — R8 strips JNI loaders needed by RN 0.79 new arch. APK is ~88MB without minification.
+- **react-native-mediapipe** has a null-safety bug in `FaceLandmarkDetectionFrameProcessorPlugin.kt:19` — patched via `patches/react-native-mediapipe+0.6.0.patch`. Must re-apply after `npm install`.
+- **Post-build cleanup**: run `scripts/post-build-cleanup.sh` after each build to reclaim ~3GB of native build intermediates. Critical on low-disk Macs.
+- **My Passport** (`/Volumes/MyPassport/OnlyMonkes-cache/`) stores NDK 25, build-tools 36, platforms, and Gradle caches offloaded from local disk.
 
 ## XMTP & Messaging
 
@@ -48,7 +54,7 @@ Rules are added over time as issues arise.
 
 - Live room signaling (`AVATAR_ROOM:`, `VIDEO_ROOM:`, `LIVE_ROOM:`) must NEVER show raw JSON in chat. Use `LIVE_PILL:` synthetic messages to display a styled pill with JOIN button.
 - **Live Audio rooms are DISCONTINUED** (v2.33). Replaced by Avatar Rooms. `LIVE_ROOM:` messages still parsed for backward compat but no new audio rooms can be started. Files kept but unused: `liveAudio.ts`, `LiveAudioRoomScreen.tsx`, `LiveAudioPill.tsx`, `app/live-room.tsx`.
-- **Avatar Rooms** (`avatarRoom.ts`): Animated NFT PFP avatars driven by MediaPipe face tracking (52 blendshapes). Skia canvas overlay for continuous expressions (mouth, eyes, brows). Minimize to pill in Main Chat. Sticker reactions via data channel.
+- **Avatar Rooms** (`avatarRoom.ts`): Animated NFT PFP avatars with mouth sprite overlays driven by MediaPipe face tracking jaw openness (or audio energy fallback). Head tilt/nod/turn from face tracking rotation. Skia canvas overlay (`SkiaAvatarOverlay.tsx`) exists but disabled — generic eye/brow positions don't align with Saga Monkes pixel art; needs per-collection calibration. Minimize to pill in Main Chat. Sticker reactions via data channel.
 - Messages load newest-first on app open. Older messages load in background without visible flicker.
 - `react-native-svg` is NOT installed — do not use SVG components. Use View-based alternatives.
 - **FlashList** replaces FlatList in ChatScreen for message list (cell recycling, 3-5x fewer frame drops).

@@ -1,0 +1,8 @@
+# Secrets — NEVER commit
+.env
+.env.lightrag
+data/
+
+# Caddy state
+caddy_data/
+caddy_config/
