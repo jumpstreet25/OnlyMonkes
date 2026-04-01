@@ -1,0 +1,177 @@
+services:
+  # ── Monke_Eliza Bot ──────────────────────────────────────────────
+  bot:
+    build:
+      context: ./bot
+      dockerfile: Dockerfile
+    container_name: onlymonkes-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - BIND_HOST=0.0.0.0
+      - AGENT_HTTP_PORT=3001
+      - LIGHTRAG_URL=http://lightrag:9621
+    volumes:
+      # XMTP identity + database (CRITICAL — this IS the bot)
+      - ./data/bot/.xmtp_bot_key:/app/.xmtp_bot_key:ro
+      - ./data/bot/.xmtp_bot.db3:/app/.xmtp_bot.db3
+      - ./data/bot/.xmtp_bot.db3-shm:/app/.xmtp_bot.db3-shm
+      - ./data/bot/.xmtp_bot.db3-wal:/app/.xmtp_bot.db3-wal
+      - ./data/bot/.xmtp_bot.db3.sqlcipher_salt:/app/.xmtp_bot.db3.sqlcipher_salt:ro
+      # Persistent state files
+      - ./data/bot/.xmtp_welcomed.json:/app/.xmtp_welcomed.json
+      - ./data/bot/.sports_alerted.json:/app/.sports_alerted.json
+      - ./data/bot/.signal_log.json:/app/.signal_log.json
+      - ./data/bot/.holder_snapshots.json:/app/.holder_snapshots.json
+      - ./data/bot/.automonke_state.json:/app/.automonke_state.json
+      - ./data/bot/.automonke_wallets.json:/app/.automonke_wallets.json
+      # Databases
+      - bot_eliza:/app/.eliza
+      - bot_hermes:/app/.hermes_memory
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    depends_on:
+      lightrag:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+
+  # ── LightRAG Knowledge Graph ────────────────────────────────────
+  lightrag:
+    image: ghcr.io/hkuds/lightrag:latest
+    container_name: onlymonkes-lightrag
+    restart: unless-stopped
+    env_file:
+      - .env.lightrag
+    environment:
+      - HOST=0.0.0.0
+      - PORT=9621
+      - WORKING_DIR=/app/data
+      - MAX_ASYNC=16
+      - TIMEOUT=150
+    volumes:
+      - ./data/lightrag:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9621/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  # ── Prometheus Metrics ──────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: onlymonkes-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=30d"
+      - "--web.enable-lifecycle"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    depends_on:
+      bot:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  # ── Grafana Dashboard ───────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:latest
+    container_name: onlymonkes-grafana
+    restart: unless-stopped
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-monke2026}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=https://${DUCKDNS_SUBDOMAIN}.duckdns.org/grafana
+      - GF_SERVER_SERVE_FROM_SUB_PATH=true
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    depends_on:
+      - prometheus
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # ── Caddy Reverse Proxy (auto-HTTPS via DuckDNS) ───────────────
+  caddy:
+    image: caddy:latest
+    container_name: onlymonkes-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      - DUCKDNS_SUBDOMAIN=${DUCKDNS_SUBDOMAIN}
+      - DUCKDNS_TOKEN=${DUCKDNS_TOKEN}
+    depends_on:
+      - bot
+      - grafana
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+volumes:
+  bot_eliza:
+  bot_hermes:
+  prometheus_data:
+  grafana_data:
+  caddy_data:
+  caddy_config:
