@@ -1,17 +1,17 @@
 /**
  * AnimatedAvatar — Face-tracking + audio-reactive NFT avatar with mouth overlays.
  *
- * Renders the user's NFT PFP with a transparent mouth sprite overlay on top.
+ * Renders the user's NFT PFP with cross-fading mouth sprite overlays.
  * When faceParams are available (camera-driven), head rotation + continuous mouth
  * openness drive the animation. Falls back to audio energy when face tracking
  * is unavailable.
  *
- * Idle:     Subtle breathing animation (scale 1.0 → 1.02, 3s loop)
- * Speaking: Scale pulse + green glow ring + mouth sprite cycles
- * Face:     Head tilt/nod/turn transforms + continuous mouth openness + eye squint
+ * Idle:     Subtle breathing (scale 1.0→1.02) + random blinks every 3-7s
+ * Speaking: Scale pulse + green glow ring + smooth mouth sprite cross-fade
+ * Face:     Head tilt/nod/turn + continuous mouth openness + eye squint
  */
 
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useRef, useCallback } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Image } from 'expo-image';
 import Animated, {
@@ -21,6 +21,7 @@ import Animated, {
   withRepeat,
   withTiming,
   withSequence,
+  withDelay,
   cancelAnimation,
   interpolate,
   Easing,
@@ -28,13 +29,10 @@ import Animated, {
 import { THEME, FONTS } from '@/lib/constants';
 import {
   type MouthTrait,
-  getMouthSprite,
+  getCrossFadeSprites,
   MOUTH_OVERLAY_RECT,
 } from '@/lib/mouthOverlays';
 import { type FaceParams, type BlendshapeParams } from '@/lib/faceTracking';
-import { SkiaAvatarOverlay } from './SkiaAvatarOverlay';
-
-const AnimatedImage = Animated.createAnimatedComponent(Image);
 
 function clamp(v: number, min: number, max: number): number {
   'worklet';
@@ -44,15 +42,28 @@ function clamp(v: number, min: number, max: number): number {
 interface AnimatedAvatarProps {
   pfpUri: string | null;
   mouthTrait: MouthTrait;
-  audioEnergy: number;    // 0-1, drives mouth sprite selection (fallback)
-  isSpeaking: boolean;    // drives glow/pulse animations
+  audioEnergy: number;
+  isSpeaking: boolean;
   size: number;
   fallbackName?: string;
-  faceParams?: FaceParams | null; // camera-driven face tracking (overrides audioEnergy)
-  blendshapes?: BlendshapeParams | null; // MediaPipe 22-blendshape data (overrides sprite overlay)
+  faceParams?: FaceParams | null;
+  blendshapes?: BlendshapeParams | null;
 }
 
 const GLOW_COLOR = '#22c55e';
+
+// ── Idle Blink Constants ────────────────────────────────────────────────────
+const BLINK_MIN_MS = 3000;
+const BLINK_MAX_MS = 7000;
+const BLINK_DURATION_MS = 150;
+
+// Eye region position (relative to PFP — calibrated for Saga Monkes)
+const EYE_OVERLAY = {
+  topPct: 0.38,
+  leftPct: 0.22,
+  widthPct: 0.56,
+  heightPct: 0.12,
+};
 
 export const AnimatedAvatar = React.memo(function AnimatedAvatar({
   pfpUri,
@@ -66,9 +77,8 @@ export const AnimatedAvatar = React.memo(function AnimatedAvatar({
 }: AnimatedAvatarProps) {
   const radius = size / 2;
   const hasFace = faceParams != null;
-  const hasBlendshapes = blendshapes != null;
 
-  // Mouth overlay positioning (relative to container)
+  // ── Mouth overlay positioning ─────────────────────────────────────────────
   const mouthStyle = useMemo(() => ({
     position: 'absolute' as const,
     top: size * MOUTH_OVERLAY_RECT.topPct,
@@ -77,11 +87,21 @@ export const AnimatedAvatar = React.memo(function AnimatedAvatar({
     height: size * MOUTH_OVERLAY_RECT.heightPct,
   }), [size]);
 
-  // Mouth sprite: use face openness when available, otherwise audio energy
+  // Cross-fade sprites: use face openness when available, otherwise audio energy
   const effectiveEnergy = hasFace ? faceParams.mouthOpenness : audioEnergy;
-  const mouthSpriteSource = getMouthSprite(mouthTrait, effectiveEnergy);
+  const { spriteA, spriteB, blend } = getCrossFadeSprites(mouthTrait, effectiveEnergy);
 
-  // ── Shared values ──────────────────────────────────────────────────────────
+  // ── Blink overlay positioning ─────────────────────────────────────────────
+  const blinkStyle = useMemo(() => ({
+    position: 'absolute' as const,
+    top: size * EYE_OVERLAY.topPct,
+    left: size * EYE_OVERLAY.leftPct,
+    width: size * EYE_OVERLAY.widthPct,
+    height: size * EYE_OVERLAY.heightPct,
+    borderRadius: size * 0.02,
+  }), [size]);
+
+  // ── Shared values ─────────────────────────────────────────────────────────
 
   const breathScale = useSharedValue(1);
   const speakScale = useSharedValue(1);
@@ -89,12 +109,16 @@ export const AnimatedAvatar = React.memo(function AnimatedAvatar({
   const glowScale = useSharedValue(1);
 
   // Face tracking values
-  const headRotZ = useSharedValue(0);  // tilt
-  const headRotY = useSharedValue(0);  // turn
-  const headNodY = useSharedValue(0);  // nod (translateY)
-  const eyeScale = useSharedValue(1);  // eye squint
+  const headRotZ = useSharedValue(0);
+  const headRotY = useSharedValue(0);
+  const headNodY = useSharedValue(0);
+  const eyeScale = useSharedValue(1);
 
-  // ── Idle breathing ─────────────────────────────────────────────────────────
+  // Blink
+  const blinkOpacity = useSharedValue(0);
+  const blinkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── Idle breathing ────────────────────────────────────────────────────────
 
   useEffect(() => {
     breathScale.value = withRepeat(
@@ -107,7 +131,28 @@ export const AnimatedAvatar = React.memo(function AnimatedAvatar({
     );
   }, []);
 
-  // ── Speaking transitions ───────────────────────────────────────────────────
+  // ── Idle blink (random interval 3-7s) ─────────────────────────────────────
+
+  const scheduleBlink = useCallback(() => {
+    const delay = BLINK_MIN_MS + Math.random() * (BLINK_MAX_MS - BLINK_MIN_MS);
+    blinkTimerRef.current = setTimeout(() => {
+      // Quick blink: fade in → hold → fade out
+      blinkOpacity.value = withSequence(
+        withTiming(1, { duration: BLINK_DURATION_MS / 2, easing: Easing.out(Easing.ease) }),
+        withDelay(30, withTiming(0, { duration: BLINK_DURATION_MS / 2, easing: Easing.in(Easing.ease) })),
+      );
+      scheduleBlink();
+    }, delay);
+  }, []);
+
+  useEffect(() => {
+    scheduleBlink();
+    return () => {
+      if (blinkTimerRef.current) clearTimeout(blinkTimerRef.current);
+    };
+  }, []);
+
+  // ── Speaking transitions ──────────────────────────────────────────────────
 
   useEffect(() => {
     if (isSpeaking) {
@@ -137,18 +182,16 @@ export const AnimatedAvatar = React.memo(function AnimatedAvatar({
     }
   }, [isSpeaking]);
 
-  // ── Face tracking transitions ──────────────────────────────────────────────
+  // ── Face tracking transitions ─────────────────────────────────────────────
 
   useEffect(() => {
     if (hasFace) {
       headRotZ.value = withSpring(clamp(faceParams.headRotation.z, -15, 15), { damping: 14, stiffness: 120 });
       headRotY.value = withSpring(clamp(faceParams.headRotation.y, -20, 20), { damping: 14, stiffness: 120 });
       headNodY.value = withSpring(clamp(faceParams.headRotation.x * 0.3, -4, 4), { damping: 14, stiffness: 120 });
-      // Eye squint: scale down slightly when eyes are closing
       const targetEyeScale = interpolate(faceParams.eyeOpenness, [0, 0.3, 1], [0.95, 1, 1]);
       eyeScale.value = withSpring(targetEyeScale, { damping: 15, stiffness: 150 });
     } else {
-      // Reset to neutral when face tracking unavailable
       headRotZ.value = withSpring(0, { damping: 14, stiffness: 120 });
       headRotY.value = withSpring(0, { damping: 14, stiffness: 120 });
       headNodY.value = withSpring(0, { damping: 14, stiffness: 120 });
@@ -156,7 +199,7 @@ export const AnimatedAvatar = React.memo(function AnimatedAvatar({
     }
   }, [faceParams]);
 
-  // ── Animated styles ────────────────────────────────────────────────────────
+  // ── Animated styles ───────────────────────────────────────────────────────
 
   const containerStyle = useAnimatedStyle(() => ({
     transform: [
@@ -173,7 +216,11 @@ export const AnimatedAvatar = React.memo(function AnimatedAvatar({
     transform: [{ scale: glowScale.value }],
   }));
 
-  // ── Fallback (no PFP) ─────────────────────────────────────────────────────
+  const blinkAnimStyle = useAnimatedStyle(() => ({
+    opacity: blinkOpacity.value,
+  }));
+
+  // ── Fallback (no PFP) ────────────────────────────────────────────────────
 
   if (!pfpUri) {
     return (
@@ -195,7 +242,7 @@ export const AnimatedAvatar = React.memo(function AnimatedAvatar({
     );
   }
 
-  // ── Main render (PFP + mouth overlay) ──────────────────────────────────────
+  // ── Main render (PFP + cross-fade mouth + idle blink) ─────────────────────
 
   return (
     <Animated.View style={[{ width: size, height: size }, containerStyle]}>
@@ -218,11 +265,24 @@ export const AnimatedAvatar = React.memo(function AnimatedAvatar({
           cachePolicy="disk"
         />
 
-        {/* Mouth overlay sprite — driven by face tracking openness or audio energy */}
+        {/* Cross-fading mouth sprites */}
         <Image
-          source={mouthSpriteSource}
-          style={mouthStyle}
+          source={spriteA}
+          style={[mouthStyle, { opacity: 1 - blend }]}
           contentFit="contain"
+        />
+        {blend > 0.01 && (
+          <Image
+            source={spriteB}
+            style={[mouthStyle, { opacity: blend }]}
+            contentFit="contain"
+          />
+        )}
+
+        {/* Idle blink overlay — skin-toned bar slides over eyes */}
+        <Animated.View
+          style={[blinkStyle, styles.blinkOverlay, blinkAnimStyle]}
+          pointerEvents="none"
         />
       </View>
     </Animated.View>
@@ -248,5 +308,8 @@ const styles = StyleSheet.create({
   fallbackText: {
     fontFamily: FONTS.display,
     color: THEME.text,
+  },
+  blinkOverlay: {
+    backgroundColor: 'rgba(90, 65, 45, 0.92)', // Saga Monke fur tone
   },
 });
