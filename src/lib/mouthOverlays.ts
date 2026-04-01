@@ -119,6 +119,53 @@ export function getMouthSprite(trait: MouthTrait, energy: number, participantId?
   return MOUTH_SPRITES[trait]?.[state] ?? MOUTH_SPRITES.None.closed;
 }
 
+// ── Cross-fade support ──────────────────────────────────────────────────────
+// Returns two sprites + a blend factor (0-1) for smooth interpolation.
+
+const ENERGY_STOPS: { threshold: number; state: MouthState }[] = [
+  { threshold: 0,    state: 'closed' },
+  { threshold: 0.05, state: 'slightly_open' },
+  { threshold: 0.20, state: 'open' },
+  { threshold: 0.45, state: 'wide' },
+  { threshold: 0.70, state: 'round' },
+];
+
+export interface CrossFadeSprites {
+  spriteA: number;  // lower state sprite
+  spriteB: number;  // upper state sprite
+  blend: number;    // 0 = fully spriteA, 1 = fully spriteB
+}
+
+export function getCrossFadeSprites(trait: MouthTrait, energy: number): CrossFadeSprites {
+  const sprites = MOUTH_SPRITES[trait] ?? MOUTH_SPRITES.None;
+
+  // Find which two stops we're between
+  let lowerIdx = 0;
+  for (let i = ENERGY_STOPS.length - 1; i >= 0; i--) {
+    if (energy >= ENERGY_STOPS[i].threshold) {
+      lowerIdx = i;
+      break;
+    }
+  }
+
+  const upperIdx = Math.min(lowerIdx + 1, ENERGY_STOPS.length - 1);
+
+  if (lowerIdx === upperIdx) {
+    // At or above highest stop
+    return { spriteA: sprites[ENERGY_STOPS[lowerIdx].state], spriteB: sprites[ENERGY_STOPS[lowerIdx].state], blend: 0 };
+  }
+
+  const lowerThresh = ENERGY_STOPS[lowerIdx].threshold;
+  const upperThresh = ENERGY_STOPS[upperIdx].threshold;
+  const t = (energy - lowerThresh) / (upperThresh - lowerThresh);
+
+  return {
+    spriteA: sprites[ENERGY_STOPS[lowerIdx].state],
+    spriteB: sprites[ENERGY_STOPS[upperIdx].state],
+    blend: Math.max(0, Math.min(1, t)),
+  };
+}
+
 /**
  * Parse a mouth trait string from NFT attributes into our typed enum.
  * Returns DEFAULT_MOUTH_TRAIT if unrecognized.
