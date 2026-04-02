@@ -122,8 +122,8 @@ android {
         applicationId 'com.onlymonkes.app'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 33
-        versionName "2.33"
+        versionCode 34
+        versionName "2.34"
 
         // Seeker is arm64-v8a only — drop all other architectures.
         ndk {
