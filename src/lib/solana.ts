@@ -125,13 +125,13 @@ export async function sendShopPayment(
       }),
     );
 
-    const signedTxs = await mobileWallet.signAndSendTransactions({
+    const [sig] = await mobileWallet.signAndSendTransactions({
       transactions: [tx],
     });
-    return bs58.encode(signedTxs[0]);
+    return sig;
   });
 
-  return signature;
+  return typeof signature === "string" ? signature : Buffer.from(signature).toString("base64");
 }
 
 /**

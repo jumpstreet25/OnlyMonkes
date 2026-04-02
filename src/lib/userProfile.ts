@@ -74,9 +74,12 @@ export interface CachedProfile {
 }
 
 const AK_PROFILE_CACHE = 'profile_cache_v2';
+const AK_LOCATION_MAP = 'user_locations_v1'; // Dedicated persistent location store — survives cache eviction
 const MAX_PROFILE_CACHE = 200; // Reduced from 500 — avatar base64 URIs eat ~50KB each; 200 × 50KB = 10MB vs 25MB
 const _profileCache = new Map<string, CachedProfile>();
+const _locationMap = new Map<string, string>(); // inboxId → location (never evicted)
 let _persistTimer: ReturnType<typeof setTimeout> | null = null;
+let _locationPersistTimer: ReturnType<typeof setTimeout> | null = null;
 
 // ─── Instant-update subscriber system ────────────────────────────────────────
 // Call useProfileVersion() in any component to auto-rerender on PFP changes.
@@ -106,6 +109,33 @@ export async function loadProfileCache(): Promise<void> {
       _profileCache.set(k, { ..._profileCache.get(k), ...v });
     }
   } catch { /* ignore */ }
+
+  // Load dedicated location map (survives cache eviction)
+  try {
+    const raw = await AsyncStorage.getItem(AK_LOCATION_MAP);
+    if (raw) {
+      const obj = JSON.parse(raw) as Record<string, string>;
+      for (const [k, v] of Object.entries(obj)) {
+        _locationMap.set(k, v);
+        // Restore location to profile cache if it was evicted
+        const cached = _profileCache.get(k);
+        if (cached && !cached.location && v) {
+          cached.location = v;
+        }
+      }
+    }
+  } catch { /* ignore */ }
+}
+
+function _scheduleLocationPersist() {
+  if (_locationPersistTimer) clearTimeout(_locationPersistTimer);
+  _locationPersistTimer = setTimeout(async () => {
+    try {
+      const obj: Record<string, string> = {};
+      _locationMap.forEach((v, k) => { obj[k] = v; });
+      await AsyncStorage.setItem(AK_LOCATION_MAP, JSON.stringify(obj));
+    } catch { /* ignore */ }
+  }, 600);
 }
 
 function _schedulePersist() {
@@ -122,15 +152,31 @@ function _schedulePersist() {
 export function cacheProfile(inboxId: string, profile: CachedProfile): void {
   const existing = _profileCache.get(inboxId);
 
-  // Never overwrite a known-good image with null or undefined.
-  // `== null` covers both null and undefined (explicit spread of {nftImage: undefined}
-  // would otherwise silently wipe an existing PFP).
-  // A real image change always arrives as a new truthy data/URL string.
+  // Never overwrite known-good fields with null or undefined.
+  // `== null` covers both null and undefined (explicit spread of {field: undefined}
+  // would otherwise silently wipe existing data).
+  // A real change always arrives as a new truthy string value.
   if (profile.nftImage == null && existing?.nftImage) {
     delete profile.nftImage;
   }
+  if (profile.location == null && existing?.location) {
+    delete profile.location;
+  }
+  if (profile.legendary == null && existing?.legendary) {
+    delete profile.legendary;
+  }
 
   const merged = { ...existing, ...profile, cachedAt: Date.now() };
+
+  // Persist location to dedicated map (survives cache eviction)
+  if (merged.location) {
+    _locationMap.set(inboxId, merged.location);
+    _scheduleLocationPersist();
+  } else if (_locationMap.has(inboxId)) {
+    // Restore location from persistent map if profile lost it
+    merged.location = _locationMap.get(inboxId);
+  }
+
   _profileCache.set(inboxId, merged);
   // LRU eviction — remove least recently accessed entry when cache exceeds max
   if (_profileCache.size > MAX_PROFILE_CACHE) {
@@ -148,8 +194,19 @@ export function cacheProfile(inboxId: string, profile: CachedProfile): void {
 
 export function getCachedProfile(inboxId: string): CachedProfile | null {
   const profile = _profileCache.get(inboxId);
-  if (profile) profile.accessedAt = Date.now(); // LRU touch
+  if (profile) {
+    profile.accessedAt = Date.now(); // LRU touch
+    // Restore location from persistent map if missing
+    if (!profile.location && _locationMap.has(inboxId)) {
+      profile.location = _locationMap.get(inboxId);
+    }
+  }
   return profile ?? null;
+}
+
+/** Get a user's location from the persistent location map (never evicted). */
+export function getPersistedLocation(inboxId: string): string | undefined {
+  return _locationMap.get(inboxId);
 }
 
 // ─── All-time user registry ───────────────────────────────────────────────────
