@@ -10,6 +10,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { THEME } from '../src/lib/constants';
+import { useThemeColor } from '../src/lib/shopTheme';
 import { registerForPushNotifications } from '../src/lib/notifications';
 import { triggerProfileRebroadcast } from '../src/hooks/useXmtp';
 import { useAppStore, loadPersistedPrefs } from '../src/store/appStore';
@@ -79,12 +80,12 @@ export default function RootLayout() {
   return (
     <QueryClientProvider client={queryClient}>
       <SafeAreaProvider>
-        <GestureHandlerRootView style={{ flex: 1 }}>
+        <GestureHandlerRootView style={{ flex: 1, backgroundColor: useThemeColor('bg') }}>
           <StatusBar style="light" />
           <Stack
             screenOptions={{
               headerShown: false,
-              contentStyle: { backgroundColor: THEME.bg },
+              contentStyle: { backgroundColor: 'transparent' },
               animation: 'slide_from_right',
             }}
           />

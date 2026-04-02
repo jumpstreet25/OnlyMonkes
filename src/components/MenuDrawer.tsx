@@ -136,6 +136,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
   const setExpoPushToken = useAppStore(s => s.setExpoPushToken);
   const communityBadges = useAppStore(s => s.communityBadges);
   const clearCommunityBadge = useAppStore(s => s.clearCommunityBadge);
+  const themeOverrides = useAppStore(s => s.themeOverrides);
   const [activeView, setActiveView] = useState<ActiveView>("list");
 
   useProfileVersion();
@@ -356,7 +357,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
         <View style={styles.overlay} />
       </Pressable>
 
-      <View style={styles.popup}>
+      <View style={[styles.popup, themeOverrides ? { backgroundColor: themeOverrides.surface ?? themeOverrides.bg } : null]}>
         {/* Glass gradient overlay */}
         <LinearGradient
           colors={["rgba(248,248,255,0.06)", "rgba(0,0,0,0.12)"]}

@@ -22,11 +22,13 @@ import { GlassModal } from "@/components/GlassModal";
 import { THEME, FONTS, DEV_WALLET, SKR_MINT } from "@/lib/constants";
 import { useAppStore } from "@/store/appStore";
 import { spendBananas } from "@/lib/bananaRewards";
+import { sendShopPayment } from "@/lib/solana";
 import {
   getAvailableItems, loadShopState, addOwnedItem, equipItem, unequipCategory,
-  getTierInfo, getCategoryName,
+  getTierInfo, getCategoryName, getEquippedStyles,
   type ShopItem, type ShopCategory, type ShopState,
 } from "@/lib/bananaShop";
+import { applyThemeFromShop } from "@/lib/shopTheme";
 
 interface BananaShopModalProps {
   visible: boolean;
@@ -66,10 +68,12 @@ export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
       if (shopState.equipped[item.category] === item.id) {
         const updated = await unequipCategory(item.category);
         setShopState(updated);
+        getEquippedStyles().then(s => { useAppStore.getState().setShopStyles(s); applyThemeFromShop(s); }).catch(() => {});
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       } else {
         const updated = await equipItem(item.id);
         setShopState(updated);
+        getEquippedStyles().then(s => { useAppStore.getState().setShopStyles(s); applyThemeFromShop(s); }).catch(() => {});
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
       return;
@@ -103,10 +107,27 @@ export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
               }
               useAppStore.getState().setBananaBalance(bananaBalance - item.bananaCost);
 
-              // 2. TODO: Trigger MWA payment ($item.usdCost in SKR/SOL → DEV_WALLET)
-              // For now, mark as purchased after banana deduction
-              // The MWA integration will use transact() from @solana-mobile/mobile-wallet-adapter-protocol
-              // to sign a transfer of (usdCost / skrPrice) SKR tokens to DEV_WALLET
+              // 2. MWA payment — transfer SOL to DEV_WALLET
+              try {
+                // Fetch SOL price from Jupiter
+                const priceRes = await fetch(
+                  "https://api.jup.ag/price/v2?ids=So11111111111111111111111111111111111111112",
+                  { signal: AbortSignal.timeout(8000) },
+                );
+                const priceData = await priceRes.json() as any;
+                const solPrice = parseFloat(
+                  priceData?.data?.["So11111111111111111111111111111111111111112"]?.price ?? "0",
+                );
+                if (!solPrice || solPrice <= 0) throw new Error("Could not fetch SOL price");
+
+                await sendShopPayment(item.usdCost, solPrice);
+              } catch (payErr: any) {
+                // Refund bananas if payment fails
+                const { addBananas } = require("@/lib/bananaRewards");
+                await addBananas(item.bananaCost);
+                useAppStore.getState().setBananaBalance(bananaBalance);
+                throw new Error(`Payment failed: ${payErr?.message ?? "wallet rejected"}`);
+              }
 
               // 3. Mark item as owned + equip it
               const updated = await addOwnedItem(item.id);
@@ -116,6 +137,8 @@ export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
               setShopState(updated);
 
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              // Refresh shop styles so MessageBubble updates immediately
+              getEquippedStyles().then(s => { useAppStore.getState().setShopStyles(s); applyThemeFromShop(s); }).catch(() => {});
               Alert.alert("Purchased!", `${item.name} is now equipped.`);
             } catch (err: any) {
               Alert.alert("Purchase failed", err?.message ?? "Please try again");
