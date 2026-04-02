@@ -146,7 +146,7 @@ function _schedulePersist() {
       _profileCache.forEach((v, k) => { obj[k] = v; });
       await AsyncStorage.setItem(AK_PROFILE_CACHE, JSON.stringify(obj));
     } catch { /* ignore */ }
-  }, 600);
+  }, 2000); // 2s debounce — batches rapid profile updates into single write
 }
 
 export function cacheProfile(inboxId: string, profile: CachedProfile): void {
@@ -186,7 +186,10 @@ export function cacheProfile(inboxId: string, profile: CachedProfile): void {
       const lastUsed = v.accessedAt ?? v.cachedAt ?? 0;
       if (lastUsed < lruAt) { lruAt = lastUsed; lruKey = k; }
     }
-    if (lruKey) _profileCache.delete(lruKey);
+    if (lruKey) {
+      if (__DEV__) console.log(`[ProfileCache] Evicting ${lruKey.slice(0, 8)}… (cache full at ${MAX_PROFILE_CACHE})`);
+      _profileCache.delete(lruKey);
+    }
   }
   _schedulePersist();
   _notifyProfileListeners();

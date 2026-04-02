@@ -39,6 +39,7 @@ import {
   FlatList,
 } from "react-native";
 import { FlashList } from "@shopify/flash-list";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAppStore } from "@/store/appStore";
 import { useChatStore } from "@/store/chatStore";
@@ -1020,7 +1021,7 @@ export default function ChatScreen() {
   }, []);
 
   return (
-    <>
+    <ErrorBoundary fallbackMessage="Chat hit an error. Tap below to reload.">
       {showConfetti && <ConfettiView onDone={() => setShowConfetti(false)} />}
 
       <BananaClaimModal
@@ -1599,7 +1600,7 @@ export default function ChatScreen() {
           </Pressable>
         </Pressable>
       </Modal>
-    </>
+    </ErrorBoundary>
   );
 }
 

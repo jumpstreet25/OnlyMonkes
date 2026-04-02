@@ -788,7 +788,7 @@ export function useXmtp() {
 
       // Persist to cache (capped at 50 by messageCache)
       if (recentMessages.length > 0) {
-        saveCachedMessages("main_chat", recentMessages).catch(() => {});
+        saveCachedMessages("main_chat", recentMessages).catch(e => { if (__DEV__) console.warn("[XMTP] cache save failed:", e); });
       }
 
       // ── 5. Stream incoming messages ────────────────────────────────────────
@@ -1107,7 +1107,7 @@ export function useXmtp() {
         }
 
         // Persist to cache for Shared Images/Links
-        appendCachedMessage("main_chat", enrichedMsg).catch(() => {});
+        appendCachedMessage("main_chat", enrichedMsg).catch(e => { if (__DEV__) console.warn("[XMTP] cache append failed:", e); });
 
         const { notificationsEnabled, mentionsOnly, botNotificationsEnabled, username } =
           useAppStore.getState();
@@ -1149,7 +1149,7 @@ export function useXmtp() {
       startHeartbeat(() => {
         if (_group && _myInboxId) {
           const msg = buildPresenceMessage(_myInboxId);
-          (_group as any).send(msg).catch(() => {});
+          (_group as any).send(msg).catch((e: any) => { if (__DEV__) console.warn("[XMTP] presence send failed:", e); });
         }
       });
 
