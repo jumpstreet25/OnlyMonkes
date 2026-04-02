@@ -62,25 +62,18 @@ export async function processBananaGrant(
   if (!amount || amount <= 0 || amount > 10000) return;
 
   const target = parts[1]?.trim() || null;
-  const excludeRaw = parts[2]?.trim() || null;
   const myUsername = useAppStore.getState().username;
   const myLower = myUsername?.toLowerCase() ?? "";
 
-  if (!myLower) return; // username not set yet — can't match
-
-  // Wildcard with exclusions
-  if (target === "*" && excludeRaw) {
-    const excluded = excludeRaw.split(",").map(u => u.trim().toLowerCase());
-    if (excluded.includes(myLower)) {
-      await markClaimed(msgId); // mark so we don't re-check
-      return;
-    }
-  } else if (target && target !== "*") {
+  // Targeted grant — only matching user receives it
+  if (target) {
+    if (!myLower) return; // username not loaded yet — will retry on next history load
     if (target.toLowerCase() !== myLower) {
       await markClaimed(msgId);
       return;
     }
   }
+  // No target = everyone gets it (no username needed)
 
   const newBalance = await addBananas(amount);
   useAppStore.getState().setBananaBalance(newBalance);
