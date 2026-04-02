@@ -105,7 +105,7 @@ function init() {
     img.src = imgSrc;
   }
 
-  // ── Hybrid cluster system: orbital ring (2-3 users), cluster bubble (4+) ──
+  // ── Cluster system: single PFP + count badge for 2+ co-located users ──
   var existingIds = {};
   var locationGroups = {}; // 'lat,lng' -> array of markers
   var clusterMeshes = {}; // locKey -> cluster mesh (for 4+ groups)
@@ -208,20 +208,45 @@ function init() {
       // Single user -- just show PFP at center
       var m1 = addUserMarker(group[0], centerPos);
       if (m1) locationMeshes[locKey].push(m1);
-    } else if (group.length <= 3) {
-      // 2-3 users -- orbital ring
-      var spread = 0.4; // degrees offset (nearby but visible)
-      for (var i = 0; i < group.length; i++) {
-        var angle = (i / group.length) * Math.PI * 2;
-        var oLat = baseLat + spread * Math.cos(angle);
-        var oLng = baseLng + spread * Math.sin(angle);
-        var oPos = latLngToXYZ(oLat, oLng, 1.01);
-        var om = addUserMarker(group[i], oPos);
-        if (om) locationMeshes[locKey].push(om);
-      }
     } else {
-      // 4+ users -- cluster bubble with count
-      createClusterBubble(locKey, centerPos, group.length);
+      // 2+ users -- show top PFP with count badge, tap opens carousel
+      var topMarker = addUserMarker(group[0], centerPos);
+      if (topMarker) {
+        // Store all markers so tap opens the carousel bottom sheet
+        topMarker.userData = { type: 'cluster', locKey: locKey, count: group.length, markers: group, label: group[0].label };
+        locationMeshes[locKey].push(topMarker);
+      }
+      // Count badge
+      var canvas = document.createElement('canvas');
+      canvas.width = 48; canvas.height = 48;
+      var ctx = canvas.getContext('2d');
+      ctx.beginPath();
+      ctx.arc(24, 24, 14, 0, Math.PI * 2);
+      ctx.fillStyle = '#9945FF';
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 16px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(group.length), 24, 24);
+      var tex = new THREE.CanvasTexture(canvas);
+      var badgeMat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
+      var badge = new THREE.Sprite(badgeMat);
+      var dir = centerPos.clone().normalize();
+      badge.position.copy(centerPos).add(dir.clone().multiplyScalar(0.02));
+      // Offset badge to upper-right of the PFP
+      var right = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(0,1,0)).normalize();
+      var up = new THREE.Vector3().crossVectors(right, dir).normalize();
+      badge.position.add(right.multiplyScalar(0.035));
+      badge.position.add(up.multiplyScalar(0.035));
+      badge.scale.set(0.045, 0.045, 1);
+      badge.userData = { type: 'cluster', locKey: locKey, count: group.length, markers: group };
+      globe.add(badge);
+      markerMeshes.push(badge);
+      locationMeshes[locKey].push(badge);
     }
   }
 
