@@ -21,10 +21,10 @@ import * as Haptics from "expo-haptics";
 import { GlassModal } from "@/components/GlassModal";
 import { THEME, FONTS, DEV_WALLET, SKR_MINT } from "@/lib/constants";
 import { useAppStore } from "@/store/appStore";
-import { spendBananas } from "@/lib/bananaRewards";
+import { spendBananas, addBananas } from "@/lib/bananaRewards";
 import { sendShopPayment } from "@/lib/solana";
 import {
-  getAvailableItems, loadShopState, addOwnedItem, equipItem, unequipCategory,
+  getAvailableItems, loadShopState, saveShopState, addOwnedItem, equipItem, unequipCategory,
   getTierInfo, getCategoryName, getEquippedStyles,
   type ShopItem, type ShopCategory, type ShopState,
 } from "@/lib/bananaShop";
@@ -123,7 +123,6 @@ export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
                 await sendShopPayment(item.usdCost, solPrice);
               } catch (payErr: any) {
                 // Refund bananas if payment fails
-                const { addBananas } = require("@/lib/bananaRewards");
                 await addBananas(item.bananaCost);
                 useAppStore.getState().setBananaBalance(bananaBalance);
                 throw new Error(`Payment failed: ${payErr?.message ?? "wallet rejected"}`);
@@ -132,7 +131,6 @@ export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
               // 3. Mark item as owned + equip it
               const updated = await addOwnedItem(item.id);
               updated.equipped[item.category] = item.id;
-              const { saveShopState } = require("@/lib/bananaShop");
               await saveShopState(updated);
               setShopState(updated);
 
