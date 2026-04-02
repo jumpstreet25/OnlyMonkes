@@ -1425,6 +1425,7 @@ export default function ChatScreen() {
             if (nearBottom) setUnreadWhileScrolled(0);
           }}
           scrollEventThrottle={200}
+          estimatedItemSize={80}
         />}
 
         {/* Input */}
