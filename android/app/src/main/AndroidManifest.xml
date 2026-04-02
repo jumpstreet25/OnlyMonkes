@@ -29,7 +29,7 @@
     <meta-data android:name="expo.modules.updates.ENABLED" android:value="true"/>
     <meta-data android:name="expo.modules.updates.EXPO_UPDATE_URL" android:value="https://u.expo.dev/e669ee53-de73-4dfb-9a36-5c22de29c67e"/>
     <meta-data android:name="expo.modules.updates.EXPO_RUNTIME_VERSION" android:value="3.0"/>
-    <meta-data android:name="expo.modules.updates.EXPO_UPDATES_REQUEST_HEADERS" android:value="{&quot;expo-channel-name&quot;:&quot;production&quot;}"/>
+    <meta-data android:name="expo.modules.updates.UPDATES_CONFIGURATION_REQUEST_HEADERS_KEY" android:value="{&quot;expo-channel-name&quot;:&quot;production&quot;}"/>
     <!-- Solana Mobile dApp Store metadata -->
     <meta-data android:name="solana.mobile.dapp_publisher_portal.privacy_policy_url" android:value="https://jumpstreet25.github.io/OnlyMonkes/privacy.html"/>
     <meta-data android:name="solana.mobile.dapp_publisher_portal.new_in_version" android:value="v3.0 — New Architecture (Fabric), Expo SDK 53, React 19, FlashList v2, Skia v2, Free-RASP"/>
