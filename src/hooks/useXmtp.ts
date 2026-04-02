@@ -53,7 +53,7 @@ import { verifyNftMintInCollection } from "@/lib/nftVerification";
 import { cacheProfile, getCachedProfile, loadProfileCache, trackUser, loadAllTimeUsers } from "@/lib/userProfile";
 import { loadWeeklyActivity, trackActivity } from "@/lib/activityTracker";
 import { incrementProgress, updateStreak, getEarnedBadges, type BadgeDef } from "@/lib/badges";
-import { addBananas } from "@/lib/bananaRewards";
+import { processBananaGrant } from "@/lib/bananaGrant";
 import { parseEventMessage, saveEvent } from "@/lib/calendar";
 import {
   fetchAppConfig,
@@ -668,6 +668,16 @@ export function useXmtp() {
           } catch { /* skip */ }
         }
 
+        // Process banana grants from history (deduped by message ID)
+        for (const raw of contentRaws) {
+          try {
+            const c = raw.content();
+            if (typeof c === "string" && c.startsWith("BANANA_GRANT:")) {
+              processBananaGrant(raw.id as string, c, raw.senderInboxId as string, false).catch(() => {});
+            }
+          } catch { /* skip */ }
+        }
+
         // Decode only content messages (skip system prefixes like TYPING, PRESENCE, etc.)
         let decoded = contentRaws
           .map((m) => decodeMessage(m, _myInboxId))
@@ -904,37 +914,9 @@ export function useXmtp() {
           return;
         }
 
-        // ── Banana grant (bot → users) ─────────────────────────────────────
-        // Formats:
-        //   BANANA_GRANT:<amount>                        → all users
-        //   BANANA_GRANT:<amount>:<username>             → specific user only
-        //   BANANA_GRANT:<amount>:*:<exclude1,exclude2>  → all except listed users
-        // Only accepted from bot inbox IDs
+        // ── Banana grant (bot → users, deduped) ────────────────────────────
         if (typeof content === "string" && content.startsWith("BANANA_GRANT:")) {
-          const { BOT_INBOX_IDS } = require("@/lib/constants");
-          const senderId = raw.senderInboxId as string;
-          if (!BOT_INBOX_IDS.includes(senderId)) return; // reject non-bot senders
-          try {
-            const parts = content.slice("BANANA_GRANT:".length).split(":");
-            const amount = parseInt(parts[0], 10);
-            if (!amount || amount <= 0 || amount > 10000) return; // sanity bounds
-            const target = parts[1]?.trim() || null;
-            const excludeRaw = parts[2]?.trim() || null;
-            const myUsername = useAppStore.getState().username;
-            const myLower = myUsername?.toLowerCase() ?? "";
-            // Wildcard with exclusions: BANANA_GRANT:100:*:Rugdoctor,OtherUser
-            if (target === "*" && excludeRaw) {
-              const excluded = excludeRaw.split(",").map(u => u.trim().toLowerCase());
-              if (excluded.includes(myLower)) return; // I'm excluded
-            } else if (target && target !== "*") {
-              // Targeted grant — only matching user receives it
-              if (target.toLowerCase() !== myLower) return;
-            }
-            const newBalance = await addBananas(amount);
-            useAppStore.getState().setBananaBalance(newBalance);
-            const { Alert } = require("react-native");
-            Alert.alert("🍌 Banana Airdrop!", `You received ${amount} bananas!`, [{ text: "Nice!" }]);
-          } catch { /* ignore */ }
+          processBananaGrant(raw.id as string, content, raw.senderInboxId as string, true).catch(() => {});
           return;
         }
 
