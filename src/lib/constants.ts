@@ -1,11 +1,23 @@
+import {
+  HELIUS_API_KEY as ENV_HELIUS,
+  GIPHY_API_KEY as ENV_GIPHY,
+  CLOUDINARY_CLOUD_NAME as ENV_CLOUD_NAME,
+  CLOUDINARY_UPLOAD_PRESET as ENV_CLOUD_PRESET,
+  LIVEKIT_URL as ENV_LK_URL,
+  LIVEKIT_TOKEN_URL as ENV_LK_TOKEN,
+  JUP_API_KEY as ENV_JUP,
+  SKR_MINT as ENV_SKR,
+  DEV_WALLET as ENV_DEV,
+  SENTRY_DSN as ENV_SENTRY,
+} from '@env';
 import Constants from 'expo-constants';
 
 export const APP_NAME = 'OnlyMonkes';
 
 // ─── SKR Token ────────────────────────────────────────────────────────────────
-export const SKR_MINT = 'SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3';
+export const SKR_MINT = ENV_SKR || 'SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3';
 // Jump.skr developer wallet — receives tips + trading fees
-export const DEV_WALLET = '7tLrnPvgcR5mLtyUcVwvmhAD1wXbAKgWcLBPWxpwyZ1J';
+export const DEV_WALLET = ENV_DEV || '7tLrnPvgcR5mLtyUcVwvmhAD1wXbAKgWcLBPWxpwyZ1J';
 
 // Trading fees — paid to DEV_WALLET
 export const NFT_SALE_FEE_PCT = 0.02;   // 2% on NFT sales
@@ -17,8 +29,14 @@ export const TIP_MIN = 1;
 export const TIP_MAX = 500;
 export const COLLECTION_NAME = 'Saga Monkes';
 export const NFT_COLLECTION_ADDRESS = 'GokAiStXz2Kqbxwz2oqzfEXuUhE7aXySmBGEP7uejKXF';
-export const HELIUS_API_KEY: string =
-  (Constants.expoConfig?.extra?.heliusApiKey as string) || '';
+export const HELIUS_API_KEY: string = ENV_HELIUS || '';
+export const GIPHY_API_KEY: string = ENV_GIPHY || '';
+export const CLOUDINARY_CLOUD_NAME: string = ENV_CLOUD_NAME || '';
+export const CLOUDINARY_UPLOAD_PRESET: string = ENV_CLOUD_PRESET || '';
+export const LIVEKIT_URL_ENV: string = ENV_LK_URL || '';
+export const LIVEKIT_TOKEN_URL_ENV: string = ENV_LK_TOKEN || '';
+export const JUP_API_KEY: string = ENV_JUP || '';
+export const SENTRY_DSN_ENV: string = ENV_SENTRY || '';
 export const HELIUS_RPC_URL = `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`;
 export const SOLANA_RPC_URL = 'https://api.mainnet-beta.solana.com';
 

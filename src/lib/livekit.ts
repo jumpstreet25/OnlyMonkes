@@ -9,12 +9,10 @@
  *   LIVEKIT_TOKEN_URL   — Firebase Cloud Function URL for getLivekitToken
  */
 
-import Constants from 'expo-constants';
+import { LIVEKIT_URL_ENV, LIVEKIT_TOKEN_URL_ENV } from '@/lib/constants';
 
-const extra = (Constants.expoConfig?.extra as Record<string, string>) ?? {};
-
-export const LK_URL       = extra.livekitUrl      || '';
-const LK_TOKEN_URL        = extra.livekitTokenUrl  || 'https://onlymonkes-livekit-token.jumpstreet25.workers.dev';
+export const LK_URL       = LIVEKIT_URL_ENV;
+const LK_TOKEN_URL        = LIVEKIT_TOKEN_URL_ENV || 'https://onlymonkes-livekit-token.jumpstreet25.workers.dev';
 
 export function livekitConfigured(): boolean {
   return !!(LK_URL && LK_TOKEN_URL);
