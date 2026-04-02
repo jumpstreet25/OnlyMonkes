@@ -53,6 +53,43 @@ import { BlinkCard } from "@/components/BlinkCard";
 import { extractBlinkUrl } from "@/lib/blinkActions";
 import { OnlineDot } from "@/components/OnlineDot";
 import { isUserOnline } from "@/lib/presence";
+
+// ─── Pulse Frame — animated ring for Tier 3 PFP shop item ─────────────────
+function PulseRing({ color }: { color: string }) {
+  const pulseAnim = useRef(new Animated.Value(0.3)).current;
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.parallel([
+        Animated.sequence([
+          Animated.timing(pulseAnim, { toValue: 0.8, duration: 1200, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 0.3, duration: 1200, useNativeDriver: true }),
+        ]),
+        Animated.sequence([
+          Animated.timing(scaleAnim, { toValue: 1.15, duration: 1200, useNativeDriver: true }),
+          Animated.timing(scaleAnim, { toValue: 1, duration: 1200, useNativeDriver: true }),
+        ]),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, []);
+  return (
+    <Animated.View
+      style={{
+        position: "absolute",
+        width: 38,
+        height: 38,
+        borderRadius: 19,
+        borderWidth: 2,
+        borderColor: color,
+        opacity: pulseAnim,
+        transform: [{ scale: scaleAnim }],
+      }}
+      pointerEvents="none"
+    />
+  );
+}
 import { hasThread, getThreadMeta } from "@/lib/threads";
 import { router } from "expo-router";
 
@@ -332,6 +369,7 @@ export const MessageBubble = memo(function MessageBubble({
   const verifiedNft = useAppStore(s => s.verifiedNft);
   const myInboxId = useAppStore(s => s.myInboxId);
   const shopStyles = useAppStore(s => s.shopStyles);
+  const nftDominantColor = useAppStore(s => s.nftDominantColor);
   const { width: SCREEN_W } = useWindowDimensions();
   // Max bubble width is 72% of screen minus horizontal padding (14px each side)
   const mediaWidth = Math.round(SCREEN_W * 0.72 - 28);
@@ -550,7 +588,17 @@ export const MessageBubble = memo(function MessageBubble({
       {!centerBubble && (
         <Pressable onPress={handlePressAvatar} hitSlop={6} style={styles.avatarOuter}>
           <View style={styles.avatarHue} />
-          <View style={styles.avatarFloat}>
+          {/* Tier 3: Pulse Frame — animated ring around PFP */}
+          {isOwn && shopStyles.pfpFrame === "pulse" && (
+            <PulseRing color={nftDominantColor ?? SOLANA_PURPLE} />
+          )}
+          <View style={[
+            styles.avatarFloat,
+            // Tier 3: PFP Aura — NFT color replaces Solana purple glow
+            isOwn && shopStyles.pfpAuraEnabled && nftDominantColor ? {
+              shadowColor: nftDominantColor,
+            } : null,
+          ]}>
             {avatarUri ? (
               <Image source={{ uri: avatarUri }} style={styles.avatarImg} />
             ) : isBot ? (
@@ -623,6 +671,12 @@ export const MessageBubble = memo(function MessageBubble({
                 shadowOpacity: (shopStyles.glowOpacity as number) ?? 0.6,
                 shadowRadius: (shopStyles.glowRadius as number) ?? 16,
               } : null,
+              // Tier 3: PFP Color Theme — NFT dominant color as bubble glow
+              isOwn && shopStyles.pfpThemeEnabled && nftDominantColor && !shopStyles.glowColor ? {
+                shadowColor: nftDominantColor,
+                shadowOpacity: 0.7,
+                shadowRadius: 18,
+              } : null,
             ]}>
               {/* Actual bubble — background, border, gradient, content */}
               <View style={[
@@ -634,6 +688,8 @@ export const MessageBubble = memo(function MessageBubble({
                 isOwn && shopStyles.bgColor ? { backgroundColor: shopStyles.bgColor as string } : null,
                 isOwn && shopStyles.bgOpacity != null ? { backgroundColor: `rgba(26, 26, 40, ${shopStyles.bgOpacity})` } : null,
                 isOwn && shopStyles.borderOpacity != null ? { borderColor: `rgba(248, 248, 255, ${shopStyles.borderOpacity})` } : null,
+                // Tier 3: PFP Color Theme — NFT color as border tint
+                isOwn && shopStyles.pfpThemeEnabled && nftDominantColor ? { borderColor: nftDominantColor + "30" } : null,
               ]}>
                 {/* Inner gradient overlay — top lighter, bottom darker */}
                 <LinearGradient
@@ -703,7 +759,7 @@ export const MessageBubble = memo(function MessageBubble({
                       styles.content,
                       { color: textColor },
                       isOwn && shopStyles.fontWeight === "bold" ? { fontWeight: "bold" } : null,
-                      isOwn && shopStyles.fontFamily === "mono" ? { fontFamily: "JetBrainsMono-Regular" } : null,
+                      isOwn && shopStyles.fontFamily === "mono" ? { fontFamily: FONTS.mono } : null,
                     ]}
                     numberOfLines={showBotExpand && !botExpanded ? 9 : undefined}
                     selectable

@@ -55,6 +55,9 @@ import { THEME, FONTS, SKR_MINT } from "@/lib/constants";
 import { loadUserProfile, getCachedProfile, getAllTimeUsers, saveSelectedNftMint, cacheProfile } from "@/lib/userProfile";
 import { checkAndUpdateStreak } from "@/lib/streaks";
 import { claimDailyBananas, addBananas, type ClaimResult } from "@/lib/bananaRewards";
+import { getEquippedStyles } from "@/lib/bananaShop";
+import { getOrExtractNftColor } from "@/lib/nftColor";
+import { applyThemeFromShop } from "@/lib/shopTheme";
 import { BananaClaimModal } from "@/components/BananaClaimModal";
 import { checkBananaNotifications } from "@/lib/bananaNotifications";
 import { OnboardingOverlay, hasCompletedOnboarding } from "@/components/OnboardingOverlay";
@@ -258,6 +261,19 @@ export default function ChatScreen() {
       const claim = await claimDailyBananas();
       useAppStore.getState().setBananaBalance(claim.balance);
       if (claim.claimed) setBananaClaim(claim);
+      // Load equipped Banana Shop styles for MessageBubble rendering
+      getEquippedStyles().then(s => {
+        useAppStore.getState().setShopStyles(s);
+        // Apply Tier 4 theme overrides if a theme is equipped
+        applyThemeFromShop(s);
+      }).catch(() => {});
+      // Extract NFT dominant color for Tier 3 PFP styles
+      const nft = useAppStore.getState().verifiedNft;
+      if (nft?.image) {
+        getOrExtractNftColor(nft.image, nft.mint ?? "nft").then(c => {
+          useAppStore.getState().setNftDominantColor(c);
+        }).catch(() => {});
+      }
       // Schedule banana-related push notifications
       checkBananaNotifications().catch(() => {});
       // Check for new badges

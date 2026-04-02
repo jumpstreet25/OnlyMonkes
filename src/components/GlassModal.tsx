@@ -43,6 +43,8 @@ interface GlassModalProps {
   persistent?: boolean;
   /** Animation type */
   animationType?: "fade" | "slide" | "none";
+  /** Override glass background (for theme support) */
+  glassBg?: string;
 }
 
 export function GlassModal({
@@ -53,6 +55,7 @@ export function GlassModal({
   cardStyle,
   persistent = false,
   animationType = "fade",
+  glassBg,
 }: GlassModalProps) {
   return (
     <Modal
@@ -82,6 +85,7 @@ export function GlassModal({
             styles.card,
             position === "bottom" ? styles.cardBottom : styles.cardCenter,
             cardStyle,
+            glassBg ? { backgroundColor: glassBg } : null,
           ]}
         >
           {/* Inner gradient — top lighter, bottom darker */}

@@ -80,6 +80,9 @@ interface AppState {
   isLegendary: boolean;
   // Banana rewards
   bananaBalance: number;
+  shopStyles: Record<string, string | number | boolean>;
+  nftDominantColor: string | null;  // Extracted from user's NFT PFP for Tier 3/4 shop styles
+  themeOverrides: Partial<typeof import('@/lib/constants').THEME> | null;  // Tier 4 theme overrides
   // Push notifications
   expoPushToken: string | null;
   // Live audio room
@@ -141,6 +144,9 @@ interface AppActions {
   addCalendarEvent: (event: CalendarEvent) => void;
   setLoginStreak: (streak: number, best: number, legendary: boolean) => void;
   setBananaBalance: (balance: number) => void;
+  setShopStyles: (styles: Record<string, string | number | boolean>) => void;
+  setNftDominantColor: (color: string | null) => void;
+  setThemeOverrides: (overrides: Partial<typeof import('@/lib/constants').THEME> | null) => void;
   setExpoPushToken: (token: string | null) => void;
   setActiveLiveRoom: (room: LiveRoomState | null) => void;
   updateLiveRoomCount: (count: number) => void;
@@ -198,6 +204,9 @@ const initialState: AppState = {
   bestStreak: 0,
   isLegendary: false,
   bananaBalance: 0,
+  shopStyles: {},
+  nftDominantColor: null,
+  themeOverrides: null,
   expoPushToken: null,
   activeLiveRoom: null,
   isInLiveRoom: false,
@@ -291,6 +300,9 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   addCalendarEvent: (event) => set((s) => ({ calendarEvents: [...s.calendarEvents, event] })),
   setLoginStreak: (loginStreak, bestStreak, isLegendary) => set({ loginStreak, bestStreak, isLegendary }),
   setBananaBalance: (bananaBalance) => set({ bananaBalance }),
+  setShopStyles: (shopStyles) => set({ shopStyles }),
+  setNftDominantColor: (nftDominantColor) => set({ nftDominantColor }),
+  setThemeOverrides: (themeOverrides) => set({ themeOverrides }),
   setExpoPushToken: (expoPushToken) => set({ expoPushToken }),
   setActiveLiveRoom: (activeLiveRoom) => set({ activeLiveRoom }),
   updateLiveRoomCount: (count) =>
