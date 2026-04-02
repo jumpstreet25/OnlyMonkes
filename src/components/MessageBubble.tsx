@@ -331,6 +331,7 @@ export const MessageBubble = memo(function MessageBubble({
 }: MessageBubbleProps) {
   const verifiedNft = useAppStore(s => s.verifiedNft);
   const myInboxId = useAppStore(s => s.myInboxId);
+  const shopStyles = useAppStore(s => s.shopStyles);
   const { width: SCREEN_W } = useWindowDimensions();
   // Max bubble width is 72% of screen minus horizontal padding (14px each side)
   const mediaWidth = Math.round(SCREEN_W * 0.72 - 28);
@@ -575,7 +576,10 @@ export const MessageBubble = memo(function MessageBubble({
             isOwn && !centerBubble && styles.senderRowOwn,
             centerBubble && styles.senderRowCenter,
           ]}>
-            <Text style={styles.sender}>
+            <Text style={[
+              styles.sender,
+              isOwn && shopStyles.nameColor ? { color: shopStyles.nameColor as string } : null,
+            ]}>
               {isOwn ? "You" : displayName}{isLegendarySender ? ' 🌟' : ''}{badgeEmojis ? ` ${badgeEmojis}` : ''}
             </Text>
             {!isOwn && <OnlineDot online={isUserOnline(message.senderAddress)} />}
@@ -613,6 +617,12 @@ export const MessageBubble = memo(function MessageBubble({
               isOwn && !centerBubble ? styles.glassGlowOwn : null,
               !isOwn && !centerBubble ? styles.glassGlowOther : null,
               centerBubble && styles.glassGlowBot,
+              // Shop: custom glow color/radius for own bubbles
+              isOwn && shopStyles.glowColor ? {
+                shadowColor: shopStyles.glowColor as string,
+                shadowOpacity: (shopStyles.glowOpacity as number) ?? 0.6,
+                shadowRadius: (shopStyles.glowRadius as number) ?? 16,
+              } : null,
             ]}>
               {/* Actual bubble — background, border, gradient, content */}
               <View style={[
@@ -620,6 +630,10 @@ export const MessageBubble = memo(function MessageBubble({
                 isOwn && !centerBubble ? styles.glassBubbleOwn : null,
                 !isOwn && !centerBubble ? styles.glassBubbleOther : null,
                 centerBubble && styles.glassBubbleBot,
+                // Shop: custom bubble background for own bubbles
+                isOwn && shopStyles.bgColor ? { backgroundColor: shopStyles.bgColor as string } : null,
+                isOwn && shopStyles.bgOpacity != null ? { backgroundColor: `rgba(26, 26, 40, ${shopStyles.bgOpacity})` } : null,
+                isOwn && shopStyles.borderOpacity != null ? { borderColor: `rgba(248, 248, 255, ${shopStyles.borderOpacity})` } : null,
               ]}>
                 {/* Inner gradient overlay — top lighter, bottom darker */}
                 <LinearGradient
@@ -685,7 +699,12 @@ export const MessageBubble = memo(function MessageBubble({
               ) : (
                 <View style={{ gap: 4 }}>
                   <Text
-                    style={[styles.content, { color: textColor }]}
+                    style={[
+                      styles.content,
+                      { color: textColor },
+                      isOwn && shopStyles.fontWeight === "bold" ? { fontWeight: "bold" } : null,
+                      isOwn && shopStyles.fontFamily === "mono" ? { fontFamily: "JetBrainsMono-Regular" } : null,
+                    ]}
                     numberOfLines={showBotExpand && !botExpanded ? 9 : undefined}
                     selectable
                   >

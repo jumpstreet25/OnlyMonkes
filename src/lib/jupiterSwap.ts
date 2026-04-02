@@ -31,14 +31,10 @@ import {
   transact,
   Web3MobileWallet,
 } from "@solana-mobile/mobile-wallet-adapter-protocol-web3js";
-import Constants from "expo-constants";
-import { HELIUS_RPC_URL, DEV_WALLET, TOKEN_TRADE_FEE_PCT } from "./constants";
+import { HELIUS_RPC_URL, DEV_WALLET, TOKEN_TRADE_FEE_PCT, JUP_API_KEY } from "./constants";
 import { useAppStore } from "@/store/appStore";
 import { loadCostBasis, recordBuy, getCostBasis, recordSell } from "./costBasis";
 import bs58 from "bs58";
-
-const JUP_API_KEY: string =
-  (Constants.expoConfig?.extra?.jupApiKey as string) || "";
 
 const JUP_BUILD_URL = "https://api.jup.ag/swap/v2/build";
 const JUP_TOKEN_LIST_URL = "https://token.jup.ag/strict";

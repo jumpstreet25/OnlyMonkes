@@ -1,10 +1,10 @@
-import Constants from 'expo-constants';
 import * as VideoThumbnails from 'expo-video-thumbnails';
 import * as FileSystem from 'expo-file-system';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
+import { CLOUDINARY_CLOUD_NAME, CLOUDINARY_UPLOAD_PRESET } from '@/lib/constants';
 
-const CLOUD_NAME = Constants.expoConfig?.extra?.cloudinaryCloudName as string;
-const UPLOAD_PRESET = Constants.expoConfig?.extra?.cloudinaryUploadPreset as string;
+const CLOUD_NAME = CLOUDINARY_CLOUD_NAME;
+const UPLOAD_PRESET = CLOUDINARY_UPLOAD_PRESET;
 const THUMB_DIR = FileSystem.cacheDirectory + 'video_thumbs/';
 
 /**

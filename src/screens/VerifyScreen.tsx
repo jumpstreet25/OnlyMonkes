@@ -120,8 +120,7 @@ export default function VerifyScreen() {
         setIsGuest(true);
         router.replace("/marketplace");
       } else {
-        // Nothing for sale in-app → send to Magic Eden
-        Linking.openURL(MAGIC_EDEN_URL);
+        // Nothing for sale in-app — show nft-fail screen with marketplace links
         setPhase("nft-fail");
       }
       return;
@@ -227,7 +226,7 @@ export default function VerifyScreen() {
             <View style={styles.whyBlock}>
               <Text style={styles.whyTitle}>Why Saga Monkes?</Text>
               {[
-                "🐒  Rare — only 1,000 exist on Solana",
+                "🐒  Rare — only 10,000 exist on Solana",
                 "🔐  Private group chat via XMTP encryption",
                 "📈  Live AI trading signals & alerts",
                 "🎙  Voice rooms & holder-only events",
