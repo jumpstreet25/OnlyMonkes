@@ -32,7 +32,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     fallbackToCacheTimeout: 5000,
     checkAutomatically: 'ON_LOAD',
   },
-  runtimeVersion: '2.34',
+  runtimeVersion: '3.0',
   plugins: [
     'expo-router',
     'expo-secure-store',
