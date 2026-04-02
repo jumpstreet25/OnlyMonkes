@@ -209,14 +209,33 @@ function init() {
       var m1 = addUserMarker(group[0], centerPos);
       if (m1) locationMeshes[locKey].push(m1);
     } else {
-      // 2+ users -- show top PFP with count badge, tap opens carousel
-      var topMarker = addUserMarker(group[0], centerPos);
-      if (topMarker) {
-        // Store all markers so tap opens the carousel bottom sheet
-        topMarker.userData = { type: 'cluster', locKey: locKey, count: group.length, markers: group, label: group[0].label };
-        locationMeshes[locKey].push(topMarker);
+      // 2+ users -- stacked PFPs like Google Maps, tap opens carousel
+      var dir = centerPos.clone().normalize();
+      var right = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(0,1,0)).normalize();
+      var up = new THREE.Vector3().crossVectors(right, dir).normalize();
+
+      // Show up to 3 stacked PFPs, offset like fanned cards
+      var stackCount = Math.min(group.length, 3);
+      var stackOffset = 0.032; // spacing between stacked PFPs
+
+      // Render back-to-front so the first user is on top
+      for (var i = stackCount - 1; i >= 0; i--) {
+        var offsetPos = centerPos.clone();
+        // Fan rightward and slightly down for each card behind
+        offsetPos.add(right.clone().multiplyScalar(i * stackOffset));
+        offsetPos.add(up.clone().multiplyScalar(-i * stackOffset * 0.5));
+        // Lift slightly above globe so stacked cards don't z-fight
+        offsetPos.add(dir.clone().multiplyScalar(i * 0.003));
+
+        var stackMarker = addUserMarker(group[i], offsetPos);
+        if (stackMarker) {
+          // All stacked PFPs open the carousel on tap
+          stackMarker.userData = { type: 'cluster', locKey: locKey, count: group.length, markers: group, label: group[i].label };
+          locationMeshes[locKey].push(stackMarker);
+        }
       }
-      // Count badge
+
+      // Count badge in upper-right corner of the stack
       var canvas = document.createElement('canvas');
       canvas.width = 48; canvas.height = 48;
       var ctx = canvas.getContext('2d');
@@ -235,14 +254,11 @@ function init() {
       var tex = new THREE.CanvasTexture(canvas);
       var badgeMat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
       var badge = new THREE.Sprite(badgeMat);
-      var dir = centerPos.clone().normalize();
-      badge.position.copy(centerPos).add(dir.clone().multiplyScalar(0.02));
-      // Offset badge to upper-right of the PFP
-      var right = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(0,1,0)).normalize();
-      var up = new THREE.Vector3().crossVectors(right, dir).normalize();
-      badge.position.add(right.multiplyScalar(0.035));
-      badge.position.add(up.multiplyScalar(0.035));
-      badge.scale.set(0.045, 0.045, 1);
+      badge.position.copy(centerPos);
+      badge.position.add(dir.clone().multiplyScalar(0.02));
+      badge.position.add(right.clone().multiplyScalar(0.045));
+      badge.position.add(up.clone().multiplyScalar(0.045));
+      badge.scale.set(0.04, 0.04, 1);
       badge.userData = { type: 'cluster', locKey: locKey, count: group.length, markers: group };
       globe.add(badge);
       markerMeshes.push(badge);
