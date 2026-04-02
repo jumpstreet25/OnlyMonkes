@@ -1,4 +1,9 @@
 import { ExpoConfig, ConfigContext } from 'expo/config';
+import * as dotenv from 'dotenv';
+import * as path from 'path';
+
+// Ensure .env is loaded regardless of how the bundler is spawned
+dotenv.config({ path: path.resolve(__dirname, '.env') });
 
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,

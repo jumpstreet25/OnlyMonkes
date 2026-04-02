@@ -35,8 +35,7 @@ import {
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
 import * as Clipboard from "expo-clipboard";
-import Constants from "expo-constants";
-import { THEME, FONTS } from "@/lib/constants";
+import { THEME, FONTS, SKR_MINT, JUP_API_KEY } from "@/lib/constants";
 import { useChatStore } from "@/store/chatStore";
 import { useAppStore } from "@/store/appStore";
 import { getCachedProfile, useProfileVersion } from "@/lib/userProfile";
@@ -898,9 +897,8 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
 const DEV_WALLET = "7tLrnPvgcR5mLtyUcVwvmhAD1wXbAKgWcLBPWxpwyZ1J";
 
 function buildSupportLink(amount?: number): string {
-  const extra = (Constants.expoConfig?.extra ?? {}) as Record<string, string>;
-  const skrMint = extra.skrMint || "";
-  const jupApiKey = extra.jupApiKey || "";
+  const skrMint = SKR_MINT;
+  const jupApiKey = JUP_API_KEY;
 
   if (skrMint) {
     // Solana Pay: opens Seed Vault / any Solana wallet to send SKR directly

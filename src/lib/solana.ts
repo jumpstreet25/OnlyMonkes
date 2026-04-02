@@ -34,8 +34,7 @@ import {
   transact,
   Web3MobileWallet,
 } from "@solana-mobile/mobile-wallet-adapter-protocol-web3js";
-import Constants from "expo-constants";
-import { HELIUS_RPC_URL, SKR_MINT, DEV_WALLET } from "./constants";
+import { HELIUS_RPC_URL, SKR_MINT, DEV_WALLET, JUP_API_KEY } from "./constants";
 import { useAppStore } from "@/store/appStore";
 import bs58 from "bs58";
 
@@ -48,8 +47,6 @@ const APP_IDENTITY = {
 const DEV_FEE_PERCENT = 0.05;
 
 const SOL_MINT = "So11111111111111111111111111111111111111112";
-const JUP_API_KEY: string =
-  (Constants.expoConfig?.extra?.jupApiKey as string) || "";
 
 /**
  * Re-authorize using the cached MWA auth token (biometric prompt, no app switch).
@@ -86,6 +83,55 @@ async function mwaAuthorize(mobileWallet: Web3MobileWallet): Promise<PublicKey> 
 
   const pubkeyBytes = typeof addrRaw === "string" ? Buffer.from(addrRaw, "base64") : addrRaw;
   return new PublicKey(pubkeyBytes);
+}
+
+/**
+ * Send SOL to DEV_WALLET for Banana Shop purchases.
+ * @param usdCost  The item's USD price ($1-4)
+ * @param solPrice Current SOL price in USD
+ * @returns transaction signature
+ */
+export async function sendShopPayment(
+  usdCost: number,
+  solPrice: number,
+): Promise<string> {
+  if (!Number.isFinite(usdCost) || usdCost <= 0 || usdCost > 10) {
+    throw new Error("Invalid purchase amount");
+  }
+  if (!Number.isFinite(solPrice) || solPrice <= 0) {
+    throw new Error("Could not fetch SOL price");
+  }
+
+  const solAmount = usdCost / solPrice;
+  const lamports = Math.ceil(solAmount * 1e9);
+  const connection = new Connection(HELIUS_RPC_URL, "confirmed");
+  const devPubkey = new PublicKey(DEV_WALLET);
+
+  const { SystemProgram } = await import("@solana/web3.js");
+
+  const signature = await transact(async (mobileWallet: Web3MobileWallet) => {
+    const senderPubkey = await mwaAuthorize(mobileWallet);
+
+    const { blockhash } = await connection.getLatestBlockhash("confirmed");
+
+    const tx = new Transaction({
+      recentBlockhash: blockhash,
+      feePayer: senderPubkey,
+    }).add(
+      SystemProgram.transfer({
+        fromPubkey: senderPubkey,
+        toPubkey: devPubkey,
+        lamports,
+      }),
+    );
+
+    const signedTxs = await mobileWallet.signAndSendTransactions({
+      transactions: [tx],
+    });
+    return bs58.encode(signedTxs[0]);
+  });
+
+  return signature;
 }
 
 /**

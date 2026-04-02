@@ -6,9 +6,9 @@
  */
 import * as Sentry from '@sentry/react-native';
 import Constants from 'expo-constants';
+import { SENTRY_DSN_ENV } from '@/lib/constants';
 
-const SENTRY_DSN: string =
-  (Constants.expoConfig?.extra?.sentryDsn as string) || '';
+const SENTRY_DSN: string = SENTRY_DSN_ENV;
 
 export function initSentry() {
   if (!SENTRY_DSN) {
