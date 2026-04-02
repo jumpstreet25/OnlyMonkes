@@ -179,7 +179,7 @@ export async function registerForPushNotifications(): Promise<string | null> {
     // Return cached raw FCM token if we have one (FCM tokens are stable per install)
     const stored = await SecureStore.getItemAsync(SK_PUSH_TOKEN);
     if (stored && !stored.startsWith('ExponentPushToken')) {
-      console.log('[Notifications] Cached FCM token:', stored.slice(0, 30) + '…');
+      if (__DEV__) console.log('[Notifications] Cached FCM token:', stored.slice(0, 30) + '…');
       return stored;
     }
     // Stale Expo token or no token — clear and fetch a raw FCM token
@@ -191,7 +191,7 @@ export async function registerForPushNotifications(): Promise<string | null> {
     const token: string = tokenResponse.data as string;
 
     await SecureStore.setItemAsync(SK_PUSH_TOKEN, token);
-    console.log('[Notifications] FCM device token registered:', token.slice(0, 40) + '…');
+    if (__DEV__) console.log('[Notifications] FCM device token registered:', token.slice(0, 40) + '…');
     return token;
   } catch (err) {
     console.warn('[Notifications] registerForPushNotifications failed:', err);
@@ -223,7 +223,7 @@ export async function registerForExpoPushToken(): Promise<string | null> {
 
     const tokenResponse = await Notifications.getExpoPushTokenAsync({ projectId });
     const token: string = tokenResponse.data as string;
-    console.log('[Notifications] Expo push token:', token.slice(0, 40) + '…');
+    if (__DEV__) console.log('[Notifications] Expo push token:', token.slice(0, 40) + '…');
     return token;
   } catch (err) {
     console.warn('[Notifications] registerForExpoPushToken failed:', err);

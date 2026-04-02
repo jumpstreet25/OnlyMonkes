@@ -164,7 +164,7 @@ async function _doProfileRebroadcast(pushToken: string): Promise<void> {
       undefined, // location (not available here)
       getEarnedBadges(),
     );
-    console.log('[XMTP] Re-broadcast profile with push token:', pushToken.slice(0, 30) + '…');
+    if (__DEV__) console.log('[XMTP] Re-broadcast profile with push token:', pushToken.slice(0, 30) + '…');
   } catch { /* non-critical */ }
 }
 
@@ -220,7 +220,7 @@ export function useXmtp() {
 
       // Ensure caches are loaded before we start processing messages
       await cacheReady;
-      console.log("[XMTP] client inboxId:", client.inboxId);
+      if (__DEV__) console.log("[XMTP] client inboxId:", client.inboxId);
       _client = client;
       setXmtpClient(client as unknown as null);
       setMyInboxId(client.inboxId);
@@ -400,10 +400,10 @@ export function useXmtp() {
                   if (req.nftMint) {
                     const validNft = await verifyNftMintInCollection(req.nftMint);
                     if (!validNft) {
-                      console.log("[XMTP] NFT verification failed for", req.inboxId, "— skipping auto-approve");
+                      if (__DEV__) console.log("[XMTP] NFT verification failed for", req.inboxId, "— skipping auto-approve");
                       continue;
                     }
-                    console.log("[XMTP] NFT verified for", req.inboxId, "— auto-admitting");
+                    if (__DEV__) console.log("[XMTP] NFT verified for", req.inboxId, "— auto-admitting");
                   }
                   await addMemberToGroup(group as XmtpGroup, req.inboxId);
 
@@ -416,7 +416,7 @@ export function useXmtp() {
                         const ch = await client.conversations.findGroup(chId as any);
                         if (ch) {
                           await (ch as any).addMembers([req.inboxId]);
-                          console.log(`[XMTP] Added ${req.inboxId.slice(0, 8)}… to ${name} channel`);
+                          if (__DEV__) console.log(`[XMTP] Added ${req.inboxId.slice(0, 8)}… to ${name} channel`);
                         }
                       } catch { /* already a member or non-critical */ }
                     }
@@ -424,9 +424,9 @@ export function useXmtp() {
 
                   approvedSet.add(req.inboxId);
                   useAppStore.getState().removeJoinRequest(req.inboxId);
-                  console.log("[XMTP] Auto-approved:", req.inboxId);
+                  if (__DEV__) console.log("[XMTP] Auto-approved:", req.inboxId);
                 } catch (approveErr) {
-                  console.warn("[XMTP] Failed to auto-approve", req.inboxId, approveErr);
+                  if (__DEV__) console.warn("[XMTP] Failed to auto-approve", req.inboxId, approveErr);
                   // Do NOT add to approvedSet — leave visible in admin panel for manual action.
                 }
               }
@@ -1178,7 +1178,7 @@ export function useXmtp() {
             // Also fetch Expo push token for client-side DM relay
             let expoPushToken: string | null = await registerForExpoPushToken();
             if (expoPushToken) useAppStore.getState().setExpoPushToken(expoPushToken);
-            console.log('[XMTP] Profile broadcast, FCM token:', pushToken ? pushToken.slice(0, 30) + '…' : 'none',
+            if (__DEV__) console.log('[XMTP] Profile broadcast, FCM token:', pushToken ? pushToken.slice(0, 30) + '…' : 'none',
               'Expo token:', expoPushToken ? expoPushToken.slice(0, 40) + '…' : 'none');
             await sendProfileUpdate(
               group as XmtpGroup,
@@ -1475,7 +1475,7 @@ export function useXmtp() {
       if (!_group) throw new Error("Not in a group");
       await addMemberToGroup(_group, inboxId);
       useAppStore.getState().removeJoinRequest(inboxId);
-      console.log("[XMTP] Added", inboxId, "to the group.");
+      if (__DEV__) console.log("[XMTP] Added", inboxId, "to the group.");
     },
     []
   );
