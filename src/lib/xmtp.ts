@@ -285,6 +285,7 @@ function decodeStringMessage(raw: any, rawContent: string, myInboxId: string): C
   if (rawContent.startsWith("NFT_COMPLETE:")) return null;
   if (rawContent.startsWith("AUTOMONKE_STATUS:")) return null;
   if (rawContent.startsWith("READ:")) return null;
+  if (rawContent.startsWith("BANANA_GRANT:")) return null;
 
   const { username, inner } = parseContent(rawContent);
 
