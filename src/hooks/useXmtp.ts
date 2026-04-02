@@ -673,7 +673,7 @@ export function useXmtp() {
           try {
             const c = raw.content();
             if (typeof c === "string" && c.startsWith("BANANA_GRANT:")) {
-              processBananaGrant(raw.id as string, c, raw.senderInboxId as string, false).catch(() => {});
+              processBananaGrant(raw.id as string, c, raw.senderInboxId as string, _myInboxId, false).catch(() => {});
             }
           } catch { /* skip */ }
         }
@@ -916,7 +916,7 @@ export function useXmtp() {
 
         // ── Banana grant (bot → users, deduped) ────────────────────────────
         if (typeof content === "string" && content.startsWith("BANANA_GRANT:")) {
-          processBananaGrant(raw.id as string, content, raw.senderInboxId as string, true).catch(() => {});
+          processBananaGrant(raw.id as string, content, raw.senderInboxId as string, _myInboxId, true).catch(() => {});
           return;
         }
 
