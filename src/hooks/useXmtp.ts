@@ -738,10 +738,20 @@ export function useXmtp() {
       recentMessages.sort((a, b) => a.sentAt.getTime() - b.sentAt.getTime());
 
       if (recentMessages.length > 0) {
-        setMessages(recentMessages);
+        // Merge with existing messages (cached + stream) instead of replacing.
+        // This prevents older messages from disappearing when history only
+        // covers last 24h / 50 messages.
+        const existing = useChatStore.getState().messages;
+        const existingIds = new Set(existing.map(m => m.id));
+        const newFromHistory = recentMessages.filter(m => !existingIds.has(m.id));
+        if (newFromHistory.length > 0 || existing.length === 0) {
+          const merged = [...existing, ...newFromHistory];
+          merged.sort((a, b) => a.sentAt.getTime() - b.sentAt.getTime());
+          setMessages(merged);
+        }
       }
       // If network returned 0 visible messages, keep the cached set already
-      // loaded at line 503 — don't overwrite with empty array.
+      // loaded at line 553 — don't overwrite with empty array.
       setLoadingHistory(false); // UI is ready
 
       // ── Reconstruct pinned messages from history ──────────────────────────
