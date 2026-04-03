@@ -45,6 +45,7 @@ import { useAppStore } from "@/store/appStore";
 import { useChatStore } from "@/store/chatStore";
 import { useXmtp, triggerProfileRebroadcast } from "@/hooks/useXmtp";
 import { playSound } from "@/lib/sounds";
+import { useNetInfo } from "@react-native-community/netinfo";
 import { MessageBubble } from "@/components/MessageBubble";
 import { SkiaGlowPfp } from "@/components/SkiaGlowBubble";
 import { ChatInput } from "@/components/ChatInput";
@@ -137,6 +138,8 @@ function LazyVideo({ uri }: { uri: string }) {
 
 export default function ChatScreen() {
   const insets = useSafeAreaInsets();
+  const netInfo = useNetInfo();
+  const isOffline = netInfo.isConnected === false;
   // ── Zustand selectors — subscribe only to fields this screen reads ──────────
   const verifiedNft      = useAppStore(s => s.verifiedNft);
   const allNfts          = useAppStore(s => s.allNfts);
@@ -1251,6 +1254,15 @@ export default function ChatScreen() {
             </View>
           )}
         </View>
+
+        {/* ── Offline indicator ────────────────────────────────────────── */}
+        {isOffline && (
+          <View style={{ backgroundColor: "rgba(255,80,80,0.15)", paddingVertical: 4, paddingHorizontal: 12, alignItems: "center" }}>
+            <Text style={{ fontFamily: FONTS.body, fontSize: 12, color: "#ff6b6b" }}>
+              No connection — messages will send when back online
+            </Text>
+          </View>
+        )}
 
         {/* ── Connecting… spinner (before group state is known) ──────────── */}
         {isLoading && !isGroupMember && (

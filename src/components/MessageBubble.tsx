@@ -236,6 +236,7 @@ function VideoBubble({ raw, mediaWidth, onPress, onLongPress }: {
         style={{ width: mediaWidth, height: mediaWidth * (9 / 16) }}
         contentFit="cover"
         cachePolicy="disk"
+        transition={200}
       />
       <View style={videoStyles.playOverlay}>
         <View style={videoStyles.playBtn}>
@@ -877,6 +878,7 @@ export const MessageBubble = memo(function MessageBubble({
                     contentFit="contain"
                     cachePolicy="disk"
                     priority="normal"
+                    transition={200}
                     onLoad={(e: any) => {
                       const { width: w, height: h } = e.source;
                       if (w > 0) setImgAspect(h / w);
@@ -906,6 +908,7 @@ export const MessageBubble = memo(function MessageBubble({
                     contentFit="contain"
                     cachePolicy="disk"
                     priority="normal"
+                    transition={200}
                     onLoad={(e: any) => {
                       const { width: w, height: h } = e.source;
                       if (w > 0) setImgAspect(h / w);
