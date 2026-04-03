@@ -678,12 +678,14 @@ export const MessageBubble = memo(function MessageBubble({
                 shadowRadius: 18,
               } : null,
             ]}>
-              {/* Android diffused glow — 3 concentric rings radiating outward */}
+              {/* Android diffused glow — 5 concentric rings for smooth falloff */}
               {isOwn && shopStyles.glowColor ? (
                 <>
-                  <View pointerEvents="none" style={{ position: "absolute", top: -12, left: -12, right: -12, bottom: -12, borderRadius: 40, backgroundColor: (shopStyles.glowColor as string) + "12" }} />
-                  <View pointerEvents="none" style={{ position: "absolute", top: -7, left: -7, right: -7, bottom: -7, borderRadius: 35, backgroundColor: (shopStyles.glowColor as string) + "1A" }} />
-                  <View pointerEvents="none" style={{ position: "absolute", top: -3, left: -3, right: -3, bottom: -3, borderRadius: 31, backgroundColor: (shopStyles.glowColor as string) + "25" }} />
+                  <View pointerEvents="none" style={{ position: "absolute", top: -18, left: -18, right: -18, bottom: -18, borderRadius: 999, backgroundColor: (shopStyles.glowColor as string) + "08" }} />
+                  <View pointerEvents="none" style={{ position: "absolute", top: -14, left: -14, right: -14, bottom: -14, borderRadius: 999, backgroundColor: (shopStyles.glowColor as string) + "0D" }} />
+                  <View pointerEvents="none" style={{ position: "absolute", top: -10, left: -10, right: -10, bottom: -10, borderRadius: 999, backgroundColor: (shopStyles.glowColor as string) + "14" }} />
+                  <View pointerEvents="none" style={{ position: "absolute", top: -6, left: -6, right: -6, bottom: -6, borderRadius: 999, backgroundColor: (shopStyles.glowColor as string) + "1F" }} />
+                  <View pointerEvents="none" style={{ position: "absolute", top: -2, left: -2, right: -2, bottom: -2, borderRadius: 999, backgroundColor: (shopStyles.glowColor as string) + "30" }} />
                 </>
               ) : null}
               {isOwn && shopStyles.pfpThemeEnabled && nftDominantColor && !shopStyles.glowColor ? (
@@ -699,41 +701,43 @@ export const MessageBubble = memo(function MessageBubble({
                 isOwn && !centerBubble ? styles.glassBubbleOwn : null,
                 !isOwn && !centerBubble ? styles.glassBubbleOther : null,
                 centerBubble && styles.glassBubbleBot,
-                // Premium bubble shape — pill/capsule with more padding when cosmetic equipped
+                // Premium bubble — full capsule, near-transparent glass, no hard border
                 isOwn && shopStyles.hasBubbleCosmetic ? {
-                  borderRadius: 28,
-                  paddingHorizontal: 20,
+                  borderRadius: 999,
+                  paddingHorizontal: 22,
                   paddingVertical: 14,
-                  backgroundColor: "rgba(20, 20, 35, 0.45)",
-                  borderWidth: 1,
-                  borderColor: "rgba(255, 255, 255, 0.08)",
+                  backgroundColor: "rgba(18, 18, 32, 0.35)",
+                  borderWidth: 0.5,
+                  borderColor: "rgba(255, 255, 255, 0.10)",
                 } : null,
                 // Shop: custom bubble background for own bubbles
                 isOwn && shopStyles.bgColor ? { backgroundColor: shopStyles.bgColor as string } : null,
                 isOwn && shopStyles.bgOpacity != null ? { backgroundColor: `rgba(26, 26, 40, ${shopStyles.bgOpacity})` } : null,
                 isOwn && shopStyles.borderOpacity != null ? { borderColor: `rgba(248, 248, 255, ${shopStyles.borderOpacity})` } : null,
-                // Shop glow — subtle tinted border accent (pairs with outer glow rings)
+                // Shop glow — very faint tinted edge (glow rings do the heavy lifting)
                 isOwn && shopStyles.glowColor ? {
-                  borderColor: (shopStyles.glowColor as string) + "40",
+                  borderColor: (shopStyles.glowColor as string) + "25",
+                  borderWidth: 0.5,
                 } : null,
                 // Tier 3: PFP Color Theme — NFT color as border tint
                 isOwn && shopStyles.pfpThemeEnabled && nftDominantColor && !shopStyles.glowColor ? { borderColor: nftDominantColor + "30" } : null,
               ]}>
-                {/* Inner gradient overlay — softer for premium bubbles */}
+                {/* Inner gradient — premium gets diagonal light reflection */}
                 <LinearGradient
                   colors={
                     isOwn && shopStyles.hasBubbleCosmetic
-                      ? ["rgba(255,255,255,0.06)", "rgba(0,0,0,0.08)"]
+                      ? ["rgba(255,255,255,0.15)", "rgba(255,255,255,0.03)", "rgba(0,0,0,0.05)"]
                       : ["rgba(248,248,255,0.08)", "rgba(0,0,0,0.15)"]
                   }
-                  start={{ x: 0.5, y: 0 }}
-                  end={{ x: 0.5, y: 1 }}
-                  style={[StyleSheet.absoluteFill, { borderRadius: isOwn && shopStyles.hasBubbleCosmetic ? 28 : 22 }]}
+                  locations={isOwn && shopStyles.hasBubbleCosmetic ? [0, 0.4, 1] : undefined}
+                  start={isOwn && shopStyles.hasBubbleCosmetic ? { x: 0.1, y: 0 } : { x: 0.5, y: 0 }}
+                  end={isOwn && shopStyles.hasBubbleCosmetic ? { x: 0.9, y: 1 } : { x: 0.5, y: 1 }}
+                  style={[StyleSheet.absoluteFill, { borderRadius: isOwn && shopStyles.hasBubbleCosmetic ? 999 : 22 }]}
                 />
-                {/* Top-edge highlight — "backlit panel" effect */}
+                {/* Top-edge highlight — wider + softer for premium */}
                 <View style={[
                   styles.glassHighlight,
-                  isOwn && shopStyles.hasBubbleCosmetic ? { left: 16, right: 16, backgroundColor: "rgba(255, 255, 255, 0.12)" } : null,
+                  isOwn && shopStyles.hasBubbleCosmetic ? { left: 20, right: 20, height: 1, backgroundColor: "rgba(255, 255, 255, 0.20)" } : null,
                 ]} />
 
               {/* Non-media content rendered inside glass bubble */}
