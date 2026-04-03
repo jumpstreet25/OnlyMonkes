@@ -106,12 +106,12 @@ export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
       if (shopState.equipped[item.category] === item.id) {
         const updated = await unequipCategory(item.category);
         setShopState(updated);
-        getEquippedStyles().then(s => { const ndc = useAppStore.getState().nftDominantColor; if (s.pfpAuraEnabled && ndc) s.pfpAuraColor = ndc; useAppStore.getState().setShopStyles(s); applyThemeFromShop(s); triggerProfileRebroadcast("").catch(() => {}); }).catch(() => {});
+        getEquippedStyles().then(s => { if (s.pfpAuraEnabled) { s.pfpAuraColor = (s.glowColor as string) ?? useAppStore.getState().nftDominantColor ?? undefined; } useAppStore.getState().setShopStyles(s); applyThemeFromShop(s); triggerProfileRebroadcast("").catch(() => {}); }).catch(() => {});
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       } else {
         const updated = await equipItem(item.id);
         setShopState(updated);
-        getEquippedStyles().then(s => { const ndc = useAppStore.getState().nftDominantColor; if (s.pfpAuraEnabled && ndc) s.pfpAuraColor = ndc; useAppStore.getState().setShopStyles(s); applyThemeFromShop(s); triggerProfileRebroadcast("").catch(() => {}); }).catch(() => {});
+        getEquippedStyles().then(s => { if (s.pfpAuraEnabled) { s.pfpAuraColor = (s.glowColor as string) ?? useAppStore.getState().nftDominantColor ?? undefined; } useAppStore.getState().setShopStyles(s); applyThemeFromShop(s); triggerProfileRebroadcast("").catch(() => {}); }).catch(() => {});
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
       return;

@@ -160,7 +160,9 @@ export default function ChatScreen() {
   const loginStreak      = useAppStore(s => s.loginStreak);
   const myShopStyles     = useAppStore(s => s.shopStyles);
   const nftDominantColor = useAppStore(s => s.nftDominantColor);
-  const headerHasAura    = !!(myShopStyles?.pfpAuraEnabled && nftDominantColor);
+  const headerAuraColor  = myShopStyles?.pfpAuraEnabled
+    ? (myShopStyles.glowColor as string | undefined) ?? nftDominantColor ?? null
+    : null;
   const isLoading        = useAppStore(s => s.isLoading);
   const error            = useAppStore(s => s.error);
   const communityBadges  = useAppStore(s => s.communityBadges);
@@ -1189,7 +1191,7 @@ export default function ChatScreen() {
               hitSlop={6}
             >
               <View style={styles.headerNftWrap}>
-                {headerHasAura && <SkiaGlowPfp glowColor={nftDominantColor!} size={46} />}
+                {headerAuraColor && <SkiaGlowPfp glowColor={headerAuraColor} size={46} />}
                 {verifiedNft?.image ? (
                   <Image
                     source={{ uri: verifiedNft.image }}
