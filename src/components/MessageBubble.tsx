@@ -681,24 +681,18 @@ export const MessageBubble = memo(function MessageBubble({
                 shadowRadius: 18,
               } : null,
             ]}>
-              {/* ── Diffused neon glow aura — 7 concentric rings, 40px spread ── */}
+              {/* ── Glow: single colored layer + BlurView for smooth diffusion ── */}
               {shopStyles.glowColor ? (
-                <>
-                  <View pointerEvents="none" style={{ position: "absolute", top: -40, left: -40, right: -40, bottom: -40, borderRadius: 999, backgroundColor: (shopStyles.glowColor as string) + "06" }} />
-                  <View pointerEvents="none" style={{ position: "absolute", top: -30, left: -30, right: -30, bottom: -30, borderRadius: 999, backgroundColor: (shopStyles.glowColor as string) + "0A" }} />
-                  <View pointerEvents="none" style={{ position: "absolute", top: -22, left: -22, right: -22, bottom: -22, borderRadius: 999, backgroundColor: (shopStyles.glowColor as string) + "10" }} />
-                  <View pointerEvents="none" style={{ position: "absolute", top: -15, left: -15, right: -15, bottom: -15, borderRadius: 999, backgroundColor: (shopStyles.glowColor as string) + "18" }} />
-                  <View pointerEvents="none" style={{ position: "absolute", top: -10, left: -10, right: -10, bottom: -10, borderRadius: 999, backgroundColor: (shopStyles.glowColor as string) + "22" }} />
-                  <View pointerEvents="none" style={{ position: "absolute", top: -5, left: -5, right: -5, bottom: -5, borderRadius: 999, backgroundColor: (shopStyles.glowColor as string) + "30" }} />
-                  <View pointerEvents="none" style={{ position: "absolute", top: -1, left: -1, right: -1, bottom: -1, borderRadius: 999, backgroundColor: (shopStyles.glowColor as string) + "3A" }} />
-                </>
+                <View pointerEvents="none" style={{ position: "absolute", top: -8, left: -8, right: -8, bottom: -8, borderRadius: 32, overflow: "hidden" }}>
+                  <View style={{ flex: 1, backgroundColor: (shopStyles.glowColor as string) + "45", borderRadius: 32 }} />
+                  <BlurView intensity={80} tint="dark" style={StyleSheet.absoluteFill} />
+                </View>
               ) : null}
               {isOwn && shopStyles.pfpThemeEnabled && nftDominantColor && !shopStyles.glowColor ? (
-                <>
-                  <View pointerEvents="none" style={{ position: "absolute", top: -10, left: -10, right: -10, bottom: -10, borderRadius: 32, backgroundColor: nftDominantColor + "10" }} />
-                  <View pointerEvents="none" style={{ position: "absolute", top: -6, left: -6, right: -6, bottom: -6, borderRadius: 28, backgroundColor: nftDominantColor + "18" }} />
-                  <View pointerEvents="none" style={{ position: "absolute", top: -3, left: -3, right: -3, bottom: -3, borderRadius: 25, backgroundColor: nftDominantColor + "25" }} />
-                </>
+                <View pointerEvents="none" style={{ position: "absolute", top: -6, left: -6, right: -6, bottom: -6, borderRadius: 30, overflow: "hidden" }}>
+                  <View style={{ flex: 1, backgroundColor: nftDominantColor + "35", borderRadius: 30 }} />
+                  <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} />
+                </View>
               ) : null}
               {/* ── Glass bubble — frosted dark capsule floating above the glow ── */}
               <View style={[
