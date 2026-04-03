@@ -90,6 +90,8 @@ export async function verifyCurrentOwner(
   expectedOwner: string,
 ): Promise<boolean> {
   try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10_000);
     const res = await fetch(`https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -99,8 +101,9 @@ export async function verifyCurrentOwner(
         method: "getAsset",
         params: { id: nftMint },
       }),
-      signal: AbortSignal.timeout(10_000),
+      signal: controller.signal,
     });
+    clearTimeout(timer);
     if (!res.ok) return false;
     const json = await res.json() as {
       result?: { ownership?: { owner?: string } };

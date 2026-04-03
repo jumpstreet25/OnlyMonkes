@@ -175,6 +175,8 @@ export async function generatePersonality(
 
   // Try Ollama first (local, free)
   try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10000);
     const res = await fetch('http://localhost:11434/api/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -184,8 +186,9 @@ export async function generatePersonality(
         stream: false,
         options: { temperature: 0.7 },
       }),
-      signal: AbortSignal.timeout(10000),
+      signal: controller.signal,
     });
+    clearTimeout(timer);
     if (res.ok) {
       const data = await res.json();
       const match = data.response?.match(/\{[\s\S]*\}/);
@@ -197,6 +200,8 @@ export async function generatePersonality(
   try {
     const groqKey = process.env.GROQ_API_KEY;
     if (!groqKey) return null;
+    const controller2 = new AbortController();
+    const timer2 = setTimeout(() => controller2.abort(), 8000);
     const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -209,8 +214,9 @@ export async function generatePersonality(
         temperature: 0.7,
         max_tokens: 200,
       }),
-      signal: AbortSignal.timeout(8000),
+      signal: controller2.signal,
     });
+    clearTimeout(timer2);
     if (res.ok) {
       const data = await res.json();
       const text = data.choices?.[0]?.message?.content ?? '';

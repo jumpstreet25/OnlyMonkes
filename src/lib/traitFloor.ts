@@ -33,10 +33,13 @@ export async function fetchTraitFloors(): Promise<TraitFloor[]> {
   }
 
   try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10_000);
     const res = await fetch(
       `https://api-mainnet.magiceden.dev/v2/collections/${ME_COLLECTION_SYMBOL}/attributes`,
-      { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(10_000) },
+      { headers: { Accept: 'application/json' }, signal: controller.signal },
     );
+    clearTimeout(timer);
     if (!res.ok) {
       console.warn('[traitFloor] ME API error:', res.status);
       return _traitFloors;
