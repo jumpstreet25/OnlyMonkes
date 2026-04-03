@@ -368,8 +368,11 @@ export const MessageBubble = memo(function MessageBubble({
 }: MessageBubbleProps) {
   const verifiedNft = useAppStore(s => s.verifiedNft);
   const myInboxId = useAppStore(s => s.myInboxId);
-  const shopStyles = useAppStore(s => s.shopStyles);
+  const myShopStyles = useAppStore(s => s.shopStyles);
   const nftDominantColor = useAppStore(s => s.nftDominantColor);
+  // Use own shop styles for own messages, sender's cached styles for others
+  const senderProfile = !isOwn ? getCachedProfile(message.senderAddress) : null;
+  const shopStyles = isOwn ? myShopStyles : (senderProfile?.shopStyles ?? {});
   const { width: SCREEN_W } = useWindowDimensions();
   // Max bubble width is 72% of screen minus horizontal padding (14px each side)
   const mediaWidth = Math.round(SCREEN_W * 0.72 - 28);
@@ -626,7 +629,7 @@ export const MessageBubble = memo(function MessageBubble({
           ]}>
             <Text style={[
               styles.sender,
-              isOwn && shopStyles.nameColor ? { color: shopStyles.nameColor as string } : null,
+              shopStyles.nameColor ? { color: shopStyles.nameColor as string } : null,
             ]}>
               {isOwn ? "You" : displayName}{isLegendarySender ? ' 🌟' : ''}{badgeEmojis ? ` ${badgeEmojis}` : ''}
             </Text>
@@ -667,7 +670,7 @@ export const MessageBubble = memo(function MessageBubble({
               !isOwn && !centerBubble ? styles.glassGlowOther : null,
               centerBubble && styles.glassGlowBot,
               // iOS shadow glow
-              isOwn && shopStyles.glowColor ? {
+              shopStyles.glowColor ? {
                 shadowColor: shopStyles.glowColor as string,
                 shadowOpacity: (shopStyles.glowOpacity as number) ?? 0.6,
                 shadowRadius: (shopStyles.glowRadius as number) ?? 16,
@@ -679,7 +682,7 @@ export const MessageBubble = memo(function MessageBubble({
               } : null,
             ]}>
               {/* Android diffused glow — 5 concentric rings for smooth falloff */}
-              {isOwn && shopStyles.glowColor ? (
+              {shopStyles.glowColor ? (
                 <>
                   <View pointerEvents="none" style={{ position: "absolute", top: -18, left: -18, right: -18, bottom: -18, borderRadius: 999, backgroundColor: (shopStyles.glowColor as string) + "08" }} />
                   <View pointerEvents="none" style={{ position: "absolute", top: -14, left: -14, right: -14, bottom: -14, borderRadius: 999, backgroundColor: (shopStyles.glowColor as string) + "0D" }} />
@@ -702,7 +705,7 @@ export const MessageBubble = memo(function MessageBubble({
                 !isOwn && !centerBubble ? styles.glassBubbleOther : null,
                 centerBubble && styles.glassBubbleBot,
                 // Premium bubble — full capsule, near-transparent glass, no hard border
-                isOwn && shopStyles.hasBubbleCosmetic ? {
+                shopStyles.hasBubbleCosmetic ? {
                   borderRadius: 999,
                   paddingHorizontal: 22,
                   paddingVertical: 14,
@@ -711,11 +714,11 @@ export const MessageBubble = memo(function MessageBubble({
                   borderColor: "rgba(255, 255, 255, 0.10)",
                 } : null,
                 // Shop: custom bubble background for own bubbles
-                isOwn && shopStyles.bgColor ? { backgroundColor: shopStyles.bgColor as string } : null,
-                isOwn && shopStyles.bgOpacity != null ? { backgroundColor: `rgba(26, 26, 40, ${shopStyles.bgOpacity})` } : null,
-                isOwn && shopStyles.borderOpacity != null ? { borderColor: `rgba(248, 248, 255, ${shopStyles.borderOpacity})` } : null,
+                shopStyles.bgColor ? { backgroundColor: shopStyles.bgColor as string } : null,
+                shopStyles.bgOpacity != null ? { backgroundColor: `rgba(26, 26, 40, ${shopStyles.bgOpacity})` } : null,
+                shopStyles.borderOpacity != null ? { borderColor: `rgba(248, 248, 255, ${shopStyles.borderOpacity})` } : null,
                 // Shop glow — very faint tinted edge (glow rings do the heavy lifting)
-                isOwn && shopStyles.glowColor ? {
+                shopStyles.glowColor ? {
                   borderColor: (shopStyles.glowColor as string) + "25",
                   borderWidth: 0.5,
                 } : null,
@@ -725,19 +728,19 @@ export const MessageBubble = memo(function MessageBubble({
                 {/* Inner gradient — premium gets diagonal light reflection */}
                 <LinearGradient
                   colors={
-                    isOwn && shopStyles.hasBubbleCosmetic
+                    shopStyles.hasBubbleCosmetic
                       ? ["rgba(255,255,255,0.15)", "rgba(255,255,255,0.03)", "rgba(0,0,0,0.05)"]
                       : ["rgba(248,248,255,0.08)", "rgba(0,0,0,0.15)"]
                   }
-                  locations={isOwn && shopStyles.hasBubbleCosmetic ? [0, 0.4, 1] : undefined}
-                  start={isOwn && shopStyles.hasBubbleCosmetic ? { x: 0.1, y: 0 } : { x: 0.5, y: 0 }}
-                  end={isOwn && shopStyles.hasBubbleCosmetic ? { x: 0.9, y: 1 } : { x: 0.5, y: 1 }}
-                  style={[StyleSheet.absoluteFill, { borderRadius: isOwn && shopStyles.hasBubbleCosmetic ? 999 : 22 }]}
+                  locations={shopStyles.hasBubbleCosmetic ? [0, 0.4, 1] : undefined}
+                  start={shopStyles.hasBubbleCosmetic ? { x: 0.1, y: 0 } : { x: 0.5, y: 0 }}
+                  end={shopStyles.hasBubbleCosmetic ? { x: 0.9, y: 1 } : { x: 0.5, y: 1 }}
+                  style={[StyleSheet.absoluteFill, { borderRadius: shopStyles.hasBubbleCosmetic ? 999 : 22 }]}
                 />
                 {/* Top-edge highlight — wider + softer for premium */}
                 <View style={[
                   styles.glassHighlight,
-                  isOwn && shopStyles.hasBubbleCosmetic ? { left: 20, right: 20, height: 1, backgroundColor: "rgba(255, 255, 255, 0.20)" } : null,
+                  shopStyles.hasBubbleCosmetic ? { left: 20, right: 20, height: 1, backgroundColor: "rgba(255, 255, 255, 0.20)" } : null,
                 ]} />
 
               {/* Non-media content rendered inside glass bubble */}
@@ -794,8 +797,8 @@ export const MessageBubble = memo(function MessageBubble({
                     style={[
                       styles.content,
                       { color: textColor },
-                      isOwn && shopStyles.fontWeight === "bold" ? { fontWeight: "bold" } : null,
-                      isOwn && shopStyles.fontFamily === "mono" ? { fontFamily: FONTS.mono } : null,
+                      shopStyles.fontWeight === "bold" ? { fontWeight: "bold" } : null,
+                      shopStyles.fontFamily === "mono" ? { fontFamily: FONTS.mono } : null,
                     ]}
                     numberOfLines={showBotExpand && !botExpanded ? 9 : undefined}
                     selectable

@@ -29,6 +29,7 @@ import {
   type ShopItem, type ShopCategory, type ShopState,
 } from "@/lib/bananaShop";
 import { applyThemeFromShop } from "@/lib/shopTheme";
+import { triggerProfileRebroadcast } from "@/hooks/useXmtp";
 
 interface BananaShopModalProps {
   visible: boolean;
@@ -68,12 +69,12 @@ export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
       if (shopState.equipped[item.category] === item.id) {
         const updated = await unequipCategory(item.category);
         setShopState(updated);
-        getEquippedStyles().then(s => { useAppStore.getState().setShopStyles(s); applyThemeFromShop(s); }).catch(() => {});
+        getEquippedStyles().then(s => { useAppStore.getState().setShopStyles(s); applyThemeFromShop(s); triggerProfileRebroadcast("").catch(() => {}); }).catch(() => {});
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       } else {
         const updated = await equipItem(item.id);
         setShopState(updated);
-        getEquippedStyles().then(s => { useAppStore.getState().setShopStyles(s); applyThemeFromShop(s); }).catch(() => {});
+        getEquippedStyles().then(s => { useAppStore.getState().setShopStyles(s); applyThemeFromShop(s); triggerProfileRebroadcast("").catch(() => {}); }).catch(() => {});
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
       return;
@@ -142,7 +143,7 @@ export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
 
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               // Refresh shop styles so MessageBubble updates immediately
-              getEquippedStyles().then(s => { useAppStore.getState().setShopStyles(s); applyThemeFromShop(s); }).catch(() => {});
+              getEquippedStyles().then(s => { useAppStore.getState().setShopStyles(s); applyThemeFromShop(s); triggerProfileRebroadcast("").catch(() => {}); }).catch(() => {});
               Alert.alert("Purchased!", `${item.name} is now equipped.`);
             } catch (err: any) {
               Alert.alert("Purchase failed", err?.message ?? "Please try again");
