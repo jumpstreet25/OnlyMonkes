@@ -670,6 +670,7 @@ export const MessageBubble = memo(function MessageBubble({
                   width={bubbleSize.w}
                   height={bubbleSize.h}
                   radius={24}
+                  glassOpacity={shopStyles.glassOpacity as number | undefined}
                 />
               ) : null}
               {/* Glass bubble — dark glass with glow-tinted border */}

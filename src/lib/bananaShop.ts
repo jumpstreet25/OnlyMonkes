@@ -72,10 +72,10 @@ export const SHOP_ITEMS: ShopItem[] = [
   {
     id: "bubble_frosted",
     name: "Frosted Ice",
-    description: "Higher glass transparency — premium look",
+    description: "Ice-blue frosted glass — ultra-transparent premium look",
     category: "bubble", tier: 1, bananaCost: 40, usdCost: 1,
     preview: "🧊",
-    style: { bgOpacity: 0.08, borderOpacity: 0.15, glowColor: "#a8d8ff" },
+    style: { glowColor: "#a8d8ff", glowOpacity: 0.7, glowRadius: 18, glassOpacity: 0.55 },
   },
   {
     id: "bubble_dark_ember",
