@@ -108,8 +108,17 @@ export async function sendShopPayment(
   const connection = new Connection(HELIUS_RPC_URL, "confirmed");
   const devPubkey = new PublicKey(DEV_WALLET);
 
+  // Skip payment if buyer IS the dev wallet (self-transfer is pointless)
+  const myWallet = useAppStore.getState().wallet?.address;
+  if (myWallet && myWallet === DEV_WALLET) {
+    return "dev-self-purchase";
+  }
+
   const signature = await transact(async (mobileWallet: Web3MobileWallet) => {
     const senderPubkey = await mwaAuthorize(mobileWallet);
+
+    // Skip if authorized wallet matches dev wallet
+    if (senderPubkey.toBase58() === DEV_WALLET) return "dev-self-purchase";
 
     const { blockhash } = await connection.getLatestBlockhash("confirmed");
 
