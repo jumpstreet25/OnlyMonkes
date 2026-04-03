@@ -35,7 +35,7 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
-import { SkiaGlowBubble } from "@/components/SkiaGlowBubble";
+import { SkiaGlowBubble, SkiaGlassFront } from "@/components/SkiaGlowBubble";
 import * as Clipboard from "expo-clipboard";
 import { Image as ExpoImage } from "expo-image";
 import * as Haptics from "expo-haptics";
@@ -770,7 +770,7 @@ export const MessageBubble = memo(function MessageBubble({
                       shopStyles.hasBubbleCosmetic ? { textShadowColor: "rgba(0,0,0,0.5)", textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 } : null,
                     ]}
                     numberOfLines={showBotExpand && !botExpanded ? 9 : undefined}
-                    selectable
+                    selectable={false}
                   >
                     {renderRichContent(displayContent, handlePressMention, onTokenPress)}
                   </Text>
@@ -836,6 +836,15 @@ export const MessageBubble = memo(function MessageBubble({
                   )}
                 </View>
               )}
+              {/* ── Glass dome overlay — specular glare ON TOP of text ── */}
+              {hasSkiaGlow && bubbleSize ? (
+                <SkiaGlassFront
+                  glowColor={shopStyles.glowColor as string}
+                  width={bubbleSize.w}
+                  height={bubbleSize.h}
+                  radius={24}
+                />
+              ) : null}
             </View>
           ) : (
             <>

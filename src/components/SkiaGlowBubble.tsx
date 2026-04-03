@@ -1,12 +1,11 @@
 /**
- * SkiaGlowBubble — GPU-rendered glassmorphic 3D bubble + diffused glow.
+ * SkiaGlowBubble — Two-layer glassmorphic bubble:
  *
- * Creates a sphere-like glass capsule with volume and depth:
- * - Bright specular sun-spot highlight (upper-left, like light hitting curved glass)
- * - Edge darkening (vignette) to simulate glass thickness at the perimeter
- * - Bright center (thinner glass = more light passes through)
- * - Deep bottom shadow for 3D grounding
- * - Bottom rim reflection (light bouncing off glow)
+ * Layer 1 (behind text): Glow backlight + dark glass body
+ * Layer 2 (on top of text): Glass dome/shell with specular highlight
+ *
+ * The glass shell sits ON TOP like a sphere placed over the message.
+ * The glare lives on this front surface, not behind the text.
  */
 
 import React from "react";
@@ -29,7 +28,8 @@ interface SkiaGlowBubbleProps {
   glassOpacity?: number;
 }
 
-export const SkiaGlowBubble = React.memo(function SkiaGlowBubble({
+// ── Back layer: glow + dark glass body (renders BEHIND the text) ──
+export const SkiaGlowBack = React.memo(function SkiaGlowBack({
   glowColor,
   width,
   height,
@@ -44,23 +44,15 @@ export const SkiaGlowBubble = React.memo(function SkiaGlowBubble({
   const x = pad;
   const y = pad;
 
-  const fillAlpha = Math.round((glassOpacity ?? 0.78) * 255).toString(16).padStart(2, "0");
-  const glassFill = `#0A0A16${fillAlpha}`;
-
-  const minDim = Math.min(width, height);
+  const fillAlpha = Math.round((glassOpacity ?? 0.82) * 255).toString(16).padStart(2, "0");
+  const glassFill = `#080814${fillAlpha}`;
 
   return (
     <Canvas
-      style={{
-        width: cw,
-        height: ch,
-        position: "absolute",
-        top: -pad,
-        left: -pad,
-      }}
+      style={{ width: cw, height: ch, position: "absolute", top: -pad, left: -pad }}
       pointerEvents="none"
     >
-      {/* ── 1. Outer glow aura ── */}
+      {/* Glow backlight */}
       <RoundedRect x={x} y={y} width={width} height={height} r={radius} color={glowColor + "55"}>
         <BlurMask blur={22} style="normal" />
       </RoundedRect>
@@ -68,115 +60,138 @@ export const SkiaGlowBubble = React.memo(function SkiaGlowBubble({
         <BlurMask blur={10} style="normal" />
       </RoundedRect>
 
-      {/* ── 2. Glass body ── */}
+      {/* Dark glass body */}
       <RoundedRect x={x} y={y} width={width} height={height} r={radius} color={glassFill} />
 
-      {/* ── 3. 3D depth effects (clipped to bubble shape) ── */}
+      {/* Subtle interior depth */}
       <Group clip={{ rect: { x, y, width, height }, rx: radius, ry: radius }}>
-
-        {/* 3a. Edge vignette — darken all edges for glass thickness/curvature */}
-        {/* Top edge dark */}
-        <Rect x={x} y={y} width={width} height={height * 0.2}>
-          <LinearGradient
-            start={vec(x + width / 2, y)}
-            end={vec(x + width / 2, y + height * 0.2)}
-            colors={["rgba(0,0,0,0.18)", "transparent"]}
-          />
-        </Rect>
-        {/* Left edge dark */}
-        <Rect x={x} y={y} width={width * 0.12} height={height}>
-          <LinearGradient
-            start={vec(x, y + height / 2)}
-            end={vec(x + width * 0.12, y + height / 2)}
-            colors={["rgba(0,0,0,0.15)", "transparent"]}
-          />
-        </Rect>
-        {/* Right edge dark */}
-        <Rect x={x + width * 0.88} y={y} width={width * 0.12} height={height}>
-          <LinearGradient
-            start={vec(x + width, y + height / 2)}
-            end={vec(x + width * 0.88, y + height / 2)}
-            colors={["rgba(0,0,0,0.15)", "transparent"]}
-          />
-        </Rect>
-        {/* Bottom edge — deeper shadow for 3D grounding */}
+        {/* Bottom shadow for grounding */}
         <Rect x={x} y={y + height * 0.5} width={width} height={height * 0.5}>
           <LinearGradient
             start={vec(x + width / 2, y + height * 0.5)}
             end={vec(x + width / 2, y + height)}
-            colors={["transparent", "rgba(0,0,0,0.30)"]}
+            colors={["transparent", "rgba(0,0,0,0.25)"]}
           />
         </Rect>
-
-        {/* 3b. Center brightness — glass is thinner in the middle, more light passes */}
-        <Circle
-          cx={x + width * 0.5}
-          cy={y + height * 0.45}
-          r={minDim * 0.5}
-          color="rgba(255,255,255,0.04)"
-        >
-          <BlurMask blur={minDim * 0.3} style="normal" />
-        </Circle>
-
-        {/* 3c. Primary sun-spot specular — bright glow-tinted highlight upper-left */}
-        <Circle
-          cx={x + width * 0.32}
-          cy={y + height * 0.22}
-          r={minDim * 0.35}
-          color={glowColor + "18"}
-        >
-          <BlurMask blur={minDim * 0.22} style="normal" />
-        </Circle>
-
-        {/* 3d. Hot specular core — small bright white spot */}
-        <Circle
-          cx={x + width * 0.28}
-          cy={y + height * 0.18}
-          r={minDim * 0.12}
-          color="rgba(255,255,255,0.10)"
-        >
-          <BlurMask blur={minDim * 0.1} style="normal" />
-        </Circle>
-
-        {/* 3e. Top rim highlight — light catching the upper glass edge */}
-        <Rect x={x} y={y} width={width} height={2.5}>
+        {/* Faint glow tint on body */}
+        <Rect x={x} y={y} width={width} height={height}>
           <LinearGradient
             start={vec(x, y)}
-            end={vec(x + width, y)}
-            colors={["transparent", glowColor + "18", glowColor + "28", glowColor + "18", "transparent"]}
-            positions={[0.05, 0.2, 0.5, 0.8, 0.95]}
-          />
-        </Rect>
-
-        {/* 3f. Bottom rim reflection — glow bouncing off surface below */}
-        <Rect x={x} y={y + height - 3} width={width} height={3}>
-          <LinearGradient
-            start={vec(x, y + height)}
             end={vec(x + width, y + height)}
-            colors={["transparent", glowColor + "0C", glowColor + "14", glowColor + "0C", "transparent"]}
-            positions={[0.1, 0.3, 0.5, 0.7, 0.9]}
+            colors={[glowColor + "0A", "transparent", "rgba(0,0,0,0.06)"]}
+            positions={[0, 0.4, 1]}
           />
         </Rect>
       </Group>
 
-      {/* ── 4. Border stroke — glow-tinted glass edge ── */}
+      {/* Border */}
       <RoundedRect
-        x={x}
-        y={y}
-        width={width}
-        height={height}
-        r={radius}
-        color="transparent"
-        style="stroke"
-        strokeWidth={0.75}
+        x={x} y={y} width={width} height={height} r={radius}
+        color="transparent" style="stroke" strokeWidth={0.75}
       >
         <LinearGradient
           start={vec(x, y)}
           end={vec(x + width, y + height)}
-          colors={[glowColor + "30", glowColor + "12", "rgba(255,255,255,0.04)"]}
+          colors={[glowColor + "25", glowColor + "0C", "rgba(255,255,255,0.03)"]}
           positions={[0, 0.5, 1]}
         />
       </RoundedRect>
     </Canvas>
   );
 });
+
+// ── Front layer: glass dome/shell with specular glare (renders ON TOP of text) ──
+export const SkiaGlassFront = React.memo(function SkiaGlassFront({
+  glowColor,
+  width,
+  height,
+  radius = 24,
+}: SkiaGlowBubbleProps) {
+  if (width <= 0 || height <= 0) return null;
+
+  const pad = 5; // small pad — this layer doesn't need glow overflow
+  const cw = width + pad * 2;
+  const ch = height + pad * 2;
+  const x = pad;
+  const y = pad;
+  const minDim = Math.min(width, height);
+
+  return (
+    <Canvas
+      style={{ width: cw, height: ch, position: "absolute", top: -pad, left: -pad }}
+      pointerEvents="none"
+    >
+      <Group clip={{ rect: { x, y, width, height }, rx: radius, ry: radius }}>
+
+        {/* Glass dome — sphere-like curved highlight across top 40% */}
+        <Rect x={x} y={y} width={width} height={height * 0.45}>
+          <LinearGradient
+            start={vec(x + width / 2, y)}
+            end={vec(x + width / 2, y + height * 0.45)}
+            colors={["rgba(255,255,255,0.16)", "rgba(255,255,255,0.04)", "transparent"]}
+            positions={[0, 0.5, 1]}
+          />
+        </Rect>
+
+        {/* Primary specular — glow-colored sun-spot on the glass surface */}
+        <Circle
+          cx={x + width * 0.35}
+          cy={y + height * 0.18}
+          r={minDim * 0.3}
+          color={glowColor + "1A"}
+        >
+          <BlurMask blur={minDim * 0.18} style="normal" />
+        </Circle>
+
+        {/* Hot white core — bright point where light is strongest */}
+        <Circle
+          cx={x + width * 0.3}
+          cy={y + height * 0.14}
+          r={minDim * 0.08}
+          color="rgba(255,255,255,0.18)"
+        >
+          <BlurMask blur={minDim * 0.06} style="normal" />
+        </Circle>
+
+        {/* Top rim — bright edge where light catches the glass dome rim */}
+        <Rect x={x} y={y} width={width} height={2}>
+          <LinearGradient
+            start={vec(x, y)}
+            end={vec(x + width, y)}
+            colors={["transparent", glowColor + "20", "rgba(255,255,255,0.22)", glowColor + "20", "transparent"]}
+            positions={[0.05, 0.2, 0.5, 0.8, 0.95]}
+          />
+        </Rect>
+
+        {/* Edge darkening — vignette on left and right for curvature */}
+        <Rect x={x} y={y} width={width * 0.08} height={height}>
+          <LinearGradient
+            start={vec(x, y + height / 2)}
+            end={vec(x + width * 0.08, y + height / 2)}
+            colors={["rgba(0,0,0,0.12)", "transparent"]}
+          />
+        </Rect>
+        <Rect x={x + width * 0.92} y={y} width={width * 0.08} height={height}>
+          <LinearGradient
+            start={vec(x + width, y + height / 2)}
+            end={vec(x + width * 0.92, y + height / 2)}
+            colors={["rgba(0,0,0,0.12)", "transparent"]}
+          />
+        </Rect>
+
+        {/* Bottom rim reflection — faint glow bounce */}
+        <Rect x={x} y={y + height - 2} width={width} height={2}>
+          <LinearGradient
+            start={vec(x, y + height)}
+            end={vec(x + width, y + height)}
+            colors={["transparent", glowColor + "10", glowColor + "18", glowColor + "10", "transparent"]}
+            positions={[0.1, 0.3, 0.5, 0.7, 0.9]}
+          />
+        </Rect>
+      </Group>
+    </Canvas>
+  );
+});
+
+// Re-export combined for backward compat
+export const SkiaGlowBubble = SkiaGlowBack;
