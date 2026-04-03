@@ -620,22 +620,7 @@ export const MessageBubble = memo(function MessageBubble({
         centerBubble && styles.bubbleGroupCenter,
       ]}>
 
-        {/* Sender name row (outside bubble, above it — for all message types) */}
-        {(
-          <View style={[
-            styles.senderRow,
-            isOwn && !centerBubble && styles.senderRowOwn,
-            centerBubble && styles.senderRowCenter,
-          ]}>
-            <Text style={[
-              styles.sender,
-              shopStyles.nameColor ? { color: shopStyles.nameColor as string } : null,
-            ]}>
-              {isOwn ? "You" : displayName}{isLegendarySender ? ' 🌟' : ''}{badgeEmojis ? ` ${badgeEmojis}` : ''}
-            </Text>
-            {!isOwn && <OnlineDot online={isUserOnline(message.senderAddress)} />}
-          </View>
-        )}
+        {/* Sender name row — hidden here, rendered below bubble inside glow radius */}
 
         {/* Reply preview */}
         {message.replyTo && (
@@ -684,7 +669,7 @@ export const MessageBubble = memo(function MessageBubble({
               {/* ── Glow: single colored layer + BlurView for smooth diffusion ── */}
               {shopStyles.glowColor ? (
                 <View pointerEvents="none" style={{ position: "absolute", top: -8, left: -8, right: -8, bottom: -8, borderRadius: 32, overflow: "hidden" }}>
-                  <View style={{ flex: 1, backgroundColor: (shopStyles.glowColor as string) + "45", borderRadius: 32 }} />
+                  <View style={{ flex: 1, backgroundColor: (shopStyles.glowColor as string) + "70", borderRadius: 32 }} />
                   <BlurView intensity={80} tint="dark" style={StyleSheet.absoluteFill} />
                 </View>
               ) : null}
@@ -704,11 +689,11 @@ export const MessageBubble = memo(function MessageBubble({
                   borderRadius: 24,
                   paddingHorizontal: 20,
                   paddingVertical: 14,
-                  backgroundColor: "rgba(12, 12, 22, 0.85)",
+                  backgroundColor: "rgba(10, 10, 18, 0.95)",
                   borderWidth: 1,
                   borderColor: shopStyles.glowColor
-                    ? (shopStyles.glowColor as string) + "20"
-                    : "rgba(255, 255, 255, 0.08)",
+                    ? (shopStyles.glowColor as string) + "18"
+                    : "rgba(255, 255, 255, 0.06)",
                   elevation: 6,
                   overflow: "hidden",
                 } : null,
@@ -822,6 +807,26 @@ export const MessageBubble = memo(function MessageBubble({
                   )}
                 </View>
               )}
+              </View>
+              {/* ── Sender name — below bubble, inside glow radius ── */}
+              <View style={[
+                { paddingHorizontal: 8, paddingTop: 3, paddingBottom: 1 },
+                isOwn && !centerBubble && { alignItems: "flex-end" as const },
+                centerBubble && { alignItems: "center" as const },
+              ]}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                  <Text style={{
+                    fontFamily: FONTS.body,
+                    fontSize: 11,
+                    color: shopStyles.glowColor
+                      ? (shopStyles.glowColor as string) + "AA"
+                      : "rgba(108, 180, 238, 0.55)",
+                    ...(shopStyles.nameColor ? { color: shopStyles.nameColor as string } : {}),
+                  }}>
+                    {isOwn ? "You" : displayName}{isLegendarySender ? " 🌟" : ""}{badgeEmojis ? ` ${badgeEmojis}` : ""}
+                  </Text>
+                  {!isOwn && <OnlineDot online={isUserOnline(message.senderAddress)} />}
+                </View>
               </View>
             </View>
           ) : (
