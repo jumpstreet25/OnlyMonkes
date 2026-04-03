@@ -67,7 +67,7 @@ export const SHOP_ITEMS: ShopItem[] = [
     description: "Premium gold glow for the distinguished monke",
     category: "bubble", tier: 1, bananaCost: 35, usdCost: 1,
     preview: "✨",
-    style: { glowColor: "#FFC300", glowOpacity: 0.9, glowRadius: 22 },
+    style: { glowColor: "#FFDC6B", glowOpacity: 0.95, glowRadius: 22 },
   },
   {
     id: "bubble_frosted",
