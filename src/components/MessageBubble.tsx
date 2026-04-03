@@ -720,8 +720,8 @@ export const MessageBubble = memo(function MessageBubble({
                 } : null,
                 // Shop: custom overrides
                 shopStyles.bgColor ? { backgroundColor: shopStyles.bgColor as string } : null,
-                shopStyles.bgOpacity != null && !shopStyles.hasBubbleCosmetic ? { backgroundColor: `rgba(26, 26, 40, ${shopStyles.bgOpacity})` } : null,
-                shopStyles.borderOpacity != null && !shopStyles.hasBubbleCosmetic ? { borderColor: `rgba(248, 248, 255, ${shopStyles.borderOpacity})` } : null,
+                shopStyles.bgOpacity != null ? { backgroundColor: `rgba(26, 26, 40, ${shopStyles.bgOpacity})` } : null,
+                shopStyles.borderOpacity != null ? { borderColor: `rgba(248, 248, 255, ${shopStyles.borderOpacity})` } : null,
                 isOwn && shopStyles.pfpThemeEnabled && nftDominantColor && !shopStyles.glowColor ? { borderColor: nftDominantColor + "30" } : null,
               ]}>
                 {/* BlurView frosted glass — real blur on Android */}
