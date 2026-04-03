@@ -43,7 +43,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAppStore } from "@/store/appStore";
 import { useChatStore } from "@/store/chatStore";
-import { useXmtp } from "@/hooks/useXmtp";
+import { useXmtp, triggerProfileRebroadcast } from "@/hooks/useXmtp";
 import { MessageBubble } from "@/components/MessageBubble";
 import { ChatInput } from "@/components/ChatInput";
 import { UsernameModal } from "@/components/UsernameModal";
@@ -265,8 +265,11 @@ export default function ChatScreen() {
       // Load equipped Banana Shop styles for MessageBubble rendering
       getEquippedStyles().then(s => {
         useAppStore.getState().setShopStyles(s);
-        // Apply Tier 4 theme overrides if a theme is equipped
         applyThemeFromShop(s);
+        // Broadcast shop styles on startup so all users see this user's cosmetics
+        if (Object.keys(s).length > 0) {
+          triggerProfileRebroadcast("").catch(() => {});
+        }
       }).catch(() => {});
       // Extract NFT dominant color for Tier 3 PFP styles
       const nft = useAppStore.getState().verifiedNft;
