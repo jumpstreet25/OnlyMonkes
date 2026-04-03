@@ -808,26 +808,27 @@ export const MessageBubble = memo(function MessageBubble({
                 </View>
               )}
               </View>
-              {/* ── Sender name — below bubble, inside glow radius ── */}
-              <View style={[
-                { paddingHorizontal: 8, paddingTop: 1, paddingBottom: 0, marginTop: -1 },
-                isOwn && !centerBubble && { alignItems: "flex-end" as const },
-                centerBubble && { alignItems: "center" as const },
-              ]}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                  <Text style={{
-                    fontFamily: FONTS.body,
-                    fontSize: 11,
-                    color: shopStyles.glowColor
-                      ? (shopStyles.glowColor as string) + "AA"
-                      : "rgba(108, 180, 238, 0.55)",
-                    ...(shopStyles.nameColor ? { color: shopStyles.nameColor as string } : {}),
-                  }}>
-                    {isOwn ? "You" : displayName}{isLegendarySender ? " 🌟" : ""}{badgeEmojis ? ` ${badgeEmojis}` : ""}
-                  </Text>
-                  {!isOwn && <OnlineDot online={isUserOnline(message.senderAddress)} />}
+              {/* ── Sender name — below bubble, inside glow radius (hide for own messages) ── */}
+              {!isOwn && (
+                <View style={[
+                  { paddingHorizontal: 8, paddingTop: 0, paddingBottom: 0, marginTop: -3 },
+                  centerBubble && { alignItems: "center" as const },
+                ]}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                    <Text style={{
+                      fontFamily: FONTS.body,
+                      fontSize: 11,
+                      color: shopStyles.glowColor
+                        ? (shopStyles.glowColor as string) + "AA"
+                        : "rgba(108, 180, 238, 0.55)",
+                      ...(shopStyles.nameColor ? { color: shopStyles.nameColor as string } : {}),
+                    }}>
+                      {displayName}{isLegendarySender ? " 🌟" : ""}{badgeEmojis ? ` ${badgeEmojis}` : ""}
+                    </Text>
+                    <OnlineDot online={isUserOnline(message.senderAddress)} />
+                  </View>
                 </View>
-              </View>
+              )}
             </View>
           ) : (
             <>
