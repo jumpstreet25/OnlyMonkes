@@ -300,6 +300,8 @@ export async function getEquippedStyles(): Promise<Record<string, any>> {
     const item = allItems.find(i => i.id === equippedId);
     if (!item) continue;
     Object.assign(styles, item.style);
+    // Flag: user has a bubble cosmetic equipped → premium bubble shape
+    if (category === "bubble") styles.hasBubbleCosmetic = true;
   }
 
   if (state.customTextColor) {
