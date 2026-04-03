@@ -166,6 +166,9 @@ export function cacheProfile(inboxId: string, profile: CachedProfile): void {
   if (profile.legendary == null && existing?.legendary) {
     delete profile.legendary;
   }
+  if (profile.shopStyles == null && existing?.shopStyles && Object.keys(existing.shopStyles).length > 0) {
+    delete profile.shopStyles;
+  }
 
   const merged = { ...existing, ...profile, cachedAt: Date.now() };
 
