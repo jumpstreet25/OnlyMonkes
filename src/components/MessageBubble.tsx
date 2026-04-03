@@ -658,7 +658,7 @@ export const MessageBubble = memo(function MessageBubble({
               !isOwn && !centerBubble ? styles.glassGlowOther : null,
               centerBubble && styles.glassGlowBot,
             ]}>
-              {/* ── Skia GPU glow + glass — renders after bubble measures ── */}
+              {/* ── Skia GPU glow — real Gaussian blur behind the bubble ── */}
               {hasSkiaGlow && bubbleSize ? (
                 <SkiaGlowBubble
                   glowColor={shopStyles.glowColor as string}
@@ -667,7 +667,7 @@ export const MessageBubble = memo(function MessageBubble({
                   radius={24}
                 />
               ) : null}
-              {/* Glass bubble */}
+              {/* Glass bubble — dark glass with glow-tinted border */}
               <View
                 onLayout={hasSkiaGlow ? (e) => {
                   const { width: bw, height: bh } = e.nativeEvent.layout;
@@ -684,26 +684,40 @@ export const MessageBubble = memo(function MessageBubble({
                   borderRadius: 24,
                   paddingHorizontal: 20,
                   paddingVertical: 14,
-                  backgroundColor: "transparent",
-                  borderWidth: 0,
+                  backgroundColor: "rgba(10, 10, 20, 0.88)",
+                  borderWidth: 1,
+                  borderColor: shopStyles.glowColor
+                    ? (shopStyles.glowColor as string) + "18"
+                    : "rgba(255, 255, 255, 0.06)",
                   overflow: "hidden",
                 } : null,
-                // Non-Skia shop overrides (no hasBubbleCosmetic)
-                !shopStyles.hasBubbleCosmetic && shopStyles.bgColor ? { backgroundColor: shopStyles.bgColor as string } : null,
-                !shopStyles.hasBubbleCosmetic && shopStyles.bgOpacity != null ? { backgroundColor: `rgba(26, 26, 40, ${shopStyles.bgOpacity})` } : null,
-                !shopStyles.hasBubbleCosmetic && shopStyles.borderOpacity != null ? { borderColor: `rgba(248, 248, 255, ${shopStyles.borderOpacity})` } : null,
+                shopStyles.bgColor ? { backgroundColor: shopStyles.bgColor as string } : null,
+                shopStyles.bgOpacity != null && !shopStyles.hasBubbleCosmetic ? { backgroundColor: `rgba(26, 26, 40, ${shopStyles.bgOpacity})` } : null,
+                shopStyles.borderOpacity != null && !shopStyles.hasBubbleCosmetic ? { borderColor: `rgba(248, 248, 255, ${shopStyles.borderOpacity})` } : null,
                 isOwn && shopStyles.pfpThemeEnabled && nftDominantColor && !shopStyles.glowColor ? { borderColor: nftDominantColor + "30" } : null,
               ]}>
-                {/* Standard glass gradient for non-Skia bubbles */}
-                {!shopStyles.hasBubbleCosmetic ? (
-                  <LinearGradient
-                    colors={["rgba(248,248,255,0.08)", "rgba(0,0,0,0.15)"]}
-                    start={{ x: 0.5, y: 0 }}
-                    end={{ x: 0.5, y: 1 }}
-                    style={[StyleSheet.absoluteFill, { borderRadius: 22 }]}
-                  />
-                ) : null}
-                {!shopStyles.hasBubbleCosmetic ? <View style={styles.glassHighlight} /> : null}
+                {/* Glass gradient overlay */}
+                <LinearGradient
+                  colors={
+                    shopStyles.hasBubbleCosmetic
+                      ? ["rgba(255,255,255,0.08)", "rgba(255,255,255,0.02)", "transparent"]
+                      : ["rgba(248,248,255,0.08)", "rgba(0,0,0,0.15)"]
+                  }
+                  locations={shopStyles.hasBubbleCosmetic ? [0, 0.35, 1] : undefined}
+                  start={shopStyles.hasBubbleCosmetic ? { x: 0, y: 0 } : { x: 0.5, y: 0 }}
+                  end={shopStyles.hasBubbleCosmetic ? { x: 1, y: 1 } : { x: 0.5, y: 1 }}
+                  style={[StyleSheet.absoluteFill, { borderRadius: shopStyles.hasBubbleCosmetic ? 24 : 22 }]}
+                />
+                {/* Top-edge highlight */}
+                <View style={[
+                  styles.glassHighlight,
+                  shopStyles.hasBubbleCosmetic ? {
+                    left: 16, right: 16, height: 1,
+                    backgroundColor: shopStyles.glowColor
+                      ? (shopStyles.glowColor as string) + "25"
+                      : "rgba(255, 255, 255, 0.12)",
+                  } : null,
+                ]} />
 
               {/* Non-media content rendered inside glass bubble */}
               {message.content.startsWith("STICKER:") ? (
