@@ -668,13 +668,13 @@ export const MessageBubble = memo(function MessageBubble({
             ]}>
               {/* ── Glow: single colored layer + BlurView for smooth diffusion ── */}
               {shopStyles.glowColor ? (
-                <View pointerEvents="none" style={{ position: "absolute", top: -8, left: -8, right: -8, bottom: 8, borderRadius: 32, overflow: "hidden" }}>
+                <View pointerEvents="none" style={{ position: "absolute", top: -8, left: -8, right: -8, bottom: 0, borderRadius: 32, overflow: "hidden" }}>
                   <View style={{ flex: 1, backgroundColor: (shopStyles.glowColor as string) + "70", borderRadius: 32 }} />
                   <BlurView intensity={80} tint="dark" style={StyleSheet.absoluteFill} />
                 </View>
               ) : null}
               {isOwn && shopStyles.pfpThemeEnabled && nftDominantColor && !shopStyles.glowColor ? (
-                <View pointerEvents="none" style={{ position: "absolute", top: -6, left: -6, right: -6, bottom: 8, borderRadius: 30, overflow: "hidden" }}>
+                <View pointerEvents="none" style={{ position: "absolute", top: -6, left: -6, right: -6, bottom: 0, borderRadius: 30, overflow: "hidden" }}>
                   <View style={{ flex: 1, backgroundColor: nftDominantColor + "35", borderRadius: 30 }} />
                   <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} />
                 </View>
@@ -1075,7 +1075,7 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     alignItems: "flex-end",
-    marginVertical: 2,
+    marginVertical: 6,
     paddingHorizontal: 8,
     gap: 6,
   },
