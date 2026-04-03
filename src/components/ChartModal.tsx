@@ -27,10 +27,13 @@ interface ChartModalProps {
 // Fetch OHLCV data from DexScreener (free, no auth)
 async function fetchOHLCV(symbol: string): Promise<TCandle[]> {
   // Try DexScreener token search → get pair address → fetch candles
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
   const searchRes = await fetch(
     `https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(symbol)}`,
-    { signal: AbortSignal.timeout(8000) },
+    { signal: controller.signal },
   );
+  clearTimeout(timer);
   if (!searchRes.ok) return [];
 
   const searchData = await searchRes.json();

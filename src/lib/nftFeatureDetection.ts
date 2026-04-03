@@ -114,6 +114,8 @@ async function detectViaOllama(imageUri: string): Promise<NFTFeatureMap | null> 
   if (!base64) return null;
 
   try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 30000);
     const response = await fetch(`${OLLAMA_URL}/api/generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -124,8 +126,9 @@ async function detectViaOllama(imageUri: string): Promise<NFTFeatureMap | null> 
         stream: false,
         options: { temperature: 0.1 },  // Low temp for consistent JSON output
       }),
-      signal: AbortSignal.timeout(30000),  // 30s timeout
+      signal: controller.signal,
     });
+    clearTimeout(timer);
 
     if (!response.ok) return null;
 
@@ -171,6 +174,8 @@ async function detectViaGroq(imageUri: string): Promise<NFTFeatureMap | null> {
   if (!base64) return null;
 
   try {
+    const controller2 = new AbortController();
+    const timer2 = setTimeout(() => controller2.abort(), 15000);
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -191,8 +196,9 @@ async function detectViaGroq(imageUri: string): Promise<NFTFeatureMap | null> {
         temperature: 0.1,
         max_tokens: 500,
       }),
-      signal: AbortSignal.timeout(15000),
+      signal: controller2.signal,
     });
+    clearTimeout(timer2);
 
     if (!response.ok) return null;
 
