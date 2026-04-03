@@ -635,7 +635,15 @@ export const MessageBubble = memo(function MessageBubble({
         centerBubble && styles.bubbleGroupCenter,
       ]}>
 
-        {/* Sender name row — hidden here, rendered below bubble inside glow radius */}
+        {/* Sender name — shown above bubble for non-Skia messages, below bubble for Skia */}
+        {!isOwn && !hasSkiaGlow && (
+          <View style={[styles.senderRow]}>
+            <Text style={[styles.sender, shopStyles.nameColor ? { color: shopStyles.nameColor as string } : null]}>
+              {displayName}{isShopCustomer ? " 🍌" : ""}{isLegendarySender ? " 🌟" : ""}{badgeEmojis ? ` ${badgeEmojis}` : ""}
+            </Text>
+            <OnlineDot online={isUserOnline(message.senderAddress)} />
+          </View>
+        )}
 
         {/* Reply preview */}
         {message.replyTo && (
