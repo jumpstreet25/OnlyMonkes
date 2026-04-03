@@ -665,19 +665,43 @@ export const MessageBubble = memo(function MessageBubble({
               isOwn && !centerBubble ? styles.glassGlowOwn : null,
               !isOwn && !centerBubble ? styles.glassGlowOther : null,
               centerBubble && styles.glassGlowBot,
-              // Shop: custom glow color/radius for own bubbles
+              // iOS shadow glow (invisible on Android — Android glow rendered below)
               isOwn && shopStyles.glowColor ? {
                 shadowColor: shopStyles.glowColor as string,
                 shadowOpacity: (shopStyles.glowOpacity as number) ?? 0.6,
                 shadowRadius: (shopStyles.glowRadius as number) ?? 16,
               } : null,
-              // Tier 3: PFP Color Theme — NFT dominant color as bubble glow
               isOwn && shopStyles.pfpThemeEnabled && nftDominantColor && !shopStyles.glowColor ? {
                 shadowColor: nftDominantColor,
                 shadowOpacity: 0.7,
                 shadowRadius: 18,
               } : null,
             ]}>
+              {/* Android backlit glow — colored layer behind the bubble */}
+              {isOwn && shopStyles.glowColor ? (
+                <View
+                  pointerEvents="none"
+                  style={{
+                    position: "absolute",
+                    top: -4, left: -4, right: -4, bottom: -4,
+                    borderRadius: 26,
+                    backgroundColor: shopStyles.glowColor as string,
+                    opacity: (shopStyles.glowOpacity as number ?? 0.6) * 0.35,
+                  }}
+                />
+              ) : null}
+              {isOwn && shopStyles.pfpThemeEnabled && nftDominantColor && !shopStyles.glowColor ? (
+                <View
+                  pointerEvents="none"
+                  style={{
+                    position: "absolute",
+                    top: -4, left: -4, right: -4, bottom: -4,
+                    borderRadius: 26,
+                    backgroundColor: nftDominantColor,
+                    opacity: 0.25,
+                  }}
+                />
+              ) : null}
               {/* Actual bubble — background, border, gradient, content */}
               <View style={[
                 styles.glassBubble,
@@ -688,6 +712,12 @@ export const MessageBubble = memo(function MessageBubble({
                 isOwn && shopStyles.bgColor ? { backgroundColor: shopStyles.bgColor as string } : null,
                 isOwn && shopStyles.bgOpacity != null ? { backgroundColor: `rgba(26, 26, 40, ${shopStyles.bgOpacity})` } : null,
                 isOwn && shopStyles.borderOpacity != null ? { borderColor: `rgba(248, 248, 255, ${shopStyles.borderOpacity})` } : null,
+                // Shop glow — visible on Android via colored border + background tint
+                isOwn && shopStyles.glowColor ? {
+                  borderColor: shopStyles.glowColor as string + "60",
+                  borderWidth: 1.5,
+                  backgroundColor: shopStyles.glowColor as string + "12",
+                } : null,
                 // Tier 3: PFP Color Theme — NFT color as border tint
                 isOwn && shopStyles.pfpThemeEnabled && nftDominantColor ? { borderColor: nftDominantColor + "30" } : null,
               ]}>
