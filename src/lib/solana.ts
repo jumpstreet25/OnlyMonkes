@@ -21,6 +21,7 @@ import {
   TransactionInstruction,
   AddressLookupTableAccount,
   ComputeBudgetProgram,
+  SystemProgram,
 } from "@solana/web3.js";
 import {
   createTransferInstruction,
@@ -106,8 +107,6 @@ export async function sendShopPayment(
   const lamports = Math.ceil(solAmount * 1e9);
   const connection = new Connection(HELIUS_RPC_URL, "confirmed");
   const devPubkey = new PublicKey(DEV_WALLET);
-
-  const { SystemProgram } = await import("@solana/web3.js");
 
   const signature = await transact(async (mobileWallet: Web3MobileWallet) => {
     const senderPubkey = await mwaAuthorize(mobileWallet);
