@@ -563,9 +563,9 @@ export const MessageBubble = memo(function MessageBubble({
     ? (verifiedNft?.image ?? null)
     : (cachedSender?.nftImage ?? message.senderNft?.image ?? null);
 
-  // PFP Aura color — only set when user purchased PFP Aura
+  // PFP Aura color — uses equipped bubble glow color, falls back to NFT dominant color
   const pfpAuraColor = shopStyles.pfpAuraEnabled
-    ? (isOwn ? nftDominantColor : (shopStyles.pfpAuraColor as string | undefined)) ?? null
+    ? (shopStyles.glowColor as string | undefined) ?? (isOwn ? nftDominantColor : (shopStyles.pfpAuraColor as string | undefined)) ?? null
     : null;
 
   // Shop customer badge (purchased any Banana Shop item)
