@@ -273,6 +273,7 @@ function decodeStringMessage(raw: any, rawContent: string, myInboxId: string): C
   if (rawContent.startsWith("LIVE_ROOM:")) return null;
   if (rawContent.startsWith("VIDEO_ROOM:")) return null;
   if (rawContent.startsWith("AVATAR_ROOM:")) return null;
+  if (rawContent.startsWith("SHOP_PURCHASE:")) return null;
   if (rawContent.startsWith("THREAD:")) return null;
   if (rawContent.startsWith("PIN:")) return null;
   if (rawContent.startsWith("UNPIN:")) return null;

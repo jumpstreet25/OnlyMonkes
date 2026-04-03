@@ -232,7 +232,7 @@ export function ChatInput({
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     onSend();
-    inputRef.current?.focus();
+    inputRef.current?.blur();
   }, [canSend, onSend, value]);
 
   const handleChangeText = useCallback((text: string) => {

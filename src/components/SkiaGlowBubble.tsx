@@ -195,3 +195,42 @@ export const SkiaGlassFront = React.memo(function SkiaGlassFront({
 
 // Re-export combined for backward compat
 export const SkiaGlowBubble = SkiaGlowBack;
+
+// ── Circular PFP glow — Skia radial glow behind a profile picture ──────────
+interface SkiaGlowPfpProps {
+  glowColor: string;
+  size: number; // diameter of the PFP image
+}
+
+export const SkiaGlowPfp = React.memo(function SkiaGlowPfp({
+  glowColor,
+  size,
+}: SkiaGlowPfpProps) {
+  const pad = Math.round(size * 0.55); // glow extends beyond PFP
+  const cw = size + pad * 2;
+  const cx = cw / 2;
+  const cy = cw / 2;
+  const r = size / 2;
+
+  return (
+    <Canvas
+      style={{
+        width: cw,
+        height: cw,
+        position: "absolute",
+        top: -pad,
+        left: -pad,
+      }}
+      pointerEvents="none"
+    >
+      {/* Outer diffused glow */}
+      <Circle cx={cx} cy={cy} r={r + pad * 0.4} color={glowColor + "40"}>
+        <BlurMask blur={pad * 0.6} style="normal" />
+      </Circle>
+      {/* Inner concentrated glow */}
+      <Circle cx={cx} cy={cy} r={r + 2} color={glowColor + "55"}>
+        <BlurMask blur={8} style="normal" />
+      </Circle>
+    </Canvas>
+  );
+});
