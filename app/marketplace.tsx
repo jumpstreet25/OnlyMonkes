@@ -3,6 +3,7 @@ import { View, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAppStore } from '../src/store/appStore';
 import { THEME } from '../src/lib/constants';
+import { ErrorBoundary } from '../src/components/ErrorBoundary';
 
 const MarketplaceScreen = React.lazy(() => import('../src/screens/MarketplaceScreen'));
 
@@ -17,7 +18,6 @@ export default function MarketplaceRoute() {
   const { wallet, verified, isGuest } = useAppStore();
 
   useEffect(() => {
-    // Allow access if verified holder OR guest with wallet
     if (!wallet) router.replace('/');
     else if (!verified && !isGuest) router.replace('/verify');
   }, [wallet, verified, isGuest]);
@@ -25,8 +25,10 @@ export default function MarketplaceRoute() {
   if (!wallet || (!verified && !isGuest)) return null;
 
   return (
-    <Suspense fallback={<Loading />}>
-      <MarketplaceScreen />
-    </Suspense>
+    <ErrorBoundary fallbackMessage="Marketplace hit an error. Go back and try again.">
+      <Suspense fallback={<Loading />}>
+        <MarketplaceScreen />
+      </Suspense>
+    </ErrorBoundary>
   );
 }

@@ -7,6 +7,7 @@ import { View, StyleSheet, ActivityIndicator } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useAppStore } from "@/store/appStore";
 import { THEME } from "@/lib/constants";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 const AvatarRoomScreen = React.lazy(() => import("@/screens/AvatarRoomScreen"));
 
@@ -29,15 +30,17 @@ export default function AvatarRoomRoute() {
   }
 
   return (
-    <Suspense
-      fallback={
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color={THEME.accent} />
-        </View>
-      }
-    >
-      <AvatarRoomScreen />
-    </Suspense>
+    <ErrorBoundary fallbackMessage="Avatar room hit an error. Go back and try again.">
+      <Suspense
+        fallback={
+          <View style={styles.center}>
+            <ActivityIndicator size="large" color={THEME.accent} />
+          </View>
+        }
+      >
+        <AvatarRoomScreen />
+      </Suspense>
+    </ErrorBoundary>
   );
 }
 
