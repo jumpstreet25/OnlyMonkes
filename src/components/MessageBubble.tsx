@@ -35,6 +35,7 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
+import { SkiaGlowBubble } from "@/components/SkiaGlowBubble";
 import * as Clipboard from "expo-clipboard";
 import { Image as ExpoImage } from "expo-image";
 import * as Haptics from "expo-haptics";
@@ -374,6 +375,8 @@ export const MessageBubble = memo(function MessageBubble({
   const senderProfile = !isOwn ? getCachedProfile(message.senderAddress) : null;
   const shopStyles = isOwn ? myShopStyles : (senderProfile?.shopStyles ?? {});
   const { width: SCREEN_W } = useWindowDimensions();
+  const [bubbleSize, setBubbleSize] = useState<{ w: number; h: number } | null>(null);
+  const hasSkiaGlow = !!(shopStyles.hasBubbleCosmetic && shopStyles.glowColor);
   // Max bubble width is 72% of screen minus horizontal padding (14px each side)
   const mediaWidth = Math.round(SCREEN_W * 0.72 - 28);
 
@@ -647,40 +650,32 @@ export const MessageBubble = memo(function MessageBubble({
           style={isMedia ? styles.mediaBubble : undefined}
         >
           {!isMedia ? (
-            /* Glow wrapper — overflow visible so glow layers extend beyond bubble */
+            /* Glow wrapper — Skia renders the glow + glass, RN View holds content */
             <View style={[
               styles.glassGlow,
               { overflow: "visible" },
               isOwn && !centerBubble ? styles.glassGlowOwn : null,
               !isOwn && !centerBubble ? styles.glassGlowOther : null,
               centerBubble && styles.glassGlowBot,
-              // iOS shadow glow
-              shopStyles.glowColor ? {
-                shadowColor: shopStyles.glowColor as string,
-                shadowOpacity: (shopStyles.glowOpacity as number) ?? 0.6,
-                shadowRadius: (shopStyles.glowRadius as number) ?? 16,
-              } : null,
-              isOwn && shopStyles.pfpThemeEnabled && nftDominantColor && !shopStyles.glowColor ? {
-                shadowColor: nftDominantColor,
-                shadowOpacity: 0.7,
-                shadowRadius: 18,
-              } : null,
             ]}>
-              {/* ── Glow: single colored layer + BlurView for smooth diffusion ── */}
-              {shopStyles.glowColor ? (
-                <View pointerEvents="none" style={{ position: "absolute", top: -8, left: -8, right: -8, bottom: 0, borderRadius: 32, overflow: "hidden" }}>
-                  <View style={{ flex: 1, backgroundColor: (shopStyles.glowColor as string) + "70", borderRadius: 32 }} />
-                  <BlurView intensity={80} tint="dark" style={StyleSheet.absoluteFill} />
-                </View>
+              {/* ── Skia GPU glow + glass — renders after bubble measures ── */}
+              {hasSkiaGlow && bubbleSize ? (
+                <SkiaGlowBubble
+                  glowColor={shopStyles.glowColor as string}
+                  width={bubbleSize.w}
+                  height={bubbleSize.h}
+                  radius={24}
+                />
               ) : null}
-              {isOwn && shopStyles.pfpThemeEnabled && nftDominantColor && !shopStyles.glowColor ? (
-                <View pointerEvents="none" style={{ position: "absolute", top: -6, left: -6, right: -6, bottom: 0, borderRadius: 30, overflow: "hidden" }}>
-                  <View style={{ flex: 1, backgroundColor: nftDominantColor + "35", borderRadius: 30 }} />
-                  <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} />
-                </View>
-              ) : null}
-              {/* ── Glass bubble — frosted dark capsule floating above the glow ── */}
-              <View style={[
+              {/* Glass bubble */}
+              <View
+                onLayout={hasSkiaGlow ? (e) => {
+                  const { width: bw, height: bh } = e.nativeEvent.layout;
+                  if (!bubbleSize || Math.abs(bubbleSize.w - bw) > 1 || Math.abs(bubbleSize.h - bh) > 1) {
+                    setBubbleSize({ w: bw, h: bh });
+                  }
+                } : undefined}
+                style={[
                 styles.glassBubble,
                 isOwn && !centerBubble ? styles.glassBubbleOwn : null,
                 !isOwn && !centerBubble ? styles.glassBubbleOther : null,
@@ -689,50 +684,26 @@ export const MessageBubble = memo(function MessageBubble({
                   borderRadius: 24,
                   paddingHorizontal: 20,
                   paddingVertical: 14,
-                  backgroundColor: "rgba(10, 10, 18, 0.95)",
-                  borderWidth: 1,
-                  borderColor: shopStyles.glowColor
-                    ? (shopStyles.glowColor as string) + "18"
-                    : "rgba(255, 255, 255, 0.06)",
-                  elevation: 6,
+                  backgroundColor: "transparent",
+                  borderWidth: 0,
                   overflow: "hidden",
                 } : null,
-                // Shop: custom overrides
-                shopStyles.bgColor ? { backgroundColor: shopStyles.bgColor as string } : null,
-                shopStyles.bgOpacity != null ? { backgroundColor: `rgba(26, 26, 40, ${shopStyles.bgOpacity})` } : null,
-                shopStyles.borderOpacity != null ? { borderColor: `rgba(248, 248, 255, ${shopStyles.borderOpacity})` } : null,
+                // Non-Skia shop overrides (no hasBubbleCosmetic)
+                !shopStyles.hasBubbleCosmetic && shopStyles.bgColor ? { backgroundColor: shopStyles.bgColor as string } : null,
+                !shopStyles.hasBubbleCosmetic && shopStyles.bgOpacity != null ? { backgroundColor: `rgba(26, 26, 40, ${shopStyles.bgOpacity})` } : null,
+                !shopStyles.hasBubbleCosmetic && shopStyles.borderOpacity != null ? { borderColor: `rgba(248, 248, 255, ${shopStyles.borderOpacity})` } : null,
                 isOwn && shopStyles.pfpThemeEnabled && nftDominantColor && !shopStyles.glowColor ? { borderColor: nftDominantColor + "30" } : null,
               ]}>
-                {/* BlurView frosted glass — real blur on Android */}
-                {shopStyles.hasBubbleCosmetic ? (
-                  <BlurView
-                    intensity={40}
-                    tint="dark"
-                    style={[StyleSheet.absoluteFill, { borderRadius: 24 }]}
+                {/* Standard glass gradient for non-Skia bubbles */}
+                {!shopStyles.hasBubbleCosmetic ? (
+                  <LinearGradient
+                    colors={["rgba(248,248,255,0.08)", "rgba(0,0,0,0.15)"]}
+                    start={{ x: 0.5, y: 0 }}
+                    end={{ x: 0.5, y: 1 }}
+                    style={[StyleSheet.absoluteFill, { borderRadius: 22 }]}
                   />
                 ) : null}
-                {/* Glass gradient — top-left light reflection for depth */}
-                <LinearGradient
-                  colors={
-                    shopStyles.hasBubbleCosmetic
-                      ? ["rgba(255,255,255,0.10)", "rgba(255,255,255,0.02)", "transparent"]
-                      : ["rgba(248,248,255,0.08)", "rgba(0,0,0,0.15)"]
-                  }
-                  locations={shopStyles.hasBubbleCosmetic ? [0, 0.35, 1] : undefined}
-                  start={shopStyles.hasBubbleCosmetic ? { x: 0, y: 0 } : { x: 0.5, y: 0 }}
-                  end={shopStyles.hasBubbleCosmetic ? { x: 1, y: 1 } : { x: 0.5, y: 1 }}
-                  style={[StyleSheet.absoluteFill, { borderRadius: shopStyles.hasBubbleCosmetic ? 24 : 22 }]}
-                />
-                {/* Top-edge highlight — simulates light hitting glass edge */}
-                <View style={[
-                  styles.glassHighlight,
-                  shopStyles.hasBubbleCosmetic ? {
-                    left: 20, right: 20, height: 1,
-                    backgroundColor: shopStyles.glowColor
-                      ? (shopStyles.glowColor as string) + "30"
-                      : "rgba(255, 255, 255, 0.12)",
-                  } : null,
-                ]} />
+                {!shopStyles.hasBubbleCosmetic ? <View style={styles.glassHighlight} /> : null}
 
               {/* Non-media content rendered inside glass bubble */}
               {message.content.startsWith("STICKER:") ? (
