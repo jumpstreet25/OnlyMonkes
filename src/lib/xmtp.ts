@@ -529,6 +529,7 @@ export interface ParsedProfileUpdate {
   pushToken?: string;
   expoPushToken?: string;
   badges?: string[];
+  shopStyles?: Record<string, string | number | boolean>;
 }
 
 /**
@@ -569,6 +570,7 @@ export function parseProfileUpdate(raw: string): ParsedProfileUpdate | null {
     pushToken: str(data.pt),
     expoPushToken: str(data.ept),
     badges: Array.isArray(data.bd) ? data.bd.filter((b: unknown) => typeof b === "string").slice(0, 20) : undefined,
+    shopStyles: data.ss && typeof data.ss === "object" && !Array.isArray(data.ss) ? data.ss : undefined,
   };
 }
 
@@ -713,6 +715,7 @@ export async function sendProfileUpdate(
   expoPushToken?: string | null,
   location?: string | null,
   badges?: string[] | null,
+  shopStyles?: Record<string, string | number | boolean> | null,
 ): Promise<void> {
   const payload = JSON.stringify({
     id: inboxId,
@@ -733,6 +736,7 @@ export async function sendProfileUpdate(
     } : null,
     ept: expoPushToken ?? "",
     bd: badges ?? [],
+    ss: shopStyles ?? null,
   });
   await (group as any).send(`PROFILE_UPDATE:${payload}`);
 }

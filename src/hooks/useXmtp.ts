@@ -142,7 +142,7 @@ async function _doProfileRebroadcast(pushToken: string): Promise<void> {
   const { username, bio, xAccount, wallet, tipWallet, verifiedNft, isLegendary,
     notificationsEnabled, mentionsOnly, botNotificationsEnabled,
     dmNotificationsEnabled, liveRoomNotificationsEnabled,
-    mutedBotChannels, mutedSports,
+    mutedBotChannels, mutedSports, shopStyles: currentShopStyles,
   } = useAppStore.getState();
   try {
     const expoPushToken = useAppStore.getState().expoPushToken ?? await registerForExpoPushToken();
@@ -163,6 +163,7 @@ async function _doProfileRebroadcast(pushToken: string): Promise<void> {
       expoPushToken,
       undefined, // location (not available here)
       getEarnedBadges(),
+      Object.keys(currentShopStyles).length > 0 ? currentShopStyles : null,
     );
     if (__DEV__) console.log('[XMTP] Re-broadcast profile with push token:', pushToken.slice(0, 30) + '…');
   } catch { /* non-critical */ }
@@ -572,7 +573,7 @@ export function useXmtp() {
             if (typeof content === "string" && content.startsWith("PROFILE_UPDATE:")) {
               const profile = parseProfileUpdate(content);
               if (profile) {
-                cacheProfile(profile.id, { username: profile.username, bio: profile.bio, xAccount: profile.xAccount, walletAddress: profile.walletAddress, tipWallet: profile.tipWallet, location: profile.location, nftImage: profile.nftImage, legendary: profile.legendary, pushToken: profile.pushToken, expoPushToken: profile.expoPushToken, badges: profile.badges });
+                cacheProfile(profile.id, { username: profile.username, bio: profile.bio, xAccount: profile.xAccount, walletAddress: profile.walletAddress, tipWallet: profile.tipWallet, location: profile.location, nftImage: profile.nftImage, legendary: profile.legendary, pushToken: profile.pushToken, expoPushToken: profile.expoPushToken, badges: profile.badges, shopStyles: profile.shopStyles });
                 trackUser(profile.id, profile.username);
               }
             } else if (typeof content === "string" && content.startsWith("EVENT:")) {
@@ -861,7 +862,7 @@ export function useXmtp() {
         if (typeof content === "string" && content.startsWith("PROFILE_UPDATE:")) {
           const profile = parseProfileUpdate(content);
           if (profile) {
-            cacheProfile(profile.id, { username: profile.username, bio: profile.bio, xAccount: profile.xAccount, walletAddress: profile.walletAddress, tipWallet: profile.tipWallet, location: profile.location, nftImage: profile.nftImage, legendary: profile.legendary, pushToken: profile.pushToken, expoPushToken: profile.expoPushToken, badges: profile.badges });
+            cacheProfile(profile.id, { username: profile.username, bio: profile.bio, xAccount: profile.xAccount, walletAddress: profile.walletAddress, tipWallet: profile.tipWallet, location: profile.location, nftImage: profile.nftImage, legendary: profile.legendary, pushToken: profile.pushToken, expoPushToken: profile.expoPushToken, badges: profile.badges, shopStyles: profile.shopStyles });
             trackUser(profile.id, profile.username);
           }
           return;
@@ -1486,7 +1487,7 @@ export function useXmtp() {
     const { username, bio, xAccount, wallet, tipWallet, location, verifiedNft, isLegendary,
       notificationsEnabled, mentionsOnly, botNotificationsEnabled,
       dmNotificationsEnabled, liveRoomNotificationsEnabled,
-      mutedBotChannels, mutedSports,
+      mutedBotChannels, mutedSports, shopStyles: currentShopStyles,
     } = useAppStore.getState();
     try {
       const pushToken = await getCachedPushToken();
@@ -1511,6 +1512,7 @@ export function useXmtp() {
         expoPushToken,
         location,
         getEarnedBadges(),
+        Object.keys(currentShopStyles).length > 0 ? currentShopStyles : null,
       );
       // Keep own cache entry current so PFP is always available locally
       cacheProfile(_myInboxId, {
