@@ -1,8 +1,12 @@
 /**
  * SkiaGlowBubble — GPU-rendered glassmorphic 3D bubble + diffused glow.
  *
- * Renders glow aura + glass body + sun-spot glare + depth shadows.
- * All highlights tinted with glowColor for per-package theming.
+ * Creates a sphere-like glass capsule with volume and depth:
+ * - Bright specular sun-spot highlight (upper-left, like light hitting curved glass)
+ * - Edge darkening (vignette) to simulate glass thickness at the perimeter
+ * - Bright center (thinner glass = more light passes through)
+ * - Deep bottom shadow for 3D grounding
+ * - Bottom rim reflection (light bouncing off glow)
  */
 
 import React from "react";
@@ -43,6 +47,8 @@ export const SkiaGlowBubble = React.memo(function SkiaGlowBubble({
   const fillAlpha = Math.round((glassOpacity ?? 0.78) * 255).toString(16).padStart(2, "0");
   const glassFill = `#0A0A16${fillAlpha}`;
 
+  const minDim = Math.min(width, height);
+
   return (
     <Canvas
       style={{
@@ -65,60 +71,95 @@ export const SkiaGlowBubble = React.memo(function SkiaGlowBubble({
       {/* ── 2. Glass body ── */}
       <RoundedRect x={x} y={y} width={width} height={height} r={radius} color={glassFill} />
 
-      {/* ── 3. Clipped interior ── */}
+      {/* ── 3. 3D depth effects (clipped to bubble shape) ── */}
       <Group clip={{ rect: { x, y, width, height }, rx: radius, ry: radius }}>
 
-        {/* 3a. Base tint gradient */}
-        <Rect x={x} y={y} width={width} height={height}>
+        {/* 3a. Edge vignette — darken all edges for glass thickness/curvature */}
+        {/* Top edge dark */}
+        <Rect x={x} y={y} width={width} height={height * 0.2}>
           <LinearGradient
-            start={vec(x, y)}
-            end={vec(x + width, y + height)}
-            colors={[glowColor + "14", "rgba(255,255,255,0.02)", "rgba(0,0,0,0.10)"]}
-            positions={[0, 0.35, 1]}
+            start={vec(x + width / 2, y)}
+            end={vec(x + width / 2, y + height * 0.2)}
+            colors={["rgba(0,0,0,0.18)", "transparent"]}
+          />
+        </Rect>
+        {/* Left edge dark */}
+        <Rect x={x} y={y} width={width * 0.12} height={height}>
+          <LinearGradient
+            start={vec(x, y + height / 2)}
+            end={vec(x + width * 0.12, y + height / 2)}
+            colors={["rgba(0,0,0,0.15)", "transparent"]}
+          />
+        </Rect>
+        {/* Right edge dark */}
+        <Rect x={x + width * 0.88} y={y} width={width * 0.12} height={height}>
+          <LinearGradient
+            start={vec(x + width, y + height / 2)}
+            end={vec(x + width * 0.88, y + height / 2)}
+            colors={["rgba(0,0,0,0.15)", "transparent"]}
+          />
+        </Rect>
+        {/* Bottom edge — deeper shadow for 3D grounding */}
+        <Rect x={x} y={y + height * 0.5} width={width} height={height * 0.5}>
+          <LinearGradient
+            start={vec(x + width / 2, y + height * 0.5)}
+            end={vec(x + width / 2, y + height)}
+            colors={["transparent", "rgba(0,0,0,0.30)"]}
           />
         </Rect>
 
-        {/* 3b. Sun-spot glare — blurred circle for organic highlight, not a rectangle */}
+        {/* 3b. Center brightness — glass is thinner in the middle, more light passes */}
         <Circle
-          cx={x + width * 0.35}
-          cy={y + height * 0.25}
-          r={Math.min(width, height) * 0.4}
-          color={glowColor + "14"}
+          cx={x + width * 0.5}
+          cy={y + height * 0.45}
+          r={minDim * 0.5}
+          color="rgba(255,255,255,0.04)"
         >
-          <BlurMask blur={Math.min(width, height) * 0.25} style="normal" />
+          <BlurMask blur={minDim * 0.3} style="normal" />
         </Circle>
 
-        {/* 3c. Brighter sun-spot core */}
+        {/* 3c. Primary sun-spot specular — bright glow-tinted highlight upper-left */}
         <Circle
-          cx={x + width * 0.3}
-          cy={y + height * 0.2}
-          r={Math.min(width, height) * 0.2}
-          color="rgba(255,255,255,0.06)"
+          cx={x + width * 0.32}
+          cy={y + height * 0.22}
+          r={minDim * 0.35}
+          color={glowColor + "18"}
         >
-          <BlurMask blur={Math.min(width, height) * 0.15} style="normal" />
+          <BlurMask blur={minDim * 0.22} style="normal" />
         </Circle>
 
-        {/* 3d. Top rim glow — soft fade along top edge */}
-        <Rect x={x} y={y} width={width} height={3}>
+        {/* 3d. Hot specular core — small bright white spot */}
+        <Circle
+          cx={x + width * 0.28}
+          cy={y + height * 0.18}
+          r={minDim * 0.12}
+          color="rgba(255,255,255,0.10)"
+        >
+          <BlurMask blur={minDim * 0.1} style="normal" />
+        </Circle>
+
+        {/* 3e. Top rim highlight — light catching the upper glass edge */}
+        <Rect x={x} y={y} width={width} height={2.5}>
           <LinearGradient
             start={vec(x, y)}
             end={vec(x + width, y)}
-            colors={["transparent", glowColor + "15", glowColor + "22", glowColor + "15", "transparent"]}
-            positions={[0.05, 0.25, 0.5, 0.75, 0.95]}
+            colors={["transparent", glowColor + "18", glowColor + "28", glowColor + "18", "transparent"]}
+            positions={[0.05, 0.2, 0.5, 0.8, 0.95]}
           />
         </Rect>
 
-        {/* 3e. Bottom depth shadow */}
-        <Rect x={x} y={y + height * 0.55} width={width} height={height * 0.45}>
+        {/* 3f. Bottom rim reflection — glow bouncing off surface below */}
+        <Rect x={x} y={y + height - 3} width={width} height={3}>
           <LinearGradient
-            start={vec(x + width / 2, y + height * 0.55)}
-            end={vec(x + width / 2, y + height)}
-            colors={["transparent", "rgba(0,0,0,0.22)"]}
+            start={vec(x, y + height)}
+            end={vec(x + width, y + height)}
+            colors={["transparent", glowColor + "0C", glowColor + "14", glowColor + "0C", "transparent"]}
+            positions={[0.1, 0.3, 0.5, 0.7, 0.9]}
           />
         </Rect>
       </Group>
 
-      {/* ── 4. Border stroke ── */}
+      {/* ── 4. Border stroke — glow-tinted glass edge ── */}
       <RoundedRect
         x={x}
         y={y}
@@ -132,7 +173,7 @@ export const SkiaGlowBubble = React.memo(function SkiaGlowBubble({
         <LinearGradient
           start={vec(x, y)}
           end={vec(x + width, y + height)}
-          colors={[glowColor + "28", glowColor + "10", "rgba(255,255,255,0.04)"]}
+          colors={[glowColor + "30", glowColor + "12", "rgba(255,255,255,0.04)"]}
           positions={[0, 0.5, 1]}
         />
       </RoundedRect>
