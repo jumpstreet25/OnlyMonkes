@@ -44,6 +44,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAppStore } from "@/store/appStore";
 import { useChatStore } from "@/store/chatStore";
 import { useXmtp, triggerProfileRebroadcast } from "@/hooks/useXmtp";
+import { playSound } from "@/lib/sounds";
 import { MessageBubble } from "@/components/MessageBubble";
 import { SkiaGlowPfp } from "@/components/SkiaGlowBubble";
 import { ChatInput } from "@/components/ChatInput";
@@ -585,6 +586,7 @@ export default function ChatScreen() {
       } else {
         await send(text);
       }
+      playSound("send");
       useChatStore.getState().updateMessageStatus(optimistic.id, "sent");
       // Persist own message to cache — stream handler skips own messages,
       // so without this they're lost on force close + reopen
@@ -615,6 +617,7 @@ export default function ChatScreen() {
   const handleReact = useCallback(
     async (emoji: ReactionEmoji, messageId: string) => {
       try {
+        playSound("reaction");
         await react(emoji, messageId);
       } catch (err) {
         console.warn("Reaction failed:", err);

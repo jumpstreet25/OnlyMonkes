@@ -14,6 +14,8 @@ import { useThemeColor } from '../src/lib/shopTheme';
 import { registerForPushNotifications } from '../src/lib/notifications';
 import { triggerProfileRebroadcast } from '../src/hooks/useXmtp';
 import { useAppStore, loadPersistedPrefs } from '../src/store/appStore';
+import { getEquippedStyles } from '../src/lib/bananaShop';
+import { applyThemeFromShop } from '../src/lib/shopTheme';
 import { clearLegacyKeys, startNftOwnershipGuard } from '../src/lib/session';
 import { initSentry } from '../src/lib/sentry';
 import { checkForOtaUpdate } from '../src/lib/otaUpdates';
@@ -38,13 +40,23 @@ export default function RootLayout() {
   useFreeRasp(RASP_CONFIG, THREAT_ACTIONS);
 
   useEffect(() => {
-    SplashScreen.hideAsync();
+    // Load shop styles BEFORE hiding splash — prevents flash from standard to premium bubbles
+    const shopReady = getEquippedStyles().then(s => {
+      useAppStore.getState().setShopStyles(s);
+      applyThemeFromShop(s);
+    }).catch(() => {});
+
+    // Hide splash once shop styles are loaded (or 500ms timeout, whichever is first)
+    Promise.race([shopReady, new Promise(r => setTimeout(r, 500))]).then(() => {
+      SplashScreen.hideAsync();
+    });
+
     logAppOpen().catch(() => {});
     const streak = useAppStore.getState().loginStreak;
     logDailySession(streak).catch(() => {});
-    checkForOtaUpdate(); // OTA update check (no-op in dev)
-    clearLegacyKeys(); // remove stale Matrica keys from old installs
-    loadPersistedPrefs(); // restore muted sports, muted channels, notification prefs
+    checkForOtaUpdate();
+    clearLegacyKeys();
+    loadPersistedPrefs();
 
     // Load badge progress from storage + register badge-earned callback
     loadBadgeData().catch(() => {});
