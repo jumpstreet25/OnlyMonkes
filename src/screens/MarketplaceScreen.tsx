@@ -235,6 +235,7 @@ export default function MarketplaceScreen() {
       await sendRawToGroup(msg);
       // Add listing locally immediately (stream may skip own messages)
       addListing({
+        id: `${listMint.mint}-${Date.now()}`,
         mint: listMint.mint,
         name: listMint.name,
         image: listMint.image,
