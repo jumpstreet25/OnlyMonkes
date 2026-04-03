@@ -1,12 +1,13 @@
 /**
- * SkiaGlowBubble — GPU-rendered diffused glow ONLY (no glass body).
+ * SkiaGlowBubble — GPU-rendered diffused glow using BlurMaskFilter.
  *
- * Renders behind the RN View bubble. Uses Skia Box + BoxShadow for
- * real Gaussian blur colored glow on Android.
+ * Draws a colored rounded rect with a Gaussian blur mask applied,
+ * creating a soft, wide, diffused glow that radiates outward.
+ * This approach works reliably on Android (BoxShadow can clip).
  */
 
 import React from "react";
-import { Canvas, Box, BoxShadow, rrect, rect } from "@shopify/react-native-skia";
+import { Canvas, RoundedRect, BlurMask } from "@shopify/react-native-skia";
 
 interface SkiaGlowBubbleProps {
   glowColor: string;
@@ -23,11 +24,9 @@ export const SkiaGlowBubble = React.memo(function SkiaGlowBubble({
 }: SkiaGlowBubbleProps) {
   if (width <= 0 || height <= 0) return null;
 
-  const pad = 35; // extra space for glow to extend into
+  const pad = 40; // glow extends 40px beyond bubble edges
   const cw = width + pad * 2;
   const ch = height + pad * 2;
-
-  const bubbleRect = rrect(rect(pad, pad, width, height), radius, radius);
 
   return (
     <Canvas
@@ -40,15 +39,29 @@ export const SkiaGlowBubble = React.memo(function SkiaGlowBubble({
       }}
       pointerEvents="none"
     >
-      {/* Invisible shape that casts the colored glow shadows */}
-      <Box box={bubbleRect} color="transparent">
-        {/* Wide diffused outer glow */}
-        <BoxShadow dx={0} dy={0} blur={25} spread={6} color={glowColor + "50"} />
-        {/* Tighter brighter core glow */}
-        <BoxShadow dx={0} dy={0} blur={12} spread={2} color={glowColor + "40"} />
-        {/* Tight edge glow */}
-        <BoxShadow dx={0} dy={0} blur={4} spread={0} color={glowColor + "30"} />
-      </Box>
+      {/* Wide soft glow — blurred colored shape */}
+      <RoundedRect
+        x={pad}
+        y={pad}
+        width={width}
+        height={height}
+        r={radius}
+        color={glowColor + "60"}
+      >
+        <BlurMask blur={20} style="normal" />
+      </RoundedRect>
+
+      {/* Brighter core glow — tighter blur */}
+      <RoundedRect
+        x={pad}
+        y={pad}
+        width={width}
+        height={height}
+        r={radius}
+        color={glowColor + "35"}
+      >
+        <BlurMask blur={10} style="normal" />
+      </RoundedRect>
     </Canvas>
   );
 });
