@@ -110,10 +110,13 @@ export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
               // 2. MWA payment — transfer SOL to DEV_WALLET
               try {
                 // Fetch SOL price from Jupiter
+                const controller = new AbortController();
+                const timer = setTimeout(() => controller.abort(), 8000);
                 const priceRes = await fetch(
                   "https://api.jup.ag/price/v2?ids=So11111111111111111111111111111111111111112",
-                  { signal: AbortSignal.timeout(8000) },
+                  { signal: controller.signal },
                 );
+                clearTimeout(timer);
                 const priceData = await priceRes.json() as any;
                 const solPrice = parseFloat(
                   priceData?.data?.["So11111111111111111111111111111111111111112"]?.price ?? "0",
