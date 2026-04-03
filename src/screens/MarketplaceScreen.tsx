@@ -36,6 +36,7 @@ import {
   getBidsForListing,
   getListingById,
   loadListings,
+  addListing,
   markPendingSwap,
   markSold,
   revertPendingSwap,
