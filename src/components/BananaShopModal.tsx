@@ -26,7 +26,7 @@ import { spendBananas, addBananas } from "@/lib/bananaRewards";
 import { sendShopPayment } from "@/lib/solana";
 import {
   getAvailableItems, loadShopState, saveShopState, addOwnedItem, equipItem, unequipCategory,
-  getTierInfo, getCategoryName, getEquippedStyles, PURCHASE_DISCLAIMER,
+  getTierInfo, getCategoryName, getEquippedStyles, PURCHASE_DISCLAIMER, bindPfpItemToNft,
   type ShopItem, type ShopCategory, type ShopState,
 } from "@/lib/bananaShop";
 import { applyThemeFromShop } from "@/lib/shopTheme";
@@ -168,6 +168,12 @@ export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
               updated.equipped[item.category] = item.id;
               await saveShopState(updated);
               setShopState(updated);
+
+              // 4. Bind PFP items to the currently equipped NFT mint
+              if (item.category === "pfp") {
+                const nftMint = useAppStore.getState().verifiedNft?.mint;
+                if (nftMint) await bindPfpItemToNft(item.id, nftMint);
+              }
 
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               // Refresh shop styles so MessageBubble updates immediately
