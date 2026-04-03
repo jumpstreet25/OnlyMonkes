@@ -45,6 +45,7 @@ import { useAppStore } from "@/store/appStore";
 import { useChatStore } from "@/store/chatStore";
 import { useXmtp, triggerProfileRebroadcast } from "@/hooks/useXmtp";
 import { MessageBubble } from "@/components/MessageBubble";
+import { SkiaGlowPfp } from "@/components/SkiaGlowBubble";
 import { ChatInput } from "@/components/ChatInput";
 import { UsernameModal } from "@/components/UsernameModal";
 import { MenuDrawer } from "@/components/MenuDrawer";
@@ -157,6 +158,9 @@ export default function ChatScreen() {
   const setCustomBubbleColor = useAppStore(s => s.setCustomBubbleColor);
   const setCalendarEvents = useAppStore(s => s.setCalendarEvents);
   const loginStreak      = useAppStore(s => s.loginStreak);
+  const myShopStyles     = useAppStore(s => s.shopStyles);
+  const nftDominantColor = useAppStore(s => s.nftDominantColor);
+  const headerHasAura    = !!(myShopStyles?.pfpAuraEnabled && nftDominantColor);
   const isLoading        = useAppStore(s => s.isLoading);
   const error            = useAppStore(s => s.error);
   const communityBadges  = useAppStore(s => s.communityBadges);
@@ -1184,16 +1188,19 @@ export default function ChatScreen() {
               })}
               hitSlop={6}
             >
-              {verifiedNft?.image ? (
-                <Image
-                  source={{ uri: verifiedNft.image }}
-                  style={styles.headerNft}
-                />
-              ) : (
-                <View style={styles.headerNftFallback}>
-                  <Text style={styles.headerNftGlyph}>🐒</Text>
-                </View>
-              )}
+              <View style={styles.headerNftWrap}>
+                {headerHasAura && <SkiaGlowPfp glowColor={nftDominantColor!} size={46} />}
+                {verifiedNft?.image ? (
+                  <Image
+                    source={{ uri: verifiedNft.image }}
+                    style={styles.headerNft}
+                  />
+                ) : (
+                  <View style={styles.headerNftFallback}>
+                    <Text style={styles.headerNftGlyph}>🐒</Text>
+                  </View>
+                )}
+              </View>
             </Pressable>
           </View>
 
@@ -1768,19 +1775,25 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
   },
-  headerNft: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-  },
-  headerNftFallback: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
+  headerNftWrap: {
+    width: 46,
+    height: 46,
     alignItems: "center",
     justifyContent: "center",
   },
-  headerNftGlyph: { fontSize: 28 },
+  headerNft: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+  },
+  headerNftFallback: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerNftGlyph: { fontSize: 22 },
   streakPill: {
     position: "absolute",
     bottom: -6,

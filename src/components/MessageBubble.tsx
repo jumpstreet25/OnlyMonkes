@@ -35,7 +35,7 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
-import { SkiaGlowBubble, SkiaGlassFront } from "@/components/SkiaGlowBubble";
+import { SkiaGlowBubble, SkiaGlassFront, SkiaGlowPfp } from "@/components/SkiaGlowBubble";
 import * as Clipboard from "expo-clipboard";
 import { Image as ExpoImage } from "expo-image";
 import * as Haptics from "expo-haptics";
@@ -563,6 +563,16 @@ export const MessageBubble = memo(function MessageBubble({
     ? (verifiedNft?.image ?? null)
     : (cachedSender?.nftImage ?? message.senderNft?.image ?? null);
 
+  // PFP Aura color — only set when user purchased PFP Aura
+  const pfpAuraColor = shopStyles.pfpAuraEnabled
+    ? (isOwn ? nftDominantColor : (shopStyles.pfpAuraColor as string | undefined)) ?? null
+    : null;
+
+  // Shop customer badge (purchased any Banana Shop item)
+  const isShopCustomer = isOwn
+    ? !!useAppStore.getState().shopStyles?.isShopCustomer
+    : !!shopStyles.isShopCustomer;
+
   // ── Media detection (GIF / photo — rendered without bubble background) ───
   const isMedia =
     message.content.startsWith("GIF:") ||
@@ -598,18 +608,15 @@ export const MessageBubble = memo(function MessageBubble({
       {/* ── PFP — always shown beside bubble/media ────────────────────── */}
       {!centerBubble && (
         <Pressable onPress={handlePressAvatar} hitSlop={6} style={styles.avatarOuter}>
-          <View style={styles.avatarHue} />
+          {/* Default purple hue — hidden when Skia PFP Aura is active */}
+          {!pfpAuraColor && <View style={styles.avatarHue} />}
+          {/* Tier 3: PFP Aura — Skia glow using NFT dominant color */}
+          {pfpAuraColor && <SkiaGlowPfp glowColor={pfpAuraColor} size={34} />}
           {/* Tier 3: Pulse Frame — animated ring around PFP */}
           {isOwn && shopStyles.pfpFrame === "pulse" && (
             <PulseRing color={nftDominantColor ?? SOLANA_PURPLE} />
           )}
-          <View style={[
-            styles.avatarFloat,
-            // Tier 3: PFP Aura — NFT color replaces Solana purple glow
-            isOwn && shopStyles.pfpAuraEnabled && nftDominantColor ? {
-              shadowColor: nftDominantColor,
-            } : null,
-          ]}>
+          <View style={styles.avatarFloat}>
             {avatarUri ? (
               <Image source={{ uri: avatarUri }} style={styles.avatarImg} />
             ) : isBot ? (
@@ -809,7 +816,7 @@ export const MessageBubble = memo(function MessageBubble({
                           : "rgba(108, 180, 238, 0.55)",
                         ...(shopStyles.nameColor ? { color: shopStyles.nameColor as string } : {}),
                       }}>
-                        {displayName}{isLegendarySender ? " 🌟" : ""}{badgeEmojis ? ` ${badgeEmojis}` : ""}
+                        {displayName}{isShopCustomer ? " 🍌" : ""}{isLegendarySender ? " 🌟" : ""}{badgeEmojis ? ` ${badgeEmojis}` : ""}
                       </Text>
                       <OnlineDot online={isUserOnline(message.senderAddress)} />
                     </View>

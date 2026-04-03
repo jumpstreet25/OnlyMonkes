@@ -29,7 +29,44 @@ import {
   type ShopItem, type ShopCategory, type ShopState,
 } from "@/lib/bananaShop";
 import { applyThemeFromShop } from "@/lib/shopTheme";
-import { triggerProfileRebroadcast } from "@/hooks/useXmtp";
+import { triggerProfileRebroadcast, sendRawToGroup } from "@/hooks/useXmtp";
+
+/** Fetch SOL/USD price with Jupiter → CoinGecko fallback. */
+async function fetchSolPrice(): Promise<number> {
+  const SOL_MINT = "So11111111111111111111111111111111111111112";
+  const TIMEOUT = 6000;
+
+  // Try Jupiter Price API v2
+  try {
+    const c1 = new AbortController();
+    const t1 = setTimeout(() => c1.abort(), TIMEOUT);
+    const r1 = await fetch(`https://api.jup.ag/price/v2?ids=${SOL_MINT}`, { signal: c1.signal });
+    clearTimeout(t1);
+    if (r1.ok) {
+      const d1 = await r1.json() as any;
+      const p1 = parseFloat(d1?.data?.[SOL_MINT]?.price ?? "0");
+      if (p1 > 0) return p1;
+    }
+  } catch { /* fall through */ }
+
+  // Fallback: CoinGecko simple price (free, no auth)
+  try {
+    const c2 = new AbortController();
+    const t2 = setTimeout(() => c2.abort(), TIMEOUT);
+    const r2 = await fetch(
+      "https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd",
+      { signal: c2.signal },
+    );
+    clearTimeout(t2);
+    if (r2.ok) {
+      const d2 = await r2.json() as any;
+      const p2 = parseFloat(d2?.solana?.usd ?? "0");
+      if (p2 > 0) return p2;
+    }
+  } catch { /* fall through */ }
+
+  throw new Error("Could not fetch SOL price — check your connection and try again");
+}
 
 interface BananaShopModalProps {
   visible: boolean;
@@ -69,12 +106,12 @@ export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
       if (shopState.equipped[item.category] === item.id) {
         const updated = await unequipCategory(item.category);
         setShopState(updated);
-        getEquippedStyles().then(s => { useAppStore.getState().setShopStyles(s); applyThemeFromShop(s); triggerProfileRebroadcast("").catch(() => {}); }).catch(() => {});
+        getEquippedStyles().then(s => { const ndc = useAppStore.getState().nftDominantColor; if (s.pfpAuraEnabled && ndc) s.pfpAuraColor = ndc; useAppStore.getState().setShopStyles(s); applyThemeFromShop(s); triggerProfileRebroadcast("").catch(() => {}); }).catch(() => {});
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       } else {
         const updated = await equipItem(item.id);
         setShopState(updated);
-        getEquippedStyles().then(s => { useAppStore.getState().setShopStyles(s); applyThemeFromShop(s); triggerProfileRebroadcast("").catch(() => {}); }).catch(() => {});
+        getEquippedStyles().then(s => { const ndc = useAppStore.getState().nftDominantColor; if (s.pfpAuraEnabled && ndc) s.pfpAuraColor = ndc; useAppStore.getState().setShopStyles(s); applyThemeFromShop(s); triggerProfileRebroadcast("").catch(() => {}); }).catch(() => {});
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
       return;
@@ -114,19 +151,7 @@ export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
 
               if (!isDevWallet) {
                 try {
-                  const controller = new AbortController();
-                  const timer = setTimeout(() => controller.abort(), 8000);
-                  const priceRes = await fetch(
-                    "https://api.jup.ag/price/v2?ids=So11111111111111111111111111111111111111112",
-                    { signal: controller.signal },
-                  );
-                  clearTimeout(timer);
-                  const priceData = await priceRes.json() as any;
-                  const solPrice = parseFloat(
-                    priceData?.data?.["So11111111111111111111111111111111111111112"]?.price ?? "0",
-                  );
-                  if (!solPrice || solPrice <= 0) throw new Error("Could not fetch SOL price");
-
+                  const solPrice = await fetchSolPrice();
                   await sendShopPayment(item.usdCost, solPrice);
                 } catch (payErr: any) {
                   await addBananas(item.bananaCost);
@@ -143,7 +168,17 @@ export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
 
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               // Refresh shop styles so MessageBubble updates immediately
-              getEquippedStyles().then(s => { useAppStore.getState().setShopStyles(s); applyThemeFromShop(s); triggerProfileRebroadcast("").catch(() => {}); }).catch(() => {});
+              getEquippedStyles().then(s => {
+                // Inject PFP aura color so other users can render the glow
+                const ndc = useAppStore.getState().nftDominantColor;
+                if (s.pfpAuraEnabled && ndc) s.pfpAuraColor = ndc;
+                useAppStore.getState().setShopStyles(s);
+                applyThemeFromShop(s);
+                triggerProfileRebroadcast("").catch(() => {});
+              }).catch(() => {});
+              // Notify bot of purchase (filtered from chat display)
+              const buyerName = useAppStore.getState().username ?? "Unknown";
+              sendRawToGroup(`SHOP_PURCHASE:${buyerName}:${item.name}`).catch(() => {});
               Alert.alert("Purchased!", `${item.name} is now equipped.`);
             } catch (err: any) {
               Alert.alert("Purchase failed", err?.message ?? "Please try again");
