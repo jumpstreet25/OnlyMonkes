@@ -107,28 +107,31 @@ export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
               }
               useAppStore.getState().setBananaBalance(bananaBalance - item.bananaCost);
 
-              // 2. MWA payment — transfer SOL to DEV_WALLET
-              try {
-                // Fetch SOL price from Jupiter
-                const controller = new AbortController();
-                const timer = setTimeout(() => controller.abort(), 8000);
-                const priceRes = await fetch(
-                  "https://api.jup.ag/price/v2?ids=So11111111111111111111111111111111111111112",
-                  { signal: controller.signal },
-                );
-                clearTimeout(timer);
-                const priceData = await priceRes.json() as any;
-                const solPrice = parseFloat(
-                  priceData?.data?.["So11111111111111111111111111111111111111112"]?.price ?? "0",
-                );
-                if (!solPrice || solPrice <= 0) throw new Error("Could not fetch SOL price");
+              // 2. MWA payment — transfer SOL to DEV_WALLET (skip for dev wallet owner)
+              const myWallet = useAppStore.getState().wallet?.address;
+              const isDevWallet = myWallet && myWallet === DEV_WALLET;
 
-                await sendShopPayment(item.usdCost, solPrice);
-              } catch (payErr: any) {
-                // Refund bananas if payment fails
-                await addBananas(item.bananaCost);
-                useAppStore.getState().setBananaBalance(bananaBalance);
-                throw new Error(`Payment failed: ${payErr?.message ?? "wallet rejected"}`);
+              if (!isDevWallet) {
+                try {
+                  const controller = new AbortController();
+                  const timer = setTimeout(() => controller.abort(), 8000);
+                  const priceRes = await fetch(
+                    "https://api.jup.ag/price/v2?ids=So11111111111111111111111111111111111111112",
+                    { signal: controller.signal },
+                  );
+                  clearTimeout(timer);
+                  const priceData = await priceRes.json() as any;
+                  const solPrice = parseFloat(
+                    priceData?.data?.["So11111111111111111111111111111111111111112"]?.price ?? "0",
+                  );
+                  if (!solPrice || solPrice <= 0) throw new Error("Could not fetch SOL price");
+
+                  await sendShopPayment(item.usdCost, solPrice);
+                } catch (payErr: any) {
+                  await addBananas(item.bananaCost);
+                  useAppStore.getState().setBananaBalance(bananaBalance);
+                  throw new Error(`Payment failed: ${payErr?.message ?? "wallet rejected"}`);
+                }
               }
 
               // 3. Mark item as owned + equip it
