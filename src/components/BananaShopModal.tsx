@@ -26,7 +26,7 @@ import { spendBananas, addBananas } from "@/lib/bananaRewards";
 import { sendShopPayment } from "@/lib/solana";
 import {
   getAvailableItems, loadShopState, saveShopState, addOwnedItem, equipItem, unequipCategory,
-  getTierInfo, getCategoryName, getEquippedStyles,
+  getTierInfo, getCategoryName, getEquippedStyles, PURCHASE_DISCLAIMER,
   type ShopItem, type ShopCategory, type ShopState,
 } from "@/lib/bananaShop";
 import { applyThemeFromShop } from "@/lib/shopTheme";
@@ -127,10 +127,12 @@ export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
       return;
     }
 
-    // Confirm purchase
+    // Confirm purchase with disclaimer
+    const isFirstPurchase = shopState.owned.length === 0;
+    const disclaimerText = isFirstPurchase ? `\n\n${PURCHASE_DISCLAIMER}` : "";
     Alert.alert(
       `Buy ${item.name}?`,
-      `${item.bananaCost} 🍌 + $${item.usdCost} in SKR or SOL\n\nYou'll sign a transaction to complete the purchase.`,
+      `${item.bananaCost} 🍌 + $${item.usdCost} in SOL\n\nYou'll sign a wallet transaction to complete.${disclaimerText}`,
       [
         { text: "Cancel", style: "cancel" },
         {

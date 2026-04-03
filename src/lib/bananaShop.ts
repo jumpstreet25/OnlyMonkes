@@ -235,10 +235,21 @@ export function getAvailableItems(): ShopItem[] {
 // ─── Ownership & Equipped State ──────────────────────────────────────────────
 
 export interface ShopState {
-  owned: string[];              // item IDs the user owns
+  owned: string[];              // item IDs the user owns — permanent, never removed
   equipped: Record<ShopCategory, string | null>; // one equipped per category
   customTextColor?: string;     // hex color if text_custom_color is equipped
+  pfpBindings?: Record<string, string[]>; // nftMint → array of PFP-category item IDs bound to that NFT
 }
+
+/** Purchase disclaimer shown before first purchase. */
+export const PURCHASE_DISCLAIMER = [
+  "• All purchases are permanent and yours forever",
+  "• You can switch between owned items anytime at no extra cost",
+  "• PFP-linked cosmetics (aura, pulse frame, color theme) are tied to the NFT equipped when purchased",
+  "• Changing your PFP deactivates PFP-linked items; switching back reactivates them",
+  "• Non-PFP cosmetics (bubble glow, text style, themes) carry over regardless of PFP changes",
+  "• SOL payment is non-refundable",
+].join("\n");
 
 const DEFAULT_SHOP_STATE: ShopState = {
   owned: [],
