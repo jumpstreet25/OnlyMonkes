@@ -233,6 +233,18 @@ export default function MarketplaceScreen() {
         traits: listMint.traits,
       });
       await sendRawToGroup(msg);
+      // Add listing locally immediately (stream may skip own messages)
+      addListing({
+        mint: listMint.mint,
+        name: listMint.name,
+        image: listMint.image,
+        sellerInboxId: myInboxId,
+        sellerUsername: username ?? undefined,
+        sellerWallet: wallet.address,
+        askPrice: price,
+        traits: listMint.traits,
+        listedAt: new Date().toISOString(),
+      });
       Alert.alert('Listed', `${listMint.name} listed for ${price} SOL`);
       setListPrice('');
       setListMint(null);
