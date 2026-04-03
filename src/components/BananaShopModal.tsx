@@ -18,6 +18,7 @@ import {
   Dimensions,
 } from "react-native";
 import * as Haptics from "expo-haptics";
+import { playSound } from "@/lib/sounds";
 import { GlassModal } from "@/components/GlassModal";
 import { THEME, FONTS, DEV_WALLET, SKR_MINT } from "@/lib/constants";
 import { useAppStore } from "@/store/appStore";
@@ -179,6 +180,7 @@ export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
               // Notify bot of purchase (filtered from chat display)
               const buyerName = useAppStore.getState().username ?? "Unknown";
               sendRawToGroup(`SHOP_PURCHASE:${buyerName}:${item.name}`).catch(() => {});
+              playSound("purchase");
               Alert.alert("Purchased!", `${item.name} is now equipped.`);
             } catch (err: any) {
               Alert.alert("Purchase failed", err?.message ?? "Please try again");
