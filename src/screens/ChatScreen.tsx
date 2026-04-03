@@ -268,11 +268,12 @@ export default function ChatScreen() {
       const claim = await claimDailyBananas();
       useAppStore.getState().setBananaBalance(claim.balance);
       if (claim.claimed) setBananaClaim(claim);
-      // Load equipped Banana Shop styles for MessageBubble rendering
+      // Refresh shop styles (picks up isShopCustomer flag) and broadcast
       getEquippedStyles().then(s => {
+        if (s.pfpAuraEnabled) {
+          s.pfpAuraColor = (s.glowColor as string) ?? useAppStore.getState().nftDominantColor ?? undefined;
+        }
         useAppStore.getState().setShopStyles(s);
-        applyThemeFromShop(s);
-        // Broadcast shop styles on startup so all users see this user's cosmetics
         if (Object.keys(s).length > 0) {
           triggerProfileRebroadcast("").catch(() => {});
         }
