@@ -1164,7 +1164,8 @@ export function useXmtp() {
             const { username, bio, xAccount, wallet, tipWallet, verifiedNft, isLegendary,
               notificationsEnabled, mentionsOnly, botNotificationsEnabled,
               dmNotificationsEnabled, liveRoomNotificationsEnabled,
-              mutedBotChannels, mutedSports,
+              mutedBotChannels, mutedSports, shopStyles: currentShopStyles,
+              location,
             } = useAppStore.getState();
             // Wait up to 8s for FCM token — on first launch, registerForPushNotifications()
             // in _layout.tsx runs concurrently with XMTP init, causing a race condition
@@ -1202,6 +1203,9 @@ export function useXmtp() {
                 mutedSports,
               },
               expoPushToken,
+              location ?? undefined,
+              getEarnedBadges(),
+              Object.keys(currentShopStyles).length > 0 ? currentShopStyles : null,
             );
             cacheProfile(client.inboxId, {
               username: username ?? undefined,
