@@ -47,7 +47,7 @@ const BADGE_BANANA_REWARDS: Record<string, number> = {
 };
 
 export const BADGE_DEFS: BadgeDef[] = [
-  { id: 'first_message',   name: 'First Ooh',       description: 'Sent your first message',    emoji: '🐒', threshold: 1,    metric: 'messages_sent' },
+  { id: 'first_message',   name: 'First Ooh',       description: 'Sent your first message',    emoji: '✉️', threshold: 1,    metric: 'messages_sent' },
   { id: 'messages_100',    name: 'Chatterbox',       description: 'Sent 100 messages',          emoji: '💬', threshold: 100,  metric: 'messages_sent' },
   { id: 'messages_500',    name: 'Banana Phone',     description: 'Sent 500 messages',          emoji: '🍌', threshold: 500,  metric: 'messages_sent' },
   { id: 'messages_1000',   name: 'Monke Legend',     description: 'Sent 1000 messages',         emoji: '👑', threshold: 1000, metric: 'messages_sent' },
