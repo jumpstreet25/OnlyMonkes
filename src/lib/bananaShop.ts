@@ -299,6 +299,55 @@ export async function unequipCategory(category: ShopCategory): Promise<ShopState
   return state;
 }
 
+/**
+ * Bind a PFP-category item to a specific NFT mint.
+ * Called after purchasing a PFP item — ties it to the currently equipped NFT.
+ */
+export async function bindPfpItemToNft(itemId: string, nftMint: string): Promise<void> {
+  const state = await loadShopState();
+  if (!state.pfpBindings) state.pfpBindings = {};
+  if (!state.pfpBindings[nftMint]) state.pfpBindings[nftMint] = [];
+  if (!state.pfpBindings[nftMint].includes(itemId)) {
+    state.pfpBindings[nftMint].push(itemId);
+  }
+  await saveShopState(state);
+}
+
+/**
+ * Check PFP bindings when NFT changes.
+ * If the new NFT has bound PFP items → auto-equip them.
+ * If the new NFT has NO bound PFP items → unequip PFP category.
+ * Returns updated shop state.
+ */
+export async function syncPfpBindings(currentNftMint: string | null): Promise<ShopState> {
+  const state = await loadShopState();
+  if (!state.pfpBindings || !currentNftMint) {
+    // No bindings exist or no NFT — unequip PFP items
+    if (state.equipped.pfp) {
+      state.equipped.pfp = null;
+      await saveShopState(state);
+    }
+    return state;
+  }
+
+  const boundItems = state.pfpBindings[currentNftMint] ?? [];
+  if (boundItems.length > 0) {
+    // Auto-equip the first bound PFP item for this NFT
+    const itemToEquip = boundItems[0];
+    if (state.owned.includes(itemToEquip) && state.equipped.pfp !== itemToEquip) {
+      state.equipped.pfp = itemToEquip;
+      await saveShopState(state);
+    }
+  } else {
+    // No PFP items bound to this NFT — unequip
+    if (state.equipped.pfp) {
+      state.equipped.pfp = null;
+      await saveShopState(state);
+    }
+  }
+  return state;
+}
+
 /** Get the style overrides for currently equipped items. */
 export async function getEquippedStyles(): Promise<Record<string, any>> {
   const state = await loadShopState();

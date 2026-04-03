@@ -20,7 +20,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Animated, { FadeIn } from "react-native-reanimated";
+import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import {
   View,
   Text,
@@ -999,7 +999,7 @@ export default function ChatScreen() {
     ({ item }: { item: ChatMessage }) => {
       const isNew = !initialMsgIdsRef.current.has(item.id);
       return (
-        <Animated.View entering={isNew ? FadeIn.duration(220) : undefined}>
+        <Animated.View entering={isNew ? FadeInDown.duration(250).springify().damping(18) : undefined}>
           <MessageBubble
             message={item}
             isOwn={item.senderAddress === myAddress}
@@ -1172,6 +1172,13 @@ export default function ChatScreen() {
         onSelect={async (nft) => {
           setVerified(true, nft);
           await saveSelectedNftMint(nft.mint);
+          // Sync PFP-bound cosmetics to the new NFT
+          const { syncPfpBindings, getEquippedStyles: getStyles } = await import("@/lib/bananaShop");
+          const { applyThemeFromShop: applyTheme } = await import("@/lib/shopTheme");
+          await syncPfpBindings(nft.mint);
+          const s = await getStyles();
+          useAppStore.getState().setShopStyles(s);
+          applyTheme(s);
           setPfpPickerOpen(false);
           await broadcastProfile();
         }}
