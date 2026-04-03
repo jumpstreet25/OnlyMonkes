@@ -67,7 +67,7 @@ export const SHOP_ITEMS: ShopItem[] = [
     description: "Premium gold glow for the distinguished monke",
     category: "bubble", tier: 1, bananaCost: 35, usdCost: 1,
     preview: "✨",
-    style: { glowColor: "#FFC422", glowOpacity: 0.95, glowRadius: 22 },
+    style: { glowColor: "#FFC300", glowOpacity: 0.9, glowRadius: 22 },
   },
   {
     id: "bubble_frosted",
@@ -293,6 +293,9 @@ export async function getEquippedStyles(): Promise<Record<string, any>> {
   const state = await loadShopState();
   const allItems = [...SHOP_ITEMS, ...SEASONAL_ITEMS];
   const styles: Record<string, any> = {};
+
+  // Anyone who has purchased any item gets the banana badge next to their name
+  if (state.owned.length > 0) styles.isShopCustomer = true;
 
   for (const category of ["bubble", "text", "pfp", "theme"] as ShopCategory[]) {
     const equippedId = state.equipped[category];
