@@ -687,10 +687,10 @@ export const MessageBubble = memo(function MessageBubble({
                 isOwn && shopStyles.bgColor ? { backgroundColor: shopStyles.bgColor as string } : null,
                 isOwn && shopStyles.bgOpacity != null ? { backgroundColor: `rgba(26, 26, 40, ${shopStyles.bgOpacity})` } : null,
                 isOwn && shopStyles.borderOpacity != null ? { borderColor: `rgba(248, 248, 255, ${shopStyles.borderOpacity})` } : null,
-                // Shop glow — colored border creates backlit edge glow (works on Android)
+                // Shop glow — translucent glassmorphic haze border (Android-visible)
                 isOwn && shopStyles.glowColor ? {
-                  borderColor: shopStyles.glowColor as string,
-                  borderWidth: 1.5,
+                  borderColor: (shopStyles.glowColor as string) + "40",
+                  borderWidth: 2,
                 } : null,
                 // Tier 3: PFP Color Theme — NFT color as border tint
                 isOwn && shopStyles.pfpThemeEnabled && nftDominantColor ? { borderColor: nftDominantColor + "30" } : null,
