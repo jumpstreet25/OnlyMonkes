@@ -2,8 +2,7 @@
  * SkiaGlowBubble — GPU-rendered glassmorphic 3D bubble + diffused glow.
  *
  * Uses Skia BlurMask for real Gaussian glow and LinearGradient for
- * glass depth, specular highlights, and inner shadows.
- * Renders the complete visual — RN View on top should be transparent.
+ * glass depth, green-tinted specular highlights, and inner shadows.
  */
 
 import React from "react";
@@ -57,40 +56,62 @@ export const SkiaGlowBubble = React.memo(function SkiaGlowBubble({
         <BlurMask blur={10} style="normal" />
       </RoundedRect>
 
-      {/* ── 2. Glass body — dark base fill ── */}
-      <RoundedRect x={x} y={y} width={width} height={height} r={radius} color="rgba(12, 12, 24, 0.92)" />
+      {/* ── 2. Glass body — semi-transparent dark fill ── */}
+      <RoundedRect x={x} y={y} width={width} height={height} r={radius} color="rgba(10, 10, 22, 0.78)" />
 
-      {/* ── 3. Glass gradient — top-left light, bottom-right dark (3D depth) ── */}
+      {/* ── 3. Clipped interior effects ── */}
       <Group clip={{ rect: { x, y, width, height }, rx: radius, ry: radius }}>
+
+        {/* 3a. Base gradient — green-tinted light top-left → dark bottom-right */}
         <Rect x={x} y={y} width={width} height={height}>
           <LinearGradient
             start={vec(x, y)}
             end={vec(x + width, y + height)}
-            colors={["rgba(255,255,255,0.12)", "rgba(255,255,255,0.03)", "rgba(0,0,0,0.08)"]}
-            positions={[0, 0.4, 1]}
+            colors={[glowColor + "18", "rgba(255,255,255,0.04)", "rgba(0,0,0,0.12)"]}
+            positions={[0, 0.35, 1]}
           />
         </Rect>
 
-        {/* ── 4. Specular highlight — bright strip across top edge ── */}
-        <Rect x={x + 12} y={y} width={width - 24} height={height * 0.4}>
+        {/* 3b. Specular highlight — green-tinted glare across top half */}
+        <Rect x={x} y={y} width={width} height={height * 0.45}>
           <LinearGradient
-            start={vec(x + width / 2, y)}
-            end={vec(x + width / 2, y + height * 0.4)}
-            colors={["rgba(255,255,255,0.14)", "transparent"]}
+            start={vec(x + width * 0.3, y)}
+            end={vec(x + width * 0.5, y + height * 0.45)}
+            colors={[glowColor + "22", glowColor + "08", "transparent"]}
+            positions={[0, 0.5, 1]}
           />
         </Rect>
 
-        {/* ── 5. Bottom inner shadow — creates depth/thickness ── */}
-        <Rect x={x} y={y + height * 0.6} width={width} height={height * 0.4}>
+        {/* 3c. Edge highlight — bright line along the top for glass rim */}
+        <Rect x={x} y={y} width={width} height={3}>
           <LinearGradient
-            start={vec(x + width / 2, y + height * 0.6)}
+            start={vec(x, y)}
+            end={vec(x + width, y)}
+            colors={["transparent", glowColor + "20", glowColor + "30", glowColor + "20", "transparent"]}
+            positions={[0, 0.2, 0.5, 0.8, 1]}
+          />
+        </Rect>
+
+        {/* 3d. Bottom inner shadow — deep shadow for 3D thickness */}
+        <Rect x={x} y={y + height * 0.55} width={width} height={height * 0.45}>
+          <LinearGradient
+            start={vec(x + width / 2, y + height * 0.55)}
             end={vec(x + width / 2, y + height)}
-            colors={["transparent", "rgba(0,0,0,0.15)"]}
+            colors={["transparent", "rgba(0,0,0,0.25)"]}
+          />
+        </Rect>
+
+        {/* 3e. Left edge light — subtle side reflection for volume */}
+        <Rect x={x} y={y} width={width * 0.15} height={height}>
+          <LinearGradient
+            start={vec(x, y + height * 0.3)}
+            end={vec(x + width * 0.15, y + height * 0.3)}
+            colors={[glowColor + "10", "transparent"]}
           />
         </Rect>
       </Group>
 
-      {/* ── 6. Glow-tinted border stroke ── */}
+      {/* ── 4. Border stroke — green-tinted glass edge ── */}
       <RoundedRect
         x={x}
         y={y}
@@ -99,25 +120,15 @@ export const SkiaGlowBubble = React.memo(function SkiaGlowBubble({
         r={radius}
         color="transparent"
         style="stroke"
-        strokeWidth={1}
+        strokeWidth={0.75}
       >
         <LinearGradient
           start={vec(x, y)}
           end={vec(x + width, y + height)}
-          colors={[glowColor + "35", glowColor + "15", "rgba(255,255,255,0.05)"]}
+          colors={[glowColor + "30", glowColor + "12", "rgba(255,255,255,0.04)"]}
           positions={[0, 0.5, 1]}
         />
       </RoundedRect>
-
-      {/* ── 7. Top highlight line — glass edge catching light ── */}
-      <RoundedRect
-        x={x + 16}
-        y={y + 0.5}
-        width={width - 32}
-        height={1.5}
-        r={1}
-        color={glowColor + "30"}
-      />
     </Canvas>
   );
 });
