@@ -43,7 +43,7 @@ import { format } from "date-fns";
 import { THEME, FONTS } from "@/lib/constants";
 import { shortenAddress } from "@/lib/nftVerification";
 import { useAppStore } from "@/store/appStore";
-import { getCachedProfile, useProfileVersion, getAllTimeUsers } from "@/lib/userProfile";
+import { getCachedProfile, useProfileVersion, getAllTimeUsers, getPrimaryInboxId } from "@/lib/userProfile";
 import { getEarnedBadges, getBadgeDef } from "@/lib/badges";
 // nftColor no longer needed — glass bubbles use fixed semi-transparent backgrounds
 import { searchStickers, type GiphyItem } from "@/lib/giphy";
@@ -373,7 +373,9 @@ export const MessageBubble = memo(function MessageBubble({
   const myShopStyles = useAppStore(s => s.shopStyles);
   const nftDominantColor = useAppStore(s => s.nftDominantColor);
   // Use own shop styles for own messages, sender's cached styles for others
-  const senderProfile = !isOwn ? getCachedProfile(message.senderAddress) : null;
+  // Use primary inbox ID to merge multi-device users (same wallet, different inbox IDs)
+  const senderPrimaryInbox = !isOwn ? getPrimaryInboxId(message.senderAddress) : null;
+  const senderProfile = senderPrimaryInbox ? getCachedProfile(senderPrimaryInbox) : null;
   const shopStyles = isOwn ? myShopStyles : (senderProfile?.shopStyles ?? {});
   const { width: SCREEN_W } = useWindowDimensions();
   const [bubbleSize, setBubbleSize] = useState<{ w: number; h: number } | null>(null);
@@ -529,8 +531,9 @@ export const MessageBubble = memo(function MessageBubble({
     })
   ).current;
 
-  // Re-read from cache on every render (re-render triggered by useProfileVersion above)
-  const cachedSender = getCachedProfile(message.senderAddress);
+  // Re-read from cache on every render — use primary inbox ID to merge multi-device users
+  const primarySenderInbox = isOwn ? message.senderAddress : getPrimaryInboxId(message.senderAddress);
+  const cachedSender = getCachedProfile(primarySenderInbox);
   const displayName  = cachedSender?.username ?? message.senderUsername ?? shortenAddress(message.senderAddress);
   const isBot = message.senderUsername === "AI Agent #9385";
   // Show expand control when bot message likely exceeds 9 lines
