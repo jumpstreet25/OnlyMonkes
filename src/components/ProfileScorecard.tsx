@@ -144,11 +144,11 @@ export function ProfileScorecard({ onEditProfile, onPressPfp, onClose }: Profile
       {/* Top-right: Edit + Close buttons */}
       <View style={st.topActions}>
         <Pressable onPress={onEditProfile} style={st.actionBtn} hitSlop={8}>
-          <Text style={st.actionIcon}>✏️</Text>
+          <Text style={[st.actionIcon, { fontFamily: FONTS.body }]}>✎</Text>
         </Pressable>
         {onClose && (
           <Pressable onPress={onClose} style={st.actionBtn} hitSlop={8}>
-            <Text style={st.actionIcon}>✕</Text>
+            <Text style={[st.actionIcon, { fontFamily: FONTS.body }]}>✕</Text>
           </Pressable>
         )}
       </View>
@@ -209,10 +209,10 @@ export function ProfileScorecard({ onEditProfile, onPressPfp, onClose }: Profile
 }
 
 const st = StyleSheet.create({
-  card: { marginBottom: 12, marginTop: 4, borderRadius: 20, padding: 16, overflow: "visible" },
-  topActions: { flexDirection: "row", justifyContent: "flex-end", gap: 8, marginBottom: 8 },
-  actionBtn: { width: 30, height: 30, borderRadius: 15, backgroundColor: "rgba(255,255,255,0.04)", alignItems: "center", justifyContent: "center" },
-  actionIcon: { fontSize: 14, color: "#888" },
+  card: { marginBottom: 12, marginTop: 18, borderRadius: 20, padding: 16, overflow: "visible" },
+  topActions: { flexDirection: "row", justifyContent: "flex-end", gap: 8, marginBottom: 6 },
+  actionBtn: { width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+  actionIcon: { fontSize: 15, color: "#777", fontWeight: "400" as const },
   topRow: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 14 },
   pfpWrap: { width: 56, height: 56, borderRadius: 28, borderWidth: 2, overflow: "hidden" },
   pfp: { width: 52, height: 52, borderRadius: 26 },

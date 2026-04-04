@@ -1775,11 +1775,12 @@ const styles = StyleSheet.create({
   },
   headerCenter: {
     flex: 1,
-    height: 88,
+    height: 90,
     alignSelf: "center",
     justifyContent: "center",
     alignItems: "center",
-    marginHorizontal: -4,
+    marginHorizontal: -12,
+    transform: [{ scale: 1.15 }],
   },
   headerLeft: {
     flexDirection: "row",
