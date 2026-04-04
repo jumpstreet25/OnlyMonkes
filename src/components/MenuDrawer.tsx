@@ -39,6 +39,7 @@ import { THEME, FONTS, SKR_MINT, JUP_API_KEY } from "@/lib/constants";
 import { useChatStore } from "@/store/chatStore";
 import { useAppStore } from "@/store/appStore";
 import { getCachedProfile, useProfileVersion } from "@/lib/userProfile";
+import { ProfileScorecard } from "@/components/ProfileScorecard";
 import { shortenAddress } from "@/lib/nftVerification";
 import { clearPushToken, registerForPushNotifications, scheduleTestNotification } from "@/lib/notifications";
 import { markChannelRead } from "@/lib/messageCache";
@@ -86,6 +87,8 @@ interface MenuDrawerProps {
   onPressUser?: (target: ProfileTarget) => void;
   broadcastProfile?: () => void;
   onDevTip?: (amount: number) => void;
+  onEditProfile?: () => void;
+  onSwitchPfp?: () => void;
 }
 
 interface ActiveUser {
@@ -113,7 +116,7 @@ const SPORTS_LIST = [
   { key: "mma", label: "MMA 🥊" },
 ] as const;
 
-export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onStartVideo, onSearch, onPressUser, broadcastProfile, onDevTip }: MenuDrawerProps) {
+export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onStartVideo, onSearch, onPressUser, broadcastProfile, onDevTip, onEditProfile, onSwitchPfp }: MenuDrawerProps) {
   const { width: SCREEN_WIDTH } = useWindowDimensions();
   const { messages } = useChatStore();
   const calendarEvents = useAppStore(s => s.calendarEvents);
@@ -395,6 +398,12 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
           {/* ── Main grid ──────────────────────────────────────────────────── */}
           {activeView === "list" && (
             <>
+              {/* Profile Scorecard */}
+              <ProfileScorecard
+                onEditProfile={() => { onClose(); onEditProfile?.(); }}
+                onPressPfp={() => { onClose(); onSwitchPfp?.(); }}
+              />
+
               {/* Banana Streak Bar + Balance + Shop */}
               {bananaState && (() => {
                 const msLeft = bananaState.lastClaimTs > 0

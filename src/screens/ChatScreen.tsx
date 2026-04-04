@@ -1099,6 +1099,12 @@ export default function ChatScreen() {
           setDrawerOpen(false);
           handleConfirmDevTip(amount);
         }}
+        onEditProfile={() => {
+          setTimeout(() => { setEditingProfile(true); setShowUsernameModal(true); }, 300);
+        }}
+        onSwitchPfp={() => {
+          setTimeout(() => setPfpPickerOpen(true), 300);
+        }}
       />
 
       <SearchModal visible={searchOpen} onClose={() => setSearchOpen(false)} />
@@ -1194,29 +1200,14 @@ export default function ChatScreen() {
       >
         {/* ── Header ────────────────────────────────────────────────────────── */}
         <View style={styles.header}>
-          {/* Left: avatar + banana count */}
+          {/* Left: Globe */}
           <View style={styles.headerLeft}>
             <Pressable
-              onPress={() => setProfileTarget({
-                senderAddress: myAddress,
-                senderUsername: username ?? undefined,
-                senderNft: verifiedNft ?? undefined,
-              })}
-              hitSlop={6}
+              onPress={() => router.push("/globe" as any)}
+              style={styles.iconBtn}
+              hitSlop={8}
             >
-              <View style={styles.headerNftWrap}>
-                {headerAuraColor && <SkiaGlowPfp glowColor={headerAuraColor} size={46} />}
-                {verifiedNft?.image ? (
-                  <Image
-                    source={{ uri: verifiedNft.image }}
-                    style={styles.headerNft}
-                  />
-                ) : (
-                  <View style={styles.headerNftFallback}>
-                    <Text style={styles.headerNftGlyph}>🐒</Text>
-                  </View>
-                )}
-              </View>
+              <Text style={styles.iconBtnText}>🌍</Text>
             </Pressable>
           </View>
 
@@ -1228,16 +1219,8 @@ export default function ChatScreen() {
             resizeMode="cover"
           />
 
-          {/* Right: globe + banana pill (opens community popup) */}
+          {/* Right: banana pill (opens community drawer) */}
           <View style={styles.headerRight}>
-            <Pressable
-              onPress={() => router.push("/globe" as any)}
-              style={styles.iconBtn}
-              hitSlop={8}
-            >
-              <Text style={styles.iconBtnText}>🌍</Text>
-            </Pressable>
-
             <Pressable
               style={styles.bananaHeaderPill}
               onPress={() => setDrawerOpen(true)}
