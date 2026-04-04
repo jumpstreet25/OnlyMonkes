@@ -149,7 +149,7 @@ export function useGroupChat(groupId: string, groupName: string) {
                 await appendCachedMessage(cacheKey, msg);
               }
             } catch (err) {
-              console.warn("[useGroupChat] Stream handler error:", (err as Error).message);
+              if (__DEV__) console.warn("[useGroupChat] Stream handler error:", (err as Error).message);
             }
           });
           warm.unsub = unsub;
@@ -181,25 +181,25 @@ export function useGroupChat(groupId: string, groupName: string) {
 
       const group = await getOrCreateDAppGroup(client, groupId, groupName);
       groupRef.current = group;
-      console.log(`[useGroupChat] ${groupName}: found group ${(group as any)?.id}, requested ${groupId}`);
+      if (__DEV__) console.log(`[useGroupChat] ${groupName}: found group ${(group as any)?.id}, requested ${groupId}`);
 
       setIsLoadingHistory(true);
       await (group as any).sync();
       const rawHistory: any[] = await (group as any).messages({ limit: 500 });
-      console.log(`[useGroupChat] ${groupName}: ${rawHistory.length} raw, decoding…`);
+      if (__DEV__) console.log(`[useGroupChat] ${groupName}: ${rawHistory.length} raw, decoding…`);
       // Debug: log raw content of first 5 messages
       for (const raw of rawHistory.slice(0, 5)) {
         try {
           const c = raw.content();
           const t = typeof c === "string" ? c.substring(0, 120) : JSON.stringify(c).substring(0, 120);
-          console.log(`[useGroupChat] RAW: sender=${raw.senderInboxId?.slice(0,8)} content="${t}"`);
+          if (__DEV__) console.log(`[useGroupChat] RAW: sender=${raw.senderInboxId?.slice(0,8)} content="${t}"`);
         } catch (e: any) { console.log(`[useGroupChat] RAW: content() threw: ${e.message}`); }
       }
 
       const decoded = rawHistory
         .map((m) => decodeMessage(m, client.inboxId))
         .filter(Boolean) as ChatMessage[];
-      console.log(`[useGroupChat] ${groupName}: ${decoded.length} decoded messages`);
+      if (__DEV__) console.log(`[useGroupChat] ${groupName}: ${decoded.length} decoded messages`);
 
       let enriched = decoded;
       for (const raw of rawHistory) {
@@ -222,7 +222,7 @@ export function useGroupChat(groupId: string, groupName: string) {
         ...freshMessages,
       ].sort((a, b) => a.sentAt.getTime() - b.sentAt.getTime());
 
-      console.log(`[useGroupChat] ${groupName}: setting ${merged.length} messages, sample id=${merged[0]?.id}`);
+      if (__DEV__) console.log(`[useGroupChat] ${groupName}: setting ${merged.length} messages, sample id=${merged[0]?.id}`);
       setMessages(merged);
       setIsLoadingHistory(false);
 

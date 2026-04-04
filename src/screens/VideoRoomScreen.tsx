@@ -155,7 +155,7 @@ export default function VideoRoomScreen() {
         useAppStore.getState().setIsInVideoCall(true);
       })
       .catch((err) => {
-        console.error('[VideoRoom] Connect failed:', err);
+        if (__DEV__) console.error('[VideoRoom] Connect failed:', err);
         setError('Failed to connect to video room');
         setConnecting(false);
       });

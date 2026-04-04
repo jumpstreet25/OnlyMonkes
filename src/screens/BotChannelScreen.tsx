@@ -143,7 +143,7 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
       // Navigate to bot DM
       router.push(`/dm/${BOT_INBOX_ID}` as any);
     } catch (err) {
-      console.warn(`[Autonomy:${channelId}] Failed to send enrollment DM:`, (err as Error).message);
+      if (__DEV__) console.warn(`[Autonomy:${channelId}] Failed to send enrollment DM:`, (err as Error).message);
     }
   }, [username, channelId, hasAutonomy]);
 
@@ -166,7 +166,7 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
 
   useEffect(() => {
     if (groupId) initialize().catch((err) => {
-      console.warn(`[BotChannel:${channelId}] init failed:`, err?.message ?? err);
+      if (__DEV__) console.warn(`[BotChannel:${channelId}] init failed:`, err?.message ?? err);
     });
     return () => disconnect();
   }, [groupId]);
@@ -186,7 +186,7 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
           />
         );
       } catch (err) {
-        console.warn(`[BotChannel] Failed to render message ${item.id}:`, err);
+        if (__DEV__) console.warn(`[BotChannel] Failed to render message ${item.id}:`, err);
         return null;
       }
     },
