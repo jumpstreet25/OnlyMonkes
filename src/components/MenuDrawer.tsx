@@ -370,9 +370,9 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
         />
         {/* Top highlight */}
         <View style={styles.glassHighlight} />
-        {/* Header */}
-        <View style={styles.drawerHeader}>
-          {!isList ? (
+        {/* Header — only shown on sub-views (Back button) */}
+        {!isList && (
+          <View style={styles.drawerHeader}>
             <Pressable
               onPress={() => setActiveView("list")}
               style={styles.backBtn}
@@ -381,16 +381,12 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
               <Text style={styles.backIcon}>‹</Text>
               <Text style={styles.backLabel}>Back</Text>
             </Pressable>
-          ) : (
-            <Text style={styles.drawerTitle}>Community</Text>
-          )}
-          {!isList && (
             <Text style={styles.subViewTitle}>{VIEW_TITLES[activeView]}</Text>
-          )}
-          <Pressable onPress={onClose} style={styles.closeBtn} hitSlop={10}>
-            <Text style={styles.closeIcon}>✕</Text>
-          </Pressable>
-        </View>
+            <Pressable onPress={onClose} style={styles.closeBtn} hitSlop={10}>
+              <Text style={styles.closeIcon}>✕</Text>
+            </Pressable>
+          </View>
+        )}
 
         {/* Content */}
         <ScrollView showsVerticalScrollIndicator={false} style={styles.content}>
@@ -402,6 +398,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
               <ProfileScorecard
                 onEditProfile={() => { onClose(); onEditProfile?.(); }}
                 onPressPfp={() => { onClose(); onSwitchPfp?.(); }}
+                onClose={onClose}
               />
 
               {/* Banana Streak Bar + Balance + Shop */}
@@ -1059,7 +1056,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 0,
     right: 0,
-    top: 100,
+    top: 90,
     bottom: 80,
     backgroundColor: "rgba(8, 8, 16, 0.94)",
     borderRadius: 20,
