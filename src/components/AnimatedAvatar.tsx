@@ -75,7 +75,8 @@ const BLINK_MAX_MS = 7000;
 const BLINK_DURATION_MS = 150;
 
 // ── Blendshape blink threshold ──────────────────────────────────────────────
-const BLINK_THRESHOLD = 0.55; // eyeBlink L+R average above this = blink
+const BLINK_THRESHOLD = 0.78; // eyeBlink L+R average above this = blink (high to avoid noise)
+const BLINK_CONSEC_FRAMES = 2; // require N consecutive frames above threshold to trigger
 
 // Eye region position (relative to PFP — calibrated for Saga Monkes)
 const EYE_OVERLAY = {
@@ -165,6 +166,7 @@ export const AnimatedAvatar = React.memo(function AnimatedAvatar({
   const blinkOpacity = useSharedValue(0);
   const blinkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const useRandomBlink = useRef(true); // fallback when no face tracking
+  const blinkFrameCount = useRef(0); // consecutive frames above threshold
 
   // ── Idle breathing ────────────────────────────────────────────────────────
 
@@ -290,19 +292,19 @@ export const AnimatedAvatar = React.memo(function AnimatedAvatar({
     // Disable random blinks — use real blendshape data
     useRandomBlink.current = false;
 
-    // Blendshape-driven eye blink
+    // Blendshape-driven eye blink — require consecutive frames to avoid noise
     const blinkL = blendshapes.values.eyeBlinkLeft ?? 0;
     const blinkR = blendshapes.values.eyeBlinkRight ?? 0;
     const avgBlink = (blinkL + blinkR) / 2;
 
     if (avgBlink > BLINK_THRESHOLD) {
-      // Eyes closing — drive blink overlay proportionally
-      blinkOpacity.value = withTiming(
-        clamp(avgBlink * 1.3, 0, 1), // slightly amplify for visual clarity
-        { duration: 40, easing: Easing.out(Easing.ease) },
-      );
+      blinkFrameCount.current++;
+      if (blinkFrameCount.current >= BLINK_CONSEC_FRAMES) {
+        // Confirmed blink — show overlay
+        blinkOpacity.value = withTiming(1, { duration: 40, easing: Easing.out(Easing.ease) });
+      }
     } else {
-      // Eyes opening
+      blinkFrameCount.current = 0;
       blinkOpacity.value = withTiming(0, { duration: 60, easing: Easing.in(Easing.ease) });
     }
 
