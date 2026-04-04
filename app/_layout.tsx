@@ -22,7 +22,8 @@ import { checkForOtaUpdate } from '../src/lib/otaUpdates';
 import { logAppOpen, logDailySession } from '../src/lib/analytics';
 import { loadBadgeData, setOnBadgeEarned, getBadgeBananaReward, type BadgeDef } from '../src/lib/badges';
 import { addBananas } from '../src/lib/bananaRewards';
-import { Alert } from 'react-native';
+import { Alert, Linking } from 'react-native';
+import { router } from 'expo-router';
 import { useFreeRasp } from 'freerasp-react-native';
 import { RASP_CONFIG, THREAT_ACTIONS } from '../src/lib/security';
 
@@ -87,6 +88,24 @@ export default function RootLayout() {
         }
       }).catch(err => console.warn('[Layout] Push token error:', err));
     }, 2000);
+
+    // Deep link handler — onlymonkes://chat, onlymonkes://dm/<inboxId>, etc.
+    const handleDeepLink = ({ url }: { url: string }) => {
+      try {
+        const path = url.replace(/^onlymonkes:\/\//, "").replace(/^exp\+onlymonkes:\/\//, "");
+        if (!path) return;
+        if (path === "chat") router.push("/chat" as any);
+        else if (path === "dms") router.push("/dms" as any);
+        else if (path.startsWith("dm/")) router.push(`/dm/${path.slice(3)}` as any);
+        else if (path === "globe") router.push("/globe" as any);
+        else if (path === "marketplace") router.push("/marketplace" as any);
+        else if (path.startsWith("channel/")) router.push(`/bot-channel?channelId=${path.slice(8)}` as any);
+      } catch { /* ignore invalid deep links */ }
+    };
+    const sub = Linking.addEventListener("url", handleDeepLink);
+    // Check if app was opened via deep link
+    Linking.getInitialURL().then(url => { if (url) handleDeepLink({ url }); }).catch(() => {});
+    return () => sub.remove();
   }, []);
 
   return (
