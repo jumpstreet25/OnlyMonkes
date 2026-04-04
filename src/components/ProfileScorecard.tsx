@@ -176,6 +176,9 @@ export function ProfileScorecard({ onEditProfile, onPressPfp, onClose }: Profile
             </Pressable>
           ) : null}
           {location ? <Text style={st.sub} numberOfLines={1}>📍 {location}</Text> : null}
+          {bananaState && bananaState.totalCycles > 0 ? (
+            <Text style={st.sub}>🐒 {bananaState.totalCycles * 7}+ days active</Text>
+          ) : null}
         </View>
       </View>
 
