@@ -169,6 +169,7 @@ export function ProfileScorecard({ onEditProfile, onPressPfp, onClose }: Profile
           <Text style={st.username} numberOfLines={1}>
             {username ?? "Monke"}{isLegendary ? " 🌟" : ""}{shopStyles.isShopCustomer ? " 🍌" : ""}
           </Text>
+          {verifiedNft?.name ? <Text style={st.sub} numberOfLines={1}>{verifiedNft.name}</Text> : null}
           {xAccount ? <Text style={st.sub} numberOfLines={1}>@{xAccount}</Text> : null}
           {walletShort ? (
             <Pressable onPress={handleCopyWallet} style={{ flexDirection: "row" }}>
@@ -196,6 +197,21 @@ export function ProfileScorecard({ onEditProfile, onPressPfp, onClose }: Profile
           </View>
         ))}
       </View>
+
+      {/* NFT Traits */}
+      {verifiedNft?.traits && verifiedNft.traits.length > 0 && (
+        <View style={st.traitsSection}>
+          <Text style={st.traitsTitle}>NFT Traits</Text>
+          <View style={st.traitsGrid}>
+            {verifiedNft.traits.slice(0, 6).map((t, i) => (
+              <View key={i} style={[st.traitPill, { borderColor: glowColor + "15" }]}>
+                <Text style={st.traitType}>{t.trait_type}</Text>
+                <Text style={st.traitValue}>{t.value}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      )}
 
       {/* Milestones */}
       {badges.length > 0 && (
@@ -231,4 +247,10 @@ const st = StyleSheet.create({
   milestones: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   pill: { backgroundColor: "rgba(255,255,255,0.03)", borderRadius: 10, paddingHorizontal: 8, paddingVertical: 4, borderWidth: 0.5 },
   pillText: { fontFamily: FONTS.body, fontSize: 11, color: THEME.textMuted },
+  traitsSection: { marginTop: 12, gap: 6 },
+  traitsTitle: { fontFamily: FONTS.bodyMed, fontSize: 11, color: THEME.textMuted, marginBottom: 2 },
+  traitsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  traitPill: { backgroundColor: "rgba(255,255,255,0.03)", borderRadius: 10, paddingHorizontal: 8, paddingVertical: 5, borderWidth: 0.5, minWidth: "28%" as any },
+  traitType: { fontFamily: FONTS.mono, fontSize: 8, color: THEME.textFaint, textTransform: "uppercase", letterSpacing: 0.5 },
+  traitValue: { fontFamily: FONTS.bodyMed, fontSize: 12, color: THEME.text, marginTop: 1 },
 });
