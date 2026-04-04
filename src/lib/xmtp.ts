@@ -10,10 +10,10 @@
  * XMTP identity is persisted in SecureStore across sessions.
  */
 
-import { Client, Group, PublicIdentity, ReactionCodec, ReplyCodec, RemoteAttachmentCodec } from "@xmtp/react-native-sdk";
+import { Client, Group, PublicIdentity, ReactionCodec, ReactionV2Codec, ReplyCodec, RemoteAttachmentCodec } from "@xmtp/react-native-sdk";
 import type { ReactionContent, ReplyContent, RemoteAttachmentContent } from "@xmtp/react-native-sdk";
 
-const NATIVE_CODECS = [new ReactionCodec(), new ReplyCodec(), new RemoteAttachmentCodec()];
+const NATIVE_CODECS = [new ReactionCodec(), new ReactionV2Codec(), new ReplyCodec(), new RemoteAttachmentCodec()];
 import type { ChatMessage, MessageReaction, ReactionEmoji, StickerReaction } from "@/types";
 import { REACTIONS } from "./constants";
 import * as SecureStore from "expo-secure-store";
@@ -348,8 +348,8 @@ export function decodeMessage(raw: any, myInboxId: string): ChatMessage | null {
     if (rawContent && typeof rawContent === "object") {
       const obj = rawContent as Record<string, any>;
 
-      // Native ReactionCodec → handled by applyReaction, never displayed
-      if (obj.reaction) return null;
+      // Native ReactionCodec / V2 → handled by applyReaction, never displayed
+      if (obj.reaction || obj.reactionV2) return null;
 
       // Native ReplyCodec → decode the reply
       if (obj.reply) {
@@ -447,8 +447,8 @@ export function applyReaction(
       emoji = parts[1];
       targetId = parts[2];
     } else if (content && typeof content === "object") {
-      // Native ReactionCodec
-      const reaction = content.reaction ?? content;
+      // Native ReactionCodec or V2
+      const reaction = content.reaction ?? content.reactionV2 ?? content;
       if (!reaction.reference || !reaction.content) return messages;
       emoji = reaction.content;
       targetId = reaction.reference;
