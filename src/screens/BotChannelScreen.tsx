@@ -221,11 +221,7 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
         {/* Center: banner image — matches Main Chat header layout */}
         <ImageBackground
           source={config.banner}
-          style={[
-            styles.headerCenter,
-            channelId === "sales" && { transform: [{ scale: 0.75 }] },
-            channelId === "predictions" && { transform: [{ scale: 0.82 }] },
-          ]}
+          style={styles.headerCenter}
           resizeMode="contain"
         />
 
@@ -387,14 +383,15 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 12,
-    paddingVertical: 14,
+    height: 80,
     borderBottomWidth: 1,
     borderBottomColor: THEME.border,
     backgroundColor: "transparent",
   },
   headerCenter: {
     flex: 1,
-    height: 56,
+    height: 68,
+    alignSelf: "center",
   },
   backBtn: {
     width: 58,
