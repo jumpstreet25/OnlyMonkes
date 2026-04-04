@@ -22,7 +22,7 @@ interface ProfileScorecardProps {
 }
 
 // Skia glass card background
-function SkiaGlassCard({ width, height }: { width: number; height: number }) {
+function SkiaGlassCard({ width, height, glowColor }: { width: number; height: number; glowColor?: string }) {
   if (width <= 0 || height <= 0) return null;
   const pad = 4;
   const r = 20;
@@ -34,11 +34,11 @@ function SkiaGlassCard({ width, height }: { width: number; height: number }) {
   return (
     <Canvas style={{ width: w + pad * 2, height: h + pad * 2, position: "absolute", top: -pad, left: -pad }} pointerEvents="none">
       {/* Subtle outer glow */}
-      <RoundedRect x={x} y={y} width={w} height={h} r={r} color="rgba(153, 69, 255, 0.20)">
+      <RoundedRect x={x} y={y} width={w} height={h} r={r} color={(glowColor ?? "#9945FF") + "25"}>
         <BlurMask blur={12} style="normal" />
       </RoundedRect>
       {/* Glass body */}
-      <RoundedRect x={x} y={y} width={w} height={h} r={r} color="rgba(14, 14, 26, 0.85)" />
+      <RoundedRect x={x} y={y} width={w} height={h} r={r} color="rgba(8, 8, 16, 0.92)" />
       {/* Glass gradient */}
       <Group clip={{ rect: { x, y, width: w, height: h }, rx: r, ry: r }}>
         <Rect x={x} y={y} width={w} height={h}>
@@ -125,7 +125,7 @@ export function ProfileScorecard({ onEditProfile, onPressPfp }: ProfileScorecard
       }}
     >
       {/* Skia glass background */}
-      {cardSize.w > 0 && <SkiaGlassCard width={cardSize.w} height={cardSize.h} />}
+      {cardSize.w > 0 && <SkiaGlassCard width={cardSize.w} height={cardSize.h} glowColor={shopStyles.glowColor as string | undefined} />}
 
       {/* ── Top row: PFP + info + edit ── */}
       <View style={s.topRow}>
@@ -211,7 +211,7 @@ const s = StyleSheet.create({
     height: 56,
     borderRadius: 28,
     borderWidth: 2,
-    borderColor: "rgba(153, 69, 255, 0.3)",
+    borderColor: "rgba(153, 69, 255, 0.25)",
     overflow: "hidden",
   },
   pfp: {

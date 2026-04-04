@@ -221,7 +221,11 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
         {/* Center: banner image — matches Main Chat header layout */}
         <ImageBackground
           source={config.banner}
-          style={styles.headerCenter}
+          style={[
+            styles.headerCenter,
+            channelId === "sales" && { transform: [{ scale: 0.72 }] },
+            channelId === "predictions" && { transform: [{ scale: 0.81 }] },
+          ]}
           resizeMode="cover"
         />
 
