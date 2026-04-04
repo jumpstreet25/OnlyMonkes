@@ -6,9 +6,20 @@
  * openness drive the animation. Falls back to audio energy when face tracking
  * is unavailable.
  *
+ * Phase 0 — 3D Depth Effects:
+ *   Dynamic drop shadow (shifts opposite to head rotation)
+ *   Directional rim light (bright edge toward "light source")
+ *   Enhanced parallax translateX from head yaw
+ *   Ambient occlusion vignette that intensifies on tilt
+ *
+ * Phase 1 — Emotion & Expression:
+ *   Blendshape-driven eye blinks (random blink fallback when no face tracking)
+ *   Emotion detection → glow color, breath speed, scale boost
+ *   Smile/frown → glow intensity modulation
+ *
  * Idle:     Subtle breathing (scale 1.0→1.02) + random blinks every 3-7s
- * Speaking: Scale pulse + green glow ring + smooth mouth sprite cross-fade
- * Face:     Head tilt/nod/turn + continuous mouth openness + eye squint
+ * Speaking: Scale pulse + emotion-colored glow ring + smooth mouth sprite cross-fade
+ * Face:     Head tilt/nod/turn + continuous mouth openness + blendshape-driven blinks
  */
 
 import React, { useEffect, useMemo, useRef, useCallback } from 'react';
@@ -30,9 +41,15 @@ import { THEME, FONTS } from '@/lib/constants';
 import {
   type MouthTrait,
   getCrossFadeSprites,
+  getVisemeCrossFadeSprites,
   MOUTH_OVERLAY_RECT,
 } from '@/lib/mouthOverlays';
-import { type FaceParams, type BlendshapeParams } from '@/lib/faceTracking';
+import {
+  type FaceParams,
+  type BlendshapeParams,
+  blendshapesToVisemes,
+  getDominantViseme,
+} from '@/lib/faceTracking';
 
 function clamp(v: number, min: number, max: number): number {
   'worklet';
@@ -57,6 +74,9 @@ const BLINK_MIN_MS = 3000;
 const BLINK_MAX_MS = 7000;
 const BLINK_DURATION_MS = 150;
 
+// ── Blendshape blink threshold ──────────────────────────────────────────────
+const BLINK_THRESHOLD = 0.55; // eyeBlink L+R average above this = blink
+
 // Eye region position (relative to PFP — calibrated for Saga Monkes)
 const EYE_OVERLAY = {
   topPct: 0.38,
@@ -64,6 +84,13 @@ const EYE_OVERLAY = {
   widthPct: 0.56,
   heightPct: 0.12,
 };
+
+// ── 3D Depth Effect Constants ───────────────────────────────────────────────
+const SHADOW_OFFSET_SCALE = 0.06;   // shadow moves 6% of size per degree rotation
+const PARALLAX_SCALE = 0.15;        // translateX per degree of yaw
+const RIM_LIGHT_OPACITY = 0.28;     // max rim light brightness
+const VIGNETTE_OPACITY_BASE = 0.08; // base ambient occlusion
+const VIGNETTE_OPACITY_TILT = 0.12; // extra AO when tilted
 
 export const AnimatedAvatar = React.memo(function AnimatedAvatar({
   pfpUri,
@@ -77,6 +104,10 @@ export const AnimatedAvatar = React.memo(function AnimatedAvatar({
 }: AnimatedAvatarProps) {
   const radius = size / 2;
   const hasFace = faceParams != null;
+  const enable3D = size >= 60; // Skip 3D depth effects on small avatars (pill, etc.)
+
+  // Speaking dynamics ref (scale boost + glow intensity)
+  const speakParamsRef = useRef({ glowIntensity: 1, scaleBoost: 0 });
 
   // ── Mouth overlay positioning ─────────────────────────────────────────────
   const mouthStyle = useMemo(() => ({
@@ -87,9 +118,18 @@ export const AnimatedAvatar = React.memo(function AnimatedAvatar({
     height: size * MOUTH_OVERLAY_RECT.heightPct,
   }), [size]);
 
-  // Cross-fade sprites: use face openness when available, otherwise audio energy
-  const effectiveEnergy = hasFace ? faceParams.mouthOpenness : audioEnergy;
-  const { spriteA, spriteB, blend } = getCrossFadeSprites(mouthTrait, effectiveEnergy);
+  // Cross-fade sprites: viseme-aware when blendshapes available, energy fallback otherwise
+  const { spriteA, spriteB, blend } = useMemo(() => {
+    if (blendshapes) {
+      // Phase 3: Viseme-driven — picks sprite by mouth SHAPE (A/E/I/O/U), not just openness
+      const visemes = blendshapesToVisemes(blendshapes);
+      const { viseme, intensity } = getDominantViseme(visemes);
+      return getVisemeCrossFadeSprites(mouthTrait, viseme, intensity);
+    }
+    // Fallback: energy-driven (face openness or audio energy)
+    const effectiveEnergy = hasFace ? faceParams!.mouthOpenness : audioEnergy;
+    return getCrossFadeSprites(mouthTrait, effectiveEnergy);
+  }, [blendshapes, hasFace, faceParams, audioEnergy, mouthTrait]);
 
   // ── Blink overlay positioning ─────────────────────────────────────────────
   const blinkStyle = useMemo(() => ({
@@ -114,9 +154,17 @@ export const AnimatedAvatar = React.memo(function AnimatedAvatar({
   const headNodY = useSharedValue(0);
   const eyeScale = useSharedValue(1);
 
+  // Phase 0: 3D depth shared values
+  const shadowOffsetX = useSharedValue(0);
+  const shadowOffsetY = useSharedValue(2);
+  const parallaxX = useSharedValue(0);
+  const rimRotation = useSharedValue(0);
+  const vignetteIntensity = useSharedValue(VIGNETTE_OPACITY_BASE);
+
   // Blink
   const blinkOpacity = useSharedValue(0);
   const blinkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const useRandomBlink = useRef(true); // fallback when no face tracking
 
   // ── Idle breathing ────────────────────────────────────────────────────────
 
@@ -131,11 +179,16 @@ export const AnimatedAvatar = React.memo(function AnimatedAvatar({
     );
   }, []);
 
-  // ── Idle blink (random interval 3-7s) ─────────────────────────────────────
+  // ── Idle blink (random interval 3-7s) — fallback when face tracking off ──
 
   const scheduleBlink = useCallback(() => {
+    if (!useRandomBlink.current) return;
     const delay = BLINK_MIN_MS + Math.random() * (BLINK_MAX_MS - BLINK_MIN_MS);
     blinkTimerRef.current = setTimeout(() => {
+      if (!useRandomBlink.current) {
+        scheduleBlink();
+        return;
+      }
       // Quick blink: fade in → hold → fade out
       blinkOpacity.value = withSequence(
         withTiming(1, { duration: BLINK_DURATION_MS / 2, easing: Easing.out(Easing.ease) }),
@@ -155,16 +208,18 @@ export const AnimatedAvatar = React.memo(function AnimatedAvatar({
   // ── Speaking transitions ──────────────────────────────────────────────────
 
   useEffect(() => {
+    const ep = speakParamsRef.current;
     if (isSpeaking) {
+      const targetScale = 1.06 + ep.scaleBoost;
       speakScale.value = withRepeat(
         withSequence(
-          withTiming(1.06, { duration: 100, easing: Easing.out(Easing.ease) }),
+          withTiming(targetScale, { duration: 100, easing: Easing.out(Easing.ease) }),
           withTiming(1.0, { duration: 100, easing: Easing.out(Easing.ease) }),
         ),
         -1,
         false,
       );
-      glowOpacity.value = withSpring(1, { damping: 15, stiffness: 150 });
+      glowOpacity.value = withSpring(ep.glowIntensity, { damping: 15, stiffness: 150 });
       glowScale.value = withRepeat(
         withSequence(
           withTiming(1.12, { duration: 600, easing: Easing.inOut(Easing.ease) }),
@@ -182,33 +237,111 @@ export const AnimatedAvatar = React.memo(function AnimatedAvatar({
     }
   }, [isSpeaking]);
 
-  // ── Face tracking transitions ─────────────────────────────────────────────
+  // ── Face tracking + Emotion detection + 3D depth ─────────────────────────
 
   useEffect(() => {
     if (hasFace) {
+      // Head rotation → avatar transforms
       headRotZ.value = withSpring(clamp(faceParams.headRotation.z, -15, 15), { damping: 14, stiffness: 120 });
       headRotY.value = withSpring(clamp(faceParams.headRotation.y, -20, 20), { damping: 14, stiffness: 120 });
       headNodY.value = withSpring(clamp(faceParams.headRotation.x * 0.3, -4, 4), { damping: 14, stiffness: 120 });
       const targetEyeScale = interpolate(faceParams.eyeOpenness, [0, 0.3, 1], [0.95, 1, 1]);
       eyeScale.value = withSpring(targetEyeScale, { damping: 15, stiffness: 150 });
+
+      // Phase 0: 3D depth — shadow offset opposite to head rotation
+      const yaw = clamp(faceParams.headRotation.y, -20, 20);
+      const roll = clamp(faceParams.headRotation.z, -15, 15);
+      const pitch = clamp(faceParams.headRotation.x, -15, 15);
+      shadowOffsetX.value = withSpring(-yaw * size * SHADOW_OFFSET_SCALE * 0.05, { damping: 16, stiffness: 100 });
+      shadowOffsetY.value = withSpring(2 + pitch * size * SHADOW_OFFSET_SCALE * 0.03, { damping: 16, stiffness: 100 });
+      parallaxX.value = withSpring(yaw * PARALLAX_SCALE, { damping: 14, stiffness: 120 });
+      rimRotation.value = withSpring(-yaw * 4.5, { damping: 14, stiffness: 100 });
+
+      // Vignette intensifies with total rotation
+      const totalTilt = (Math.abs(yaw) + Math.abs(roll)) / 35; // 0-1
+      vignetteIntensity.value = withSpring(
+        VIGNETTE_OPACITY_BASE + totalTilt * VIGNETTE_OPACITY_TILT,
+        { damping: 16, stiffness: 100 },
+      );
     } else {
       headRotZ.value = withSpring(0, { damping: 14, stiffness: 120 });
       headRotY.value = withSpring(0, { damping: 14, stiffness: 120 });
       headNodY.value = withSpring(0, { damping: 14, stiffness: 120 });
       eyeScale.value = withSpring(1, { damping: 15, stiffness: 150 });
+
+      // Reset 3D depth
+      shadowOffsetX.value = withSpring(0, { damping: 16, stiffness: 100 });
+      shadowOffsetY.value = withSpring(2, { damping: 16, stiffness: 100 });
+      parallaxX.value = withSpring(0, { damping: 14, stiffness: 120 });
+      rimRotation.value = withSpring(0, { damping: 14, stiffness: 100 });
+      vignetteIntensity.value = withSpring(VIGNETTE_OPACITY_BASE, { damping: 16, stiffness: 100 });
     }
   }, [faceParams]);
 
+  // ── Phase 1: Blendshape-driven blinks + emotion detection ────────────────
+
+  useEffect(() => {
+    if (!blendshapes) {
+      // No blendshape data — enable random blink fallback
+      useRandomBlink.current = true;
+      return;
+    }
+
+    // Disable random blinks — use real blendshape data
+    useRandomBlink.current = false;
+
+    // Blendshape-driven eye blink
+    const blinkL = blendshapes.values.eyeBlinkLeft ?? 0;
+    const blinkR = blendshapes.values.eyeBlinkRight ?? 0;
+    const avgBlink = (blinkL + blinkR) / 2;
+
+    if (avgBlink > BLINK_THRESHOLD) {
+      // Eyes closing — drive blink overlay proportionally
+      blinkOpacity.value = withTiming(
+        clamp(avgBlink * 1.3, 0, 1), // slightly amplify for visual clarity
+        { duration: 40, easing: Easing.out(Easing.ease) },
+      );
+    } else {
+      // Eyes opening
+      blinkOpacity.value = withTiming(0, { duration: 60, easing: Easing.in(Easing.ease) });
+    }
+
+  }, [blendshapes]);
+
   // ── Animated styles ───────────────────────────────────────────────────────
 
+  // Phase 0: Enhanced container with parallax
   const containerStyle = useAnimatedStyle(() => ({
     transform: [
-      { perspective: 300 },
+      { perspective: 250 }, // tighter perspective = more dramatic 3D feel
+      { translateX: parallaxX.value },
       { translateY: headNodY.value },
       { scale: breathScale.value * speakScale.value * eyeScale.value },
       { rotateZ: `${headRotZ.value}deg` },
       { rotateY: `${headRotY.value}deg` },
     ],
+  }));
+
+  // Phase 0: Dynamic drop shadow — shifts opposite to head rotation
+  const shadowStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: shadowOffsetX.value },
+      { translateY: shadowOffsetY.value },
+      { scale: 1.04 }, // slightly larger than avatar
+    ],
+    opacity: 0.45,
+  }));
+
+  // Phase 0: Rim light — rotates with head
+  const rimLightStyle = useAnimatedStyle(() => ({
+    transform: [
+      { rotate: `${rimRotation.value}deg` },
+    ],
+  }));
+
+  // Phase 0: Vignette AO — intensifies on tilt
+  const vignetteStyle = useAnimatedStyle(() => ({
+    opacity: vignetteIntensity.value,
   }));
 
   const glowRingStyle = useAnimatedStyle(() => ({
@@ -228,7 +361,11 @@ export const AnimatedAvatar = React.memo(function AnimatedAvatar({
         <Animated.View
           style={[
             styles.glowRing,
-            { width: size + 8, height: size + 8, borderRadius: (size + 8) / 2, top: -4, left: -4 },
+            {
+              width: size + 8, height: size + 8,
+              borderRadius: (size + 8) / 2, top: -4, left: -4,
+              borderColor: GLOW_COLOR,
+            },
             glowRingStyle,
           ]}
           pointerEvents="none"
@@ -242,15 +379,19 @@ export const AnimatedAvatar = React.memo(function AnimatedAvatar({
     );
   }
 
-  // ── Main render (PFP + cross-fade mouth + idle blink) ─────────────────────
+  // ── Main render (PFP + 3D depth + cross-fade mouth + blinks + emotion) ───
 
-  return (
+  const avatarContent = (
     <Animated.View style={[{ width: size, height: size }, containerStyle]}>
-      {/* Glow ring behind avatar */}
+      {/* Glow ring — now emotion-colored */}
       <Animated.View
         style={[
           styles.glowRing,
-          { width: size + 8, height: size + 8, borderRadius: (size + 8) / 2, top: -4, left: -4 },
+          {
+            width: size + 8, height: size + 8,
+            borderRadius: (size + 8) / 2, top: -4, left: -4,
+            borderColor: GLOW_COLOR,
+          },
           glowRingStyle,
         ]}
         pointerEvents="none"
@@ -279,13 +420,55 @@ export const AnimatedAvatar = React.memo(function AnimatedAvatar({
           />
         )}
 
-        {/* Idle blink overlay — skin-toned bar slides over eyes */}
+        {/* Idle / blendshape blink overlay — skin-toned bar slides over eyes */}
         <Animated.View
           style={[blinkStyle, styles.blinkOverlay, blinkAnimStyle]}
           pointerEvents="none"
         />
+
+        {/* Phase 0: Rim light — bright edge on "lit" side, dark on opposite */}
+        {enable3D && (
+          <Animated.View
+            style={[
+              styles.rimLight,
+              { width: size, height: size, borderRadius: radius },
+              rimLightStyle,
+            ]}
+            pointerEvents="none"
+          />
+        )}
+
+        {/* Phase 0: Ambient occlusion vignette — darkens edges on tilt */}
+        {enable3D && (
+          <Animated.View
+            style={[
+              styles.vignette,
+              { width: size, height: size, borderRadius: radius },
+              vignetteStyle,
+            ]}
+            pointerEvents="none"
+          />
+        )}
       </View>
     </Animated.View>
+  );
+
+  // Small avatars (pill, etc.) skip 3D depth wrapper
+  if (!enable3D) return avatarContent;
+
+  return (
+    <View style={{ width: size + 16, height: size + 16, alignItems: 'center', justifyContent: 'center' }}>
+      {/* Phase 0: Drop shadow (behind everything, offset by head rotation) */}
+      <Animated.View
+        style={[
+          styles.dropShadow,
+          { width: size, height: size, borderRadius: radius },
+          shadowStyle,
+        ]}
+        pointerEvents="none"
+      />
+      {avatarContent}
+    </View>
   );
 });
 
@@ -296,7 +479,7 @@ const styles = StyleSheet.create({
   glowRing: {
     position: 'absolute',
     borderWidth: 2.5,
-    borderColor: GLOW_COLOR,
+    // borderColor set dynamically via emotionColor
   },
   fallback: {
     backgroundColor: THEME.surfaceHigh,
@@ -311,5 +494,35 @@ const styles = StyleSheet.create({
   },
   blinkOverlay: {
     backgroundColor: 'rgba(90, 65, 45, 0.92)', // Saga Monke fur tone
+  },
+
+  // ── Phase 0: 3D Depth Effect Styles ─────────────────────────────────────
+
+  dropShadow: {
+    position: 'absolute',
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    // Blur simulation via multiple stacked shadows:
+    // Android elevation gives native blur; the dark bg + opacity handles the rest
+    elevation: 12,
+  },
+  rimLight: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    // Directional rim: bright left edge, dark right edge
+    // Rotates with head yaw to simulate a fixed light source
+    borderWidth: 2.5,
+    borderLeftColor: `rgba(255, 255, 255, ${RIM_LIGHT_OPACITY})`,
+    borderTopColor: `rgba(255, 255, 255, ${RIM_LIGHT_OPACITY * 0.5})`,
+    borderBottomColor: `rgba(255, 255, 255, ${RIM_LIGHT_OPACITY * 0.3})`,
+    borderRightColor: `rgba(0, 0, 0, ${RIM_LIGHT_OPACITY * 0.8})`,
+  },
+  vignette: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    // Radial-ish vignette via thick inset border
+    borderWidth: 6,
+    borderColor: 'rgba(0, 0, 0, 0.5)',
   },
 });

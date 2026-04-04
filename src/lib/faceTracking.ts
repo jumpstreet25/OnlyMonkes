@@ -200,6 +200,95 @@ export function decodeBlendshapes(
   return { identityHash, params: { values, headRotation } };
 }
 
+// ── Viseme solver (adapted from KalidoKit Face.solve) ───────────────────────
+// Maps blendshape values to A/E/I/O/U vowel shapes (0-1 each).
+// KalidoKit uses raw landmark distances; we adapt the same mutual-dampening
+// logic to work from blendshape values directly.
+
+export interface VisemeValues {
+  A: number; // open mouth "ah" — jaw dropped, neutral width
+  E: number; // slightly open, wide "eh" — mild open + mild wide
+  I: number; // wide smile/teeth "ee" — wide stretch + some jaw
+  O: number; // round open "oh" — jaw dropped + slight pucker
+  U: number; // pursed/narrow "oo" — pucker, minimal jaw
+}
+
+function remap(val: number, min: number, max: number): number {
+  return Math.max(0, Math.min(1, (val - min) / (max - min)));
+}
+
+/**
+ * Derive A/E/I/O/U viseme shapes from blendshape data.
+ *
+ * The key insight from KalidoKit: mouth openness (Y) and width (X) are the
+ * two axes that define vowel shapes. Visemes are mutually dampening — when
+ * I (smile) is high, A/O/U are suppressed, and vice versa.
+ *
+ * Blendshape → axis mapping:
+ *   mouthY (openness) = jawOpen (0-1)
+ *   mouthX (width)    = avg(mouthSmileLeft, mouthSmileRight) - mouthPucker
+ *                        clamped to 0-1 range
+ */
+export function blendshapesToVisemes(bs: BlendshapeParams): VisemeValues {
+  const v = bs.values;
+
+  // Primary axes
+  const mouthY = v.jawOpen; // 0-1 openness
+  const smile = (v.mouthSmileLeft + v.mouthSmileRight) / 2;
+  const pucker = v.mouthPucker;
+  // Width: positive = wide/smile, negative clamped to 0
+  const mouthX = Math.max(0, Math.min(1, smile - pucker * 0.5));
+
+  // I (ee/smile): high when mouth is both wide AND somewhat open
+  // KalidoKit: ratioI = clamp(remap(mouthX, 0, 1) * 2 * remap(mouthY, 0.2, 0.7), 0, 1)
+  const ratioI = Math.min(1, mouthX * 2 * remap(mouthY, 0.1, 0.5));
+
+  // A (ah): scales with openness, reduced when I is high
+  // KalidoKit: ratioA = mouthY * 0.4 + mouthY * (1 - ratioI) * 0.6
+  const ratioA = mouthY * 0.4 + mouthY * (1 - ratioI) * 0.6;
+
+  // U (oo/pursed): active when open but NOT wide, boosted by pucker
+  // KalidoKit: ratioU = mouthY * remap(1 - ratioI, 0, 0.3) * 0.1
+  // We boost with pucker since blendshapes give us that directly
+  const ratioU = Math.min(1,
+    mouthY * remap(1 - ratioI, 0, 0.3) * 0.1 + pucker * 0.6 * remap(mouthY, 0.05, 0.3),
+  );
+
+  // E (eh): derives from U region, mild open + mild wide
+  // KalidoKit: ratioE = remap(ratioU, 0.2, 1) * (1 - ratioI) * 0.3
+  const ratioE = remap(ratioU, 0.1, 0.8) * (1 - ratioI) * 0.3 +
+    remap(mouthY, 0.05, 0.2) * remap(mouthX, 0.1, 0.4) * 0.4;
+
+  // O (oh): complement of I scaled by openness, boosted by pucker
+  // KalidoKit: ratioO = (1 - ratioI) * remap(mouthY, 0.3, 1) * 0.4
+  const ratioO = (1 - ratioI) * remap(mouthY, 0.25, 0.8) * 0.4 +
+    pucker * remap(mouthY, 0.15, 0.5) * 0.3;
+
+  return {
+    A: ratioA || 0,
+    E: ratioE || 0,
+    I: ratioI || 0,
+    O: ratioO || 0,
+    U: ratioU || 0,
+  };
+}
+
+/**
+ * Get the dominant viseme and its intensity for sprite selection.
+ * Returns the viseme with the highest value and the combined openness.
+ */
+export function getDominantViseme(visemes: VisemeValues): { viseme: keyof VisemeValues; intensity: number } {
+  let maxKey: keyof VisemeValues = 'A';
+  let maxVal = 0;
+  for (const key of ['A', 'E', 'I', 'O', 'U'] as const) {
+    if (visemes[key] > maxVal) {
+      maxVal = visemes[key];
+      maxKey = key;
+    }
+  }
+  return { viseme: maxKey, intensity: maxVal };
+}
+
 // Legacy JSON encode/decode (kept for backward compat during migration)
 export function encodeFaceParams(identity: string, params: FaceParams): Uint8Array {
   const data = {
