@@ -1216,7 +1216,7 @@ export default function ChatScreen() {
             // eslint-disable-next-line @typescript-eslint/no-require-imports
             source={require("../../assets/header.png")}
             style={styles.headerCenter}
-            resizeMode="cover"
+            resizeMode="contain"
           />
 
           {/* Right: banana pill (opens community drawer) */}
@@ -1760,7 +1760,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 12,
-    paddingVertical: 20,
+    height: 72,
     borderBottomWidth: 1,
     borderBottomColor: THEME.border,
     backgroundColor: HEADER_BG,
@@ -1775,8 +1775,7 @@ const styles = StyleSheet.create({
   },
   headerCenter: {
     flex: 1,
-    alignSelf: "stretch",
-    transform: [{ scale: 0.9 }],
+    height: 60,
   },
   headerLeft: {
     flexDirection: "row",
