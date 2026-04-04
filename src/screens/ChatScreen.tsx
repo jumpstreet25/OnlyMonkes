@@ -1759,8 +1759,8 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 12,
-    height: 90,
+    paddingHorizontal: 8,
+    height: 100,
     borderBottomWidth: 1,
     borderBottomColor: THEME.border,
     backgroundColor: HEADER_BG,
@@ -1775,12 +1775,12 @@ const styles = StyleSheet.create({
   },
   headerCenter: {
     flex: 1,
-    height: 90,
+    height: 96,
     alignSelf: "center",
     justifyContent: "center",
     alignItems: "center",
-    marginHorizontal: -12,
-    transform: [{ scale: 1.15 }],
+    marginHorizontal: -8,
+    transform: [{ scale: 1.35 }],
   },
   headerLeft: {
     flexDirection: "row",
