@@ -292,6 +292,65 @@ export function getAllTimeUsers(): Map<string, string> {
   return _allTimeUsers;
 }
 
+/**
+ * Deduplicate users by wallet address.
+ * When the same wallet has multiple inbox IDs (multi-device), returns only
+ * the most recently active one. This prevents duplicate globe markers,
+ * duplicate member entries, and duplicate usernames.
+ */
+export function getDeduplicatedUsers(): Map<string, string> {
+  const walletToInbox = new Map<string, { inboxId: string; name: string; cachedAt: number }>();
+  const result = new Map<string, string>();
+
+  for (const [inboxId, name] of _allTimeUsers.entries()) {
+    const profile = _profileCache.get(inboxId);
+    const wallet = profile?.walletAddress;
+    const cachedAt = profile?.cachedAt ?? 0;
+
+    if (wallet) {
+      const existing = walletToInbox.get(wallet);
+      if (!existing || cachedAt > existing.cachedAt) {
+        // This inbox ID is more recent — use it, remove the old one
+        if (existing) result.delete(existing.inboxId);
+        walletToInbox.set(wallet, { inboxId, name, cachedAt });
+        result.set(inboxId, name);
+      }
+      // Skip older inbox ID for same wallet
+    } else {
+      // No wallet info — include (can't dedup)
+      result.set(inboxId, name);
+    }
+  }
+  return result;
+}
+
+/**
+ * Resolve an inbox ID to its "primary" inbox ID (most recently active device).
+ * If the wallet is known and another inbox ID for the same wallet is newer,
+ * returns that one. Otherwise returns the input unchanged.
+ * Use this to merge shop styles from the same wallet across devices.
+ */
+export function getPrimaryInboxId(inboxId: string): string {
+  const profile = _profileCache.get(inboxId);
+  const wallet = profile?.walletAddress;
+  if (!wallet) return inboxId;
+
+  let bestInboxId = inboxId;
+  let bestCachedAt = profile?.cachedAt ?? 0;
+
+  for (const [otherId, otherProfile] of _profileCache.entries()) {
+    if (otherId === inboxId) continue;
+    if (otherProfile.walletAddress === wallet) {
+      const otherCachedAt = otherProfile.cachedAt ?? 0;
+      if (otherCachedAt > bestCachedAt) {
+        bestInboxId = otherId;
+        bestCachedAt = otherCachedAt;
+      }
+    }
+  }
+  return bestInboxId;
+}
+
 // ─── Username prefix index for fast @mention lookups ─────────────────────
 // Maps lowercase prefix (2 chars) → Set of inboxIds with matching usernames.
 const _prefixIndex = new Map<string, Set<string>>();

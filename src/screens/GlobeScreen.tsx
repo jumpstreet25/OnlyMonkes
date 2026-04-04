@@ -127,8 +127,9 @@ export default function GlobeScreen({ onPressUser }: GlobeScreenProps) {
         }
       }
 
-      // 1. Other user locations from profile cache
-      const allUsers = getAllTimeUsers();
+      // 1. Other user locations from profile cache (deduped by wallet)
+      const { getDeduplicatedUsers } = await import("@/lib/userProfile");
+      const allUsers = getDeduplicatedUsers();
 
       for (const [inboxId, username] of allUsers.entries()) {
         if (seenInboxIds.has(inboxId)) continue; // skip self (already added)
