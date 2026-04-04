@@ -166,6 +166,59 @@ export function getCrossFadeSprites(trait: MouthTrait, energy: number): CrossFad
   };
 }
 
+// ── Viseme-aware sprite selection ────────────────────────────────────────────
+// Maps A/E/I/O/U vowel shapes to the existing 5 mouth states.
+//
+// Viseme → MouthState mapping:
+//   A (ah)  → 'open'          jaw dropped, neutral width
+//   E (eh)  → 'slightly_open' mild open, mild stretch
+//   I (ee)  → 'wide'          smile/teeth visible
+//   O (oh)  → 'round'         rounded open
+//   U (oo)  → 'round'         pursed (uses round sprite at lower intensity)
+//
+// The viseme solver tells us WHICH shape, the intensity tells us the blend
+// between 'closed' and that target shape.
+
+import type { VisemeValues } from './faceTracking';
+
+const VISEME_TO_STATE: Record<keyof VisemeValues, MouthState> = {
+  A: 'open',
+  E: 'slightly_open',
+  I: 'wide',
+  O: 'round',
+  U: 'round',
+};
+
+export interface VisemeCrossFadeSprites {
+  spriteA: number;  // closed sprite (rest state)
+  spriteB: number;  // target viseme sprite
+  blend: number;    // 0 = fully closed, 1 = fully target shape
+}
+
+/**
+ * Get cross-fade sprites driven by viseme analysis.
+ * Uses the dominant vowel shape to pick the target mouth state,
+ * and the intensity to blend between closed and that state.
+ */
+export function getVisemeCrossFadeSprites(
+  trait: MouthTrait,
+  dominantViseme: keyof VisemeValues,
+  intensity: number,
+): VisemeCrossFadeSprites {
+  const sprites = MOUTH_SPRITES[trait] ?? MOUTH_SPRITES.None;
+  const targetState = VISEME_TO_STATE[dominantViseme];
+
+  // Blend between closed and the target viseme state
+  // Apply a curve: low intensities stay more closed, high intensities snap to shape
+  const curved = Math.min(1, intensity * 1.4); // slight amplification for visual clarity
+
+  return {
+    spriteA: sprites.closed,
+    spriteB: sprites[targetState],
+    blend: Math.max(0, Math.min(1, curved)),
+  };
+}
+
 /**
  * Parse a mouth trait string from NFT attributes into our typed enum.
  * Returns DEFAULT_MOUTH_TRAIT if unrecognized.
