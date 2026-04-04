@@ -3,7 +3,8 @@
  */
 
 import React, { Suspense, useEffect } from "react";
-import { View, StyleSheet, ActivityIndicator } from "react-native";
+import { View, Text, StyleSheet } from "react-native";
+import { FONTS } from "@/lib/constants";
 import { router, useLocalSearchParams } from "expo-router";
 import { useAppStore } from "@/store/appStore";
 import { THEME } from "@/lib/constants";
@@ -24,7 +25,7 @@ export default function AvatarRoomRoute() {
   if (!activeAvatarRoom || !token) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color={THEME.accent} />
+        <Text style={styles.connectText}>Connecting to avatar room…</Text>
       </View>
     );
   }
@@ -34,7 +35,7 @@ export default function AvatarRoomRoute() {
       <Suspense
         fallback={
           <View style={styles.center}>
-            <ActivityIndicator size="large" color={THEME.accent} />
+            <Text style={styles.connectText}>Loading avatar room…</Text>
           </View>
         }
       >
@@ -46,4 +47,5 @@ export default function AvatarRoomRoute() {
 
 const styles = StyleSheet.create({
   center: { flex: 1, backgroundColor: "#0D0518", alignItems: "center", justifyContent: "center" },
+  connectText: { fontFamily: FONTS.displayMed, fontSize: 16, color: THEME.textMuted },
 });
