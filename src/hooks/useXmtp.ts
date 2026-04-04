@@ -634,13 +634,16 @@ export function useXmtp() {
       // ── Helper: check if raw content is a reaction (native or legacy) ──
       const isReactionContent = (content: unknown): boolean => {
         if (typeof content === "string") return content.startsWith("REACT:");
-        if (content && typeof content === "object") return !!(content as any).reaction;
+        if (content && typeof content === "object") return !!((content as any).reaction || (content as any).reactionV2);
         return false;
       };
 
       const getReactionTargetId = (content: unknown): string => {
         if (typeof content === "string" && content.startsWith("REACT:")) return content.split(":")[2] ?? "";
-        if (content && typeof content === "object" && (content as any).reaction) return (content as any).reaction.reference ?? "";
+        if (content && typeof content === "object") {
+          const r = (content as any).reaction ?? (content as any).reactionV2;
+          if (r) return r.reference ?? "";
+        }
         return "";
       };
 
@@ -743,7 +746,15 @@ export function useXmtp() {
         // covers last 24h / 50 messages.
         const existing = useChatStore.getState().messages;
         const existingIds = new Set(existing.map(m => m.id));
-        const newFromHistory = recentMessages.filter(m => !existingIds.has(m.id));
+        // Also track content+sender to catch optimistic dupes (opt-xxx → real ID)
+        const existingContentKeys = new Set(existing.map(m => `${m.senderAddress}:${m.content.slice(0, 80)}`));
+        const newFromHistory = recentMessages.filter(m => {
+          if (existingIds.has(m.id)) return false;
+          // Skip if same sender + same content already exists (optimistic dupe)
+          const key = `${m.senderAddress}:${m.content.slice(0, 80)}`;
+          if (existingContentKeys.has(key)) return false;
+          return true;
+        });
         if (newFromHistory.length > 0 || existing.length === 0) {
           const merged = [...existing, ...newFromHistory];
           merged.sort((a, b) => a.sentAt.getTime() - b.sentAt.getTime());
