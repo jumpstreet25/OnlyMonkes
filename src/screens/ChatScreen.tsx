@@ -623,7 +623,7 @@ export default function ChatScreen() {
         playSound("reaction");
         await react(emoji, messageId);
       } catch (err) {
-        console.warn("Reaction failed:", err);
+        if (__DEV__) console.warn("Reaction failed:", err);
       }
     },
     [react]
@@ -650,7 +650,7 @@ export default function ChatScreen() {
       useChatStore.getState().updateMessageStatus(optimistic.id, "sent");
       appendCachedMessage("main_chat", { ...optimistic, status: "sent" }).catch(() => {});
     } catch (err) {
-      console.warn("GIF send failed:", err);
+      if (__DEV__) console.warn("GIF send failed:", err);
       useChatStore.getState().updateMessageStatus(optimistic.id, "failed");
     }
   }, [send, myAddress, username, verifiedNft]);
@@ -766,7 +766,7 @@ export default function ChatScreen() {
     try {
       await stickerReact(url, messageId);
     } catch (err) {
-      console.warn("Sticker react failed:", err);
+      if (__DEV__) console.warn("Sticker react failed:", err);
     }
   }, [stickerReact]);
 
@@ -782,7 +782,7 @@ export default function ChatScreen() {
     try {
       await edit(editTarget.id, editText.trim());
     } catch (err) {
-      console.warn("Edit failed:", err);
+      if (__DEV__) console.warn("Edit failed:", err);
     }
     setEditTarget(null);
     setEditText("");

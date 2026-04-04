@@ -208,7 +208,7 @@ export function useXmtp() {
   const initialize = useCallback(async () => {
     if (_initRunning) return;
     _initRunning = true;
-    console.log("[XMTP] initialize() called");
+    if (__DEV__) console.log("[XMTP] initialize() called");
     setLoading(true);
     setError(null);
 
@@ -245,7 +245,7 @@ export function useXmtp() {
           predictions: config.botChannels.predictions ?? '',
         });
       }
-      console.log("[XMTP] remote config:", config);
+      if (__DEV__) console.log("[XMTP] remote config:", config);
 
       // ── 3. Find or create the global group ─────────────────────────────────
       const { group, isNewAdmin } = await getOrCreateGlobalChat(
@@ -268,7 +268,7 @@ export function useXmtp() {
         // This client just created the group — persist the admin flag.
         await AsyncStorage.setItem(AK_IS_ADMIN, "1");
         setIsGroupAdmin(true);
-        console.log("[XMTP] You are the admin (new). Group ID:", (group as any)?.id);
+        if (__DEV__) console.log("[XMTP] You are the admin (new). Group ID:", (group as any)?.id);
       }
 
       // ── Admin: ensure bot channels exist & publish config ───────────────
@@ -277,7 +277,7 @@ export function useXmtp() {
         isNewAdmin ||
         !!(config.adminInboxId && config.adminInboxId === client.inboxId);
       if (isAdmin && group) {
-        console.log("[XMTP] Admin detected — checking bot channels…");
+        if (__DEV__) console.log("[XMTP] Admin detected — checking bot channels…");
         const mainGroupId = (group as any)?.id ?? config.globalGroupId;
         setRemoteGroupId(mainGroupId);
 
@@ -300,9 +300,9 @@ export function useXmtp() {
             });
             botChannels[ch.key] = (chGroup as any).id ?? "";
             botChannelsChanged = true;
-            console.log(`[XMTP] Created missing bot channel "${ch.name}":`, botChannels[ch.key]);
+            if (__DEV__) console.log(`[XMTP] Created missing bot channel "${ch.name}":`, botChannels[ch.key]);
           } catch (chErr) {
-            console.warn(`[XMTP] Failed to create bot channel "${ch.name}":`, chErr);
+            if (__DEV__) console.warn(`[XMTP] Failed to create bot channel "${ch.name}":`, chErr);
           }
         }
         if (botChannelsChanged) {
@@ -324,7 +324,7 @@ export function useXmtp() {
         for (const botId of BOT_INBOXES) {
           try {
             await (group as any).addMembers([botId]);
-            console.log(`[XMTP] Added ${botId.slice(0, 8)}… to main group`);
+            if (__DEV__) console.log(`[XMTP] Added ${botId.slice(0, 8)}… to main group`);
           } catch { /* already a member */ }
         }
         // Add bots to each bot channel
@@ -337,7 +337,7 @@ export function useXmtp() {
               for (const botId of BOT_INBOXES) {
                 try {
                   await (chGroup as any).addMembers([botId]);
-                  console.log(`[XMTP] Added ${botId.slice(0, 8)}… to ${ch.name}`);
+                  if (__DEV__) console.log(`[XMTP] Added ${botId.slice(0, 8)}… to ${ch.name}`);
                 } catch { /* already a member */ }
               }
             }
@@ -354,10 +354,10 @@ export function useXmtp() {
                 adminInboxId: client.inboxId,
                 botChannels: botChannels as any,
               });
-              console.log("[XMTP] Auto-published config (with bot channels) to GitHub.");
+              if (__DEV__) console.log("[XMTP] Auto-published config (with bot channels) to GitHub.");
             }
           } catch (err) {
-            console.warn("[XMTP] Auto-publish failed:", err);
+            if (__DEV__) console.warn("[XMTP] Auto-publish failed:", err);
           }
         }
       }
@@ -437,10 +437,10 @@ export function useXmtp() {
                 AK_APPROVED_IDS,
                 JSON.stringify([...approvedSet])
               );
-              console.log(`[XMTP] Auto-approved ${newRequests.length} join request(s).`);
+              if (__DEV__) console.log(`[XMTP] Auto-approved ${newRequests.length} join request(s).`);
             }
           } catch (err) {
-            console.warn("[XMTP] Auto-approve failed:", err);
+            if (__DEV__) console.warn("[XMTP] Auto-approve failed:", err);
           }
         })();
       }
@@ -452,7 +452,7 @@ export function useXmtp() {
         const storedAdminFlag = await AsyncStorage.getItem(AK_IS_ADMIN);
         const isAdminByConfig = config.adminInboxId === client.inboxId;
         if (storedAdminFlag === "1" || isAdminByConfig) {
-          console.log("[XMTP] Admin device cannot find group — recreating all channels…");
+          if (__DEV__) console.log("[XMTP] Admin device cannot find group — recreating all channels…");
           try {
             // Create main chat group
             const newGroup = await client.conversations.newGroup([], {
@@ -460,7 +460,7 @@ export function useXmtp() {
               name: "OnlyMonkes Global Chat",
             });
             const newGroupId = (newGroup as any).id ?? "";
-            console.log("[XMTP] Main group created:", newGroupId);
+            if (__DEV__) console.log("[XMTP] Main group created:", newGroupId);
             setRemoteGroupId(newGroupId);
             _group = newGroup as unknown as XmtpGroup;
 
@@ -478,7 +478,7 @@ export function useXmtp() {
                 name: ch.name,
               });
               botChannels[ch.key] = (chGroup as any).id ?? "";
-              console.log(`[XMTP] Bot channel "${ch.name}" created:`, botChannels[ch.key]);
+              if (__DEV__) console.log(`[XMTP] Bot channel "${ch.name}" created:`, botChannels[ch.key]);
             }
 
             // Store bot channel IDs in app state
@@ -493,10 +493,10 @@ export function useXmtp() {
                   adminInboxId: client.inboxId,
                   botChannels: botChannels as any,
                 });
-                console.log("[XMTP] Auto-published full config to GitHub.");
+                if (__DEV__) console.log("[XMTP] Auto-published full config to GitHub.");
               }
             } catch (pubErr) {
-              console.warn("[XMTP] Could not auto-publish config:", pubErr);
+              if (__DEV__) console.warn("[XMTP] Could not auto-publish config:", pubErr);
             }
 
             await AsyncStorage.setItem(AK_IS_ADMIN, "1");
@@ -504,7 +504,7 @@ export function useXmtp() {
             setIsGroupMember(true);
             // Fall through to load message history (group is now set)
           } catch (createErr) {
-            console.warn("[XMTP] Admin group recreation failed:", createErr);
+            if (__DEV__) console.warn("[XMTP] Admin group recreation failed:", createErr);
             setIsGroupMember(false);
             setLoading(false);
             return;
@@ -530,9 +530,9 @@ export function useXmtp() {
                   config.botInboxId ?? null,
                 );
                 await AsyncStorage.setItem(AK_JOIN_REQUEST_SENT, String(Date.now()));
-                console.log("[XMTP] Join request DM sent to bot (nft:", verifiedNft?.mint ?? "none", ")");
+                if (__DEV__) console.log("[XMTP] Join request DM sent to bot (nft:", verifiedNft?.mint ?? "none", ")");
               } catch (err) {
-                console.warn("[XMTP] Could not send join request DM:", err);
+                if (__DEV__) console.warn("[XMTP] Could not send join request DM:", err);
               }
             }
           }
@@ -595,7 +595,7 @@ export function useXmtp() {
                     });
                   }
                 }
-                console.log(`[XMTP] Location sync: updated ${Object.keys(locs).length} users`);
+                if (__DEV__) console.log(`[XMTP] Location sync: updated ${Object.keys(locs).length} users`);
               } catch { /* ignore */ }
             } else if (typeof content === "string" && (
               content.startsWith("NFT_LIST:") || content.startsWith("NFT_BID:") ||
@@ -1153,7 +1153,7 @@ export function useXmtp() {
 
         await showLocalNotification(title, msg.content, channelId);
         } catch (streamErr) {
-          console.warn("[XMTP] Stream handler error:", (streamErr as Error).message);
+          if (__DEV__) console.warn("[XMTP] Stream handler error:", (streamErr as Error).message);
         }
       });
 
@@ -1260,7 +1260,7 @@ export function useXmtp() {
             } catch { /* skip */ }
           }
           useAppStore.getState().setBotChannelCounts(counts);
-          console.log('[XMTP] Bot channel unread counts:', counts);
+          if (__DEV__) console.log('[XMTP] Bot channel unread counts:', counts);
         } catch { /* non-critical */ }
       })();
 
@@ -1293,7 +1293,7 @@ export function useXmtp() {
                 // Local notification removed — was causing duplicate pushes.
               });
               _botChannelUnsubs.push(unsub);
-              console.log(`[XMTP] Streaming bot channel: ${key}`);
+              if (__DEV__) console.log(`[XMTP] Streaming bot channel: ${key}`);
             } catch { /* skip individual channel */ }
           }
         } catch { /* non-critical */ }
@@ -1320,15 +1320,15 @@ export function useXmtp() {
             } catch { /* ignore per-message errors */ }
           });
           _botChannelUnsubs.push(unsub);
-          console.log('[XMTP] Streaming DMs for badge count');
+          if (__DEV__) console.log('[XMTP] Streaming DMs for badge count');
         } catch (err) {
-          console.warn('[XMTP] DM badge stream failed:', err);
+          if (__DEV__) console.warn('[XMTP] DM badge stream failed:', err);
         }
       })();
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "XMTP initialization failed";
-      console.error("[XMTP] initialize() failed:", message, err);
+      if (__DEV__) console.error("[XMTP] initialize() failed:", message, err);
       setError(message);
     } finally {
       _initRunning = false;
@@ -1398,7 +1398,7 @@ export function useXmtp() {
   const react = useCallback(
     async (emoji: ReactionEmoji, targetMessageId: string) => {
       if (!_group) {
-        console.log("[XMTP] react() _group null — calling initialize() first");
+        if (__DEV__) console.log("[XMTP] react() _group null — calling initialize() first");
         await initialize();
       }
       if (!_group) throw new Error("Not connected to chat");
@@ -1484,9 +1484,9 @@ export function useXmtp() {
       const approvedSet = new Set<string>(approvedRaw ? JSON.parse(approvedRaw) : []);
       const pending = requests.filter((r) => !approvedSet.has(r.inboxId));
       setJoinRequests(pending);
-      console.log(`[XMTP] ${pending.length} pending join request(s).`);
+      if (__DEV__) console.log(`[XMTP] ${pending.length} pending join request(s).`);
     } catch (err) {
-      console.warn("[XMTP] loadJoinRequests failed:", err);
+      if (__DEV__) console.warn("[XMTP] loadJoinRequests failed:", err);
     }
   }, [setJoinRequests]);
 
@@ -1541,7 +1541,7 @@ export function useXmtp() {
         location: location ?? undefined,
       });
     } catch (err) {
-      console.warn("[XMTP] broadcastProfile failed:", err);
+      if (__DEV__) console.warn("[XMTP] broadcastProfile failed:", err);
     }
   }, []);
 
@@ -1553,7 +1553,7 @@ export function useXmtp() {
     // Force a full re-initialize to restart it (throws to trigger reconnect).
     const STREAM_STALE_MS = 90_000;
     if (_lastStreamEvent > 0 && Date.now() - _lastStreamEvent > STREAM_STALE_MS && !_streamAlive) {
-      console.warn("[XMTP] Stream appears dead (no events in 90s) — forcing reconnect");
+      if (__DEV__) console.warn("[XMTP] Stream appears dead (no events in 90s) — forcing reconnect");
       throw new Error("Stream stale — reconnect needed");
     }
 
@@ -1585,7 +1585,7 @@ export function useXmtp() {
         }
       }
     } catch (err) {
-      console.warn("[XMTP] syncMessages failed:", err);
+      if (__DEV__) console.warn("[XMTP] syncMessages failed:", err);
     }
 
     // ── Refresh bot channel + DM unread counts on every sync ─────────────
@@ -1634,7 +1634,7 @@ export function useXmtp() {
     try {
       await sendEventMessage(_group, eventJson);
     } catch (err) {
-      console.warn("[XMTP] broadcastEvent failed:", err);
+      if (__DEV__) console.warn("[XMTP] broadcastEvent failed:", err);
     }
   }, []);
 
@@ -1644,7 +1644,7 @@ export function useXmtp() {
     try {
       await sendLiveRoomMessage(_group, JSON.stringify(data));
     } catch (err) {
-      console.warn("[XMTP] broadcastLiveRoom failed:", err);
+      if (__DEV__) console.warn("[XMTP] broadcastLiveRoom failed:", err);
     }
   }, []);
 
@@ -1654,7 +1654,7 @@ export function useXmtp() {
     try {
       await sendVideoRoomMessage(_group, JSON.stringify(data));
     } catch (err) {
-      console.warn("[XMTP] broadcastVideoRoom failed:", err);
+      if (__DEV__) console.warn("[XMTP] broadcastVideoRoom failed:", err);
     }
   }, []);
 
@@ -1664,7 +1664,7 @@ export function useXmtp() {
     try {
       await sendAvatarRoomMessage(_group, JSON.stringify(data));
     } catch (err) {
-      console.warn("[XMTP] broadcastAvatarRoom failed:", err);
+      if (__DEV__) console.warn("[XMTP] broadcastAvatarRoom failed:", err);
     }
   }, []);
 
@@ -1676,7 +1676,7 @@ export function useXmtp() {
 
     await saveAdminToken(githubPat);
     await publishAppConfig({ globalGroupId: groupId, adminInboxId: _client.inboxId });
-    console.log("[XMTP] Group config published to GitHub.");
+    if (__DEV__) console.log("[XMTP] Group config published to GitHub.");
   }, []);
 
   // ── Admin recovery: create a new group + publish when stale config blocks admin ─
@@ -1700,7 +1700,7 @@ export function useXmtp() {
     // Publish new config — all clients will pick this up on next launch.
     // force:true because forceAdminInit is explicit manual recovery.
     await publishAppConfig({ globalGroupId: groupId, adminInboxId: _client.inboxId }, { force: true });
-    console.log("[XMTP] forceAdminInit: new group", groupId, "published.");
+    if (__DEV__) console.log("[XMTP] forceAdminInit: new group", groupId, "published.");
 
     // Re-run full initialize — it will find the new group and complete setup.
     await initialize();
