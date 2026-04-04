@@ -125,16 +125,22 @@ export const useChatStore = create<ChatState & ChatActions>((set) => ({
     }),
 
   updateMessageStatus: (id, status) =>
-    set((state) => ({
-      messages: state.messages.map((m) => (m.id === id ? { ...m, status } : m)),
-    })),
+    set((state) => {
+      const idx = state.messages.findIndex(m => m.id === id);
+      if (idx === -1) return state;
+      const messages = [...state.messages];
+      messages[idx] = { ...messages[idx], status };
+      return { messages };
+    }),
 
   updateMessageContent: (id, newContent) =>
-    set((state) => ({
-      messages: state.messages.map((m) =>
-        m.id === id ? { ...m, editedContent: newContent, editedAt: new Date() } : m,
-      ),
-    })),
+    set((state) => {
+      const idx = state.messages.findIndex(m => m.id === id);
+      if (idx === -1) return state;
+      const messages = [...state.messages];
+      messages[idx] = { ...messages[idx], editedContent: newContent, editedAt: new Date() };
+      return { messages };
+    }),
 
   applyReactionUpdate: (messages) => set({ messages }),
 

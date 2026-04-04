@@ -103,12 +103,8 @@ export function BlinkCard({ actionUrl }: BlinkCardProps) {
         // POST to get the transaction
         const response = await executeAction(href, wallet.address);
 
-        // Deserialize
-        const txBytes = Uint8Array.from(
-          atob(response.transaction)
-            .split("")
-            .map((c) => c.charCodeAt(0)),
-        );
+        // Deserialize (Buffer.from works reliably on Hermes, atob doesn't)
+        const txBytes = new Uint8Array(Buffer.from(response.transaction, "base64"));
         const tx = VersionedTransaction.deserialize(txBytes);
 
         // Validate fee payer matches user wallet

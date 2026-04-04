@@ -14,8 +14,9 @@ export interface LinkPreviewData {
   favicon?: string;
 }
 
-/** In-memory cache: URL → preview data (or null if fetch failed) */
+/** In-memory cache: URL → preview data (or null if fetch failed). Capped at 200. */
 const _previewCache = new Map<string, LinkPreviewData | null>();
+const MAX_PREVIEW_CACHE = 200;
 
 /** Pending fetches to avoid duplicate requests */
 const _pendingFetches = new Map<string, Promise<LinkPreviewData | null>>();
@@ -56,6 +57,11 @@ export async function fetchLinkPreview(url: string): Promise<LinkPreviewData | n
   try {
     const result = await promise;
     _previewCache.set(url, result);
+    // LRU eviction — remove oldest entries when over cap
+    if (_previewCache.size > MAX_PREVIEW_CACHE) {
+      const oldest = _previewCache.keys().next().value;
+      if (oldest) _previewCache.delete(oldest);
+    }
     return result;
   } finally {
     _pendingFetches.delete(url);
