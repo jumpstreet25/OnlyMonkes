@@ -880,8 +880,9 @@ export const MessageBubble = memo(function MessageBubble({
                     style={{ width: mediaWidth, height: mediaWidth * imgAspect }}
                     contentFit="contain"
                     cachePolicy="disk"
-                    priority="normal"
+                    priority="high"
                     transition={200}
+                    recyclingKey={message.id}
                     onLoad={(e: any) => {
                       const { width: w, height: h } = e.source;
                       if (w > 0) setImgAspect(h / w);
@@ -910,8 +911,9 @@ export const MessageBubble = memo(function MessageBubble({
                     style={{ width: mediaWidth, height: mediaWidth * imgAspect }}
                     contentFit="contain"
                     cachePolicy="disk"
-                    priority="normal"
+                    priority="high"
                     transition={200}
+                    recyclingKey={message.id}
                     onLoad={(e: any) => {
                       const { width: w, height: h } = e.source;
                       if (w > 0) setImgAspect(h / w);
