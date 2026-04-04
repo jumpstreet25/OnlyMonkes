@@ -817,8 +817,8 @@ export const MessageBubble = memo(function MessageBubble({
                   centerBubble && { justifyContent: "center" as const },
                   isOwn && { justifyContent: "flex-end" as const },
                 ]}>
-                  {/* Sender name — left side (hidden for own messages) */}
-                  {!isOwn ? (
+                  {/* Sender name — below bubble, only for Skia glow users (non-Skia shows above) */}
+                  {!isOwn && hasSkiaGlow ? (
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 4, flexShrink: 1 }}>
                       <Text style={{
                         fontFamily: FONTS.body,
