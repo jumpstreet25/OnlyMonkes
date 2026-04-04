@@ -223,10 +223,10 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
           source={config.banner}
           style={[
             styles.headerCenter,
-            channelId === "sales" && { transform: [{ scale: 0.72 }] },
-            channelId === "predictions" && { transform: [{ scale: 0.81 }] },
+            channelId === "sales" && { transform: [{ scale: 0.75 }] },
+            channelId === "predictions" && { transform: [{ scale: 0.82 }] },
           ]}
-          resizeMode="cover"
+          resizeMode="contain"
         />
 
         {/* Right column: Alert bell + Autonomy button */}
@@ -394,8 +394,7 @@ const styles = StyleSheet.create({
   },
   headerCenter: {
     flex: 1,
-    alignSelf: "stretch",
-    transform: [{ scale: 0.9 }],
+    height: 56,
   },
   backBtn: {
     width: 58,

@@ -744,22 +744,17 @@ export function useXmtp() {
         // Merge with existing messages (cached + stream) instead of replacing.
         // This prevents older messages from disappearing when history only
         // covers last 24h / 50 messages.
+        // Replace messages entirely with history (authoritative source)
+        // but preserve any optimistic messages that haven't been confirmed yet
         const existing = useChatStore.getState().messages;
-        const existingIds = new Set(existing.map(m => m.id));
-        // Also track content+sender to catch optimistic dupes (opt-xxx → real ID)
-        const existingContentKeys = new Set(existing.map(m => `${m.senderAddress}:${m.content.slice(0, 80)}`));
-        const newFromHistory = recentMessages.filter(m => {
-          if (existingIds.has(m.id)) return false;
-          // Skip if same sender + same content already exists (optimistic dupe)
-          const key = `${m.senderAddress}:${m.content.slice(0, 80)}`;
-          if (existingContentKeys.has(key)) return false;
-          return true;
-        });
-        if (newFromHistory.length > 0 || existing.length === 0) {
-          const merged = [...existing, ...newFromHistory];
-          merged.sort((a, b) => a.sentAt.getTime() - b.sentAt.getTime());
-          setMessages(merged);
-        }
+        const historyIds = new Set(recentMessages.map(m => m.id));
+        // Keep optimistic messages (opt-*) that aren't in history yet
+        const pendingOptimistic = existing.filter(m =>
+          m.id.startsWith("opt-") && m.status !== "sent"
+        );
+        const merged = [...recentMessages, ...pendingOptimistic];
+        merged.sort((a, b) => a.sentAt.getTime() - b.sentAt.getTime());
+        setMessages(merged);
       }
       // If network returned 0 visible messages, keep the cached set already
       // loaded at line 553 — don't overwrite with empty array.
