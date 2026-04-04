@@ -55,25 +55,37 @@ half4 main(float2 coord) {
   if (mask < 0.01) return half4(0.0);
 
   // ── PROCEDURAL NORMAL MAP ──────────────────────────────────────────────
-  float sphere = max(1.0 - dist * 2.2, 0.0);
+  // Tighter sphere = more curvature, more dramatic light falloff
+  float sphere = max(1.0 - dist * 2.5, 0.0);
   float z = sqrt(max(sphere, 0.001));
-  float3 normal = normalize(float3(fromCenter.x * 2.4, -fromCenter.y * 2.4, z));
+  float3 normal = normalize(float3(fromCenter.x * 3.0, -fromCenter.y * 3.0, z));
 
   // ── DIRECTIONAL DIFFUSE LIGHTING ───────────────────────────────────────
-  float3 light = normalize(float3(lightDir.x, lightDir.y, 0.6));
+  float3 light = normalize(float3(lightDir.x, lightDir.y, 0.45));
   float diffuse = max(dot(normal, light), 0.0);
-  float ambient = 0.42;
 
-  half3 lit = color.rgb * half(ambient + diffuse * 0.58);
+  // Half-Lambert wrap: softens the shadow terminator so it doesn't clip hard
+  float wrap = diffuse * 0.5 + 0.5;
+  wrap = wrap * wrap; // re-contrast after wrapping
 
-  // ── SOFT RIM (subtle edge definition, no color tint) ───────────────────
+  float ambient = 0.30;
+  half3 lit = color.rgb * half(ambient + wrap * 0.70);
+
+  // ── SHADOW DARKENING (opposite side of light gets noticeably darker) ───
+  float shadow = 1.0 - diffuse;
+  shadow = shadow * shadow * 0.18; // quadratic falloff, max 18% darker
+  lit *= half(1.0 - shadow);
+
+  // ── RIM LIGHT (edge catch from light direction) ────────────────────────
   float rim = 1.0 - z;
-  rim = rim * rim * rim;
-  lit += half3(rim * 0.08);
+  rim = rim * rim;
+  // Rim stronger on the lit side
+  float rimSide = max(dot(normalize(fromCenter), normalize(lightDir.xy)), 0.0);
+  lit += half3(rim * 0.12 * (0.4 + rimSide * 0.6));
 
-  // ── AMBIENT OCCLUSION (edge darkening for depth) ───────────────────────
-  float ao = smoothstep(0.5, 0.2, dist);
-  lit *= half(0.88 + ao * 0.12);
+  // ── AMBIENT OCCLUSION (strong edge darkening) ─────────────────────────
+  float ao = smoothstep(0.5, 0.15, dist);
+  lit *= half(0.78 + ao * 0.22);
 
   return half4(lit * half(mask), color.a * half(mask));
 }
