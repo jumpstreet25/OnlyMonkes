@@ -110,7 +110,6 @@ export const AnimatedAvatar = React.memo(function AnimatedAvatar({
 
   // Premium shader light direction (updated from faceParams)
   const [lightDir, setLightDir] = useState({ x: 0.3, y: -0.2 });
-  const [headTilt, setHeadTilt] = useState({ x: 0, y: 0 });
 
   // ── Mouth overlay positioning ─────────────────────────────────────────────
   const mouthStyle = useMemo(() => ({
@@ -258,7 +257,6 @@ export const AnimatedAvatar = React.memo(function AnimatedAvatar({
       // Premium shader: update light direction + tilt from head rotation
       if (enable3D) {
         setLightDir({ x: clamp(-yaw / 20, -1, 1), y: clamp(pitch / 15, -1, 1) });
-        setHeadTilt({ x: yaw, y: pitch });
       }
       shadowOffsetX.value = withSpring(-yaw * size * SHADOW_OFFSET_SCALE * 0.05, { damping: 16, stiffness: 100 });
       shadowOffsetY.value = withSpring(2 + pitch * size * SHADOW_OFFSET_SCALE * 0.03, { damping: 16, stiffness: 100 });
@@ -392,9 +390,6 @@ export const AnimatedAvatar = React.memo(function AnimatedAvatar({
             size={size}
             lightDirX={lightDir.x}
             lightDirY={lightDir.y}
-            tiltX={headTilt.x}
-            tiltY={headTilt.y}
-            holoEnabled={true}
           />
         ) : (
           <Image
