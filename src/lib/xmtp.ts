@@ -531,6 +531,7 @@ export interface ParsedProfileUpdate {
   expoPushToken?: string;
   badges?: string[];
   shopStyles?: Record<string, string | number | boolean>;
+  statusMessage?: string;
 }
 
 /**
@@ -572,6 +573,7 @@ export function parseProfileUpdate(raw: string): ParsedProfileUpdate | null {
     expoPushToken: str(data.ept),
     badges: Array.isArray(data.bd) ? data.bd.filter((b: unknown) => typeof b === "string").slice(0, 20) : undefined,
     shopStyles: data.ss && typeof data.ss === "object" && !Array.isArray(data.ss) ? data.ss : undefined,
+    statusMessage: typeof data.sm === "string" ? data.sm.slice(0, 140) : undefined,
   };
 }
 
@@ -738,6 +740,7 @@ export async function sendProfileUpdate(
     ept: expoPushToken ?? "",
     bd: badges ?? [],
     ss: shopStyles ?? null,
+    sm: "", // statusMessage — set by the caller if user has a status
   });
   await (group as any).send(`PROFILE_UPDATE:${payload}`);
 }

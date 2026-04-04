@@ -32,6 +32,7 @@ import {
   Alert,
   Platform,
 } from "react-native";
+import Slider from "@react-native-community/slider";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
 import * as Clipboard from "expo-clipboard";
@@ -827,6 +828,29 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                     </Pressable>
                   );
                 })}
+              </View>
+
+              <Text style={[styles.sectionLabel, { marginTop: 20 }]}>Text Size</Text>
+              <View style={styles.settingsCard}>
+                <View style={styles.settingRow}>
+                  <Text style={[styles.settingTitle, { fontSize: 12 }]}>A</Text>
+                  <View style={{ flex: 1, marginHorizontal: 12 }}>
+                    <Slider
+                      minimumValue={0.85}
+                      maximumValue={1.3}
+                      step={0.05}
+                      value={useAppStore.getState().textScale ?? 1.0}
+                      onSlidingComplete={(val: number) => useAppStore.getState().setTextScale(val)}
+                      minimumTrackTintColor={THEME.accent}
+                      maximumTrackTintColor={THEME.border}
+                      thumbTintColor={THEME.accent}
+                    />
+                  </View>
+                  <Text style={[styles.settingTitle, { fontSize: 20 }]}>A</Text>
+                </View>
+                <Text style={[styles.settingDesc, { textAlign: "center", marginTop: 4 }]}>
+                  Adjusts message text size ({Math.round((useAppStore.getState().textScale ?? 1) * 100)}%)
+                </Text>
               </View>
 
               <Text style={[styles.sectionLabel, { marginTop: 20 }]}>Push Token</Text>

@@ -775,7 +775,7 @@ export const MessageBubble = memo(function MessageBubble({
                   <Text
                     style={[
                       styles.content,
-                      { color: textColor },
+                      { color: textColor, fontSize: 15 * (useAppStore.getState().textScale ?? 1) },
                       shopStyles.fontWeight === "bold" ? { fontWeight: "bold" } : null,
                       shopStyles.fontFamily === "mono" ? { fontFamily: FONTS.mono } : null,
                       shopStyles.hasBubbleCosmetic ? { textShadowColor: "rgba(0,0,0,0.5)", textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 } : null,
