@@ -22,9 +22,10 @@
  * Face:     Head tilt/nod/turn + continuous mouth openness + blendshape-driven blinks
  */
 
-import React, { useEffect, useMemo, useRef, useCallback } from 'react';
+import React, { useEffect, useMemo, useRef, useCallback, useState } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Image } from 'expo-image';
+import { SkiaPremiumAvatar } from '@/components/SkiaPremiumAvatar';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -89,9 +90,6 @@ const EYE_OVERLAY = {
 // ── 3D Depth Effect Constants ───────────────────────────────────────────────
 const SHADOW_OFFSET_SCALE = 0.06;   // shadow moves 6% of size per degree rotation
 const PARALLAX_SCALE = 0.15;        // translateX per degree of yaw
-const RIM_LIGHT_OPACITY = 0.28;     // max rim light brightness
-const VIGNETTE_OPACITY_BASE = 0.08; // base ambient occlusion
-const VIGNETTE_OPACITY_TILT = 0.12; // extra AO when tilted
 
 export const AnimatedAvatar = React.memo(function AnimatedAvatar({
   pfpUri,
@@ -109,6 +107,10 @@ export const AnimatedAvatar = React.memo(function AnimatedAvatar({
 
   // Speaking dynamics ref (scale boost + glow intensity)
   const speakParamsRef = useRef({ glowIntensity: 1, scaleBoost: 0 });
+
+  // Premium shader light direction (updated from faceParams)
+  const [lightDir, setLightDir] = useState({ x: 0.3, y: -0.2 });
+  const [headTilt, setHeadTilt] = useState({ x: 0, y: 0 });
 
   // ── Mouth overlay positioning ─────────────────────────────────────────────
   const mouthStyle = useMemo(() => ({
@@ -159,8 +161,6 @@ export const AnimatedAvatar = React.memo(function AnimatedAvatar({
   const shadowOffsetX = useSharedValue(0);
   const shadowOffsetY = useSharedValue(2);
   const parallaxX = useSharedValue(0);
-  const rimRotation = useSharedValue(0);
-  const vignetteIntensity = useSharedValue(VIGNETTE_OPACITY_BASE);
 
   // Blink
   const blinkOpacity = useSharedValue(0);
@@ -254,17 +254,15 @@ export const AnimatedAvatar = React.memo(function AnimatedAvatar({
       const yaw = clamp(faceParams.headRotation.y, -20, 20);
       const roll = clamp(faceParams.headRotation.z, -15, 15);
       const pitch = clamp(faceParams.headRotation.x, -15, 15);
+
+      // Premium shader: update light direction + tilt from head rotation
+      if (enable3D) {
+        setLightDir({ x: clamp(-yaw / 20, -1, 1), y: clamp(pitch / 15, -1, 1) });
+        setHeadTilt({ x: yaw, y: pitch });
+      }
       shadowOffsetX.value = withSpring(-yaw * size * SHADOW_OFFSET_SCALE * 0.05, { damping: 16, stiffness: 100 });
       shadowOffsetY.value = withSpring(2 + pitch * size * SHADOW_OFFSET_SCALE * 0.03, { damping: 16, stiffness: 100 });
       parallaxX.value = withSpring(yaw * PARALLAX_SCALE, { damping: 14, stiffness: 120 });
-      rimRotation.value = withSpring(-yaw * 4.5, { damping: 14, stiffness: 100 });
-
-      // Vignette intensifies with total rotation
-      const totalTilt = (Math.abs(yaw) + Math.abs(roll)) / 35; // 0-1
-      vignetteIntensity.value = withSpring(
-        VIGNETTE_OPACITY_BASE + totalTilt * VIGNETTE_OPACITY_TILT,
-        { damping: 16, stiffness: 100 },
-      );
     } else {
       headRotZ.value = withSpring(0, { damping: 14, stiffness: 120 });
       headRotY.value = withSpring(0, { damping: 14, stiffness: 120 });
@@ -275,8 +273,6 @@ export const AnimatedAvatar = React.memo(function AnimatedAvatar({
       shadowOffsetX.value = withSpring(0, { damping: 16, stiffness: 100 });
       shadowOffsetY.value = withSpring(2, { damping: 16, stiffness: 100 });
       parallaxX.value = withSpring(0, { damping: 14, stiffness: 120 });
-      rimRotation.value = withSpring(0, { damping: 14, stiffness: 100 });
-      vignetteIntensity.value = withSpring(VIGNETTE_OPACITY_BASE, { damping: 16, stiffness: 100 });
     }
   }, [faceParams]);
 
@@ -334,18 +330,6 @@ export const AnimatedAvatar = React.memo(function AnimatedAvatar({
     opacity: 0.45,
   }));
 
-  // Phase 0: Rim light — rotates with head
-  const rimLightStyle = useAnimatedStyle(() => ({
-    transform: [
-      { rotate: `${rimRotation.value}deg` },
-    ],
-  }));
-
-  // Phase 0: Vignette AO — intensifies on tilt
-  const vignetteStyle = useAnimatedStyle(() => ({
-    opacity: vignetteIntensity.value,
-  }));
-
   const glowRingStyle = useAnimatedStyle(() => ({
     opacity: glowOpacity.value,
     transform: [{ scale: glowScale.value }],
@@ -401,12 +385,25 @@ export const AnimatedAvatar = React.memo(function AnimatedAvatar({
 
       {/* NFT PFP (full image, circular) */}
       <View style={[styles.pfpContainer, { width: size, height: size, borderRadius: radius }]}>
-        <Image
-          source={{ uri: pfpUri }}
-          style={{ width: size, height: size }}
-          contentFit="cover"
-          cachePolicy="disk"
-        />
+        {/* Premium Skia shader: holographic sheen + normal map lighting */}
+        {enable3D ? (
+          <SkiaPremiumAvatar
+            pfpUri={pfpUri}
+            size={size}
+            lightDirX={lightDir.x}
+            lightDirY={lightDir.y}
+            tiltX={headTilt.x}
+            tiltY={headTilt.y}
+            holoEnabled={true}
+          />
+        ) : (
+          <Image
+            source={{ uri: pfpUri }}
+            style={{ width: size, height: size }}
+            contentFit="cover"
+            cachePolicy="disk"
+          />
+        )}
 
         {/* Cross-fading mouth sprites */}
         <Image
@@ -427,30 +424,6 @@ export const AnimatedAvatar = React.memo(function AnimatedAvatar({
           style={[blinkStyle, styles.blinkOverlay, blinkAnimStyle]}
           pointerEvents="none"
         />
-
-        {/* Phase 0: Rim light — bright edge on "lit" side, dark on opposite */}
-        {enable3D && (
-          <Animated.View
-            style={[
-              styles.rimLight,
-              { width: size, height: size, borderRadius: radius },
-              rimLightStyle,
-            ]}
-            pointerEvents="none"
-          />
-        )}
-
-        {/* Phase 0: Ambient occlusion vignette — darkens edges on tilt */}
-        {enable3D && (
-          <Animated.View
-            style={[
-              styles.vignette,
-              { width: size, height: size, borderRadius: radius },
-              vignetteStyle,
-            ]}
-            pointerEvents="none"
-          />
-        )}
       </View>
     </Animated.View>
   );
@@ -503,28 +476,6 @@ const styles = StyleSheet.create({
   dropShadow: {
     position: 'absolute',
     backgroundColor: 'rgba(0, 0, 0, 0.55)',
-    // Blur simulation via multiple stacked shadows:
-    // Android elevation gives native blur; the dark bg + opacity handles the rest
     elevation: 12,
-  },
-  rimLight: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    // Directional rim: bright left edge, dark right edge
-    // Rotates with head yaw to simulate a fixed light source
-    borderWidth: 2.5,
-    borderLeftColor: `rgba(255, 255, 255, ${RIM_LIGHT_OPACITY})`,
-    borderTopColor: `rgba(255, 255, 255, ${RIM_LIGHT_OPACITY * 0.5})`,
-    borderBottomColor: `rgba(255, 255, 255, ${RIM_LIGHT_OPACITY * 0.3})`,
-    borderRightColor: `rgba(0, 0, 0, ${RIM_LIGHT_OPACITY * 0.8})`,
-  },
-  vignette: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    // Radial-ish vignette via thick inset border
-    borderWidth: 6,
-    borderColor: 'rgba(0, 0, 0, 0.5)',
   },
 });
