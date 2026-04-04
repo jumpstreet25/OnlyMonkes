@@ -43,6 +43,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAppStore } from "@/store/appStore";
 import { useChatStore } from "@/store/chatStore";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useXmtp, triggerProfileRebroadcast } from "@/hooks/useXmtp";
 import { playSound } from "@/lib/sounds";
 import { useNetInfo } from "@react-native-community/netinfo";
@@ -188,7 +189,16 @@ export default function ChatScreen() {
   const setReplyingTo    = useChatStore(s => s.setReplyingTo);
   const typingUsers      = useChatStore(s => s.typingUsers);
   const { initialize, disconnect, logout, streamAlive, send, reply, react, edit, stickerReact, sendFile, sendTyping, forceAdminInit, broadcastProfile, broadcastEvent, broadcastVideoRoom, broadcastAvatarRoom, syncMessages } = useXmtp();
-  const [inputText, setInputText] = useState("");
+  const [inputText, setInputTextRaw] = useState("");
+  // Draft auto-save — persist input text so it survives navigation/restart
+  const _draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const setInputText = useCallback((text: string) => {
+    setInputTextRaw(text);
+    if (_draftTimer.current) clearTimeout(_draftTimer.current);
+    _draftTimer.current = setTimeout(() => {
+      AsyncStorage.setItem("draft_main_chat", text).catch(() => {});
+    }, 500);
+  }, []);
   const [isSending, setIsSending] = useState(false);
   const [showUsernameModal, setShowUsernameModal] = useState(false);
   const [editingProfile, setEditingProfile] = useState(false);
@@ -249,6 +259,11 @@ export default function ChatScreen() {
   };
 
   const myAddress = myInboxId ?? "";
+
+  // Restore draft on mount
+  useEffect(() => {
+    AsyncStorage.getItem("draft_main_chat").then(d => { if (d) setInputTextRaw(d); }).catch(() => {});
+  }, []);
 
   // ─── Pull-to-refresh handler ──────────────────────────────────────────────────
   const handleRefreshChat = useCallback(async () => {
