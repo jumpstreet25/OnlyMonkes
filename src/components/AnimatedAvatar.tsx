@@ -88,8 +88,8 @@ const EYE_OVERLAY = {
 };
 
 // ── 3D Depth Effect Constants ───────────────────────────────────────────────
-const SHADOW_OFFSET_SCALE = 0.06;   // shadow moves 6% of size per degree rotation
-const PARALLAX_SCALE = 0.15;        // translateX per degree of yaw
+const SHADOW_OFFSET_SCALE = 0.10;   // shadow moves 10% of size per degree rotation
+const PARALLAX_SCALE = 0.25;        // translateX per degree of yaw
 
 export const AnimatedAvatar = React.memo(function AnimatedAvatar({
   pfpUri,
@@ -309,7 +309,7 @@ export const AnimatedAvatar = React.memo(function AnimatedAvatar({
   // Phase 0: Enhanced container with parallax
   const containerStyle = useAnimatedStyle(() => ({
     transform: [
-      { perspective: 250 }, // tighter perspective = more dramatic 3D feel
+      { perspective: 200 }, // tight perspective = dramatic 3D rotation depth
       { translateX: parallaxX.value },
       { translateY: headNodY.value },
       { scale: breathScale.value * speakScale.value * eyeScale.value },
@@ -323,7 +323,7 @@ export const AnimatedAvatar = React.memo(function AnimatedAvatar({
     transform: [
       { translateX: shadowOffsetX.value },
       { translateY: shadowOffsetY.value },
-      { scale: 1.04 }, // slightly larger than avatar
+      { scale: 1.06 }, // larger than avatar for more float
     ],
     opacity: 0.45,
   }));
@@ -470,7 +470,7 @@ const styles = StyleSheet.create({
 
   dropShadow: {
     position: 'absolute',
-    backgroundColor: 'rgba(0, 0, 0, 0.55)',
-    elevation: 12,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    elevation: 18,
   },
 });
