@@ -72,6 +72,7 @@ export interface CachedProfile {
   expoPushToken?: string;     // ExponentPushToken[...] for client-side DM relay
   mouthTrait?: string;        // Saga Monke Mouth trait: 'Beaming' | 'Doobie' | 'None' | 'OwO'
   shopStyles?: Record<string, string | number | boolean>;  // equipped Banana Shop cosmetics (broadcast to all users)
+  statusMessage?: string;  // "What's on your mind" — ephemeral status text
 }
 
 const AK_PROFILE_CACHE = 'profile_cache_v2';
