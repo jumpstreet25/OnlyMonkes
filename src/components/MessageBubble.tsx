@@ -639,15 +639,7 @@ export const MessageBubble = memo(function MessageBubble({
         centerBubble && styles.bubbleGroupCenter,
       ]}>
 
-        {/* Sender name — shown above bubble for non-Skia messages, below bubble for Skia */}
-        {!isOwn && !hasSkiaGlow && (
-          <View style={[styles.senderRow]}>
-            <Text style={[styles.sender, shopStyles.nameColor ? { color: shopStyles.nameColor as string } : null]}>
-              {displayName}{isShopCustomer ? " 🍌" : ""}{isLegendarySender ? " 🌟" : ""}{badgeEmojis ? ` ${badgeEmojis}` : ""}
-            </Text>
-            <OnlineDot online={isUserOnline(message.senderAddress)} />
-          </View>
-        )}
+        {/* Sender name moved below bubble for all users */}
 
         {/* Reply preview */}
         {message.replyTo && (
@@ -817,8 +809,8 @@ export const MessageBubble = memo(function MessageBubble({
                   centerBubble && { justifyContent: "center" as const },
                   isOwn && { justifyContent: "flex-end" as const },
                 ]}>
-                  {/* Sender name — below bubble, only for Skia glow users (non-Skia shows above) */}
-                  {!isOwn && hasSkiaGlow ? (
+                  {/* Sender name — always below bubble for all non-own messages */}
+                  {!isOwn ? (
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 4, flexShrink: 1 }}>
                       <Text style={{
                         fontFamily: FONTS.body,
