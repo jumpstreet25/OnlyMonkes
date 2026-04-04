@@ -18,6 +18,7 @@ import { THEME, FONTS } from "@/lib/constants";
 interface ProfileScorecardProps {
   onEditProfile: () => void;
   onPressPfp?: () => void;
+  onClose?: () => void;
 }
 
 const SOLANA_PURPLE = "#9945FF";
@@ -96,7 +97,7 @@ function SkiaGlassCard({ width, height, glowColor }: { width: number; height: nu
   );
 }
 
-export function ProfileScorecard({ onEditProfile, onPressPfp }: ProfileScorecardProps) {
+export function ProfileScorecard({ onEditProfile, onPressPfp, onClose }: ProfileScorecardProps) {
   const verifiedNft = useAppStore(s => s.verifiedNft);
   const username = useAppStore(s => s.username);
   const xAccount = useAppStore(s => s.xAccount);
@@ -140,7 +141,19 @@ export function ProfileScorecard({ onEditProfile, onPressPfp }: ProfileScorecard
     >
       {cardSize.w > 0 && <SkiaGlassCard width={cardSize.w} height={cardSize.h} glowColor={glowColor} />}
 
-      {/* Top row */}
+      {/* Top-right: Edit + Close buttons */}
+      <View style={st.topActions}>
+        <Pressable onPress={onEditProfile} style={st.actionBtn} hitSlop={8}>
+          <Text style={st.actionIcon}>✏️</Text>
+        </Pressable>
+        {onClose && (
+          <Pressable onPress={onClose} style={st.actionBtn} hitSlop={8}>
+            <Text style={st.actionIcon}>✕</Text>
+          </Pressable>
+        )}
+      </View>
+
+      {/* Profile row */}
       <View style={st.topRow}>
         <Pressable onPress={onPressPfp} hitSlop={6}>
           <View style={[st.pfpWrap, { borderColor: pfpRingColor + "50" }]}>
@@ -164,10 +177,6 @@ export function ProfileScorecard({ onEditProfile, onPressPfp }: ProfileScorecard
           ) : null}
           {location ? <Text style={st.sub} numberOfLines={1}>📍 {location}</Text> : null}
         </View>
-
-        <Pressable onPress={onEditProfile} style={[st.editBtn, { borderColor: glowColor + "20" }]} hitSlop={8}>
-          <Text style={st.editBtnText}>✏️</Text>
-        </Pressable>
       </View>
 
       {/* Stats */}
@@ -200,7 +209,10 @@ export function ProfileScorecard({ onEditProfile, onPressPfp }: ProfileScorecard
 }
 
 const st = StyleSheet.create({
-  card: { marginBottom: 12, borderRadius: 20, padding: 16, overflow: "visible" },
+  card: { marginBottom: 12, marginTop: 4, borderRadius: 20, padding: 16, overflow: "visible" },
+  topActions: { flexDirection: "row", justifyContent: "flex-end", gap: 8, marginBottom: 8 },
+  actionBtn: { width: 30, height: 30, borderRadius: 15, backgroundColor: "rgba(255,255,255,0.04)", alignItems: "center", justifyContent: "center" },
+  actionIcon: { fontSize: 14, color: "#888" },
   topRow: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 14 },
   pfpWrap: { width: 56, height: 56, borderRadius: 28, borderWidth: 2, overflow: "hidden" },
   pfp: { width: 52, height: 52, borderRadius: 26 },
@@ -209,8 +221,6 @@ const st = StyleSheet.create({
   username: { fontFamily: FONTS.displayMed, fontSize: 17, color: THEME.text },
   sub: { fontFamily: FONTS.body, fontSize: 12, color: THEME.textMuted },
   wallet: { fontFamily: FONTS.mono, fontSize: 11, color: THEME.textMuted },
-  editBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: "rgba(255,255,255,0.04)", alignItems: "center", justifyContent: "center", borderWidth: 1 },
-  editBtnText: { fontSize: 16 },
   statsGrid: { flexDirection: "row", justifyContent: "space-between", marginBottom: 12, gap: 6 },
   statItem: { flex: 1, alignItems: "center", backgroundColor: "rgba(255,255,255,0.02)", borderRadius: 12, paddingVertical: 8, borderWidth: 0.5, borderColor: "rgba(255,255,255,0.04)" },
   statValue: { fontFamily: FONTS.displayMed, fontSize: 18, color: THEME.text },
