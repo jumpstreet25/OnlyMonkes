@@ -83,6 +83,7 @@ interface AppState {
   shopStyles: Record<string, string | number | boolean>;
   nftDominantColor: string | null;  // Extracted from user's NFT PFP for Tier 3/4 shop styles
   themeOverrides: Partial<typeof import('@/lib/constants').THEME> | null;  // Tier 4 theme overrides
+  textScale: number;  // Font size multiplier: 0.85 (small) → 1.0 (default) → 1.3 (large)
   // Push notifications
   expoPushToken: string | null;
   // Live audio room
@@ -147,6 +148,7 @@ interface AppActions {
   setShopStyles: (styles: Record<string, string | number | boolean>) => void;
   setNftDominantColor: (color: string | null) => void;
   setThemeOverrides: (overrides: Partial<typeof import('@/lib/constants').THEME> | null) => void;
+  setTextScale: (scale: number) => void;
   setExpoPushToken: (token: string | null) => void;
   setActiveLiveRoom: (room: LiveRoomState | null) => void;
   updateLiveRoomCount: (count: number) => void;
@@ -207,6 +209,7 @@ const initialState: AppState = {
   shopStyles: {},
   nftDominantColor: null,
   themeOverrides: null,
+  textScale: 1.0,
   expoPushToken: null,
   activeLiveRoom: null,
   isInLiveRoom: false,
@@ -303,6 +306,10 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   setShopStyles: (shopStyles) => set({ shopStyles }),
   setNftDominantColor: (nftDominantColor) => set({ nftDominantColor }),
   setThemeOverrides: (themeOverrides) => set({ themeOverrides }),
+  setTextScale: (textScale: number) => {
+    set({ textScale });
+    AsyncStorage.setItem("om_text_scale", String(textScale)).catch(() => {});
+  },
   setExpoPushToken: (expoPushToken) => set({ expoPushToken }),
   setActiveLiveRoom: (activeLiveRoom) => set({ activeLiveRoom }),
   updateLiveRoomCount: (count) =>
@@ -400,6 +407,13 @@ export async function loadPersistedPrefs(): Promise<void> {
         if (typeof parsed.live === 'boolean') state.liveRoomNotificationsEnabled = parsed.live;
       }
     }
+    // Load text scale
+    const scaleRaw = await AsyncStorage.getItem("om_text_scale");
+    if (scaleRaw) {
+      const s = parseFloat(scaleRaw);
+      if (s >= 0.85 && s <= 1.3) state.textScale = s;
+    }
+
     if (Object.keys(state).length > 0) {
       useAppStore.setState(state);
     }
