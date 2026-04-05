@@ -219,11 +219,20 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
 
 
   const sortedEvents = useMemo(() => {
-    return [...calendarEvents].sort((a, b) => {
-      const da = new Date(`${a.date} ${a.time || "00:00"}`);
-      const db = new Date(`${b.date} ${b.time || "00:00"}`);
-      return da.getTime() - db.getTime();
-    });
+    const now = Date.now();
+    return [...calendarEvents]
+      .filter((evt) => {
+        // Parse "MM/DD/YYYY" date — keep events that haven't ended yet
+        const [mm, dd, yyyy] = (evt.date ?? "").split("/").map(Number);
+        if (!mm || !dd || !yyyy) return true; // can't parse, keep it
+        const endOfDay = new Date(yyyy, mm - 1, dd, 23, 59, 59).getTime();
+        return endOfDay >= now;
+      })
+      .sort((a, b) => {
+        const da = new Date(`${a.date} ${a.time || "00:00"}`);
+        const db = new Date(`${b.date} ${b.time || "00:00"}`);
+        return da.getTime() - db.getTime();
+      });
   }, [calendarEvents]);
 
   // ── Notification handlers ─────────────────────────────────────────────────
