@@ -7,7 +7,7 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const AK_LUMA_CACHE = 'luma_events_v1';
+const AK_LUMA_CACHE = 'luma_events_v2'; // v2: switched to active calendars (superteam, breakpoint)
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
 
 export interface LumaEvent {
@@ -31,10 +31,11 @@ interface CachedLumaData {
 // Lu.ma calendar API IDs for Solana ecosystem calendars
 // Found via: curl "https://api.lu.ma/url?url=<slug>" → data.calendar.api_id
 const CALENDARS = [
-  { slug: 'solana',       apiId: 'cal-GNxoseumqYXHPf1' },
-  { slug: 'solanamobile', apiId: '' }, // will resolve on first use
-  { slug: 'solflare',     apiId: '' },
-  { slug: 'sagamonkes',   apiId: '' },
+  { slug: 'superteam',    apiId: 'cal-cl57AMcV2gdbbau' }, // Superteam global (19+ Solana events)
+  { slug: 'breakpoint',   apiId: 'evgrp-f8F1bDAHhBNDM1f' }, // Solana Breakpoint 2026
+  { slug: 'solana',       apiId: 'cal-GNxoseumqYXHPf1' }, // Solana community (low activity)
+  { slug: 'helius',       apiId: 'cal-IYTHSBW8WfaoNrM' }, // Helius events
+  { slug: 'jupiter',      apiId: 'cal-lv75ZykIkdWEv14' }, // Jupiter events
 ];
 
 /** Resolve a calendar slug to its API ID. */
