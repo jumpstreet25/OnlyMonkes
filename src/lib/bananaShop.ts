@@ -394,3 +394,32 @@ export function getCategoryName(cat: ShopCategory): string {
     case "theme": return "App Themes";
   }
 }
+
+/** Merge owned items + PFP bindings from another device (same wallet). Union merge. */
+export async function mergeOwnedItems(
+  remoteOwned: string[],
+  remotePfpBindings?: Record<string, string[]>,
+): Promise<boolean> {
+  const state = await loadShopState();
+  let changed = false;
+  for (const itemId of remoteOwned) {
+    if (!state.owned.includes(itemId)) {
+      state.owned.push(itemId);
+      changed = true;
+    }
+  }
+  if (remotePfpBindings) {
+    if (!state.pfpBindings) state.pfpBindings = {};
+    for (const [mint, items] of Object.entries(remotePfpBindings)) {
+      if (!state.pfpBindings[mint]) state.pfpBindings[mint] = [];
+      for (const itemId of items) {
+        if (!state.pfpBindings[mint].includes(itemId)) {
+          state.pfpBindings[mint].push(itemId);
+          changed = true;
+        }
+      }
+    }
+  }
+  if (changed) await saveShopState(state);
+  return changed;
+}

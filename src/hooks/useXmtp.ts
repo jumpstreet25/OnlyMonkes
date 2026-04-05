@@ -54,6 +54,8 @@ import { cacheProfile, getCachedProfile, loadProfileCache, trackUser, loadAllTim
 import { loadWeeklyActivity, trackActivity } from "@/lib/activityTracker";
 import { incrementProgress, updateStreak, getEarnedBadges, type BadgeDef } from "@/lib/badges";
 import { processBananaGrant } from "@/lib/bananaGrant";
+import { loadBananaState, mergeBananaBalance } from "@/lib/bananaRewards";
+import { loadShopState, mergeOwnedItems, getEquippedStyles } from "@/lib/bananaShop";
 import { parseEventMessage, saveEvent } from "@/lib/calendar";
 import {
   fetchAppConfig,
@@ -146,6 +148,7 @@ async function _doProfileRebroadcast(pushToken: string): Promise<void> {
   } = useAppStore.getState();
   try {
     const expoPushToken = useAppStore.getState().expoPushToken ?? await registerForExpoPushToken();
+    const [bananaState, shopState] = await Promise.all([loadBananaState(), loadShopState()]);
     await sendProfileUpdate(
       _group as XmtpGroup, _myInboxId,
       username, bio, xAccount,
@@ -164,6 +167,9 @@ async function _doProfileRebroadcast(pushToken: string): Promise<void> {
       undefined, // location (not available here)
       getEarnedBadges(),
       Object.keys(currentShopStyles).length > 0 ? currentShopStyles : null,
+      bananaState.balance,
+      shopState.owned.length > 0 ? shopState.owned : null,
+      shopState.pfpBindings ?? null,
     );
     if (__DEV__) console.log('[XMTP] Re-broadcast profile with push token:', pushToken.slice(0, 30) + '…');
   } catch { /* non-critical */ }
@@ -575,6 +581,27 @@ export function useXmtp() {
               if (profile) {
                 cacheProfile(profile.id, { username: profile.username, bio: profile.bio, xAccount: profile.xAccount, walletAddress: profile.walletAddress, tipWallet: profile.tipWallet, location: profile.location, nftImage: profile.nftImage, legendary: profile.legendary, pushToken: profile.pushToken, expoPushToken: profile.expoPushToken, badges: profile.badges, shopStyles: profile.shopStyles, statusMessage: profile.statusMessage });
                 trackUser(profile.id, profile.username);
+                // Cross-device sync: same wallet, different device → merge banana + shop
+                if (profile.walletAddress && profile.id !== _myInboxId) {
+                  const myWallet = useAppStore.getState().wallet?.address;
+                  if (myWallet && profile.walletAddress === myWallet) {
+                    (async () => {
+                      try {
+                        if (profile.bananaBalance != null) {
+                          const newBal = await mergeBananaBalance(profile.bananaBalance);
+                          useAppStore.getState().setBananaBalance(newBal);
+                        }
+                        if (profile.shopOwned?.length) {
+                          const changed = await mergeOwnedItems(profile.shopOwned, profile.pfpBindings);
+                          if (changed) {
+                            const styles = await getEquippedStyles();
+                            useAppStore.getState().setShopStyles(styles);
+                          }
+                        }
+                      } catch { /* non-critical */ }
+                    })();
+                  }
+                }
               }
             } else if (typeof content === "string" && content.startsWith("EVENT:")) {
               try {
@@ -880,6 +907,27 @@ export function useXmtp() {
           if (profile) {
             cacheProfile(profile.id, { username: profile.username, bio: profile.bio, xAccount: profile.xAccount, walletAddress: profile.walletAddress, tipWallet: profile.tipWallet, location: profile.location, nftImage: profile.nftImage, legendary: profile.legendary, pushToken: profile.pushToken, expoPushToken: profile.expoPushToken, badges: profile.badges, shopStyles: profile.shopStyles, statusMessage: profile.statusMessage });
             trackUser(profile.id, profile.username);
+            // Cross-device sync: same wallet, different device → merge banana + shop
+            if (profile.walletAddress && profile.id !== _myInboxId) {
+              const myWallet = useAppStore.getState().wallet?.address;
+              if (myWallet && profile.walletAddress === myWallet) {
+                (async () => {
+                  try {
+                    if (profile.bananaBalance != null) {
+                      const newBal = await mergeBananaBalance(profile.bananaBalance);
+                      useAppStore.getState().setBananaBalance(newBal);
+                    }
+                    if (profile.shopOwned?.length) {
+                      const changed = await mergeOwnedItems(profile.shopOwned, profile.pfpBindings);
+                      if (changed) {
+                        const styles = await getEquippedStyles();
+                        useAppStore.getState().setShopStyles(styles);
+                      }
+                    }
+                  } catch { /* non-critical */ }
+                })();
+              }
+            }
           }
           return;
         }
@@ -1198,6 +1246,7 @@ export function useXmtp() {
             if (expoPushToken) useAppStore.getState().setExpoPushToken(expoPushToken);
             if (__DEV__) console.log('[XMTP] Profile broadcast, FCM token:', pushToken ? pushToken.slice(0, 30) + '…' : 'none',
               'Expo token:', expoPushToken ? expoPushToken.slice(0, 40) + '…' : 'none');
+            const [bananaState, shopState] = await Promise.all([loadBananaState(), loadShopState()]);
             await sendProfileUpdate(
               group as XmtpGroup,
               client.inboxId,
@@ -1222,6 +1271,9 @@ export function useXmtp() {
               location ?? undefined,
               getEarnedBadges(),
               Object.keys(currentShopStyles).length > 0 ? currentShopStyles : null,
+              bananaState.balance,
+              shopState.owned.length > 0 ? shopState.owned : null,
+              shopState.pfpBindings ?? null,
             );
             cacheProfile(client.inboxId, {
               username: username ?? undefined,
@@ -1512,6 +1564,7 @@ export function useXmtp() {
     try {
       const pushToken = await getCachedPushToken();
       const expoPushToken = useAppStore.getState().expoPushToken ?? await registerForExpoPushToken();
+      const [bananaState, shopState] = await Promise.all([loadBananaState(), loadShopState()]);
       await sendProfileUpdate(
         _group, _myInboxId,
         username, bio, xAccount,
@@ -1533,6 +1586,9 @@ export function useXmtp() {
         location,
         getEarnedBadges(),
         Object.keys(currentShopStyles).length > 0 ? currentShopStyles : null,
+        bananaState.balance,
+        shopState.owned.length > 0 ? shopState.owned : null,
+        shopState.pfpBindings ?? null,
       );
       // Keep own cache entry current so PFP is always available locally
       cacheProfile(_myInboxId, {
