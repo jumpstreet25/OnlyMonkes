@@ -66,7 +66,7 @@ export async function loadBananaState(): Promise<BananaState> {
 }
 
 /** Save banana state to AsyncStorage. */
-async function saveBananaState(state: BananaState): Promise<void> {
+export async function saveBananaState(state: BananaState): Promise<void> {
   await AsyncStorage.setItem(AK_BANANAS, JSON.stringify(state));
 }
 
@@ -141,4 +141,16 @@ export async function spendBananas(amount: number): Promise<boolean> {
   state.balance -= amount;
   await saveBananaState(state);
   return true;
+}
+
+/** Merge balance from another device (same wallet). Takes MAX to prevent loss. */
+export async function mergeBananaBalance(remoteBalance: number): Promise<number> {
+  const state = await loadBananaState();
+  if (remoteBalance > state.balance) {
+    const delta = remoteBalance - state.balance;
+    state.balance = remoteBalance;
+    state.totalEarned += delta;
+    await saveBananaState(state);
+  }
+  return state.balance;
 }
