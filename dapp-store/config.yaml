@@ -62,6 +62,10 @@ release:
 
         🐒 MONKEMARKETS — Peer-to-peer Saga Monkes NFT trading with atomic Solana swaps. Trait filtering, Magic Eden floor pricing, and guest browsing.
 
+        🍌 BANANA SHOP — Earn bananas daily and spend them on chat cosmetics: neon bubble glows, gold names, PFP auras, pulse frames, and full app themes. Cross-device sync keeps your balance and purchases in sync across phones.
+
+        🌍 MONKE GLOBE — Interactive 3D globe showing where fellow Monkes are located worldwide, plus Solana ecosystem events from Lu.ma.
+
         🏆 cNFT BADGES — Earn compressed NFT milestone badges (First Message, Legendary Streak, Top Monke) minted to your wallet via Helius.
 
         📎 E2E FILE SHARING — Send files with native XMTP RemoteAttachment codec for end-to-end encrypted file transfers.
@@ -74,7 +78,7 @@ release:
 
         REQUIREMENTS: Saga Monkes NFT + compatible Solana wallet (Phantom, Solflare) on Seeker or Saga device.
       new_in_version: >-
-        v2.29: cNFT milestone badges via Helius Mint API. Solana Blinks/Actions — interactive swap cards in chat with one-tap execution. E2E encrypted file sharing via XMTP RemoteAttachment codec. Pyth Hermes SSE live price feeds. Polymarket prediction cards. Image lightbox viewer. Jupiter API v1 migration. DM typing indicators. Failed message retry. Marketplace error boundary with retry. Video room grid reflow fix. Profile update JSON validation.
+        v2.35: Cross-device account sync — same wallet on two phones shares banana balance and Banana Shop purchases automatically. Hermes AI self-tuning thresholds — bot auto-adjusts alert sensitivity weekly based on win rate data. Near-miss peak price tracking over 48h window. Skip decision benchmarking — tracks outcomes of filtered signals. Timeframe combo analysis — learns which specific TF combinations win most. Reply persistence fix — replies survive app restart. Globe button fix. Wallet map persistence for bot NFT gate. Previous: v2.34 Banana Shop cosmetics, OTA alignment, Globe stacked PFPs. v2.33 Avatar Rooms with face tracking, SAK DeFi commands, FlashList chat, wagmi-charts, Free-RASP security. v2.32 Hermes intelligence, 31-point security audit, glassmorphic UI.
       saga_features: >-
         Optimized for Seeker — arm64-v8a only build with minSdk 24. Live audio/video rooms use LiveKit WebRTC with full Bluetooth headset support and PiP mode. Mobile Wallet Adapter biometric prompt for tips, swaps, and Blink Actions (no app switching). Solana Actions server returns serialized transactions signed directly via MWA.
   android_details:
