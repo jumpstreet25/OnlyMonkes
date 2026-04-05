@@ -65,7 +65,7 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
     paddingTop: 52, paddingHorizontal: 16, paddingBottom: 12,
-    borderBottomWidth: 1, borderBottomColor: THEME.border,
+    borderBottomWidth: 0.75, borderBottomColor: "rgba(255,255,255,0.06)",
   },
   backText: { fontFamily: FONTS.bodyMed, fontSize: 14, color: "#6CB4EE" },
   headerTitle: { fontFamily: FONTS.display, fontSize: 20, color: THEME.text },
@@ -79,8 +79,8 @@ const styles = StyleSheet.create({
   linkRow: {
     flexDirection: "row", justifyContent: "space-between", alignItems: "center",
     paddingVertical: 12, paddingHorizontal: 16,
-    backgroundColor: THEME.surface, borderRadius: 12,
-    borderWidth: 1, borderColor: THEME.border,
+    backgroundColor: "rgba(18,18,30,0.8)", borderRadius: 14,
+    borderWidth: 0.75, borderColor: "rgba(255,255,255,0.06)",
   },
   linkText: { fontFamily: FONTS.bodyMed, fontSize: 14, color: "#6CB4EE" },
   linkArrow: { fontFamily: FONTS.body, fontSize: 14, color: THEME.textMuted },

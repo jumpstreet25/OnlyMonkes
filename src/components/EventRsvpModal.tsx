@@ -5,11 +5,12 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import {
-  View, Text, StyleSheet, Pressable, Modal, Image,
+  View, Text, StyleSheet, Pressable, Image,
 } from "react-native";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { THEME, FONTS } from "@/lib/constants";
+import { GlassModal } from "@/components/GlassModal";
 import { useAppStore } from "@/store/appStore";
 import {
   isGoing, rsvpGoing, rsvpNotGoing, getAttendeeCount, getAttendees,
@@ -95,16 +96,7 @@ export function EventRsvpModal({ visible, event, onClose, onSendRsvp }: EventRsv
   if (!event) return null;
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.overlay} onPress={onClose}>
-        <Pressable style={styles.card} onPress={(e) => e.stopPropagation()}>
-          <LinearGradient
-            colors={["rgba(124,58,237,0.12)", "rgba(10,10,15,0)", "rgba(108,180,238,0.06)"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={StyleSheet.absoluteFill}
-          />
-
+    <GlassModal visible={visible} onClose={onClose} cardStyle={styles.card}>
           {/* Header accent line */}
           <View style={styles.accentLine} />
 
@@ -175,23 +167,13 @@ export function EventRsvpModal({ visible, event, onClose, onSendRsvp }: EventRsv
               <Text style={styles.lumaLinkText}>View on Lu.ma →</Text>
             </Pressable>
           )}
-        </Pressable>
-      </Pressable>
-    </Modal>
+    </GlassModal>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1, backgroundColor: "rgba(0,0,0,0.7)",
-    justifyContent: "center", alignItems: "center", padding: 24,
-  },
   card: {
-    backgroundColor: "rgba(18,18,26,0.97)", borderRadius: 24, padding: 28,
-    borderWidth: 1, borderColor: "rgba(124,58,237,0.2)",
-    shadowColor: "#7C3AED", shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.25, shadowRadius: 24, elevation: 12,
-    alignSelf: "stretch", maxWidth: 380, overflow: "hidden", gap: 14,
+    gap: 14,
   },
   accentLine: {
     position: "absolute", top: 0, left: 40, right: 40, height: 3,
