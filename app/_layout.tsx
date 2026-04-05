@@ -90,8 +90,11 @@ export default function RootLayout() {
     }, 2000);
 
     // Deep link handler — onlymonkes://chat, onlymonkes://dm/<inboxId>, etc.
+    // Guard: only navigate if user is authenticated (has wallet + XMTP client)
     const handleDeepLink = ({ url }: { url: string }) => {
       try {
+        const { wallet, myInboxId } = useAppStore.getState();
+        if (!wallet || !myInboxId) return; // Not authenticated yet — ignore deep link
         const path = url.replace(/^onlymonkes:\/\//, "").replace(/^exp\+onlymonkes:\/\//, "");
         if (!path) return;
         if (path === "chat") router.push("/chat" as any);
