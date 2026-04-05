@@ -1254,7 +1254,7 @@ export default function ChatScreen() {
 
           {/* Bot command ticker — overlaid at bottom of header, under the logo */}
           {isGroupMember && (
-            <View style={styles.tickerWrap}>
+            <View style={styles.tickerWrap} pointerEvents="none">
               <BotCommandTicker />
             </View>
           )}
@@ -1801,6 +1801,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
+    zIndex: 10,
   },
   headerNftWrap: {
     width: 46,
@@ -1841,6 +1842,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
+    zIndex: 10,
   },
   bananaHeaderPill: {
     backgroundColor: "rgba(255,213,79,0.1)",

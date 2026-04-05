@@ -352,8 +352,14 @@ export function decodeMessage(raw: any, myInboxId: string): ChatMessage | null {
       if (obj.reaction || obj.reactionV2) return null;
 
       // Native ReplyCodec → decode the reply
+      // On history reload, content shape can vary: { text: "..." } or just a string
       if (obj.reply) {
-        const replyText: string = obj.reply.content?.text ?? "";
+        const rc = obj.reply.content;
+        const replyText: string =
+          typeof rc === "string" ? rc
+          : typeof rc?.text === "string" ? rc.text
+          : typeof rc?.content === "string" ? rc.content
+          : "";
         if (!replyText) return null;
         const { username, inner } = parseContent(replyText);
         return {
@@ -532,6 +538,9 @@ export interface ParsedProfileUpdate {
   badges?: string[];
   shopStyles?: Record<string, string | number | boolean>;
   statusMessage?: string;
+  bananaBalance?: number;
+  shopOwned?: string[];
+  pfpBindings?: Record<string, string[]>;
 }
 
 /**
@@ -574,6 +583,9 @@ export function parseProfileUpdate(raw: string): ParsedProfileUpdate | null {
     badges: Array.isArray(data.bd) ? data.bd.filter((b: unknown) => typeof b === "string").slice(0, 20) : undefined,
     shopStyles: data.ss && typeof data.ss === "object" && !Array.isArray(data.ss) ? data.ss : undefined,
     statusMessage: typeof data.sm === "string" ? data.sm.slice(0, 140) : undefined,
+    bananaBalance: typeof data.bb === "number" ? data.bb : undefined,
+    shopOwned: Array.isArray(data.so) ? data.so.filter((s: unknown) => typeof s === "string").slice(0, 50) : undefined,
+    pfpBindings: data.pb && typeof data.pb === "object" && !Array.isArray(data.pb) ? data.pb : undefined,
   };
 }
 
@@ -658,15 +670,14 @@ export async function sendReply(
   replyContent: string,
   username?: string | null
 ): Promise<void> {
-  // Native ReplyCodec — references the target message by ID.
-  // Reply text is wrapped in MSG:username: so decodeMessage can extract the sender.
-  const packed = username ? `MSG:${username}:${replyContent}` : replyContent;
-  await (group as any).send({
-    reply: {
-      reference: targetMessage.id,
-      content: { text: packed },
-    },
-  });
+  // Use string-based REPLYv2 format for reliability.
+  // Native ReplyCodec's nested content can lose structure on XMTP history reload,
+  // causing replies to silently disappear. String format always survives serialization.
+  const origB64 = Buffer.from(targetMessage.content || "").toString("base64");
+  const packed = username
+    ? `MSG:${username}:REPLYv2:${targetMessage.id}:${targetMessage.senderAddress}:${targetMessage.senderUsername ?? ""}:${origB64}:${replyContent}`
+    : `REPLYv2:${targetMessage.id}:${targetMessage.senderAddress}:${targetMessage.senderUsername ?? ""}:${origB64}:${replyContent}`;
+  await (group as any).send(packed);
 }
 
 export async function sendReaction(
@@ -719,6 +730,9 @@ export async function sendProfileUpdate(
   location?: string | null,
   badges?: string[] | null,
   shopStyles?: Record<string, string | number | boolean> | null,
+  bananaBalance?: number | null,
+  shopOwned?: string[] | null,
+  pfpBindings?: Record<string, string[]> | null,
 ): Promise<void> {
   const payload = JSON.stringify({
     id: inboxId,
@@ -741,6 +755,9 @@ export async function sendProfileUpdate(
     bd: badges ?? [],
     ss: shopStyles ?? null,
     sm: "", // statusMessage — set by the caller if user has a status
+    bb: bananaBalance ?? 0,
+    so: shopOwned ?? [],
+    pb: pfpBindings ?? null,
   });
   await (group as any).send(`PROFILE_UPDATE:${payload}`);
 }
