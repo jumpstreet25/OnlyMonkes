@@ -225,13 +225,23 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
     const now = Date.now();
     return [...calendarEvents]
       .filter((evt) => {
-        // Parse "MM/DD/YYYY" date + "HH:MM" time — keep events that haven't ended yet
+        // Parse "MM/DD/YYYY" date — keep events that haven't ended yet
         const [mm, dd, yyyy] = (evt.date ?? "").split("/").map(Number);
         if (!mm || !dd || !yyyy) return true; // can't parse, keep it
-        const [hh, min] = (evt.time ?? "").split(":").map(Number);
-        // Use event time + 2h buffer (assume events last ~2h), or end-of-day if no time
-        const eventStart = new Date(yyyy, mm - 1, dd, hh || 23, min || 59, 0).getTime();
-        const eventEnd = (hh || hh === 0) ? eventStart + 2 * 3600000 : eventStart;
+        // Parse time flexibly: "9:00", "09:00", "18:00", "9", "9am", "9:00 AM"
+        const timeStr = (evt.time ?? "").trim().toLowerCase().replace(/\s*(am|pm)\s*$/i, (_, m) => m);
+        let hh = NaN, min = 0;
+        if (timeStr.includes(":")) {
+          const parts = timeStr.replace(/[ap]m/, "").split(":").map(Number);
+          hh = parts[0]; min = parts[1] || 0;
+        } else if (/^\d{1,2}$/.test(timeStr.replace(/[ap]m/, ""))) {
+          hh = parseInt(timeStr, 10);
+        }
+        if (timeStr.includes("pm") && !isNaN(hh) && hh < 12) hh += 12;
+        if (timeStr.includes("am") && hh === 12) hh = 0;
+        const hasTime = !isNaN(hh);
+        const eventStart = new Date(yyyy, mm - 1, dd, hasTime ? hh : 23, hasTime ? min : 59, 0).getTime();
+        const eventEnd = hasTime ? eventStart + 2 * 3600000 : eventStart;
         return eventEnd >= now;
       })
       .sort((a, b) => {
@@ -641,7 +651,28 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                         </View>
                         {evt.time ? <Text style={styles.eventMeta}>{evt.time}{evt.location ? ` · ${evt.location}` : ""}</Text> : null}
                         {evt.purpose ? <Text style={styles.eventPurpose} numberOfLines={2}>{evt.purpose}</Text> : null}
-                        <Text style={styles.eventCreator}>by {evt.creatorUsername ?? shortenAddress(evt.creatorInboxId)}</Text>
+                        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                          <Text style={styles.eventCreator}>by {evt.creatorUsername ?? shortenAddress(evt.creatorInboxId)}</Text>
+                          {evt.creatorInboxId === myInboxId && (
+                            <Pressable
+                              hitSlop={8}
+                              onPress={() => {
+                                Alert.alert("Delete Event", `Remove "${evt.title}"?`, [
+                                  { text: "Cancel", style: "cancel" },
+                                  { text: "Delete", style: "destructive", onPress: async () => {
+                                    const { deleteEvent } = await import("@/lib/calendar");
+                                    await deleteEvent(evt.id);
+                                    const { loadEvents } = await import("@/lib/calendar");
+                                    const updated = await loadEvents();
+                                    useAppStore.getState().setCalendarEvents(updated);
+                                  }},
+                                ]);
+                              }}
+                            >
+                              <Text style={{ fontFamily: FONTS.mono, fontSize: 10, color: THEME.error }}>Delete</Text>
+                            </Pressable>
+                          )}
+                        </View>
                         {isLive && onStartLive && (
                           <Pressable
                             style={({ pressed }) => [styles.startLiveBtn, pressed && { opacity: 0.75 }]}
