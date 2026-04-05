@@ -16,7 +16,8 @@ import {
   Platform,
   ActivityIndicator,
   ScrollView,
-  Dimensions,} from "react-native";
+  Dimensions,
+  Alert,} from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { GlassModal } from "@/components/GlassModal";
@@ -77,6 +78,30 @@ export function UsernameModal({
   const trimmedName = name.trim();
   const canSave = trimmedName.length >= 2 && !saving;
 
+  // Track if user has unsaved changes
+  const isDirty = editMode && (
+    name !== initialUsername ||
+    bio !== initialBio ||
+    xAccount !== initialXAccount ||
+    tipWallet !== initialTipWallet ||
+    location !== initialLocation
+  );
+
+  const handleClose = useCallback(() => {
+    if (isDirty) {
+      Alert.alert(
+        "Unsaved Changes",
+        "You have unsaved changes. Discard them?",
+        [
+          { text: "Keep Editing", style: "cancel" },
+          { text: "Discard", style: "destructive", onPress: onDone },
+        ]
+      );
+    } else {
+      onDone();
+    }
+  }, [isDirty, onDone]);
+
   const handleSave = useCallback(async () => {
     if (!canSave) return;
     if (/[^a-zA-Z0-9_\-. ]/.test(trimmedName)) {
@@ -108,7 +133,7 @@ export function UsernameModal({
   }, [canSave, trimmedName, bio, xAccount, tipWallet, location, setUsername, setBio, setXAccount, setTipWallet, setLocation, onDone]);
 
   return (
-    <GlassModal visible={visible} onClose={onDone} position="bottom" animationType="slide" cardStyle={{ height: Dimensions.get("window").height * 0.7 }}>
+    <GlassModal visible={visible} onClose={handleClose} position="bottom" animationType="slide" cardStyle={{ height: Dimensions.get("window").height * 0.7 }}>
       <KeyboardAvoidingView
         style={styles.root}
         behavior={Platform.OS === "ios" ? "padding" : "height"}

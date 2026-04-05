@@ -667,7 +667,10 @@ export default function MarketplaceScreen() {
         ListEmptyComponent={
           <View style={s.emptyWrap}>
             {loadingListings ? (
-              <ActivityIndicator size="large" color={ACCENT} />
+              <>
+                <ActivityIndicator size="large" color={ACCENT} />
+                <Text style={s.emptyText}>Loading marketplace...</Text>
+              </>
             ) : loadError ? (
               <>
                 <Text style={{ fontSize: 48, marginBottom: 8 }}>⚠️</Text>

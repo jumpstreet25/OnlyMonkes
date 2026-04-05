@@ -90,6 +90,7 @@ export default function GlobeScreen({ onPressUser }: GlobeScreenProps) {
   const calendarEvents = useAppStore(s => s.calendarEvents);
   const profileVersion = useProfileVersion(); // Re-run when any profile cache changes
   const [loading, setLoading] = useState(true);
+  const [loadingStatus, setLoadingStatus] = useState("");
   const [markers, setMarkers] = useState<GlobeMarker[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<LumaEvent | CalendarEvent | null>(null);
   const [clusterUsers, setClusterUsers] = useState<GlobeMarker[]>([]);
@@ -153,6 +154,7 @@ export default function GlobeScreen({ onPressUser }: GlobeScreenProps) {
       if (!cancelled) {
         if (allMarkers.length > 0) setMarkers([...allMarkers]);
         setLoading(false);
+        if (uncachedUserLocs.length > 0) setLoadingStatus(`Locating ${uncachedUserLocs.length} Monkes...`);
       }
 
       // 2. Lu.ma Solana events
@@ -198,8 +200,12 @@ export default function GlobeScreen({ onPressUser }: GlobeScreenProps) {
         setLoading(false);
       }
 
+      if (!cancelled) setLoadingStatus("");
+
       // Phase 2: geocode uncached user locations in background
-      for (const { inboxId, username, profile, location } of uncachedUserLocs) {
+      for (let i = 0; i < uncachedUserLocs.length; i++) {
+        const { inboxId, username, profile, location } = uncachedUserLocs[i];
+        if (!cancelled) setLoadingStatus(`Geocoding ${i + 1}/${uncachedUserLocs.length}...`);
         if (cancelled) return;
         const coords = await geocodeLocation(location);
         if (!coords || cancelled) continue;
@@ -209,6 +215,7 @@ export default function GlobeScreen({ onPressUser }: GlobeScreenProps) {
         });
         setMarkers([...allMarkers]);
       }
+      if (!cancelled) setLoadingStatus("");
     }
 
     load();
@@ -339,6 +346,11 @@ export default function GlobeScreen({ onPressUser }: GlobeScreenProps) {
             setDisplayZoomControls={false}
           />
       </View>
+
+      {/* Loading status */}
+      {loadingStatus ? (
+        <Text style={styles.loadingText}>{loadingStatus}</Text>
+      ) : null}
 
       {/* Legend */}
       <View style={styles.legend}>
@@ -513,7 +525,7 @@ const styles = StyleSheet.create({
   loadingOverlay: {
     flex: 1, alignItems: "center", justifyContent: "center", gap: 12,
   },
-  loadingText: { fontFamily: FONTS.bodyMed, fontSize: 13, color: THEME.textMuted },
+  loadingText: { fontFamily: FONTS.bodyMed, fontSize: 13, color: THEME.textMuted, textAlign: "center", paddingVertical: 4 },
 
   legend: {
     flexDirection: "row", justifyContent: "center", gap: 16,

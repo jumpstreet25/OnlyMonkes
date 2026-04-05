@@ -68,7 +68,7 @@ export const useChatStore = create<ChatState & ChatActions>((set) => ({
           m.id.startsWith('opt-') &&
           m.senderAddress === message.senderAddress &&
           m.content === message.content &&
-          Math.abs(m.sentAt.getTime() - message.sentAt.getTime()) < 10_000
+          Math.abs(m.sentAt.getTime() - message.sentAt.getTime()) < 3_000
       );
       if (optIdx !== -1) {
         const opt = state.messages[optIdx];
@@ -106,7 +106,7 @@ export const useChatStore = create<ChatState & ChatActions>((set) => ({
           m.id.startsWith('opt-') &&
           m.senderAddress === message.senderAddress &&
           m.content === message.content &&
-          Math.abs(m.sentAt.getTime() - message.sentAt.getTime()) < 10_000
+          Math.abs(m.sentAt.getTime() - message.sentAt.getTime()) < 3_000
       );
       // No opt-* match → do NOT append own messages (they are only added via handleSend)
       if (optIdx === -1) return state;

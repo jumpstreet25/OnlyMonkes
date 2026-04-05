@@ -1448,6 +1448,7 @@ export default function ChatScreen() {
           keyExtractor={keyExtractor}
           contentContainerStyle={styles.listContent}
           inverted
+          drawDistance={300}
           onContentSizeChange={handleContentSizeChange}
           refreshing={refreshingChat}
           onRefresh={handleRefreshChat}

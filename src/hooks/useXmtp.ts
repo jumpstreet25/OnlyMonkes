@@ -732,10 +732,10 @@ export function useXmtp() {
           } catch { /* skip */ }
         }
 
-        // Trim to most recent 50 BEFORE applying reactions (big perf win)
+        // Trim to most recent 150 BEFORE applying reactions (big perf win)
         // rawHistory arrives newest-first from XMTP, so decoded is also newest-first.
-        // slice(0, 50) keeps the 50 newest, then reverse for oldest-first processing.
-        decoded = decoded.slice(0, 50);
+        // slice(0, 150) keeps the 150 newest, then reverse for oldest-first processing.
+        decoded = decoded.slice(0, 150);
         decoded.reverse();
         const recentIds = new Set(decoded.map(m => m.id));
 
@@ -1408,6 +1408,9 @@ export function useXmtp() {
     _unsubscribeStream = null;
     _botChannelUnsubs.forEach(u => u());
     _botChannelUnsubs = [];
+    // Clear all typing indicator timeouts to prevent leaks
+    for (const timer of _typingTimeouts.values()) clearTimeout(timer);
+    _typingTimeouts.clear();
   }, []);
 
   const streamAlive = useCallback(() => _streamAlive, []);
