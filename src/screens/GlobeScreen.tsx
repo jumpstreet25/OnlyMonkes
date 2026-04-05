@@ -183,11 +183,13 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
       for (const evt of calendarEvents) {
         if (cancelled) return;
         if (!evt.location || evt.location === "OnlyMonkes") continue;
-        // Parse "MM/DD/YYYY" date — skip events that have already passed
+        // Parse "MM/DD/YYYY" + "HH:MM" — skip events that have ended (start + 2h buffer)
         const [mm, dd, yyyy] = (evt.date ?? "").split("/").map(Number);
         if (mm && dd && yyyy) {
-          const eventDate = new Date(yyyy, mm - 1, dd, 23, 59, 59).getTime();
-          if (eventDate < now) continue; // Event date passed — skip
+          const [hh, min] = (evt.time ?? "").split(":").map(Number);
+          const eventStart = new Date(yyyy, mm - 1, dd, hh || 23, min || 59, 0).getTime();
+          const eventEnd = (hh || hh === 0) ? eventStart + 2 * 3600000 : eventStart;
+          if (eventEnd < now) continue;
         }
         const coords = await geocodeLocation(evt.location);
         if (!coords) continue;

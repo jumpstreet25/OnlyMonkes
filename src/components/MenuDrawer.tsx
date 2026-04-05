@@ -225,11 +225,14 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
     const now = Date.now();
     return [...calendarEvents]
       .filter((evt) => {
-        // Parse "MM/DD/YYYY" date — keep events that haven't ended yet
+        // Parse "MM/DD/YYYY" date + "HH:MM" time — keep events that haven't ended yet
         const [mm, dd, yyyy] = (evt.date ?? "").split("/").map(Number);
         if (!mm || !dd || !yyyy) return true; // can't parse, keep it
-        const endOfDay = new Date(yyyy, mm - 1, dd, 23, 59, 59).getTime();
-        return endOfDay >= now;
+        const [hh, min] = (evt.time ?? "").split(":").map(Number);
+        // Use event time + 2h buffer (assume events last ~2h), or end-of-day if no time
+        const eventStart = new Date(yyyy, mm - 1, dd, hh || 23, min || 59, 0).getTime();
+        const eventEnd = (hh || hh === 0) ? eventStart + 2 * 3600000 : eventStart;
+        return eventEnd >= now;
       })
       .sort((a, b) => {
         const da = new Date(`${a.date} ${a.time || "00:00"}`);
