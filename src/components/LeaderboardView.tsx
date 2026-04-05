@@ -77,8 +77,8 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row", alignItems: "center", gap: 10,
     paddingVertical: 10, paddingHorizontal: 12,
-    backgroundColor: THEME.surface, borderRadius: 12,
-    borderWidth: 1, borderColor: THEME.border,
+    backgroundColor: "rgba(18,18,30,0.8)", borderRadius: 14,
+    borderWidth: 0.75, borderColor: "rgba(255,255,255,0.06)",
   },
   rowMe: { borderColor: "rgba(124,58,237,0.3)", backgroundColor: "rgba(124,58,237,0.06)" },
   rank: { fontFamily: FONTS.display, fontSize: 16, width: 28, textAlign: "center", color: THEME.text },
