@@ -38,7 +38,7 @@ import * as Haptics from "expo-haptics";
 import * as Clipboard from "expo-clipboard";
 import { THEME, FONTS, SKR_MINT, JUP_API_KEY } from "@/lib/constants";
 import { useChatStore } from "@/store/chatStore";
-import { useAppStore } from "@/store/appStore";
+import { useAppStore, type CalendarEvent } from "@/store/appStore";
 import { getCachedProfile, useProfileVersion } from "@/lib/userProfile";
 import { ProfileScorecard } from "@/components/ProfileScorecard";
 import { shortenAddress } from "@/lib/nftVerification";
@@ -50,6 +50,8 @@ import type { ProfileTarget } from "@/components/UserProfileModal";
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
 import { LeaderboardView } from "@/components/LeaderboardView";
+import { EventRsvpModal } from "@/components/EventRsvpModal";
+import { getAttendeeCount } from "@/lib/eventRsvp";
 
 const DRAWER_WIDTH_RATIO = 0.82;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
@@ -123,6 +125,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
   const { width: SCREEN_WIDTH } = useWindowDimensions();
   const { messages } = useChatStore();
   const calendarEvents = useAppStore(s => s.calendarEvents);
+  const [rsvpEvent, setRsvpEvent] = useState<CalendarEvent | null>(null);
   const myInboxId = useAppStore(s => s.myInboxId);
   const notificationsEnabled = useAppStore(s => s.notificationsEnabled);
   const mentionsOnly = useAppStore(s => s.mentionsOnly);
@@ -620,15 +623,19 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                   const msSinceStart = now - evtDate.getTime();
                   const isLive = isOnlyMonkes && msSinceStart >= 0 && msSinceStart < 2 * 60 * 60 * 1000;
 
+                  const attendees = getAttendeeCount(evt.id);
                   return (
-                    <View key={evt.id} style={styles.eventRow}>
+                    <Pressable key={evt.id} style={styles.eventRow} onPress={() => setRsvpEvent(evt)}>
                       <View style={styles.eventDateBadge}>
                         <Text style={styles.eventDateText}>
                           {evt.date.split("/").slice(0, 2).join("/")}
                         </Text>
                       </View>
                       <View style={styles.eventInfo}>
-                        <Text style={styles.eventTitle} numberOfLines={1}>{evt.title}</Text>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                          <Text style={[styles.eventTitle, { flex: 1 }]} numberOfLines={1}>{evt.title}</Text>
+                          {attendees > 0 && <Text style={{ fontFamily: FONTS.mono, fontSize: 10, color: "#FFD54F" }}>{attendees} 🐒</Text>}
+                        </View>
                         {evt.time ? <Text style={styles.eventMeta}>{evt.time}{evt.location ? ` · ${evt.location}` : ""}</Text> : null}
                         {evt.purpose ? <Text style={styles.eventPurpose} numberOfLines={2}>{evt.purpose}</Text> : null}
                         <Text style={styles.eventCreator}>by {evt.creatorUsername ?? shortenAddress(evt.creatorInboxId)}</Text>
@@ -650,12 +657,19 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                           </Pressable>
                         )}
                       </View>
-                    </View>
+                    </Pressable>
                   );
                 })
               )}
             </>
           )}
+
+          {/* Event RSVP modal */}
+          <EventRsvpModal
+            visible={!!rsvpEvent}
+            event={rsvpEvent}
+            onClose={() => setRsvpEvent(null)}
+          />
 
           {/* ── Shared Images ───────────────────────────────────────────────── */}
           {activeView === "images" && (

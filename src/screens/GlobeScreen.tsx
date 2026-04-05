@@ -20,12 +20,11 @@ import {
   ActivityIndicator,
   Modal,
   ScrollView,
-  Linking,
   StatusBar,
 } from "react-native";
 import { WebView } from "react-native-webview";
 import { router } from "expo-router";
-import { format } from "date-fns";
+// date-fns format removed — event formatting moved to EventRsvpModal
 import { THEME, FONTS } from "@/lib/constants";
 import { useAppStore } from "@/store/appStore";
 import { getAllTimeUsers, getCachedProfile, useProfileVersion } from "@/lib/userProfile";
@@ -33,6 +32,8 @@ import { geocodeLocation, getCachedGeodata } from "@/lib/geocode";
 import { fetchSolanaEvents, type LumaEvent } from "@/lib/lumaEvents";
 import type { CalendarEvent } from "@/store/appStore";
 import type { ProfileTarget } from "@/components/UserProfileModal";
+import { EventRsvpModal } from "@/components/EventRsvpModal";
+import { getAttendeeCount } from "@/lib/eventRsvp";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -84,9 +85,10 @@ const _DEAD = "";
 
 interface GlobeScreenProps {
   onPressUser?: (target: ProfileTarget) => void;
+  onSendRsvp?: (message: string) => void;
 }
 
-export default function GlobeScreen({ onPressUser }: GlobeScreenProps) {
+export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProps) {
   const calendarEvents = useAppStore(s => s.calendarEvents);
   const profileVersion = useProfileVersion(); // Re-run when any profile cache changes
   const [loading, setLoading] = useState(true);
@@ -388,68 +390,29 @@ export default function GlobeScreen({ onPressUser }: GlobeScreenProps) {
             <Text style={styles.markerLabel} numberOfLines={1}>{m.label}</Text>
           </Pressable>
         ))}
-        {eventMarkers.slice(0, 4).map((m: GlobeMarker) => (
-          <Pressable
-            key={m.id}
-            style={[styles.markerPill, styles.eventPill]}
-            onPress={() => m.event && setSelectedEvent(m.event)}
-          >
-            <Text style={{ fontSize: 12 }}>{m.type === "luma-event" ? "📍" : "🟢"}</Text>
-            <Text style={styles.markerLabel} numberOfLines={1}>{m.label}</Text>
-          </Pressable>
-        ))}
+        {eventMarkers.slice(0, 4).map((m: GlobeMarker) => {
+          const count = getAttendeeCount(m.id.replace(/^(luma-|irl-)/, ""));
+          return (
+            <Pressable
+              key={m.id}
+              style={[styles.markerPill, styles.eventPill]}
+              onPress={() => m.event && setSelectedEvent(m.event)}
+            >
+              <Text style={{ fontSize: 12 }}>{m.type === "luma-event" ? "📍" : "🟢"}</Text>
+              <Text style={styles.markerLabel} numberOfLines={1}>{m.label}</Text>
+              {count > 0 && <Text style={styles.attendeeBadge}>{count}🐒</Text>}
+            </Pressable>
+          );
+        })}
       </View>
 
-      {/* Event detail modal */}
-      <Modal
+      {/* Event RSVP modal */}
+      <EventRsvpModal
         visible={!!selectedEvent}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setSelectedEvent(null)}
-      >
-        <Pressable style={styles.modalOverlay} onPress={() => setSelectedEvent(null)}>
-          <Pressable style={styles.eventCard} onPress={(e) => e.stopPropagation()}>
-            {selectedEvent && (
-              <>
-                <Text style={styles.eventTitle}>
-                  {isLumaEvent(selectedEvent) ? selectedEvent.name : (selectedEvent as CalendarEvent).title}
-                </Text>
-                <View style={styles.eventRow}>
-                  <Text style={styles.eventIcon}>📅</Text>
-                  <Text style={styles.eventDetail}>
-                    {isLumaEvent(selectedEvent)
-                      ? format(new Date(selectedEvent.startAt), "MMM d, yyyy 'at' h:mm a")
-                      : `${(selectedEvent as CalendarEvent).date}${(selectedEvent as CalendarEvent).time ? " at " + (selectedEvent as CalendarEvent).time : ""}`}
-                  </Text>
-                </View>
-                <View style={styles.eventRow}>
-                  <Text style={styles.eventIcon}>📍</Text>
-                  <Text style={styles.eventDetail}>
-                    {isLumaEvent(selectedEvent) ? selectedEvent.location : (selectedEvent as CalendarEvent).location}
-                  </Text>
-                </View>
-                {isLumaEvent(selectedEvent) && selectedEvent.url && (
-                  <Pressable
-                    style={styles.eventLinkBtn}
-                    onPress={() => Linking.openURL(selectedEvent.url).catch(() => {})}
-                  >
-                    <Text style={styles.eventLinkText}>View on Lu.ma →</Text>
-                  </Pressable>
-                )}
-                {!isLumaEvent(selectedEvent) && (selectedEvent as CalendarEvent).purpose ? (
-                  <View style={styles.eventRow}>
-                    <Text style={styles.eventIcon}>📝</Text>
-                    <Text style={styles.eventDetail}>{(selectedEvent as CalendarEvent).purpose}</Text>
-                  </View>
-                ) : null}
-                <Pressable style={styles.eventCloseBtn} onPress={() => setSelectedEvent(null)}>
-                  <Text style={styles.eventCloseText}>Close</Text>
-                </Pressable>
-              </>
-            )}
-          </Pressable>
-        </Pressable>
-      </Modal>
+        event={selectedEvent}
+        onClose={() => setSelectedEvent(null)}
+        onSendRsvp={onSendRsvp}
+      />
 
       {/* Cluster bottom sheet — shows all users at a location */}
       <Modal
@@ -555,6 +518,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(153,69,255,0.2)",
   },
   markerLabel: { fontFamily: FONTS.bodyMed, fontSize: 11, color: THEME.text, flex: 1 },
+  attendeeBadge: { fontFamily: FONTS.mono, fontSize: 10, color: "#FFD54F" },
 
   modalOverlay: {
     flex: 1, backgroundColor: "rgba(0,0,0,0.65)",
