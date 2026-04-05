@@ -1468,6 +1468,7 @@ export default function ChatScreen() {
         {isGroupMember && <FlashList
           ref={flatListRef as any}
           data={messages}
+          extraData={messagesAsc}
           renderItem={renderMessage as any}
           keyExtractor={keyExtractor}
           contentContainerStyle={styles.listContent}

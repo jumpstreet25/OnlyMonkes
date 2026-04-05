@@ -142,7 +142,7 @@ export const useChatStore = create<ChatState & ChatActions>((set) => ({
       return { messages };
     }),
 
-  applyReactionUpdate: (messages) => set({ messages }),
+  applyReactionUpdate: (messages) => set({ messages, _msgIdSet: new Set(messages.map(m => m.id)) }),
 
   setReplyingTo: (replyingTo) => set({ replyingTo }),
 
