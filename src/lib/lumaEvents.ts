@@ -103,8 +103,66 @@ async function fetchCalendarEvents(calendar: typeof CALENDARS[0]): Promise<LumaE
 }
 
 /**
- * Fetch all Solana ecosystem events from Lu.ma.
- * Uses a 6-hour cache to avoid hammering the API.
+ * Fetch events from solana.com/events (primary source — 80+ events).
+ * Parses React Server Component flight data from the HTML.
+ */
+async function fetchSolanaComEvents(): Promise<LumaEvent[]> {
+  try {
+    const res = await fetch("https://solana.com/en/events", {
+      headers: { "User-Agent": "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36" },
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!res.ok) return [];
+    const html = await res.text();
+
+    // RSC flight data is in self.__next_f.push chunks
+    // Find the chunk containing "events":[{...}]
+    const chunkRegex = /self\.__next_f\.push\(\[\d+,"(.*?)"\]\)/gs;
+    let match: RegExpExecArray | null;
+    const events: LumaEvent[] = [];
+
+    while ((match = chunkRegex.exec(html)) !== null) {
+      const raw = match[1];
+      if (!raw.includes('"events":[{')) continue;
+
+      // Unescape the RSC string
+      let unesc: string;
+      try { unesc = JSON.parse('"' + raw + '"'); } catch { continue; }
+
+      // Extract individual event objects
+      const evtRegex = /\{"key":"([^"]+)","title":"([^"]*)","description":"([^"]*)","platform":"([^"]*)","rsvp":"([^"]*)","schedule":\{"from":"([^"]*)","to":"([^"]*)","timezone":"([^"]*)"\},"img":\{[^}]*\},"venue":\{"city":([^,]*),"region":([^,]*),"city_state":([^,]*),"country":([^,]*),"address":([^}]*)\}\}/g;
+      let evtMatch: RegExpExecArray | null;
+      while ((evtMatch = evtRegex.exec(unesc)) !== null) {
+        const city = evtMatch[9]?.replace(/^"|"$/g, '') || '';
+        const country = evtMatch[12]?.replace(/^"|"$/g, '') || '';
+        const loc = city && city !== 'null'
+          ? `${city}${country && country !== 'null' ? ', ' + country : ''}`
+          : 'Online';
+
+        events.push({
+          id: `solcom-${evtMatch[1]}`,
+          name: evtMatch[2],
+          startAt: evtMatch[6],
+          endAt: evtMatch[7] || undefined,
+          location: loc,
+          url: evtMatch[5] || `https://solana.com/events`,
+          source: 'luma' as const, // compatible type
+        });
+      }
+    }
+
+    // Filter to future events only
+    const now = Date.now() - 7 * 24 * 3600000;
+    return events.filter(e => new Date(e.startAt).getTime() > now);
+  } catch (err) {
+    console.warn("[SolanaEvents] Failed to fetch solana.com events:", err);
+    return [];
+  }
+}
+
+/**
+ * Fetch all Solana ecosystem events from solana.com + Lu.ma calendars.
+ * Uses a 6-hour cache to avoid hammering the sites.
  */
 export async function fetchSolanaEvents(): Promise<LumaEvent[]> {
   // Check cache first
@@ -118,18 +176,21 @@ export async function fetchSolanaEvents(): Promise<LumaEvent[]> {
     }
   } catch { /* ignore */ }
 
-  // Fetch from all calendars in parallel
+  // Fetch from all sources in parallel
   const allEvents: LumaEvent[] = [];
   const seen = new Set<string>();
 
-  const results = await Promise.allSettled(
-    CALENDARS.map(cal => fetchCalendarEvents(cal))
-  );
+  const results = await Promise.allSettled([
+    fetchSolanaComEvents(),
+    ...CALENDARS.map(cal => fetchCalendarEvents(cal)),
+  ]);
   for (const result of results) {
     if (result.status === "fulfilled") {
       for (const evt of result.value) {
-        if (!seen.has(evt.id)) {
-          seen.add(evt.id);
+        // Dedup by name+date (solana.com and Lu.ma may list same event)
+        const dedupKey = `${evt.name.toLowerCase().trim()}|${evt.startAt.slice(0, 10)}`;
+        if (!seen.has(dedupKey)) {
+          seen.add(dedupKey);
           allEvents.push(evt);
         }
       }
