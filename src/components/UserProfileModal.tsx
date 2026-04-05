@@ -23,7 +23,8 @@ import { shortenAddress } from "@/lib/nftVerification";
 import { getCachedProfile } from "@/lib/userProfile";
 import { getLastSeenText, isUserOnline } from "@/lib/presence";
 import { OnlineDot } from "@/components/OnlineDot";
-import { getEarnedBadges, getBadgeDef, BADGE_DEFS } from "@/lib/badges";
+import { getEarnedBadges, getBadgeDef, BADGE_DEFS, getProgress } from "@/lib/badges";
+import { loadBananaState, type BananaState } from "@/lib/bananaRewards";
 
 export interface ProfileTarget {
   senderAddress: string;      // XMTP inboxId
@@ -159,6 +160,25 @@ export function UserProfileModal({ visible, target, onClose, onEditProfile, onCh
             );
           })()}
 
+          {/* Profile stats (own profile only) */}
+          {isOwnProfile && (() => {
+            const p = getProgress();
+            const streak = useAppStore.getState().loginStreak;
+            const bestStreak = useAppStore.getState().bestStreak;
+            return (
+              <View style={styles.badgeSection}>
+                <Text style={styles.badgeSectionTitle}>Stats</Text>
+                <View style={styles.statsGrid}>
+                  <StatPill label="Messages" value={p.messages_sent} />
+                  <StatPill label="Reactions" value={p.reactions_given} />
+                  <StatPill label="Streak" value={streak} suffix="d" />
+                  <StatPill label="Best" value={bestStreak} suffix="d" />
+                  <StatPill label="Badges" value={getEarnedBadges().length} />
+                </View>
+              </View>
+            );
+          })()}
+
           {/* Message button (other profiles only) */}
           {!isOwnProfile && onMessage && (
             <Pressable
@@ -212,6 +232,15 @@ export function UserProfileModal({ visible, target, onClose, onEditProfile, onCh
             <Text style={styles.closeBtnText}>Close</Text>
           </Pressable>
     </GlassModal>
+  );
+}
+
+function StatPill({ label, value, suffix }: { label: string; value: number; suffix?: string }) {
+  return (
+    <View style={styles.statPill}>
+      <Text style={styles.statValue}>{value}{suffix ?? ""}</Text>
+      <Text style={styles.statLabel}>{label}</Text>
+    </View>
   );
 }
 
@@ -460,5 +489,32 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.mono,
     fontSize: 10,
     color: THEME.textMuted,
+  },
+  statsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    gap: 8,
+  },
+  statPill: {
+    alignItems: "center",
+    backgroundColor: "rgba(108,180,238,0.08)",
+    borderRadius: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: "rgba(108,180,238,0.12)",
+    minWidth: 60,
+  },
+  statValue: {
+    fontFamily: FONTS.display,
+    fontSize: 18,
+    color: THEME.text,
+  },
+  statLabel: {
+    fontFamily: FONTS.mono,
+    fontSize: 9,
+    color: THEME.textMuted,
+    marginTop: 2,
   },
 });

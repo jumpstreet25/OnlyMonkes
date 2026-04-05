@@ -347,6 +347,7 @@ interface MessageBubbleProps {
   onPressVideo?: (url: string) => void;
   onTokenPress?: (symbol: string) => void;
   onEdit?: (message: ChatMessage) => void;
+  onDelete?: (message: ChatMessage) => void;
   onPin?: (message: ChatMessage) => void;
   onThread?: (message: ChatMessage) => void;
   isBotChannel?: boolean;
@@ -364,6 +365,7 @@ export const MessageBubble = memo(function MessageBubble({
   onPressVideo,
   onTokenPress,
   onEdit,
+  onDelete,
   onPin,
   onThread,
   isBotChannel,
@@ -1039,6 +1041,18 @@ export const MessageBubble = memo(function MessageBubble({
                 ]}
               >
                 <Text style={styles.pickerReplyText}>✏️  Edit</Text>
+              </Pressable>
+            )}
+
+            {isOwn && onDelete && (
+              <Pressable
+                onPress={() => { setPickerVisible(false); onDelete(message); }}
+                style={({ pressed }) => [
+                  styles.pickerReplyBtn,
+                  pressed && styles.pickerReplyBtnPressed,
+                ]}
+              >
+                <Text style={[styles.pickerReplyText, { color: THEME.error }]}>🗑  Delete</Text>
               </Pressable>
             )}
 

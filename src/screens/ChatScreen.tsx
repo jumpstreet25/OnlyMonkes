@@ -40,6 +40,7 @@ import {
 } from "react-native";
 import { FlashList } from "@shopify/flash-list";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { OnboardingChecklist, markOnboardingStep } from "@/components/OnboardingChecklist";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAppStore } from "@/store/appStore";
 import { useChatStore } from "@/store/chatStore";
@@ -606,6 +607,7 @@ export default function ChatScreen() {
       }
       playSound("send");
       useChatStore.getState().updateMessageStatus(optimistic.id, "sent");
+      markOnboardingStep("sentMessage");
       // Persist own message to cache — stream handler skips own messages,
       // so without this they're lost on force close + reopen
       appendCachedMessage("main_chat", { ...optimistic, status: "sent" }).catch(() => {});
@@ -637,6 +639,7 @@ export default function ChatScreen() {
       try {
         playSound("reaction");
         await react(emoji, messageId);
+        markOnboardingStep("reactedToMessage");
       } catch (err) {
         if (__DEV__) console.warn("Reaction failed:", err);
       }
@@ -1008,6 +1011,23 @@ export default function ChatScreen() {
     );
   }, []);
 
+  const handleDelete = useCallback(async (msg: ChatMessage) => {
+    Alert.alert("Delete Message", "This will remove the message from your view.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete", style: "destructive",
+        onPress: () => {
+          // Remove from local store (soft delete — XMTP doesn't support hard delete)
+          const { messages, _msgIdSet } = useChatStore.getState();
+          const filtered = messages.filter(m => m.id !== msg.id);
+          const idSet = new Set(_msgIdSet);
+          idSet.delete(msg.id);
+          useChatStore.getState().setMessages(filtered);
+        },
+      },
+    ]);
+  }, []);
+
   // ─── Render ──────────────────────────────────────────────────────────────────
 
   const renderMessage = useCallback(
@@ -1027,13 +1047,14 @@ export default function ChatScreen() {
             onPressVideo={setVideoLightboxUrl}
             onTokenPress={setChartSymbol}
             onEdit={handleEditMessage}
+            onDelete={handleDelete}
             onPin={isGroupAdmin ? handlePin : undefined}
             onThread={handleThread}
           />
         </Animated.View>
       );
     },
-    [myAddress, isGroupAdmin, handleReact, setReplyingTo, handlePressUser, handleTip, handleStickerReact, setVideoLightboxUrl, handleEditMessage, handlePin, handleThread]
+    [myAddress, isGroupAdmin, handleReact, setReplyingTo, handlePressUser, handleTip, handleStickerReact, setVideoLightboxUrl, handleEditMessage, handleDelete, handlePin, handleThread]
   );
 
   const keyExtractor = useCallback((item: ChatMessage) => item.id, []);
@@ -1218,7 +1239,7 @@ export default function ChatScreen() {
           {/* Left: Globe */}
           <View style={styles.headerLeft}>
             <Pressable
-              onPress={() => router.push("/globe" as any)}
+              onPress={() => { markOnboardingStep("openedGlobe"); router.push("/globe" as any); }}
               style={styles.iconBtn}
               hitSlop={8}
             >
@@ -1268,6 +1289,9 @@ export default function ChatScreen() {
             </Text>
           </View>
         )}
+
+        {/* ── Onboarding checklist (first-time users) ─────────────────── */}
+        {isGroupMember && <OnboardingChecklist />}
 
         {/* ── Connecting… spinner (before group state is known) ──────────── */}
         {isLoading && !isGroupMember && (
