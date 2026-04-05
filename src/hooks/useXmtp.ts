@@ -56,6 +56,7 @@ import { incrementProgress, updateStreak, getEarnedBadges, type BadgeDef } from 
 import { processBananaGrant } from "@/lib/bananaGrant";
 import { loadBananaState, mergeBananaBalance } from "@/lib/bananaRewards";
 import { loadShopState, mergeOwnedItems, getEquippedStyles } from "@/lib/bananaShop";
+import { processRsvpMessage } from "@/lib/eventRsvp";
 import { parseEventMessage, saveEvent } from "@/lib/calendar";
 import {
   fetchAppConfig,
@@ -624,6 +625,8 @@ export function useXmtp() {
                 }
                 if (__DEV__) console.log(`[XMTP] Location sync: updated ${Object.keys(locs).length} users`);
               } catch { /* ignore */ }
+            } else if (typeof content === "string" && content.startsWith("RSVP:")) {
+              processRsvpMessage(content).catch(() => {});
             } else if (typeof content === "string" && (
               content.startsWith("NFT_LIST:") || content.startsWith("NFT_BID:") ||
               content.startsWith("NFT_OFFER:") || content.startsWith("NFT_ACCEPT:") ||
@@ -982,6 +985,12 @@ export function useXmtp() {
         // ── Banana grant (bot → users, deduped) ────────────────────────────
         if (typeof content === "string" && content.startsWith("BANANA_GRANT:")) {
           processBananaGrant(raw.id as string, content, raw.senderInboxId as string, _myInboxId, true).catch(() => {});
+          return;
+        }
+
+        // ── Event RSVP ──────────────────────────────────────────────────────
+        if (typeof content === "string" && content.startsWith("RSVP:")) {
+          processRsvpMessage(content).catch(() => {});
           return;
         }
 
