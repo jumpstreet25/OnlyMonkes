@@ -49,23 +49,25 @@ import { BananaShopModal } from "@/components/BananaShopModal";
 import type { ProfileTarget } from "@/components/UserProfileModal";
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
+import { LeaderboardView } from "@/components/LeaderboardView";
 
 const DRAWER_WIDTH_RATIO = 0.82;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const URL_REGEX = /https?:\/\/[^\s"'<>)]+/g;
 const BOT_USERNAME = "AI Agent #9385";
 
-type ActiveView = "list" | "messages" | "alerts" | "events" | "images" | "links" | "settings" | "tools";
+type ActiveView = "list" | "messages" | "alerts" | "events" | "images" | "links" | "settings" | "tools" | "leaderboard";
 
 const VIEW_TITLES: Record<ActiveView, string> = {
-  list:     "Community",
-  messages: "Messages",
-  alerts:   "AI Agent Alerts",
-  events:   "Events",
-  images:   "Shared Images",
-  links:    "Shared Links",
-  settings: "App Settings",
-  tools:    "Monke Tools",
+  list:        "Community",
+  messages:    "Messages",
+  alerts:      "AI Agent Alerts",
+  events:      "Events",
+  images:      "Shared Images",
+  links:       "Shared Links",
+  settings:    "App Settings",
+  tools:       "Monke Tools",
+  leaderboard: "Leaderboard",
 };
 
 
@@ -493,6 +495,16 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                   onPress={() => { onClose(); setTimeout(() => router.push('/marketplace'), 300); }}
                 />
                 <GridButton
+                  icon="🏆"
+                  label="Leaderboard"
+                  onPress={() => setActiveView("leaderboard")}
+                />
+                <GridButton
+                  icon="💼"
+                  label="Portfolio"
+                  onPress={() => { onClose(); setTimeout(() => router.push('/portfolio' as any), 300); }}
+                />
+                <GridButton
                   icon="🔧"
                   label="Tools"
                   onPress={() => setActiveView("tools")}
@@ -500,7 +512,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                 <GridButton
                   icon="⚙️"
                   label="Settings"
-                  onPress={() => setActiveView("settings")}
+                  onPress={() => { onClose(); setTimeout(() => router.push('/settings' as any), 300); }}
                 />
               </View>
             </>
@@ -879,6 +891,11 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                 </View>
               </View>
             </>
+          )}
+
+          {/* ── Leaderboard ─────────────────────────────────────────────────── */}
+          {activeView === "leaderboard" && (
+            <LeaderboardView />
           )}
 
           {/* ── Monke Tools ──────────────────────────────────────────────────── */}
