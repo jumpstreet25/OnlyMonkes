@@ -390,7 +390,9 @@ export const MessageBubble = memo(function MessageBubble({
   // which updates on the next natural re-render (message arrival, scroll, etc.).
 
   // Glass bubbles use semi-transparent backgrounds; text is always light
-  const textColor = THEME.text;
+  const textColor = (shopStyles.customTextColor && shopStyles.customTextColorValue)
+    ? shopStyles.customTextColorValue as string
+    : THEME.text;
 
   // Dynamic aspect ratio for GIF / IMAGE — computed from actual image dimensions on load
   const [imgAspect, setImgAspect] = useState<number>(3 / 4); // sensible portrait default
