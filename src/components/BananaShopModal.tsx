@@ -30,6 +30,7 @@ import {
   type ShopItem, type ShopCategory, type ShopState,
 } from "@/lib/bananaShop";
 import { applyThemeFromShop } from "@/lib/shopTheme";
+import { openCrate, getCrateCost, getRarityColor, type LootResult } from "@/lib/lootCrate";
 import { triggerProfileRebroadcast, sendRawToGroup } from "@/hooks/useXmtp";
 
 /** Fetch SOL/USD price with Jupiter → CoinGecko fallback. */
@@ -79,6 +80,9 @@ export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
   const [shopState, setShopState] = useState<ShopState | null>(null);
   const [purchasing, setPurchasing] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState<ShopCategory | "all">("all");
+  const [customColor, setCustomColor] = useState(shopState?.customTextColor ?? "#FFD700");
+  const [spinningCrate, setSpinningCrate] = useState(false);
+  const [crateResult, setCrateResult] = useState<import("@/lib/lootCrate").LootResult | null>(null);
 
   useEffect(() => {
     if (visible) loadShopState().then(setShopState);
@@ -246,6 +250,92 @@ export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
 
         {/* Items */}
         <ScrollView style={[styles.content, { flex: 1 }]} showsVerticalScrollIndicator={false}>
+
+          {/* Banana Chest — spend 50 bananas for random prizes */}
+          {activeCategory === "all" && (
+            <Pressable
+              style={styles.crateCard}
+              onPress={async () => {
+                if (spinningCrate) return;
+                const cost = getCrateCost();
+                if (bananaBalance < cost) {
+                  Alert.alert("Not enough bananas", `You need ${cost} 🍌 to open a Banana Chest.`);
+                  return;
+                }
+                Alert.alert("Open Banana Chest?", `Spend ${cost} 🍌 for a random prize?\n\nPrizes: Banana bonus, 2x multiplier, free shop items, legendary exclusives!`, [
+                  { text: "Cancel", style: "cancel" },
+                  { text: "Open!", onPress: async () => {
+                    setSpinningCrate(true);
+                    const spent = await spendBananas(cost);
+                    if (!spent) { setSpinningCrate(false); return; }
+                    useAppStore.getState().setBananaBalance(bananaBalance - cost);
+                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                    const result = await openCrate();
+                    if (result.bananaBonus) {
+                      await addBananas(result.bananaBonus);
+                      useAppStore.getState().setBananaBalance(bananaBalance - cost + result.bananaBonus);
+                    }
+                    setCrateResult(result);
+                    setSpinningCrate(false);
+                    if (result.unlockedItemId) loadShopState().then(setShopState);
+                  }},
+                ]);
+              }}
+            >
+              <Text style={{ fontSize: 28 }}>🎰</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.crateName}>Banana Chest</Text>
+                <Text style={styles.crateDesc}>Spend 50 🍌 for a random prize</Text>
+              </View>
+              <View style={styles.pricePill}>
+                <Text style={styles.priceText}>50 🍌</Text>
+              </View>
+            </Pressable>
+          )}
+
+          {/* Crate result */}
+          {crateResult && (
+            <Pressable style={[styles.crateResultCard, { borderColor: getRarityColor(crateResult.rarity) + "60" }]} onPress={() => setCrateResult(null)}>
+              <Text style={{ fontSize: 32 }}>{crateResult.emoji}</Text>
+              <Text style={[styles.crateName, { color: getRarityColor(crateResult.rarity) }]}>{crateResult.title}</Text>
+              <Text style={styles.crateDesc}>{crateResult.description}</Text>
+              <Text style={{ fontFamily: FONTS.mono, fontSize: 10, color: THEME.textFaint, marginTop: 4 }}>Tap to dismiss</Text>
+            </Pressable>
+          )}
+
+          {/* Custom text color picker — shown when text_custom_color is equipped */}
+          {shopState?.equipped.text === "text_custom_color" && (
+            <View style={styles.colorPickerSection}>
+              <Text style={styles.colorPickerLabel}>Your Text Color</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <View style={{ flexDirection: "row", gap: 8 }}>
+                  {["#FFD700", "#FF6B6B", "#00FFFF", "#FF69B4", "#39FF14", "#9945FF", "#6CB4EE", "#FF8C00", "#FFFFFF", "#F0E68C"].map(c => (
+                    <Pressable
+                      key={c}
+                      style={[
+                        styles.colorDot,
+                        { backgroundColor: c },
+                        customColor === c && styles.colorDotActive,
+                      ]}
+                      onPress={async () => {
+                        setCustomColor(c);
+                        const state = await loadShopState();
+                        state.customTextColor = c;
+                        await saveShopState(state);
+                        setShopState(state);
+                        getEquippedStyles().then(s => {
+                          useAppStore.getState().setShopStyles(s);
+                          triggerProfileRebroadcast("").catch(() => {});
+                        });
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      }}
+                    />
+                  ))}
+                </View>
+              </ScrollView>
+            </View>
+          )}
+
           {([1, 2, 3, 4] as number[]).map(tier => {
             const tierItems = groupedByTier[tier];
             if (!tierItems || tierItems.length === 0) return null;
@@ -519,5 +609,63 @@ const styles = StyleSheet.create({
     color: "#FFD54F",
     fontWeight: "600",
     letterSpacing: 0.5,
+  },
+
+  // Banana Chest
+  crateCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    backgroundColor: "rgba(255,213,79,0.06)",
+    borderRadius: 16,
+    borderWidth: 0.75,
+    borderColor: "rgba(255,213,79,0.15)",
+    padding: 16,
+    marginBottom: 16,
+  },
+  crateName: {
+    fontFamily: FONTS.display,
+    fontSize: 15,
+    color: THEME.text,
+  },
+  crateDesc: {
+    fontFamily: FONTS.body,
+    fontSize: 12,
+    color: THEME.textMuted,
+    marginTop: 2,
+  },
+  crateResultCard: {
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "rgba(18,18,30,0.9)",
+    borderRadius: 16,
+    borderWidth: 1.5,
+    padding: 20,
+    marginBottom: 16,
+  },
+
+  // Color picker
+  colorPickerSection: {
+    marginBottom: 16,
+    gap: 8,
+  },
+  colorPickerLabel: {
+    fontFamily: FONTS.display,
+    fontSize: 13,
+    color: THEME.text,
+  },
+  colorDot: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: "transparent",
+  },
+  colorDotActive: {
+    borderColor: "#fff",
+    shadowColor: "#fff",
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 6,
   },
 });
