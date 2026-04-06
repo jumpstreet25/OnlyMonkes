@@ -20,6 +20,7 @@ import {
 import * as Haptics from "expo-haptics";
 import { playSound } from "@/lib/sounds";
 import { GlassModal } from "@/components/GlassModal";
+import { LinearGradient } from "expo-linear-gradient";
 import { THEME, FONTS, DEV_WALLET, SKR_MINT } from "@/lib/constants";
 import { useAppStore } from "@/store/appStore";
 import { spendBananas, addBananas } from "@/lib/bananaRewards";
@@ -74,6 +75,129 @@ interface BananaShopModalProps {
   visible: boolean;
   onClose: () => void;
 }
+
+// ─── Color Picker — hue gradient + brightness + presets ─────────────────────
+
+function hslToHex(h: number, s: number, l: number): string {
+  s /= 100; l /= 100;
+  const a = s * Math.min(l, 1 - l);
+  const f = (n: number) => {
+    const k = (n + h / 30) % 12;
+    const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+    return Math.round(255 * color).toString(16).padStart(2, "0");
+  };
+  return `#${f(0)}${f(8)}${f(4)}`;
+}
+
+const PRESETS = ["#FFD700", "#FF6B6B", "#00FFFF", "#FF69B4", "#39FF14", "#9945FF", "#6CB4EE", "#FF8C00", "#FFFFFF"];
+const BRIGHTNESS_LEVELS = [
+  { label: "Light", l: 75 },
+  { label: "Normal", l: 55 },
+  { label: "Vivid", l: 45 },
+];
+
+function ColorPickerSection({ currentColor, onColorChange }: { currentColor: string; onColorChange: (c: string) => void }) {
+  const [hue, setHue] = useState(0);
+  const [brightness, setBrightness] = useState(1); // index into BRIGHTNESS_LEVELS
+  const [barWidth, setBarWidth] = useState(300);
+
+  const handleBarPress = (evt: any) => {
+    const x = evt.nativeEvent.locationX;
+    const h = Math.round((x / barWidth) * 360) % 360;
+    setHue(h);
+    onColorChange(hslToHex(h, 100, BRIGHTNESS_LEVELS[brightness].l));
+  };
+
+  return (
+    <View style={colorStyles.section}>
+      <View style={colorStyles.headerRow}>
+        <Text style={colorStyles.label}>Your Text Color</Text>
+        <View style={[colorStyles.preview, { backgroundColor: currentColor }]} />
+      </View>
+
+      {/* Hue gradient bar */}
+      <Pressable
+        onPress={handleBarPress}
+        onLayout={(e) => setBarWidth(e.nativeEvent.layout.width)}
+        style={colorStyles.barWrap}
+      >
+        <LinearGradient
+          colors={["#FF0000", "#FFFF00", "#00FF00", "#00FFFF", "#0000FF", "#FF00FF", "#FF0000"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={colorStyles.gradient}
+        />
+        {/* Thumb indicator */}
+        <View style={[colorStyles.thumb, { left: `${(hue / 360) * 100}%` }]} />
+      </Pressable>
+
+      {/* Brightness */}
+      <View style={colorStyles.brightnessRow}>
+        {BRIGHTNESS_LEVELS.map((b, i) => (
+          <Pressable
+            key={b.label}
+            style={[colorStyles.brightPill, brightness === i && colorStyles.brightPillActive]}
+            onPress={() => {
+              setBrightness(i);
+              onColorChange(hslToHex(hue, 100, b.l));
+            }}
+          >
+            <Text style={[colorStyles.brightText, brightness === i && colorStyles.brightTextActive]}>{b.label}</Text>
+          </Pressable>
+        ))}
+      </View>
+
+      {/* Quick presets */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          {PRESETS.map(c => (
+            <Pressable
+              key={c}
+              style={[colorStyles.dot, { backgroundColor: c }, currentColor === c && colorStyles.dotActive]}
+              onPress={() => onColorChange(c)}
+            />
+          ))}
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
+
+const colorStyles = StyleSheet.create({
+  section: { marginBottom: 16, gap: 10 },
+  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  label: { fontFamily: FONTS.display, fontSize: 13, color: THEME.text },
+  preview: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: "rgba(255,255,255,0.2)" },
+  barWrap: {
+    height: 36, borderRadius: 18, overflow: "hidden",
+    borderWidth: 0.75, borderColor: "rgba(255,255,255,0.1)",
+  },
+  gradient: { flex: 1, borderRadius: 18 },
+  thumb: {
+    position: "absolute", top: 2, width: 32, height: 32, borderRadius: 16,
+    backgroundColor: "rgba(255,255,255,0.9)",
+    borderWidth: 2, borderColor: "#fff",
+    marginLeft: -16,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.4, shadowRadius: 4,
+  },
+  brightnessRow: { flexDirection: "row", gap: 8 },
+  brightPill: {
+    flex: 1, paddingVertical: 8, borderRadius: 10, alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderWidth: 0.75, borderColor: "rgba(255,255,255,0.06)",
+  },
+  brightPillActive: { backgroundColor: "rgba(124,58,237,0.15)", borderColor: "rgba(124,58,237,0.3)" },
+  brightText: { fontFamily: FONTS.mono, fontSize: 11, color: THEME.textMuted },
+  brightTextActive: { color: "#7C3AED" },
+  dot: {
+    width: 28, height: 28, borderRadius: 14,
+    borderWidth: 2, borderColor: "transparent",
+  },
+  dotActive: {
+    borderColor: "#fff",
+    shadowColor: "#fff", shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.5, shadowRadius: 6,
+  },
+});
 
 export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
   const bananaBalance = useAppStore(s => s.bananaBalance);
@@ -305,35 +429,21 @@ export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
 
           {/* Custom text color picker — shown when text_custom_color is equipped */}
           {shopState?.equipped.text === "text_custom_color" && (
-            <View style={styles.colorPickerSection}>
-              <Text style={styles.colorPickerLabel}>Your Text Color</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                <View style={{ flexDirection: "row", gap: 8 }}>
-                  {["#FFD700", "#FF6B6B", "#00FFFF", "#FF69B4", "#39FF14", "#9945FF", "#6CB4EE", "#FF8C00", "#FFFFFF", "#F0E68C"].map(c => (
-                    <Pressable
-                      key={c}
-                      style={[
-                        styles.colorDot,
-                        { backgroundColor: c },
-                        customColor === c && styles.colorDotActive,
-                      ]}
-                      onPress={async () => {
-                        setCustomColor(c);
-                        const state = await loadShopState();
-                        state.customTextColor = c;
-                        await saveShopState(state);
-                        setShopState(state);
-                        getEquippedStyles().then(s => {
-                          useAppStore.getState().setShopStyles(s);
-                          triggerProfileRebroadcast("").catch(() => {});
-                        });
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      }}
-                    />
-                  ))}
-                </View>
-              </ScrollView>
-            </View>
+            <ColorPickerSection
+              currentColor={customColor}
+              onColorChange={async (c: string) => {
+                setCustomColor(c);
+                const state = await loadShopState();
+                state.customTextColor = c;
+                await saveShopState(state);
+                setShopState(state);
+                getEquippedStyles().then(s => {
+                  useAppStore.getState().setShopStyles(s);
+                  triggerProfileRebroadcast("").catch(() => {});
+                });
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              }}
+            />
           )}
 
           {([1, 2, 3, 4] as number[]).map(tier => {
@@ -644,28 +754,4 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
 
-  // Color picker
-  colorPickerSection: {
-    marginBottom: 16,
-    gap: 8,
-  },
-  colorPickerLabel: {
-    fontFamily: FONTS.display,
-    fontSize: 13,
-    color: THEME.text,
-  },
-  colorDot: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    borderWidth: 2,
-    borderColor: "transparent",
-  },
-  colorDotActive: {
-    borderColor: "#fff",
-    shadowColor: "#fff",
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.5,
-    shadowRadius: 6,
-  },
 });
