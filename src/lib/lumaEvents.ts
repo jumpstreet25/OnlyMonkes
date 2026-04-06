@@ -108,45 +108,52 @@ async function fetchCalendarEvents(calendar: typeof CALENDARS[0]): Promise<LumaE
  */
 async function fetchSolanaComEvents(): Promise<LumaEvent[]> {
   try {
-    const res = await fetch("https://solana.com/en/events", {
+    const res = await fetch("https://solana.com/events", {
       headers: { "User-Agent": "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36" },
+      redirect: "follow",
       signal: AbortSignal.timeout(15000),
     });
     if (!res.ok) return [];
     const html = await res.text();
 
-    // RSC flight data is in self.__next_f.push chunks
-    // Find the chunk containing "events":[{...}]
-    const chunkRegex = /self\.__next_f\.push\(\[\d+,"(.*?)"\]\)/gs;
-    let match: RegExpExecArray | null;
+    // RSC flight data is double-escaped in the HTML.
+    // Extract events directly with double-escaped regex.
+    const evtRegex = /\\\\"key\\\\":\\\\"([^\\\\]+)\\\\"[^}]*?\\\\"title\\\\":\\\\"([^\\\\]*)\\\\"[^}]*?\\\\"from\\\\":\\\\"([^\\\\]*)\\\\"[^}]*?\\\\"to\\\\":\\\\"([^\\\\]*)\\\\"[^}]*?\\\\"rsvp\\\\":\\\\"([^\\\\]*)\\\\"[^}]*?\\\\"city\\\\":([^,]*),\\\\"region\\\\":([^,]*)[^}]*?\\\\"country\\\\":([^,]*)/g;
+    let evtMatch: RegExpExecArray | null;
     const events: LumaEvent[] = [];
 
-    while ((match = chunkRegex.exec(html)) !== null) {
-      const raw = match[1];
-      if (!raw.includes('"events":[{')) continue;
+    while ((evtMatch = evtRegex.exec(html)) !== null) {
+      const clean = (s: string) => s.replace(/^\\\\"|\\\\"|"$/g, '').replace(/\\\\/g, '').trim();
+      const city = clean(evtMatch[6]);
+      const country = clean(evtMatch[8]);
+      const loc = city && city !== 'null'
+        ? `${city}${country && country !== 'null' ? ', ' + country : ''}`
+        : 'Online';
 
-      // Unescape the RSC string
-      let unesc: string;
-      try { unesc = JSON.parse('"' + raw + '"'); } catch { continue; }
+      events.push({
+        id: `solcom-${clean(evtMatch[1])}`,
+        name: clean(evtMatch[2]),
+        startAt: clean(evtMatch[3]),
+        endAt: clean(evtMatch[4]) || undefined,
+        location: loc,
+        url: clean(evtMatch[5]) || 'https://solana.com/events',
+        source: 'luma' as const,
+      });
+    }
 
-      // Extract individual event objects
-      const evtRegex = /\{"key":"([^"]+)","title":"([^"]*)","description":"([^"]*)","platform":"([^"]*)","rsvp":"([^"]*)","schedule":\{"from":"([^"]*)","to":"([^"]*)","timezone":"([^"]*)"\},"img":\{[^}]*\},"venue":\{"city":([^,]*),"region":([^,]*),"city_state":([^,]*),"country":([^,]*),"address":([^}]*)\}\}/g;
-      let evtMatch: RegExpExecArray | null;
-      while ((evtMatch = evtRegex.exec(unesc)) !== null) {
-        const city = evtMatch[9]?.replace(/^"|"$/g, '') || '';
-        const country = evtMatch[12]?.replace(/^"|"$/g, '') || '';
-        const loc = city && city !== 'null'
-          ? `${city}${country && country !== 'null' ? ', ' + country : ''}`
-          : 'Online';
-
+    // Fallback: try simpler pattern if double-escape didn't match
+    if (events.length === 0) {
+      const simpleRegex = /"key":"([^"]+)","title":"([^"]*)","description":"[^"]*","platform":"[^"]*","rsvp":"([^"]*)","schedule":\{"from":"([^"]*)","to":"([^"]*)"/g;
+      let m: RegExpExecArray | null;
+      while ((m = simpleRegex.exec(html)) !== null) {
         events.push({
-          id: `solcom-${evtMatch[1]}`,
-          name: evtMatch[2],
-          startAt: evtMatch[6],
-          endAt: evtMatch[7] || undefined,
-          location: loc,
-          url: evtMatch[5] || `https://solana.com/events`,
-          source: 'luma' as const, // compatible type
+          id: `solcom-${m[1]}`,
+          name: m[2],
+          startAt: m[4],
+          endAt: m[5] || undefined,
+          location: 'Solana Event',
+          url: m[3] || 'https://solana.com/events',
+          source: 'luma' as const,
         });
       }
     }
