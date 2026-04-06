@@ -912,6 +912,9 @@ export const MessageBubble = memo(function MessageBubble({
                       const { width: w, height: h } = e.source;
                       if (w > 0) setImgAspect(h / w);
                     }}
+                    onError={() => setImgAspect(0.5)}
+                    placeholder={require("../../assets/icon.png")}
+                    placeholderContentFit="contain"
                   />
                   <View style={styles.watermarkShadow}>
                     <Image
