@@ -21,6 +21,7 @@ import {
   Modal,
   ScrollView,
   StatusBar,
+  Linking,
 } from "react-native";
 import { WebView } from "react-native-webview";
 import { router } from "expo-router";
@@ -96,6 +97,7 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
   const [markers, setMarkers] = useState<GlobeMarker[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<LumaEvent | CalendarEvent | null>(null);
   const [clusterUsers, setClusterUsers] = useState<GlobeMarker[]>([]);
+  const [onlineEvents, setOnlineEvents] = useState<LumaEvent[]>([]); // Events without location
   const webViewRef = useRef<WebView>(null);
 
   // ── Load markers (users + events) ─────────────────────────────────────────
@@ -160,6 +162,7 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
       }
 
       // 2. Lu.ma Solana events
+      const _onlineEvts: LumaEvent[] = [];
       try {
         const lumaEvents = await fetchSolanaEvents();
         for (const evt of lumaEvents) {
@@ -167,16 +170,24 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
           let lat = evt.lat;
           let lng = evt.lng;
           if (lat == null || lng == null) {
-            const coords = await geocodeLocation(evt.location);
-            if (coords) { lat = coords.lat; lng = coords.lng; }
+            // Try geocoding if location is a real place (not "Online" / "Solana Event")
+            if (evt.location && evt.location !== "Online" && evt.location !== "Solana Event") {
+              const coords = await geocodeLocation(evt.location);
+              if (coords) { lat = coords.lat; lng = coords.lng; }
+            }
           }
-          if (lat == null || lng == null) continue;
-          allMarkers.push({
-            id: `luma-${evt.id}`, lat, lng,
-            type: "luma-event", label: evt.name, event: evt,
-          });
+          if (lat != null && lng != null) {
+            allMarkers.push({
+              id: `luma-${evt.id}`, lat, lng,
+              type: "luma-event", label: evt.name, event: evt,
+            });
+          } else {
+            // No location — show in the online/unlocated events list
+            _onlineEvts.push(evt);
+          }
         }
       } catch { /* non-fatal */ }
+      if (!cancelled) setOnlineEvents(_onlineEvts);
 
       // 3. IRL events from app calendar (only future events — remove after date passes)
       const now = Date.now();
@@ -364,7 +375,7 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
         </View>
         <View style={styles.legendItem}>
           <View style={[styles.legendDot, { backgroundColor: "#6CB4EE" }]} />
-          <Text style={styles.legendText}>Events ({lumaMarkers.length})</Text>
+          <Text style={styles.legendText}>Events ({lumaMarkers.length + onlineEvents.length})</Text>
         </View>
         <View style={styles.legendItem}>
           <View style={[styles.legendDot, { backgroundColor: "#10B981" }]} />
@@ -392,21 +403,34 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
             <Text style={styles.markerLabel} numberOfLines={1}>{m.label}</Text>
           </Pressable>
         ))}
-        {eventMarkers.slice(0, 4).map((m: GlobeMarker) => {
-          const count = getAttendeeCount(m.id.replace(/^(luma-|irl-)/, ""));
-          return (
-            <Pressable
-              key={m.id}
-              style={[styles.markerPill, styles.eventPill]}
-              onPress={() => m.event && setSelectedEvent(m.event)}
-            >
-              <Text style={{ fontSize: 12 }}>{m.type === "luma-event" ? "📍" : "🟢"}</Text>
-              <Text style={styles.markerLabel} numberOfLines={1}>{m.label}</Text>
-              {count > 0 && <Text style={styles.attendeeBadge}>{count}🐒</Text>}
-            </Pressable>
-          );
-        })}
+        {/* Event pins removed — events are tappable on the globe + online events list below */}
       </View>
+
+      {/* Online / unlocated events list */}
+      {onlineEvents.length > 0 && (
+        <View style={styles.onlineSection}>
+          <Text style={styles.onlineSectionTitle}>
+            🌐 Online Events ({onlineEvents.length})
+          </Text>
+          <ScrollView horizontal={false} style={styles.onlineScroll} showsVerticalScrollIndicator={false}>
+            {onlineEvents.map(evt => (
+              <Pressable
+                key={evt.id}
+                style={styles.onlineRow}
+                onPress={() => setSelectedEvent(evt)}
+              >
+                <View style={styles.onlineInfo}>
+                  <Text style={styles.onlineName} numberOfLines={1}>{evt.name}</Text>
+                  <Text style={styles.onlineDate}>
+                    {evt.startAt ? new Date(evt.startAt).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "TBD"}
+                  </Text>
+                </View>
+                <Text style={styles.onlineArrow}>→</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        </View>
+      )}
 
       {/* Event RSVP modal */}
       <EventRsvpModal
@@ -545,6 +569,26 @@ const styles = StyleSheet.create({
   eventLinkText: { fontFamily: FONTS.bodySemi, fontSize: 14, color: "#6CB4EE" },
   eventCloseBtn: { paddingVertical: 8, alignItems: "center" },
   eventCloseText: { fontFamily: FONTS.body, fontSize: 13, color: THEME.textFaint },
+
+  // Online events section
+  onlineSection: {
+    paddingHorizontal: 12, paddingBottom: 8,
+  },
+  onlineSectionTitle: {
+    fontFamily: FONTS.bodySemi, fontSize: 12, color: THEME.textMuted,
+    marginBottom: 6,
+  },
+  onlineScroll: { maxHeight: 120 },
+  onlineRow: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    backgroundColor: "rgba(108,180,238,0.06)", borderRadius: 10,
+    paddingHorizontal: 12, paddingVertical: 8, marginBottom: 4,
+    borderWidth: 1, borderColor: "rgba(108,180,238,0.10)",
+  },
+  onlineInfo: { flex: 1, marginRight: 8 },
+  onlineName: { fontFamily: FONTS.bodyMed, fontSize: 12, color: THEME.text },
+  onlineDate: { fontFamily: FONTS.mono, fontSize: 10, color: THEME.textDim, marginTop: 2 },
+  onlineArrow: { fontSize: 14, color: "#6CB4EE" },
 
   // Cluster bottom sheet
   clusterSheet: {

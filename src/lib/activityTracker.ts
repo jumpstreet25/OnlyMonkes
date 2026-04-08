@@ -56,6 +56,7 @@ export function trackActivity(inboxId: string, type: 'sent' | 'given' | 'receive
   }
   _data.stats[inboxId][type]++;
   _scheduleSave();
+  trackDailyActivity();
 }
 
 export interface LeaderboardEntry {
@@ -82,4 +83,66 @@ export function getLeaderboard(limit = 10): LeaderboardEntry[] {
 export function getWeekLabel(): string {
   const d = new Date(_data.weekStart + 'T00:00:00Z');
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+}
+
+// ── Daily activity tracking (for sparkline charts) ──────────────────────────
+
+const AK_DAILY_ACTIVITY = 'daily_activity_v1';
+
+interface DailyData {
+  // date string 'YYYY-MM-DD' -> total actions that day
+  days: Record<string, number>;
+}
+
+let _dailyData: DailyData = { days: {} };
+
+function getTodayISO(): string {
+  const now = new Date();
+  return now.toISOString().slice(0, 10);
+}
+
+export async function loadDailyActivity(): Promise<void> {
+  try {
+    const raw = await AsyncStorage.getItem(AK_DAILY_ACTIVITY);
+    if (raw) {
+      _dailyData = JSON.parse(raw);
+      // Prune entries older than 14 days
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - 14);
+      const cutoffStr = cutoff.toISOString().slice(0, 10);
+      for (const d of Object.keys(_dailyData.days)) {
+        if (d < cutoffStr) delete _dailyData.days[d];
+      }
+    }
+  } catch { /* ignore */ }
+}
+
+let _dailySaveTimer: ReturnType<typeof setTimeout> | null = null;
+
+function _scheduleDailySave() {
+  if (_dailySaveTimer) clearTimeout(_dailySaveTimer);
+  _dailySaveTimer = setTimeout(async () => {
+    try {
+      await AsyncStorage.setItem(AK_DAILY_ACTIVITY, JSON.stringify(_dailyData));
+    } catch { /* ignore */ }
+  }, 1000);
+}
+
+export function trackDailyActivity(): void {
+  const today = getTodayISO();
+  _dailyData.days[today] = (_dailyData.days[today] ?? 0) + 1;
+  _scheduleDailySave();
+}
+
+/** Returns last N days of activity counts (oldest first). Fills gaps with 0. */
+export function getDailySparkline(days = 7): number[] {
+  const result: number[] = [];
+  const now = new Date();
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(now);
+    d.setDate(d.getDate() - i);
+    const key = d.toISOString().slice(0, 10);
+    result.push(_dailyData.days[key] ?? 0);
+  }
+  return result;
 }

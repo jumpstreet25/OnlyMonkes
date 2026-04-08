@@ -37,8 +37,12 @@ import {
   Alert,
   Linking,
   FlatList,
+  AppState,
+  type AppStateStatus,
 } from "react-native";
 import { FlashList } from "@shopify/flash-list";
+import { Swipeable } from "react-native-gesture-handler";
+import * as Haptics from "expo-haptics";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { OnboardingChecklist, markOnboardingStep } from "@/components/OnboardingChecklist";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -58,7 +62,7 @@ import { UserProfileModal, type ProfileTarget } from "@/components/UserProfileMo
 import { NftPickerModal } from "@/components/NftPickerModal";
 import { router } from "expo-router";
 import { THEME, FONTS, SKR_MINT } from "@/lib/constants";
-import { loadUserProfile, getCachedProfile, getAllTimeUsers, saveSelectedNftMint, cacheProfile } from "@/lib/userProfile";
+import { loadUserProfile, getCachedProfile, getAllTimeUsers, getDeduplicatedUsers, saveSelectedNftMint, cacheProfile } from "@/lib/userProfile";
 import { checkAndUpdateStreak } from "@/lib/streaks";
 import { claimDailyBananas, addBananas, type ClaimResult } from "@/lib/bananaRewards";
 import { getEquippedStyles } from "@/lib/bananaShop";
@@ -68,6 +72,7 @@ import { BananaClaimModal } from "@/components/BananaClaimModal";
 import { checkBananaNotifications } from "@/lib/bananaNotifications";
 import { OnboardingOverlay, hasCompletedOnboarding } from "@/components/OnboardingOverlay";
 import { txError, networkError, llmError } from "@/lib/monkeCopy";
+import { toast } from "sonner-native";
 import { BadgeNotificationBanner } from "@/components/BadgeNotificationBanner";
 import { ScrollToBottomFab } from "@/components/ScrollToBottomFab";
 import { updateStats, type Badge } from "@/lib/activityBadges";
@@ -138,6 +143,15 @@ function LazyVideo({ uri }: { uri: string }) {
   );
 }
 
+/** Swipe-to-reply wrapper — swipe right reveals reply arrow, triggers onReply */
+function SwipeReplyAction() {
+  return (
+    <View style={{ width: 50, justifyContent: "center", alignItems: "center" }}>
+      <Text style={{ fontSize: 18, color: THEME.textDim ?? "#888" }}>↩</Text>
+    </View>
+  );
+}
+
 export default function ChatScreen() {
   const insets = useSafeAreaInsets();
   const netInfo = useNetInfo();
@@ -184,7 +198,10 @@ export default function ChatScreen() {
   const setAvatarRoomToken = useAppStore(s => s.setAvatarRoomToken);
 
   const messagesAsc      = useChatStore(s => s.messages);
-  const messages         = useMemo(() => [...messagesAsc].reverse(), [messagesAsc]);
+  const reactionVersion  = useChatStore(s => s._reactionVersion);
+  // inverted FlashList expects newest-first; messagesAsc is oldest-first
+  // Slice creates a shallow copy (reverse mutates in-place), memoized on reference
+  const messages         = useMemo(() => messagesAsc.slice().reverse(), [messagesAsc]);
   const replyingTo       = useChatStore(s => s.replyingTo);
   const isLoadingHistory = useChatStore(s => s.isLoadingHistory);
   const setReplyingTo    = useChatStore(s => s.setReplyingTo);
@@ -283,6 +300,7 @@ export default function ChatScreen() {
       if (justHitLegendary) {
         setShowConfetti(true);
         broadcastProfile();
+        toast.success("7-day streak — Legendary!");
       }
       // Banana daily reward
       const claim = await claimDailyBananas();
@@ -319,6 +337,8 @@ export default function ChatScreen() {
       // Show onboarding for first-time users
       const onboarded = await hasCompletedOnboarding();
       if (!onboarded) setShowOnboarding(true);
+    }).catch(() => {
+      toast.error("Connection lost — retrying...");
     });
 
     // Wire offline queue flusher so it fires when network comes back
@@ -345,6 +365,32 @@ export default function ChatScreen() {
       unregisterNetworkSync();
       disconnect();
     };
+  }, []);
+
+  // ─── Re-check streak + banana claim when app returns to foreground ──────────
+  useEffect(() => {
+    let lastFgCheck = 0;
+    const handleAppState = async (nextState: AppStateStatus) => {
+      if (nextState !== 'active') return;
+      const now = Date.now();
+      if (now - lastFgCheck < 60_000) return; // debounce: skip if checked <60s ago
+      lastFgCheck = now;
+      try {
+        const { justHitLegendary } = await checkAndUpdateStreak();
+        const { loginStreak, bestStreak } = useAppStore.getState();
+        updateBadgeStreak(loginStreak, bestStreak);
+        if (justHitLegendary) {
+          setShowConfetti(true);
+          broadcastProfile();
+          toast.success("7-day streak — Legendary!");
+        }
+        const claim = await claimDailyBananas();
+        useAppStore.getState().setBananaBalance(claim.balance);
+        if (claim.claimed) setBananaClaim(claim);
+      } catch { /* non-critical */ }
+    };
+    const sub = AppState.addEventListener('change', handleAppState);
+    return () => sub.remove();
   }, []);
 
   // ─── Auto-retry until approved ───────────────────────────────────────────────
@@ -447,7 +493,7 @@ export default function ChatScreen() {
         .catch(() => {});
     };
     fetchPrices();
-    const interval = setInterval(fetchPrices, 60_000);
+    const interval = setInterval(fetchPrices, 5 * 60_000); // 5 min — battery friendly
     return () => { mounted = false; clearInterval(interval); };
   }, []);
 
@@ -624,8 +670,10 @@ export default function ChatScreen() {
           retryCount: 0,
         });
         useChatStore.getState().updateMessageStatus(optimistic.id, "pending");
+        toast("Queued — will send when online");
       } else {
         useChatStore.getState().updateMessageStatus(optimistic.id, "failed");
+        toast.error("Failed to send message");
       }
     } finally {
       setIsSending(false);
@@ -1030,28 +1078,50 @@ export default function ChatScreen() {
 
   // ─── Render ──────────────────────────────────────────────────────────────────
 
+  const swipeableRefs = useRef<Map<string, Swipeable>>(new Map());
+
   const renderMessage = useCallback(
     ({ item }: { item: ChatMessage }) => {
       const isNew = !initialMsgIdsRef.current.has(item.id);
       return (
-        <Animated.View entering={isNew ? FadeInDown.duration(250).springify().damping(18) : undefined}>
-          <MessageBubble
-            message={item}
-            isOwn={item.senderAddress === myAddress}
-            onReact={handleReact}
-            onReply={setReplyingTo}
-            onPressUser={handlePressUser}
-            onTip={handleTip}
-            onStickerReact={handleStickerReact}
-            onPressImage={setLightboxUrl}
-            onPressVideo={setVideoLightboxUrl}
-            onTokenPress={setChartSymbol}
-            onEdit={handleEditMessage}
-            onDelete={handleDelete}
-            onPin={isGroupAdmin ? handlePin : undefined}
-            onThread={handleThread}
-          />
-        </Animated.View>
+        <Swipeable
+          ref={(ref) => {
+            if (ref) swipeableRefs.current.set(item.id, ref);
+            else swipeableRefs.current.delete(item.id);
+          }}
+          renderLeftActions={() => <SwipeReplyAction />}
+          onSwipeableOpen={(direction) => {
+            if (direction === "left") {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setReplyingTo(item);
+            }
+            const ref = swipeableRefs.current.get(item.id);
+            ref?.close();
+          }}
+          overshootLeft={false}
+          leftThreshold={40}
+          friction={2}
+          containerStyle={{ overflow: "visible" }}
+        >
+          <Animated.View entering={isNew ? FadeInDown.duration(250).springify().damping(18) : undefined}>
+            <MessageBubble
+              message={item}
+              isOwn={item.senderAddress === myAddress}
+              onReact={handleReact}
+              onReply={setReplyingTo}
+              onPressUser={handlePressUser}
+              onTip={handleTip}
+              onStickerReact={handleStickerReact}
+              onPressImage={setLightboxUrl}
+              onPressVideo={setVideoLightboxUrl}
+              onTokenPress={setChartSymbol}
+              onEdit={handleEditMessage}
+              onDelete={handleDelete}
+              onPin={isGroupAdmin ? handlePin : undefined}
+              onThread={handleThread}
+            />
+          </Animated.View>
+        </Swipeable>
       );
     },
     [myAddress, isGroupAdmin, handleReact, setReplyingTo, handlePressUser, handleTip, handleStickerReact, setVideoLightboxUrl, handleEditMessage, handleDelete, handlePin, handleThread]
@@ -1236,14 +1306,14 @@ export default function ChatScreen() {
       >
         {/* ── Header ────────────────────────────────────────────────────────── */}
         <View style={styles.header}>
-          {/* Left: Globe */}
+          {/* Left: Globe with monke count */}
           <View style={styles.headerLeft}>
             <Pressable
               onPress={() => { markOnboardingStep("openedGlobe"); router.push("/globe" as any); }}
-              style={styles.iconBtn}
+              style={styles.globeHeaderPill}
               hitSlop={8}
             >
-              <Text style={styles.iconBtnText}>🌍</Text>
+              <Text style={styles.globeHeaderText}>🌍 {getDeduplicatedUsers().size}</Text>
             </Pressable>
           </View>
 
@@ -1468,7 +1538,7 @@ export default function ChatScreen() {
         {isGroupMember && <FlashList
           ref={flatListRef as any}
           data={messages}
-          extraData={messagesAsc}
+          extraData={reactionVersion}
           renderItem={renderMessage as any}
           keyExtractor={keyExtractor}
           contentContainerStyle={styles.listContent}
@@ -1869,6 +1939,20 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
     zIndex: 10,
+  },
+  globeHeaderPill: {
+    backgroundColor: "rgba(108,180,238,0.1)",
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: "rgba(108,180,238,0.15)",
+  },
+  globeHeaderText: {
+    fontFamily: FONTS.mono,
+    fontSize: 11,
+    color: "#6CB4EE",
+    fontWeight: "600",
   },
   bananaHeaderPill: {
     backgroundColor: "rgba(255,213,79,0.1)",

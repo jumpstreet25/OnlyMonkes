@@ -36,6 +36,7 @@ import Slider from "@react-native-community/slider";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
 import * as Clipboard from "expo-clipboard";
+import { toast } from "sonner-native";
 import { THEME, FONTS, SKR_MINT, JUP_API_KEY } from "@/lib/constants";
 import { useChatStore } from "@/store/chatStore";
 import { useAppStore, type CalendarEvent } from "@/store/appStore";
@@ -530,6 +531,11 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                   onPress={() => { onClose(); setTimeout(() => router.push('/portfolio' as any), 300); }}
                 />
                 <GridButton
+                  icon="👁"
+                  label="Watchlist"
+                  onPress={() => { onClose(); setTimeout(() => router.push('/watchlist' as any), 300); }}
+                />
+                <GridButton
                   icon="🔧"
                   label="Tools"
                   onPress={() => setActiveView("tools")}
@@ -933,7 +939,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                       style={styles.tokenBtn}
                       onPress={async () => {
                         await Clipboard.setStringAsync(expoPushToken);
-                        Alert.alert("Copied", "Expo push token copied to clipboard.");
+                        toast.success("Copied to clipboard");
                       }}
                     >
                       <Text style={styles.tokenBtnText}>Copy</Text>

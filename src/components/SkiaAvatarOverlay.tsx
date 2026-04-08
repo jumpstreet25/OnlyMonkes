@@ -2,7 +2,7 @@
  * SkiaAvatarOverlay — GPU-accelerated expression rendering using Skia canvas.
  *
  * Draws continuous bezier-curve expressions (mouth, eyes, brows) on top of the
- * NFT PFP, driven by 22 blendshape values from MediaPipe face tracking.
+ * NFT PFP, driven by 22 blendshape values from ML Kit face tracking.
  *
  * Replaces the 5-state sprite system with smooth, continuous animation:
  * - Mouth: Bezier curves with asymmetric smile/frown

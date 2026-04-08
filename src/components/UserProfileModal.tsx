@@ -7,7 +7,7 @@
  * Others' profiles: shows bio + X account from PROFILE_UPDATE cache.
  */
 
-import React from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -16,7 +16,7 @@ import {
   Image,
   Linking,
 } from "react-native";
-import { GlassModal } from "@/components/GlassModal";
+import { GlassBottomSheet } from "@/components/GlassBottomSheet";
 import { useAppStore } from "@/store/appStore";
 import { THEME, FONTS } from "@/lib/constants";
 import { shortenAddress } from "@/lib/nftVerification";
@@ -25,6 +25,10 @@ import { getLastSeenText, isUserOnline } from "@/lib/presence";
 import { OnlineDot } from "@/components/OnlineDot";
 import { getEarnedBadges, getBadgeDef, BADGE_DEFS, getProgress } from "@/lib/badges";
 import { loadBananaState, type BananaState } from "@/lib/bananaRewards";
+import { TipQrModal } from "@/components/TipQrModal";
+import { isValidSolanaAddress } from "@/lib/solanaPay";
+import { getDailySparkline } from "@/lib/activityTracker";
+import { MiniChart } from "@/components/MiniChart";
 
 export interface ProfileTarget {
   senderAddress: string;      // XMTP inboxId
@@ -45,6 +49,7 @@ interface UserProfileModalProps {
 
 export function UserProfileModal({ visible, target, onClose, onEditProfile, onChangePfp, onSwitchWallet, onLogout, onMessage }: UserProfileModalProps) {
   const { myInboxId, username: myUsername, bio: myBio, xAccount: myXAccount, tipWallet: myTipWallet, verifiedNft } = useAppStore();
+  const [showTipQr, setShowTipQr] = useState(false);
 
   if (!target) return null;
 
@@ -70,7 +75,8 @@ export function UserProfileModal({ visible, target, onClose, onEditProfile, onCh
   };
 
   return (
-    <GlassModal visible={visible} onClose={onClose} cardStyle={styles.card}>
+    <GlassBottomSheet visible={visible} onClose={onClose} snapPoints={['60%', '90%']}>
+      <View style={styles.card}>
           {/* NFT Avatar */}
           <View style={styles.avatarArea}>
             {nftImage ? (
@@ -137,6 +143,16 @@ export function UserProfileModal({ visible, target, onClose, onEditProfile, onCh
             </View>
           ) : null}
 
+          {/* Tip button (other profiles with a valid wallet only) */}
+          {!isOwnProfile && tipWallet && isValidSolanaAddress(tipWallet) && (
+            <Pressable
+              onPress={() => setShowTipQr(true)}
+              style={styles.tipBtn}
+            >
+              <Text style={styles.tipBtnText}>Tip</Text>
+            </Pressable>
+          )}
+
           {/* Earned badges (own profile only — cosmetic achievements) */}
           {isOwnProfile && (() => {
             const earned = getEarnedBadges();
@@ -174,6 +190,20 @@ export function UserProfileModal({ visible, target, onClose, onEditProfile, onCh
                   <StatPill label="Streak" value={streak} suffix="d" />
                   <StatPill label="Best" value={bestStreak} suffix="d" />
                   <StatPill label="Badges" value={getEarnedBadges().length} />
+                </View>
+              </View>
+            );
+          })()}
+
+          {/* 7-day activity sparkline (own profile only) */}
+          {isOwnProfile && (() => {
+            const spark = getDailySparkline(7);
+            if (spark.every(v => v === 0)) return null;
+            return (
+              <View style={styles.sparkSection}>
+                <Text style={styles.badgeSectionTitle}>7-Day Activity</Text>
+                <View style={styles.sparkContainer}>
+                  <MiniChart data={spark} type="line" color="#6CB4EE" height={60} />
                 </View>
               </View>
             );
@@ -231,7 +261,19 @@ export function UserProfileModal({ visible, target, onClose, onEditProfile, onCh
           <Pressable onPress={onClose} style={styles.closeBtn}>
             <Text style={styles.closeBtnText}>Close</Text>
           </Pressable>
-    </GlassModal>
+
+          {/* Tip QR modal */}
+          {!isOwnProfile && tipWallet && (
+            <TipQrModal
+              visible={showTipQr}
+              onClose={() => setShowTipQr(false)}
+              recipientWallet={tipWallet}
+              recipientUsername={displayName}
+              recipientAvatar={nftImage}
+            />
+          )}
+      </View>
+    </GlassBottomSheet>
   );
 }
 
@@ -368,6 +410,20 @@ const styles = StyleSheet.create({
     borderColor: THEME.border,
   },
   tipIcon: { fontSize: 13 },
+  tipBtn: {
+    alignSelf: 'stretch',
+    backgroundColor: 'rgba(124,58,237,0.2)',
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(124,58,237,0.35)',
+  },
+  tipBtnText: {
+    fontFamily: FONTS.displayMed,
+    fontSize: 14,
+    color: '#7C3AED',
+  },
   tipAddress: {
     fontFamily: FONTS.mono,
     fontSize: 12,
@@ -489,6 +545,18 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.mono,
     fontSize: 10,
     color: THEME.textMuted,
+  },
+  sparkSection: {
+    alignSelf: "stretch",
+    marginTop: 4,
+  },
+  sparkContainer: {
+    alignSelf: "stretch",
+    backgroundColor: "rgba(108,180,238,0.06)",
+    borderRadius: 12,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: "rgba(108,180,238,0.10)",
   },
   statsGrid: {
     flexDirection: "row",

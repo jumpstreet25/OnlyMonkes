@@ -20,6 +20,7 @@ import {
   Alert,} from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
+import { toast } from "sonner-native";
 import { GlassModal } from "@/components/GlassModal";
 import { THEME, FONTS } from "@/lib/constants";
 import { saveUserProfile } from "@/lib/userProfile";
@@ -124,6 +125,7 @@ export function UsernameModal({
       setXAccount(cleanX);
       setTipWallet(cleanTip);
       setLocation(cleanLoc);
+      toast.success("Profile updated");
       onDone();
     } catch {
       setError("Failed to save — please try again.");

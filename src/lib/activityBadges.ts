@@ -37,6 +37,7 @@ export interface UserStats {
   firstSignalFound: boolean;   // Found a 100% confluence signal
   cratesOpened: number;
   legendaryWins: number;
+  isOgMember: boolean;         // One of the first 50 members
 }
 
 export interface BadgeState {
@@ -120,7 +121,21 @@ export const BADGES: Badge[] = [
     checkFn: (s) => s.reactionsGiven >= 100,
   },
 
+  // Trading — Top Trader
+  {
+    id: "top_trader", name: "Top Trader", emoji: "📈",
+    description: "Profitable across 20+ trades with 60%+ win rate",
+    requirement: "20 trades, 60% WR", category: "trading",
+    checkFn: (s) => s.tradesExecuted >= 20 && s.tradeWinRate >= 60,
+  },
+
   // Special badges
+  {
+    id: "og_monke", name: "OG Monke", emoji: "🐒",
+    description: "One of the first 50 OnlyMonkes members",
+    requirement: "First 50 members", category: "special",
+    checkFn: (s) => s.isOgMember === true,
+  },
   {
     id: "lucky_monke", name: "Lucky Monke", emoji: "🍀",
     description: "Win a Legendary from a Loot Crate",
@@ -141,7 +156,7 @@ const DEFAULT_STATS: UserStats = {
   totalDaysActive: 0, currentStreak: 0, longestStreak: 0, totalCycles: 0,
   tradesExecuted: 0, tradeWinRate: 0, messagesSent: 0, reactionsGiven: 0,
   tipsGiven: 0, bananaBalance: 0, firstSignalFound: false,
-  cratesOpened: 0, legendaryWins: 0,
+  cratesOpened: 0, legendaryWins: 0, isOgMember: false,
 };
 
 export async function loadBadgeState(): Promise<BadgeState> {

@@ -9,14 +9,22 @@
  *   POST /api/actions/swap?inputMint=X&outputMint=Y&amount=Z  → Serialized swap tx
  *   GET  /api/actions/tip?to=WALLET&amount=N                  → Action metadata
  *   POST /api/actions/tip?to=WALLET&amount=N                  → Serialized tip tx
+ *   POST /escrow                                              → Store ephemeral keypair for tip link
+ *   GET  /claim?token=T&wallet=W                              → Claim a tip link
  *
  * Secrets (set via `wrangler secret put`):
- *   HELIUS_API_KEY — Helius RPC API key
- *   JUP_API_KEY    — Jupiter Swap API v2 key (get from portal.jup.ag)
+ *   HELIUS_API_KEY     — Helius RPC API key
+ *   JUP_API_KEY        — Jupiter Swap API v2 key (get from portal.jup.ag)
+ *   BOT_HTTP_SECRET    — Bearer token for authenticated bot endpoints
+ *   ESCROW_ENCRYPT_KEY — 256-bit hex key for AES-GCM encryption of ephemeral secrets in KV
+ *
+ * KV Namespaces (create via `wrangler kv:namespace create TIP_ESCROW`):
+ *   TIP_ESCROW — stores encrypted ephemeral keypairs for tip links (72h TTL)
  */
 
 import {
   Connection,
+  Keypair,
   PublicKey,
   Transaction,
   VersionedTransaction,
@@ -26,12 +34,16 @@ import {
   SystemProgram,
   LAMPORTS_PER_SOL,
   ComputeBudgetProgram,
+  sendAndConfirmRawTransaction,
 } from "@solana/web3.js";
 import bs58 from "bs58";
 
 interface Env {
   HELIUS_API_KEY: string;
   JUP_API_KEY: string;
+  BOT_HTTP_SECRET: string;
+  ESCROW_ENCRYPT_KEY: string;
+  TIP_ESCROW: KVNamespace;
 }
 
 // Cloudflare Worker handler type (declared locally to avoid @cloudflare/workers-types dependency in app tsconfig)
@@ -492,6 +504,245 @@ function handleActionsJson(requestUrl: URL): Response {
   });
 }
 
+// ─── Escrow Encryption (AES-256-GCM via Web Crypto API) ──────────────────────
+
+const ESCROW_TTL_SECONDS = 72 * 60 * 60; // 72 hours
+const CLAIM_RATE_LIMIT_WINDOW = 60; // 60 seconds
+const CLAIM_RATE_LIMIT_MAX = 10; // max 10 claim attempts per IP per window
+
+/** Import the ESCROW_ENCRYPT_KEY (hex string) as a CryptoKey for AES-GCM. */
+async function getEncryptionKey(hexKey: string): Promise<CryptoKey> {
+  const keyBytes = new Uint8Array(hexKey.match(/.{1,2}/g)!.map(b => parseInt(b, 16)));
+  if (keyBytes.length !== 32) throw new Error("ESCROW_ENCRYPT_KEY must be 64 hex chars (256 bits)");
+  return crypto.subtle.importKey("raw", keyBytes, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
+}
+
+/** Encrypt data with AES-256-GCM, returns base64(iv + ciphertext). */
+async function encryptData(plaintext: string, hexKey: string): Promise<string> {
+  const key = await getEncryptionKey(hexKey);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const encoded = new TextEncoder().encode(plaintext);
+  const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, encoded);
+  // Prepend IV to ciphertext
+  const combined = new Uint8Array(iv.length + new Uint8Array(ciphertext).length);
+  combined.set(iv);
+  combined.set(new Uint8Array(ciphertext), iv.length);
+  // Convert to base64 using btoa (available in CF Workers)
+  let binary = "";
+  for (const byte of combined) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+/** Decrypt data from base64(iv + ciphertext). */
+async function decryptData(encoded: string, hexKey: string): Promise<string> {
+  const key = await getEncryptionKey(hexKey);
+  const binary = atob(encoded);
+  const combined = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) combined[i] = binary.charCodeAt(i);
+  const iv = combined.slice(0, 12);
+  const ciphertext = combined.slice(12);
+  const plaintext = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, ciphertext);
+  return new TextDecoder().decode(plaintext);
+}
+
+// ─── Auth helper ─────────────────────────────────────────────────────────────
+
+function checkBotAuth(request: Request, env: Env): boolean {
+  const auth = request.headers.get("Authorization") || "";
+  return auth === `Bearer ${env.BOT_HTTP_SECRET}`;
+}
+
+// ─── Escrow: POST /escrow ────────────────────────────────────────────────────
+
+async function handleEscrowPost(request: Request, env: Env): Promise<Response> {
+  if (!checkBotAuth(request, env)) {
+    return errorResponse("Unauthorized", 401);
+  }
+
+  let body: any;
+  try {
+    body = await request.json();
+  } catch {
+    return errorResponse("Invalid JSON body");
+  }
+
+  const { token, ephemeralSecret, pubkey, amountSol, fundingTx } = body;
+
+  // Validate token
+  if (!token || typeof token !== "string" || token.length < 16 || token.length > 128) {
+    return errorResponse("Invalid or missing token");
+  }
+
+  // Validate ephemeralSecret is a 64-byte array
+  if (
+    !Array.isArray(ephemeralSecret) ||
+    ephemeralSecret.length !== 64 ||
+    !ephemeralSecret.every((b: unknown) => typeof b === "number" && Number.isInteger(b) && b >= 0 && b <= 255)
+  ) {
+    return errorResponse("ephemeralSecret must be a 64-byte integer array");
+  }
+
+  // Validate amountSol
+  const amount = typeof amountSol === "number" ? amountSol : NaN;
+  if (!Number.isFinite(amount) || amount <= 0 || amount > 10) {
+    return errorResponse("amountSol must be > 0 and <= 10");
+  }
+
+  // Validate pubkey is valid base58 Solana address
+  try {
+    new PublicKey(pubkey);
+  } catch {
+    return errorResponse("Invalid pubkey (must be valid base58 Solana address)");
+  }
+
+  // Validate fundingTx
+  if (!fundingTx || typeof fundingTx !== "string") {
+    return errorResponse("Missing fundingTx");
+  }
+
+  // Encrypt the ephemeral secret before storing
+  const encryptedSecret = await encryptData(JSON.stringify(ephemeralSecret), env.ESCROW_ENCRYPT_KEY);
+
+  const kvValue = JSON.stringify({
+    ephemeralSecret: encryptedSecret,
+    pubkey,
+    amountSol: amount,
+    fundingTx,
+    createdAt: Date.now(),
+  });
+
+  await env.TIP_ESCROW.put(token, kvValue, { expirationTtl: ESCROW_TTL_SECONDS });
+
+  return jsonResponse({ ok: true });
+}
+
+// ─── Escrow: GET /claim ──────────────────────────────────────────────────────
+
+async function handleClaim(url: URL, request: Request, env: Env): Promise<Response> {
+  // Rate limiting by IP — simple KV counter
+  const clientIp = request.headers.get("CF-Connecting-IP") || "unknown";
+  const rateLimitKey = `ratelimit:claim:${clientIp}`;
+  const currentCount = parseInt(await env.TIP_ESCROW.get(rateLimitKey) || "0", 10);
+  if (currentCount >= CLAIM_RATE_LIMIT_MAX) {
+    return errorResponse("Too many claim attempts. Try again later.", 429);
+  }
+  // Increment rate limit counter (fire-and-forget, non-blocking)
+  await env.TIP_ESCROW.put(rateLimitKey, String(currentCount + 1), { expirationTtl: CLAIM_RATE_LIMIT_WINDOW });
+
+  const token = url.searchParams.get("token");
+  const wallet = url.searchParams.get("wallet");
+
+  if (!token || typeof token !== "string") {
+    return errorResponse("Missing token parameter");
+  }
+  if (!wallet || typeof wallet !== "string") {
+    return errorResponse("Missing wallet parameter");
+  }
+
+  // Validate recipient wallet
+  let recipientPubkey: PublicKey;
+  try {
+    recipientPubkey = new PublicKey(wallet);
+  } catch {
+    return errorResponse("Invalid wallet address");
+  }
+
+  // Retrieve escrow entry
+  const kvRaw = await env.TIP_ESCROW.get(token);
+  if (!kvRaw) {
+    return errorResponse("Tip already claimed or expired", 404);
+  }
+
+  // Delete BEFORE submitting tx to prevent double-claim race condition
+  await env.TIP_ESCROW.delete(token);
+
+  let escrow: { ephemeralSecret: string; pubkey: string; amountSol: number; fundingTx: string; createdAt: number };
+  try {
+    escrow = JSON.parse(kvRaw);
+  } catch {
+    return errorResponse("Corrupted escrow data", 500);
+  }
+
+  // Decrypt ephemeral secret
+  let secretBytes: number[];
+  try {
+    const decrypted = await decryptData(escrow.ephemeralSecret, env.ESCROW_ENCRYPT_KEY);
+    secretBytes = JSON.parse(decrypted);
+  } catch {
+    return errorResponse("Failed to decrypt escrow", 500);
+  }
+
+  // Reconstruct ephemeral keypair
+  let ephemeralKeypair: Keypair;
+  try {
+    ephemeralKeypair = Keypair.fromSecretKey(Uint8Array.from(secretBytes));
+  } catch {
+    return errorResponse("Invalid ephemeral keypair", 500);
+  }
+
+  // Verify pubkey matches
+  if (ephemeralKeypair.publicKey.toBase58() !== escrow.pubkey) {
+    return errorResponse("Escrow keypair mismatch", 500);
+  }
+
+  try {
+    const connection = new Connection(rpcUrl(env), "confirmed");
+
+    // Get ephemeral account balance
+    const balance = await connection.getBalance(ephemeralKeypair.publicKey);
+    if (balance === 0) {
+      return errorResponse("Escrow account has no funds", 400);
+    }
+
+    // Estimate fee for a simple transfer (5000 lamports typical)
+    const estimatedFee = 5000;
+    const transferAmount = balance - estimatedFee;
+    if (transferAmount <= 0) {
+      return errorResponse("Escrow balance too low to cover transaction fee", 400);
+    }
+
+    // Build transfer: ephemeral → recipient
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
+    const tx = new Transaction({
+      recentBlockhash: blockhash,
+      feePayer: ephemeralKeypair.publicKey,
+    });
+    tx.add(
+      SystemProgram.transfer({
+        fromPubkey: ephemeralKeypair.publicKey,
+        toPubkey: recipientPubkey,
+        lamports: transferAmount,
+      }),
+    );
+
+    // Sign with ephemeral keypair
+    tx.sign(ephemeralKeypair);
+
+    // Submit transaction
+    const rawTx = tx.serialize();
+    const signature = await connection.sendRawTransaction(rawTx, {
+      skipPreflight: false,
+      preflightCommitment: "confirmed",
+    });
+
+    // Wait for confirmation (with timeout)
+    await connection.confirmTransaction(
+      { signature, blockhash, lastValidBlockHeight },
+      "confirmed",
+    );
+
+    const claimedSol = transferAmount / LAMPORTS_PER_SOL;
+
+    return jsonResponse({
+      ok: true,
+      signature,
+      amountSol: parseFloat(claimedSol.toFixed(6)),
+    });
+  } catch (err) {
+    return errorResponse(`Claim failed: ${(err as Error).message}`, 500);
+  }
+}
+
 // ─── Router ───────────────────────────────────────────────────────────────────
 
 export default {
@@ -506,7 +757,7 @@ export default {
 
     // Health check
     if (path === "/health") {
-      return jsonResponse({ status: "ok", version: "1.1.0", endpoints: ["/api/actions/swap", "/api/actions/tip"] });
+      return jsonResponse({ status: "ok", version: "1.2.0", endpoints: ["/api/actions/swap", "/api/actions/tip", "/escrow", "/claim"] });
     }
 
     // Well-known actions discovery
@@ -541,6 +792,18 @@ export default {
         }
         return handleTipPost(url, body, env);
       }
+      return errorResponse("Method not allowed", 405);
+    }
+
+    // Escrow: store ephemeral keypair for tip link (bot-authenticated)
+    if (path === "/escrow") {
+      if (request.method === "POST") return handleEscrowPost(request, env);
+      return errorResponse("Method not allowed", 405);
+    }
+
+    // Claim: public endpoint to claim a tip link
+    if (path === "/claim") {
+      if (request.method === "GET") return handleClaim(url, request, env);
       return errorResponse("Method not allowed", 405);
     }
 

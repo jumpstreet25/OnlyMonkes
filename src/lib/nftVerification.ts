@@ -1,23 +1,123 @@
 /**
  * NFT Verification Service
  *
- * Uses Helius Digital Asset Standard (DAS) API to check if a wallet
- * owns any NFT from the configured collection.
+ * Provider chain: Shyft (primary) → Helius DAS (fallback)
+ * Each provider gets 2 attempts with exponential backoff before falling through.
  *
- * Falls back to on-chain account parsing via @solana/web3.js if no
- * Helius API key is configured.
+ * Shyft is primary because its REST endpoint filters by collection server-side,
+ * returning only matching NFTs — no pagination needed for a gate check.
+ * Helius DAS returns ALL assets then filters client-side, which is slower on
+ * large wallets and more prone to timeouts on mobile networks.
  */
 
-import { Connection, PublicKey } from "@solana/web3.js";
 import {
   HELIUS_API_KEY,
-  HELIUS_RPC_URL,
   NFT_COLLECTION_ADDRESS,
-  SOLANA_RPC_URL,
+  SHYFT_API_KEY,
 } from "./constants";
 import type { NFTVerificationResult, OwnedNFT } from "@/types";
 
-// ─── Helius DAS API ───────────────────────────────────────────────────────────
+const TIMEOUT_MS = 15_000;
+const RETRY_DELAY_MS = 2_000;
+const MAX_RETRIES = 2; // per provider
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function delay(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+async function fetchWithAbort(
+  url: string,
+  opts: RequestInit,
+  timeoutMs = TIMEOUT_MS,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...opts, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Retry a provider function up to MAX_RETRIES times with exponential backoff.
+ * Returns the result on first success, or throws the last error.
+ */
+async function withRetry<T>(
+  label: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  let lastErr: Error | undefined;
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err instanceof Error ? err : new Error(String(err));
+      console.warn(
+        `[NFTVerify] ${label} attempt ${attempt}/${MAX_RETRIES} failed: ${lastErr.message}`,
+      );
+      if (attempt < MAX_RETRIES) {
+        await delay(RETRY_DELAY_MS * attempt); // 2s, 4s
+      }
+    }
+  }
+  throw lastErr!;
+}
+
+// ─── Shyft Provider (primary) ─────────────────────────────────────────────────
+
+interface ShyftNft {
+  mint: string;
+  name: string;
+  symbol: string;
+  image_uri: string;
+  attributes?: Record<string, string | number>;
+  collection?: { address?: string; verified?: boolean };
+}
+
+async function fetchViaSHyft(walletAddress: string): Promise<OwnedNFT[]> {
+  const url =
+    `https://api.shyft.to/sol/v1/nft/read_all` +
+    `?network=mainnet-beta` +
+    `&address=${walletAddress}` +
+    `&collection=${NFT_COLLECTION_ADDRESS}`;
+
+  const res = await fetchWithAbort(url, {
+    method: "GET",
+    headers: { "x-api-key": SHYFT_API_KEY },
+  });
+
+  if (!res.ok) throw new Error(`Shyft API error: ${res.status}`);
+  const json = await res.json();
+
+  if (!json?.success || !json?.result) {
+    throw new Error(json?.message ?? "Shyft returned unsuccessful response");
+  }
+
+  const nfts: ShyftNft[] = json.result;
+
+  return nfts.map((n) => {
+    const traits = n.attributes
+      ? Object.entries(n.attributes).map(([k, v]) => ({
+          trait_type: k,
+          value: String(v),
+        }))
+      : undefined;
+
+    return {
+      mint: n.mint,
+      name: n.name || "Unknown NFT",
+      symbol: n.symbol || "",
+      image: n.image_uri || "",
+      collectionMint: NFT_COLLECTION_ADDRESS,
+      traits: traits && traits.length > 0 ? traits : undefined,
+    };
+  });
+}
+
+// ─── Helius DAS Provider (fallback) ───────────────────────────────────────────
 
 interface DASAsset {
   id: string;
@@ -35,17 +135,15 @@ interface DASAsset {
   ownership: { owner: string };
 }
 
-async function fetchAssetsViaHelius(walletAddress: string): Promise<DASAsset[]> {
+async function fetchAssetsViaHelius(walletAddress: string): Promise<OwnedNFT[]> {
   const url = `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`;
 
   let page = 1;
-  const MAX_PAGES = 10; // Safety cap: 10 pages × 1000 = 10k assets max
+  const MAX_PAGES = 10;
   const assets: DASAsset[] = [];
 
   while (page <= MAX_PAGES) {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10_000);
-    const res = await fetch(url, {
+    const res = await fetchWithAbort(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -63,9 +161,7 @@ async function fetchAssetsViaHelius(walletAddress: string): Promise<DASAsset[]> 
           },
         },
       }),
-      signal: controller.signal,
     });
-    clearTimeout(timeoutId);
 
     if (!res.ok) throw new Error(`Helius API error: ${res.status}`);
     const json = await res.json();
@@ -76,77 +172,46 @@ async function fetchAssetsViaHelius(walletAddress: string): Promise<DASAsset[]> 
     page++;
   }
 
-  return assets;
-}
-
-function dasAssetToOwnedNFT(asset: DASAsset): OwnedNFT {
-  const image =
-    asset.content?.links?.image ??
-    asset.content?.files?.find((f) => f.mime?.startsWith("image/"))?.cdn_uri ??
-    asset.content?.files?.find((f) => f.mime?.startsWith("image/"))?.uri ??
-    "";
-
-  const traits = (asset.content?.metadata?.attributes ?? [])
-    .filter(a => a.trait_type && a.value)
-    .map(a => ({ trait_type: a.trait_type, value: a.value }));
-
-  return {
-    mint: asset.id,
-    name: asset.content?.metadata?.name ?? "Unknown NFT",
-    symbol: asset.content?.metadata?.symbol ?? "",
-    image,
-    collectionMint: NFT_COLLECTION_ADDRESS,
-    traits: traits.length > 0 ? traits : undefined,
-  };
-}
-
-// ─── Fallback: raw on-chain check ─────────────────────────────────────────────
-
-async function verifyViaOnChain(walletAddress: string): Promise<NFTVerificationResult> {
-  const connection = new Connection(SOLANA_RPC_URL, "confirmed");
-  const wallet = new PublicKey(walletAddress);
-
-  // Fetch all token accounts; filter for NFTs (amount == 1, decimals == 0)
-  const tokenAccounts = await connection.getParsedTokenAccountsByOwner(wallet, {
-    programId: new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"),
-  });
-
-  const nftMints = tokenAccounts.value
-    .filter(
-      (a) =>
-        a.account.data.parsed.info.tokenAmount.uiAmount === 1 &&
-        a.account.data.parsed.info.tokenAmount.decimals === 0
-    )
-    .map((a) => a.account.data.parsed.info.mint as string);
-
-  if (nftMints.length === 0) {
-    return { verified: false, nft: null, error: "No NFTs found in wallet" };
-  }
-
-  // NOTE: Without DAS API, collection membership verification requires
-  // fetching on-chain metadata for each NFT and checking the `collection` field.
-  // This is rate-limited and slow for large wallets — use Helius in production.
-  console.warn(
-    "[NFTVerify] Falling back to on-chain check. Add a Helius API key for production."
+  // Filter by collection
+  const collectionNFTs = assets.filter((asset) =>
+    asset.grouping?.some(
+      (g) =>
+        g.group_key === "collection" &&
+        g.group_value === NFT_COLLECTION_ADDRESS,
+    ),
   );
 
-  // Simplified: check if any mint matches (only works if you know exact mints)
-  // A real implementation would use Metaplex to decode each metadata account.
-  return {
-    verified: false,
-    nft: null,
-    error: "On-chain fallback does not support collection verification. Please add a Helius API key.",
-  };
+  return collectionNFTs.map((asset) => {
+    const image =
+      asset.content?.links?.image ??
+      asset.content?.files?.find((f) => f.mime?.startsWith("image/"))?.cdn_uri ??
+      asset.content?.files?.find((f) => f.mime?.startsWith("image/"))?.uri ??
+      "";
+
+    const traits = (asset.content?.metadata?.attributes ?? [])
+      .filter((a) => a.trait_type && a.value)
+      .map((a) => ({ trait_type: a.trait_type, value: a.value }));
+
+    return {
+      mint: asset.id,
+      name: asset.content?.metadata?.name ?? "Unknown NFT",
+      symbol: asset.content?.metadata?.symbol ?? "",
+      image,
+      collectionMint: NFT_COLLECTION_ADDRESS,
+      traits: traits.length > 0 ? traits : undefined,
+    };
+  });
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
  * Verify whether a wallet owns any NFT from the configured collection.
- * Returns the first matching NFT if found.
+ *
+ * Chain: Shyft (×2 retries) → Helius (×2 retries) → error
  */
 export async function verifyNFTOwnership(
-  walletAddress: string
+  walletAddress: string,
 ): Promise<NFTVerificationResult> {
   if (!NFT_COLLECTION_ADDRESS) {
     return {
@@ -156,74 +221,133 @@ export async function verifyNFTOwnership(
     };
   }
 
-  try {
-    if (HELIUS_API_KEY) {
-      const assets = await fetchAssetsViaHelius(walletAddress);
+  const errors: string[] = [];
 
-      // Filter by collection grouping
-      const collectionNFTs = assets.filter((asset) =>
-        asset.grouping?.some(
-          (g) =>
-            g.group_key === "collection" &&
-            g.group_value === NFT_COLLECTION_ADDRESS
-        )
+  // ── 1. Shyft (primary) ──────────────────────────────────────────────────
+  if (SHYFT_API_KEY) {
+    try {
+      const nfts = await withRetry("Shyft", () =>
+        fetchViaSHyft(walletAddress),
       );
-
-      if (collectionNFTs.length === 0) {
-        return {
-          verified: false,
-          nft: null,
-          error: "No NFTs from this collection found in your wallet.",
-        };
+      if (nfts.length > 0) {
+        console.log(`[NFTVerify] Shyft: found ${nfts.length} collection NFT(s)`);
+        return { verified: true, nft: nfts[0], allNfts: nfts };
       }
-
-      const allNfts = collectionNFTs.map(dasAssetToOwnedNFT);
-      return {
-        verified: true,
-        nft: allNfts[0],
-        allNfts,
-      };
-    } else {
-      return verifyViaOnChain(walletAddress);
+      // Shyft succeeded but found 0 NFTs — still try Helius in case of index lag
+      errors.push("Shyft: 0 collection NFTs found");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      errors.push(`Shyft: ${msg}`);
+      console.warn("[NFTVerify] Shyft exhausted, falling back to Helius");
     }
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    return { verified: false, nft: null, error: `Verification failed: ${message}` };
   }
+
+  // ── 2. Helius DAS (fallback) ────────────────────────────────────────────
+  if (HELIUS_API_KEY) {
+    try {
+      const nfts = await withRetry("Helius", () =>
+        fetchAssetsViaHelius(walletAddress),
+      );
+      if (nfts.length > 0) {
+        console.log(`[NFTVerify] Helius: found ${nfts.length} collection NFT(s)`);
+        return { verified: true, nft: nfts[0], allNfts: nfts };
+      }
+      errors.push("Helius: 0 collection NFTs found");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      errors.push(`Helius: ${msg}`);
+      console.warn("[NFTVerify] Helius exhausted");
+    }
+  }
+
+  // ── 3. Both failed or returned 0 ───────────────────────────────────────
+  if (!SHYFT_API_KEY && !HELIUS_API_KEY) {
+    return {
+      verified: false,
+      nft: null,
+      error: "No NFT verification API key configured (SHYFT_API_KEY or HELIUS_API_KEY).",
+    };
+  }
+
+  // If both providers returned 0 NFTs, user genuinely doesn't hold one
+  const allZero = errors.every((e) => e.includes("0 collection NFTs"));
+  if (allZero) {
+    return {
+      verified: false,
+      nft: null,
+      error: "No NFTs from this collection found in your wallet.",
+    };
+  }
+
+  return {
+    verified: false,
+    nft: null,
+    error: `Verification failed after retries: ${errors.join("; ")}`,
+  };
 }
 
 /**
  * Verify a single NFT mint belongs to the configured collection.
- * Used by the admin to gate-check incoming join requests without needing the wallet address.
- * Returns true if the mint's verified collection matches NFT_COLLECTION_ADDRESS.
+ *
+ * Chain: Shyft getAsset → Helius getAsset → false
  */
 export async function verifyNftMintInCollection(nftMint: string): Promise<boolean> {
-  if (!HELIUS_API_KEY || !NFT_COLLECTION_ADDRESS || !nftMint) return false;
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10_000);
-    const res = await fetch(`https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: "mint-check",
-        method: "getAsset",
-        params: { id: nftMint },
-      }),
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
-    if (!res.ok) return false;
-    const json = await res.json();
-    const grouping: { group_key: string; group_value: string }[] =
-      json?.result?.grouping ?? [];
-    return grouping.some(
-      (g) => g.group_key === "collection" && g.group_value === NFT_COLLECTION_ADDRESS
-    );
-  } catch {
-    return false;
+  if (!NFT_COLLECTION_ADDRESS || !nftMint) return false;
+
+  // ── Shyft (primary) ────────────────────────────────────────────────────
+  if (SHYFT_API_KEY) {
+    try {
+      const url =
+        `https://api.shyft.to/sol/v1/nft/read` +
+        `?network=mainnet-beta` +
+        `&token_address=${nftMint}`;
+
+      const res = await fetchWithAbort(url, {
+        method: "GET",
+        headers: { "x-api-key": SHYFT_API_KEY },
+      });
+      if (res.ok) {
+        const json = await res.json();
+        const collection = json?.result?.collection?.address;
+        if (collection === NFT_COLLECTION_ADDRESS) return true;
+      }
+    } catch {
+      // fall through to Helius
+    }
   }
+
+  // ── Helius (fallback) ──────────────────────────────────────────────────
+  if (HELIUS_API_KEY) {
+    try {
+      const res = await fetchWithAbort(
+        `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: "mint-check",
+            method: "getAsset",
+            params: { id: nftMint },
+          }),
+        },
+      );
+      if (res.ok) {
+        const json = await res.json();
+        const grouping: { group_key: string; group_value: string }[] =
+          json?.result?.grouping ?? [];
+        return grouping.some(
+          (g) =>
+            g.group_key === "collection" &&
+            g.group_value === NFT_COLLECTION_ADDRESS,
+        );
+      }
+    } catch {
+      // both failed
+    }
+  }
+
+  return false;
 }
 
 /**

@@ -4,6 +4,7 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { fetchWithTimeout } from './fetchWithTimeout';
 
 const AK_GEO_CACHE = 'geocode_cache_v1';
 const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search';
@@ -56,8 +57,9 @@ export async function geocodeLocation(location: string): Promise<GeoCoords | nul
       format: 'jsonv2',
       limit: '1',
     });
-    const res = await fetch(`${NOMINATIM_URL}?${params}`, {
-      headers: { 'User-Agent': 'OnlyMonkes/2.30' },
+    const res = await fetchWithTimeout(`${NOMINATIM_URL}?${params}`, {
+      headers: { 'User-Agent': 'OnlyMonkes/2.36' },
+      timeoutMs: 5000,
     });
     if (!res.ok) return null;
 

@@ -39,6 +39,7 @@ import { SkiaGlowBubble, SkiaGlassFront, SkiaGlowPfp } from "@/components/SkiaGl
 import * as Clipboard from "expo-clipboard";
 import { Image as ExpoImage } from "expo-image";
 import * as Haptics from "expo-haptics";
+import { toast } from "sonner-native";
 import { format } from "date-fns";
 import { THEME, FONTS } from "@/lib/constants";
 import { shortenAddress } from "@/lib/nftVerification";
@@ -54,6 +55,8 @@ import { BlinkCard } from "@/components/BlinkCard";
 import { extractBlinkUrl } from "@/lib/blinkActions";
 import { OnlineDot } from "@/components/OnlineDot";
 import { isUserOnline } from "@/lib/presence";
+import { ReactionPicker } from "@/components/ReactionPicker";
+import MarkdownContent from "@/components/MarkdownContent";
 
 // ─── Pulse Frame — animated ring for Tier 3 PFP shop item ─────────────────
 function PulseRing({ color }: { color: string }) {
@@ -353,6 +356,17 @@ interface MessageBubbleProps {
   isBotChannel?: boolean;
 }
 
+/** Custom comparator — only re-render when message content actually changed */
+function arePropsEqual(prev: MessageBubbleProps, next: MessageBubbleProps): boolean {
+  // Fast path: if the message object reference changed, always re-render
+  if (prev.message !== next.message) return false;
+  if (prev.isOwn !== next.isOwn) return false;
+  if (prev.isBotChannel !== next.isBotChannel) return false;
+  // onPin presence changes when admin status toggles
+  if (!!prev.onPin !== !!next.onPin) return false;
+  return true;
+}
+
 export const MessageBubble = memo(function MessageBubble({
   message,
   isOwn,
@@ -471,6 +485,7 @@ export const MessageBubble = memo(function MessageBubble({
       : text;
     Clipboard.setStringAsync(cleaned);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    toast.success("Copied to clipboard");
   }, [message]);
 
   const handleEdit = useCallback(() => {
@@ -540,6 +555,8 @@ export const MessageBubble = memo(function MessageBubble({
   const cachedSender = getCachedProfile(primarySenderInbox);
   const displayName  = cachedSender?.username ?? message.senderUsername ?? shortenAddress(message.senderAddress);
   const isBot = message.senderUsername === "AI Agent #9385";
+  // Bot PFP theme — teal from the bot's pixel art visor/eyes
+  const BOT_THEME_COLOR = "#00C9A7";
   // Show expand control when bot message likely exceeds 9 lines
   const showBotExpand = useMemo(
     () => isBot && (message.content.split("\n").length > 9 || message.content.length > 380),
@@ -564,6 +581,15 @@ export const MessageBubble = memo(function MessageBubble({
   const activeReactions = useMemo(() => {
     return Object.values(message.reactions).filter(r => r && r.count > 0);
   }, [message.reactions]);
+
+  // Set of emojis I've already reacted with (for picker highlight)
+  const myActiveEmojis = useMemo(() => {
+    const s = new Set<string>();
+    for (const r of activeReactions) {
+      if (r.reactedByMe) s.add(r.emoji);
+    }
+    return s;
+  }, [activeReactions]);
 
   // ── Avatar ────────────────────────────────────────────────────────────────
   // Own: use live verifiedNft. Others: always prefer fresh profile cache.
@@ -617,9 +643,11 @@ export const MessageBubble = memo(function MessageBubble({
       {!centerBubble && (
         <Pressable onPress={handlePressAvatar} hitSlop={6} style={styles.avatarOuter}>
           {/* Default purple hue — hidden when Skia PFP Aura is active */}
-          {!pfpAuraColor && <View style={styles.avatarHue} />}
+          {!pfpAuraColor && !isBot && <View style={styles.avatarHue} />}
+          {/* Bot PFP Aura — always teal glow */}
+          {isBot && <SkiaGlowPfp glowColor={BOT_THEME_COLOR} size={34} />}
           {/* Tier 3: PFP Aura — Skia glow using NFT dominant color */}
-          {pfpAuraColor && <SkiaGlowPfp glowColor={pfpAuraColor} size={34} />}
+          {pfpAuraColor && !isBot && <SkiaGlowPfp glowColor={pfpAuraColor} size={34} />}
           {/* Tier 3: Pulse Frame — animated ring around PFP */}
           {isOwn && shopStyles.pfpFrame === "pulse" && (
             <PulseRing color={nftDominantColor ?? SOLANA_PURPLE} />
@@ -714,6 +742,7 @@ export const MessageBubble = memo(function MessageBubble({
                 !hasSkiaGlow && shopStyles.bgOpacity != null ? { backgroundColor: `rgba(26, 26, 40, ${shopStyles.bgOpacity})` } : null,
                 !hasSkiaGlow && shopStyles.borderOpacity != null ? { borderColor: `rgba(248, 248, 255, ${shopStyles.borderOpacity})` } : null,
                 isOwn && shopStyles.pfpThemeEnabled && nftDominantColor && !shopStyles.glowColor ? { borderColor: nftDominantColor + "30" } : null,
+                isBot ? { borderColor: BOT_THEME_COLOR + "35", backgroundColor: "rgba(0, 201, 167, 0.06)" } : null,
               ]}>
                 {/* Glass gradient — only for non-Skia bubbles */}
                 {!hasSkiaGlow ? (
@@ -776,19 +805,27 @@ export const MessageBubble = memo(function MessageBubble({
                 })()
               ) : (
                 <View style={{ gap: 4 }}>
-                  <Text
-                    style={[
-                      styles.content,
-                      { color: textColor, fontSize: 15 * (useAppStore.getState().textScale ?? 1) },
-                      shopStyles.fontWeight === "bold" ? { fontWeight: "bold" } : null,
-                      shopStyles.fontFamily === "mono" ? { fontFamily: FONTS.mono } : null,
-                      shopStyles.hasBubbleCosmetic ? { textShadowColor: "rgba(0,0,0,0.5)", textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 } : null,
-                    ]}
-                    numberOfLines={showBotExpand && !botExpanded ? 9 : undefined}
-                    selectable={false}
-                  >
-                    {renderRichContent(displayContent, handlePressMention, onTokenPress)}
-                  </Text>
+                  {isBot ? (
+                    <View style={showBotExpand && !botExpanded ? { maxHeight: 9 * 22, overflow: "hidden" } : undefined}>
+                      <MarkdownContent
+                        content={displayContent}
+                        style={{ fontSize: 15 * (useAppStore.getState().textScale ?? 1) }}
+                      />
+                    </View>
+                  ) : (
+                    <Text
+                      style={[
+                        styles.content,
+                        { color: textColor, fontSize: 15 * (useAppStore.getState().textScale ?? 1) },
+                        shopStyles.fontWeight === "bold" ? { fontWeight: "bold" } : null,
+                        shopStyles.fontFamily === "mono" ? { fontFamily: FONTS.mono } : null,
+                        shopStyles.hasBubbleCosmetic ? { textShadowColor: "rgba(0,0,0,0.5)", textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 } : null,
+                      ]}
+                      selectable={false}
+                    >
+                      {renderRichContent(displayContent, handlePressMention, onTokenPress)}
+                    </Text>
+                  )}
                   {message.editedAt && (
                     <Text style={[styles.editedLabel, { color: textColor }]}>(edited)</Text>
                   )}
@@ -819,18 +856,20 @@ export const MessageBubble = memo(function MessageBubble({
                       <Text style={{
                         fontFamily: FONTS.body,
                         fontSize: 11,
-                        color: shopStyles.glowColor
-                          ? (shopStyles.glowColor as string) + "AA"
-                          : "rgba(108, 180, 238, 0.55)",
-                        ...(shopStyles.nameColor ? { color: shopStyles.nameColor as string } : {}),
+                        color: isBot
+                          ? BOT_THEME_COLOR + "CC"
+                          : shopStyles.glowColor
+                            ? (shopStyles.glowColor as string) + "AA"
+                            : "rgba(108, 180, 238, 0.55)",
+                        ...(shopStyles.nameColor && !isBot ? { color: shopStyles.nameColor as string } : {}),
                       }}>
                         {displayName}{isShopCustomer ? " 🍌" : ""}{isLegendarySender ? " 🌟" : ""}{badgeEmojis ? ` ${badgeEmojis}` : ""}
                       </Text>
                       <OnlineDot online={isUserOnline(message.senderAddress)} />
                     </View>
                   ) : null}
-                  {/* Reaction pills — opposite side of name */}
-                  {activeReactions.length > 0 && (
+                  {/* Reaction pills + sticker reactions — unified row */}
+                  {(activeReactions.length > 0 || (message.stickerReactions ?? []).length > 0) && (
                     <View style={[styles.reactionRow, isOwn && styles.reactionRowOwn]}>
                       {activeReactions.map((r) => (
                         <Pressable
@@ -843,6 +882,21 @@ export const MessageBubble = memo(function MessageBubble({
                           {r.count > 1 && (
                             <Text style={[styles.pillCount, r.reactedByMe && styles.pillCountActive]}>
                               {r.count}
+                            </Text>
+                          )}
+                        </Pressable>
+                      ))}
+                      {(message.stickerReactions ?? []).map((sr) => (
+                        <Pressable
+                          key={`sticker-${sr.url}`}
+                          onPress={() => onStickerReact?.(sr.url, message.id)}
+                          hitSlop={4}
+                          style={[styles.stickerPill, sr.reactedByMe && styles.reactionPillActive]}
+                        >
+                          <ExpoImage source={{ uri: sr.url }} style={{ width: 26, height: 26 }} contentFit="contain" />
+                          {sr.count > 1 && (
+                            <Text style={[styles.pillCount, sr.reactedByMe && styles.pillCountActive]}>
+                              {sr.count}
                             </Text>
                           )}
                         </Pressable>
@@ -986,25 +1040,7 @@ export const MessageBubble = memo(function MessageBubble({
       </View>
     )}
 
-    {(message.stickerReactions ?? []).length > 0 && (
-      <View style={[styles.extrasRow, isOwn && !centerBubble && styles.extrasRowOwn]}>
-        <View style={[styles.stickerReactionRow, isOwn && styles.stickerReactionRowOwn]}>
-          {(message.stickerReactions ?? []).map((sr) => (
-            <Pressable
-              key={sr.url}
-              onPress={() => onStickerReact?.(sr.url, message.id)}
-              hitSlop={6}
-              style={[styles.stickerReactionPill, sr.reactedByMe && styles.stickerReactionPillActive]}
-            >
-              <Image source={{ uri: sr.url }} style={styles.stickerReactionImg} />
-              {sr.count > 1 && (
-                <Text style={styles.stickerReactionCount}>{sr.count}</Text>
-              )}
-            </Pressable>
-          ))}
-        </View>
-      </View>
-    )}
+    {/* Sticker reactions now rendered inline with emoji reactions above */}
 
     {/* ── Reaction picker Modal ──────────────────────────────────────── */}
     <Modal
@@ -1016,6 +1052,9 @@ export const MessageBubble = memo(function MessageBubble({
       <Pressable style={styles.pickerOverlay} onPress={() => setPickerVisible(false)}>
         <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
         <Pressable style={styles.pickerSheet} onPress={(e) => e.stopPropagation()}>
+          {/* Animated emoji reaction pill */}
+          <ReactionPicker onPick={handlePickReaction} activeEmojis={myActiveEmojis} />
+
           <View style={styles.pickerActionRow}>
             <Pressable
               onPress={handlePickReply}
@@ -1118,7 +1157,7 @@ export const MessageBubble = memo(function MessageBubble({
 
 </>
   );
-});
+}, arePropsEqual);
 
 const styles = StyleSheet.create({
   // ── Row layout ─────────────────────────────────────────────────────────────
@@ -1458,6 +1497,15 @@ const styles = StyleSheet.create({
   reactionPillActive: {
     backgroundColor: "rgba(255,213,79,0.2)",
     borderColor: "rgba(255,213,79,0.15)",
+  },
+  stickerPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    backgroundColor: "transparent",
+    borderRadius: 8,
+    paddingHorizontal: 3,
+    paddingVertical: 2,
   },
   pillEmoji: { fontSize: 14 },
   pillCount: {

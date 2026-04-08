@@ -9,6 +9,7 @@ import {
   SKR_MINT as ENV_SKR,
   DEV_WALLET as ENV_DEV,
   SENTRY_DSN as ENV_SENTRY,
+  SHYFT_API_KEY as ENV_SHYFT,
 } from '@env';
 import Constants from 'expo-constants';
 
@@ -37,6 +38,7 @@ export const LIVEKIT_URL_ENV: string = ENV_LK_URL || '';
 export const LIVEKIT_TOKEN_URL_ENV: string = ENV_LK_TOKEN || '';
 export const JUP_API_KEY: string = ENV_JUP || '';
 export const SENTRY_DSN_ENV: string = ENV_SENTRY || '';
+export const SHYFT_API_KEY: string = ENV_SHYFT || '';
 export const HELIUS_RPC_URL = `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`;
 export const SOLANA_RPC_URL = 'https://api.mainnet-beta.solana.com';
 
@@ -67,7 +69,7 @@ export const BOT_INBOX_IDS = [
   '998001a498174b8a194110ee792b10f97de4965665eaf0d088ed2c71bdf62363', // AI Agent #9385
 ];
 
-export const REACTIONS = ['🐒', '🔥', '🚀', '👍', '🍌'] as const;
+export const REACTIONS = ['👍', '❤️', '😂', '🔥', '🍌', '🐒', '💎', '🚀'] as const;
 
 export const THEME = {
   bg: '#0A0A0F',

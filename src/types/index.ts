@@ -32,7 +32,7 @@ export interface NFTVerificationResult {
 
 // ─── Messaging ────────────────────────────────────────────────────────────────
 
-export type ReactionEmoji = '🍌' | '🐒' | '🔥' | '🚀' | '👍';
+export type ReactionEmoji = '👍' | '❤️' | '😂' | '🔥' | '🍌' | '🐒' | '💎' | '🚀';
 
 export interface MessageReaction {
   emoji: ReactionEmoji;

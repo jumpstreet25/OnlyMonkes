@@ -9,6 +9,7 @@ import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { Toaster } from 'sonner-native';
 import { THEME } from '../src/lib/constants';
 import { useThemeColor } from '../src/lib/shopTheme';
 import { registerForPushNotifications } from '../src/lib/notifications';
@@ -121,6 +122,14 @@ export default function RootLayout() {
               headerShown: false,
               contentStyle: { backgroundColor: 'transparent' },
               animation: 'slide_from_right',
+            }}
+          />
+          <Toaster
+            position="top-center"
+            toastOptions={{
+              style: { backgroundColor: '#1A1A2E', borderColor: '#2A2A4A', borderWidth: 1 },
+              titleStyle: { color: '#FFFFFF', fontFamily: 'System' },
+              descriptionStyle: { color: '#8888AA' },
             }}
           />
         </GestureHandlerRootView>

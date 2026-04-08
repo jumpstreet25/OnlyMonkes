@@ -4,7 +4,7 @@
  *
  * Route: /thread?parentId=<id>&parentContent=<content>&parentSender=<sender>
  */
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -22,8 +22,9 @@ import { useAppStore } from '@/store/appStore';
 import { useChatStore } from '@/store/chatStore';
 import { ChatInput } from '@/components/ChatInput';
 import { MessageBubble } from '@/components/MessageBubble';
-import type { ChatMessage, ReactionEmoji } from '@/types';
-import { getThreadMeta } from '@/lib/threads';
+import type { ChatMessage } from '@/types';
+import { getThreadMeta, buildThreadMessage, trackThreadReply } from '@/lib/threads';
+import { sendRawToGroup } from '@/hooks/useXmtp';
 
 export default function ThreadScreen() {
   const insets = useSafeAreaInsets();
@@ -35,17 +36,12 @@ export default function ThreadScreen() {
   const { parentId, parentContent, parentSender } = params;
 
   const myInboxId = useAppStore(s => s.myInboxId);
-  const username = useAppStore(s => s.username);
-  const messages = useChatStore(s => s.messages);
+  const username = useAppStore(s => s.username) ?? 'Anon';
+  const verifiedNft = useAppStore(s => s.verifiedNft);
 
-  // Filter thread messages: those whose content starts with THREAD:<parentId>
-  // In practice, decoded thread messages have a `threadParentId` field
-  // For now, filter by replyTo.id matching parentId
-  const threadMessages = messages.filter(
-    m => m.replyTo?.id === parentId || m.id === parentId
-  );
-
-  const parentMessage = messages.find(m => m.id === parentId);
+  // Thread replies from dedicated store (populated by useXmtp on THREAD: receipt)
+  const threadReplies = useChatStore(s => s.threadMessages[parentId ?? ''] ?? []);
+  const addThreadMessage = useChatStore(s => s.addThreadMessage);
   const meta = getThreadMeta(parentId ?? '');
   const flatListRef = useRef<FlatList>(null);
 
@@ -58,15 +54,27 @@ export default function ThreadScreen() {
   );
 
   const handleSend = useCallback(async () => {
-    if (!inputText.trim()) return;
+    if (!inputText.trim() || !parentId) return;
     setIsSending(true);
     try {
-      // Thread replies are sent as regular replies to the parent message
-      // The useXmtp hook's `reply` function handles this
-      const { reply } = require('@/hooks/useXmtp');
-      if (parentMessage) {
-        await reply(parentMessage, inputText.trim());
-      }
+      const text = inputText.trim();
+      const raw = buildThreadMessage(parentId, username, text);
+      await sendRawToGroup(raw);
+
+      // Optimistic local insert
+      const optMsg: ChatMessage = {
+        id: `opt-thread-${Date.now()}`,
+        senderAddress: myInboxId ?? '',
+        senderUsername: username,
+        senderNft: verifiedNft ? { mint: verifiedNft.mint, name: verifiedNft.name, image: verifiedNft.image } : undefined,
+        content: text,
+        sentAt: new Date(),
+        reactions: {},
+        status: 'sent',
+      };
+      addThreadMessage(parentId, optMsg);
+      trackThreadReply(parentId, myInboxId ?? '', parentContent, parentSender);
+
       setInputText('');
       setTimeout(() => {
         flatListRef.current?.scrollToEnd({ animated: true });
@@ -76,7 +84,7 @@ export default function ThreadScreen() {
     } finally {
       setIsSending(false);
     }
-  }, [inputText, parentMessage]);
+  }, [inputText, parentId, username, myInboxId, verifiedNft, parentContent, parentSender, addThreadMessage]);
 
   const renderItem: ListRenderItem<ChatMessage> = useCallback(
     ({ item }) => (
@@ -119,7 +127,7 @@ export default function ThreadScreen() {
       {/* Thread replies */}
       <FlatList
         ref={flatListRef}
-        data={threadMessages.filter(m => m.id !== parentId)}
+        data={threadReplies}
         renderItem={renderItem}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
