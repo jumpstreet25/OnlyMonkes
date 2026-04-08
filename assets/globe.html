@@ -312,20 +312,16 @@ function init() {
     eventMarkers.forEach(function(m) {
       var pos = latLngToXYZ(m.lat, m.lng, 1.01);
       var color = m.type === 'luma-event' ? 0x6CB4EE : 0x10B981;
-        var eGeo = new THREE.SphereGeometry(0.022, 12, 12);
-        var eMat = new THREE.MeshBasicMaterial({ color:color });
-        var eMesh = new THREE.Mesh(eGeo, eMat);
-        eMesh.position.copy(pos);
-        eMesh.userData = m;
-        globe.add(eMesh);
-        markerMeshes.push(eMesh);
 
+        // Ring marker (tappable — carries event userData)
         var erGeo = new THREE.RingGeometry(0.025, 0.04, 16);
-        var erMat = new THREE.MeshBasicMaterial({ color:color, transparent:true, opacity:0.25, side:THREE.DoubleSide });
+        var erMat = new THREE.MeshBasicMaterial({ color:color, transparent:true, opacity:0.4, side:THREE.DoubleSide });
         var ering = new THREE.Mesh(erGeo, erMat);
         ering.position.copy(pos);
         ering.lookAt(0,0,0);
+        ering.userData = m;
         globe.add(ering);
+        markerMeshes.push(ering);
 
         var bGeo = new THREE.CylinderGeometry(0.003,0.003,0.15,6);
         var bMat = new THREE.MeshBasicMaterial({color:color, transparent:true, opacity:0.5});

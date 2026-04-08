@@ -1,11 +1,12 @@
 /**
  * faceTracking.ts — Blendshape-based face tracking for avatar animation.
  *
- * Supports both MediaPipe 52-blendshape mode and legacy ML Kit FaceParams.
+ * Uses ML Kit face detection (via react-native-vision-camera-face-detector)
+ * to estimate 22 blendshapes from facial contours, landmarks, and rotations.
  * Binary data channel encoding (~104 bytes) for compact transmission.
  */
 
-// ── Blendshape names (MediaPipe standard) ────────────────────────────────────
+// ── Blendshape names ────────────────────────────────────────────────────────
 
 export const BLENDSHAPE_NAMES = [
   'jawOpen',
@@ -50,53 +51,7 @@ export const FACE_PARAMS_IDLE: FaceParams = {
   eyeOpenness: 1,
 };
 
-// ── MediaPipe result → BlendshapeParams ──────────────────────────────────────
-
-interface MediaPipeCategory {
-  categoryName?: string;
-  score: number;
-}
-
-interface MediaPipeClassifications {
-  categories: MediaPipeCategory[];
-}
-
-/**
- * Convert MediaPipe faceBlendshapes result to BlendshapeParams.
- * MediaPipe returns 52 blendshapes — we extract the 22 most useful ones.
- */
-export function mediapipeToBlendshapes(
-  blendshapeClassifications: MediaPipeClassifications[],
-  transformMatrix?: number[][],
-): BlendshapeParams {
-  const values = { ...BLENDSHAPE_IDLE.values };
-
-  if (blendshapeClassifications.length > 0) {
-    const cats = blendshapeClassifications[0].categories;
-    for (const cat of cats) {
-      const name = cat.categoryName as BlendshapeName;
-      if (name && name in values) {
-        values[name] = cat.score;
-      }
-    }
-  }
-
-  // Extract head rotation from transformation matrix if available
-  let headRotation = { x: 0, y: 0, z: 0 };
-  if (transformMatrix && transformMatrix.length >= 3) {
-    // Approximate Euler angles from rotation matrix
-    const m = transformMatrix;
-    headRotation = {
-      x: Math.atan2(-m[1][2], m[2][2]) * (180 / Math.PI), // pitch
-      y: Math.asin(m[0][2]) * (180 / Math.PI),             // yaw
-      z: Math.atan2(-m[0][1], m[0][0]) * (180 / Math.PI),  // roll
-    };
-  }
-
-  return { values, headRotation };
-}
-
-// ── Legacy ML Kit compat ─────────────────────────────────────────────────────
+// ── ML Kit face → legacy FaceParams ─────────────────────────────────────────
 
 /**
  * Convert ML Kit Face detection to legacy FaceParams (backward compat).

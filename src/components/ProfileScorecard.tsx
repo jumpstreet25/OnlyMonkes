@@ -9,6 +9,7 @@ import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet, Pressable, Image } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
+import { toast } from "sonner-native";
 import { Canvas, RoundedRect, BlurMask, LinearGradient, Group, Rect, Circle, vec } from "@shopify/react-native-skia";
 import { useAppStore } from "@/store/appStore";
 import { getEarnedBadges, getBadgeDef } from "@/lib/badges";
@@ -126,6 +127,7 @@ export function ProfileScorecard({ onEditProfile, onPressPfp, onClose }: Profile
     if (wallet?.address) {
       Clipboard.setStringAsync(wallet.address);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      toast.success("Copied to clipboard");
     }
   };
 

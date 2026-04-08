@@ -40,7 +40,7 @@ const LOADING_TEXTS = [
   "Sniffing bananas in your wallet…",
   "Counting Monkes on-chain…",
   "Verifying you're not a tourist…",
-  "Connecting to Helius…",
+  "Checking with Shyft…",
   "Scanning for Saga Monkes…",
   "Checking the banana vault…",
   "Asking the chain nicely…",
@@ -256,7 +256,15 @@ export default function VerifyScreen() {
               ))}
             </View>
 
-            {/* Try again */}
+            {/* Retry same wallet */}
+            <Pressable
+              style={({ pressed }) => [styles.retryNowButton, pressed && { opacity: 0.7 }]}
+              onPress={runVerification}
+            >
+              <Text style={styles.retryNowButtonText}>Retry Verification</Text>
+            </Pressable>
+
+            {/* Try different wallet */}
             <Pressable style={styles.retryButton} onPress={handleDisconnect}>
               <Text style={styles.retryButtonText}>← Try a Different Wallet</Text>
             </Pressable>
@@ -435,6 +443,19 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 
+  retryNowButton: {
+    alignSelf: "stretch",
+    paddingVertical: 13,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: THEME.accent,
+    alignItems: "center",
+  },
+  retryNowButtonText: {
+    fontFamily: FONTS.bodySemi,
+    fontSize: 14,
+    color: THEME.accent,
+  },
   retryButton: {
     paddingVertical: 10,
     paddingHorizontal: 16,

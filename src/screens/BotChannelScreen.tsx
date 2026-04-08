@@ -104,6 +104,11 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
   const [showAllOverride, setShowAllOverride] = useState(false);
   const hasAutonomy = channelId in AUTONOMY_CONFIG;
 
+  // PFP Full Theme: tint channel headers with NFT color
+  const shopStyles = useAppStore(s => s.shopStyles);
+  const nftDominantColor = useAppStore(s => s.nftDominantColor);
+  const pfpFullThemeActive = !!(shopStyles?.pfpFullTheme && nftDominantColor);
+
   // Check enrollment on mount
   useEffect(() => {
     if (hasAutonomy) {
@@ -223,7 +228,11 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
           source={config.banner}
           style={styles.headerCenter}
           resizeMode="contain"
-        />
+        >
+          {pfpFullThemeActive && (
+            <View style={[styles.bannerTintOverlay, { backgroundColor: nftDominantColor + "4D" }]} />
+          )}
+        </ImageBackground>
 
         {/* Right column: Alert bell + Autonomy button */}
         <View style={styles.headerRight}>
@@ -232,10 +241,10 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
               toggleBotChannelMute(channelId);
               triggerProfileRebroadcast(useAppStore.getState().expoPushToken ?? "").catch(() => {});
             }}
-            style={[styles.muteBtn, isMuted && styles.muteBtnMuted]}
+            style={[styles.muteBtn, isMuted && styles.muteBtnMuted, pfpFullThemeActive && !isMuted && { backgroundColor: nftDominantColor + "26" }]}
             hitSlop={8}
           >
-            <Text style={[styles.muteBtnText, isMuted && styles.muteBtnTextMuted]}>
+            <Text style={[styles.muteBtnText, isMuted && styles.muteBtnTextMuted, pfpFullThemeActive && !isMuted && { color: nftDominantColor }]}>
               {isMuted ? "🔇 Muted" : "🔔 On"}
             </Text>
           </Pressable>
@@ -265,8 +274,8 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
 
       {/* Bot Alerts · Live status bar */}
       <View style={styles.statusBar}>
-        <View style={styles.liveDot} />
-        <Text style={styles.statusText}>Bot Alerts · Live</Text>
+        <View style={[styles.liveDot, pfpFullThemeActive && { backgroundColor: nftDominantColor }]} />
+        <Text style={[styles.statusText, pfpFullThemeActive && { color: nftDominantColor }]}>Bot Alerts · Live</Text>
       </View>
 
       {/* Loading / connecting state */}
@@ -392,6 +401,11 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 68,
     alignSelf: "center",
+    overflow: "hidden",
+  },
+  bannerTintOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 4,
   },
   backBtn: {
     width: 58,

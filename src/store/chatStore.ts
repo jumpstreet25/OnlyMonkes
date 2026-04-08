@@ -10,6 +10,10 @@ interface ChatState {
   messages: ChatMessage[];
   /** O(1) ID lookup — kept in sync with messages array */
   _msgIdSet: Set<string>;
+  /** Bumped on every reaction/edit — drives FlashList extraData re-render */
+  _reactionVersion: number;
+  /** Thread replies keyed by parent message ID */
+  threadMessages: Record<string, ChatMessage[]>;
   replyingTo: ChatMessage | null;
   isLoadingHistory: boolean;
   typingUsers: TypingUser[];
@@ -25,6 +29,7 @@ interface ChatActions {
   updateMessageStatus: (id: string, status: 'sending' | 'sent' | 'failed' | 'pending') => void;
   updateMessageContent: (id: string, newContent: string) => void;
   applyReactionUpdate: (messages: ChatMessage[]) => void;
+  addThreadMessage: (parentId: string, message: ChatMessage) => void;
   setReplyingTo: (message: ChatMessage | null) => void;
   setLoadingHistory: (loading: boolean) => void;
   setTypingUser: (inboxId: string, username?: string) => void;
@@ -35,6 +40,8 @@ interface ChatActions {
 const initialState: ChatState = {
   messages: [],
   _msgIdSet: new Set(),
+  _reactionVersion: 0,
+  threadMessages: {},
   replyingTo: null,
   isLoadingHistory: false,
   typingUsers: [],
@@ -142,7 +149,24 @@ export const useChatStore = create<ChatState & ChatActions>((set) => ({
       return { messages };
     }),
 
-  applyReactionUpdate: (messages) => set({ messages, _msgIdSet: new Set(messages.map(m => m.id)) }),
+  applyReactionUpdate: (messages) => set((state) => ({
+    messages,
+    _msgIdSet: new Set(messages.map(m => m.id)),
+    _reactionVersion: state._reactionVersion + 1,
+  })),
+
+  addThreadMessage: (parentId, message) =>
+    set((state) => {
+      const existing = state.threadMessages[parentId] ?? [];
+      // Dedup by ID
+      if (existing.some(m => m.id === message.id)) return state;
+      return {
+        threadMessages: {
+          ...state.threadMessages,
+          [parentId]: [...existing, message],
+        },
+      };
+    }),
 
   setReplyingTo: (replyingTo) => set({ replyingTo }),
 

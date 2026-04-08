@@ -19,6 +19,7 @@ import {
   Platform,
   Dimensions,} from "react-native";
 import * as Clipboard from "expo-clipboard";
+import { toast } from "sonner-native";
 import { GlassModal } from "@/components/GlassModal";
 import { THEME, FONTS } from "@/lib/constants";
 import { useAppStore } from "@/store/appStore";
@@ -190,7 +191,7 @@ export function MonkeToolsModal({ visible, onClose }: MonkeToolsModalProps) {
                   style={styles.tokenBtn}
                   onPress={async () => {
                     await Clipboard.setStringAsync(expoPushToken);
-                    Alert.alert("Copied", "Expo push token copied to clipboard.");
+                    toast.success("Copied to clipboard");
                   }}
                 >
                   <Text style={styles.tokenBtnText}>Copy</Text>

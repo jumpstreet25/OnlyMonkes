@@ -64,6 +64,7 @@ import {
   saveAdminToken,
   getAdminToken,
 } from "@/lib/remoteConfig";
+import { toast } from "sonner-native";
 import { useAppStore } from "@/store/appStore";
 import { useChatStore } from "@/store/chatStore";
 // Typing-indicator timeout map — module-level so it survives re-renders
@@ -998,7 +999,7 @@ export function useXmtp() {
         if (typeof content === "string" && content.startsWith("THREAD:")) {
           const thread = parseThreadMessage(content);
           if (thread) {
-            const { messages } = useChatStore.getState();
+            const { messages, addThreadMessage } = useChatStore.getState();
             const parent = messages.find(m => m.id === thread.parentMessageId);
             trackThreadReply(
               thread.parentMessageId,
@@ -1006,6 +1007,17 @@ export function useXmtp() {
               parent?.content,
               parent?.senderUsername,
             );
+            // Store thread reply as a ChatMessage so ThreadScreen can display it
+            const threadMsg: ChatMessage = {
+              id: raw.id as string,
+              senderAddress: raw.senderInboxId as string,
+              senderUsername: thread.username,
+              content: thread.content,
+              sentAt: raw.sentAtNs ? new Date(Number(raw.sentAtNs) / 1_000_000) : new Date(),
+              reactions: {},
+              status: 'sent',
+            };
+            addThreadMessage(thread.parentMessageId, threadMsg);
           }
           return;
         }
@@ -1391,6 +1403,7 @@ export function useXmtp() {
         err instanceof Error ? err.message : "XMTP initialization failed";
       if (__DEV__) console.error("[XMTP] initialize() failed:", message, err);
       setError(message);
+      toast.error("Connection lost — retrying...");
     } finally {
       _initRunning = false;
       setLoading(false);
@@ -1483,6 +1496,7 @@ export function useXmtp() {
       applyReactionUpdate(applyReaction(messages, fakeRaw, _myInboxId));
 
       await sendReaction(_group, emoji, targetMessageId);
+      toast.success("Reaction sent");
       incrementProgress('reactions_given');
       tryMintBadge();
     },

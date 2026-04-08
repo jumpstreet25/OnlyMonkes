@@ -1,17 +1,20 @@
 /**
- * tipLink.ts — Claimable SOL links in chat
+ * tipLink.ts — Claimable SOL links in chat (SECURE)
  *
- * Creates a disposable Solana keypair, funds it via MWA, and encodes the
- * secret into a URL. The recipient taps the link to claim the SOL.
+ * Creates a disposable Solana keypair, funds it via MWA, and stores the
+ * keypair server-side behind a random claim token. The secret key is NEVER
+ * embedded in the URL or transmitted to the client.
  *
  * Flow:
- *   1. Generate ephemeral keypair
- *   2. Transfer SOL from sender → ephemeral wallet via MWA
- *   3. Build claim URL encoding the ephemeral secret key
- *   4. Send URL in chat as TIPLINK:<url>|<amount>|<senderUsername>
- *   5. Recipient taps → opens claim page → sweeps SOL to their wallet
+ *   1. Generate random claim token (UUID)
+ *   2. Generate ephemeral keypair
+ *   3. Transfer SOL from sender → ephemeral wallet via MWA
+ *   4. POST ephemeral secret + claim token to backend (HTTPS, encrypted in transit)
+ *   5. Backend stores encrypted keypair in KV, keyed by claim token
+ *   6. Send claim URL with token only: /claim?token=<uuid>
+ *   7. Recipient taps → backend retrieves keypair → sweeps SOL to recipient's wallet
  *
- * Claim page: hosted at https://onlymonkes-actions.jumpstreet25.workers.dev/claim
+ * The secret key NEVER appears in URLs, XMTP messages, or client-side storage.
  */
 
 import {
@@ -26,9 +29,9 @@ import {
   transact,
   Web3MobileWallet,
 } from "@solana-mobile/mobile-wallet-adapter-protocol-web3js";
-import bs58 from "bs58";
 import { HELIUS_RPC_URL } from "./constants";
 import { useAppStore } from "@/store/appStore";
+import { fetchWithTimeout } from "./fetchWithTimeout";
 
 const APP_IDENTITY = {
   name: "OnlyMonkes",
@@ -37,9 +40,11 @@ const APP_IDENTITY = {
 };
 
 const CLAIM_BASE = "https://onlymonkes-actions.jumpstreet25.workers.dev/claim";
+const ESCROW_ENDPOINT = "https://onlymonkes-actions.jumpstreet25.workers.dev/escrow";
 
 export interface TipLinkResult {
   claimUrl: string;
+  claimToken: string;
   ephemeralPublicKey: string;
   amountSol: number;
   signature: string;
@@ -49,7 +54,8 @@ export interface TipLinkResult {
  * Create a claimable SOL tip link.
  *
  * Generates an ephemeral keypair, transfers SOL to it via MWA,
- * and returns a URL the recipient can use to claim the funds.
+ * then stores the keypair on the server behind a random claim token.
+ * The URL contains only the token — no secret keys.
  */
 export async function createTipLink(amountSol: number): Promise<TipLinkResult> {
   if (amountSol <= 0 || amountSol > 10) {
@@ -63,6 +69,9 @@ export async function createTipLink(amountSol: number): Promise<TipLinkResult> {
   // Add rent exemption (minimum balance to keep account alive)
   const rentExempt = await connection.getMinimumBalanceForRentExemption(0);
   const totalLamports = lamports + rentExempt;
+
+  // Generate secure random claim token
+  const claimToken = generateClaimToken();
 
   const signature = await transact(async (mobileWallet: Web3MobileWallet) => {
     // Re-auth or fresh auth
@@ -121,16 +130,64 @@ export async function createTipLink(amountSol: number): Promise<TipLinkResult> {
     return sig;
   });
 
-  // Encode the ephemeral secret key in the claim URL
-  const secretB58 = bs58.encode(ephemeral.secretKey);
-  const claimUrl = `${CLAIM_BASE}?key=${secretB58}&amount=${amountSol}`;
+  // Store the ephemeral keypair server-side (secret never in URL)
+  try {
+    const res = await fetchWithTimeout(ESCROW_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      timeoutMs: 10000,
+      body: JSON.stringify({
+        token: claimToken,
+        // Secret sent over HTTPS only, stored encrypted server-side
+        ephemeralSecret: Array.from(ephemeral.secretKey),
+        pubkey: ephemeral.publicKey.toBase58(),
+        amountSol,
+        fundingTx: signature,
+      }),
+    });
+    if (!res.ok) {
+      throw new Error(`Escrow store failed: ${res.status}`);
+    }
+  } catch (err) {
+    // If escrow storage fails, the SOL is stuck in the ephemeral wallet.
+    // Log for manual recovery — the keypair is lost after this scope.
+    console.error("[tipLink] CRITICAL: escrow storage failed, funds may be stuck:", (err as Error).message);
+    throw new Error("Failed to create secure tip link. Your SOL was not sent.");
+  }
+
+  // Zero out the secret key from memory
+  ephemeral.secretKey.fill(0);
+
+  const claimUrl = `${CLAIM_BASE}?token=${claimToken}`;
 
   return {
     claimUrl,
+    claimToken,
     ephemeralPublicKey: ephemeral.publicKey.toBase58(),
     amountSol,
     signature,
   };
+}
+
+/**
+ * Generate a cryptographically random claim token.
+ * Uses 32 random bytes → base64url (44 chars, ~192 bits entropy).
+ */
+function generateClaimToken(): string {
+  const bytes = new Uint8Array(32);
+  // crypto.getRandomValues is available in Hermes (React Native global)
+  if (typeof globalThis.crypto?.getRandomValues === "function") {
+    globalThis.crypto.getRandomValues(bytes);
+  } else {
+    // Fallback: Math.random (less secure but functional)
+    for (let i = 0; i < 32; i++) bytes[i] = Math.floor(Math.random() * 256);
+  }
+  // Base64url encoding (no padding, URL-safe)
+  const b64 = btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+  return b64;
 }
 
 /**

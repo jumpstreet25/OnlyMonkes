@@ -8,7 +8,7 @@
  *  - Send button (gradient, disabled when empty)
  */
 
-import React, { useRef, useCallback, useEffect, useMemo, useState } from "react";
+import React, { memo, useRef, useCallback, useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -103,6 +103,9 @@ function getSlashSuggestions(text: string, isDmWithBot?: boolean) {
 function ChannelButton({ channelId, image }: { channelId: 'bets' | 'trades' | 'sales' | 'predictions'; image: any }) {
   const count = useAppStore((s) => s.botChannelCounts[channelId]);
   const clearCount = useAppStore((s) => s.clearBotChannelCount);
+  const shopStyles = useAppStore(s => s.shopStyles);
+  const nftDominantColor = useAppStore(s => s.nftDominantColor);
+  const pfpTint = shopStyles?.pfpFullTheme && nftDominantColor ? nftDominantColor : null;
 
   return (
     <Pressable
@@ -122,7 +125,7 @@ function ChannelButton({ channelId, image }: { channelId: 'bets' | 'trades' | 's
       <Image source={image} style={styles.toolbarChannelImg} />
       {count > 0 && (
         <View style={styles.badge}>
-          <Text style={styles.badgeText}>{count > 99 ? '99+' : count}</Text>
+          <Text style={[styles.badgeText, pfpTint ? { color: pfpTint } : null]}>{count > 99 ? '99+' : count}</Text>
         </View>
       )}
     </Pressable>
@@ -149,7 +152,7 @@ interface ChatInputProps {
   isDmWithBot?: boolean;
 }
 
-export function ChatInput({
+export const ChatInput = memo(function ChatInput({
   value,
   onChangeText,
   onSend,
@@ -169,8 +172,13 @@ export function ChatInput({
   const inputRef = useRef<TextInput>(null);
   const bounceAnim = useRef(new Animated.Value(0)).current;
   const hasTypers = !!(typingUsers && typingUsers.length > 0);
-  const { myInboxId } = useAppStore();
+  const myInboxId = useAppStore(s => s.myInboxId);
   const [livePickerOpen, setLivePickerOpen] = useState(false);
+
+  // PFP Full Theme: tint toolbar labels with NFT dominant color
+  const shopStyles = useAppStore(s => s.shopStyles);
+  const nftDominantColor = useAppStore(s => s.nftDominantColor);
+  const toolbarColor = shopStyles?.pfpFullTheme && nftDominantColor ? nftDominantColor : "#6CB4EE";
 
   const slashSuggestions = useMemo(() => getSlashSuggestions(value, isDmWithBot), [value, isDmWithBot]);
 
@@ -377,28 +385,28 @@ export function ChatInput({
         {onCamera && (
           <Pressable
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onCamera(); }}
-            style={({ pressed }) => [styles.toolbarBtn, styles.toolbarCamera, pressed && { opacity: 0.7 }]}
+            style={({ pressed }) => [styles.toolbarBtn, styles.toolbarCamera, toolbarColor !== "#6CB4EE" && { borderColor: toolbarColor + "1F" }, pressed && { opacity: 0.7 }]}
           >
-            <Text style={styles.toolbarCamText}>CAM</Text>
+            <Text style={[styles.toolbarCamText, { color: toolbarColor }]}>CAM</Text>
           </Pressable>
         )}
 
         {(onLiveVideo || onAvatarRoom) && (
           <Pressable
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setLivePickerOpen(true); }}
-            style={({ pressed }) => [styles.toolbarBtn, styles.toolbarLive, pressed && { opacity: 0.7 }]}
+            style={({ pressed }) => [styles.toolbarBtn, styles.toolbarLive, toolbarColor !== "#6CB4EE" && { borderColor: toolbarColor + "1F" }, pressed && { opacity: 0.7 }]}
           >
-            <View style={styles.liveDot} />
-            <Text style={styles.toolbarLiveText}>LIVE</Text>
+            <View style={[styles.liveDot, { backgroundColor: toolbarColor }]} />
+            <Text style={[styles.toolbarLiveText, { color: toolbarColor }]}>LIVE</Text>
           </Pressable>
         )}
 
         {onGifPicker && (
           <Pressable
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onGifPicker(); }}
-            style={({ pressed }) => [styles.toolbarBtn, styles.toolbarGif, pressed && { opacity: 0.7 }]}
+            style={({ pressed }) => [styles.toolbarBtn, styles.toolbarGif, toolbarColor !== "#6CB4EE" && { borderColor: toolbarColor + "1F" }, pressed && { opacity: 0.7 }]}
           >
-            <Text style={styles.toolbarGifText}>GIF</Text>
+            <Text style={[styles.toolbarGifText, { color: toolbarColor }]}>GIF</Text>
           </Pressable>
         )}
 
@@ -465,7 +473,7 @@ export function ChatInput({
 
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {

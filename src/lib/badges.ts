@@ -44,6 +44,8 @@ const BADGE_BANANA_REWARDS: Record<string, number> = {
   streak_7: 20,
   streak_30: 75,
   top_monke: 100,
+  og_monke: 50,
+  top_trader: 40,
 };
 
 export const BADGE_DEFS: BadgeDef[] = [
@@ -56,6 +58,8 @@ export const BADGE_DEFS: BadgeDef[] = [
   { id: 'streak_7',        name: 'Legendary',        description: '7-day login streak',         emoji: '🌟', threshold: 7,    metric: 'best_streak' },
   { id: 'streak_30',       name: 'Diamond Hands',    description: '30-day login streak',        emoji: '💎', threshold: 30,   metric: 'best_streak' },
   { id: 'top_monke',       name: 'Top Monke',        description: '#1 on weekly leaderboard',   emoji: '🏆', threshold: 1,    metric: 'leaderboard_wins' },
+  { id: 'og_monke',        name: 'OG Monke',         description: 'One of the first 50 members', emoji: '🐒', threshold: 1,    metric: 'special' },
+  { id: 'top_trader',      name: 'Top Trader',       description: '20+ trades, 60% win rate',   emoji: '📈', threshold: 1,    metric: 'special' },
 ];
 
 /** Get banana reward amount for a badge. */

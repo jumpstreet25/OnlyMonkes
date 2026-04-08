@@ -470,8 +470,9 @@ export function applyReaction(
     if (msg.id !== targetId) return msg;
 
     const reactions = { ...msg.reactions };
-    const existing = reactions[emoji as ReactionEmoji];
-    if (!existing) return msg;
+    const existing = reactions[emoji as ReactionEmoji] ?? {
+      emoji: emoji as ReactionEmoji, count: 0, reactedByMe: false, reactors: [],
+    };
 
     const alreadyReacted = existing.reactors.includes(sender);
     const newReactors = alreadyReacted

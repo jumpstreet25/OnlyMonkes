@@ -10,6 +10,7 @@ import { getLeaderboard, getWeekLabel, type LeaderboardEntry } from "@/lib/activ
 import { getCachedProfile, getAllTimeUsers } from "@/lib/userProfile";
 import { useAppStore } from "@/store/appStore";
 import { useChatStore } from "@/store/chatStore";
+import { MiniChart } from "@/components/MiniChart";
 
 const MEDALS = ["🥇", "🥈", "🥉"];
 
@@ -66,6 +67,25 @@ export function LeaderboardView() {
           </View>
         );
       })}
+      {/* Score bar chart (top 5) */}
+      {entries.length >= 2 && (
+        <View style={styles.chartSection}>
+          <Text style={styles.chartLabel}>Score Distribution</Text>
+          <MiniChart
+            data={entries.slice(0, 5).map(e => e.score)}
+            type="bar"
+            color="#FFD54F"
+            height={70}
+          />
+          <View style={styles.chartNames}>
+            {entries.slice(0, 5).map((e, i) => (
+              <Text key={e.inboxId} style={styles.chartName} numberOfLines={1}>
+                {i < 3 ? MEDALS[i] : `${i + 1}`}
+              </Text>
+            ))}
+          </View>
+        </View>
+      )}
       <Text style={styles.formula}>Score = msgs×3 + received×2 + given×1</Text>
     </View>
   );
@@ -89,6 +109,35 @@ const styles = StyleSheet.create({
   stats: { fontFamily: FONTS.mono, fontSize: 10, color: THEME.textMuted, marginTop: 1 },
   score: { fontFamily: FONTS.display, fontSize: 16, color: "#FFD54F", minWidth: 36, textAlign: "right" },
   formula: { fontFamily: FONTS.mono, fontSize: 9, color: THEME.textFaint, textAlign: "center", marginTop: 6 },
+  chartSection: {
+    marginTop: 12,
+    backgroundColor: "rgba(18,18,30,0.8)",
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 0.75,
+    borderColor: "rgba(255,255,255,0.06)",
+  },
+  chartLabel: {
+    fontFamily: FONTS.mono,
+    fontSize: 10,
+    color: THEME.textFaint,
+    textAlign: "center",
+    marginBottom: 8,
+    letterSpacing: 1,
+    textTransform: "uppercase",
+  },
+  chartNames: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    marginTop: 4,
+  },
+  chartName: {
+    flex: 1,
+    fontFamily: FONTS.mono,
+    fontSize: 10,
+    color: THEME.textMuted,
+    textAlign: "center",
+  },
   empty: { padding: 20, alignItems: "center" },
   emptyText: { fontFamily: FONTS.body, fontSize: 13, color: THEME.textMuted },
 });
