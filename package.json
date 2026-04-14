@@ -12,12 +12,10 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "e2e:build": "detox build --configuration android.emu.debug",
-    "e2e:test": "detox test --configuration android.emu.debug",
-    "lightrag:start": "bash infra/start-lightrag.sh",
-    "lightrag:backfill": "cd ~/Monke_Eliza/agents/monke-trader && bun scripts/backfill-lightrag.ts",
-    "lightrag:logs": "docker compose -f infra/docker-compose.lightrag.yml logs -f"
+    "e2e:test": "detox test --configuration android.emu.debug"
   },
   "dependencies": {
+    "@gorhom/bottom-sheet": "^4.6.4",
     "@livekit/react-native": "^2.10.0",
     "@livekit/react-native-krisp-noise-filter": "^0.0.3",
     "@livekit/react-native-webrtc": "^144.0.0",
@@ -40,7 +38,7 @@
     "@solana/web3.js": "^1.92.3",
     "@tanstack/react-query": "^5.90.21",
     "@types/three": "^0.166.0",
-    "@xmtp/react-native-sdk": "^5.6.0",
+    "@xmtp/react-native-sdk": "^5.7.0",
     "bs58": "^5.0.0",
     "buffer": "^6.0.3",
     "date-fns": "^3.6.0",
@@ -75,7 +73,7 @@
     "react-native-gesture-handler": "~2.24.0",
     "react-native-get-random-values": "^1.11.0",
     "react-native-image-colors": "^2.5.1",
-    "react-native-mediapipe": "^0.6.0",
+    "react-native-marked": "^8.0.1",
     "react-native-reanimated": "~3.17.4",
     "react-native-safe-area-context": "5.4.0",
     "react-native-screens": "~4.11.1",
@@ -87,6 +85,7 @@
     "react-native-webview": "13.13.5",
     "react-native-worklets-core": "^1.6.3",
     "readable-stream": "^4.7.0",
+    "sonner-native": "^0.24.0",
     "three": "^0.166.0",
     "zustand": "^4.5.2"
   },

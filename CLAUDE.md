@@ -171,20 +171,6 @@ If ANY check fails, fix the issue before committing. No exceptions.
 - When trimming to N most recent: `slice(0, N)` FIRST, then `reverse()` for oldest-first processing. Never reverse then slice (that keeps the N oldest).
 - Main Chat loads 48 hours of messages, trims to 50 newest content messages (PRESENCE/TYPING/system filtered out).
 
-## LightRAG
-
-- Local Docker container, port 9621 (localhost only)
-- Start: `npm run lightrag:start` (from OnlyMonkes root or Monke_Eliza/agents/monke-trader)
-- Logs: `npm run lightrag:logs`
-- Pipeline module: `worker-actions/src/lightrag-pipeline.ts` (canonical) + `~/Monke_Eliza/agents/monke-trader/src/lib/lightrag.ts` (bot import)
-- Backfill: `npm run lightrag:backfill`
-- Data persisted in: `infra/data/lightrag/` (gitignored)
-- Config: `infra/.env.lightrag` (gitignored)
-- LLM backend: Groq llama-3.3-70b-versatile (OpenAI-compatible)
-- Embedding: Ollama nomic-embed-text (local, free) via `http://host.docker.internal:11434`
-- All ingest calls are fire-and-forget — never block the bot
-- queryLightRAG has a hard 3s timeout — returns "" on failure
-
 ## Code Style
 
 - Path alias: `@/` maps to `src/`
