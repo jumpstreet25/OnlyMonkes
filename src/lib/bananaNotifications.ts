@@ -9,7 +9,7 @@
  *  - Monke of the Week announcement
  */
 
-import { showLocalNotification, CH_ALL } from "@/lib/notifications";
+import { showLocalNotification, CH_SOCIAL } from "@/lib/notifications";
 import { loadBananaState } from "@/lib/bananaRewards";
 
 const TWENTY_HOURS = 20 * 60 * 60 * 1000;
@@ -35,7 +35,7 @@ export async function checkBananaNotifications(): Promise<void> {
       await showLocalNotification(
         "Loot Crate ready! 🎰",
         `You have ${state.balance} 🍌 — spin the Banana Loot Crate for a chance at rare items!`,
-        CH_ALL,
+        CH_SOCIAL,
       );
       await setLastNotifTime("loot_reminder", now);
     }
@@ -52,7 +52,7 @@ export async function notifyLeaderboardChange(
     await showLocalNotification(
       "You've been passed! 📉",
       `${passedByUsername} just took your #${oldRank} spot on the MonkeClout leaderboard. Fight back!`,
-      CH_ALL,
+      CH_SOCIAL,
     );
   }
 }
@@ -62,7 +62,7 @@ export async function notifyNewAuction(auctionName: string, endsIn: string): Pro
   await showLocalNotification(
     "Limited Drop! 🔥",
     `${auctionName} — bidding ends in ${endsIn}. Don't miss out!`,
-    CH_ALL,
+    CH_SOCIAL,
   );
 }
 
@@ -71,7 +71,7 @@ export async function notifyMonkeOfTheWeek(username: string): Promise<void> {
   await showLocalNotification(
     "🏆 Monke of the Week!",
     `${username} has been crowned this week's top Monke by AI Agent #9385!`,
-    CH_ALL,
+    CH_SOCIAL,
   );
 }
 

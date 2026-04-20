@@ -38,6 +38,7 @@ import * as Haptics from "expo-haptics";
 import * as Clipboard from "expo-clipboard";
 import { toast } from "sonner-native";
 import { THEME, FONTS, SKR_MINT, JUP_API_KEY } from "@/lib/constants";
+import { useThemeColor } from "@/lib/shopTheme";
 import { useChatStore } from "@/store/chatStore";
 import { useAppStore, type CalendarEvent } from "@/store/appStore";
 import { getCachedProfile, useProfileVersion } from "@/lib/userProfile";
@@ -147,6 +148,10 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
   const communityBadges = useAppStore(s => s.communityBadges);
   const clearCommunityBadge = useAppStore(s => s.clearCommunityBadge);
   const themeOverrides = useAppStore(s => s.themeOverrides);
+  const themeBg = useThemeColor('bg');
+  const themeSurface = useThemeColor('surface');
+  const themeBorder = useThemeColor('border');
+  const themeAccent = useThemeColor('accent');
   const [activeView, setActiveView] = useState<ActiveView>("list");
 
   useProfileVersion();
@@ -273,7 +278,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
 
   function renderUserRow(user: ActiveUser, showDot = true) {
     const cached = getCachedProfile(user.inboxId);
-    const name = cached?.username ?? user.username ?? shortenAddress(user.inboxId);
+    const name = cached?.username ?? user.username ?? 'Monke';
     const avatarUri = cached?.nftImage ?? user.nftImage ?? null;
     const isBot = name === 'AI Agent #9385';
     return (
@@ -389,7 +394,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
         <View style={styles.overlay} />
       </Pressable>
 
-      <View style={[styles.popup, themeOverrides ? { backgroundColor: themeOverrides.surface ?? themeOverrides.bg } : null]}>
+      <View style={[styles.popup, { backgroundColor: themeSurface, borderColor: themeBorder }]}>
         {/* Glass gradient overlay */}
         <LinearGradient
           colors={["rgba(248,248,255,0.06)", "rgba(0,0,0,0.12)"]}
@@ -562,7 +567,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                   .filter(u => u.inboxId !== myInboxId)
                   .map((u) => {
                     const cached = getCachedProfile(u.inboxId);
-                    const name = cached?.username ?? u.username ?? shortenAddress(u.inboxId);
+                    const name = cached?.username ?? u.username ?? 'Monke';
                     const avatarUri = cached?.nftImage ?? u.nftImage ?? null;
                     const isBot = name === 'AI Agent #9385';
                     return (
@@ -658,7 +663,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                         {evt.time ? <Text style={styles.eventMeta}>{evt.time}{evt.location ? ` · ${evt.location}` : ""}</Text> : null}
                         {evt.purpose ? <Text style={styles.eventPurpose} numberOfLines={2}>{evt.purpose}</Text> : null}
                         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                          <Text style={styles.eventCreator}>by {evt.creatorUsername ?? shortenAddress(evt.creatorInboxId)}</Text>
+                          <Text style={styles.eventCreator}>by {evt.creatorUsername ?? getCachedProfile(evt.creatorInboxId)?.username ?? 'Monke'}</Text>
                           {evt.creatorInboxId === myInboxId && (
                             <Pressable
                               hitSlop={8}
@@ -732,7 +737,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                       />
                       <View style={styles.mediaInfo}>
                         <Text style={styles.mediaSender}>
-                          {getCachedProfile(msg.senderAddress)?.username ?? msg.senderUsername ?? shortenAddress(msg.senderAddress)}
+                          {getCachedProfile(msg.senderAddress)?.username ?? msg.senderUsername ?? 'Monke'}
                         </Text>
                         <Text style={styles.mediaTime}>{formatRelative(msg.sentAt)}</Text>
                       </View>

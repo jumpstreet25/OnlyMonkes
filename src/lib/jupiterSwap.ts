@@ -1,13 +1,21 @@
 /**
  * jupiterSwap.ts
  *
- * Jupiter Swap v2 integration via Mobile Wallet Adapter.
+ * Jupiter Swap v2 + Ultra integration via Mobile Wallet Adapter.
  *
- * Flow:
+ * Flow (v2 — regular):
  *  1. Resolve token mint from symbol (via Jupiter strict token list)
  *  2. Fetch swap instructions (Jupiter v2 /build — fee-free)
  *  3. Assemble VersionedTransaction from raw instructions
  *  4. Sign via MWA → send to Solana
+ *
+ * Flow (Ultra — gasless):
+ *  1. GET /ultra/v1/order → unsigned tx + requestId
+ *  2. Sign via MWA
+ *  3. POST /ultra/v1/execute → Jupiter lands the tx
+ *
+ * getSmartQuote() auto-selects: Ultra for trades <= 1 SOL, v2 for larger.
+ * executeSwap() handles both paths transparently.
  *
  * Supports /buy, /sell, /swap slash commands.
  */
@@ -34,6 +42,8 @@ import {
 import { HELIUS_RPC_URL, DEV_WALLET, TOKEN_TRADE_FEE_PCT, JUP_API_KEY } from "./constants";
 import { useAppStore } from "@/store/appStore";
 import { loadCostBasis, recordBuy, getCostBasis, recordSell } from "./costBasis";
+import { getUltraQuote, deserializeUltraTransaction, executeUltraSwap } from "./jupiterUltra";
+import type { UltraQuote } from "./jupiterUltra";
 import bs58 from "bs58";
 
 const JUP_BUILD_URL = "https://api.jup.ag/swap/v2/build";
@@ -157,6 +167,14 @@ export interface SwapQuote {
   slippageBps: number;
   /** Jupiter v2 /build response — used by executeSwap to assemble transaction */
   raw: JupBuildResponse;
+  /** True when this quote came from Jupiter Ultra (gasless) */
+  isUltra?: boolean;
+  /** True when Ultra confirmed this swap is gasless */
+  gasless?: boolean;
+  /** Ultra requestId — needed for /execute submission */
+  ultraRequestId?: string;
+  /** Ultra base64 unsigned transaction — sign and submit to /execute */
+  ultraTransaction?: string;
 }
 
 /**
@@ -224,6 +242,74 @@ export async function getSwapQuote(
     slippageBps,
     raw: data,
   };
+}
+
+// ── Smart Quote (Ultra-first with v2 fallback) ────────────────────────────
+
+/** Max SOL input to attempt Ultra (gasless). Above this, use v2 directly. */
+const ULTRA_MAX_SOL = 1.0;
+
+/**
+ * Get a swap quote, trying Jupiter Ultra (gasless) first for small trades.
+ * Falls back to regular v2 /build if Ultra fails or trade is too large.
+ *
+ * Ultra threshold: trades <= 1 SOL input use Ultra; larger use v2.
+ * When selling tokens, Ultra is always attempted since the user may have no SOL for gas.
+ */
+export async function getSmartQuote(
+  inputMint: string,
+  outputMint: string,
+  amountRaw: string,
+  inputDecimals: number,
+  outputDecimals: number,
+  inputSymbol: string,
+  outputSymbol: string,
+  slippageBps = 50,
+): Promise<SwapQuote> {
+  const taker = useAppStore.getState().wallet?.address;
+  const isSolInput = inputMint === SOL_MINT;
+  const inputAmountUi = Number(amountRaw) / Math.pow(10, inputDecimals);
+
+  // Try Ultra for: sells (user might have no SOL), or small buys (<= 1 SOL)
+  const shouldTryUltra = taker && (!isSolInput || inputAmountUi <= ULTRA_MAX_SOL);
+
+  if (shouldTryUltra) {
+    try {
+      const ultraQuote = await getUltraQuote(
+        inputMint, outputMint, amountRaw, taker,
+        inputDecimals, outputDecimals, inputSymbol, outputSymbol,
+      );
+
+      // Convert UltraQuote to SwapQuote with Ultra metadata
+      return {
+        inputMint: ultraQuote.inputMint,
+        outputMint: ultraQuote.outputMint,
+        inputSymbol: ultraQuote.inputSymbol,
+        outputSymbol: ultraQuote.outputSymbol,
+        inAmount: ultraQuote.inAmount,
+        outAmount: ultraQuote.outAmount,
+        inAmountUi: ultraQuote.inAmountUi,
+        outAmountUi: ultraQuote.outAmountUi,
+        priceImpactPct: ultraQuote.priceImpactPct,
+        slippageBps: ultraQuote.slippageBps,
+        raw: null as any, // Not used for Ultra path
+        isUltra: true,
+        gasless: ultraQuote.gasless,
+        ultraRequestId: ultraQuote.requestId,
+        ultraTransaction: ultraQuote.transaction,
+      };
+    } catch (err) {
+      console.warn("[jupiterSwap] Ultra quote failed, falling back to v2:", (err as Error).message);
+      // Fall through to v2
+    }
+  }
+
+  // Fallback: regular v2 /build
+  return getSwapQuote(
+    inputMint, outputMint, amountRaw,
+    inputDecimals, outputDecimals, inputSymbol, outputSymbol,
+    slippageBps,
+  );
 }
 
 // ── Execute swap ────────────────────────────────────────────────────────────

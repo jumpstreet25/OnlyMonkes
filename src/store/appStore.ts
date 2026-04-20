@@ -1,3 +1,20 @@
+/**
+ * appStore.ts — Combined Zustand store (single source of truth)
+ *
+ * Organized into 4 logical slices:
+ *   1. User Auth     — wallet, verification, XMTP client, MWA token
+ *   2. User Profile  — display name, bio, theme, shop styles, streaks, bananas
+ *   3. App Settings  — loading, errors, notifications, group admin, calendar, badges
+ *   4. Live Features — live rooms, video calls, avatar rooms, NFT swaps
+ *
+ * For narrowly-scoped selectors in new code, import from the slice files:
+ *   import { useUserAuthStore } from '@/store/userAuthStore';
+ *   import { useUserProfileStore } from '@/store/userProfileStore';
+ *   import { useAppSettingsStore } from '@/store/appSettingsStore';
+ *   import { useLiveFeaturesStore } from '@/store/liveFeaturesStore';
+ *
+ * Existing code that imports `useAppStore` continues to work unchanged.
+ */
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
@@ -11,6 +28,8 @@ const AK_MUTED_SPORTS = 'om_muted_sports';
 const AK_MUTED_CHANNELS = 'om_muted_channels';
 const AK_NOTIF_PREFS = 'om_notif_prefs';
 const SK_MWA_TOKEN = 'om_mwa_auth_token';
+
+// ── Shared types (re-exported for slice files + consumers) ───────────────────
 
 export interface LiveRoomState extends LiveRoomData {
   participantCount: number;
@@ -34,92 +53,96 @@ export interface JoinRequest {
   requestedAt: Date;
 }
 
-interface AppState {
+// ══════════════════════════════════════════════════════════════════════════════
+// SLICE 1: User Auth
+// ══════════════════════════════════════════════════════════════════════════════
+
+interface UserAuthState {
   wallet: WalletAccount | null;
   verified: boolean;
   verifiedNft: OwnedNFT | null;
-  /** Guest mode: wallet connected but no Saga Monke — can only access MonkeMarkets */
   isGuest: boolean;
   allNfts: OwnedNFT[];
   xmtpClient: unknown;
   myInboxId: string | null;
-  username: string | null;
-  bio: string | null;
-  xAccount: string | null;
-  tipWallet: string | null;
-  location: string | null;
-  isLoading: boolean;
-  error: string | null;
-  // Notification preferences
-  notificationsEnabled: boolean;
-  mentionsOnly: boolean;
-  botNotificationsEnabled: boolean;
-  dmNotificationsEnabled: boolean;
-  liveRoomNotificationsEnabled: boolean;
-  // Per-bot-channel mute toggles
-  mutedBotChannels: { bets: boolean; trades: boolean; sales: boolean; predictions: boolean };
-  // MonkeBets sports filter — sports the user has opted OUT of
-  mutedSports: string[];
-  // Group membership
-  isGroupMember: boolean;
-  // Admin
-  isGroupAdmin: boolean;
-  joinRequests: JoinRequest[];
-  // Remote config — fetched on init so ChatScreen knows if a group exists
-  remoteGroupId: string;
-  botChannelIds: { bets: string; trades: string; sales: string; predictions: string };
-  botChannelCounts: { bets: number; trades: number; sales: number; predictions: number };
-  // Chat theme
-  themeId: string;
-  customBubbleColor: string | null;
-  // Calendar events
-  calendarEvents: CalendarEvent[];
-  // Login streaks
-  loginStreak: number;
-  bestStreak: number;
-  isLegendary: boolean;
-  // Banana rewards
-  bananaBalance: number;
-  shopStyles: Record<string, string | number | boolean>;
-  nftDominantColor: string | null;  // Extracted from user's NFT PFP for Tier 3/4 shop styles
-  themeOverrides: Partial<typeof import('@/lib/constants').THEME> | null;  // Tier 4 theme overrides
-  textScale: number;  // Font size multiplier: 0.85 (small) → 1.0 (default) → 1.3 (large)
-  // Push notifications
-  expoPushToken: string | null;
-  // Live audio room
-  activeLiveRoom: LiveRoomState | null;
-  isInLiveRoom: boolean;
-  liveRoomMuted: boolean;
-  liveRoomToken: string | null;
-  // MWA reauthorize token — allows silent biometric re-auth without opening wallet app
   mwaAuthToken: string | null;
-  // Video room
-  activeVideoRoom: VideoRoomData | null;
-  isInVideoCall: boolean;
-  // Avatar room (animated PFP live rooms)
-  activeAvatarRoom: AvatarRoomData | null;
-  isInAvatarRoom: boolean;
-  avatarRoomToken: string | null;
-  // Community tab badge counts (unseen DMs, new events, unseen links)
-  communityBadges: { dms: number; events: number; links: number };
-  // Per-DM conversation unread counts (keyed by peerInboxId)
-  dmUnreadCounts: Record<string, number>;
-  // P2P Marketplace — pending swap for buyer to complete
-  pendingNftSwap: NftSwapMessage | null;
 }
 
-interface AppActions {
+interface UserAuthActions {
   setWallet: (wallet: WalletAccount | null) => void;
   setVerified: (verified: boolean, nft?: OwnedNFT | null) => void;
   setIsGuest: (isGuest: boolean) => void;
   setAllNfts: (nfts: OwnedNFT[]) => void;
   setXmtpClient: (client: unknown) => void;
   setMyInboxId: (inboxId: string | null) => void;
+  setMwaAuthToken: (token: string | null) => void;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SLICE 2: User Profile
+// ══════════════════════════════════════════════════════════════════════════════
+
+interface UserProfileState {
+  username: string | null;
+  bio: string | null;
+  xAccount: string | null;
+  tipWallet: string | null;
+  location: string | null;
+  themeId: string;
+  customBubbleColor: string | null;
+  shopStyles: Record<string, string | number | boolean>;
+  nftDominantColor: string | null;
+  themeOverrides: Partial<typeof import('@/lib/constants').THEME> | null;
+  textScale: number;
+  loginStreak: number;
+  bestStreak: number;
+  isLegendary: boolean;
+  bananaBalance: number;
+}
+
+interface UserProfileActions {
   setUsername: (username: string) => void;
   setBio: (bio: string) => void;
   setXAccount: (xAccount: string) => void;
   setTipWallet: (tipWallet: string) => void;
   setLocation: (location: string) => void;
+  setThemeId: (id: string) => void;
+  setCustomBubbleColor: (color: string | null) => void;
+  setShopStyles: (styles: Record<string, string | number | boolean>) => void;
+  setNftDominantColor: (color: string | null) => void;
+  setThemeOverrides: (overrides: Partial<typeof import('@/lib/constants').THEME> | null) => void;
+  setTextScale: (scale: number) => void;
+  setLoginStreak: (streak: number, best: number, legendary: boolean) => void;
+  setBananaBalance: (balance: number) => void;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SLICE 3: App Settings
+// ══════════════════════════════════════════════════════════════════════════════
+
+interface AppSettingsState {
+  isLoading: boolean;
+  error: string | null;
+  notificationsEnabled: boolean;
+  mentionsOnly: boolean;
+  botNotificationsEnabled: boolean;
+  dmNotificationsEnabled: boolean;
+  liveRoomNotificationsEnabled: boolean;
+  mutedBotChannels: { bets: boolean; trades: boolean; sales: boolean; predictions: boolean };
+  mutedSports: string[];
+  isGroupMember: boolean;
+  isGroupAdmin: boolean;
+  joinRequests: JoinRequest[];
+  remoteGroupId: string;
+  botChannelIds: { bets: string; trades: string; sales: string; predictions: string };
+  botChannelCounts: { bets: number; trades: number; sales: number; predictions: number };
+  calendarEvents: CalendarEvent[];
+  expoPushToken: string | null;
+  communityBadges: { dms: number; events: number; links: number };
+  dmUnreadCounts: Record<string, number>;
+}
+
+interface AppSettingsActions {
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
   setNotificationsEnabled: (enabled: boolean) => void;
@@ -139,39 +162,61 @@ interface AppActions {
   setBotChannelCounts: (counts: { bets: number; trades: number; sales: number; predictions: number }) => void;
   clearBotChannelCount: (channel: 'bets' | 'trades' | 'sales' | 'predictions') => void;
   incrementBotChannelCount: (channel: 'bets' | 'trades' | 'sales' | 'predictions') => void;
-  setThemeId: (id: string) => void;
-  setCustomBubbleColor: (color: string | null) => void;
   setCalendarEvents: (events: CalendarEvent[]) => void;
   addCalendarEvent: (event: CalendarEvent) => void;
-  setLoginStreak: (streak: number, best: number, legendary: boolean) => void;
-  setBananaBalance: (balance: number) => void;
-  setShopStyles: (styles: Record<string, string | number | boolean>) => void;
-  setNftDominantColor: (color: string | null) => void;
-  setThemeOverrides: (overrides: Partial<typeof import('@/lib/constants').THEME> | null) => void;
-  setTextScale: (scale: number) => void;
   setExpoPushToken: (token: string | null) => void;
-  setActiveLiveRoom: (room: LiveRoomState | null) => void;
-  updateLiveRoomCount: (count: number) => void;
-  setIsInLiveRoom: (val: boolean) => void;
-  setLiveRoomMuted: (val: boolean) => void;
-  setLiveRoomToken: (token: string | null) => void;
-  setMwaAuthToken: (token: string | null) => void;
-  setActiveVideoRoom: (room: VideoRoomData | null) => void;
-  setIsInVideoCall: (val: boolean) => void;
-  setActiveAvatarRoom: (room: AvatarRoomData | null) => void;
-  setIsInAvatarRoom: (val: boolean) => void;
-  setAvatarRoomToken: (token: string | null) => void;
   setCommunityBadge: (key: 'dms' | 'events' | 'links', count: number) => void;
   incrementCommunityBadge: (key: 'dms' | 'events' | 'links') => void;
   clearCommunityBadge: (key: 'dms' | 'events' | 'links') => void;
   setDmUnreadCounts: (counts: Record<string, number>) => void;
   incrementDmUnread: (peerInboxId: string) => void;
   clearDmUnread: (peerInboxId: string) => void;
-  setPendingNftSwap: (swap: NftSwapMessage | null) => void;
-  reset: () => void;
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// SLICE 4: Live Features
+// ══════════════════════════════════════════════════════════════════════════════
+
+interface LiveFeaturesState {
+  activeLiveRoom: LiveRoomState | null;
+  isInLiveRoom: boolean;
+  liveRoomMuted: boolean;
+  liveRoomToken: string | null;
+  activeVideoRoom: VideoRoomData | null;
+  isInVideoCall: boolean;
+  activeAvatarRoom: AvatarRoomData | null;
+  isInAvatarRoom: boolean;
+  avatarRoomToken: string | null;
+  pendingNftSwap: NftSwapMessage | null;
+}
+
+interface LiveFeaturesActions {
+  setActiveLiveRoom: (room: LiveRoomState | null) => void;
+  updateLiveRoomCount: (count: number) => void;
+  setIsInLiveRoom: (val: boolean) => void;
+  setLiveRoomMuted: (val: boolean) => void;
+  setLiveRoomToken: (token: string | null) => void;
+  setActiveVideoRoom: (room: VideoRoomData | null) => void;
+  setIsInVideoCall: (val: boolean) => void;
+  setActiveAvatarRoom: (room: AvatarRoomData | null) => void;
+  setIsInAvatarRoom: (val: boolean) => void;
+  setAvatarRoomToken: (token: string | null) => void;
+  setPendingNftSwap: (swap: NftSwapMessage | null) => void;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Combined type + reset action
+// ══════════════════════════════════════════════════════════════════════════════
+
+type AppState = UserAuthState & UserProfileState & AppSettingsState & LiveFeaturesState;
+type AppActions = UserAuthActions & UserProfileActions & AppSettingsActions & LiveFeaturesActions & {
+  reset: () => void;
+};
+
+// ── Initial state ────────────────────────────────────────────────────────────
+
 const initialState: AppState = {
+  // Slice 1: User Auth
   wallet: null,
   verified: false,
   verifiedNft: null,
@@ -179,11 +224,26 @@ const initialState: AppState = {
   allNfts: [],
   xmtpClient: null,
   myInboxId: null,
+  mwaAuthToken: null,
+
+  // Slice 2: User Profile
   username: null,
   bio: null,
   xAccount: null,
   tipWallet: null,
   location: null,
+  themeId: 'default',
+  customBubbleColor: null,
+  shopStyles: {},
+  nftDominantColor: null,
+  themeOverrides: null,
+  textScale: 1.0,
+  loginStreak: 0,
+  bestStreak: 0,
+  isLegendary: false,
+  bananaBalance: 0,
+
+  // Slice 3: App Settings
   isLoading: false,
   error: null,
   notificationsEnabled: true,
@@ -199,35 +259,32 @@ const initialState: AppState = {
   remoteGroupId: '',
   botChannelIds: { bets: '', trades: '', sales: '', predictions: '' },
   botChannelCounts: { bets: 0, trades: 0, sales: 0, predictions: 0 },
-  themeId: 'default',
-  customBubbleColor: null,
   calendarEvents: [],
-  loginStreak: 0,
-  bestStreak: 0,
-  isLegendary: false,
-  bananaBalance: 0,
-  shopStyles: {},
-  nftDominantColor: null,
-  themeOverrides: null,
-  textScale: 1.0,
   expoPushToken: null,
+  communityBadges: { dms: 0, events: 0, links: 0 },
+  dmUnreadCounts: {},
+
+  // Slice 4: Live Features
   activeLiveRoom: null,
   isInLiveRoom: false,
   liveRoomMuted: false,
   liveRoomToken: null,
-  mwaAuthToken: null,
   activeVideoRoom: null,
   isInVideoCall: false,
   activeAvatarRoom: null,
   isInAvatarRoom: false,
   avatarRoomToken: null,
-  communityBadges: { dms: 0, events: 0, links: 0 },
-  dmUnreadCounts: {},
   pendingNftSwap: null,
 };
 
+// ══════════════════════════════════════════════════════════════════════════════
+// Store
+// ══════════════════════════════════════════════════════════════════════════════
+
 export const useAppStore = create<AppState & AppActions>((set, get) => ({
   ...initialState,
+
+  // ── Slice 1: User Auth actions ─────────────────────────────────────────────
 
   setWallet: (wallet) => set({ wallet }),
   setVerified: (verified, nft) => set({ verified, verifiedNft: nft ?? null }),
@@ -235,11 +292,36 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   setAllNfts: (allNfts) => set({ allNfts }),
   setXmtpClient: (client) => set({ xmtpClient: client }),
   setMyInboxId: (myInboxId) => set({ myInboxId }),
+  setMwaAuthToken: (mwaAuthToken) => {
+    set({ mwaAuthToken });
+    if (mwaAuthToken) {
+      void SecureStore.setItemAsync(SK_MWA_TOKEN, mwaAuthToken).catch(() => {});
+    } else {
+      void SecureStore.deleteItemAsync(SK_MWA_TOKEN).catch(() => {});
+    }
+  },
+
+  // ── Slice 2: User Profile actions ──────────────────────────────────────────
+
   setUsername: (username) => set({ username }),
   setBio: (bio) => set({ bio }),
   setXAccount: (xAccount) => set({ xAccount }),
   setTipWallet: (tipWallet) => set({ tipWallet }),
   setLocation: (location) => set({ location }),
+  setThemeId: (themeId) => set({ themeId }),
+  setCustomBubbleColor: (customBubbleColor) => set({ customBubbleColor }),
+  setShopStyles: (shopStyles) => set({ shopStyles }),
+  setNftDominantColor: (nftDominantColor) => set({ nftDominantColor }),
+  setThemeOverrides: (themeOverrides) => set({ themeOverrides }),
+  setTextScale: (textScale: number) => {
+    set({ textScale });
+    AsyncStorage.setItem("om_text_scale", String(textScale)).catch(() => {});
+  },
+  setLoginStreak: (loginStreak, bestStreak, isLegendary) => set({ loginStreak, bestStreak, isLegendary }),
+  setBananaBalance: (bananaBalance) => set({ bananaBalance }),
+
+  // ── Slice 3: App Settings actions ──────────────────────────────────────────
+
   setLoading: (isLoading) => set({ isLoading }),
   setError: (error) => set({ error }),
   setNotificationsEnabled: (notificationsEnabled) => {
@@ -297,39 +379,9 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   incrementBotChannelCount: (channel) => set((s) => ({
     botChannelCounts: { ...s.botChannelCounts, [channel]: s.botChannelCounts[channel] + 1 },
   })),
-  setThemeId: (themeId) => set({ themeId }),
-  setCustomBubbleColor: (customBubbleColor) => set({ customBubbleColor }),
   setCalendarEvents: (calendarEvents) => set({ calendarEvents }),
   addCalendarEvent: (event) => set((s) => ({ calendarEvents: [...s.calendarEvents, event] })),
-  setLoginStreak: (loginStreak, bestStreak, isLegendary) => set({ loginStreak, bestStreak, isLegendary }),
-  setBananaBalance: (bananaBalance) => set({ bananaBalance }),
-  setShopStyles: (shopStyles) => set({ shopStyles }),
-  setNftDominantColor: (nftDominantColor) => set({ nftDominantColor }),
-  setThemeOverrides: (themeOverrides) => set({ themeOverrides }),
-  setTextScale: (textScale: number) => {
-    set({ textScale });
-    AsyncStorage.setItem("om_text_scale", String(textScale)).catch(() => {});
-  },
   setExpoPushToken: (expoPushToken) => set({ expoPushToken }),
-  setActiveLiveRoom: (activeLiveRoom) => set({ activeLiveRoom }),
-  updateLiveRoomCount: (count) =>
-    set((s) => s.activeLiveRoom ? { activeLiveRoom: { ...s.activeLiveRoom, participantCount: count } } : {}),
-  setIsInLiveRoom: (isInLiveRoom) => set({ isInLiveRoom }),
-  setLiveRoomMuted: (liveRoomMuted) => set({ liveRoomMuted }),
-  setLiveRoomToken: (liveRoomToken) => set({ liveRoomToken }),
-  setMwaAuthToken: (mwaAuthToken) => {
-    set({ mwaAuthToken });
-    if (mwaAuthToken) {
-      void SecureStore.setItemAsync(SK_MWA_TOKEN, mwaAuthToken).catch(() => {});
-    } else {
-      void SecureStore.deleteItemAsync(SK_MWA_TOKEN).catch(() => {});
-    }
-  },
-  setActiveVideoRoom: (activeVideoRoom) => set({ activeVideoRoom }),
-  setIsInVideoCall: (isInVideoCall) => set({ isInVideoCall }),
-  setActiveAvatarRoom: (activeAvatarRoom) => set({ activeAvatarRoom }),
-  setIsInAvatarRoom: (isInAvatarRoom) => set({ isInAvatarRoom }),
-  setAvatarRoomToken: (avatarRoomToken) => set({ avatarRoomToken }),
   setCommunityBadge: (key, count) => set((s) => ({
     communityBadges: { ...s.communityBadges, [key]: count },
   })),
@@ -348,12 +400,33 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
     delete next[peerInboxId];
     return { dmUnreadCounts: next };
   }),
+
+  // ── Slice 4: Live Features actions ─────────────────────────────────────────
+
+  setActiveLiveRoom: (activeLiveRoom) => set({ activeLiveRoom }),
+  updateLiveRoomCount: (count) =>
+    set((s) => s.activeLiveRoom ? { activeLiveRoom: { ...s.activeLiveRoom, participantCount: count } } : {}),
+  setIsInLiveRoom: (isInLiveRoom) => set({ isInLiveRoom }),
+  setLiveRoomMuted: (liveRoomMuted) => set({ liveRoomMuted }),
+  setLiveRoomToken: (liveRoomToken) => set({ liveRoomToken }),
+  setActiveVideoRoom: (activeVideoRoom) => set({ activeVideoRoom }),
+  setIsInVideoCall: (isInVideoCall) => set({ isInVideoCall }),
+  setActiveAvatarRoom: (activeAvatarRoom) => set({ activeAvatarRoom }),
+  setIsInAvatarRoom: (isInAvatarRoom) => set({ isInAvatarRoom }),
+  setAvatarRoomToken: (avatarRoomToken) => set({ avatarRoomToken }),
   setPendingNftSwap: (pendingNftSwap) => set({ pendingNftSwap }),
+
+  // ── Reset (all slices) ─────────────────────────────────────────────────────
+
   reset: () => {
     set(initialState);
     void SecureStore.deleteItemAsync(SK_MWA_TOKEN).catch(() => {});
   },
 }));
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Startup helpers
+// ══════════════════════════════════════════════════════════════════════════════
 
 /** Load MWA auth token from SecureStore into Zustand (call on app startup). */
 export async function loadMwaAuthToken(): Promise<void> {

@@ -85,6 +85,30 @@ export const SHOP_ITEMS: ShopItem[] = [
     preview: "🔥",
     style: { glowColor: "#ff4500", glowOpacity: 0.6, bgColor: "rgba(40,10,10,0.7)" },
   },
+  {
+    id: "bubble_sunset",
+    name: "Sunset Glow",
+    description: "Warm orange-pink glow — golden hour vibes",
+    category: "bubble", tier: 1, bananaCost: 35, usdCost: 1,
+    preview: "🌅",
+    style: { glowColor: "#FF6B35", glowOpacity: 0.8, glowRadius: 20 },
+  },
+  {
+    id: "bubble_diamond",
+    name: "Diamond Ice",
+    description: "Crisp white-blue sparkle — clean and cold",
+    category: "bubble", tier: 1, bananaCost: 40, usdCost: 1,
+    preview: "💠",
+    style: { glowColor: "#E0F0FF", glowOpacity: 0.85, glowRadius: 18 },
+  },
+  {
+    id: "bubble_phantom",
+    name: "Phantom Purple",
+    description: "Deep purple aura with a ghostly edge",
+    category: "bubble", tier: 1, bananaCost: 30, usdCost: 1,
+    preview: "👻",
+    style: { glowColor: "#8B5CF6", glowOpacity: 0.75, glowRadius: 20 },
+  },
 
   // ── Tier 2: Text & Name Styles (50-100 🍌, $2) ─────────────────────────
   {
@@ -135,6 +159,30 @@ export const SHOP_ITEMS: ShopItem[] = [
     preview: "⌨️",
     style: { fontFamily: "mono" },
   },
+  {
+    id: "text_glow",
+    name: "Text Glow",
+    description: "Your message text has a soft luminous glow",
+    category: "text", tier: 2, bananaCost: 60, usdCost: 2,
+    preview: "💡",
+    style: { textGlow: true },
+  },
+  {
+    id: "text_fire_name",
+    name: "Fire Name",
+    description: "Blazing orange-red username — hot entrance",
+    category: "text", tier: 2, bananaCost: 50, usdCost: 2,
+    preview: "🔥",
+    style: { nameColor: "#FF4500" },
+  },
+  {
+    id: "text_emerald_name",
+    name: "Emerald Name",
+    description: "Rich emerald green username — money vibes",
+    category: "text", tier: 2, bananaCost: 50, usdCost: 2,
+    preview: "💚",
+    style: { nameColor: "#10B981" },
+  },
 
   // ── Tier 3: PFP Styles (100-200 🍌, $3) ────────────────────────────────
   {
@@ -160,6 +208,14 @@ export const SHOP_ITEMS: ShopItem[] = [
     category: "pfp", tier: 3, bananaCost: 100, usdCost: 3,
     preview: "💫",
     style: { pfpFrame: "pulse" },
+  },
+  {
+    id: "pfp_glow_ring",
+    name: "Glow Ring",
+    description: "Soft constant glow ring using your NFT's color",
+    category: "pfp", tier: 3, bananaCost: 80, usdCost: 3,
+    preview: "🔆",
+    style: { pfpFrame: "glow" },
   },
 
   // ── Tier 4: App Themes (200-500 🍌, $4) ────────────────────────────────
@@ -203,6 +259,22 @@ export const SHOP_ITEMS: ShopItem[] = [
     preview: "👑",
     style: { pfpFullTheme: true },
   },
+  {
+    id: "theme_ember",
+    name: "Ember Dark",
+    description: "Warm dark red — like embers in the dark",
+    category: "theme", tier: 4, bananaCost: 200, usdCost: 4,
+    preview: "🔥",
+    style: { themeBg: "#0f0505", themeSurface: "#1a0a0a", themeAccent: "#EF4444" },
+  },
+  {
+    id: "theme_ocean",
+    name: "Deep Ocean",
+    description: "Teal blue depths — calm and focused",
+    category: "theme", tier: 4, bananaCost: 200, usdCost: 4,
+    preview: "🌊",
+    style: { themeBg: "#020f0f", themeSurface: "#051a1a", themeAccent: "#14B8A6" },
+  },
 ];
 
 // ─── Seasonal / Limited Items ────────────────────────────────────────────────
@@ -236,7 +308,7 @@ export function getAvailableItems(): ShopItem[] {
 
 export interface ShopState {
   owned: string[];              // item IDs the user owns — permanent, never removed
-  equipped: Record<ShopCategory, string | null>; // one equipped per category
+  equipped: Record<ShopCategory, string | string[] | null>; // one or multiple equipped per category (stackable)
   customTextColor?: string;     // hex color if text_custom_color is equipped
   pfpBindings?: Record<string, string[]>; // nftMint → array of PFP-category item IDs bound to that NFT
 }
@@ -281,12 +353,26 @@ export async function addOwnedItem(itemId: string): Promise<ShopState> {
 }
 
 /** Equip an owned item (one per category). */
+// Categories where multiple items can be equipped at once (styles merge)
+const STACKABLE_CATEGORIES: ShopCategory[] = ["text"];
+
 export async function equipItem(itemId: string): Promise<ShopState> {
   const state = await loadShopState();
   if (!state.owned.includes(itemId)) return state; // must own it
   const item = [...SHOP_ITEMS, ...SEASONAL_ITEMS].find(i => i.id === itemId);
   if (!item) return state;
-  state.equipped[item.category] = itemId;
+
+  if (STACKABLE_CATEGORIES.includes(item.category)) {
+    // Stackable: add to array (or create one)
+    const current = state.equipped[item.category];
+    const arr = Array.isArray(current) ? [...current] : current ? [current] : [];
+    if (!arr.includes(itemId)) arr.push(itemId);
+    state.equipped[item.category] = arr;
+  } else {
+    // Single-select: replace
+    state.equipped[item.category] = itemId;
+  }
+
   await saveShopState(state);
   return state;
 }
@@ -295,6 +381,22 @@ export async function equipItem(itemId: string): Promise<ShopState> {
 export async function unequipCategory(category: ShopCategory): Promise<ShopState> {
   const state = await loadShopState();
   state.equipped[category] = null;
+  await saveShopState(state);
+  return state;
+}
+
+/** Unequip a single item from a stackable category (removes from array). */
+export async function unequipItem(itemId: string): Promise<ShopState> {
+  const state = await loadShopState();
+  const item = [...SHOP_ITEMS, ...SEASONAL_ITEMS].find(i => i.id === itemId);
+  if (!item) return state;
+  const current = state.equipped[item.category];
+  if (Array.isArray(current)) {
+    const filtered = current.filter(id => id !== itemId);
+    state.equipped[item.category] = filtered.length > 0 ? filtered : null;
+  } else if (current === itemId) {
+    state.equipped[item.category] = null;
+  }
   await saveShopState(state);
   return state;
 }
@@ -358,13 +460,16 @@ export async function getEquippedStyles(): Promise<Record<string, any>> {
   if (state.owned.length > 0) styles.isShopCustomer = true;
 
   for (const category of ["bubble", "text", "pfp", "theme"] as ShopCategory[]) {
-    const equippedId = state.equipped[category];
-    if (!equippedId) continue;
-    const item = allItems.find(i => i.id === equippedId);
-    if (!item) continue;
-    Object.assign(styles, item.style);
-    // Flag: user has a bubble cosmetic equipped → premium bubble shape
-    if (category === "bubble") styles.hasBubbleCosmetic = true;
+    const raw = state.equipped[category];
+    if (!raw) continue;
+    // Support both single string (legacy) and array (stackable)
+    const ids = Array.isArray(raw) ? raw : [raw];
+    for (const equippedId of ids) {
+      const item = allItems.find(i => i.id === equippedId);
+      if (!item) continue;
+      Object.assign(styles, item.style);
+      if (category === "bubble") styles.hasBubbleCosmetic = true;
+    }
   }
 
   if (state.customTextColor) {

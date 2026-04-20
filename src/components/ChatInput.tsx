@@ -25,8 +25,9 @@ import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
 import { THEME, FONTS, MAX_MESSAGE_LENGTH } from "@/lib/constants";
+import { useThemeColor } from "@/lib/shopTheme";
 import { shortenAddress } from "@/lib/nftVerification";
-import { getAllTimeUsers, getCachedProfile, searchUsersByPrefix } from "@/lib/userProfile";
+import { getCachedProfile, searchUsersByPrefix } from "@/lib/userProfile";
 import { useAppStore } from "@/store/appStore";
 import { markChannelRead } from "@/lib/messageCache";
 import type { ChatMessage } from "@/types";
@@ -175,6 +176,10 @@ export const ChatInput = memo(function ChatInput({
   const myInboxId = useAppStore(s => s.myInboxId);
   const [livePickerOpen, setLivePickerOpen] = useState(false);
 
+  // Theme overrides for Banana Shop Tier 4 themes
+  const themeSurface = useThemeColor('surface');
+  const themeBorder = useThemeColor('border');
+
   // PFP Full Theme: tint toolbar labels with NFT dominant color
   const shopStyles = useAppStore(s => s.shopStyles);
   const nftDominantColor = useAppStore(s => s.nftDominantColor);
@@ -252,7 +257,7 @@ export const ChatInput = memo(function ChatInput({
   const isNearLimit = charsLeft <= 50;
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: themeSurface, borderTopColor: themeBorder }]}>
       {/* Slash command suggestions */}
       {slashSuggestions.length > 0 && (
         <View style={styles.mentionList}>
@@ -311,7 +316,7 @@ export const ChatInput = memo(function ChatInput({
           <View style={styles.replyBannerBar} />
           <View style={styles.replyBannerContent}>
             <Text style={styles.replyBannerLabel}>
-              Replying to {shortenAddress(replyingTo.senderAddress)}
+              Replying to {replyingTo.senderUsername ?? getCachedProfile(replyingTo.senderAddress)?.username ?? "Monke"}
             </Text>
             <Text style={styles.replyBannerText} numberOfLines={1}>
               {replyingTo.content}

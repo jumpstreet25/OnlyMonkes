@@ -83,7 +83,7 @@ export function SearchModal({ visible, onClose }: SearchModalProps) {
       <View style={styles.resultRow}>
         <View style={styles.resultHeader}>
           <Text style={styles.resultSender}>
-            {item.senderUsername ?? shortenAddress(item.senderAddress)}
+            {item.senderUsername ?? 'Monke'}
           </Text>
           <Text style={styles.resultTime}>
             {format(item.sentAt, "MMM d, HH:mm")}

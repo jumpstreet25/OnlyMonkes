@@ -16,9 +16,10 @@
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useCallback } from "react";
-import { clearSession, clearMatricaSession, clearVerifiedNft } from "@/lib/session";
+import { clearSession, clearMatricaSession, clearVerifiedNft, saveWalletBinding } from "@/lib/session";
+import type { WalletBinding } from "@/lib/session";
 import {
-  initXmtpClient,
+  getOrInitXmtpClient,
   getOrCreateGlobalChat,
   addMemberToGroup,
   decodeMessage,
@@ -49,13 +50,14 @@ import { parseThreadMessage, trackThreadReply } from "@/lib/threads";
 import { parseMarketplaceMessage, addListing, addBid, markPendingSwap, markSold, delistNft, getListingById, getBidsForListing, type NftSwapMessage } from "@/lib/marketplace";
 import { parseVideoRoomMessage, type VideoRoomData } from "@/lib/liveVideo";
 import { parseAvatarRoomMessage, type AvatarRoomData } from "@/lib/avatarRoom";
-import { verifyNftMintInCollection } from "@/lib/nftVerification";
+import { verifyNFTOwnership, verifyNftMintInCollection } from "@/lib/nftVerification";
 import { cacheProfile, getCachedProfile, loadProfileCache, trackUser, loadAllTimeUsers } from "@/lib/userProfile";
 import { loadWeeklyActivity, trackActivity } from "@/lib/activityTracker";
 import { incrementProgress, updateStreak, getEarnedBadges, type BadgeDef } from "@/lib/badges";
 import { processBananaGrant } from "@/lib/bananaGrant";
 import { loadBananaState, mergeBananaBalance } from "@/lib/bananaRewards";
-import { loadShopState, mergeOwnedItems, getEquippedStyles } from "@/lib/bananaShop";
+import { loadShopState, mergeOwnedItems, getEquippedStyles, addOwnedItem, equipItem } from "@/lib/bananaShop";
+import { applyThemeFromShop } from "@/lib/shopTheme";
 import { processRsvpMessage } from "@/lib/eventRsvp";
 import { parseEventMessage, saveEvent } from "@/lib/calendar";
 import {
@@ -82,7 +84,7 @@ function setTypingTimeout(key: string, timer: ReturnType<typeof setTimeout>) {
 }
 // Throttle own typing broadcasts (one signal per 2.5 s max)
 let _lastTypingSent = 0;
-import { showLocalNotification, detectMention, getCachedPushToken, registerForExpoPushToken, CH_ALL, CH_MENTIONS, CH_BOT } from "@/lib/notifications";
+import { showLocalNotification, detectMention, getCachedPushToken, registerForExpoPushToken, CH_ALL, CH_MENTIONS, CH_BOT, CH_LIVE, CH_MARKET, CH_SOCIAL } from "@/lib/notifications";
 
 const BOT_USERNAME = "AI Agent #9385";
 import { loadCachedMessages, saveCachedMessages, appendCachedMessage, getLastReadTimestamp } from "@/lib/messageCache";
@@ -110,6 +112,14 @@ export function getXmtpClient(): XmtpClient | null { return _client; }
 export async function sendRawToGroup(raw: string): Promise<void> {
   if (!_group) throw new Error("Not connected to chat");
   await (_group as any).send(raw);
+}
+
+/** Admin: gift a shop item to a user. Sends GIFT_ITEM: message to group. */
+export async function sendGiftItem(recipientInboxId: string, itemId: string): Promise<void> {
+  if (!_group) throw new Error("Not connected to chat");
+  const from = useAppStore.getState().username ?? "Admin";
+  const payload = JSON.stringify({ recipientInboxId, itemId, from });
+  await (_group as any).send(`GIFT_ITEM:${payload}`);
 }
 let _unsubscribeStream: (() => void) | null = null;
 let _botChannelUnsubs: (() => void)[] = [];
@@ -155,7 +165,7 @@ async function _doProfileRebroadcast(pushToken: string): Promise<void> {
       _group as XmtpGroup, _myInboxId,
       username, bio, xAccount,
       wallet?.address ?? null, tipWallet ?? null,
-      verifiedNft?.image ?? null, isLegendary, pushToken,
+      verifiedNft?.image ?? null, verifiedNft?.mint ?? null, isLegendary, pushToken,
       {
         all: notificationsEnabled,
         mentions: mentionsOnly,
@@ -182,14 +192,79 @@ const AK_IS_ADMIN         = "xmtp_is_group_admin";
 const AK_APPROVED_IDS     = "xmtp_approved_inbox_ids";
 
 /**
+ * Validate that an nftImage URL is from a legitimate source (Saga Monkes).
+ * Accepts: data URIs (base64 from local verification), IPFS gateways, Arweave, Shyft CDN.
+ * Rejects: arbitrary URLs that could be non-collection images or malicious.
+ */
+function isValidNftImage(url: string | null | undefined): boolean {
+  if (!url) return false;
+  // Data URIs from local verification are always trusted
+  if (url.startsWith("data:image/")) return true;
+  // Known NFT image hosts
+  const trusted = [
+    "nftstorage.link", "ipfs.io", "cloudflare-ipfs.com", "gateway.pinata.cloud",
+    "arweave.net", "ar-io.net",
+    "shyft.to", "cdn.shyft.to",
+    "helius-rpc.com", "nft-cdn.helius.xyz",
+    "shdw-drive.genesysgo.net",
+  ];
+  try {
+    const host = new URL(url).hostname;
+    return trusted.some(t => host === t || host.endsWith("." + t));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Cache of wallet addresses verified to own a Saga Monke.
+ * Prevents redundant Helius/Shyft API calls on repeated PROFILE_UPDATE messages.
+ * true = wallet owns a Saga Monke, false = does not.
+ * Capped at 500 entries with LRU eviction to prevent unbounded growth.
+ */
+const _verifiedWallets = new Map<string, boolean>();
+const MAX_VERIFIED_WALLETS = 500;
+
+/**
+ * Background-verify that a wallet owns a Saga Monke NFT via Helius/Shyft.
+ * If it doesn't, null out the nftImage in the profile cache.
+ */
+function bgVerifyWallet(inboxId: string, walletAddress: string): void {
+  const cached = _verifiedWallets.get(walletAddress);
+  if (cached === true) return;
+  if (cached === false) {
+    cacheProfile(inboxId, { nftImage: null });
+    return;
+  }
+  verifyNFTOwnership(walletAddress)
+    .then((result) => {
+      // LRU: delete-then-set moves entry to end of insertion order
+      _verifiedWallets.delete(walletAddress);
+      _verifiedWallets.set(walletAddress, result.verified);
+      // Evict oldest when over cap
+      if (_verifiedWallets.size > MAX_VERIFIED_WALLETS) {
+        const oldest = _verifiedWallets.keys().next().value;
+        if (oldest) _verifiedWallets.delete(oldest);
+      }
+      if (!result.verified) {
+        console.warn(`[XMTP] Wallet ${walletAddress.slice(0, 8)}… for ${inboxId.slice(0, 8)}… has no Saga Monke — clearing PFP`);
+        cacheProfile(inboxId, { nftImage: null });
+      }
+    })
+    .catch(() => {
+      // Network error — leave image for now, re-check on next update
+    });
+}
+
+/**
  * Bidirectional sync between message senderNft and profile cache.
- * - If message has senderNft.image but cache doesn't, seed the cache.
+ * - If message has senderNft.image but cache doesn't, seed the cache (validated).
  * - If message has no senderNft but cache has nftImage, fill it in.
  */
 function enrichWithNft(msg: ChatMessage): ChatMessage {
   const cached = getCachedProfile(msg.senderAddress);
-  // Seed cache from message if we have an image not yet cached
-  if (msg.senderNft?.image && !cached?.nftImage) {
+  // Seed cache from message if we have a valid image not yet cached
+  if (msg.senderNft?.image && !cached?.nftImage && isValidNftImage(msg.senderNft.image)) {
     cacheProfile(msg.senderAddress, { nftImage: msg.senderNft.image });
   }
   if (msg.senderNft) return msg;
@@ -222,10 +297,11 @@ export function useXmtp() {
 
     try {
       // Load caches in background — don't block XMTP client boot
-      const cacheReady = Promise.all([loadProfileCache(), loadAllTimeUsers(), loadWeeklyActivity()]);
+      // loadAllTimeUsers seeds from profileCache, so it must run after loadProfileCache
+      const cacheReady = loadProfileCache().then(() => Promise.all([loadAllTimeUsers(), loadWeeklyActivity()]));
 
-      // ── 1. Boot XMTP client ────────────────────────────────────────────────
-      const client = await initXmtpClient();
+      // ── 1. Boot XMTP client (uses prefetched if available) ─────────────────
+      const client = await getOrInitXmtpClient();
 
       // Ensure caches are loaded before we start processing messages
       await cacheReady;
@@ -236,11 +312,24 @@ export function useXmtp() {
       _myInboxId = client.inboxId;
 
       // Seed own profile into the cache so PFP shows immediately for own messages
-      const { username: ownUsername, verifiedNft: ownNft } = useAppStore.getState();
+      const { wallet, username: ownUsername, verifiedNft: ownNft } = useAppStore.getState();
       cacheProfile(client.inboxId, {
         username: ownUsername ?? undefined,
         nftImage: ownNft?.image ?? null,
       });
+
+      // ── 1b. Save wallet ↔ chat ID ↔ NFT binding ────────────────────────────
+      if (wallet?.address && ownNft?.mint) {
+        const binding: WalletBinding = {
+          walletAddress: wallet.address,
+          inboxId: client.inboxId,
+          nftMint: ownNft.mint,
+          nftName: ownNft.name ?? '',
+          verifiedAt: Date.now(),
+        };
+        saveWalletBinding(binding).catch(() => {});
+        if (__DEV__) console.log("[XMTP] Wallet binding saved:", wallet.address.slice(0, 8), "→", client.inboxId.slice(0, 12));
+      }
 
       // ── 2. Fetch remote config (group ID + admin inboxId) ──────────────────
       const config = await fetchAppConfig();
@@ -577,14 +666,20 @@ export function useXmtp() {
         // Iterate oldest-first so later (newer) PROFILE_UPDATEs win.
         for (const raw of [...raws].reverse()) {
           try {
-            const content = raw.content();
+            let content = raw.content();
+            // Normalize: XMTP SDK may return { text: "..." } instead of raw string
+            if (content && typeof content === "object" && typeof (content as any).text === "string") {
+              content = (content as any).text;
+            }
             if (typeof content === "string" && content.startsWith("PROFILE_UPDATE:")) {
               const profile = parseProfileUpdate(content);
               if (profile) {
-                cacheProfile(profile.id, { username: profile.username, bio: profile.bio, xAccount: profile.xAccount, walletAddress: profile.walletAddress, tipWallet: profile.tipWallet, location: profile.location, nftImage: profile.nftImage, legendary: profile.legendary, pushToken: profile.pushToken, expoPushToken: profile.expoPushToken, badges: profile.badges, shopStyles: profile.shopStyles, statusMessage: profile.statusMessage });
+                const nftImage = isValidNftImage(profile.nftImage) ? profile.nftImage : null;
+                cacheProfile(profile.id, { username: profile.username, bio: profile.bio, xAccount: profile.xAccount, walletAddress: profile.walletAddress, tipWallet: profile.tipWallet, location: profile.location, nftImage, legendary: profile.legendary, pushToken: profile.pushToken, expoPushToken: profile.expoPushToken, badges: profile.badges, shopStyles: profile.shopStyles, statusMessage: profile.statusMessage });
                 trackUser(profile.id, profile.username);
                 // Cross-device sync: same wallet, different device → merge banana + shop
-                if (profile.walletAddress && profile.id !== _myInboxId) {
+                const isRemote = profile.id !== _myInboxId;
+                if (profile.walletAddress && isRemote) {
                   const myWallet = useAppStore.getState().wallet?.address;
                   if (myWallet && profile.walletAddress === myWallet) {
                     (async () => {
@@ -709,6 +804,29 @@ export function useXmtp() {
             const c = raw.content();
             if (typeof c === "string" && c.startsWith("BANANA_GRANT:")) {
               processBananaGrant(raw.id as string, c, raw.senderInboxId as string, _myInboxId, false).catch(() => {});
+            }
+          } catch { /* skip */ }
+        }
+
+        // Process gift items from history (recipient may have been offline when sent)
+        for (const raw of contentRaws) {
+          try {
+            const c = raw.content();
+            if (typeof c === "string" && c.startsWith("GIFT_ITEM:")) {
+              const payload = JSON.parse(c.slice("GIFT_ITEM:".length));
+              const { recipientInboxId, itemId } = payload as { recipientInboxId: string; itemId: string };
+              if (recipientInboxId === _myInboxId) {
+                // Fire-and-forget — async but non-blocking for history decode
+                (async () => {
+                  try {
+                    await addOwnedItem(itemId);
+                    await equipItem(itemId);
+                    const styles = await getEquippedStyles();
+                    useAppStore.getState().setShopStyles(styles);
+                    applyThemeFromShop(styles);
+                  } catch { /* skip */ }
+                })();
+              }
             }
           } catch { /* skip */ }
         }
@@ -851,6 +969,10 @@ export function useXmtp() {
         let content: unknown;
         try {
           content = raw.content();
+          // Normalize: XMTP SDK may return { text: "..." } object instead of raw string
+          if (content && typeof content === "object" && typeof (content as any).text === "string") {
+            content = (content as any).text;
+          }
         } catch {
           _streamAlive = false;
           return;
@@ -909,10 +1031,21 @@ export function useXmtp() {
         if (typeof content === "string" && content.startsWith("PROFILE_UPDATE:")) {
           const profile = parseProfileUpdate(content);
           if (profile) {
-            cacheProfile(profile.id, { username: profile.username, bio: profile.bio, xAccount: profile.xAccount, walletAddress: profile.walletAddress, tipWallet: profile.tipWallet, location: profile.location, nftImage: profile.nftImage, legendary: profile.legendary, pushToken: profile.pushToken, expoPushToken: profile.expoPushToken, badges: profile.badges, shopStyles: profile.shopStyles, statusMessage: profile.statusMessage });
+            // Remote users must provide nftMint for PFP verification
+            const isRemote = profile.id !== _myInboxId;
+            const nftImage = isValidNftImage(profile.nftImage)
+              ? (isRemote && !profile.nftMint ? null : profile.nftImage)
+              : null;
+            cacheProfile(profile.id, { username: profile.username, bio: profile.bio, xAccount: profile.xAccount, walletAddress: profile.walletAddress, tipWallet: profile.tipWallet, location: profile.location, nftImage, legendary: profile.legendary, pushToken: profile.pushToken, expoPushToken: profile.expoPushToken, badges: profile.badges, shopStyles: profile.shopStyles, statusMessage: profile.statusMessage });
+            // Background-verify NFT mint belongs to Saga Monkes collection
+            if (nftImage && profile.nftMint && isRemote) {
+              verifyNftMintInCollection(profile.nftMint).then((valid) => {
+                if (!valid) cacheProfile(profile.id, { nftImage: null });
+              }).catch(() => {});
+            }
             trackUser(profile.id, profile.username);
             // Cross-device sync: same wallet, different device → merge banana + shop
-            if (profile.walletAddress && profile.id !== _myInboxId) {
+            if (profile.walletAddress && isRemote) {
               const myWallet = useAppStore.getState().wallet?.address;
               if (myWallet && profile.walletAddress === myWallet) {
                 (async () => {
@@ -933,6 +1066,28 @@ export function useXmtp() {
               }
             }
           }
+          return;
+        }
+
+        // ── GIFT_ITEM — admin grants a shop item to a specific user ────────
+        if (typeof content === "string" && content.startsWith("GIFT_ITEM:")) {
+          try {
+            const payload = JSON.parse(content.slice("GIFT_ITEM:".length));
+            const { recipientInboxId, itemId, from } = payload as { recipientInboxId: string; itemId: string; from?: string };
+            if (recipientInboxId === _myInboxId) {
+              const { addOwnedItem, equipItem: equipShopItem, getEquippedStyles: getStyles } = await import("@/lib/bananaShop");
+              const { applyThemeFromShop } = await import("@/lib/shopTheme");
+              await addOwnedItem(itemId);
+              await equipShopItem(itemId);
+              const styles = await getStyles();
+              useAppStore.getState().setShopStyles(styles);
+              applyThemeFromShop(styles);
+              const itemName = itemId.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+              const { Alert } = require("react-native");
+              Alert.alert("Gift Received!", `${from ?? "Admin"} gifted you: ${itemName}`);
+              if (__DEV__) console.log(`[GIFT] Received ${itemId} from ${from ?? "unknown"}`);
+            }
+          } catch (e) { if (__DEV__) console.warn("[GIFT] Failed to process gift:", e); }
           return;
         }
 
@@ -1040,7 +1195,7 @@ export function useXmtp() {
                   showLocalNotification(
                     'New Bid',
                     `${market.data.bidderUsername ?? 'Someone'} bid ${market.data.bidPrice} SOL on ${bidListing.name}`,
-                    CH_ALL,
+                    CH_MARKET,
                   );
                 }
                 break;
@@ -1067,7 +1222,7 @@ export function useXmtp() {
                   showLocalNotification(
                     'NFT Swap Ready',
                     `${listing?.sellerUsername ?? 'Seller'} signed the swap for ${listing?.name ?? 'NFT'} (${swap.solPrice} SOL). Open MonkeMarkets to complete.`,
-                    CH_ALL,
+                    CH_MARKET,
                   );
                 }
                 break;
@@ -1277,6 +1432,7 @@ export function useXmtp() {
               wallet?.address ?? null,
               tipWallet ?? null,
               verifiedNft?.image ?? null,
+              verifiedNft?.mint ?? null,
               isLegendary,
               pushToken,
               {
@@ -1357,8 +1513,8 @@ export function useXmtp() {
                 // Skip native reactions
                 if (isReactionContent(content)) return;
                 if (typeof content !== 'string') return;
-                // Skip legacy reactions, typing, own messages
-                if (content.startsWith('REACT:') || content.startsWith('TYPING:')) return;
+                // Skip typing signals, own messages
+                if (content.startsWith('TYPING:')) return;
                 const senderInboxId = raw.senderInboxId ?? '';
                 if (senderInboxId === client.inboxId) return;
                 useAppStore.getState().incrementBotChannelCount(key);
@@ -1386,7 +1542,7 @@ export function useXmtp() {
               const senderInboxId: string = raw.senderInboxId ?? '';
               if (senderInboxId === client.inboxId) return;
               // Skip protocol messages
-              if (content.startsWith('TYPING:') || content.startsWith('PROFILE_UPDATE:')) return;
+              if (content.startsWith('TYPING:') || content.startsWith('PROFILE_UPDATE:') || content.startsWith('READ:') || content.startsWith('GIFT_ITEM:')) return;
               useAppStore.getState().incrementCommunityBadge('dms');
               // Per-DM unread — sender IS the peer in a 1:1 DM
               useAppStore.getState().incrementDmUnread(senderInboxId);
@@ -1535,6 +1691,15 @@ export function useXmtp() {
     [initialize],
   );
 
+  const deleteMessage = useCallback(
+    async (messageId: string) => {
+      if (!_group) await initialize();
+      if (!_group) throw new Error("Not connected to chat");
+      await (_group as any).deleteMessage(messageId);
+    },
+    [initialize],
+  );
+
   // Throttled typing signal — max one broadcast per 2.5 s
   const sendTyping = useCallback(async () => {
     if (!_group) return;
@@ -1597,6 +1762,7 @@ export function useXmtp() {
         wallet?.address ?? null,
         tipWallet ?? null,
         verifiedNft?.image ?? null,
+        verifiedNft?.mint ?? null,
         isLegendary,
         pushToken,
         {
@@ -1794,6 +1960,56 @@ export function useXmtp() {
     await sendRemoteAttachment(_group, url, filename, size);
   }, [initialize]);
 
+  // ── Load older messages (pagination on scroll-to-top) ─────────────────────
+  const loadOlderMessages = useCallback(async () => {
+    if (!_group) return;
+    const { messages: existing, isLoadingHistory } = useChatStore.getState();
+    if (isLoadingHistory || existing.length === 0) return;
+
+    useChatStore.getState().setLoadingHistory(true);
+    try {
+      // Oldest message timestamp → fetch before it
+      const oldest = existing[0]; // messagesAsc is oldest-first
+      const beforeNs = BigInt(oldest.sentAt.getTime()) * 1_000_000n;
+      // Fetch a 24-hour window before the oldest message
+      const ONE_DAY_NS = BigInt(24 * 60 * 60) * 1_000_000_000n;
+      const afterNs = beforeNs - ONE_DAY_NS;
+
+      await (_group as any).sync();
+      const rawHistory: any[] = await (_group as any).messages({
+        afterNs: Number(afterNs),
+        beforeNs: Number(beforeNs),
+      });
+
+      if (rawHistory.length === 0) {
+        useChatStore.getState().setLoadingHistory(false);
+        return;
+      }
+
+      const existingIds = new Set(existing.map(m => m.id));
+      const decoded = resolveReplyTargets(
+        rawHistory
+          .map(m => decodeMessage(m, _myInboxId))
+          .filter((m): m is ChatMessage => !!m && !existingIds.has(m.id))
+      );
+
+      if (decoded.length === 0) {
+        useChatStore.getState().setLoadingHistory(false);
+        return;
+      }
+
+      // Sort oldest-first, then prepend to existing messages
+      decoded.sort((a, b) => a.sentAt.getTime() - b.sentAt.getTime());
+      // Enrich with NFT data
+      const enriched = decoded.map(msg => enrichWithNft(msg));
+      useChatStore.getState().prependMessages(enriched);
+    } catch (err) {
+      if (__DEV__) console.warn("[XMTP] loadOlderMessages failed:", err);
+    } finally {
+      useChatStore.getState().setLoadingHistory(false);
+    }
+  }, []);
+
   return {
     initialize,
     disconnect,
@@ -1803,6 +2019,7 @@ export function useXmtp() {
     reply,
     react,
     edit,
+    deleteMessage,
     stickerReact,
     sendFile,
     sendTyping,
@@ -1817,5 +2034,6 @@ export function useXmtp() {
     broadcastVideoRoom,
     broadcastAvatarRoom,
     syncMessages,
+    loadOlderMessages,
   };
 }

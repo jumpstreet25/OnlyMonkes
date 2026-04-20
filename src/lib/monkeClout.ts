@@ -160,6 +160,11 @@ export async function updateCloutProfile(
 
   lb.updatedAt = Date.now();
   await saveLeaderboard(lb);
+  // Update in-memory flair cache
+  _flairCache = new Map();
+  for (const p of lb.profiles) {
+    if (p.flair) _flairCache.set(p.inboxId, p.flair);
+  }
   return lb;
 }
 
@@ -167,6 +172,24 @@ export async function updateCloutProfile(
 export async function getUserFlair(inboxId: string): Promise<string | null> {
   const lb = await loadLeaderboard();
   return lb.profiles.find(p => p.inboxId === inboxId)?.flair ?? null;
+}
+
+// ─── In-memory flair cache for synchronous access (MessageBubble) ────────────
+
+let _flairCache: Map<string, string> = new Map();
+
+/** Load flair cache from AsyncStorage. Call once at startup. */
+export async function loadFlairCache(): Promise<void> {
+  const lb = await loadLeaderboard();
+  _flairCache = new Map();
+  for (const p of lb.profiles) {
+    if (p.flair) _flairCache.set(p.inboxId, p.flair);
+  }
+}
+
+/** Synchronous flair lookup for use in render. */
+export function getFlairSync(inboxId: string): string | null {
+  return _flairCache.get(inboxId) ?? null;
 }
 
 /** Get top N profiles for the leaderboard display. */

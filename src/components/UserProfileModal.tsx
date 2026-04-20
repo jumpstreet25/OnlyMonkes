@@ -15,10 +15,11 @@ import {
   StyleSheet,
   Image,
   Linking,
+  Alert,
 } from "react-native";
 import { GlassBottomSheet } from "@/components/GlassBottomSheet";
 import { useAppStore } from "@/store/appStore";
-import { THEME, FONTS } from "@/lib/constants";
+import { THEME, FONTS, DEV_WALLET } from "@/lib/constants";
 import { shortenAddress } from "@/lib/nftVerification";
 import { getCachedProfile } from "@/lib/userProfile";
 import { getLastSeenText, isUserOnline } from "@/lib/presence";
@@ -55,15 +56,15 @@ export function UserProfileModal({ visible, target, onClose, onEditProfile, onCh
 
   const isOwnProfile = target.senderAddress === myInboxId;
 
+  // Bio + X + tipWallet: own from store, others from profile cache
+  const cached    = !isOwnProfile ? getCachedProfile(target.senderAddress) : null;
+
   const displayName = isOwnProfile
     ? (myUsername ?? target.senderUsername ?? "Unknown Monke")
-    : (target.senderUsername ?? shortenAddress(target.senderAddress));
+    : (target.senderUsername ?? cached?.username ?? 'Monke');
 
   const nftImage = isOwnProfile ? verifiedNft?.image : target.senderNft?.image;
   const nftName  = isOwnProfile ? verifiedNft?.name  : target.senderNft?.name;
-
-  // Bio + X + tipWallet: own from store, others from profile cache
-  const cached    = !isOwnProfile ? getCachedProfile(target.senderAddress) : null;
   const bio       = isOwnProfile ? myBio       : (cached?.bio       || null);
   const xAccount  = isOwnProfile ? myXAccount  : (cached?.xAccount  || null);
   const tipWallet = isOwnProfile ? myTipWallet : (cached?.tipWallet || null);
@@ -99,10 +100,10 @@ export function UserProfileModal({ visible, target, onClose, onEditProfile, onCh
             <Text style={styles.nftName}>{nftName}</Text>
           )}
 
-          {/* Address pill */}
+          {/* Member badge */}
           <View style={styles.addressPill}>
             <Text style={styles.addressText}>
-              {shortenAddress(target.senderAddress, 6)}
+              Monke Member
             </Text>
           </View>
 
@@ -216,6 +217,43 @@ export function UserProfileModal({ visible, target, onClose, onEditProfile, onCh
               style={styles.messageBtn}
             >
               <Text style={styles.messageBtnText}>Message</Text>
+            </Pressable>
+          )}
+
+          {/* Admin: Gift Shop Item (DEV_WALLET only, other profiles only) */}
+          {!isOwnProfile && useAppStore.getState().wallet?.address === DEV_WALLET && (
+            <Pressable
+              onPress={() => {
+                const { getAvailableItems } = require("@/lib/bananaShop");
+                const items = getAvailableItems() as { id: string; name: string; category: string; tier: number }[];
+                const buttons = items.map(item => ({
+                  text: `${item.name} (T${item.tier})`,
+                  onPress: () => {
+                    const { sendGiftItem } = require("@/hooks/useXmtp");
+                    sendGiftItem(target.senderAddress, item.id)
+                      .then(() => Alert.alert("Gift Sent", `${item.name} gifted to ${displayName}`))
+                      .catch((e: any) => Alert.alert("Gift Failed", e?.message ?? "Error"));
+                  },
+                }));
+                // Show category selection first, then items
+                Alert.alert("Gift Shop Item", `Choose an item to gift to ${displayName}`, [
+                  ...items
+                    .filter(i => ["pfp_theme", "pfp_aura", "pfp_frame_pulse", "pfp_glow_ring", "bubble_neon_blue", "bubble_gold_glow", "theme_pfp_full"].includes(i.id))
+                    .map(item => ({
+                      text: `${item.name} (T${item.tier})`,
+                      onPress: () => {
+                        const { sendGiftItem } = require("@/hooks/useXmtp");
+                        sendGiftItem(target.senderAddress, item.id)
+                          .then(() => Alert.alert("Gift Sent", `${item.name} gifted to ${displayName}`))
+                          .catch((e: any) => Alert.alert("Gift Failed", e?.message ?? "Error"));
+                      },
+                    })),
+                  { text: "Cancel", style: "cancel" },
+                ]);
+              }}
+              style={[styles.messageBtn, { backgroundColor: "rgba(255,213,79,0.1)", borderColor: "rgba(255,213,79,0.2)" }]}
+            >
+              <Text style={[styles.messageBtnText, { color: "#FFD54F" }]}>🎁 Gift Shop Item</Text>
             </Pressable>
           )}
 

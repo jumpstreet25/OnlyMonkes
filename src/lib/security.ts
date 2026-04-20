@@ -25,18 +25,39 @@ export function getActiveThreats(): string[] {
 
 // ── Config ───────────────────────────────────────────────────────────────────
 
+// To get the correct hash, run:
+//   keytool -list -v -keystore android/app/onlymonkes-release.keystore | grep SHA256
+// Then replace PLACEHOLDER_HASH with the hex string (no colons).
 export const RASP_CONFIG: TalsecConfig = {
   androidConfig: {
     packageName: 'com.onlymonkes.app',
-    certificateHashes: ['PLACEHOLDER_HASH'], // Replace with actual signing cert SHA-256
+    certificateHashes: ['69DD4EC7FE2A906808D61F2470BB02AC1C62F9D52DBB40548A5175CC15ABB693'],
   },
   iosConfig: {
     appBundleId: 'com.onlymonkes.app',
-    appTeamId: 'PLACEHOLDER', // Replace with Apple Team ID
+    appTeamId: 'PLACEHOLDER',
   },
   watcherMail: 'security@onlymonkes.com',
   isProd: !__DEV__,
 };
+
+// Production guard: RASP is non-functional with placeholder values.
+// Log a critical warning so it's visible in release builds.
+if (!__DEV__) {
+  const hasPlaceholder =
+    RASP_CONFIG.androidConfig?.certificateHashes?.[0] === 'PLACEHOLDER_HASH' ||
+    RASP_CONFIG.iosConfig?.appTeamId === 'PLACEHOLDER';
+  if (hasPlaceholder) {
+    console.error(
+      '[RASP] CRITICAL: Certificate hash / team ID not configured. ' +
+      'App tamper detection is DISABLED in this production build. ' +
+      'Run: keytool -list -v -keystore android/app/onlymonkes-release.keystore | grep SHA256'
+    );
+    // Mark device as "compromised" so isDeviceCompromised() returns true,
+    // blocking sensitive operations until RASP is properly configured.
+    _threats.add('raspNotConfigured');
+  }
+}
 
 // ── Threat callbacks ─────────────────────────────────────────────────────────
 

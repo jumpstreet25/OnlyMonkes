@@ -28,6 +28,9 @@ android/.gradle/
 
 # Signing keystores
 *.keystore
+
+# Firebase config (contains API keys)
+google-services.json
 *.jks
 
 # APK binaries
@@ -49,3 +52,4 @@ worker-actions/node_modules/
 # LightRAG
 infra/.env.lightrag
 infra/data/lightrag/
+google-services.json# Firebase config

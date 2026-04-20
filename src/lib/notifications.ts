@@ -31,6 +31,9 @@ const SK_PUSH_TOKEN = "push_token";
 export const CH_ALL      = "om_all_v8";      // regular chat messages
 export const CH_MENTIONS = "om_mentions_v8"; // @mention messages
 export const CH_BOT      = "om_bot_v8";      // bot alerts (AI Agent #9385)
+export const CH_LIVE     = "om_live_v1";     // live room / avatar room started
+export const CH_MARKET   = "om_market_v1";   // marketplace bids & sales
+export const CH_SOCIAL   = "om_social_v1";   // thread replies, badges, calendar reminders
 
 const CHANNEL_GROUP_ID = "onlymonkes";
 
@@ -120,6 +123,22 @@ try {
       importance: 7,      // AndroidImportance.MAX — heads-up for bot alerts
       name: "Bot Notifications",
     }).catch((e: unknown) => console.warn('[Notifications] CH_BOT error:', e));
+
+    Notifications.setNotificationChannelAsync(CH_LIVE, {
+      ...BASE,
+      name: "Live Rooms",
+    }).catch(() => {});
+
+    Notifications.setNotificationChannelAsync(CH_MARKET, {
+      ...BASE,
+      name: "Marketplace",
+    }).catch(() => {});
+
+    Notifications.setNotificationChannelAsync(CH_SOCIAL, {
+      ...BASE,
+      importance: 6,      // HIGH — not MAX, less urgent than chat
+      name: "Social (Threads, Badges)",
+    }).catch(() => {});
 
     // ── Reply action (attached to chat channels only) ─────────────────────────
     Notifications.setNotificationCategoryAsync("chat_message", [

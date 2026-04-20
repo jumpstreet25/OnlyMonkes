@@ -1,13 +1,11 @@
 /**
  * NFT Verification Service
  *
- * Provider chain: Shyft (primary) → Helius DAS (fallback)
+ * Provider chain: Helius DAS (primary) → Shyft (fallback)
  * Each provider gets 2 attempts with exponential backoff before falling through.
  *
- * Shyft is primary because its REST endpoint filters by collection server-side,
- * returning only matching NFTs — no pagination needed for a gate check.
- * Helius DAS returns ALL assets then filters client-side, which is slower on
- * large wallets and more prone to timeouts on mobile networks.
+ * Helius DAS is primary — authoritative on-chain source via getAssetsByOwner.
+ * Shyft is fallback in case Helius is down or rate-limited.
  */
 
 import {
@@ -223,26 +221,7 @@ export async function verifyNFTOwnership(
 
   const errors: string[] = [];
 
-  // ── 1. Shyft (primary) ──────────────────────────────────────────────────
-  if (SHYFT_API_KEY) {
-    try {
-      const nfts = await withRetry("Shyft", () =>
-        fetchViaSHyft(walletAddress),
-      );
-      if (nfts.length > 0) {
-        console.log(`[NFTVerify] Shyft: found ${nfts.length} collection NFT(s)`);
-        return { verified: true, nft: nfts[0], allNfts: nfts };
-      }
-      // Shyft succeeded but found 0 NFTs — still try Helius in case of index lag
-      errors.push("Shyft: 0 collection NFTs found");
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      errors.push(`Shyft: ${msg}`);
-      console.warn("[NFTVerify] Shyft exhausted, falling back to Helius");
-    }
-  }
-
-  // ── 2. Helius DAS (fallback) ────────────────────────────────────────────
+  // ── 1. Helius DAS (primary) ─────────────────────────────────────────────
   if (HELIUS_API_KEY) {
     try {
       const nfts = await withRetry("Helius", () =>
@@ -252,20 +231,39 @@ export async function verifyNFTOwnership(
         console.log(`[NFTVerify] Helius: found ${nfts.length} collection NFT(s)`);
         return { verified: true, nft: nfts[0], allNfts: nfts };
       }
+      // Helius succeeded but found 0 NFTs — still try Shyft in case of index lag
       errors.push("Helius: 0 collection NFTs found");
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       errors.push(`Helius: ${msg}`);
-      console.warn("[NFTVerify] Helius exhausted");
+      console.warn("[NFTVerify] Helius exhausted, falling back to Shyft");
+    }
+  }
+
+  // ── 2. Shyft (fallback) ────────────────────────────────────────────────
+  if (SHYFT_API_KEY) {
+    try {
+      const nfts = await withRetry("Shyft", () =>
+        fetchViaSHyft(walletAddress),
+      );
+      if (nfts.length > 0) {
+        console.log(`[NFTVerify] Shyft: found ${nfts.length} collection NFT(s)`);
+        return { verified: true, nft: nfts[0], allNfts: nfts };
+      }
+      errors.push("Shyft: 0 collection NFTs found");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      errors.push(`Shyft: ${msg}`);
+      console.warn("[NFTVerify] Shyft exhausted");
     }
   }
 
   // ── 3. Both failed or returned 0 ───────────────────────────────────────
-  if (!SHYFT_API_KEY && !HELIUS_API_KEY) {
+  if (!HELIUS_API_KEY && !SHYFT_API_KEY) {
     return {
       verified: false,
       nft: null,
-      error: "No NFT verification API key configured (SHYFT_API_KEY or HELIUS_API_KEY).",
+      error: "No NFT verification API key configured (HELIUS_API_KEY or SHYFT_API_KEY).",
     };
   }
 
@@ -289,34 +287,12 @@ export async function verifyNFTOwnership(
 /**
  * Verify a single NFT mint belongs to the configured collection.
  *
- * Chain: Shyft getAsset → Helius getAsset → false
+ * Chain: Helius getAsset → Shyft getAsset → false
  */
 export async function verifyNftMintInCollection(nftMint: string): Promise<boolean> {
   if (!NFT_COLLECTION_ADDRESS || !nftMint) return false;
 
-  // ── Shyft (primary) ────────────────────────────────────────────────────
-  if (SHYFT_API_KEY) {
-    try {
-      const url =
-        `https://api.shyft.to/sol/v1/nft/read` +
-        `?network=mainnet-beta` +
-        `&token_address=${nftMint}`;
-
-      const res = await fetchWithAbort(url, {
-        method: "GET",
-        headers: { "x-api-key": SHYFT_API_KEY },
-      });
-      if (res.ok) {
-        const json = await res.json();
-        const collection = json?.result?.collection?.address;
-        if (collection === NFT_COLLECTION_ADDRESS) return true;
-      }
-    } catch {
-      // fall through to Helius
-    }
-  }
-
-  // ── Helius (fallback) ──────────────────────────────────────────────────
+  // ── Helius (primary) ──────────────────────────────────────────────────
   if (HELIUS_API_KEY) {
     try {
       const res = await fetchWithAbort(
@@ -341,6 +317,28 @@ export async function verifyNftMintInCollection(nftMint: string): Promise<boolea
             g.group_key === "collection" &&
             g.group_value === NFT_COLLECTION_ADDRESS,
         );
+      }
+    } catch {
+      // fall through to Shyft
+    }
+  }
+
+  // ── Shyft (fallback) ────────────────────────────────────────────────────
+  if (SHYFT_API_KEY) {
+    try {
+      const url =
+        `https://api.shyft.to/sol/v1/nft/read` +
+        `?network=mainnet-beta` +
+        `&token_address=${nftMint}`;
+
+      const res = await fetchWithAbort(url, {
+        method: "GET",
+        headers: { "x-api-key": SHYFT_API_KEY },
+      });
+      if (res.ok) {
+        const json = await res.json();
+        const collection = json?.result?.collection?.address;
+        if (collection === NFT_COLLECTION_ADDRESS) return true;
       }
     } catch {
       // both failed

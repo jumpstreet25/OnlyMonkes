@@ -25,6 +25,7 @@ import {
   ActivityIndicator,
   Image,
   Modal,
+  Linking,
   useWindowDimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -37,6 +38,7 @@ import {
   saveSession,
   loadVerifiedNft,
 } from "@/lib/session";
+import { prefetchXmtpClient } from "@/lib/xmtp";
 import { THEME, FONTS } from "@/lib/constants";
 import { OnboardingCarousel, ONBOARDING_KEY } from "@/components/OnboardingCarousel";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -62,6 +64,7 @@ export default function ConnectScreen() {
         if (nft) {
           setVerified(true, nft);
           setAllNfts([nft]); // seed with verified NFT; Marketplace re-fetches full list
+          prefetchXmtpClient(); // start XMTP boot while navigating — saves 2-5s
           router.replace("/chat");
         } else {
           router.replace("/verify");
@@ -118,6 +121,9 @@ export default function ConnectScreen() {
           <Text style={styles.subtitle}>
             Holder-only global chat for Saga Monkes.
           </Text>
+          <Pressable onPress={() => Linking.openURL("https://magiceden.us/marketplace/sagamonkes")}>
+            <Text style={styles.sagaLink}>What are Saga Monkes?</Text>
+          </Pressable>
         </View>
 
         {/* Buttons */}
@@ -235,6 +241,13 @@ const styles = StyleSheet.create({
     color: THEME.textMuted,
     textAlign: "center",
     lineHeight: 22,
+  },
+  sagaLink: {
+    fontFamily: FONTS.bodyMed,
+    fontSize: 13,
+    color: "#6CB4EE",
+    textDecorationLine: "underline",
+    marginTop: 4,
   },
 
   // ── Buttons ───────────────────────────────────────────────────────────────

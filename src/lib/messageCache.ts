@@ -8,6 +8,7 @@
  */
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { debouncedSetItem } from "@/lib/debouncedStorage";
 import type { ChatMessage } from "@/types";
 
 const AK_PREFIX = "msg_cache_v1_";
@@ -72,9 +73,9 @@ export async function loadCachedMessages(channelKey: string): Promise<ChatMessag
       // Keep if within TTL OR if it's a preservable message (media/link)
       return age < ttl || isPreservable(s.content);
     });
-    // Save back the pruned list
+    // Save back the pruned list (debounced — not critical path)
     if (kept.length !== items.length) {
-      await AsyncStorage.setItem(AK_PREFIX + channelKey, JSON.stringify(kept));
+      debouncedSetItem(AK_PREFIX + channelKey, JSON.stringify(kept), 1000);
     }
     return kept.map(deserialize);
   } catch {
@@ -111,9 +112,10 @@ export async function saveCachedMessages(
         (a, b) => a.sentAt.getTime() - b.sentAt.getTime(),
       );
     }
-    await AsyncStorage.setItem(
+    debouncedSetItem(
       AK_PREFIX + channelKey,
       JSON.stringify(trimmed.map(serialize)),
+      800,
     );
   } catch {
     // non-critical
@@ -148,7 +150,7 @@ export async function getLastReadTimestamp(channelKey: string): Promise<number> 
  * Mark a channel as read (current time).
  */
 export async function markChannelRead(channelKey: string): Promise<void> {
-  await AsyncStorage.setItem(AK_LAST_READ + channelKey, String(Date.now()));
+  debouncedSetItem(AK_LAST_READ + channelKey, String(Date.now()), 1000);
 }
 
 /**

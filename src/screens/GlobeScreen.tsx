@@ -28,7 +28,8 @@ import { router } from "expo-router";
 // date-fns format removed — event formatting moved to EventRsvpModal
 import { THEME, FONTS } from "@/lib/constants";
 import { useAppStore } from "@/store/appStore";
-import { getAllTimeUsers, getCachedProfile, useProfileVersion } from "@/lib/userProfile";
+import { getCachedProfile, getPersistedLocation, useProfileVersion } from "@/lib/userProfile";
+import { isUserOnline, getLastSeenTimestamp } from "@/lib/presence";
 import { geocodeLocation, getCachedGeodata } from "@/lib/geocode";
 import { fetchSolanaEvents, type LumaEvent } from "@/lib/lumaEvents";
 import type { CalendarEvent } from "@/store/appStore";
@@ -81,6 +82,20 @@ function buildGlobeHtml(): string {
 // Old template literal removed — see assets/globe.html
 const _DEAD = "";
 // Dead template removed
+
+// ─── Activity dot color ─────────────────────────────────────────────────────
+const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+
+/** Green = online now, Yellow = active within 24h, Red = inactive >24h */
+function getActivityColor(inboxId: string): string {
+  if (isUserOnline(inboxId)) return "#10B981"; // green
+  const lastSeen = getLastSeenTimestamp(inboxId);
+  // Fall back to profile cachedAt (last PROFILE_UPDATE received)
+  const profile = getCachedProfile(inboxId);
+  const lastActive = Math.max(lastSeen, profile?.cachedAt ?? 0);
+  if (lastActive > 0 && Date.now() - lastActive < TWENTY_FOUR_HOURS) return "#FBBF24"; // yellow
+  return "#EF4444"; // red
+}
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
@@ -140,17 +155,19 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
         if (seenInboxIds.has(inboxId)) continue; // skip self (already added)
         seenInboxIds.add(inboxId);
         const profile = getCachedProfile(inboxId);
-        if (!profile?.location) continue;
-        const key = profile.location.trim().toLowerCase();
+        // Check profile cache first, then persistent location map (survives eviction + restart)
+        const location = profile?.location || getPersistedLocation(inboxId);
+        if (!location) continue;
+        const key = location.trim().toLowerCase();
         const cached = cachedGeo[key];
 
         if (cached) {
           allMarkers.push({
             id: `user-${inboxId}`, lat: cached.lat, lng: cached.lng,
-            type: "user", label: username, inboxId, username, nftImage: profile.nftImage,
+            type: "user", label: username, inboxId, username, nftImage: profile?.nftImage ?? null,
           });
         } else {
-          uncachedUserLocs.push({ inboxId, username, profile, location: profile.location });
+          uncachedUserLocs.push({ inboxId, username, profile: profile ?? {}, location });
         }
       }
 
@@ -401,6 +418,9 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
               <View style={[styles.markerPfp, styles.markerPfpFallback]} />
             )}
             <Text style={styles.markerLabel} numberOfLines={1}>{m.label}</Text>
+            {m.inboxId && (
+              <View style={[styles.activityDot, { backgroundColor: getActivityColor(m.inboxId) }]} />
+            )}
           </Pressable>
         ))}
         {/* Event pins removed — events are tappable on the globe + online events list below */}
@@ -470,11 +490,16 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
                     }
                   }}
                 >
-                  {m.nftImage ? (
-                    <Image source={{ uri: m.nftImage }} style={styles.clusterPfp} />
-                  ) : (
-                    <View style={[styles.clusterPfp, styles.clusterPfpFallback]} />
-                  )}
+                  <View>
+                    {m.nftImage ? (
+                      <Image source={{ uri: m.nftImage }} style={styles.clusterPfp} />
+                    ) : (
+                      <View style={[styles.clusterPfp, styles.clusterPfpFallback]} />
+                    )}
+                    {m.inboxId && (
+                      <View style={[styles.clusterActivityDot, { backgroundColor: getActivityColor(m.inboxId) }]} />
+                    )}
+                  </View>
                   <Text style={styles.clusterName} numberOfLines={1}>{m.label}</Text>
                 </Pressable>
               ))}
@@ -543,7 +568,8 @@ const styles = StyleSheet.create({
   markerPfpFallback: {
     backgroundColor: "rgba(153,69,255,0.2)",
   },
-  markerLabel: { fontFamily: FONTS.bodyMed, fontSize: 11, color: THEME.text, flex: 1 },
+  markerLabel: { fontFamily: FONTS.bodyMed, fontSize: 11, color: THEME.text, flex: 1, marginRight: 2 },
+  activityDot: { width: 7, height: 7, borderRadius: 4, borderWidth: 1, borderColor: "rgba(0,0,0,0.3)" },
   attendeeBadge: { fontFamily: FONTS.mono, fontSize: 10, color: "#FFD54F" },
 
   modalOverlay: {
@@ -641,6 +667,11 @@ const styles = StyleSheet.create({
   },
   clusterPfpFallback: {
     backgroundColor: "rgba(153, 69, 255, 0.15)",
+  },
+  clusterActivityDot: {
+    position: "absolute", bottom: 0, right: 0,
+    width: 10, height: 10, borderRadius: 5,
+    borderWidth: 1.5, borderColor: "rgba(18,18,26,0.97)",
   },
   clusterName: {
     fontFamily: FONTS.bodyMed,

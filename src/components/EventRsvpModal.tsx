@@ -16,7 +16,7 @@ import {
   isGoing, rsvpGoing, rsvpNotGoing, getAttendeeCount, getAttendees,
   buildRsvpMessage, loadRsvps,
 } from "@/lib/eventRsvp";
-import { getCachedProfile, getAllTimeUsers } from "@/lib/userProfile";
+import { getCachedProfile, getDeduplicatedUsers } from "@/lib/userProfile";
 import type { CalendarEvent } from "@/store/appStore";
 import type { LumaEvent } from "@/lib/lumaEvents";
 
@@ -66,9 +66,9 @@ export function EventRsvpModal({ visible, event, onClose, onSendRsvp }: EventRsv
       setGoing(isGoing(eid, myInboxId));
       setCount(getAttendeeCount(eid));
       // Get attendee names
-      const allUsers = getAllTimeUsers();
+      const allUsers = getDeduplicatedUsers();
       const names = getAttendees(eid)
-        .map(id => allUsers.get(id) ?? id.slice(0, 6))
+        .map(id => allUsers.get(id) ?? 'Monke')
         .slice(0, 8);
       setAttendeeNames(names);
     });
