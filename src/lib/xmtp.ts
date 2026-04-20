@@ -24,30 +24,63 @@ export type XmtpClient = Client;
 export type XmtpGroup = Group;
 
 // ─── SecureStore keys ────────────────────────────────────────────────────────
+// Keys are wallet-scoped: same wallet = same XMTP identity across installs.
 
-const SK_ENC_KEY = "xmtp_v5_enc_key";
-const SK_INBOX_ID = "xmtp_v5_inbox_id";
-const SK_IDENTITY_ID = "xmtp_v5_identity_id";
-const SK_IDENTITY_KIND = "xmtp_v5_identity_kind";
+const SK_ENC_KEY_PREFIX = "xmtp_v5_enc_key_";
+const SK_INBOX_ID_PREFIX = "xmtp_v5_inbox_id_";
+const SK_IDENTITY_ID_PREFIX = "xmtp_v5_identity_id_";
+const SK_IDENTITY_KIND_PREFIX = "xmtp_v5_identity_kind_";
+// Legacy keys (pre-wallet-binding) — checked as fallback
+const SK_ENC_KEY_LEGACY = "xmtp_v5_enc_key";
+const SK_INBOX_ID_LEGACY = "xmtp_v5_inbox_id";
+const SK_IDENTITY_ID_LEGACY = "xmtp_v5_identity_id";
+const SK_IDENTITY_KIND_LEGACY = "xmtp_v5_identity_kind";
 
-async function getOrCreateEncryptionKey(): Promise<Uint8Array> {
-  const stored = await SecureStore.getItemAsync(SK_ENC_KEY);
-  if (stored) return Buffer.from(stored, "base64");
+let _boundWalletAddress: string | null = null;
 
-  const key = crypto.getRandomValues(new Uint8Array(32));
-  await SecureStore.setItemAsync(SK_ENC_KEY, Buffer.from(key).toString("base64"));
-  return key;
+/** Bind the XMTP identity to a specific wallet address. Call before initXmtpClient(). */
+export function bindXmtpToWallet(walletAddress: string): void {
+  _boundWalletAddress = walletAddress;
 }
 
-// ─── Client Init ─────────────────────────────────────────────────────────────
+function skKey(prefix: string): string {
+  const addr = _boundWalletAddress;
+  if (!addr) return prefix.replace(/_$/, ''); // fallback to legacy key format
+  // Use first 16 chars of wallet address as scope — SecureStore keys have length limits
+  return prefix + addr.slice(0, 16);
+}
+
+async function getOrCreateEncryptionKey(): Promise<Uint8Array> {
+  // Try wallet-scoped key first
+  const key = skKey(SK_ENC_KEY_PREFIX);
+  const stored = await SecureStore.getItemAsync(key);
+  if (stored) return Buffer.from(stored, "base64");
+
+  // Try legacy key (migrate if found)
+  const legacy = await SecureStore.getItemAsync(SK_ENC_KEY_LEGACY);
+  if (legacy) {
+    await SecureStore.setItemAsync(key, legacy);
+    return Buffer.from(legacy, "base64");
+  }
+
+  const newKey = crypto.getRandomValues(new Uint8Array(32));
+  await SecureStore.setItemAsync(key, Buffer.from(newKey).toString("base64"));
+  return newKey;
+}
+
+// ─── Client Init ────────────────────────────────────────────��────────────────
 
 export async function initXmtpClient(): Promise<Client> {
   const dbEncryptionKey = await getOrCreateEncryptionKey();
   const opts = { env: "production" as const, dbEncryptionKey, codecs: NATIVE_CODECS };
 
-  const storedInboxId = await SecureStore.getItemAsync(SK_INBOX_ID);
-  const storedIdentifier = await SecureStore.getItemAsync(SK_IDENTITY_ID);
-  const storedKind = await SecureStore.getItemAsync(SK_IDENTITY_KIND);
+  // Try wallet-scoped identity first
+  const storedInboxId = await SecureStore.getItemAsync(skKey(SK_INBOX_ID_PREFIX))
+    || await SecureStore.getItemAsync(SK_INBOX_ID_LEGACY);
+  const storedIdentifier = await SecureStore.getItemAsync(skKey(SK_IDENTITY_ID_PREFIX))
+    || await SecureStore.getItemAsync(SK_IDENTITY_ID_LEGACY);
+  const storedKind = await SecureStore.getItemAsync(skKey(SK_IDENTITY_KIND_PREFIX))
+    || await SecureStore.getItemAsync(SK_IDENTITY_KIND_LEGACY);
 
   if (storedInboxId && storedIdentifier && storedKind) {
     try {
@@ -55,7 +88,14 @@ export async function initXmtpClient(): Promise<Client> {
         storedIdentifier,
         storedKind as "ETHEREUM" | "PASSKEY"
       );
-      return await Client.build(identity, opts, storedInboxId as any);
+      const client = await Client.build(identity, opts, storedInboxId as any);
+      // Migrate legacy keys to wallet-scoped if needed
+      if (_boundWalletAddress) {
+        await SecureStore.setItemAsync(skKey(SK_INBOX_ID_PREFIX), client.inboxId);
+        await SecureStore.setItemAsync(skKey(SK_IDENTITY_ID_PREFIX), client.publicIdentity.identifier);
+        await SecureStore.setItemAsync(skKey(SK_IDENTITY_KIND_PREFIX), client.publicIdentity.kind);
+      }
+      return client;
     } catch {
       // Corrupt state — fall through to create a fresh identity
     }
@@ -63,9 +103,17 @@ export async function initXmtpClient(): Promise<Client> {
 
   const client = await Client.createRandom(opts);
 
-  await SecureStore.setItemAsync(SK_INBOX_ID, client.inboxId);
-  await SecureStore.setItemAsync(SK_IDENTITY_ID, client.publicIdentity.identifier);
-  await SecureStore.setItemAsync(SK_IDENTITY_KIND, client.publicIdentity.kind);
+  // Store wallet-scoped (survives reinstall if SecureStore persists, or restore from backup)
+  const inboxKey = skKey(SK_INBOX_ID_PREFIX);
+  const idKey = skKey(SK_IDENTITY_ID_PREFIX);
+  const kindKey = skKey(SK_IDENTITY_KIND_PREFIX);
+  await SecureStore.setItemAsync(inboxKey, client.inboxId);
+  await SecureStore.setItemAsync(idKey, client.publicIdentity.identifier);
+  await SecureStore.setItemAsync(kindKey, client.publicIdentity.kind);
+  // Also store in legacy keys for backward compat
+  await SecureStore.setItemAsync(SK_INBOX_ID_LEGACY, client.inboxId);
+  await SecureStore.setItemAsync(SK_IDENTITY_ID_LEGACY, client.publicIdentity.identifier);
+  await SecureStore.setItemAsync(SK_IDENTITY_KIND_LEGACY, client.publicIdentity.kind);
 
   return client;
 }

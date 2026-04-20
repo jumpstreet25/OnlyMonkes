@@ -38,7 +38,7 @@ import {
   saveSession,
   loadVerifiedNft,
 } from "@/lib/session";
-import { prefetchXmtpClient } from "@/lib/xmtp";
+import { prefetchXmtpClient, bindXmtpToWallet } from "@/lib/xmtp";
 import { THEME, FONTS } from "@/lib/constants";
 import { OnboardingCarousel, ONBOARDING_KEY } from "@/components/OnboardingCarousel";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -60,6 +60,7 @@ export default function ConnectScreen() {
       const wallet = await loadSession();
       if (wallet) {
         setWallet(wallet);
+        bindXmtpToWallet(wallet.address);
         const nft = await loadVerifiedNft();
         if (nft) {
           setVerified(true, nft);

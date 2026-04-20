@@ -19,6 +19,7 @@ import {
 import { PublicKey } from "@solana/web3.js";
 import { Linking } from "react-native";
 import { useAppStore } from "@/store/appStore";
+import { bindXmtpToWallet } from "@/lib/xmtp";
 import type { WalletAccount } from "@/types";
 
 const APP_IDENTITY = {
@@ -86,6 +87,7 @@ export function useMobileWallet() {
       });
 
       setWallet(account);
+      bindXmtpToWallet(account.address);
       return account;
     } catch (err) {
       const message =
