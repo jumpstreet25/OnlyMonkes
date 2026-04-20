@@ -18,7 +18,7 @@ export default function AboutScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={{ fontSize: 48, textAlign: "center" }}>🐒</Text>
         <Text style={styles.appName}>{APP_NAME}</Text>
-        <Text style={styles.version}>v2.35 (build 35)</Text>
+        <Text style={styles.version}>v2.36 (build 36)</Text>
         <Text style={styles.tagline}>The Exclusive Social Hub for Saga Monkes NFT Holders</Text>
 
         <View style={styles.section}>

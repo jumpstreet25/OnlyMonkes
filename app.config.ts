@@ -10,7 +10,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   name: 'OnlyMonkes',
   slug: 'monkesonly',
   owner: process.env.EXPO_OWNER ?? undefined,
-  version: '2.35.0',
+  version: '2.36.0',
   orientation: 'portrait',
   icon: './assets/icon.png',
   userInterfaceStyle: 'dark',

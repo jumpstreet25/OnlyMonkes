@@ -13,6 +13,18 @@ import { Alert } from 'react-native';
 export async function checkForOtaUpdate() {
   if (__DEV__) return; // skip in dev mode
 
+  // Force clear stale OTA cache from old runtimeVersion on first v2.36 launch
+  try {
+    const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+    const cleared = await AsyncStorage.getItem('ota_cache_cleared_v3.1');
+    if (!cleared) {
+      await AsyncStorage.setItem('ota_cache_cleared_v3.1', '1');
+      console.log('[OTA] First launch on 3.1 — reloading from embedded bundle');
+      await Updates.reloadAsync();
+      return;
+    }
+  } catch { /* continue normally */ }
+
   try {
     const update = await Updates.checkForUpdateAsync();
     if (!update.isAvailable) return;

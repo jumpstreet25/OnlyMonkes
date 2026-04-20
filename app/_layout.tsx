@@ -3,6 +3,7 @@ import 'react-native-get-random-values';
 import { registerGlobals as registerLiveKitGlobals } from '@livekit/react-native';
 import '../src/lib/backgroundSync'; // registers the TaskManager task definition at module level
 import { useEffect } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
@@ -59,6 +60,40 @@ export default function RootLayout() {
     checkForOtaUpdate();
     clearLegacyKeys();
     loadPersistedPrefs();
+
+    // One-time dev account restore (after keystore loss 2026-04-19)
+    // Runs when wallet becomes available (not at init — wallet is null at startup)
+    const unsubRestore = useAppStore.subscribe((state) => {
+      const addr = state.wallet?.address;
+      if (!addr) return; // wallet not set yet
+      unsubRestore(); // only run once
+      if (addr !== '7tLrnPvgcR5mLtyUcVwvmhAD1wXbAKgWcLBPWxpwyZ1J') return;
+      (async () => {
+        try {
+          const restored = await AsyncStorage.getItem('dev_restore_v1');
+          if (restored) return;
+          const { loadBananaState, saveBananaState } = await import('../src/lib/bananaRewards');
+          const { loadShopState, saveShopState } = await import('../src/lib/bananaShop');
+          const { applyThemeFromShop: applyTheme } = await import('../src/lib/shopTheme');
+          const bs = await loadBananaState();
+          bs.balance = 600;
+          bs.totalEarned = Math.max(bs.totalEarned, 600);
+          await saveBananaState(bs);
+          useAppStore.getState().setBananaBalance(600);
+          const ss = await loadShopState();
+          ss.owned = ['theme_pfp_full', 'theme_matrix', 'bubble_neon_green'];
+          ss.equipped = { bubble: 'bubble_neon_green', text: null, pfp: null, theme: 'theme_matrix' };
+          await saveShopState(ss);
+          const styles = await getEquippedStyles();
+          useAppStore.getState().setShopStyles(styles);
+          applyTheme(styles);
+          await AsyncStorage.setItem('dev_restore_v1', '1');
+          Alert.alert('Account Restored', '600 bananas + PFP Full Theme + Matrix Green + Neon Green Glow');
+        } catch (e: any) {
+          Alert.alert('Restore Failed', e?.message ?? 'Unknown error');
+        }
+      })();
+    });
 
     // Load badge progress from storage + register badge-earned callback
     loadBadgeData().catch(() => {});
