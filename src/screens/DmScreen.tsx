@@ -3,6 +3,7 @@ import { View, FlatList, StyleSheet, Text, Pressable, ActivityIndicator } from '
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { THEME, FONTS, BOT_INBOX_IDS } from '@/lib/constants';
+import { useThemeColor } from '@/lib/shopTheme';
 import { BotCommandTicker } from '@/components/BotCommandTicker';
 import { getCachedProfile, useProfileVersion } from '@/lib/userProfile';
 import { useDm } from '@/hooks/useDm';
@@ -23,8 +24,11 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
   const flatListRef = useRef<FlatList>(null);
   useProfileVersion();
   const peerProfile = getCachedProfile(peerInboxId);
-  const peerName = peerProfile?.username ?? peerInboxId.slice(0, 8) + '…';
+  const peerName = peerProfile?.username ?? 'Monke';
   const isBotDm = BOT_INBOX_IDS.includes(peerInboxId);
+  const themeBg = useThemeColor('bg');
+  const themeSurface = useThemeColor('surface');
+  const themeBorder = useThemeColor('border');
 
   const handleSend = useCallback(async () => {
     const text = inputText.trim();
@@ -42,9 +46,9 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
   }, []);
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={[styles.container, { paddingTop: insets.top, backgroundColor: themeBg }]}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { borderBottomColor: themeBorder }]}>
         <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={8}>
           <Text style={styles.backArrow}>←</Text>
         </Pressable>

@@ -119,10 +119,12 @@ export async function loadProfileCache(): Promise<void> {
       const obj = JSON.parse(raw) as Record<string, string>;
       for (const [k, v] of Object.entries(obj)) {
         _locationMap.set(k, v);
-        // Restore location to profile cache if it was evicted
+        // Restore location to profile cache — create minimal entry if evicted
         const cached = _profileCache.get(k);
-        if (cached && !cached.location && v) {
-          cached.location = v;
+        if (cached) {
+          if (!cached.location && v) cached.location = v;
+        } else if (v) {
+          _profileCache.set(k, { location: v, cachedAt: 0 });
         }
       }
     }
@@ -273,10 +275,10 @@ export function trackUser(inboxId: string, username?: string): void {
   if (!inboxId) return;
   const existing = _allTimeUsers.get(inboxId);
   if (existing !== undefined) {
-    // Already tracked — only update name if we now have one
-    if (username && !existing) {
+    // Already tracked — update name if we have a new one that differs
+    if (username && existing !== username) {
       _allTimeUsers.set(inboxId, username);
-      _indexUser(inboxId, username);
+      _rebuildPrefixIndex();
       _scheduleAllTimePersist();
       _notifyProfileListeners();
     }
@@ -300,29 +302,44 @@ export function getAllTimeUsers(): Map<string, string> {
  * duplicate member entries, and duplicate usernames.
  */
 export function getDeduplicatedUsers(): Map<string, string> {
-  const walletToInbox = new Map<string, { inboxId: string; name: string; cachedAt: number }>();
+  const walletToInbox = new Map<string, { inboxId: string; name: string; badgeCount: number; cachedAt: number }>();
   const result = new Map<string, string>();
 
   for (const [inboxId, name] of _allTimeUsers.entries()) {
     const profile = _profileCache.get(inboxId);
     const wallet = profile?.walletAddress;
+    const badgeCount = profile?.badges?.length ?? 0;
     const cachedAt = profile?.cachedAt ?? 0;
 
     if (wallet) {
       const existing = walletToInbox.get(wallet);
-      if (!existing || cachedAt > existing.cachedAt) {
-        // This inbox ID is more recent — use it, remove the old one
+      // Prefer the account with more badges; tie-break by most recent activity
+      const isBetter = !existing
+        || badgeCount > existing.badgeCount
+        || (badgeCount === existing.badgeCount && cachedAt > existing.cachedAt);
+      if (isBetter) {
         if (existing) result.delete(existing.inboxId);
-        walletToInbox.set(wallet, { inboxId, name, cachedAt });
+        walletToInbox.set(wallet, { inboxId, name, badgeCount, cachedAt });
         result.set(inboxId, name);
       }
-      // Skip older inbox ID for same wallet
+      // Skip lesser inbox ID for same wallet
     } else {
       // No wallet info — include (can't dedup)
       result.set(inboxId, name);
     }
   }
   return result;
+}
+
+/** Count deduplicated users that have a location (profile cache OR persistent location map). */
+export function getLocatedUserCount(): number {
+  const deduped = getDeduplicatedUsers();
+  let count = 0;
+  for (const inboxId of deduped.keys()) {
+    const profile = _profileCache.get(inboxId);
+    if (profile?.location || _locationMap.has(inboxId)) count++;
+  }
+  return count;
 }
 
 /**
@@ -385,10 +402,13 @@ export function searchUsersByPrefix(
   const candidates = _prefixIndex.get(prefix);
   if (!candidates) return [];
 
+  // Use deduplicated users to avoid showing stale multi-device accounts
+  const deduped = getDeduplicatedUsers();
   const results: { inboxId: string; username: string }[] = [];
   for (const inboxId of candidates) {
     if (inboxId === excludeInboxId) continue;
-    const name = _allTimeUsers.get(inboxId);
+    if (!deduped.has(inboxId)) continue; // skip stale duplicate inboxIds
+    const name = deduped.get(inboxId);
     if (name && name.toLowerCase().startsWith(q)) {
       results.push({ inboxId, username: name });
       if (results.length >= limit) break;

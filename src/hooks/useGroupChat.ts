@@ -18,6 +18,7 @@ import {
   initXmtpClient,
   getOrCreateDAppGroup,
   decodeMessage,
+  resolveReplyTargets,
   applyReaction,
   sendMessage,
   sendReply,
@@ -49,6 +50,13 @@ interface WarmEntry {
 
 const _warmCache = new Map<string, WarmEntry>();
 const MAX_WARM_CACHE = 6; // Cap warm cache to prevent unbounded memory growth
+
+/** Detect native ReactionCodec/V2 objects or legacy REACT: strings */
+const isReactionContent = (content: unknown): boolean => {
+  if (typeof content === "string") return content.startsWith("REACT:");
+  if (content && typeof content === "object") return !!((content as any).reaction || (content as any).reactionV2);
+  return false;
+};
 
 export function useGroupChat(groupId: string, groupName: string) {
   const { setMyInboxId } = useAppStore();
@@ -94,15 +102,16 @@ export function useGroupChat(groupId: string, groupName: string) {
         try {
           await (warm.group as any).sync();
           const rawHistory: any[] = await (warm.group as any).messages({ limit: 50 });
-          const decoded = rawHistory
+          let decoded = rawHistory
             .map((m: any) => decodeMessage(m, warm.client.inboxId))
             .filter(Boolean) as ChatMessage[];
+          decoded = resolveReplyTargets(decoded);
 
           let enriched = decoded;
           for (const raw of rawHistory) {
             try {
               const content = raw.content();
-              if (typeof content === "string" && content.startsWith("REACT:")) {
+              if (isReactionContent(content)) {
                 enriched = applyReaction(enriched, raw, warm.client.inboxId);
               }
             } catch { /* skip */ }
@@ -130,10 +139,11 @@ export function useGroupChat(groupId: string, groupName: string) {
         try {
           const unsub = await (warm.group as any).streamMessages(async (raw: any) => {
             try {
-              let content: string;
+              let content: unknown;
               try { content = raw.content(); } catch { return; }
 
-              if (typeof content === "string" && content.startsWith("REACT:")) {
+              // Native or legacy reaction
+              if (isReactionContent(content)) {
                 setMessages(prev => applyReaction(prev, raw, myInboxIdRef.current));
                 return;
               }
@@ -196,16 +206,17 @@ export function useGroupChat(groupId: string, groupName: string) {
         } catch (e: any) { console.log(`[useGroupChat] RAW: content() threw: ${e.message}`); }
       }
 
-      const decoded = rawHistory
+      let decoded = rawHistory
         .map((m) => decodeMessage(m, client.inboxId))
         .filter(Boolean) as ChatMessage[];
+      decoded = resolveReplyTargets(decoded);
       if (__DEV__) console.log(`[useGroupChat] ${groupName}: ${decoded.length} decoded messages`);
 
       let enriched = decoded;
       for (const raw of rawHistory) {
         try {
           const content = raw.content();
-          if (typeof content === "string" && content.startsWith("REACT:")) {
+          if (isReactionContent(content)) {
             enriched = applyReaction(enriched, raw, client.inboxId);
           }
         } catch {
@@ -234,14 +245,15 @@ export function useGroupChat(groupId: string, groupName: string) {
 
       // 5. Stream new messages
       const unsub = await (group as any).streamMessages(async (raw: any) => {
-        let content: string;
+        let content: unknown;
         try {
           content = raw.content();
         } catch {
           return;
         }
 
-        if (typeof content === "string" && content.startsWith("REACT:")) {
+        // Native or legacy reaction
+        if (isReactionContent(content)) {
           setMessages((prev) => applyReaction(prev, raw, myInboxIdRef.current));
           return;
         }

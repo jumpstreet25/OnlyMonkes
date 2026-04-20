@@ -44,8 +44,9 @@ import { format } from "date-fns";
 import { THEME, FONTS } from "@/lib/constants";
 import { shortenAddress } from "@/lib/nftVerification";
 import { useAppStore } from "@/store/appStore";
-import { getCachedProfile, useProfileVersion, getAllTimeUsers, getPrimaryInboxId } from "@/lib/userProfile";
+import { getCachedProfile, useProfileVersion, getDeduplicatedUsers, getPrimaryInboxId } from "@/lib/userProfile";
 import { getEarnedBadges, getBadgeDef } from "@/lib/badges";
+import { getFlairSync } from "@/lib/monkeClout";
 // nftColor no longer needed — glass bubbles use fixed semi-transparent backgrounds
 import { searchStickers, type GiphyItem } from "@/lib/giphy";
 import type { ChatMessage, ReactionEmoji } from "@/types";
@@ -353,6 +354,7 @@ interface MessageBubbleProps {
   onDelete?: (message: ChatMessage) => void;
   onPin?: (message: ChatMessage) => void;
   onThread?: (message: ChatMessage) => void;
+  isGroupAdmin?: boolean;
   isBotChannel?: boolean;
 }
 
@@ -364,6 +366,7 @@ function arePropsEqual(prev: MessageBubbleProps, next: MessageBubbleProps): bool
   if (prev.isBotChannel !== next.isBotChannel) return false;
   // onPin presence changes when admin status toggles
   if (!!prev.onPin !== !!next.onPin) return false;
+  if (prev.isGroupAdmin !== next.isGroupAdmin) return false;
   return true;
 }
 
@@ -382,6 +385,7 @@ export const MessageBubble = memo(function MessageBubble({
   onDelete,
   onPin,
   onThread,
+  isGroupAdmin,
   isBotChannel,
 }: MessageBubbleProps) {
   const verifiedNft = useAppStore(s => s.verifiedNft);
@@ -438,7 +442,7 @@ export const MessageBubble = memo(function MessageBubble({
     // Sanitize: strip non-printable Unicode, normalize for comparison
     const sanitized = mentionedUsername.replace(/[^\w\s.-]/g, "").trim();
     if (!sanitized) return;
-    const allUsers = getAllTimeUsers();
+    const allUsers = getDeduplicatedUsers();
     let foundInboxId: string | null = null;
     for (const [inboxId, uname] of allUsers.entries()) {
       if (uname.toLowerCase() === sanitized.toLowerCase()) {
@@ -553,7 +557,7 @@ export const MessageBubble = memo(function MessageBubble({
   // Re-read from cache on every render — use primary inbox ID to merge multi-device users
   const primarySenderInbox = isOwn ? message.senderAddress : getPrimaryInboxId(message.senderAddress);
   const cachedSender = getCachedProfile(primarySenderInbox);
-  const displayName  = cachedSender?.username ?? message.senderUsername ?? shortenAddress(message.senderAddress);
+  const displayName  = cachedSender?.username ?? message.senderUsername ?? 'Monke';
   const isBot = message.senderUsername === "AI Agent #9385";
   // Bot PFP theme — teal from the bot's pixel art visor/eyes
   const BOT_THEME_COLOR = "#00C9A7";
@@ -576,6 +580,9 @@ export const MessageBubble = memo(function MessageBubble({
     const defs = earned.slice(-3).map(id => getBadgeDef(id)).filter(Boolean);
     return defs.map(d => d!.emoji).join("");
   }, [isOwn, cachedSender?.badges]);
+
+  // Alpha Ape flair from CloutScore (top 3)
+  const cloutFlair = useMemo(() => getFlairSync(primarySenderInbox), [primarySenderInbox]);
 
   // Active emoji reactions (count > 0)
   const activeReactions = useMemo(() => {
@@ -652,6 +659,14 @@ export const MessageBubble = memo(function MessageBubble({
           {isOwn && shopStyles.pfpFrame === "pulse" && (
             <PulseRing color={nftDominantColor ?? SOLANA_PURPLE} />
           )}
+          {isOwn && shopStyles.pfpFrame === "glow" && (
+            <View style={{
+              position: "absolute", width: 42, height: 42, borderRadius: 21,
+              borderWidth: 2, borderColor: (nftDominantColor ?? SOLANA_PURPLE) + "80",
+              shadowColor: nftDominantColor ?? SOLANA_PURPLE,
+              shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.6, shadowRadius: 8,
+            }} />
+          )}
           <View style={styles.avatarFloat}>
             {avatarUri ? (
               <Image source={{ uri: avatarUri }} style={styles.avatarImg} />
@@ -681,7 +696,7 @@ export const MessageBubble = memo(function MessageBubble({
               <Text style={[styles.replySender, isOwn && styles.replySenderOwn]}>
                 {getCachedProfile(message.replyTo.senderAddress)?.username ??
                   message.replyTo.senderUsername ??
-                  shortenAddress(message.replyTo.senderAddress)}
+                  'Monke'}
               </Text>
               <Text style={styles.replyText} numberOfLines={1}>
                 {message.replyTo.content}
@@ -820,6 +835,7 @@ export const MessageBubble = memo(function MessageBubble({
                         shopStyles.fontWeight === "bold" ? { fontWeight: "bold" } : null,
                         shopStyles.fontFamily === "mono" ? { fontFamily: FONTS.mono } : null,
                         shopStyles.hasBubbleCosmetic ? { textShadowColor: "rgba(0,0,0,0.5)", textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 } : null,
+                        shopStyles.textGlow ? { textShadowColor: "rgba(255,255,255,0.6)", textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 8 } : null,
                       ]}
                       selectable={false}
                     >
@@ -863,7 +879,7 @@ export const MessageBubble = memo(function MessageBubble({
                             : "rgba(108, 180, 238, 0.55)",
                         ...(shopStyles.nameColor && !isBot ? { color: shopStyles.nameColor as string } : {}),
                       }}>
-                        {displayName}{isShopCustomer ? " 🍌" : ""}{isLegendarySender ? " 🌟" : ""}{badgeEmojis ? ` ${badgeEmojis}` : ""}
+                        {displayName}{cloutFlair ? " 🦍" : ""}{isShopCustomer ? " 🍌" : ""}{isLegendarySender ? " 🌟" : ""}{badgeEmojis ? ` ${badgeEmojis}` : ""}
                       </Text>
                       <OnlineDot online={isUserOnline(message.senderAddress)} />
                     </View>
@@ -1088,7 +1104,7 @@ export const MessageBubble = memo(function MessageBubble({
               </Pressable>
             )}
 
-            {isOwn && onDelete && (
+            {(isOwn || isGroupAdmin) && onDelete && (
               <Pressable
                 onPress={() => { setPickerVisible(false); onDelete(message); }}
                 style={({ pressed }) => [
@@ -1487,16 +1503,16 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 3,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: "transparent",
     borderRadius: 12,
     paddingHorizontal: 7,
     paddingVertical: 3,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.05)",
+    borderWidth: 0,
+    borderColor: "transparent",
   },
   reactionPillActive: {
-    backgroundColor: "rgba(255,213,79,0.2)",
-    borderColor: "rgba(255,213,79,0.15)",
+    backgroundColor: "transparent",
+    borderColor: "transparent",
   },
   stickerPill: {
     flexDirection: "row",

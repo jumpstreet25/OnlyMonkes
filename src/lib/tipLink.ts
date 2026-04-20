@@ -118,13 +118,8 @@ export async function createTipLink(amountSol: number): Promise<TipLinkResult> {
     tx.recentBlockhash = blockhash;
     tx.feePayer = sender;
 
-    const signed = await mobileWallet.signTransactions({
+    const [sig] = await mobileWallet.signAndSendTransactions({
       transactions: [tx],
-    });
-
-    const sig = await connection.sendRawTransaction(signed[0].serialize(), {
-      skipPreflight: false,
-      preflightCommitment: "confirmed",
     });
 
     return sig;

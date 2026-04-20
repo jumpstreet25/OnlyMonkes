@@ -65,7 +65,7 @@ function VideoTile({
 }) {
   const profile = getCachedProfile(participant.identity);
   const pfpUri = profile?.nftImage ?? null;
-  const displayName = participant.name ?? participant.identity.slice(0, 8);
+  const displayName = participant.name ?? profile?.username ?? 'Monke';
 
   return (
     <View style={[styles.tile, { width, height }]}>

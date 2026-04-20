@@ -27,6 +27,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { THEME, FONTS, NFT_SALE_FEE_PCT } from '@/lib/constants';
+import { ErrorMessage } from '@/components/ErrorMessage';
 
 const MAGIC_EDEN_URL = "https://magiceden.us/marketplace/sagamonkes";
 import { useAppStore } from '@/store/appStore';
@@ -521,7 +522,7 @@ export default function MarketplaceScreen() {
     return bids.map((bid, i) => (
       <View key={i} style={s.bidRow}>
         <View style={{ flex: 1 }}>
-          <Text style={s.bidUser}>{bid.bidderUsername ?? bid.bidderInboxId.slice(0, 8)}</Text>
+          <Text style={s.bidUser}>{bid.bidderUsername ?? 'Monke'}</Text>
           <Text style={s.bidAmt}>{bid.bidPrice} SOL</Text>
         </View>
         {listing.status === 'active' && (
@@ -672,13 +673,7 @@ export default function MarketplaceScreen() {
                 <Text style={s.emptyText}>Loading marketplace...</Text>
               </>
             ) : loadError ? (
-              <>
-                <Text style={{ fontSize: 48, marginBottom: 8 }}>⚠️</Text>
-                <Text style={s.emptyText}>{loadError}</Text>
-                <Pressable style={s.meLink} onPress={loadAll}>
-                  <Text style={s.meLinkText}>Retry</Text>
-                </Pressable>
-              </>
+              <ErrorMessage message={loadError} onRetry={loadAll} />
             ) : (
               <>
                 <Text style={{ fontSize: 48, marginBottom: 8 }}>🐒</Text>

@@ -28,6 +28,8 @@ import AutoMonkeDisclaimerModal, { type AutonomyFeature } from "@/components/Aut
 import { getXmtpClient } from "@/hooks/useXmtp";
 import { sendDmMessage } from "@/lib/xmtp";
 import { THEME, FONTS } from "@/lib/constants";
+import { ErrorMessage } from "@/components/ErrorMessage";
+import { useThemeColor } from "@/lib/shopTheme";
 import type { ChatMessage } from "@/types";
 
 const BOT_INBOX_ID = "998001a498174b8a194110ee792b10f97de4965665eaf0d088ed2c71bdf62363";
@@ -103,6 +105,12 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
   const [autonomyEnrolled, setAutonomyEnrolled] = useState(false);
   const [showAllOverride, setShowAllOverride] = useState(false);
   const hasAutonomy = channelId in AUTONOMY_CONFIG;
+
+  const themeBg = useThemeColor('bg');
+  const themeSurface = useThemeColor('surface');
+  const themeBorder = useThemeColor('border');
+  const themeAccent = useThemeColor('accent');
+  const hasThemeOverride = useAppStore(s => !!s.themeOverrides);
 
   // PFP Full Theme: tint channel headers with NFT color
   const shopStyles = useAppStore(s => s.shopStyles);
@@ -216,9 +224,9 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
   }
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={[styles.container, { paddingTop: insets.top, backgroundColor: themeBg }]}>
       {/* Header — matches Main Chat header layout exactly */}
-      <View style={styles.header}>
+      <View style={[styles.header, { backgroundColor: themeSurface, borderBottomColor: themeBorder }]}>
         <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={8}>
           <Text style={styles.backIcon}>{"\u2039"}</Text>
         </Pressable>
@@ -229,7 +237,7 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
           style={styles.headerCenter}
           resizeMode="contain"
         >
-          {pfpFullThemeActive && (
+          {pfpFullThemeActive && !hasThemeOverride && (
             <View style={[styles.bannerTintOverlay, { backgroundColor: nftDominantColor + "4D" }]} />
           )}
         </ImageBackground>
@@ -273,9 +281,9 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
       </View>
 
       {/* Bot Alerts · Live status bar */}
-      <View style={styles.statusBar}>
-        <View style={[styles.liveDot, pfpFullThemeActive && { backgroundColor: nftDominantColor }]} />
-        <Text style={[styles.statusText, pfpFullThemeActive && { color: nftDominantColor }]}>Bot Alerts · Live</Text>
+      <View style={[styles.statusBar, hasThemeOverride && { backgroundColor: themeSurface, borderBottomColor: themeBorder }]}>
+        <View style={[styles.liveDot, hasThemeOverride && { backgroundColor: themeAccent }, pfpFullThemeActive && { backgroundColor: nftDominantColor }]} />
+        <Text style={[styles.statusText, hasThemeOverride && { color: themeAccent }, pfpFullThemeActive && { color: nftDominantColor }]}>Bot Alerts · Live</Text>
       </View>
 
       {/* Loading / connecting state */}
@@ -289,10 +297,7 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
       {/* Error state */}
       {!isLoading && error && (
         <View style={styles.centerState}>
-          <Text style={styles.errorText}>{error}</Text>
-          <Pressable onPress={initialize} style={styles.retryBtn}>
-            <Text style={styles.retryText}>Retry</Text>
-          </Pressable>
+          <ErrorMessage message={error} onRetry={initialize} />
         </View>
       )}
 

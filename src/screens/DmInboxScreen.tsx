@@ -25,9 +25,10 @@ import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { THEME, FONTS } from '@/lib/constants';
+import { useThemeColor } from '@/lib/shopTheme';
 import { useDmInbox } from '@/hooks/useDmInbox';
 import { useAppStore } from '@/store/appStore';
-import { getCachedProfile, getAllTimeUsers, useProfileVersion } from '@/lib/userProfile';
+import { getCachedProfile, getDeduplicatedUsers, useProfileVersion } from '@/lib/userProfile';
 import { shortenAddress } from '@/lib/nftVerification';
 import type { DmThread } from '@/lib/xmtp';
 import { markChannelRead } from '@/lib/messageCache';
@@ -46,7 +47,7 @@ function ThreadRow({ thread, myInboxId, unread }: { thread: DmThread; myInboxId:
 
   let profile: any = null;
   try { profile = getCachedProfile(thread.peerInboxId); } catch { /* ignore */ }
-  const name: string = profile?.username ?? thread.peerInboxId.slice(0, 8) + '…';
+  const name: string = profile?.username ?? 'Monke';
   const avatarUri: string | null = profile?.nftImage ?? null;
   const isBot = name === 'AI Agent #9385';
 
@@ -54,12 +55,17 @@ function ThreadRow({ thread, myInboxId, unread }: { thread: DmThread; myInboxId:
   let preview = 'No messages yet';
   if (typeof rawMsg === 'string' && rawMsg.length > 0) {
     try {
-      preview = rawMsg
-        .replace(/^STICKER:[^\s]+/, 'Sticker')
-        .replace(/^GIF:[^\s]+/, 'GIF')
-        .replace(/^IMAGE:[^\s]+/, 'Photo')
-        .replace(/^VIDEO:[^\s]+/, 'Video')
-        .replace(/^MSG:[^:]+:/, '');
+      // Filter out protocol messages that shouldn't be shown as previews
+      if (rawMsg.startsWith('READ:') || rawMsg.startsWith('TYPING:') || rawMsg.startsWith('PROFILE_UPDATE:') || rawMsg.startsWith('GIFT_ITEM:')) {
+        preview = 'No messages yet';
+      } else {
+        preview = rawMsg
+          .replace(/^STICKER:[^\s]+/, 'Sticker')
+          .replace(/^GIF:[^\s]+/, 'GIF')
+          .replace(/^IMAGE:[^\s]+/, 'Photo')
+          .replace(/^VIDEO:[^\s]+/, 'Video')
+          .replace(/^MSG:[^:]+:/, '');
+      }
     } catch { preview = String(rawMsg).slice(0, 50); }
   }
 
@@ -114,12 +120,12 @@ function ComposeModal({ visible, onClose, myInboxId }: {
   useProfileVersion();
 
   const users = useMemo(() => {
-    const allUsers = getAllTimeUsers(); // Map<inboxId, username>
+    const allUsers = getDeduplicatedUsers(); // Map<inboxId, username> (deduplicated by wallet)
     const results: Array<{ inboxId: string; name: string; avatarUri: string | null }> = [];
     for (const [inboxId, uname] of allUsers.entries()) {
       if (inboxId === myInboxId) continue;
       const profile = getCachedProfile(inboxId);
-      const name    = profile?.username ?? uname ?? shortenAddress(inboxId);
+      const name    = profile?.username ?? uname ?? 'Monke';
       if (query && !name.toLowerCase().includes(query.toLowerCase())) continue;
       results.push({ inboxId, name, avatarUri: profile?.nftImage ?? null });
     }
@@ -204,6 +210,8 @@ export default function DmInboxScreen() {
   const { threads, loading, refreshing, refresh } = useDmInbox();
   const [composeOpen, setComposeOpen] = useState(false);
   useProfileVersion();
+  const themeBg = useThemeColor('bg');
+  const themeBorder = useThemeColor('border');
 
   // Mark DMs as read so badge count resets on next sync
   useEffect(() => {
@@ -212,9 +220,9 @@ export default function DmInboxScreen() {
   }, []);
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={[styles.container, { paddingTop: insets.top, backgroundColor: themeBg }]}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { borderBottomColor: themeBorder }]}>
         <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={8}>
           <Text style={styles.backArrow}>←</Text>
         </Pressable>

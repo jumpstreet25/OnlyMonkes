@@ -97,6 +97,39 @@ export async function loadVerifiedNft(): Promise<OwnedNFT | null> {
 export async function clearVerifiedNft(): Promise<void> {
   await SecureStore.deleteItemAsync(SK_VERIFIED_NFT);
   await SecureStore.deleteItemAsync(SK_LAST_NFT_CHECK);
+  await SecureStore.deleteItemAsync(SK_WALLET_BINDING);
+}
+
+// ─── Wallet ↔ Chat ID ↔ NFT Binding ──────────────────────────────────────────
+// Unified identity record linking the user's Solana wallet, XMTP inbox, and
+// verified Saga Monkes NFT. Persisted in SecureStore so subsequent launches
+// can restore the full identity instantly without re-verifying.
+
+export interface WalletBinding {
+  walletAddress: string;
+  inboxId: string;
+  nftMint: string;
+  nftName: string;
+  verifiedAt: number; // epoch ms — when Helius last confirmed ownership
+}
+
+const SK_WALLET_BINDING = "session_wallet_binding";
+
+export async function saveWalletBinding(binding: WalletBinding): Promise<void> {
+  await SecureStore.setItemAsync(SK_WALLET_BINDING, JSON.stringify(binding));
+}
+
+export async function loadWalletBinding(): Promise<WalletBinding | null> {
+  try {
+    const raw = await SecureStore.getItemAsync(SK_WALLET_BINDING);
+    return raw ? (JSON.parse(raw) as WalletBinding) : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function clearWalletBinding(): Promise<void> {
+  await SecureStore.deleteItemAsync(SK_WALLET_BINDING);
 }
 
 // ─── 24h NFT ownership re-validation ──────────────────────────────────────────

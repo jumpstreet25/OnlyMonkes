@@ -48,6 +48,11 @@ export function isUserOnline(inboxId: string): boolean {
   return Date.now() - last < ONLINE_THRESHOLD;
 }
 
+/** Get raw lastSeen timestamp for a user (0 if never seen) */
+export function getLastSeenTimestamp(inboxId: string): number {
+  return _presenceMap.get(inboxId) ?? 0;
+}
+
 /** Get "last seen" text for a user */
 export function getLastSeenText(inboxId: string): string | null {
   const last = _presenceMap.get(inboxId);

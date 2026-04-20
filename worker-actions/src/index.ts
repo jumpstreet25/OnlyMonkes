@@ -38,6 +38,13 @@ import {
 } from "@solana/web3.js";
 import bs58 from "bs58";
 
+// Cloudflare Workers KV namespace binding (declared locally to avoid @cloudflare/workers-types dependency)
+interface KVNamespace {
+  get(key: string, options?: { type?: string }): Promise<string | null>;
+  put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>;
+  delete(key: string): Promise<void>;
+}
+
 interface Env {
   HELIUS_API_KEY: string;
   JUP_API_KEY: string;

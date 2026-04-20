@@ -32,10 +32,22 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     fallbackToCacheTimeout: 5000,
     checkAutomatically: 'ON_LOAD',
   },
-  runtimeVersion: '3.0',
+  runtimeVersion: '3.1',
   plugins: [
     'expo-router',
     'expo-secure-store',
+    [
+      'expo-build-properties',
+      {
+        android: {
+          minSdkVersion: 26,
+          compileSdkVersion: 35,
+          targetSdkVersion: 35,
+          buildToolsVersion: '35.0.0',
+          kotlinVersion: '2.0.21',
+        },
+      },
+    ],
     [
       '@sentry/react-native/expo',
       {

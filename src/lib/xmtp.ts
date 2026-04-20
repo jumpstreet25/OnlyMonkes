@@ -3,8 +3,8 @@
  *
  * Message format:
  *   Regular:  MSG:<username>:<content>
- *   Reply:    Native ReplyCodec { reference, content: { text } } (legacy: REPLYv2: string)
- *   Reaction: Native ReactionCodec { reference, action, schema, content } (legacy: REACT: string)
+ *   Reply:    Native ReplyCodec { reply: { reference, content: { text } } } (legacy: REPLYv2: string still decoded)
+ *   Reaction: Native ReactionCodec { reaction: { reference, action, schema, content } } (legacy: REACT: string still decoded)
  *
  * Uses createRandom() — no Ethereum signer needed (Solana compatible).
  * XMTP identity is persisted in SecureStore across sessions.
@@ -68,6 +68,36 @@ export async function initXmtpClient(): Promise<Client> {
   await SecureStore.setItemAsync(SK_IDENTITY_KIND, client.publicIdentity.kind);
 
   return client;
+}
+
+// ─── Client Prefetch ─────────────────────────────────────────────────────────
+// Fire-and-forget during ConnectScreen fast path so the client is already booted
+// by the time ChatScreen mounts.
+
+let _prefetchPromise: Promise<Client> | null = null;
+
+/**
+ * Start booting the XMTP client in the background.
+ * Returns immediately — the promise is cached and awaited later by useXmtp.
+ */
+export function prefetchXmtpClient(): void {
+  if (!_prefetchPromise) {
+    _prefetchPromise = initXmtpClient();
+    _prefetchPromise.catch(() => { _prefetchPromise = null; });
+  }
+}
+
+/**
+ * Consume the prefetched client if available, otherwise init fresh.
+ * Clears the cached promise so it's only consumed once.
+ */
+export async function getOrInitXmtpClient(): Promise<Client> {
+  if (_prefetchPromise) {
+    const promise = _prefetchPromise;
+    _prefetchPromise = null;
+    return promise;
+  }
+  return initXmtpClient();
 }
 
 // ─── Global Group ─────────────────────────────────────────────────────────────
@@ -274,6 +304,7 @@ function decodeStringMessage(raw: any, rawContent: string, myInboxId: string): C
   if (rawContent.startsWith("VIDEO_ROOM:")) return null;
   if (rawContent.startsWith("AVATAR_ROOM:")) return null;
   if (rawContent.startsWith("SHOP_PURCHASE:")) return null;
+  if (rawContent.startsWith("GIFT_ITEM:")) return null;
   if (rawContent.startsWith("THREAD:")) return null;
   if (rawContent.startsWith("PIN:")) return null;
   if (rawContent.startsWith("UNPIN:")) return null;
@@ -534,6 +565,7 @@ export interface ParsedProfileUpdate {
   tipWallet?: string;
   location?: string;
   nftImage?: string | null;
+  nftMint?: string;
   legendary: boolean;
   pushToken?: string;
   expoPushToken?: string;
@@ -579,6 +611,7 @@ export function parseProfileUpdate(raw: string): ParsedProfileUpdate | null {
     tipWallet: str(data.tw),
     location: str(data.loc),
     nftImage: typeof data.ni === "string" ? data.ni || null : null,
+    nftMint: str(data.nm),
     legendary: !!data.lg,
     pushToken: str(data.pt),
     expoPushToken: str(data.ept),
@@ -672,14 +705,16 @@ export async function sendReply(
   replyContent: string,
   username?: string | null
 ): Promise<void> {
-  // Use string-based REPLYv2 format for reliability.
-  // Native ReplyCodec's nested content can lose structure on XMTP history reload,
-  // causing replies to silently disappear. String format always survives serialization.
-  const origB64 = Buffer.from(targetMessage.content || "").toString("base64");
-  const packed = username
-    ? `MSG:${username}:REPLYv2:${targetMessage.id}:${targetMessage.senderAddress}:${targetMessage.senderUsername ?? ""}:${origB64}:${replyContent}`
-    : `REPLYv2:${targetMessage.id}:${targetMessage.senderAddress}:${targetMessage.senderUsername ?? ""}:${origB64}:${replyContent}`;
-  await (group as any).send(packed);
+  // Native ReplyCodec — references the target message ID and wraps the reply text
+  // as a standard MSG:<username>:<content> so decodeMessage() can extract the sender.
+  // Backward compat: decodeMessage() still parses legacy REPLYv2: strings from history.
+  const packed = username ? `MSG:${username}:${replyContent}` : replyContent;
+  await (group as any).send({
+    reply: {
+      reference: targetMessage.id,
+      content: { text: packed },
+    },
+  });
 }
 
 export async function sendReaction(
@@ -721,6 +756,7 @@ export async function sendProfileUpdate(
   walletAddress?: string | null,
   tipWallet?: string | null,
   nftImage?: string | null,
+  nftMint?: string | null,
   legendary?: boolean,
   pushToken?: string | null,
   notifPrefs?: {
@@ -745,6 +781,7 @@ export async function sendProfileUpdate(
     tw: tipWallet ?? "",
     loc: location ?? "",
     ni: nftImage ?? "",
+    nm: nftMint ?? "",
     lg: legendary ? 1 : 0,
     pt: pushToken ?? "",
     np: notifPrefs ? {
@@ -853,6 +890,22 @@ export async function listDmThreads(client: XmtpClient): Promise<DmThread[]> {
               lastMessage = parts.slice(2).join(':');
             } else if (raw.startsWith('JOIN_REQUEST:')) {
               isJoinRequest = true;
+            } else if (raw.startsWith('READ:') || raw.startsWith('TYPING:') || raw.startsWith('PROFILE_UPDATE:') || raw.startsWith('GIFT_ITEM:')) {
+              // System/protocol messages — skip as preview, look for the previous real message
+              for (let i = 1; i < Math.min(msgs.length, 10); i++) {
+                try {
+                  const prev: unknown = msgs[i].content();
+                  if (typeof prev !== 'string') continue;
+                  if (prev.startsWith('READ:') || prev.startsWith('TYPING:') || prev.startsWith('PROFILE_UPDATE:') || prev.startsWith('GIFT_ITEM:')) continue;
+                  if (prev.startsWith('MSG:')) {
+                    const p = prev.split(':');
+                    lastMessage = p.slice(2).join(':');
+                  } else {
+                    lastMessage = prev;
+                  }
+                  break;
+                } catch { /* skip */ }
+              }
             } else {
               lastMessage = raw;
             }

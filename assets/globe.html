@@ -25,6 +25,7 @@
 var MARKERS = [];
 let scene, camera, renderer, globe, controls, raycaster, mouse;
 let markerMeshes = [];
+var eventMeshes = []; // event sprites + beams — culled when on far side of globe
 var pfpCache = {};
 
 function init() {
@@ -308,29 +309,89 @@ function init() {
       rebuildLocationGroup(locKey);
     }
 
-    // Events -- add normally (no clustering needed)
+    // Solana logo texture (cached, drawn once via canvas)
+    var _solLogoTex = null;
+    function getSolanaLogoTexture() {
+      if (_solLogoTex) return _solLogoTex;
+      var size = 128;
+      var canvas = document.createElement('canvas');
+      canvas.width = size; canvas.height = size;
+      var ctx = canvas.getContext('2d');
+
+      // Solana logo: 3 horizontal bars with slight slant, gradient #9945FF → #14F195
+      var grad = ctx.createLinearGradient(0, 0, size, size);
+      grad.addColorStop(0, '#9945FF');
+      grad.addColorStop(1, '#14F195');
+      ctx.fillStyle = grad;
+
+      // Bar dimensions (proportional to Solana logo)
+      var barH = size * 0.18;
+      var skew = size * 0.12;
+      var pad = size * 0.15;
+      var w = size - pad * 2;
+
+      // Top bar (arrow pointing right)
+      ctx.beginPath();
+      ctx.moveTo(pad, pad);
+      ctx.lineTo(pad + w, pad);
+      ctx.lineTo(pad + w - skew, pad + barH);
+      ctx.lineTo(pad - skew, pad + barH);
+      ctx.closePath(); ctx.fill();
+
+      // Middle bar (arrow pointing left)
+      ctx.beginPath();
+      var midY = (size - barH) / 2;
+      ctx.moveTo(pad - skew, midY);
+      ctx.lineTo(pad + w - skew, midY);
+      ctx.lineTo(pad + w, midY + barH);
+      ctx.lineTo(pad, midY + barH);
+      ctx.closePath(); ctx.fill();
+
+      // Bottom bar (arrow pointing right)
+      ctx.beginPath();
+      var botY = size - pad - barH;
+      ctx.moveTo(pad, botY);
+      ctx.lineTo(pad + w, botY);
+      ctx.lineTo(pad + w - skew, botY + barH);
+      ctx.lineTo(pad - skew, botY + barH);
+      ctx.closePath(); ctx.fill();
+
+      var tex = new THREE.CanvasTexture(canvas);
+      tex.needsUpdate = true;
+      _solLogoTex = tex;
+      return tex;
+    }
+
+    // Events -- Solana logo sprites + gradient pin beams
     eventMarkers.forEach(function(m) {
       var pos = latLngToXYZ(m.lat, m.lng, 1.01);
-      var color = m.type === 'luma-event' ? 0x6CB4EE : 0x10B981;
 
-        // Ring marker (tappable — carries event userData)
-        var erGeo = new THREE.RingGeometry(0.025, 0.04, 16);
-        var erMat = new THREE.MeshBasicMaterial({ color:color, transparent:true, opacity:0.4, side:THREE.DoubleSide });
-        var ering = new THREE.Mesh(erGeo, erMat);
-        ering.position.copy(pos);
-        ering.lookAt(0,0,0);
-        ering.userData = m;
-        globe.add(ering);
-        markerMeshes.push(ering);
+      // Solana logo sprite (faces camera, 70% opacity)
+      var logoMat = new THREE.SpriteMaterial({
+        map: getSolanaLogoTexture(),
+        transparent: true,
+        opacity: 0.7,
+        depthTest: false
+      });
+      var logo = new THREE.Sprite(logoMat);
+      var logoDir = pos.clone().normalize();
+      logo.position.copy(pos.clone().add(logoDir.multiplyScalar(0.15)));
+      logo.scale.set(0.06, 0.06, 1);
+      logo.userData = m;
+      globe.add(logo);
+      markerMeshes.push(logo);
+      eventMeshes.push(logo);
 
-        var bGeo = new THREE.CylinderGeometry(0.003,0.003,0.15,6);
-        var bMat = new THREE.MeshBasicMaterial({color:color, transparent:true, opacity:0.5});
-        var beam = new THREE.Mesh(bGeo, bMat);
-        var d = pos.clone().normalize();
-        beam.position.copy(pos.clone().add(d.multiplyScalar(0.075)));
-        beam.lookAt(0,0,0);
-        beam.rotateX(Math.PI/2);
-        globe.add(beam);
+      // Pin beam — Solana gradient purple (#9945FF)
+      var bGeo = new THREE.CylinderGeometry(0.003, 0.003, 0.15, 6);
+      var bMat = new THREE.MeshBasicMaterial({ color: 0x9945FF, transparent: true, opacity: 0.5 });
+      var beam = new THREE.Mesh(bGeo, bMat);
+      var d = pos.clone().normalize();
+      beam.position.copy(pos.clone().add(d.multiplyScalar(0.075)));
+      beam.lookAt(0, 0, 0);
+      beam.rotateX(Math.PI / 2);
+      globe.add(beam);
+      eventMeshes.push(beam);
     });
   };
 
@@ -406,9 +467,23 @@ function showTooltip(x, y, text) {
   tooltip.textContent = text;
 }
 
+var _cullVec = new THREE.Vector3();
+var _camDir = new THREE.Vector3();
+
 function animate() {
   requestAnimationFrame(animate);
   controls.update();
+
+  // Cull event markers on the far side of the globe
+  _camDir.copy(camera.position).normalize();
+  for (var ci = 0; ci < eventMeshes.length; ci++) {
+    var em = eventMeshes[ci];
+    // Get world position (markers are children of globe which may be rotated)
+    em.getWorldPosition(_cullVec);
+    _cullVec.normalize();
+    em.visible = _cullVec.dot(_camDir) > 0.05;
+  }
+
   renderer.render(scene, camera);
 
   // Hover tooltip (only on desktop, skip on mobile)

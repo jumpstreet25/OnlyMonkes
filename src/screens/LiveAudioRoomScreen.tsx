@@ -56,8 +56,8 @@ function ParticipantCard({
   large?: boolean;
 }) {
   const identity    = participant.identity;
-  const displayName = participant.name || identity.slice(0, 8);
   const profile     = getCachedProfile(identity);
+  const displayName = participant.name || profile?.username || 'Monke';
   const avatarUri   = profile?.nftImage ?? null;
 
   const size = large ? 72 : 52;

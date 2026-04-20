@@ -30,7 +30,10 @@ interface ChatActions {
   updateMessageContent: (id: string, newContent: string) => void;
   applyReactionUpdate: (messages: ChatMessage[]) => void;
   addThreadMessage: (parentId: string, message: ChatMessage) => void;
+  /** Prepend older messages to the beginning of the list (for load-more pagination). */
+  prependMessages: (messages: ChatMessage[]) => void;
   setReplyingTo: (message: ChatMessage | null) => void;
+  removeMessage: (id: string) => void;
   setLoadingHistory: (loading: boolean) => void;
   setTypingUser: (inboxId: string, username?: string) => void;
   clearTypingUser: (inboxId: string) => void;
@@ -166,6 +169,23 @@ export const useChatStore = create<ChatState & ChatActions>((set) => ({
           [parentId]: [...existing, message],
         },
       };
+    }),
+
+  prependMessages: (older) =>
+    set((state) => {
+      const _msgIdSet = new Set(state._msgIdSet);
+      const newMsgs = older.filter(m => !_msgIdSet.has(m.id));
+      if (newMsgs.length === 0) return state;
+      for (const m of newMsgs) _msgIdSet.add(m.id);
+      return { messages: [...newMsgs, ...state.messages], _msgIdSet };
+    }),
+
+  removeMessage: (id) =>
+    set((state) => {
+      if (!state._msgIdSet.has(id)) return state;
+      const _msgIdSet = new Set(state._msgIdSet);
+      _msgIdSet.delete(id);
+      return { messages: state.messages.filter(m => m.id !== id), _msgIdSet };
     }),
 
   setReplyingTo: (replyingTo) => set({ replyingTo }),

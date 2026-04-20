@@ -6,33 +6,27 @@
  * Header layout:
  *   Left  — NFT avatar + username stacked vertically
  *   Center — OnlyMonkes logo (transparent background)
- *   Right  — 🔧 wrench + ☰ hamburger
+ *   Right  — banana pill + hamburger
  *
  * Features:
  *  - UsernameModal on first visit
- *  - FlatList of MessageBubbles (oldest at top, newest at bottom)
+ *  - FlashList of MessageBubbles (oldest at top, newest at bottom)
  *  - Optimistic message sending
  *  - Reply-to support (long press to reply)
- *  - 🍌 banana reaction dispatch
- *  - MenuDrawer for dApp side chats (☰)
- *  - MonkeToolsModal for ecosystem links + notification settings (🔧)
+ *  - Banana reaction dispatch
+ *  - MenuDrawer for dApp side chats
  *  - UserProfileModal when username tapped
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import {
   View,
   Text,
   StyleSheet,
   Pressable,
-  Image,
-  ImageBackground,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  ListRenderItem,
-  Modal,
   TextInput,
   Alert,
   Linking,
@@ -40,9 +34,6 @@ import {
   AppState,
   type AppStateStatus,
 } from "react-native";
-import { FlashList } from "@shopify/flash-list";
-import { Swipeable } from "react-native-gesture-handler";
-import * as Haptics from "expo-haptics";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { OnboardingChecklist, markOnboardingStep } from "@/components/OnboardingChecklist";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -52,67 +43,49 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useXmtp, triggerProfileRebroadcast } from "@/hooks/useXmtp";
 import { playSound } from "@/lib/sounds";
 import { useNetInfo } from "@react-native-community/netinfo";
-import { MessageBubble } from "@/components/MessageBubble";
-import { SkiaGlowPfp } from "@/components/SkiaGlowBubble";
 import { ChatInput } from "@/components/ChatInput";
-import { UsernameModal } from "@/components/UsernameModal";
-import { MenuDrawer } from "@/components/MenuDrawer";
-import { MonkeToolsModal } from "@/components/MonkeToolsModal";
-import { UserProfileModal, type ProfileTarget } from "@/components/UserProfileModal";
-import { NftPickerModal } from "@/components/NftPickerModal";
+import type { ProfileTarget } from "@/components/UserProfileModal";
 import { router } from "expo-router";
 import { THEME, FONTS, SKR_MINT } from "@/lib/constants";
-import { loadUserProfile, getCachedProfile, getAllTimeUsers, getDeduplicatedUsers, saveSelectedNftMint, cacheProfile } from "@/lib/userProfile";
+import { loadUserProfile, getCachedProfile, getDeduplicatedUsers, cacheProfile } from "@/lib/userProfile";
 import { checkAndUpdateStreak } from "@/lib/streaks";
-import { claimDailyBananas, addBananas, type ClaimResult } from "@/lib/bananaRewards";
+import { claimDailyBananas, type ClaimResult } from "@/lib/bananaRewards";
 import { getEquippedStyles } from "@/lib/bananaShop";
 import { getOrExtractNftColor } from "@/lib/nftColor";
-import { applyThemeFromShop } from "@/lib/shopTheme";
-import { BananaClaimModal } from "@/components/BananaClaimModal";
+import { useThemeColor } from "@/lib/shopTheme";
 import { checkBananaNotifications } from "@/lib/bananaNotifications";
-import { OnboardingOverlay, hasCompletedOnboarding } from "@/components/OnboardingOverlay";
-import { txError, networkError, llmError } from "@/lib/monkeCopy";
+import { hasCompletedOnboarding } from "@/components/OnboardingOverlay";
+import { txError, networkError } from "@/lib/monkeCopy";
 import { toast } from "sonner-native";
-import { BadgeNotificationBanner } from "@/components/BadgeNotificationBanner";
-import { ScrollToBottomFab } from "@/components/ScrollToBottomFab";
 import { updateStats, type Badge } from "@/lib/activityBadges";
 import { loadBananaState } from "@/lib/bananaRewards";
 import { updateStreak as updateBadgeStreak } from "@/lib/badges";
-import { ConfettiView } from "@/components/ConfettiView";
 import { registerForPushNotifications, setNotificationReplyHandler } from "@/lib/notifications";
 import { loadEvents } from "@/lib/calendar";
 import { loadThemeId, loadCustomColor } from "@/lib/theme";
 import { sendSkrTip, sendDevTip, parseTipCommand } from "@/lib/solana";
-import { TipModal } from "@/components/TipModal";
-import { SearchModal } from "@/components/SearchModal";
-import { CalendarModal } from "@/components/CalendarModal";
-import { GifPickerModal } from "@/components/GifPickerModal";
-import { VideoCameraModal } from "@/components/VideoCameraModal";
-import { LiveRoomBanner } from "@/components/LiveRoomBanner";
 import { createLivekitToken, createRoomName } from "@/lib/livekit";
+import { LiveRoomBanner } from "@/components/LiveRoomBanner";
 import { VideoRoomBanner } from "@/components/VideoRoomBanner";
 import { VideoCallPip } from "@/components/VideoCallPip";
 import { AvatarRoomPill } from "@/components/AvatarRoomPill";
 import { VideoReactionOverlay } from "@/components/VideoReactionOverlay";
 import { addReactionListener as addAvatarReactionListener, disconnectFromAvatarRoom, type AvatarRoomData } from "@/lib/avatarRoom";
-import { ChartModal } from "@/components/ChartModal";
 import type { VideoRoomData } from "@/lib/liveVideo";
-import { BotCommandTicker } from "@/components/BotCommandTicker";
-import { showLocalNotification, CH_ALL } from "@/lib/notifications";
+import { showLocalNotification, CH_LIVE } from "@/lib/notifications";
 import { registerNetworkSync, unregisterNetworkSync, setOfflineQueueFlusher, isOnline } from "@/lib/backgroundSync";
 import { enqueueMessage, flushOfflineQueue } from "@/lib/offlineQueue";
 import { appendCachedMessage } from "@/lib/messageCache";
-import { SwapConfirmModal } from "@/components/SwapConfirmModal";
+import { flushPendingWrites } from "@/lib/debouncedStorage";
 import { PinnedBar } from "@/components/PinnedBar";
 import { loadPinnedMessages, getPinnedMessages, buildPinMessage, type PinnedMessage } from "@/lib/pinnedMessages";
 import { loadThreadMetadata } from "@/lib/threads";
 import { loadListings } from "@/lib/marketplace";
+import { updateCloutProfile, loadFlairCache } from "@/lib/monkeClout";
 
 // ── Lazy imports — heavy modules loaded on first use, not at startup ────────
 import type { SwapQuote } from "@/lib/jupiterSwap";
-import ImageLightbox from "@/components/ImageLightbox";
 
-const getExpoAv = () => import("expo-av");
 const getMediaLibrary = () => import("expo-media-library");
 const getFileSystem = () => import("expo-file-system");
 const getImagePicker = () => import("expo-image-picker");
@@ -125,32 +98,10 @@ const getDisconnectVideoRoom = async () => (await getLiveVideo()).disconnectFrom
 import type { ChatMessage, ReactionEmoji } from "@/types";
 import type { TipAmount } from "@/lib/constants";
 
-const HEADER_BG = "rgba(10, 10, 15, 0.85)";
-
-/** Lazy-loaded Video player — avoids importing expo-av at startup */
-function LazyVideo({ uri }: { uri: string }) {
-  const [Mod, setMod] = useState<{ Video: any; ResizeMode: any } | null>(null);
-  useEffect(() => { getExpoAv().then(m => setMod(m)); }, []);
-  if (!Mod) return <ActivityIndicator style={{ flex: 1 }} color="#fff" />;
-  return (
-    <Mod.Video
-      source={{ uri }}
-      style={{ flex: 1 }}
-      useNativeControls
-      shouldPlay
-      resizeMode={Mod.ResizeMode.CONTAIN}
-    />
-  );
-}
-
-/** Swipe-to-reply wrapper — swipe right reveals reply arrow, triggers onReply */
-function SwipeReplyAction() {
-  return (
-    <View style={{ width: 50, justifyContent: "center", alignItems: "center" }}>
-      <Text style={{ fontSize: 18, color: THEME.textDim ?? "#888" }}>↩</Text>
-    </View>
-  );
-}
+// ── Extracted sub-components ────────────────────────────────────────────────
+import { ChatHeader } from "@/components/ChatHeader";
+import { ChatModals } from "@/components/ChatModals";
+import { ChatMessageList } from "@/components/ChatMessageList";
 
 export default function ChatScreen() {
   const insets = useSafeAreaInsets();
@@ -186,6 +137,13 @@ export default function ChatScreen() {
   const isLoading        = useAppStore(s => s.isLoading);
   const error            = useAppStore(s => s.error);
   const communityBadges  = useAppStore(s => s.communityBadges);
+  const dmUnreadCounts   = useAppStore(s => s.dmUnreadCounts);
+  const totalDmUnread    = useMemo(() => Object.values(dmUnreadCounts).reduce((a, b) => a + b, 0), [dmUnreadCounts]);
+  const themeBg          = useThemeColor('bg');
+  const themeSurface     = useThemeColor('surface');
+  const themeBorder      = useThemeColor('border');
+  const themeAccent      = useThemeColor('accent');
+  const hasThemeOverride = useAppStore(s => !!s.themeOverrides);
   const activeVideoRoom  = useAppStore(s => s.activeVideoRoom);
   const setActiveVideoRoom = useAppStore(s => s.setActiveVideoRoom);
   const isInVideoCall    = useAppStore(s => s.isInVideoCall);
@@ -200,13 +158,12 @@ export default function ChatScreen() {
   const messagesAsc      = useChatStore(s => s.messages);
   const reactionVersion  = useChatStore(s => s._reactionVersion);
   // inverted FlashList expects newest-first; messagesAsc is oldest-first
-  // Slice creates a shallow copy (reverse mutates in-place), memoized on reference
   const messages         = useMemo(() => messagesAsc.slice().reverse(), [messagesAsc]);
   const replyingTo       = useChatStore(s => s.replyingTo);
   const isLoadingHistory = useChatStore(s => s.isLoadingHistory);
   const setReplyingTo    = useChatStore(s => s.setReplyingTo);
   const typingUsers      = useChatStore(s => s.typingUsers);
-  const { initialize, disconnect, logout, streamAlive, send, reply, react, edit, stickerReact, sendFile, sendTyping, forceAdminInit, broadcastProfile, broadcastEvent, broadcastVideoRoom, broadcastAvatarRoom, syncMessages } = useXmtp();
+  const { initialize, disconnect, logout, streamAlive, send, reply, react, edit, deleteMessage, stickerReact, sendFile, sendTyping, forceAdminInit, broadcastProfile, broadcastEvent, broadcastVideoRoom, broadcastAvatarRoom, syncMessages, loadOlderMessages } = useXmtp();
   const [inputText, setInputTextRaw] = useState("");
   // Draft auto-save — persist input text so it survives navigation/restart
   const _draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -257,6 +214,7 @@ export default function ChatScreen() {
   const [pinnedMessages, setPinnedMessages] = useState<PinnedMessage[]>([]);
   const flatListRef = useRef<FlatList>(null);
   const initialMsgIdsRef = useRef<Set<string>>(new Set());
+  const isNearBottomRef = useRef(true);
 
   const handleDownloadVideo = async (uri: string) => {
     const ML = await getMediaLibrary();
@@ -294,7 +252,6 @@ export default function ChatScreen() {
   useEffect(() => {
     initialize().then(async () => {
       const { justHitLegendary } = await checkAndUpdateStreak();
-      // Sync streak into badge progress so streak badges auto-earn
       const { loginStreak, bestStreak } = useAppStore.getState();
       updateBadgeStreak(loginStreak, bestStreak);
       if (justHitLegendary) {
@@ -302,11 +259,9 @@ export default function ChatScreen() {
         broadcastProfile();
         toast.success("7-day streak — Legendary!");
       }
-      // Banana daily reward
       const claim = await claimDailyBananas();
       useAppStore.getState().setBananaBalance(claim.balance);
       if (claim.claimed) setBananaClaim(claim);
-      // Refresh shop styles (picks up isShopCustomer flag) and broadcast
       getEquippedStyles().then(s => {
         if (s.pfpAuraEnabled) {
           s.pfpAuraColor = (s.glowColor as string) ?? useAppStore.getState().nftDominantColor ?? undefined;
@@ -316,16 +271,23 @@ export default function ChatScreen() {
           triggerProfileRebroadcast("").catch(() => {});
         }
       }).catch(() => {});
-      // Extract NFT dominant color for Tier 3 PFP styles
       const nft = useAppStore.getState().verifiedNft;
       if (nft?.image) {
         getOrExtractNftColor(nft.image, nft.mint ?? "nft").then(c => {
           useAppStore.getState().setNftDominantColor(c);
         }).catch(() => {});
       }
-      // Schedule banana-related push notifications
+      loadFlairCache().catch(() => {});
+      const myId = useAppStore.getState().myInboxId;
+      const myName = useAppStore.getState().username;
+      if (myId && myName) {
+        updateCloutProfile(myId, myName, {
+          streakDays: loginStreak,
+          totalCycles: Math.floor(bestStreak / 7),
+          bananaBalance: claim.balance,
+        }).catch(() => {});
+      }
       checkBananaNotifications().catch(() => {});
-      // Check for new badges
       const bananaState = await loadBananaState();
       const { newBadges } = await updateStats({
         totalDaysActive: bananaState.totalCycles * 7 + bananaState.streakDay,
@@ -334,14 +296,12 @@ export default function ChatScreen() {
         bananaBalance: bananaState.balance,
       });
       if (newBadges.length > 0) setEarnedBadge(newBadges[0]);
-      // Show onboarding for first-time users
       const onboarded = await hasCompletedOnboarding();
       if (!onboarded) setShowOnboarding(true);
     }).catch(() => {
       toast.error("Connection lost — retrying...");
     });
 
-    // Wire offline queue flusher so it fires when network comes back
     setOfflineQueueFlusher(async () => {
       const { updateMessageStatus } = useChatStore.getState();
       await flushOfflineQueue(
@@ -354,7 +314,6 @@ export default function ChatScreen() {
       );
     });
 
-    // Register network-aware heartbeat (replaces manual AppState + setInterval)
     const syncOrReconnect = async () => {
       if (!streamAlive()) await initialize();
       else await syncMessages();
@@ -371,9 +330,13 @@ export default function ChatScreen() {
   useEffect(() => {
     let lastFgCheck = 0;
     const handleAppState = async (nextState: AppStateStatus) => {
+      if (nextState === 'background') {
+        flushPendingWrites().catch(() => {});
+        return;
+      }
       if (nextState !== 'active') return;
       const now = Date.now();
-      if (now - lastFgCheck < 60_000) return; // debounce: skip if checked <60s ago
+      if (now - lastFgCheck < 60_000) return;
       lastFgCheck = now;
       try {
         const { justHitLegendary } = await checkAndUpdateStreak();
@@ -394,7 +357,6 @@ export default function ChatScreen() {
   }, []);
 
   // ─── Auto-retry until approved ───────────────────────────────────────────────
-  // Retries with exponential backoff (5s → 10s → 20s → cap 30s).
   useEffect(() => {
     if (isGroupMember || !remoteGroupId) return;
     let delay = 3_000;
@@ -415,10 +377,10 @@ export default function ChatScreen() {
     if (!isGroupMember) return;
     registerForPushNotifications().then(token => {
       if (token) useAppStore.getState().setExpoPushToken(token);
-    }).catch(() => {/* silently ignore */});
+    }).catch(() => {});
   }, [isGroupMember]);
 
-  // ─── Wire notification inline-reply → XMTP send ───────────────────────────
+  // ─── Wire notification inline-reply ───────────────────────────────────────
   useEffect(() => {
     if (!isGroupMember) return;
     setNotificationReplyHandler((text) => {
@@ -426,25 +388,21 @@ export default function ChatScreen() {
     });
   }, [isGroupMember, send]);
 
-  // ─── Aggressive re-sync on sparse history (fresh install / epoch update) ──────
-  // After a fresh install the new installation key won't see old messages until
-  // the group epoch updates. Re-sync every 8s for the first 2 minutes so new
-  // messages appear as soon as the epoch is current.
+  // ─── Aggressive re-sync on sparse history ──────────────────────────────────
   useEffect(() => {
     if (!isGroupMember) return;
-    if (messages.length >= 10) return; // history looks healthy, skip
+    if (messages.length >= 10) return;
     let count = 0;
     const id = setInterval(() => {
       syncMessages();
       count++;
-      if (count >= 15) clearInterval(id); // stop after 2 min
+      if (count >= 15) clearInterval(id);
     }, 8_000);
     return () => clearInterval(id);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isGroupMember, messages.length >= 10 ? 1 : 0]);
 
   // ─── Load saved profile, show modal if no username yet ───────────────────
-
   useEffect(() => {
     loadUserProfile().then(({ username: saved, bio, xAccount: savedX, tipWallet: savedTip, location: savedLoc }) => {
       if (saved) {
@@ -457,24 +415,24 @@ export default function ChatScreen() {
       } else {
         setShowUsernameModal(true);
       }
-      // Always keep own entry in the profile cache so PFP shows everywhere
       const { myInboxId: id, verifiedNft: nft } = useAppStore.getState();
       if (id) cacheProfile(id, { username: saved ?? undefined, nftImage: nft?.image ?? null, location: savedLoc ?? undefined });
     });
-    // Load persisted theme
     loadThemeId().then(setThemeId);
     loadCustomColor().then((c) => { if (c) setCustomBubbleColor(c); });
-    // Load persisted calendar events
     loadEvents().then(setCalendarEvents);
-    // Load pinned messages, thread metadata, marketplace listings
     loadPinnedMessages().then(setPinnedMessages);
     loadThreadMetadata();
     loadListings();
   }, []);
 
-  // ─── Fetch $SKR price + Saga Monkes floor price (live, every 60s) ───────────
+  // ─── Fetch $SKR price + Saga Monkes floor price (live, every 5 min) ─────────
   useEffect(() => {
     let mounted = true;
+    // Load cached floor price immediately so it shows while API warms up
+    AsyncStorage.getItem('cached_floor_price').then(cached => {
+      if (mounted && cached) setFloorPrice(cached);
+    }).catch(() => {});
     const fetchPrices = () => {
       fetch(`https://api.dexscreener.com/latest/dex/tokens/${SKR_MINT}`)
         .then(r => r.json())
@@ -488,16 +446,20 @@ export default function ChatScreen() {
         .then(r => r.json())
         .then(d => {
           if (!mounted) return;
-          if (d?.floorPrice) setFloorPrice(`${(d.floorPrice / 1e9).toFixed(2)} SOL`);
+          if (d?.floorPrice) {
+            const fp = `${(d.floorPrice / 1e9).toFixed(2)} SOL`;
+            setFloorPrice(fp);
+            AsyncStorage.setItem('cached_floor_price', fp).catch(() => {});
+          }
         })
         .catch(() => {});
     };
     fetchPrices();
-    const interval = setInterval(fetchPrices, 5 * 60_000); // 5 min — battery friendly
+    const interval = setInterval(fetchPrices, 5 * 60_000);
     return () => { mounted = false; clearInterval(interval); };
   }, []);
 
-  // ─── Keep own NFT in profile cache in sync whenever verifiedNft changes ──────
+  // ─── Keep own NFT in profile cache in sync ──────────────────────────────────
   useEffect(() => {
     if (myInboxId && verifiedNft?.image) {
       cacheProfile(myInboxId, { nftImage: verifiedNft.image, location: useAppStore.getState().location ?? undefined });
@@ -511,14 +473,12 @@ export default function ChatScreen() {
     }
   }, [isLoadingHistory, messages.length]);
 
-
   // ─── Send ────────────────────────────────────────────────────────────────────
-
   const handleSend = useCallback(async () => {
     const text = inputText.trim();
     if (!text) return;
 
-    // ── Intercept /buy, /sell, /swap commands ──────────────────────────────────
+    // Intercept /buy, /sell, /swap commands
     const { parseSwapCommand, resolveToken, getSwapQuote, getTokenBalance } = await getJupiterSwap();
     const swapCmd = parseSwapCommand(text);
     if (swapCmd) {
@@ -535,13 +495,11 @@ export default function ChatScreen() {
 
         let amountRaw: string;
         if (swapCmd.type === "sell") {
-          // /sell: amount is a percentage of holdings
           const balance = await getTokenBalance(walletAddr, inputToken.mint, inputToken.decimals);
           if (balance <= 0) { Alert.alert("No balance", `You have no ${inputToken.symbol} to sell.`); return; }
           const sellAmount = balance * (swapCmd.amount / 100);
           amountRaw = Math.floor(sellAmount * Math.pow(10, inputToken.decimals)).toString();
         } else {
-          // /buy and /swap: amount is in input token units
           amountRaw = Math.floor(swapCmd.amount * Math.pow(10, inputToken.decimals)).toString();
         }
 
@@ -560,14 +518,13 @@ export default function ChatScreen() {
       return;
     }
 
-    // ── Intercept /tip @username [amount] ────────────────────────────────────
+    // Intercept /tip @username [amount]
     const tipCmd = parseTipCommand(text);
     if (tipCmd) {
       setInputText("");
-      // Resolve @username → inboxId → wallet
-      const allUsers = getAllTimeUsers();
+      const dedupedUsers = getDeduplicatedUsers();
       let targetInboxId: string | null = null;
-      allUsers.forEach((name, inboxId) => {
+      dedupedUsers.forEach((name, inboxId) => {
         if (name?.toLowerCase() === tipCmd.username.toLowerCase()) {
           targetInboxId = inboxId;
         }
@@ -582,7 +539,6 @@ export default function ChatScreen() {
         Alert.alert("No wallet", `@${tipCmd.username} hasn't linked a wallet yet.`);
         return;
       }
-      // Open TipModal with pre-filled target
       setTipTarget({
         id: `tip-cmd-${Date.now()}`,
         senderAddress: targetInboxId,
@@ -594,7 +550,7 @@ export default function ChatScreen() {
       return;
     }
 
-    // ── Intercept /tiplink <amount> — claimable SOL link ─────────────────────
+    // Intercept /tiplink <amount>
     const tipLinkMatch = text.match(/^\/tiplink\s+([\d.]+)/i);
     if (tipLinkMatch) {
       setInputText("");
@@ -654,11 +610,8 @@ export default function ChatScreen() {
       playSound("send");
       useChatStore.getState().updateMessageStatus(optimistic.id, "sent");
       markOnboardingStep("sentMessage");
-      // Persist own message to cache — stream handler skips own messages,
-      // so without this they're lost on force close + reopen
       appendCachedMessage("main_chat", { ...optimistic, status: "sent" }).catch(() => {});
     } catch {
-      // If offline, queue for auto-retry when back online
       if (!isOnline()) {
         await enqueueMessage({
           id: optimistic.id,
@@ -681,7 +634,6 @@ export default function ChatScreen() {
   }, [inputText, myAddress, username, verifiedNft, replyingTo, send, reply, setReplyingTo]);
 
   // ─── React (banana) ──────────────────────────────────────────────────────────
-
   const handleReact = useCallback(
     async (emoji: ReactionEmoji, messageId: string) => {
       try {
@@ -696,7 +648,6 @@ export default function ChatScreen() {
   );
 
   // ─── Send GIF ─────────────────────────────────────────────────────────────────
-
   const handleSendGif = useCallback(async (url: string) => {
     const content = `GIF:${url}`;
     const optimistic: ChatMessage = {
@@ -722,7 +673,6 @@ export default function ChatScreen() {
   }, [send, myAddress, username, verifiedNft]);
 
   // ─── Camera capture ────────────────────────────────────────────────────────
-
   const handleCamera = useCallback(async () => {
     try {
       const IP = await getImagePicker();
@@ -739,7 +689,6 @@ export default function ChatScreen() {
       });
       if (result.canceled || !result.assets?.[0]) return;
       const asset = result.assets[0];
-      // Compress to max 1200px wide, JPEG 70% then convert to base64 data URI
       const { compressImage } = await getVideoUpload();
       const compressedUri = await compressImage(asset.uri);
       const FS = await getFileSystem();
@@ -762,7 +711,6 @@ export default function ChatScreen() {
         await send(content);
         useChatStore.getState().updateMessageStatus(optimistic.id, "sent");
         appendCachedMessage("main_chat", { ...optimistic, status: "sent" }).catch(() => {});
-        // Prompt to share on X
         setXShareImageUri(dataUri);
       } catch (err: any) {
         Alert.alert("Camera error", err?.message ?? "Could not send photo.");
@@ -774,14 +722,12 @@ export default function ChatScreen() {
   }, [send, myAddress, username, verifiedNft]);
 
   // ─── File picker (RemoteAttachment) ──────────────────────────────────────────
-
   const handleFilePicker = useCallback(async () => {
     try {
       const DP = await import('expo-document-picker');
       const result = await DP.getDocumentAsync({ copyToCacheDirectory: true });
       if (result.canceled || !result.assets?.[0]) return;
       const file = result.assets[0];
-      // Upload to Cloudinary as raw file
       const { uploadFile } = await import('@/lib/videoUpload');
       const url = await uploadFile(file.uri, file.name ?? 'file', file.mimeType ?? 'application/octet-stream');
       await sendFile(url, file.name ?? 'file', file.size ?? 0);
@@ -791,7 +737,6 @@ export default function ChatScreen() {
   }, [sendFile]);
 
   // ─── Camera button — alert for Photo vs Video vs File ──────────────────────
-
   const handleCameraButtonPress = useCallback(() => {
     Alert.alert('Share media', 'Choose an option', [
       { text: '📷 Photo', onPress: handleCamera },
@@ -802,7 +747,6 @@ export default function ChatScreen() {
   }, [handleCamera, handleFilePicker]);
 
   // ─── Video send (from VideoCameraModal) ──────────────────────────────────────
-
   const handleVideoSend = useCallback(async (content: string) => {
     setVideoModalOpen(false);
     const optimistic: ChatMessage = {
@@ -827,7 +771,6 @@ export default function ChatScreen() {
   }, [send, myAddress, username, verifiedNft]);
 
   // ─── Sticker react ────────────────────────────────────────────────────────────
-
   const handleStickerReact = useCallback(async (url: string, messageId: string) => {
     try {
       await stickerReact(url, messageId);
@@ -837,7 +780,6 @@ export default function ChatScreen() {
   }, [stickerReact]);
 
   // ─── Edit message ──────────────────────────────────────────────────────────────
-
   const handleEditMessage = useCallback((msg: ChatMessage) => {
     setEditTarget(msg);
     setEditText(msg.editedContent ?? msg.content);
@@ -855,7 +797,6 @@ export default function ChatScreen() {
   }, [edit, editTarget, editText]);
 
   // ─── X / Twitter share for own images ─────────────────────────────────────────
-
   const handleShareToX = useCallback(() => {
     const caption = encodeURIComponent("I snapped this using @xOnlyMonkes via Solana Mobile, The Future is Monke! 🐒");
     const url = `https://x.com/intent/tweet?text=${caption}`;
@@ -864,13 +805,11 @@ export default function ChatScreen() {
   }, []);
 
   // ─── Profile popup ────────────────────────────────────────────────────────────
-
   const handlePressUser = useCallback((target: ProfileTarget) => {
     setProfileTarget(target);
   }, []);
 
   // ─── Tipping ─────────────────────────────────────────────────────────────────
-
   const handleTip = useCallback((message: ChatMessage) => {
     setTipTarget(message);
   }, []);
@@ -878,7 +817,6 @@ export default function ChatScreen() {
   const handleConfirmTip = useCallback(async (amount: TipAmount) => {
     if (!tipTarget) return;
     const cached = getCachedProfile(tipTarget.senderAddress);
-    // Prefer dedicated tip wallet; fall back to connected wallet address
     const recipientWallet = cached?.tipWallet || cached?.walletAddress;
     if (!recipientWallet) {
       Alert.alert(
@@ -899,10 +837,7 @@ export default function ChatScreen() {
     }
   }, [tipTarget]);
 
-  // ─── Live audio room handlers ───────────────────────────────────────────────
-
   // ── Video call handlers ─────────────────────────────────────────────────────
-
   const handleStartVideoCall = useCallback(async () => {
     if (!myInboxId || !username) {
       Alert.alert("Set a username first", "Go to your profile and set a username before starting a video call.");
@@ -915,7 +850,7 @@ export default function ChatScreen() {
       setIsInVideoCall(true);
       setVideoCallToken(token);
       await broadcastVideoRoom(roomData);
-      await showLocalNotification(`${username} started a Video Call`, "Live Video in OnlyMonkes", CH_ALL);
+      await showLocalNotification(`${username} started a Video Call`, "Live Video in OnlyMonkes", CH_LIVE);
       router.push(`/video-room?token=${encodeURIComponent(token)}&isHost=1`);
     } catch (err: any) {
       Alert.alert("Failed to start video call", err?.message ?? "Unknown error");
@@ -952,7 +887,6 @@ export default function ChatScreen() {
   }, [activeVideoRoom, broadcastVideoRoom, setActiveVideoRoom, setIsInVideoCall]);
 
   // ── Avatar room handlers ────────────────────────────────────────────────────
-
   const handleStartAvatarRoom = useCallback(async () => {
     if (!myInboxId || !username) {
       Alert.alert("Set a username first", "Go to your profile and set a username before starting a live.");
@@ -969,7 +903,7 @@ export default function ChatScreen() {
       };
       setActiveAvatarRoom(data);
       await broadcastAvatarRoom(data);
-      await showLocalNotification(`${username} started a Live`, "Avatar Room in OnlyMonkes", CH_ALL);
+      await showLocalNotification(`${username} started a Live`, "Avatar Room in OnlyMonkes", CH_LIVE);
       const token = await createLivekitToken(roomId, myInboxId, username);
       setAvatarRoomToken(token);
       setIsInAvatarRoom(true);
@@ -1018,7 +952,6 @@ export default function ChatScreen() {
   }, []);
 
   // ─── Swap execution ──────────────────────────────────────────────────────────
-
   const handleConfirmSwap = useCallback(async () => {
     if (!swapQuote) return;
     setSwapExecuting(true);
@@ -1027,7 +960,6 @@ export default function ChatScreen() {
       const result = await executeSwap(swapQuote);
       setSwapConfirmOpen(false);
       setSwapQuote(null);
-      // Announce the trade in chat
       const tradeMsg = `Swapped ${result.inputAmount.toFixed(4)} ${result.inputSymbol} for ${result.outputAmount.toFixed(4)} ${result.outputSymbol}`;
       await send(tradeMsg).catch(() => {});
       Alert.alert("Swap complete!", tradeMsg);
@@ -1043,8 +975,7 @@ export default function ChatScreen() {
     setSwapQuote(null);
   }, []);
 
-  // ─── Stable callbacks for FlatList renderItem (avoids re-creating on every render) ──
-
+  // ─── Stable callbacks for message list ──────────────────────────────────────
   const handlePin = useCallback(async (msg: ChatMessage) => {
     if (!isGroupAdmin) return;
     const { pinMessage: doPin, buildPinMessage: buildPin } = require("@/lib/pinnedMessages");
@@ -1060,298 +991,125 @@ export default function ChatScreen() {
   }, []);
 
   const handleDelete = useCallback(async (msg: ChatMessage) => {
-    Alert.alert("Delete Message", "This will remove the message from your view.", [
+    Alert.alert("Delete Message", "Are you sure you want to delete this message?", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Delete", style: "destructive",
-        onPress: () => {
-          // Remove from local store (soft delete — XMTP doesn't support hard delete)
-          const { messages, _msgIdSet } = useChatStore.getState();
-          const filtered = messages.filter(m => m.id !== msg.id);
-          const idSet = new Set(_msgIdSet);
-          idSet.delete(msg.id);
-          useChatStore.getState().setMessages(filtered);
+        onPress: async () => {
+          // Optimistic removal
+          useChatStore.getState().removeMessage(msg.id);
+          try {
+            await deleteMessage(msg.id);
+          } catch (e: any) {
+            if (__DEV__) console.warn("[XMTP] deleteMessage failed:", e);
+          }
         },
       },
     ]);
-  }, []);
+  }, [deleteMessage]);
 
   // ─── Render ──────────────────────────────────────────────────────────────────
 
-  const swipeableRefs = useRef<Map<string, Swipeable>>(new Map());
-
-  const renderMessage = useCallback(
-    ({ item }: { item: ChatMessage }) => {
-      const isNew = !initialMsgIdsRef.current.has(item.id);
-      return (
-        <Swipeable
-          ref={(ref) => {
-            if (ref) swipeableRefs.current.set(item.id, ref);
-            else swipeableRefs.current.delete(item.id);
-          }}
-          renderLeftActions={() => <SwipeReplyAction />}
-          onSwipeableOpen={(direction) => {
-            if (direction === "left") {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              setReplyingTo(item);
-            }
-            const ref = swipeableRefs.current.get(item.id);
-            ref?.close();
-          }}
-          overshootLeft={false}
-          leftThreshold={40}
-          friction={2}
-          containerStyle={{ overflow: "visible" }}
-        >
-          <Animated.View entering={isNew ? FadeInDown.duration(250).springify().damping(18) : undefined}>
-            <MessageBubble
-              message={item}
-              isOwn={item.senderAddress === myAddress}
-              onReact={handleReact}
-              onReply={setReplyingTo}
-              onPressUser={handlePressUser}
-              onTip={handleTip}
-              onStickerReact={handleStickerReact}
-              onPressImage={setLightboxUrl}
-              onPressVideo={setVideoLightboxUrl}
-              onTokenPress={setChartSymbol}
-              onEdit={handleEditMessage}
-              onDelete={handleDelete}
-              onPin={isGroupAdmin ? handlePin : undefined}
-              onThread={handleThread}
-            />
-          </Animated.View>
-        </Swipeable>
-      );
-    },
-    [myAddress, isGroupAdmin, handleReact, setReplyingTo, handlePressUser, handleTip, handleStickerReact, setVideoLightboxUrl, handleEditMessage, handleDelete, handlePin, handleThread]
-  );
-
-  const keyExtractor = useCallback((item: ChatMessage) => item.id, []);
-
-  // ── FlatList performance helpers ──────────────────────────────────────────
-  // NOTE: getItemLayout omitted — messages have variable heights (text, images, videos)
-  // and estimated heights cause visual glitches with overlapping/gaps.
-  const SCROLL_THRESHOLD = 270; // ~3 message heights
-
-  // Only auto-scroll if user is already near the bottom (within ~3 messages)
-  const isNearBottomRef = useRef(true);
-  const handleContentSizeChange = useCallback(() => {
-    if (isNearBottomRef.current) {
-      flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
-    }
-  }, []);
-
   return (
     <ErrorBoundary fallbackMessage="Chat hit an error. Tap below to reload.">
-      {showConfetti && <ConfettiView onDone={() => setShowConfetti(false)} />}
-
-      <BananaClaimModal
-        visible={!!bananaClaim}
-        claim={bananaClaim}
-        onDismiss={() => setBananaClaim(null)}
-      />
-
-      <OnboardingOverlay
-        visible={showOnboarding}
-        onComplete={async (bonus) => {
-          setShowOnboarding(false);
-          // Persist bonus to AsyncStorage + update Zustand
-          const newBalance = await addBananas(bonus);
-          useAppStore.getState().setBananaBalance(newBalance);
-        }}
-      />
-
-      <BadgeNotificationBanner
-        badge={earnedBadge}
-        onDismiss={() => setEarnedBadge(null)}
-      />
-
-      <ScrollToBottomFab
-        visible={showScrollFab}
-        unreadCount={unreadWhileScrolled}
-        onPress={() => {
-          flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
-          setShowScrollFab(false);
-          setUnreadWhileScrolled(0);
-        }}
-      />
-
-      <UsernameModal
-        visible={showUsernameModal || editingProfile}
-        onDone={async () => {
-          setShowUsernameModal(false);
-          setEditingProfile(false);
-          await broadcastProfile();
-        }}
-        editMode={editingProfile}
-        initialUsername={editingProfile ? (username ?? "") : ""}
-        initialBio={editingProfile ? (bio ?? "") : ""}
-        initialXAccount={editingProfile ? (xAccount ?? "") : ""}
-        initialTipWallet={editingProfile ? (tipWallet ?? "") : ""}
-        initialLocation={editingProfile ? (userLocation ?? "") : ""}
-      />
-
-      <MenuDrawer
-        visible={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        onCreateEvent={() => setCalendarOpen(true)}
-        onStartLive={handleStartAvatarRoom}
-        onStartVideo={handleStartVideoCall}
-        onSearch={() => setSearchOpen(true)}
-        onPressUser={(target) => { setDrawerOpen(false); setTimeout(() => setProfileTarget(target), 300); }}
+      <ChatModals
+        showConfetti={showConfetti}
+        setShowConfetti={setShowConfetti}
+        bananaClaim={bananaClaim}
+        setBananaClaim={setBananaClaim}
+        showOnboarding={showOnboarding}
+        setShowOnboarding={setShowOnboarding}
+        earnedBadge={earnedBadge}
+        setEarnedBadge={setEarnedBadge}
+        showScrollFab={showScrollFab}
+        unreadWhileScrolled={unreadWhileScrolled}
+        flatListRef={flatListRef}
+        setShowScrollFab={setShowScrollFab}
+        setUnreadWhileScrolled={setUnreadWhileScrolled}
+        showUsernameModal={showUsernameModal}
+        setShowUsernameModal={setShowUsernameModal}
+        editingProfile={editingProfile}
+        setEditingProfile={setEditingProfile}
+        username={username}
+        bio={bio}
+        xAccount={xAccount}
+        tipWallet={tipWallet}
+        userLocation={userLocation}
         broadcastProfile={broadcastProfile}
-        onDevTip={(amount) => {
-          setDrawerOpen(false);
-          handleConfirmDevTip(amount);
-        }}
-        onEditProfile={() => {
-          setTimeout(() => { setEditingProfile(true); setShowUsernameModal(true); }, 300);
-        }}
-        onSwitchPfp={() => {
-          setTimeout(() => setPfpPickerOpen(true), 300);
-        }}
+        drawerOpen={drawerOpen}
+        setDrawerOpen={setDrawerOpen}
+        handleStartAvatarRoom={handleStartAvatarRoom}
+        handleStartVideoCall={handleStartVideoCall}
+        handleConfirmDevTip={handleConfirmDevTip}
+        setSearchOpen={setSearchOpen}
+        setCalendarOpen={setCalendarOpen}
+        setProfileTarget={setProfileTarget}
+        setPfpPickerOpen={setPfpPickerOpen}
+        searchOpen={searchOpen}
+        calendarOpen={calendarOpen}
+        broadcastEvent={broadcastEvent}
+        tipTarget={tipTarget}
+        setTipTarget={setTipTarget}
+        handleConfirmTip={handleConfirmTip}
+        devTipOpen={devTipOpen}
+        setDevTipOpen={setDevTipOpen}
+        swapConfirmOpen={swapConfirmOpen}
+        swapQuote={swapQuote}
+        swapExecuting={swapExecuting}
+        handleConfirmSwap={handleConfirmSwap}
+        handleCancelSwap={handleCancelSwap}
+        gifPickerOpen={gifPickerOpen}
+        setGifPickerOpen={setGifPickerOpen}
+        pfpGifPickerOpen={pfpGifPickerOpen}
+        setPfpGifPickerOpen={setPfpGifPickerOpen}
+        handleSendGif={handleSendGif}
+        pfpPickerOpen={pfpPickerOpen}
+        allNfts={allNfts}
+        setVerified={setVerified}
+        lightboxUrl={lightboxUrl}
+        setLightboxUrl={setLightboxUrl}
+        chartSymbol={chartSymbol}
+        setChartSymbol={setChartSymbol}
+        profileTarget={profileTarget}
+        myAddress={myAddress}
+        logout={logout}
+        videoModalOpen={videoModalOpen}
+        setVideoModalOpen={setVideoModalOpen}
+        handleVideoSend={handleVideoSend}
+        videoLightboxUrl={videoLightboxUrl}
+        setVideoLightboxUrl={setVideoLightboxUrl}
+        handleDownloadVideo={handleDownloadVideo}
+        editTarget={editTarget}
+        setEditTarget={setEditTarget}
+        editText={editText}
+        setEditText={setEditText}
+        handleEditSubmit={handleEditSubmit}
+        xShareImageUri={xShareImageUri}
+        setXShareImageUri={setXShareImageUri}
+        handleShareToX={handleShareToX}
       />
-
-      <SearchModal visible={searchOpen} onClose={() => setSearchOpen(false)} />
-
-      <ChartModal
-        visible={!!chartSymbol}
-        symbol={chartSymbol ?? ''}
-        onClose={() => setChartSymbol(null)}
-      />
-
-      <CalendarModal
-        visible={calendarOpen}
-        onClose={() => setCalendarOpen(false)}
-        onBroadcast={broadcastEvent}
-      />
-
-      <TipModal
-        visible={!!tipTarget}
-        recipientName={tipTarget?.senderUsername ?? "this monke"}
-        onConfirm={handleConfirmTip}
-        onClose={() => setTipTarget(null)}
-      />
-
-      <TipModal
-        visible={devTipOpen}
-        recipientName="Jump.skr"
-        onConfirm={handleConfirmDevTip}
-        onClose={() => setDevTipOpen(false)}
-      />
-
-
-      <SwapConfirmModal
-        visible={swapConfirmOpen}
-        quote={swapQuote}
-        isExecuting={swapExecuting}
-        onConfirm={handleConfirmSwap}
-        onCancel={handleCancelSwap}
-      />
-
-      <GifPickerModal
-        visible={gifPickerOpen}
-        onClose={() => setGifPickerOpen(false)}
-        onSelect={handleSendGif}
-      />
-
-      <GifPickerModal
-        visible={pfpGifPickerOpen}
-        onClose={() => setPfpGifPickerOpen(false)}
-        onSelect={handleSendGif}
-        sagaMonkesOnly
-      />
-
-      <UserProfileModal
-        visible={!!profileTarget}
-        target={profileTarget}
-        onClose={() => setProfileTarget(null)}
-        onEditProfile={() => setEditingProfile(true)}
-        onChangePfp={allNfts.length > 0 ? () => setPfpPickerOpen(true) : undefined}
-        onLogout={async () => { await logout(); router.replace("/"); }}
-        onSwitchWallet={async () => { await logout(); router.replace("/"); }}
-        onMessage={profileTarget && profileTarget.senderAddress !== myAddress
-          ? () => router.push(`/dm/${profileTarget.senderAddress}`)
-          : undefined
-        }
-      />
-
-      <NftPickerModal
-        visible={pfpPickerOpen}
-        nfts={allNfts}
-        onCancel={() => setPfpPickerOpen(false)}
-        onSelect={async (nft) => {
-          setVerified(true, nft);
-          await saveSelectedNftMint(nft.mint);
-          // Sync PFP-bound cosmetics to the new NFT
-          const { syncPfpBindings, getEquippedStyles: getStyles } = await import("@/lib/bananaShop");
-          const { applyThemeFromShop: applyTheme } = await import("@/lib/shopTheme");
-          await syncPfpBindings(nft.mint);
-          const s = await getStyles();
-          useAppStore.getState().setShopStyles(s);
-          applyTheme(s);
-          setPfpPickerOpen(false);
-          await broadcastProfile();
-        }}
-      />
-
-      {/* ── Image Lightbox (pinch-to-zoom, swipe dismiss, watermark) ─── */}
-      <ImageLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
 
       <KeyboardAvoidingView
-        style={[styles.container, { paddingTop: insets.top }]}
+        style={[styles.container, { paddingTop: insets.top, backgroundColor: themeBg }]}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         keyboardVerticalOffset={0}
       >
-        {/* ── Header ────────────────────────────────────────────────────────── */}
-        <View style={styles.header}>
-          {/* Left: Globe with monke count */}
-          <View style={styles.headerLeft}>
-            <Pressable
-              onPress={() => { markOnboardingStep("openedGlobe"); router.push("/globe" as any); }}
-              style={styles.globeHeaderPill}
-              hitSlop={8}
-            >
-              <Text style={styles.globeHeaderText}>🌍 {getDeduplicatedUsers().size}</Text>
-            </Pressable>
-          </View>
+        {/* Header */}
+        <ChatHeader
+          themeSurface={themeSurface}
+          themeBorder={themeBorder}
+          bananaBalance={bananaBalance}
+          totalDmUnread={totalDmUnread}
+          communityBadges={communityBadges}
+          isGroupMember={isGroupMember}
+          onOpenDrawer={() => setDrawerOpen(true)}
+          onDmNavigation={() => {
+            useAppStore.getState().clearCommunityBadge('dms');
+            router.push("/dms" as any);
+          }}
+        />
 
-          {/* Center: decorative banner image */}
-          <ImageBackground
-            // eslint-disable-next-line @typescript-eslint/no-require-imports
-            source={require("../../assets/header.png")}
-            style={styles.headerCenter}
-            resizeMode="contain"
-          />
-
-          {/* Right: banana pill (opens community drawer) */}
-          <View style={styles.headerRight}>
-            <Pressable
-              style={styles.bananaHeaderPill}
-              onPress={() => setDrawerOpen(true)}
-              hitSlop={6}
-            >
-              <Text style={styles.bananaHeaderText}>{bananaBalance} 🍌</Text>
-              {(communityBadges.dms + communityBadges.events + communityBadges.links) > 0 && (
-                <View style={styles.communityBadge}>
-                  <Text style={styles.communityBadgeText}>
-                    {communityBadges.dms + communityBadges.events + communityBadges.links}
-                  </Text>
-                </View>
-              )}
-            </Pressable>
-          </View>
-
-          {/* Bot command ticker — overlaid at bottom of header, under the logo */}
-          {isGroupMember && (
-            <View style={styles.tickerWrap} pointerEvents="none">
-              <BotCommandTicker />
-            </View>
-          )}
-        </View>
-
-        {/* ── Offline indicator ────────────────────────────────────────── */}
+        {/* Offline indicator */}
         {isOffline && (
           <View style={{ backgroundColor: "rgba(255,80,80,0.15)", paddingVertical: 4, paddingHorizontal: 12, alignItems: "center" }}>
             <Text style={{ fontFamily: FONTS.body, fontSize: 12, color: "#ff6b6b" }}>
@@ -1360,10 +1118,10 @@ export default function ChatScreen() {
           </View>
         )}
 
-        {/* ── Onboarding checklist (first-time users) ─────────────────── */}
+        {/* Onboarding checklist (first-time users) */}
         {isGroupMember && <OnboardingChecklist />}
 
-        {/* ── Connecting… spinner (before group state is known) ──────────── */}
+        {/* Connecting spinner (before group state is known) */}
         {isLoading && !isGroupMember && (
           <View style={styles.pendingContainer}>
             <ActivityIndicator size="large" color={THEME.accent} />
@@ -1371,7 +1129,7 @@ export default function ChatScreen() {
           </View>
         )}
 
-        {/* ── Init error — network / XMTP failure ─────────────────────────── */}
+        {/* Init error — network / XMTP failure */}
         {!isLoading && !isGroupMember && !!error && (
           <View style={styles.pendingContainer}>
             <Text style={styles.pendingIcon}>⚠️</Text>
@@ -1386,7 +1144,7 @@ export default function ChatScreen() {
           </View>
         )}
 
-        {/* ── Not yet a member — auto-joining in progress ─────────────── */}
+        {/* Not yet a member — auto-joining in progress */}
         {!isLoading && !isGroupMember && !error && (
           <View style={styles.pendingContainer}>
             <Text style={styles.pendingIcon}>🐒</Text>
@@ -1412,7 +1170,7 @@ export default function ChatScreen() {
                 </Text>
                 <TextInput
                   style={styles.adminRecoveryInput}
-                  placeholder="ghp_…"
+                  placeholder="ghp_..."
                   placeholderTextColor={THEME.textFaint}
                   value={adminRecoveryPat}
                   onChangeText={(t) => { setAdminRecoveryPat(t); setAdminRecoveryError(null); }}
@@ -1484,7 +1242,6 @@ export default function ChatScreen() {
               const { unpinMessage: doUnpin } = require("@/lib/pinnedMessages");
               await doUnpin(msgId);
               setPinnedMessages(getPinnedMessages());
-              // Broadcast unpin to group
               if (send) {
                 send(buildPinMessage(msgId, 'unpin')).catch(() => {});
               }
@@ -1535,27 +1292,35 @@ export default function ChatScreen() {
         )}
 
         {/* Messages */}
-        {isGroupMember && <FlashList
-          ref={flatListRef as any}
-          data={messages}
-          extraData={reactionVersion}
-          renderItem={renderMessage as any}
-          keyExtractor={keyExtractor}
-          contentContainerStyle={styles.listContent}
-          inverted
-          drawDistance={300}
-          onContentSizeChange={handleContentSizeChange}
-          refreshing={refreshingChat}
-          onRefresh={handleRefreshChat}
-          onScroll={({ nativeEvent }: any) => {
-            // Inverted list: offset 0 = newest messages (bottom of chat)
-            const nearBottom = nativeEvent.contentOffset.y <= SCROLL_THRESHOLD;
-            isNearBottomRef.current = nearBottom;
-            setShowScrollFab(!nearBottom);
-            if (nearBottom) setUnreadWhileScrolled(0);
-          }}
-          scrollEventThrottle={200}
-        />}
+        {isGroupMember && (
+          <ChatMessageList
+            messages={messages}
+            reactionVersion={reactionVersion}
+            myAddress={myAddress}
+            isGroupAdmin={isGroupAdmin}
+            isLoadingHistory={isLoadingHistory}
+            refreshingChat={refreshingChat}
+            initialMsgIdsRef={initialMsgIdsRef}
+            flatListRef={flatListRef}
+            handleReact={handleReact}
+            setReplyingTo={setReplyingTo}
+            handlePressUser={handlePressUser}
+            handleTip={handleTip}
+            handleStickerReact={handleStickerReact}
+            setLightboxUrl={setLightboxUrl}
+            setVideoLightboxUrl={setVideoLightboxUrl}
+            setChartSymbol={setChartSymbol}
+            handleEditMessage={handleEditMessage}
+            handleDelete={handleDelete}
+            handlePin={isGroupAdmin ? handlePin : undefined}
+            handleThread={handleThread}
+            handleRefreshChat={handleRefreshChat}
+            loadOlderMessages={loadOlderMessages}
+            setShowScrollFab={setShowScrollFab}
+            setUnreadWhileScrolled={setUnreadWhileScrolled}
+            isNearBottomRef={isNearBottomRef}
+          />
+        )}
 
         {/* Input */}
         {isGroupMember && <ChatInput
@@ -1575,290 +1340,47 @@ export default function ChatScreen() {
           onAvatarRoom={!activeAvatarRoom ? handleStartAvatarRoom : undefined}
         />}
 
-        {/* Support banner */}
+        {/* Support banner — 3-column: [SKR] [Support] [Floor] */}
         {isGroupMember && (
-          <View style={styles.supportBanner}>
-            {skrPrice && (
-              <Pressable
-                onPress={() => Linking.openURL(`https://jup.ag/swap/SOL-${SKR_MINT}`)}
-                style={({ pressed }) => [styles.floorBtn, pressed && { opacity: 0.7 }]}
-                hitSlop={6}
-              >
-                <Text style={styles.floorBtnText}>$SKR {skrPrice}</Text>
-              </Pressable>
-            )}
+          <View style={[styles.supportBanner, { borderTopColor: themeBorder }]}>
+            <View style={{ minWidth: 70, alignItems: 'flex-start' }}>
+              {skrPrice && (
+                <Pressable
+                  onPress={() => Linking.openURL(`https://jup.ag/swap/SOL-${SKR_MINT}`)}
+                  style={({ pressed }) => [styles.floorBtn, hasThemeOverride && { backgroundColor: themeAccent + '1A', borderColor: themeAccent + '33' }, pressed && { opacity: 0.7 }]}
+                  hitSlop={6}
+                >
+                  <Text style={[styles.floorBtnText, hasThemeOverride && { color: themeAccent }]}>$SKR {skrPrice}</Text>
+                </Pressable>
+              )}
+            </View>
             <Pressable
               onPress={() => setDevTipOpen(true)}
-              style={({ pressed }) => [{ flex: 1 }, pressed && { opacity: 0.6 }]}
+              style={({ pressed }) => [{ flex: 1, alignItems: 'center' }, pressed && { opacity: 0.6 }]}
             >
-              <Text style={styles.supportBannerText}>
+              <Text style={[styles.supportBannerText, hasThemeOverride && { color: themeAccent + '99' }]} numberOfLines={1}>
                 Help Support OnlyMonkes
               </Text>
             </Pressable>
-            {floorPrice && (
-              <Pressable
-                onPress={() => router.push('/marketplace')}
-                style={({ pressed }) => [styles.floorBtn, pressed && { opacity: 0.7 }]}
-                hitSlop={6}
-              >
-                <Text style={styles.floorBtnText}>Floor {floorPrice}</Text>
-              </Pressable>
-            )}
+            <View style={{ minWidth: 70, alignItems: 'flex-end' }}>
+              {floorPrice && (
+                <Pressable
+                  onPress={() => router.push('/marketplace')}
+                  style={({ pressed }) => [styles.floorBtn, hasThemeOverride && { backgroundColor: themeAccent + '1A', borderColor: themeAccent + '33' }, pressed && { opacity: 0.7 }]}
+                  hitSlop={6}
+                >
+                  <Text style={[styles.floorBtnText, hasThemeOverride && { color: themeAccent }]}>Floor {floorPrice}</Text>
+                </Pressable>
+              )}
+            </View>
           </View>
         )}
 
         <View style={{ height: insets.bottom }} />
       </KeyboardAvoidingView>
-
-      <VideoCameraModal
-        visible={videoModalOpen}
-        onClose={() => setVideoModalOpen(false)}
-        onSend={handleVideoSend}
-      />
-
-      {/* ── Video Lightbox (expo-av loaded on demand) ────────────────── */}
-      <Modal
-        visible={!!videoLightboxUrl}
-        transparent
-        animationType="fade"
-        statusBarTranslucent
-        onRequestClose={() => setVideoLightboxUrl(null)}
-      >
-        <View style={{ flex: 1, backgroundColor: '#000' }}>
-          <LazyVideo uri={videoLightboxUrl!} />
-          {/* Watermark overlay */}
-          <View style={{ position: 'absolute', bottom: 72, right: 16, opacity: 0.7 }} pointerEvents="none">
-            <Image
-              // eslint-disable-next-line @typescript-eslint/no-require-imports
-              source={require('../../assets/watermark.png')}
-              style={{ width: 120, height: 40 }}
-              resizeMode="contain"
-            />
-          </View>
-          {/* Close button */}
-          <Pressable
-            onPress={() => setVideoLightboxUrl(null)}
-            style={{ position: 'absolute', top: 52, right: 20, width: 36, height: 36,
-                     borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.15)',
-                     alignItems: 'center', justifyContent: 'center' }}
-            hitSlop={10}
-          >
-            <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold' }}>✕</Text>
-          </Pressable>
-          {/* Download button */}
-          <Pressable
-            onPress={() => videoLightboxUrl && handleDownloadVideo(videoLightboxUrl)}
-            style={{ position: 'absolute', top: 52, right: 66, width: 36, height: 36,
-                     borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.15)',
-                     alignItems: 'center', justifyContent: 'center' }}
-            hitSlop={10}
-          >
-            <Text style={{ color: '#fff', fontSize: 16 }}>⬇</Text>
-          </Pressable>
-        </View>
-      </Modal>
-      {/* ── Edit Message Modal ─────────────────────────────────────────────── */}
-      <Modal
-        visible={!!editTarget}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setEditTarget(null)}
-      >
-        <Pressable style={modalStyles.overlay} onPress={() => setEditTarget(null)}>
-          <Pressable style={modalStyles.sheet} onPress={(e) => e.stopPropagation()}>
-            <Text style={modalStyles.title}>Edit Message</Text>
-            <TextInput
-              style={modalStyles.input}
-              value={editText}
-              onChangeText={setEditText}
-              autoFocus
-              multiline
-              maxLength={2000}
-              placeholderTextColor={THEME.textFaint}
-            />
-            <View style={modalStyles.btnRow}>
-              <Pressable onPress={() => setEditTarget(null)} style={modalStyles.cancelBtn}>
-                <Text style={modalStyles.cancelText}>Cancel</Text>
-              </Pressable>
-              <Pressable onPress={handleEditSubmit} style={modalStyles.confirmBtn}>
-                <Text style={modalStyles.confirmText}>Save</Text>
-              </Pressable>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
-
-      {/* ── Share on X Popup ──────────────────────────────────────────────── */}
-      <Modal
-        visible={!!xShareImageUri}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setXShareImageUri(null)}
-      >
-        <Pressable style={modalStyles.overlay} onPress={() => setXShareImageUri(null)}>
-          <Pressable style={modalStyles.sheet} onPress={(e) => e.stopPropagation()}>
-            {/* Close X button */}
-            <Pressable
-              onPress={() => setXShareImageUri(null)}
-              style={modalStyles.closeX}
-              hitSlop={10}
-            >
-              <Text style={modalStyles.closeXText}>✕</Text>
-            </Pressable>
-
-            <Text style={modalStyles.title}>Share this Image on X?</Text>
-            {xShareImageUri && (
-              <View style={modalStyles.previewWrap}>
-                <Image
-                  source={{ uri: xShareImageUri }}
-                  style={modalStyles.previewImg}
-                  resizeMode="cover"
-                />
-                <Image
-                  source={require("../../assets/watermark.png")}
-                  style={modalStyles.previewWatermark}
-                  resizeMode="contain"
-                />
-              </View>
-            )}
-            <Text style={modalStyles.caption}>Shot Using @xOnlyMonkes</Text>
-
-            <Pressable onPress={handleShareToX} style={modalStyles.xBtn}>
-              <Text style={modalStyles.xBtnText}>Share this Image on X</Text>
-            </Pressable>
-          </Pressable>
-        </Pressable>
-      </Modal>
     </ErrorBoundary>
   );
 }
-
-const modalStyles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.6)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 24,
-  },
-  sheet: {
-    backgroundColor: "#000",
-    borderRadius: 20,
-    padding: 20,
-    width: "100%",
-    maxWidth: 340,
-    borderWidth: 1,
-    borderColor: "#333",
-    gap: 12,
-    alignItems: "center",
-  },
-  title: {
-    fontFamily: FONTS.displayMed,
-    fontSize: 17,
-    color: "#6CB4EE",
-    textAlign: "center",
-  },
-  input: {
-    fontFamily: FONTS.body,
-    fontSize: 15,
-    color: "#6CB4EE",
-    backgroundColor: "#111",
-    borderRadius: 12,
-    padding: 12,
-    minHeight: 60,
-    maxHeight: 140,
-    alignSelf: "stretch",
-    borderWidth: 1,
-    borderColor: "#333",
-    textAlignVertical: "top",
-  },
-  btnRow: {
-    flexDirection: "row",
-    gap: 10,
-    alignSelf: "stretch",
-  },
-  cancelBtn: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 12,
-    backgroundColor: "#111",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#333",
-  },
-  cancelText: {
-    fontFamily: FONTS.bodyMed,
-    fontSize: 14,
-    color: "#6CB4EE",
-  },
-  confirmBtn: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 12,
-    backgroundColor: "#6CB4EE",
-    alignItems: "center",
-  },
-  confirmText: {
-    fontFamily: FONTS.bodyMed,
-    fontSize: 14,
-    color: "#fff",
-  },
-  closeX: {
-    position: "absolute",
-    top: 12,
-    left: 12,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: "#6CB4EE",
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 10,
-  },
-  closeXText: {
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: "bold",
-  },
-  previewWrap: {
-    width: 220,
-    height: 220,
-    borderRadius: 14,
-    overflow: "hidden",
-    alignSelf: "center",
-  },
-  previewImg: {
-    width: 220,
-    height: 220,
-  },
-  previewWatermark: {
-    position: "absolute",
-    bottom: 4,
-    right: 4,
-    width: 135,
-    height: 68,
-    opacity: 0.9,
-  },
-  caption: {
-    fontFamily: FONTS.mono,
-    fontSize: 12,
-    color: "#6CB4EE",
-    textAlign: "center",
-  },
-  xBtn: {
-    backgroundColor: "#6CB4EE",
-    borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    alignSelf: "stretch",
-    alignItems: "center",
-  },
-  xBtnText: {
-    fontFamily: FONTS.bodyMed,
-    fontSize: 15,
-    color: "#000",
-  },
-});
 
 const styles = StyleSheet.create({
   container: {
@@ -1866,142 +1388,7 @@ const styles = StyleSheet.create({
     backgroundColor: THEME.bg,
   },
 
-  // ── Header ───────────────────────────────────────────────────────────────────
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 8,
-    height: 100,
-    borderBottomWidth: 1,
-    borderBottomColor: THEME.border,
-    backgroundColor: HEADER_BG,
-  },
-  tickerWrap: {
-    position: "absolute",
-    bottom: 2,
-    left: 12,
-    right: 12,
-    height: 18,
-    overflow: "hidden",
-  },
-  headerCenter: {
-    flex: 1,
-    height: 96,
-    alignSelf: "center",
-    justifyContent: "center",
-    alignItems: "center",
-    marginHorizontal: -8,
-    transform: [{ scale: 1.35 }],
-  },
-  headerLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    zIndex: 10,
-  },
-  headerNftWrap: {
-    width: 46,
-    height: 46,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  headerNft: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-  },
-  headerNftFallback: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  headerNftGlyph: { fontSize: 22 },
-  streakPill: {
-    position: "absolute",
-    bottom: -6,
-    right: -6,
-    backgroundColor: THEME.surface,
-    borderRadius: 8,
-    paddingHorizontal: 4,
-    paddingVertical: 1,
-    borderWidth: 1,
-    borderColor: THEME.border,
-  },
-  streakPillText: {
-    fontFamily: FONTS.mono,
-    fontSize: 9,
-    color: THEME.text,
-  },
-  headerRight: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    zIndex: 10,
-  },
-  globeHeaderPill: {
-    backgroundColor: "rgba(108,180,238,0.1)",
-    borderRadius: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderWidth: 1,
-    borderColor: "rgba(108,180,238,0.15)",
-  },
-  globeHeaderText: {
-    fontFamily: FONTS.mono,
-    fontSize: 11,
-    color: "#6CB4EE",
-    fontWeight: "600",
-  },
-  bananaHeaderPill: {
-    backgroundColor: "rgba(255,213,79,0.1)",
-    borderRadius: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderWidth: 1,
-    borderColor: "rgba(255,213,79,0.15)",
-  },
-  bananaHeaderText: {
-    fontFamily: FONTS.mono,
-    fontSize: 11,
-    color: "#FFD54F",
-    fontWeight: "600",
-  },
-  iconBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 9,
-    backgroundColor: THEME.surface,
-    borderWidth: 1,
-    borderColor: THEME.border,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  iconBtnText: { fontSize: 15 },
-  menuIcon: {
-    fontSize: 15,
-    color: THEME.text,
-  },
-  communityBadge: {
-    position: "absolute" as const,
-    top: -4,
-    right: -6,
-    backgroundColor: "#fff",
-    borderRadius: 9,
-    minWidth: 18,
-    height: 18,
-    alignItems: "center" as const,
-    justifyContent: "center" as const,
-    paddingHorizontal: 4,
-  },
-  communityBadgeText: {
-    color: "#0096C7",
-    fontSize: 10,
-    fontWeight: "700" as const,
-  },
-
-  // ── History / Empty ──────────────────────────────────────────────────────────
+  // History / Empty
   historyLoading: {
     flexDirection: "row",
     alignItems: "center",
@@ -2036,11 +1423,8 @@ const styles = StyleSheet.create({
     textAlign: "center",
     lineHeight: 20,
   },
-  listContent: {
-    paddingVertical: 8,
-  },
 
-  // ── Pending / not yet a member ───────────────────────────────────────────────
+  // Pending / not yet a member
   pendingContainer: {
     flex: 1,
     alignItems: "center",
@@ -2062,7 +1446,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
 
-  // ── Access Key box (pending screen) ──────────────────────────────────────────
+  // Access Key box (pending screen)
   retryBtn: {
     marginTop: 12,
     backgroundColor: THEME.accent,
@@ -2083,7 +1467,7 @@ const styles = StyleSheet.create({
     textDecorationLine: "underline",
     marginTop: 16,
   },
-  // ── Admin recovery (pending screen) ──────────────────────────────────────────
+  // Admin recovery (pending screen)
   adminRecoveryLink: {
     fontFamily: FONTS.mono,
     fontSize: 11,
@@ -2141,12 +1525,6 @@ const styles = StyleSheet.create({
     color: "#fff",
   },
 
-  // ── Header admin badge ────────────────────────────────────────────────────────
-  iconBtnAlert: {
-    borderColor: THEME.accent + "88",
-    backgroundColor: THEME.accentSoft,
-  },
-
   supportBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2163,12 +1541,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
     textAlign: 'center',
     flex: 1,
-  },
-  supportPriceText: {
-    fontFamily: FONTS.mono,
-    fontSize: 10,
-    color: '#fff',
-    fontWeight: '700',
   },
   floorBtn: {
     backgroundColor: 'rgba(108, 180, 238, 0.12)',
