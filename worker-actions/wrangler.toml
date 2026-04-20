@@ -6,3 +6,10 @@ compatibility_flags = ["nodejs_compat"]
 # Secrets (set via `wrangler secret put`):
 #   HELIUS_API_KEY  — Helius RPC API key
 #   JUP_API_KEY     — Jupiter Swap v2 API key (portal.jup.ag)
+
+# KV Namespaces
+# Create with: wrangler kv:namespace create FRAME_ALERTS
+# Then paste the binding below with the real id.
+# [[kv_namespaces]]
+# binding = "FRAME_ALERTS"
+# id = "<paste-id-from-wrangler-output>"

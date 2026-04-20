@@ -43,6 +43,8 @@ export function ChatHeader({
           onPress={() => { markOnboardingStep("openedGlobe"); router.push("/globe" as any); }}
           style={styles.globeHeaderPill}
           hitSlop={8}
+          accessibilityLabel="Open globe"
+          accessibilityRole="button"
         >
           <Text style={styles.globeHeaderText}>🌍 {getLocatedUserCount()}</Text>
         </Pressable>
@@ -68,6 +70,8 @@ export function ChatHeader({
             }
           }}
           hitSlop={6}
+          accessibilityLabel={totalDmUnread > 0 ? `${totalDmUnread} unread messages` : `${bananaBalance} bananas, open menu`}
+          accessibilityRole="button"
         >
           <Text style={styles.bananaHeaderText}>{bananaBalance} 🍌</Text>
           {/* DM unread badge — shown above pill like bot channel alerts */}

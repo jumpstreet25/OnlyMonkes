@@ -98,6 +98,49 @@ export interface NftCompleteMessage {
   completedAt: number;
 }
 
+// ── Order History ──────────────────────────────────────────────────────────
+
+const AK_HISTORY = 'marketplace_history_v1';
+
+export interface MarketplaceHistoryEntry {
+  type: 'buy' | 'sell' | 'bid';
+  nftName: string;
+  price: number;         // SOL
+  timestamp: number;     // Date.now()
+  counterparty: string;  // username or 'anon'
+  mint?: string;
+  txSignature?: string;
+}
+
+let _history: MarketplaceHistoryEntry[] = [];
+
+export async function loadHistory(): Promise<void> {
+  try {
+    const raw = await AsyncStorage.getItem(AK_HISTORY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) _history = parsed;
+    }
+  } catch { /* non-critical */ }
+}
+
+function _persistHistory(): void {
+  AsyncStorage.setItem(AK_HISTORY, JSON.stringify(_history)).catch(() => {});
+}
+
+export function recordHistoryEntry(entry: MarketplaceHistoryEntry): void {
+  _history.unshift(entry); // newest first
+  // Cap at 200 entries
+  if (_history.length > 200) _history = _history.slice(0, 200);
+  _persistHistory();
+}
+
+export function getHistory(): MarketplaceHistoryEntry[] {
+  return _history;
+}
+
+// ── In-memory state ────────────────────────────────────────────────────────
+
 let _listings: NftListing[] = [];
 let _bids: Map<string, NftBid[]> = new Map(); // listingId → bids
 

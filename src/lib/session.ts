@@ -19,7 +19,8 @@ const SK_LAST_NFT_CHECK = "session_last_nft_check";
 /** Re-check NFT ownership every 24 hours */
 const NFT_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
-// No TTL — session persists indefinitely across app updates
+/** Session expires after 7 days */
+const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 export async function saveSession(wallet: WalletAccount): Promise<void> {
   await Promise.all([
@@ -30,17 +31,25 @@ export async function saveSession(wallet: WalletAccount): Promise<void> {
 }
 
 /**
- * Returns the saved WalletAccount if a session exists.
- * Sessions persist indefinitely — no TTL expiry.
+ * Returns the saved WalletAccount if a session exists and hasn't expired.
+ * Sessions expire after 7 days — reconnect wallet to refresh.
  */
 export async function loadSession(): Promise<WalletAccount | null> {
   try {
-    const [address, label] = await Promise.all([
+    const [address, label, ts] = await Promise.all([
       SecureStore.getItemAsync(SK_ADDRESS),
       SecureStore.getItemAsync(SK_LABEL),
+      SecureStore.getItemAsync(SK_TIMESTAMP),
     ]);
 
     if (!address) return null;
+
+    // Enforce 7-day TTL
+    if (ts && Date.now() - Number(ts) >= SESSION_TTL_MS) {
+      console.log("[Session] Expired after 7 days — clearing");
+      await clearSession();
+      return null;
+    }
 
     return {
       address,
@@ -48,6 +57,20 @@ export async function loadSession(): Promise<WalletAccount | null> {
       chains: ["solana:mainnet"],
       features: ["solana:signMessage", "solana:signTransaction"],
     };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Returns ms remaining until the 7-day session expires, or null if no session.
+ */
+export async function getSessionTimeRemaining(): Promise<number | null> {
+  try {
+    const ts = await SecureStore.getItemAsync(SK_TIMESTAMP);
+    if (!ts) return null;
+    const elapsed = Date.now() - Number(ts);
+    return Math.max(0, SESSION_TTL_MS - elapsed);
   } catch {
     return null;
   }

@@ -51,6 +51,7 @@ interface Env {
   BOT_HTTP_SECRET: string;
   ESCROW_ENCRYPT_KEY: string;
   TIP_ESCROW: KVNamespace;
+  FRAME_ALERTS: KVNamespace;
 }
 
 // Cloudflare Worker handler type (declared locally to avoid @cloudflare/workers-types dependency in app tsconfig)
@@ -750,6 +751,248 @@ async function handleClaim(url: URL, request: Request, env: Env): Promise<Respon
   }
 }
 
+// ─── Farcaster Frames — Trade Alert Frames ──────────────────────────────────
+
+const FRAME_ALERT_TTL = 30 * 24 * 60 * 60; // 30 days
+
+interface FrameAlertData {
+  id: string;
+  token: string;       // e.g. "SOL", "BONK"
+  signal: "BULLISH" | "BEARISH";
+  confluence: number;  // 0-100
+  entry: number;
+  target1: number;
+  target2?: number;
+  stop: number;
+  price: number;       // current price at alert time
+  timestamp: number;
+}
+
+const WORKER_BASE = "https://onlymonkes-actions.jumpstreet25.workers.dev";
+const APP_DEEP_LINK = "https://onlymonkes.app";
+const DAPP_STORE_LINK = "https://dappstore.app/onlymonkes";
+
+/** POST /frames/alert — bot stores alert data (authenticated). */
+async function handleFrameAlertPost(request: Request, env: Env): Promise<Response> {
+  if (!checkBotAuth(request, env)) {
+    return errorResponse("Unauthorized", 401);
+  }
+
+  let body: any;
+  try {
+    body = await request.json();
+  } catch {
+    return errorResponse("Invalid JSON body");
+  }
+
+  const { id, token, signal, confluence, entry, target1, target2, stop, price } = body;
+
+  if (!id || typeof id !== "string" || id.length > 128) {
+    return errorResponse("Invalid or missing id");
+  }
+  if (!token || typeof token !== "string" || token.length > 20) {
+    return errorResponse("Invalid or missing token");
+  }
+  if (signal !== "BULLISH" && signal !== "BEARISH") {
+    return errorResponse("signal must be BULLISH or BEARISH");
+  }
+  if (typeof confluence !== "number" || confluence < 0 || confluence > 100) {
+    return errorResponse("confluence must be 0-100");
+  }
+  for (const [name, val] of Object.entries({ entry, target1, stop, price })) {
+    if (typeof val !== "number" || !Number.isFinite(val) || val <= 0) {
+      return errorResponse(`${name} must be a positive number`);
+    }
+  }
+  if (target2 !== undefined && (typeof target2 !== "number" || !Number.isFinite(target2) || target2 <= 0)) {
+    return errorResponse("target2 must be a positive number if provided");
+  }
+
+  const alertData: FrameAlertData = {
+    id,
+    token,
+    signal,
+    confluence,
+    entry,
+    target1,
+    target2,
+    stop,
+    price,
+    timestamp: Date.now(),
+  };
+
+  await env.FRAME_ALERTS.put(id, JSON.stringify(alertData), { expirationTtl: FRAME_ALERT_TTL });
+
+  const frameUrl = `${WORKER_BASE}/frames/alert/${encodeURIComponent(id)}`;
+
+  return jsonResponse({ ok: true, frameUrl });
+}
+
+/** GET /frames/alert/:id — returns Farcaster Frame HTML with OG + fc:frame meta tags. */
+async function handleFrameAlertGet(alertId: string, env: Env): Promise<Response> {
+  const raw = await env.FRAME_ALERTS.get(alertId);
+  if (!raw) {
+    return new Response("Alert not found", { status: 404, headers: { "Content-Type": "text/plain" } });
+  }
+
+  let alert: FrameAlertData;
+  try {
+    alert = JSON.parse(raw);
+  } catch {
+    return new Response("Corrupted alert data", { status: 500, headers: { "Content-Type": "text/plain" } });
+  }
+
+  const direction = alert.signal === "BULLISH" ? "Bullish" : "Bearish";
+  const emoji = alert.signal === "BULLISH" ? "🟢" : "🔴";
+  const title = `${emoji} ${alert.token} — ${direction} Alert (${alert.confluence}% confluence)`;
+  const description = `Entry: $${alert.entry} | Target: $${alert.target1} | Stop: $${alert.stop}`;
+  const imageUrl = `${WORKER_BASE}/frames/alert/${encodeURIComponent(alertId)}/image`;
+  const alertUrl = `${APP_DEEP_LINK}/alert/${encodeURIComponent(alertId)}`;
+
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>${escapeHtml(title)}</title>
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="${escapeHtml(title)}" />
+  <meta property="og:description" content="${escapeHtml(description)}" />
+  <meta property="og:image" content="${imageUrl}" />
+  <meta property="og:url" content="${WORKER_BASE}/frames/alert/${encodeURIComponent(alertId)}" />
+  <meta property="og:type" content="website" />
+
+  <!-- Farcaster Frame -->
+  <meta property="fc:frame" content="vNext" />
+  <meta property="fc:frame:image" content="${imageUrl}" />
+  <meta property="fc:frame:image:aspect_ratio" content="1.91:1" />
+
+  <meta property="fc:frame:button:1" content="View Alert" />
+  <meta property="fc:frame:button:1:action" content="link" />
+  <meta property="fc:frame:button:1:target" content="${escapeHtml(alertUrl)}" />
+
+  <meta property="fc:frame:button:2" content="Join OnlyMonkes" />
+  <meta property="fc:frame:button:2:action" content="link" />
+  <meta property="fc:frame:button:2:target" content="${escapeHtml(DAPP_STORE_LINK)}" />
+</head>
+<body>
+  <h1>${escapeHtml(title)}</h1>
+  <p>${escapeHtml(description)}</p>
+</body>
+</html>`;
+
+  return new Response(html, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "public, max-age=300",
+      ...CORS_HEADERS,
+    },
+  });
+}
+
+/** GET /frames/alert/:id/image — returns an SVG image rendered as image/svg+xml for Frame cards. */
+async function handleFrameAlertImage(alertId: string, env: Env): Promise<Response> {
+  const raw = await env.FRAME_ALERTS.get(alertId);
+  if (!raw) {
+    return new Response("Alert not found", { status: 404, headers: { "Content-Type": "text/plain" } });
+  }
+
+  let alert: FrameAlertData;
+  try {
+    alert = JSON.parse(raw);
+  } catch {
+    return new Response("Corrupted alert data", { status: 500, headers: { "Content-Type": "text/plain" } });
+  }
+
+  const isBullish = alert.signal === "BULLISH";
+  const bgColor = isBullish ? "#0a2e1a" : "#2e0a0a";
+  const accentColor = isBullish ? "#00ff88" : "#ff4444";
+  const direction = isBullish ? "BULLISH" : "BEARISH";
+  const arrow = isBullish ? "▲" : "▼";
+
+  const target2Line = alert.target2
+    ? `<text x="570" y="280" font-family="monospace" font-size="22" fill="#cccccc" text-anchor="end">T2: $${formatPrice(alert.target2)}</text>`
+    : "";
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="628" viewBox="0 0 1200 628">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="${bgColor}" />
+      <stop offset="100%" stop-color="#111111" />
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="628" fill="url(#bg)" rx="0" />
+
+  <!-- Top bar -->
+  <rect x="0" y="0" width="1200" height="4" fill="${accentColor}" />
+
+  <!-- Branding -->
+  <text x="40" y="60" font-family="Arial, sans-serif" font-size="28" font-weight="bold" fill="#ffffff">OnlyMonkes</text>
+  <text x="260" y="60" font-family="Arial, sans-serif" font-size="20" fill="#888888">Trade Alert</text>
+
+  <!-- Token + Signal -->
+  <text x="40" y="150" font-family="Arial, sans-serif" font-size="72" font-weight="bold" fill="#ffffff">${escapeHtml(alert.token)}</text>
+  <text x="40" y="200" font-family="Arial, sans-serif" font-size="36" font-weight="bold" fill="${accentColor}">${arrow} ${direction}</text>
+
+  <!-- Confluence bar background -->
+  <rect x="40" y="230" width="400" height="16" rx="8" fill="#333333" />
+  <!-- Confluence bar fill -->
+  <rect x="40" y="230" width="${Math.round(4 * alert.confluence)}" height="16" rx="8" fill="${accentColor}" />
+  <text x="460" y="244" font-family="monospace" font-size="20" fill="${accentColor}">${alert.confluence}%</text>
+
+  <!-- Price info -->
+  <text x="40" y="310" font-family="monospace" font-size="22" fill="#cccccc">Price: $${formatPrice(alert.price)}</text>
+  <text x="40" y="350" font-family="monospace" font-size="22" fill="#cccccc">Entry: $${formatPrice(alert.entry)}</text>
+
+  <!-- Targets -->
+  <text x="570" y="310" font-family="monospace" font-size="22" fill="#00ff88" text-anchor="end">T1: $${formatPrice(alert.target1)}</text>
+  ${target2Line}
+  <text x="570" y="350" font-family="monospace" font-size="22" fill="#ff4444" text-anchor="end">Stop: $${formatPrice(alert.stop)}</text>
+
+  <!-- Right side — large confluence circle -->
+  <circle cx="900" cy="280" r="140" fill="none" stroke="#333333" stroke-width="16" />
+  <circle cx="900" cy="280" r="140" fill="none" stroke="${accentColor}" stroke-width="16"
+    stroke-dasharray="${Math.round(879.6 * alert.confluence / 100)} 880"
+    stroke-linecap="round" transform="rotate(-90 900 280)" />
+  <text x="900" y="270" font-family="Arial, sans-serif" font-size="56" font-weight="bold" fill="#ffffff" text-anchor="middle">${alert.confluence}%</text>
+  <text x="900" y="310" font-family="Arial, sans-serif" font-size="20" fill="#888888" text-anchor="middle">confluence</text>
+
+  <!-- Footer -->
+  <line x1="40" y1="560" x2="1160" y2="560" stroke="#333333" stroke-width="1" />
+  <text x="40" y="595" font-family="Arial, sans-serif" font-size="18" fill="#555555">${new Date(alert.timestamp).toISOString().replace("T", " ").slice(0, 19)} UTC</text>
+  <text x="1160" y="595" font-family="Arial, sans-serif" font-size="18" fill="#555555" text-anchor="end">onlymonkes.app</text>
+</svg>`;
+
+  return new Response(svg, {
+    status: 200,
+    headers: {
+      "Content-Type": "image/svg+xml",
+      "Cache-Control": "public, max-age=3600",
+      ...CORS_HEADERS,
+    },
+  });
+}
+
+/** Format price for display — auto-detect decimals. */
+function formatPrice(p: number): string {
+  if (p >= 1) return p.toFixed(2);
+  if (p >= 0.01) return p.toFixed(4);
+  return p.toFixed(6);
+}
+
+/** Escape HTML special characters to prevent XSS in generated HTML/SVG. */
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 // ─── Router ───────────────────────────────────────────────────────────────────
 
 export default {
@@ -764,7 +1007,7 @@ export default {
 
     // Health check
     if (path === "/health") {
-      return jsonResponse({ status: "ok", version: "1.2.0", endpoints: ["/api/actions/swap", "/api/actions/tip", "/escrow", "/claim"] });
+      return jsonResponse({ status: "ok", version: "1.3.0", endpoints: ["/api/actions/swap", "/api/actions/tip", "/escrow", "/claim", "/frames/alert"] });
     }
 
     // Well-known actions discovery
@@ -799,6 +1042,26 @@ export default {
         }
         return handleTipPost(url, body, env);
       }
+      return errorResponse("Method not allowed", 405);
+    }
+
+    // Farcaster Frames: trade alert frames
+    if (path === "/frames/alert") {
+      if (request.method === "POST") return handleFrameAlertPost(request, env);
+      return errorResponse("Method not allowed", 405);
+    }
+
+    // Farcaster Frames: alert frame HTML (public)
+    const frameAlertMatch = path.match(/^\/frames\/alert\/([^/]+)$/);
+    if (frameAlertMatch) {
+      if (request.method === "GET") return handleFrameAlertGet(decodeURIComponent(frameAlertMatch[1]), env);
+      return errorResponse("Method not allowed", 405);
+    }
+
+    // Farcaster Frames: alert image (public)
+    const frameImageMatch = path.match(/^\/frames\/alert\/([^/]+)\/image$/);
+    if (frameImageMatch) {
+      if (request.method === "GET") return handleFrameAlertImage(decodeURIComponent(frameImageMatch[1]), env);
       return errorResponse("Method not allowed", 405);
     }
 

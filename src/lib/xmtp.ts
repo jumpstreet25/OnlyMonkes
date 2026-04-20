@@ -1006,12 +1006,138 @@ export async function openOrCreateDm(client: XmtpClient, peerInboxId: string): P
   return client.conversations.findOrCreateDm(peerInboxId as any);
 }
 
+// ─── Group DMs ──────────────────────────────────────────────────────────────
+
+export interface GroupDmThread {
+  groupId: string;
+  memberInboxIds: string[];
+  groupName: string | null;
+  lastMessage: string | null;
+  lastMessageAt: Date | null;
+}
+
+/**
+ * Create a new group DM with multiple members.
+ * Returns the XMTP group conversation object.
+ */
+export async function createGroupDm(
+  client: XmtpClient,
+  memberInboxIds: string[],
+  groupName?: string,
+): Promise<any> {
+  const group = await client.conversations.newGroup(memberInboxIds, {
+    permissionLevel: "all_members",
+    name: groupName ?? undefined,
+  });
+  return group;
+}
+
+/**
+ * List group DM conversations (excludes app-managed groups).
+ * Returns newest-first.
+ */
+export async function listGroupDmThreads(client: XmtpClient): Promise<GroupDmThread[]> {
+  await client.conversations.sync();
+  const allGroups: any[] = await client.conversations.listGroups(
+    undefined, undefined, ["allowed", "unknown"] as any,
+  );
+  const threads: GroupDmThread[] = [];
+
+  // Known app group names to exclude
+  const APP_GROUP_NAMES = [
+    'OnlyMonkes Global Chat',
+    'MonkeSales', 'MonkeAlerts', 'MonkeBets', 'MonkeAI',
+  ];
+
+  for (const group of allGroups) {
+    try {
+      const name: string | null = (group as any).name ?? null;
+      if (name && APP_GROUP_NAMES.some(n => name.includes(n))) continue;
+
+      const members: string[] = await (group as any).memberInboxIds();
+      // Skip large groups (app groups); group DMs are small
+      if (members.length > 10) continue;
+      if (members.length < 2) continue;
+
+      await (group as any).sync();
+      const msgs: any[] = await (group as any).messages({ limit: 5 });
+      let lastMessage: string | null = null;
+      let lastMessageAt: Date | null = null;
+
+      if (msgs[0]) {
+        try {
+          const raw = msgs[0].content();
+          if (typeof raw === 'string') {
+            if (raw.startsWith('MSG:')) {
+              lastMessage = raw.split(':').slice(2).join(':');
+            } else {
+              lastMessage = raw;
+            }
+          }
+          lastMessageAt = msgs[0].sentNs
+            ? new Date(Number(msgs[0].sentNs) / 1_000_000)
+            : null;
+        } catch { /* skip */ }
+      }
+
+      threads.push({
+        groupId: (group as any).id,
+        memberInboxIds: members,
+        groupName: name,
+        lastMessage,
+        lastMessageAt,
+      });
+    } catch { continue; }
+  }
+
+  return threads.sort((a, b) => {
+    if (!a.lastMessageAt && !b.lastMessageAt) return 0;
+    if (!a.lastMessageAt) return 1;
+    if (!b.lastMessageAt) return -1;
+    return b.lastMessageAt.getTime() - a.lastMessageAt.getTime();
+  });
+}
+
+/**
+ * Open an existing group DM by its group ID.
+ */
+export async function openGroupDm(client: XmtpClient, groupId: string): Promise<any> {
+  await client.conversations.sync();
+  const allGroups: any[] = await client.conversations.listGroups(
+    undefined, undefined, ["allowed", "unknown"] as any,
+  );
+  for (const g of allGroups) {
+    if ((g as any).id === groupId) return g;
+  }
+  throw new Error('Group DM not found');
+}
+
 export async function loadDmMessages(dm: any, myInboxId: string): Promise<ChatMessage[]> {
   await dm.sync();
   await dm.sync(); // second pass ensures bot replies committed before fetching
   const raw: any[] = await dm.messages({ limit: 200 });
   const decoded = raw.map(r => decodeMessage(r, myInboxId)).filter(Boolean) as ChatMessage[];
   return decoded.reverse(); // XMTP returns newest-first; reverse to oldest-first for FlatList
+}
+
+/**
+ * Scan raw DM history for the latest READ: receipt from the peer.
+ * Returns the message ID the peer has read up to, or null.
+ */
+export async function getLastPeerReadReceipt(dm: any, myInboxId: string): Promise<string | null> {
+  try {
+    const raw: any[] = await dm.messages({ limit: 200 });
+    // raw is newest-first; find the first (most recent) READ: from peer
+    for (const r of raw) {
+      const sender = r.senderInboxId ?? '';
+      if (sender === myInboxId) continue;
+      const content = typeof r.content === 'function' ? r.content() : r.content;
+      if (typeof content === 'string' && content.startsWith('READ:')) {
+        return content.slice(5); // the message ID they read up to
+      }
+    }
+  } catch { /* non-critical */ }
+  return null;
 }
 
 export async function sendDmMessage(dm: any, content: string, username?: string | null): Promise<void> {

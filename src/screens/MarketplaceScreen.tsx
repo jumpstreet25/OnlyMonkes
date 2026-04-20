@@ -37,6 +37,7 @@ import {
   getBidsForListing,
   getListingById,
   loadListings,
+  loadHistory,
   addListing,
   markPendingSwap,
   markSold,
@@ -49,9 +50,12 @@ import {
   buildDelistMessage,
   buildSwapMessage,
   buildCompleteMessage,
+  recordHistoryEntry,
+  getHistory,
   type NftListing,
   type NftBid,
   type NftSwapMessage,
+  type MarketplaceHistoryEntry,
 } from '@/lib/marketplace';
 import {
   verifyCurrentOwner,
@@ -72,6 +76,7 @@ import MarketplaceFeeModal, {
   hasAcceptedMarketplaceFee,
   acceptMarketplaceFee,
 } from '@/components/MarketplaceFeeModal';
+import { MarketplaceSkeleton } from '@/components/SkeletonLoader';
 
 // OnlyMonkes accent blue
 const ACCENT = '#0096C7';
@@ -80,6 +85,7 @@ const GREEN = '#22c55e';
 
 type SortKey = 'recent' | 'low' | 'high';
 type DetailAction = 'none' | 'bid' | 'swap';
+type ViewMode = 'all' | 'mine' | 'history';
 
 export default function MarketplaceScreen() {
   const insets = useSafeAreaInsets();
@@ -89,7 +95,8 @@ export default function MarketplaceScreen() {
   // ── State ──────────────────────────────────────────────────────────────────
   const [listings, setListings] = useState<NftListing[]>([]);
   const [sortBy, setSortBy] = useState<SortKey>('recent');
-  const [showMyListings, setShowMyListings] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>('all');
+  const [history, setHistory] = useState<MarketplaceHistoryEntry[]>([]);
   const [showListSheet, setShowListSheet] = useState(false);
   const [selectedListing, setSelectedListing] = useState<NftListing | null>(null);
   const [detailAction, setDetailAction] = useState<DetailAction>('none');
@@ -138,7 +145,9 @@ export default function MarketplaceScreen() {
     setLoadingListings(true);
     try {
       await loadListings();
+      await loadHistory();
       refresh();
+      setHistory(getHistory());
     } catch (e: any) {
       setLoadError(e?.message ?? 'Failed to load listings');
     } finally {
@@ -184,7 +193,8 @@ export default function MarketplaceScreen() {
 
   // ── Sort & filter ──────────────────────────────────────────────────────────
   const displayListings = useMemo(() => {
-    let items = showMyListings && myInboxId
+    if (viewMode === 'history') return []; // history uses its own list
+    let items = viewMode === 'mine' && myInboxId
       ? getMyListings(myInboxId)
       : listings;
 
@@ -205,7 +215,7 @@ export default function MarketplaceScreen() {
     if (sortBy === 'low') items = [...items].sort((a, b) => a.askPrice - b.askPrice);
     else if (sortBy === 'high') items = [...items].sort((a, b) => b.askPrice - a.askPrice);
     return items;
-  }, [listings, sortBy, showMyListings, myInboxId, selectedTraits]);
+  }, [listings, sortBy, viewMode, myInboxId, selectedTraits]);
 
   // ── Handlers ───────────────────────────────────────────────────────────────
 
@@ -248,6 +258,15 @@ export default function MarketplaceScreen() {
         traits: listMint.traits,
         listedAt: new Date().toISOString(),
       });
+      recordHistoryEntry({
+        type: 'sell',
+        nftName: listMint.name,
+        price,
+        timestamp: Date.now(),
+        counterparty: 'Listed',
+        mint: listMint.mint,
+      });
+      setHistory(getHistory());
       Alert.alert('Listed', `${listMint.name} listed for ${price} SOL`);
       setListPrice('');
       setListMint(null);
@@ -292,6 +311,15 @@ export default function MarketplaceScreen() {
                 bidPrice: listing.askPrice,
               }, { sellerInboxId: listing.sellerInboxId, listingName: listing.name });
               await sendRawToGroup(msg);
+              recordHistoryEntry({
+                type: 'bid',
+                nftName: listing.name,
+                price: listing.askPrice,
+                timestamp: Date.now(),
+                counterparty: listing.sellerUsername ?? 'anon',
+                mint: listing.mint,
+              });
+              setHistory(getHistory());
               Alert.alert('Offer Sent', `Your purchase offer for ${listing.askPrice} SOL has been sent. The seller will be notified by the bot.`);
               setSelectedListing(null);
               refresh();
@@ -323,6 +351,15 @@ export default function MarketplaceScreen() {
         bidPrice: price,
       }, { sellerInboxId: listing.sellerInboxId, listingName: listing.name });
       await sendRawToGroup(msg);
+      recordHistoryEntry({
+        type: 'bid',
+        nftName: listing.name,
+        price,
+        timestamp: Date.now(),
+        counterparty: listing.sellerUsername ?? 'anon',
+        mint: listing.mint,
+      });
+      setHistory(getHistory());
       Alert.alert('Bid Sent', `Your bid of ${price} SOL has been sent. The seller will be notified.`);
       setBidAmount('');
       setDetailAction('none');
@@ -439,6 +476,16 @@ export default function MarketplaceScreen() {
       const signature = await buyerCompleteSwap(swap.serializedTx, swap.mint, swap.solPrice, swap.sellerWallet);
       markSold(swap.listingId);
       const listing = getListingById(swap.listingId);
+      recordHistoryEntry({
+        type: 'buy',
+        nftName: listing?.name ?? 'Saga Monke',
+        price: swap.solPrice,
+        timestamp: Date.now(),
+        counterparty: listing?.sellerUsername ?? 'anon',
+        mint: swap.mint,
+        txSignature: signature,
+      });
+      setHistory(getHistory());
       await sendRawToGroup(buildCompleteMessage({
         listingId: swap.listingId,
         signature,
@@ -572,14 +619,17 @@ export default function MarketplaceScreen() {
         </View>
         {!isGuest && (
           <View style={s.toolbarRight}>
-            <Pressable
-              style={[s.myListingsBtn, showMyListings && s.myListingsBtnActive]}
-              onPress={() => { setShowMyListings(!showMyListings); refresh(); }}
-            >
-              <Text style={[s.myListingsText, showMyListings && s.myListingsTextActive]}>
-                Mine
-              </Text>
-            </Pressable>
+            {(['all', 'mine', 'history'] as ViewMode[]).map((mode) => (
+              <Pressable
+                key={mode}
+                style={[s.myListingsBtn, viewMode === mode && s.myListingsBtnActive]}
+                onPress={() => { setViewMode(mode); if (mode !== 'history') refresh(); }}
+              >
+                <Text style={[s.myListingsText, viewMode === mode && s.myListingsTextActive]}>
+                  {mode === 'all' ? 'All' : mode === 'mine' ? 'Mine' : 'History'}
+                </Text>
+              </Pressable>
+            ))}
             <Pressable
               style={s.listNftBtn}
               onPress={() => {
@@ -654,7 +704,43 @@ export default function MarketplaceScreen() {
         </View>
       </View>
 
-      {/* ── Grid ────────────────────────────────────────────────────────────── */}
+      {/* ── History view ─────────────────────────────────────────────────── */}
+      {viewMode === 'history' ? (
+        <FlatList
+          data={history}
+          keyExtractor={(_, i) => `h-${i}`}
+          renderItem={({ item }) => {
+            const d = new Date(item.timestamp);
+            const dateStr = `${d.getMonth() + 1}/${d.getDate()} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+            const badgeColor = item.type === 'buy' ? GREEN : item.type === 'sell' ? ACCENT : '#f59e0b';
+            const badgeLabel = item.type === 'buy' ? 'BUY' : item.type === 'sell' ? 'SELL' : 'BID';
+            return (
+              <View style={s.historyRow}>
+                <View style={[s.historyBadge, { backgroundColor: badgeColor + '22', borderColor: badgeColor }]}>
+                  <Text style={[s.historyBadgeText, { color: badgeColor }]}>{badgeLabel}</Text>
+                </View>
+                <View style={s.historyInfo}>
+                  <Text style={s.historyName} numberOfLines={1}>{item.nftName}</Text>
+                  <Text style={s.historyMeta}>{item.counterparty} — {dateStr}</Text>
+                </View>
+                <Text style={s.historyPrice}>{item.price} SOL</Text>
+              </View>
+            );
+          }}
+          contentContainerStyle={s.grid}
+          ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: THEME.border, marginLeft: 56 }} />}
+          ListEmptyComponent={
+            <View style={s.emptyWrap}>
+              <Text style={{ fontSize: 48, marginBottom: 8 }}>📋</Text>
+              <Text style={s.emptyText}>No transaction history yet</Text>
+            </View>
+          }
+          removeClippedSubviews
+          maxToRenderPerBatch={20}
+          windowSize={7}
+        />
+      ) : (
+      /* ── Grid ────────────────────────────────────────────────────────────── */
       <FlatList
         data={displayListings}
         renderItem={renderCard}
@@ -668,17 +754,14 @@ export default function MarketplaceScreen() {
         ListEmptyComponent={
           <View style={s.emptyWrap}>
             {loadingListings ? (
-              <>
-                <ActivityIndicator size="large" color={ACCENT} />
-                <Text style={s.emptyText}>Loading marketplace...</Text>
-              </>
+              <MarketplaceSkeleton count={4} />
             ) : loadError ? (
               <ErrorMessage message={loadError} onRetry={loadAll} />
             ) : (
               <>
                 <Text style={{ fontSize: 48, marginBottom: 8 }}>🐒</Text>
                 <Text style={s.emptyText}>
-                  {showMyListings
+                  {viewMode === 'mine'
                     ? 'You haven\'t listed any Monkes yet'
                     : isGuest
                       ? 'No Monkes listed right now'
@@ -697,6 +780,7 @@ export default function MarketplaceScreen() {
           </View>
         }
       />
+      )}
 
       {/* ── Processing overlay ──────────────────────────────────────────────── */}
       {isProcessing && (
@@ -1299,6 +1383,21 @@ const s = StyleSheet.create({
     backgroundColor: GREEN, borderRadius: 8, paddingVertical: 8, alignItems: 'center',
   },
   traitFloorBtnText: { fontFamily: FONTS.bodySemi, fontSize: 13, color: '#fff' },
+
+  // History
+  historyRow: {
+    flexDirection: 'row', alignItems: 'center', paddingVertical: 10,
+    paddingHorizontal: 4, gap: 10,
+  },
+  historyBadge: {
+    width: 42, paddingVertical: 4, borderRadius: 6, alignItems: 'center',
+    borderWidth: 1,
+  },
+  historyBadgeText: { fontFamily: FONTS.mono, fontSize: 9, fontWeight: '700' },
+  historyInfo: { flex: 1 },
+  historyName: { fontFamily: FONTS.bodySemi, fontSize: 13, color: THEME.text },
+  historyMeta: { fontFamily: FONTS.mono, fontSize: 10, color: THEME.textMuted, marginTop: 2 },
+  historyPrice: { fontFamily: FONTS.mono, fontSize: 13, fontWeight: '700', color: THEME.text },
 
   // Fee disclosure
   feeDisclosure: {

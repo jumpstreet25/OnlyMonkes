@@ -160,7 +160,7 @@ If ANY check fails, fix the issue before committing. No exceptions.
 
 - **Actions worker**: `https://onlymonkes-actions.jumpstreet25.workers.dev` (Cloudflare Worker)
 - Worker source: `worker-actions/src/index.ts` — swap and tip endpoints
-- **Jupiter API**: Use `api.jup.ag/swap/v1/quote` and `api.jup.ag/swap/v1/swap` — the old `quote-api.jup.ag/v6/` endpoints are deprecated and return DNS errors from CF Workers.
+- **Jupiter API**: Use `api.jup.ag/swap/v2/quote` and `api.jup.ag/swap/v2/swap` — the old `quote-api.jup.ag/v6/` and `swap/v1/` endpoints are deprecated and return DNS errors from CF Workers.
 - Swap amount capped at **5 SOL max** for safety. Tips capped at 10 SOL.
 - All wallet addresses and token mints MUST be validated via `new PublicKey()` before use.
 - Worker secrets: `HELIUS_API_KEY`, `JUP_API_KEY` (set via `wrangler secret put`)

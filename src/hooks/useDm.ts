@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { AppState } from 'react-native';
 import { useAppStore } from '@/store/appStore';
 import { getXmtpClient } from '@/hooks/useXmtp';
-import { openOrCreateDm, loadDmMessages, sendDmMessage, sendTypingIndicator, sendReadReceipt, decodeMessage } from '@/lib/xmtp';
+import { openOrCreateDm, loadDmMessages, sendDmMessage, sendTypingIndicator, sendReadReceipt, getLastPeerReadReceipt, decodeMessage } from '@/lib/xmtp';
 import { getCachedProfile } from '@/lib/userProfile';
 import { markChannelRead } from '@/lib/messageCache';
 import type { ChatMessage } from '@/types';
@@ -91,6 +91,24 @@ export function useDm(peerInboxId: string) {
         seenIds.current = new Set(history.map(m => m.id));
         setMessages(history);
         setLoading(false);
+
+        // Mark own messages as read based on peer's last READ: receipt in history
+        getLastPeerReadReceipt(dm, myInboxId!).then(readUpToId => {
+          if (cancelled || !readUpToId) return;
+          setMessages(prev => {
+            let found = false;
+            return prev.map(m => {
+              if (m.id === readUpToId) found = true;
+              if (m.senderAddress === myInboxId && !found) {
+                return { ...m, status: 'read' as const };
+              }
+              if (m.id === readUpToId && m.senderAddress === myInboxId) {
+                return { ...m, status: 'read' as const };
+              }
+              return m;
+            });
+          });
+        }).catch(() => {});
 
         // Mark this DM as read + clear per-DM unread badge
         markChannelRead(`dm_${peerInboxId}`).catch(() => {});
