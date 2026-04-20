@@ -648,7 +648,7 @@ export const MessageBubble = memo(function MessageBubble({
     >
       {/* ── PFP — always shown beside bubble/media ────────────────────── */}
       {!centerBubble && (
-        <Pressable onPress={handlePressAvatar} hitSlop={6} style={styles.avatarOuter}>
+        <Pressable onPress={handlePressAvatar} hitSlop={6} style={styles.avatarOuter} accessibilityLabel={`${displayName} avatar`} accessibilityRole="button">
           {/* Default purple hue — hidden when Skia PFP Aura is active */}
           {!pfpAuraColor && !isBot && <View style={styles.avatarHue} />}
           {/* Bot PFP Aura — always teal glow */}
@@ -711,6 +711,8 @@ export const MessageBubble = memo(function MessageBubble({
           delayLongPress={350}
           onPress={showBotExpand ? () => setBotExpanded(e => !e) : undefined}
           style={isMedia ? styles.mediaBubble : undefined}
+          accessibilityLabel={`Message from ${displayName}`}
+          accessibilityRole="text"
         >
           {!isMedia ? (
             /* Glow wrapper — Skia renders the glow + glass, RN View holds content */
@@ -893,6 +895,8 @@ export const MessageBubble = memo(function MessageBubble({
                           onPress={() => onReact(r.emoji, message.id)}
                           hitSlop={4}
                           style={[styles.reactionPill, r.reactedByMe && styles.reactionPillActive]}
+                          accessibilityLabel={`React ${r.emoji}, ${r.count} reactions`}
+                          accessibilityRole="button"
                         >
                           <Text style={styles.pillEmoji}>{r.emoji}</Text>
                           {r.count > 1 && (

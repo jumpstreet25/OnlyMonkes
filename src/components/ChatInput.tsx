@@ -121,6 +121,8 @@ function ChannelButton({ channelId, image }: { channelId: 'bets' | 'trades' | 's
         clearCount(channelId);
         markChannelRead(channelId).catch(() => {});
       }}
+      accessibilityLabel={`${channelId} channel`}
+      accessibilityRole="button"
       style={({ pressed }) => [styles.toolbarBtn, styles.toolbarChannel, pressed && { opacity: 0.7 }]}
     >
       <Image source={image} style={styles.toolbarChannelImg} />
@@ -335,6 +337,8 @@ export const ChatInput = memo(function ChatInput({
           <Pressable
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onPfpGifPicker(); }}
             hitSlop={6}
+            accessibilityLabel="Change profile picture"
+            accessibilityRole="button"
             style={({ pressed }) => [styles.pfpBtn, pressed && { opacity: 0.7 }]}
           >
             {pfpUri ? (
@@ -359,6 +363,8 @@ export const ChatInput = memo(function ChatInput({
             maxLength={MAX_MESSAGE_LENGTH + 10} // soft limit via UI
             returnKeyType="default"
             blurOnSubmit={false}
+            accessibilityLabel="Message input"
+            accessibilityRole="text"
           />
           {isNearLimit && (
             <Text style={[styles.charCount, charsLeft < 0 && styles.charCountOver]}>
@@ -368,6 +374,8 @@ export const ChatInput = memo(function ChatInput({
         </View>
 
         <Pressable onPress={handleSend} disabled={!canSend}
+          accessibilityLabel="Send message"
+          accessibilityRole="button"
           style={({ pressed }) => [
             styles.sendButton,
             pressed && styles.sendButtonPressed,
@@ -390,6 +398,8 @@ export const ChatInput = memo(function ChatInput({
         {onCamera && (
           <Pressable
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onCamera(); }}
+            accessibilityLabel="Open camera"
+            accessibilityRole="button"
             style={({ pressed }) => [styles.toolbarBtn, styles.toolbarCamera, toolbarColor !== "#6CB4EE" && { borderColor: toolbarColor + "1F" }, pressed && { opacity: 0.7 }]}
           >
             <Text style={[styles.toolbarCamText, { color: toolbarColor }]}>CAM</Text>
@@ -399,6 +409,8 @@ export const ChatInput = memo(function ChatInput({
         {(onLiveVideo || onAvatarRoom) && (
           <Pressable
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setLivePickerOpen(true); }}
+            accessibilityLabel="Go live"
+            accessibilityRole="button"
             style={({ pressed }) => [styles.toolbarBtn, styles.toolbarLive, toolbarColor !== "#6CB4EE" && { borderColor: toolbarColor + "1F" }, pressed && { opacity: 0.7 }]}
           >
             <View style={[styles.liveDot, { backgroundColor: toolbarColor }]} />
@@ -409,6 +421,8 @@ export const ChatInput = memo(function ChatInput({
         {onGifPicker && (
           <Pressable
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onGifPicker(); }}
+            accessibilityLabel="Open GIF picker"
+            accessibilityRole="button"
             style={({ pressed }) => [styles.toolbarBtn, styles.toolbarGif, toolbarColor !== "#6CB4EE" && { borderColor: toolbarColor + "1F" }, pressed && { opacity: 0.7 }]}
           >
             <Text style={[styles.toolbarGifText, { color: toolbarColor }]}>GIF</Text>

@@ -21,6 +21,18 @@ export interface PinnedMessage {
 }
 
 let _pinnedCache: PinnedMessage[] = [];
+let _listeners: Set<(msgs: PinnedMessage[]) => void> = new Set();
+
+/** Subscribe to pinned messages changes. Returns unsubscribe function. */
+export function onPinnedMessagesChange(cb: (msgs: PinnedMessage[]) => void): () => void {
+  _listeners.add(cb);
+  return () => { _listeners.delete(cb); };
+}
+
+function _notifyListeners(): void {
+  const snapshot = [..._pinnedCache];
+  for (const cb of _listeners) cb(snapshot);
+}
 
 /** Parse a PIN: system message */
 export function parsePinMessage(raw: string): { messageId: string; action: 'pin' | 'unpin' } | null {
@@ -53,12 +65,14 @@ export async function pinMessage(
   };
   _pinnedCache.push(pinned);
   await _persist();
+  _notifyListeners();
 }
 
 /** Unpin a message */
 export async function unpinMessage(messageId: string): Promise<void> {
   _pinnedCache = _pinnedCache.filter(p => p.messageId !== messageId);
   await _persist();
+  _notifyListeners();
 }
 
 /** Get all pinned messages */

@@ -85,6 +85,47 @@ export function CommunitySkeleton() {
   );
 }
 
+/** DM inbox skeleton — mimics conversation thread rows */
+export function DmInboxSkeleton({ count = 5 }: { count?: number }) {
+  return (
+    <View style={styles.dmContainer}>
+      {Array.from({ length: count }).map((_, i) => (
+        <View key={i} style={styles.dmRow}>
+          <ShimmerBlock width={44} height={44} borderRadius={22} />
+          <View style={styles.dmTextCol}>
+            <ShimmerBlock width={100 + (i % 3) * 30} height={12} borderRadius={6} />
+            <ShimmerBlock width={160 + (i % 2) * 40} height={10} borderRadius={5} />
+          </View>
+          <ShimmerBlock width={32} height={10} borderRadius={5} />
+        </View>
+      ))}
+    </View>
+  );
+}
+
+/** Marketplace skeleton — mimics 2-column NFT card grid */
+export function MarketplaceSkeleton({ count = 4 }: { count?: number }) {
+  return (
+    <View style={styles.marketContainer}>
+      {Array.from({ length: Math.ceil(count / 2) }).map((_, row) => (
+        <View key={row} style={styles.marketRow}>
+          {[0, 1].map((col) => {
+            const idx = row * 2 + col;
+            if (idx >= count) return <View key={col} style={{ flex: 1 }} />;
+            return (
+              <View key={col} style={styles.marketCard}>
+                <ShimmerBlock width="100%" height={140} borderRadius={14} />
+                <ShimmerBlock width="70%" height={12} borderRadius={6} style={{ marginTop: 8 }} />
+                <ShimmerBlock width="40%" height={10} borderRadius={5} style={{ marginTop: 4 }} />
+              </View>
+            );
+          })}
+        </View>
+      ))}
+    </View>
+  );
+}
+
 /** Generic inline skeleton line */
 export function LineSkeleton({ width = 100, height = 12 }: { width?: number; height?: number }) {
   return <ShimmerBlock width={width} height={height} borderRadius={height / 2} />;
@@ -121,4 +162,21 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 12,
   },
+
+  // DM Inbox
+  dmContainer: { gap: 4, padding: 16 },
+  dmRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.03)",
+  },
+  dmTextCol: { flex: 1, gap: 6 },
+
+  // Marketplace
+  marketContainer: { gap: 12, padding: 16 },
+  marketRow: { flexDirection: "row", gap: 12 },
+  marketCard: { flex: 1 },
 });

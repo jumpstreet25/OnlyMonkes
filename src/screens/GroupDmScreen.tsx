@@ -2,33 +2,40 @@ import React, { useRef, useCallback, useState, useEffect, useMemo } from 'react'
 import { View, FlatList, StyleSheet, Text, Pressable, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { THEME, FONTS, BOT_INBOX_IDS } from '@/lib/constants';
+import { THEME, FONTS } from '@/lib/constants';
 import { useThemeColor } from '@/lib/shopTheme';
-import { BotCommandTicker } from '@/components/BotCommandTicker';
 import { getCachedProfile, useProfileVersion } from '@/lib/userProfile';
-import { useDm } from '@/hooks/useDm';
+import { useGroupDm } from '@/hooks/useGroupDm';
 import { MessageBubble } from '@/components/MessageBubble';
 import { ChatInput } from '@/components/ChatInput';
 import ImageLightbox from '@/components/ImageLightbox';
 import { useAppStore } from '@/store/appStore';
 import type { ChatMessage, ReactionEmoji } from '@/types';
 
-export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
+export default function GroupDmScreen({ groupId }: { groupId: string }) {
   const insets = useSafeAreaInsets();
   const { myInboxId } = useAppStore();
-  const [retryKey, setRetryKey] = useState(0);
-  const { messages, loading, error, sending, send, sendTyping, typingUsers } = useDm(peerInboxId);
+  const { messages, loading, error, sending, send, sendTyping, typingUsers } = useGroupDm(groupId);
   const [inputText, setInputText] = useState('');
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
   const flatListRef = useRef<FlatList>(null);
   useProfileVersion();
-  const peerProfile = getCachedProfile(peerInboxId);
-  const peerName = peerProfile?.username ?? 'Monke';
-  const isBotDm = BOT_INBOX_IDS.includes(peerInboxId);
   const themeBg = useThemeColor('bg');
-  const themeSurface = useThemeColor('surface');
   const themeBorder = useThemeColor('border');
+
+  // Derive group name from members
+  const groupName = useMemo(() => {
+    const senders = new Set<string>();
+    for (const m of messages) {
+      if (m.senderAddress !== myInboxId && m.senderUsername) {
+        senders.add(m.senderUsername);
+      }
+    }
+    if (senders.size === 0) return 'Group';
+    return Array.from(senders).slice(0, 3).join(', ') + (senders.size > 3 ? '...' : '');
+  }, [messages, myInboxId]);
 
   const handleSend = useCallback(async () => {
     const text = inputText.trim();
@@ -45,15 +52,6 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
     setReplyingTo(msg);
   }, []);
 
-  // Find the ID of the last own message that was read by the peer
-  const lastReadOwnId = useMemo(() => {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const m = messages[i];
-      if (m.senderAddress === myInboxId && m.status === 'read') return m.id;
-    }
-    return null;
-  }, [messages, myInboxId]);
-
   return (
     <View style={[styles.container, { paddingTop: insets.top, backgroundColor: themeBg }]}>
       {/* Header */}
@@ -61,21 +59,19 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
         <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={8}>
           <Text style={styles.backArrow}>←</Text>
         </Pressable>
-        <Text style={styles.peerName}>{peerName}</Text>
+        <Text style={styles.peerName} numberOfLines={1}>{groupName}</Text>
       </View>
-
-      {isBotDm && <BotCommandTicker variant="dm" />}
 
       {loading ? (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
           <ActivityIndicator color={THEME.accent} size="large" />
-          <Text style={{ color: THEME.textDim, fontFamily: FONTS.body, fontSize: 13 }}>
-            Opening conversation…
+          <Text style={{ color: THEME.textMuted, fontFamily: FONTS.body, fontSize: 13 }}>
+            Opening group conversation...
           </Text>
         </View>
       ) : error ? (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16, paddingHorizontal: 32 }}>
-          <Text style={{ color: THEME.textDim, fontFamily: FONTS.body, textAlign: 'center', fontSize: 14 }}>
+          <Text style={{ color: THEME.textMuted, fontFamily: FONTS.body, textAlign: 'center', fontSize: 14 }}>
             {error}
           </Text>
           <Pressable
@@ -91,18 +87,13 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
           data={messages}
           keyExtractor={m => m.id}
           renderItem={({ item }) => (
-            <>
-              <MessageBubble
-                message={item}
-                isOwn={item.senderAddress === myInboxId}
-                onReact={noop}
-                onReply={handleReply}
-                onPressImage={setLightboxUrl}
-              />
-              {item.id === lastReadOwnId && (
-                <Text style={styles.seenLabel}>Seen</Text>
-              )}
-            </>
+            <MessageBubble
+              message={item}
+              isOwn={item.senderAddress === myInboxId}
+              onReact={noop}
+              onReply={handleReply}
+              onPressImage={setLightboxUrl}
+            />
           )}
           contentContainerStyle={{ paddingVertical: 8, flexGrow: 1, justifyContent: 'flex-end' }}
           onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
@@ -111,7 +102,7 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
           windowSize={7}
           ListEmptyComponent={
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 60 }}>
-              <Text style={{ color: THEME.textDim, fontFamily: FONTS.body, fontSize: 14 }}>
+              <Text style={{ color: THEME.textMuted, fontFamily: FONTS.body, fontSize: 14 }}>
                 No messages yet — say hi!
               </Text>
             </View>
@@ -126,7 +117,6 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
         replyingTo={replyingTo}
         onCancelReply={() => setReplyingTo(null)}
         isSending={sending}
-        isDmWithBot={isBotDm}
         onTyping={sendTyping}
         typingUsers={typingUsers}
       />
@@ -149,14 +139,5 @@ const styles = StyleSheet.create({
   },
   backBtn: { padding: 4 },
   backArrow: { fontSize: 22, color: THEME.text },
-  peerName: { fontFamily: FONTS.displayMed, fontSize: 17, color: THEME.text },
-  seenLabel: {
-    fontFamily: FONTS.body,
-    fontSize: 11,
-    color: THEME.textDim,
-    textAlign: 'right',
-    paddingRight: 16,
-    marginTop: -2,
-    marginBottom: 4,
-  },
+  peerName: { fontFamily: FONTS.displayMed, fontSize: 17, color: THEME.text, flex: 1 },
 });

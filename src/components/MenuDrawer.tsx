@@ -356,6 +356,8 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
       <Pressable
         style={({ pressed }) => [styles.gridBtn, pressed && { opacity: 0.7, transform: [{ scale: 0.95 }] }]}
         onPress={onPress}
+        accessibilityLabel={label}
+        accessibilityRole="button"
       >
         <Text style={styles.gridIcon}>{icon}</Text>
         <Text style={styles.gridLabel}>{label}</Text>
@@ -411,12 +413,14 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
               onPress={() => setActiveView("list")}
               style={styles.backBtn}
               hitSlop={10}
+              accessibilityLabel="Go back"
+              accessibilityRole="button"
             >
               <Text style={styles.backIcon}>‹</Text>
               <Text style={styles.backLabel}>Back</Text>
             </Pressable>
             <Text style={styles.subViewTitle}>{VIEW_TITLES[activeView]}</Text>
-            <Pressable onPress={onClose} style={styles.closeBtn} hitSlop={10}>
+            <Pressable onPress={onClose} style={styles.closeBtn} hitSlop={10} accessibilityLabel="Close menu" accessibilityRole="button">
               <Text style={styles.closeIcon}>✕</Text>
             </Pressable>
           </View>

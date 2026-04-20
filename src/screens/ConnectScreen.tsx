@@ -122,7 +122,11 @@ export default function ConnectScreen() {
           <Text style={styles.subtitle}>
             Holder-only global chat for Saga Monkes.
           </Text>
-          <Pressable onPress={() => Linking.openURL("https://magiceden.us/marketplace/sagamonkes")}>
+          <Pressable
+            onPress={() => Linking.openURL("https://magiceden.us/marketplace/sagamonkes")}
+            accessibilityLabel="What are Saga Monkes? Opens Magic Eden"
+            accessibilityRole="link"
+          >
             <Text style={styles.sagaLink}>What are Saga Monkes?</Text>
           </Pressable>
         </View>
@@ -143,6 +147,8 @@ export default function ConnectScreen() {
               ]}
               onPress={() => setWalletSheetOpen(true)}
               disabled={busy}
+              accessibilityLabel="Login with wallet"
+              accessibilityRole="button"
             >
               <LinearGradient
                 colors={["#9c7cff", "#7c5cfc", "#5c3cec"]}
@@ -196,6 +202,8 @@ export default function ConnectScreen() {
               key={label}
               style={({ pressed }) => [styles.walletRow, pressed && styles.walletRowPressed]}
               onPress={onPress}
+              accessibilityLabel={`Connect with ${label}`}
+              accessibilityRole="button"
             >
               <Text style={styles.walletIcon}>{icon}</Text>
               <Text style={styles.walletLabel}>{label}</Text>
@@ -203,7 +211,7 @@ export default function ConnectScreen() {
             </Pressable>
           ))}
 
-          <Pressable style={styles.sheetCancelBtn} onPress={() => setWalletSheetOpen(false)}>
+          <Pressable style={styles.sheetCancelBtn} onPress={() => setWalletSheetOpen(false)} accessibilityLabel="Cancel" accessibilityRole="button">
             <Text style={styles.sheetCancelText}>Cancel</Text>
           </Pressable>
         </View>

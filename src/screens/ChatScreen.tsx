@@ -44,6 +44,7 @@ import { useXmtp, triggerProfileRebroadcast } from "@/hooks/useXmtp";
 import { playSound } from "@/lib/sounds";
 import { useNetInfo } from "@react-native-community/netinfo";
 import { ChatInput } from "@/components/ChatInput";
+import { ChatSkeleton } from "@/components/SkeletonLoader";
 import type { ProfileTarget } from "@/components/UserProfileModal";
 import { router } from "expo-router";
 import { THEME, FONTS, SKR_MINT } from "@/lib/constants";
@@ -78,10 +79,11 @@ import { enqueueMessage, flushOfflineQueue } from "@/lib/offlineQueue";
 import { appendCachedMessage } from "@/lib/messageCache";
 import { flushPendingWrites } from "@/lib/debouncedStorage";
 import { PinnedBar } from "@/components/PinnedBar";
-import { loadPinnedMessages, getPinnedMessages, buildPinMessage, type PinnedMessage } from "@/lib/pinnedMessages";
+import { loadPinnedMessages, getPinnedMessages, buildPinMessage, onPinnedMessagesChange, type PinnedMessage } from "@/lib/pinnedMessages";
 import { loadThreadMetadata } from "@/lib/threads";
 import { loadListings } from "@/lib/marketplace";
 import { updateCloutProfile, loadFlairCache } from "@/lib/monkeClout";
+import { getSessionTimeRemaining } from "@/lib/session";
 
 // ── Lazy imports — heavy modules loaded on first use, not at startup ────────
 import type { SwapQuote } from "@/lib/jupiterSwap";
@@ -351,6 +353,18 @@ export default function ChatScreen() {
         useAppStore.getState().setBananaBalance(claim.balance);
         if (claim.claimed) setBananaClaim(claim);
       } catch { /* non-critical */ }
+
+      // Session expiry warning — alert if < 24h remaining
+      try {
+        const remaining = await getSessionTimeRemaining();
+        if (remaining !== null && remaining < 24 * 60 * 60 * 1000) {
+          const hours = Math.max(1, Math.round(remaining / (60 * 60 * 1000)));
+          Alert.alert(
+            "Session Expiring",
+            `Your session expires in ~${hours}h. Reconnect your wallet to refresh it.`,
+          );
+        }
+      } catch { /* non-critical */ }
     };
     const sub = AppState.addEventListener('change', handleAppState);
     return () => sub.remove();
@@ -425,6 +439,9 @@ export default function ChatScreen() {
     loadThreadMetadata();
     loadListings();
   }, []);
+
+  // Subscribe to pinned messages changes from stream
+  useEffect(() => onPinnedMessagesChange(setPinnedMessages), []);
 
   // ─── Fetch $SKR price + Saga Monkes floor price (live, every 5 min) ─────────
   useEffect(() => {
@@ -1111,10 +1128,8 @@ export default function ChatScreen() {
 
         {/* Offline indicator */}
         {isOffline && (
-          <View style={{ backgroundColor: "rgba(255,80,80,0.15)", paddingVertical: 4, paddingHorizontal: 12, alignItems: "center" }}>
-            <Text style={{ fontFamily: FONTS.body, fontSize: 12, color: "#ff6b6b" }}>
-              No connection — messages will send when back online
-            </Text>
+          <View style={{ backgroundColor: '#EF4444', paddingVertical: 6, alignItems: 'center' }}>
+            <Text style={{ color: '#fff', fontFamily: FONTS.mono, fontSize: 11 }}>No internet connection</Text>
           </View>
         )}
 
@@ -1274,10 +1289,7 @@ export default function ChatScreen() {
 
         {/* Loading history */}
         {isGroupMember && isLoadingHistory && (
-          <View style={styles.historyLoading}>
-            <ActivityIndicator size="small" color={THEME.accent} />
-            <Text style={styles.historyLoadingText}>Loading messages…</Text>
-          </View>
+          <ChatSkeleton count={6} />
         )}
 
         {/* Empty state */}
