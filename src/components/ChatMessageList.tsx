@@ -112,7 +112,7 @@ const ChatMessageListInner = React.forwardRef<FlatList, ChatMessageListProps>(fu
           friction={2}
           containerStyle={{ overflow: "visible" }}
         >
-          <Animated.View entering={isNew ? FadeInDown.duration(250).springify().damping(18) : undefined}>
+          <View>
             <MessageBubble
               message={item}
               isOwn={item.senderAddress === myAddress}
@@ -130,7 +130,7 @@ const ChatMessageListInner = React.forwardRef<FlatList, ChatMessageListProps>(fu
               onThread={handleThread}
               isGroupAdmin={isGroupAdmin}
             />
-          </Animated.View>
+          </View>
         </Swipeable>
       );
     },
@@ -146,7 +146,7 @@ const ChatMessageListInner = React.forwardRef<FlatList, ChatMessageListProps>(fu
   }, [flatListRef, isNearBottomRef]);
 
   return (
-    <FlashList
+    <FlatList
       ref={flatListRef as any}
       data={messages}
       extraData={reactionVersion}
@@ -154,7 +154,9 @@ const ChatMessageListInner = React.forwardRef<FlatList, ChatMessageListProps>(fu
       keyExtractor={keyExtractor}
       contentContainerStyle={styles.listContent}
       inverted
-      drawDistance={300}
+      windowSize={5}
+      maxToRenderPerBatch={10}
+      removeClippedSubviews={false}
       onContentSizeChange={handleContentSizeChange}
       refreshing={refreshingChat}
       onRefresh={handleRefreshChat}
