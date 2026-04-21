@@ -47,7 +47,7 @@ import { parseLiveRoomMessage, buildLiveRoomMessage, type LiveRoomData } from "@
 import { parsePinMessage, pinMessage, unpinMessage, getPinnedMessages } from "@/lib/pinnedMessages";
 import { parsePresenceMessage, updatePresence, buildPresenceMessage } from "@/lib/presence";
 import { parseThreadMessage, trackThreadReply } from "@/lib/threads";
-import { parseMarketplaceMessage, addListing, addBid, markPendingSwap, markSold, delistNft, getListingById, getBidsForListing, type NftSwapMessage } from "@/lib/marketplace";
+import { parseMarketplaceMessage, addListing, addBid, markPendingSwap, markSold, delistNft, getListingById, getBidsForListing, getHistory as getMarketplaceHistory, type NftSwapMessage } from "@/lib/marketplace";
 import { parseVideoRoomMessage, type VideoRoomData } from "@/lib/liveVideo";
 import { parseAvatarRoomMessage, type AvatarRoomData } from "@/lib/avatarRoom";
 import { verifyNFTOwnership, verifyNftMintInCollection } from "@/lib/nftVerification";
@@ -1451,6 +1451,7 @@ export function useXmtp() {
               bananaState.balance,
               shopState.owned.length > 0 ? shopState.owned : null,
               shopState.pfpBindings ?? null,
+              getMarketplaceHistory(),
             );
             cacheProfile(client.inboxId, {
               username: username ?? undefined,
@@ -1781,6 +1782,7 @@ export function useXmtp() {
         bananaState.balance,
         shopState.owned.length > 0 ? shopState.owned : null,
         shopState.pfpBindings ?? null,
+        getMarketplaceHistory(),
       );
       // Keep own cache entry current so PFP is always available locally
       cacheProfile(_myInboxId, {

@@ -12,7 +12,16 @@
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const AK_BANANAS = "banana_rewards_v1";
+const AK_BANANAS_BASE = "banana_rewards_v1";
+
+// Wallet-scoped storage: each connected wallet reads/writes under its own key so
+// reinstalling + reconnecting the same wallet restores the balance, and different
+// wallets on one device can't overwrite each other.
+let _walletCtx: string | null = null;
+export function setBananaWalletContext(addr: string | null): void { _walletCtx = addr; }
+function bananaKey(): string {
+  return _walletCtx ? `${AK_BANANAS_BASE}:${_walletCtx}` : AK_BANANAS_BASE;
+}
 
 // Reward schedule: day number (1-7) → bananas earned
 const DAILY_REWARDS: Record<number, number> = {
@@ -57,7 +66,7 @@ const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
 /** Load banana state from AsyncStorage. */
 export async function loadBananaState(): Promise<BananaState> {
   try {
-    const raw = await AsyncStorage.getItem(AK_BANANAS);
+    const raw = await AsyncStorage.getItem(bananaKey());
     if (!raw) return { ...DEFAULT_STATE };
     return { ...DEFAULT_STATE, ...JSON.parse(raw) };
   } catch {
@@ -67,7 +76,7 @@ export async function loadBananaState(): Promise<BananaState> {
 
 /** Save banana state to AsyncStorage. */
 export async function saveBananaState(state: BananaState): Promise<void> {
-  await AsyncStorage.setItem(AK_BANANAS, JSON.stringify(state));
+  await AsyncStorage.setItem(bananaKey(), JSON.stringify(state));
 }
 
 /**

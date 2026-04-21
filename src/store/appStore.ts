@@ -421,6 +421,13 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   reset: () => {
     set(initialState);
     void SecureStore.deleteItemAsync(SK_MWA_TOKEN).catch(() => {});
+    // Clear wallet-scoped storage context so the next connect starts fresh.
+    // Lazy require avoids a circular import (walletIdentity → appStore).
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { clearActiveWallet } = require('@/lib/walletIdentity');
+      clearActiveWallet();
+    } catch { /* non-critical */ }
   },
 }));
 

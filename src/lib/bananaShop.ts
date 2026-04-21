@@ -8,7 +8,15 @@
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const AK_SHOP = "banana_shop_v1";
+const AK_SHOP_BASE = "banana_shop_v1";
+
+// Wallet-scoped storage: shop ownership belongs to the wallet, not the device.
+// Reinstalling + reconnecting the same wallet must restore owned items.
+let _walletCtx: string | null = null;
+export function setShopWalletContext(addr: string | null): void { _walletCtx = addr; }
+function shopKey(): string {
+  return _walletCtx ? `${AK_SHOP_BASE}:${_walletCtx}` : AK_SHOP_BASE;
+}
 
 // ─── Item Categories ─────────────────────────────────────────────────────────
 
@@ -330,7 +338,7 @@ const DEFAULT_SHOP_STATE: ShopState = {
 
 export async function loadShopState(): Promise<ShopState> {
   try {
-    const raw = await AsyncStorage.getItem(AK_SHOP);
+    const raw = await AsyncStorage.getItem(shopKey());
     if (!raw) return { ...DEFAULT_SHOP_STATE };
     return { ...DEFAULT_SHOP_STATE, ...JSON.parse(raw) };
   } catch {
@@ -339,7 +347,7 @@ export async function loadShopState(): Promise<ShopState> {
 }
 
 export async function saveShopState(state: ShopState): Promise<void> {
-  await AsyncStorage.setItem(AK_SHOP, JSON.stringify(state));
+  await AsyncStorage.setItem(shopKey(), JSON.stringify(state));
 }
 
 /** Mark an item as owned after successful purchase. */

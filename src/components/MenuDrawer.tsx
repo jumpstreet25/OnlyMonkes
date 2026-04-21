@@ -48,6 +48,7 @@ import { clearPushToken, registerForPushNotifications, scheduleTestNotification 
 import { markChannelRead } from "@/lib/messageCache";
 import { loadBananaState, type BananaState } from "@/lib/bananaRewards";
 import { BananaShopModal } from "@/components/BananaShopModal";
+import { ReclaimModal } from "@/components/ReclaimModal";
 import type { ProfileTarget } from "@/components/UserProfileModal";
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
@@ -376,6 +377,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
 
   const [searchText, setSearchText] = useState("");
   const [shopOpen, setShopOpen] = useState(false);
+  const [reclaimOpen, setReclaimOpen] = useState(false);
   const [bananaState, setBananaState] = useState<BananaState | null>(null);
   const bananaBalance = useAppStore(s => s.bananaBalance);
 
@@ -962,6 +964,23 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                   </Pressable>
                 </View>
               </View>
+
+              {/* ── Account Recovery ──────────────────────────────────── */}
+              <Text style={[styles.sectionLabel, { marginTop: 20 }]}>Account Recovery</Text>
+              <View style={styles.settingsCard}>
+                <Pressable
+                  style={styles.settingRow}
+                  onPress={() => setReclaimOpen(true)}
+                >
+                  <View style={styles.settingInfo}>
+                    <Text style={styles.settingTitle}>Restore from previous device</Text>
+                    <Text style={styles.settingDesc}>
+                      Sign with your wallet to recover bananas, shop items, marketplace history, and your hot wallet.
+                    </Text>
+                  </View>
+                  <Text style={styles.chevron}>›</Text>
+                </Pressable>
+              </View>
             </>
           )}
 
@@ -1008,6 +1027,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
       </View>
 
       <BananaShopModal visible={shopOpen} onClose={() => setShopOpen(false)} />
+      <ReclaimModal visible={reclaimOpen} onClose={() => setReclaimOpen(false)} />
     </Modal>
   );
 }
