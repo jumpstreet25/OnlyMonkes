@@ -161,7 +161,11 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
   }, [username, channelId, hasAutonomy]);
 
   // Reverse messages for inverted FlatList (newest first in array = bottom of screen)
-  const reversedMessages = useMemo(() => [...messages].reverse(), [messages]);
+  // Security: only show messages from the bot — prevents spoofed alerts from other XMTP clients
+  const reversedMessages = useMemo(() =>
+    [...messages].filter(m => m.senderAddress === BOT_INBOX_ID).reverse(),
+    [messages],
+  );
 
   // Client-side filter: hide alerts for muted sports in the Bets channel
   const filteredMessages = useMemo(() => {
