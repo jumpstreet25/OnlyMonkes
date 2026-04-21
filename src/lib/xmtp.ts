@@ -344,6 +344,7 @@ function decodeStringMessage(raw: any, rawContent: string, myInboxId: string): C
   if (rawContent.startsWith("STICKER_REACT:")) return null;
   if (rawContent.startsWith("TYPING:")) return null;
   if (rawContent.startsWith("PROFILE_UPDATE:")) return null;
+  if (rawContent.startsWith("PROFILE_SNAPSHOT:")) return null;
   if (rawContent.startsWith("LOCATION_SYNC:")) return null;
   if (rawContent.startsWith("EVENT:")) return null;
   if (rawContent.startsWith("EDIT:")) return null;
@@ -672,6 +673,47 @@ export function parseProfileUpdate(raw: string): ParsedProfileUpdate | null {
   };
 }
 
+// ─── PROFILE_SNAPSHOT (cross-device reclaim payload from the bot) ───────────
+
+export interface ParsedProfileSnapshot {
+  wallet: string;
+  bananaBalance?: number;
+  shopOwned?: string[];
+  pfpBindings?: Record<string, string[]>;
+  username?: string;
+  legendary?: boolean;
+  badges?: string[];
+  marketplaceHistory?: unknown[];
+  updatedAt?: number;
+}
+
+/**
+ * Parse a PROFILE_SNAPSHOT: payload returned by the bot after a successful
+ * /reclaim handshake. Returns null on malformed input or missing wallet field.
+ */
+export function parseProfileSnapshot(raw: string): ParsedProfileSnapshot | null {
+  if (!raw.startsWith("PROFILE_SNAPSHOT:")) return null;
+  const jsonStr = raw.slice("PROFILE_SNAPSHOT:".length);
+  if (jsonStr.length > 200_000) return null;
+
+  let data: any;
+  try { data = JSON.parse(jsonStr); } catch { return null; }
+  if (!data || typeof data !== "object" || Array.isArray(data)) return null;
+  if (typeof data.wallet !== "string" || !data.wallet) return null;
+
+  return {
+    wallet: data.wallet,
+    bananaBalance: typeof data.bb === "number" ? data.bb : undefined,
+    shopOwned: Array.isArray(data.so) ? data.so.filter((s: unknown) => typeof s === "string") : undefined,
+    pfpBindings: data.pb && typeof data.pb === "object" && !Array.isArray(data.pb) ? data.pb : undefined,
+    username: typeof data.u === "string" ? data.u : undefined,
+    legendary: data.lg === 1 || data.lg === true,
+    badges: Array.isArray(data.bd) ? data.bd.filter((b: unknown) => typeof b === "string") : undefined,
+    marketplaceHistory: Array.isArray(data.mh) ? data.mh : undefined,
+    updatedAt: typeof data.updatedAt === "number" ? data.updatedAt : undefined,
+  };
+}
+
 // ─── Generic dApp Group ───────────────────────────────────────────────────────
 
 /**
@@ -819,7 +861,10 @@ export async function sendProfileUpdate(
   bananaBalance?: number | null,
   shopOwned?: string[] | null,
   pfpBindings?: Record<string, string[]> | null,
+  marketplaceHistory?: unknown[] | null,
 ): Promise<void> {
+  // Cap mh to last 25 entries to keep payload below the 10KB parser limit
+  const mh = Array.isArray(marketplaceHistory) ? marketplaceHistory.slice(0, 25) : null;
   const payload = JSON.stringify({
     id: inboxId,
     u: username ?? "",
@@ -845,6 +890,7 @@ export async function sendProfileUpdate(
     bb: bananaBalance ?? 0,
     so: shopOwned ?? [],
     pb: pfpBindings ?? null,
+    mh: mh && mh.length > 0 ? mh : null,
   });
   await (group as any).send(`PROFILE_UPDATE:${payload}`);
 }

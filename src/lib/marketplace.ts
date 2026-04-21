@@ -100,7 +100,20 @@ export interface NftCompleteMessage {
 
 // ── Order History ──────────────────────────────────────────────────────────
 
-const AK_HISTORY = 'marketplace_history_v1';
+const AK_HISTORY_BASE = 'marketplace_history_v1';
+
+// Wallet-scoped: a user's buy/sell/bid history belongs to the wallet, not the device.
+// Listings (AK_LISTINGS) stay device-keyed because they're a local cache of public broadcasts.
+let _historyWalletCtx: string | null = null;
+export function setMarketplaceWalletContext(addr: string | null): void {
+  if (_historyWalletCtx !== addr) {
+    _historyWalletCtx = addr;
+    _history = []; // stale cache for the previous wallet; next loadHistory() refills
+  }
+}
+function historyKey(): string {
+  return _historyWalletCtx ? `${AK_HISTORY_BASE}:${_historyWalletCtx}` : AK_HISTORY_BASE;
+}
 
 export interface MarketplaceHistoryEntry {
   type: 'buy' | 'sell' | 'bid';
@@ -116,16 +129,16 @@ let _history: MarketplaceHistoryEntry[] = [];
 
 export async function loadHistory(): Promise<void> {
   try {
-    const raw = await AsyncStorage.getItem(AK_HISTORY);
-    if (raw) {
+    const raw = await AsyncStorage.getItem(historyKey());
+    _history = raw ? (() => {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) _history = parsed;
-    }
-  } catch { /* non-critical */ }
+      return Array.isArray(parsed) ? parsed : [];
+    })() : [];
+  } catch { _history = []; }
 }
 
 function _persistHistory(): void {
-  AsyncStorage.setItem(AK_HISTORY, JSON.stringify(_history)).catch(() => {});
+  AsyncStorage.setItem(historyKey(), JSON.stringify(_history)).catch(() => {});
 }
 
 export function recordHistoryEntry(entry: MarketplaceHistoryEntry): void {
@@ -137,6 +150,35 @@ export function recordHistoryEntry(entry: MarketplaceHistoryEntry): void {
 
 export function getHistory(): MarketplaceHistoryEntry[] {
   return _history;
+}
+
+/**
+ * Merge remote history entries (from a cross-device reclaim) into local history.
+ * Dedupes by txSignature when present, otherwise by (type, timestamp, nftName).
+ * Returns the number of entries added. Safe to call repeatedly.
+ */
+export function mergeHistoryEntries(remote: unknown[]): number {
+  if (!Array.isArray(remote) || remote.length === 0) return 0;
+  const keyOf = (e: any): string =>
+    e?.txSignature ? `sig:${e.txSignature}` : `${e?.type}|${e?.timestamp}|${e?.nftName}`;
+  const existing = new Set(_history.map(keyOf));
+  let added = 0;
+  for (const raw of remote) {
+    if (!raw || typeof raw !== 'object') continue;
+    const e = raw as MarketplaceHistoryEntry;
+    if (!e.type || typeof e.timestamp !== 'number') continue;
+    const k = keyOf(e);
+    if (existing.has(k)) continue;
+    _history.push(e);
+    existing.add(k);
+    added++;
+  }
+  if (added > 0) {
+    _history.sort((a, b) => b.timestamp - a.timestamp);
+    if (_history.length > 200) _history = _history.slice(0, 200);
+    _persistHistory();
+  }
+  return added;
 }
 
 // ── In-memory state ────────────────────────────────────────────────────────

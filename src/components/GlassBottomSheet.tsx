@@ -112,6 +112,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: 0,
     borderColor: GLASS_BORDER,
     overflow: 'hidden',
+    zIndex: 9999,
+    elevation: 9999,
   },
   background: {
     backgroundColor: GLASS_BG,
