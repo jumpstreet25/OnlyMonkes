@@ -49,7 +49,8 @@ interface UserProfileModalProps {
 }
 
 export function UserProfileModal({ visible, target, onClose, onEditProfile, onChangePfp, onSwitchWallet, onLogout, onMessage }: UserProfileModalProps) {
-  const { myInboxId, username: myUsername, bio: myBio, xAccount: myXAccount, tipWallet: myTipWallet, verifiedNft } = useAppStore();
+  const { myInboxId, username: myUsername, bio: myBio, xAccount: myXAccount, tipWallet: myTipWallet, verifiedNft, wallet } = useAppStore();
+  const isDevAdmin = wallet?.address === DEV_WALLET;
   const [showTipQr, setShowTipQr] = useState(false);
 
   if (!target) return null;
@@ -221,7 +222,7 @@ export function UserProfileModal({ visible, target, onClose, onEditProfile, onCh
           )}
 
           {/* Admin: Gift Shop Item (DEV_WALLET only, other profiles only) */}
-          {!isOwnProfile && useAppStore.getState().wallet?.address === DEV_WALLET && (
+          {!isOwnProfile && isDevAdmin && (
             <Pressable
               onPress={() => {
                 const { getAvailableItems } = require("@/lib/bananaShop");
