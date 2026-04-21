@@ -1455,6 +1455,7 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.body,
     fontSize: 15,
     lineHeight: 22,
+    color: THEME.text,
   },
 
   editedLabel: {
