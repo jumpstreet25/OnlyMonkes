@@ -390,7 +390,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
       visible={visible}
       transparent
       animationType="fade"
-      onRequestClose={onClose}
+      onRequestClose={() => { if (activeView !== "list") { setActiveView("list"); } else { onClose(); } }}
       statusBarTranslucent
     >
       <Pressable style={StyleSheet.absoluteFill} onPress={onClose}>
