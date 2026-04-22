@@ -142,6 +142,10 @@ export function VideoCameraModal({ visible, onClose, onSend }: Props) {
               isLooping
               resizeMode={ResizeMode.CONTAIN}
             />
+            {/* Close button */}
+            <Pressable style={styles.closeBtn} onPress={onClose} hitSlop={10}>
+              <Text style={styles.closeBtnText}>✕</Text>
+            </Pressable>
             {/* Watermark */}
             <View style={styles.watermarkShadow}>
               <Image
