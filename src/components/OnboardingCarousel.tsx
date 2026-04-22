@@ -1,55 +1,104 @@
 /**
  * OnboardingCarousel
  *
- * Full-screen 3-slide explainer shown once on first launch.
- * AsyncStorage key "onboarding_v1" persists the seen state.
+ * Full-screen 6-slide explainer shown once on first launch.
+ * AsyncStorage key "onboarding_carousel_seen_v1" persists the seen state.
  *
  * Slides:
- *   1. Why only Saga Monkes?
- *   2. Privacy via XMTP
- *   3. Live rooms & tipping
+ *   1. Welcome
+ *   2. Community Chat
+ *   3. AI Trading Bot
+ *   4. Avatar Rooms & Video Calls
+ *   5. Globe & Events
+ *   6. Marketplace & Banana Shop
  */
 
-import React, { useRef, useState, useEffect } from "react";
+import React, { useRef, useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
   StyleSheet,
   Pressable,
-  ScrollView,
+  FlatList,
   useWindowDimensions,
   Animated,
+  type ViewToken,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { LinearGradient } from "expo-linear-gradient";
 import { THEME, FONTS } from "@/lib/constants";
 
-export const ONBOARDING_KEY = "onboarding_v1";
+export const ONBOARDING_KEY = "onboarding_carousel_seen_v1";
 
-const SLIDES = [
+interface Slide {
+  emoji: string;
+  emojiBg: string;
+  accentClr: string;
+  title: string;
+  subtitle: string;
+  features: string;
+  gradient: readonly [string, string];
+}
+
+const SLIDES: Slide[] = [
   {
-    emoji:    "🐒",
-    emojiBg:  "#FFD70022",
-    accentClr:"#FFD700",
-    title:    "Only Saga Monkes",
-    body:     "The rarest club on Solana. Holder-only access — no bots, no tourists, just verified Monkes.",
-    gradient: ["#1a1200", "#0a0a14"] as const,
+    emoji: "\uD83D\uDC12",
+    emojiBg: "#FFD70022",
+    accentClr: "#FFD700",
+    title: "Welcome to OnlyMonkes",
+    subtitle: "The exclusive social hub for Saga Monkes NFT holders",
+    features: "Swipe to learn what you can do",
+    gradient: ["#1a1200", "#0a0a14"],
   },
   {
-    emoji:    "🔐",
-    emojiBg:  "#7c5cfc22",
-    accentClr:"#9c7cff",
-    title:    "Private by Design",
-    body:     "Messages encrypted end-to-end by XMTP. No phone number. No server. Your wallet is your identity.",
-    gradient: ["#100a1e", "#0a0a14"] as const,
+    emoji: "\uD83D\uDCAC",
+    emojiBg: "#6CB4EE22",
+    accentClr: "#6CB4EE",
+    title: "Community Chat",
+    subtitle: "E2E encrypted group chat with your fellow Monkes",
+    features:
+      "Send messages, GIFs, reactions, replies. @mention users. $TOKEN tickers are tappable.",
+    gradient: ["#0a1420", "#0a0a14"],
   },
   {
-    emoji:    "🎙",
-    emojiBg:  "#44ff8822",
-    accentClr:"#44ff88",
-    title:    "Live & Growing",
-    body:     "Voice rooms, Monke-to-Monke SOL tips, AI trading signals. The alpha chat for Saga holders.",
-    gradient: ["#001410", "#0a0a14"] as const,
+    emoji: "\uD83E\uDD16",
+    emojiBg: "#9c7cff22",
+    accentClr: "#9c7cff",
+    title: "AI Agent #9385",
+    subtitle: "Your personal trading intelligence",
+    features:
+      "Real-time TA alerts in MonkeTrades. DM the bot for /limit orders, /dca, /hermes stats, /chart, and more.",
+    gradient: ["#100a1e", "#0a0a14"],
+  },
+  {
+    emoji: "\uD83C\uDFAD",
+    emojiBg: "#FF6B6B22",
+    accentClr: "#FF6B6B",
+    title: "Avatar Rooms & Video Calls",
+    subtitle: "Go live with animated NFT avatars or video",
+    features:
+      "Start an Avatar Room from the chat input. Your Saga Monke PFP comes alive with face tracking.",
+    gradient: ["#1a0a0a", "#0a0a14"],
+  },
+  {
+    emoji: "\uD83C\uDF0D",
+    emojiBg: "#44ff8822",
+    accentClr: "#44ff88",
+    title: "Global Community",
+    subtitle: "See where Monkes are worldwide",
+    features:
+      "3D globe shows member locations. Tap events to RSVP. Solana ecosystem events pulled from Lu.ma.",
+    gradient: ["#001410", "#0a0a14"],
+  },
+  {
+    emoji: "\uD83C\uDF4C",
+    emojiBg: "#FFD54F22",
+    accentClr: "#FFD54F",
+    title: "Trade & Customize",
+    subtitle: "P2P NFT marketplace + cosmetic shop",
+    features:
+      "List your Saga Monkes for sale. Earn bananas from daily rewards. Buy glow effects, themes, and PFP styles.",
+    gradient: ["#1a1400", "#0a0a14"],
   },
 ];
 
@@ -59,26 +108,44 @@ interface Props {
 
 export function OnboardingCarousel({ onDone }: Props) {
   const { width } = useWindowDimensions();
-  const scrollRef = useRef<ScrollView>(null);
+  const flatListRef = useRef<FlatList<Slide>>(null);
   const [index, setIndex] = useState(0);
 
-  // Floating animation for the emoji on each slide
+  // Floating animation for the emoji
   const floatAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     Animated.loop(
       Animated.sequence([
-        Animated.timing(floatAnim, { toValue: -10, duration: 1200, useNativeDriver: true }),
-        Animated.timing(floatAnim, { toValue: 0,   duration: 1200, useNativeDriver: true }),
-      ])
+        Animated.timing(floatAnim, {
+          toValue: -10,
+          duration: 1200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(floatAnim, {
+          toValue: 0,
+          duration: 1200,
+          useNativeDriver: true,
+        }),
+      ]),
     ).start();
   }, []);
+
+  const onViewableItemsChanged = useCallback(
+    ({ viewableItems }: { viewableItems: ViewToken[] }) => {
+      if (viewableItems.length > 0 && viewableItems[0].index != null) {
+        setIndex(viewableItems[0].index);
+      }
+    },
+    [],
+  );
+
+  const viewabilityConfig = useRef({ viewAreaCoveragePercentThreshold: 50 }).current;
 
   const handleNext = () => {
     if (index < SLIDES.length - 1) {
       const next = index + 1;
-      scrollRef.current?.scrollTo({ x: next * width, animated: true });
-      setIndex(next);
+      flatListRef.current?.scrollToIndex({ index: next, animated: true });
     } else {
       handleDone();
     }
@@ -92,6 +159,28 @@ export function OnboardingCarousel({ onDone }: Props) {
   const slide = SLIDES[index];
   const isLast = index === SLIDES.length - 1;
 
+  const renderItem = ({ item, index: i }: { item: Slide; index: number }) => (
+    <View style={[styles.slide, { width }]}>
+      <Animated.View
+        style={[
+          styles.emojiOrb,
+          {
+            backgroundColor: item.emojiBg,
+            transform: [{ translateY: i === index ? floatAnim : 0 }],
+          },
+        ]}
+      >
+        <Text style={styles.emoji}>{item.emoji}</Text>
+      </Animated.View>
+
+      <View style={[styles.accentLine, { backgroundColor: item.accentClr }]} />
+
+      <Text style={[styles.title, { color: item.accentClr }]}>{item.title}</Text>
+      <Text style={styles.subtitle}>{item.subtitle}</Text>
+      <Text style={styles.features}>{item.features}</Text>
+    </View>
+  );
+
   return (
     <View style={styles.container}>
       {/* Background gradient (updates per slide) */}
@@ -100,36 +189,32 @@ export function OnboardingCarousel({ onDone }: Props) {
         style={StyleSheet.absoluteFill}
       />
 
+      {/* Skip button — top right */}
+      {!isLast && (
+        <Pressable style={styles.skipTop} onPress={handleDone} hitSlop={12}>
+          <Text style={styles.skipTopText}>Skip</Text>
+        </Pressable>
+      )}
+
       {/* Slides */}
-      <ScrollView
-        ref={scrollRef}
+      <FlatList
+        ref={flatListRef}
+        data={SLIDES}
+        renderItem={renderItem}
+        keyExtractor={(_, i) => String(i)}
         horizontal
         pagingEnabled
         showsHorizontalScrollIndicator={false}
-        scrollEnabled={false}   // manual only — prevents accidental swipe past "Get Started"
+        bounces={false}
+        onViewableItemsChanged={onViewableItemsChanged}
+        viewabilityConfig={viewabilityConfig}
+        getItemLayout={(_, i) => ({
+          length: width,
+          offset: width * i,
+          index: i,
+        })}
         style={{ flex: 1 }}
-        contentContainerStyle={{ flexGrow: 1 }}
-      >
-        {SLIDES.map((s, i) => (
-          <View key={i} style={[styles.slide, { width }]}>
-            {/* Emoji orb */}
-            <Animated.View
-              style={[
-                styles.emojiOrb,
-                { backgroundColor: s.emojiBg, transform: [{ translateY: i === index ? floatAnim : 0 }] },
-              ]}
-            >
-              <Text style={styles.emoji}>{s.emoji}</Text>
-            </Animated.View>
-
-            {/* Accent line */}
-            <View style={[styles.accentLine, { backgroundColor: s.accentClr }]} />
-
-            <Text style={[styles.title, { color: s.accentClr }]}>{s.title}</Text>
-            <Text style={styles.body}>{s.body}</Text>
-          </View>
-        ))}
-      </ScrollView>
+      />
 
       {/* Bottom controls */}
       <View style={styles.footer}>
@@ -148,7 +233,7 @@ export function OnboardingCarousel({ onDone }: Props) {
           ))}
         </View>
 
-        {/* Next / Get Started */}
+        {/* Next / Let's Go! */}
         <Pressable
           style={({ pressed }) => [styles.btn, pressed && { opacity: 0.8 }]}
           onPress={handleNext}
@@ -160,17 +245,10 @@ export function OnboardingCarousel({ onDone }: Props) {
             style={styles.btnGradient}
           >
             <Text style={styles.btnText}>
-              {isLast ? "Let's Go 🐒" : "Next →"}
+              {isLast ? "Let's Go!" : "Next"}
             </Text>
           </LinearGradient>
         </Pressable>
-
-        {/* Skip */}
-        {!isLast && (
-          <Pressable onPress={handleDone} hitSlop={12}>
-            <Text style={styles.skip}>Skip</Text>
-          </Pressable>
-        )}
       </View>
     </View>
   );
@@ -183,12 +261,26 @@ const styles = StyleSheet.create({
     backgroundColor: THEME.bg,
   },
 
+  skipTop: {
+    position: "absolute",
+    top: 52,
+    right: 20,
+    zIndex: 110,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  skipTopText: {
+    fontFamily: FONTS.bodyMed,
+    fontSize: 14,
+    color: THEME.textMuted,
+  },
+
   slide: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 36,
-    gap: 20,
+    gap: 16,
   },
 
   emojiOrb: {
@@ -213,12 +305,20 @@ const styles = StyleSheet.create({
     textAlign: "center",
     letterSpacing: 0.3,
   },
-  body: {
-    fontFamily: FONTS.body,
+  subtitle: {
+    fontFamily: FONTS.bodyMed,
     fontSize: 16,
     color: THEME.textMuted,
     textAlign: "center",
     lineHeight: 24,
+  },
+  features: {
+    fontFamily: FONTS.body,
+    fontSize: 14,
+    color: THEME.textDim,
+    textAlign: "center",
+    lineHeight: 22,
+    paddingHorizontal: 8,
   },
 
   footer: {
@@ -258,11 +358,5 @@ const styles = StyleSheet.create({
     fontSize: 17,
     color: "#fff",
     letterSpacing: 0.3,
-  },
-
-  skip: {
-    fontFamily: FONTS.body,
-    fontSize: 13,
-    color: THEME.textFaint,
   },
 });
