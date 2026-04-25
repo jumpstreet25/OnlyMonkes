@@ -119,7 +119,7 @@ function encodeCreators(
 ): Buffer {
   const lenBuf = Buffer.alloc(4);
   lenBuf.writeUInt32LE(creators.length, 0);
-  const parts = [lenBuf];
+  const parts: Buffer[] = [lenBuf];
   for (const c of creators) {
     parts.push(c.address.toBuffer());
     parts.push(Buffer.from([c.verified ? 1 : 0]));

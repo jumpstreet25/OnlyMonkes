@@ -95,6 +95,9 @@ export async function initXmtpClient(): Promise<Client> {
         await SecureStore.setItemAsync(skKey(SK_IDENTITY_ID_PREFIX), client.publicIdentity.identifier);
         await SecureStore.setItemAsync(skKey(SK_IDENTITY_KIND_PREFIX), client.publicIdentity.kind);
       }
+      // History sync is manual as of @xmtp/react-native-sdk v5.7. Pull records
+      // from other active devices on this inbox. Fire-and-forget — do not block init.
+      (client as any).sendSyncRequest?.().catch(() => { /* no other device, network, etc. */ });
       return client;
     } catch {
       // Corrupt state — fall through to create a fresh identity

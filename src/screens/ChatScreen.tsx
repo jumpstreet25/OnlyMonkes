@@ -181,8 +181,6 @@ export default function ChatScreen() {
   const [editingProfile, setEditingProfile] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [calendarOpen, setCalendarOpen] = useState(false);
-  const [tipOpen, setTipOpen] = useState(false);
-  const [swapOpen, setSwapOpen] = useState(false);
   const [tipTarget, setTipTarget] = useState<ChatMessage | null>(null);
   const [tipSending, setTipSending] = useState(false);
   const [devTipOpen, setDevTipOpen] = useState(false);
@@ -1352,8 +1350,6 @@ export default function ChatScreen() {
         tipTarget={tipTarget}
         setTipTarget={setTipTarget}
         handleConfirmTip={handleConfirmTip}
-        tipOpen={tipOpen}
-        setTipOpen={setTipOpen}
         devTipOpen={devTipOpen}
         setDevTipOpen={setDevTipOpen}
         swapConfirmOpen={swapConfirmOpen}
@@ -1361,8 +1357,6 @@ export default function ChatScreen() {
         swapExecuting={swapExecuting}
         handleConfirmSwap={handleConfirmSwap}
         handleCancelSwap={handleCancelSwap}
-        swapOpen={swapOpen}
-        setSwapOpen={setSwapOpen}
         gifPickerOpen={gifPickerOpen}
         setGifPickerOpen={setGifPickerOpen}
         pfpGifPickerOpen={pfpGifPickerOpen}

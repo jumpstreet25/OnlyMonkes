@@ -75,7 +75,7 @@ export interface ChatModalsProps {
   // Scroll FAB
   showScrollFab: boolean;
   unreadWhileScrolled: number;
-  flatListRef: React.RefObject<FlatList>;
+  flatListRef: React.RefObject<FlatList | null>;
   setShowScrollFab: (v: boolean) => void;
   setUnreadWhileScrolled: (v: number) => void;
 

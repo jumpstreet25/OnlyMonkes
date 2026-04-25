@@ -85,6 +85,7 @@ export const THEME = {
   success: '#10B981',
   error: '#EF4444',
   warning: '#F59E0B',
+  gold: '#FFD700',
 };
 
 export const FONTS = {
