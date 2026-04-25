@@ -32,7 +32,7 @@ export interface ChatMessageListProps {
   isLoadingHistory: boolean;
   refreshingChat: boolean;
   initialMsgIdsRef: React.MutableRefObject<Set<string>>;
-  flatListRef: React.RefObject<FlatList>;
+  flatListRef: React.RefObject<FlatList | null>;
 
   // Callbacks
   handleReact: (emoji: ReactionEmoji, messageId: string) => void;
