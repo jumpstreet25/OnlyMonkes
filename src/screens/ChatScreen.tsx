@@ -83,7 +83,6 @@ import { loadPinnedMessages, getPinnedMessages, buildPinMessage, onPinnedMessage
 import { loadThreadMetadata } from "@/lib/threads";
 import { loadListings } from "@/lib/marketplace";
 import { updateCloutProfile, loadFlairCache } from "@/lib/monkeClout";
-import { getSessionTimeRemaining } from "@/lib/session";
 
 // ── Lazy imports — heavy modules loaded on first use, not at startup ────────
 import type { SwapQuote } from "@/lib/jupiterSwap";
@@ -352,18 +351,6 @@ export default function ChatScreen() {
         const claim = await claimDailyBananas();
         useAppStore.getState().setBananaBalance(claim.balance);
         if (claim.claimed) setBananaClaim(claim);
-      } catch { /* non-critical */ }
-
-      // Session expiry warning — alert if < 24h remaining
-      try {
-        const remaining = await getSessionTimeRemaining();
-        if (remaining !== null && remaining < 24 * 60 * 60 * 1000) {
-          const hours = Math.max(1, Math.round(remaining / (60 * 60 * 1000)));
-          Alert.alert(
-            "Session Expiring",
-            `Your session expires in ~${hours}h. Reconnect your wallet to refresh it.`,
-          );
-        }
       } catch { /* non-critical */ }
     };
     const sub = AppState.addEventListener('change', handleAppState);
