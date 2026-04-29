@@ -5,12 +5,16 @@
  * interactive Blink cards in chat. Users tap to one-tap execute.
  *
  * Endpoints:
- *   GET  /api/actions/swap?inputMint=X&outputMint=Y&amount=Z  → Action metadata
- *   POST /api/actions/swap?inputMint=X&outputMint=Y&amount=Z  → Serialized swap tx
- *   GET  /api/actions/tip?to=WALLET&amount=N                  → Action metadata
- *   POST /api/actions/tip?to=WALLET&amount=N                  → Serialized tip tx
- *   POST /escrow                                              → Store ephemeral keypair for tip link
- *   GET  /claim?token=T&wallet=W                              → Claim a tip link
+ *   GET  /api/actions/swap?inputMint=X&outputMint=Y&amount=Z     → Action metadata
+ *   POST /api/actions/swap?inputMint=X&outputMint=Y&amount=Z     → Serialized swap tx
+ *   GET  /api/actions/tip?to=WALLET&amount=N                     → Action metadata
+ *   POST /api/actions/tip?to=WALLET&amount=N                     → Serialized tip tx
+ *   GET  /api/actions/predict?marketId=M&side=yes|no&amount=U&slug=S  → Actions metadata (geo-aware)
+ *   POST /api/actions/predict?marketId=M&side=yes|no&amount=U           → Jupiter tx (or geo-restricted msg)
+ *   GET  /api/actions/bet?marketId=M&side=yes|no&amount=U&slug=S        → Actions metadata (geo-aware, sports)
+ *   POST /api/actions/bet?marketId=M&side=yes|no&amount=U               → Jupiter tx (or geo-restricted msg)
+ *   POST /escrow                                                 → Store ephemeral keypair for tip link
+ *   GET  /claim?token=T&wallet=W                                 → Claim a tip link
  *
  * Secrets (set via `wrangler secret put`):
  *   HELIUS_API_KEY     — Helius RPC API key
@@ -495,6 +499,182 @@ async function handleTipPost(url: URL, body: any, env: Env): Promise<Response> {
   }
 }
 
+// ─── Jupiter Prediction API (Polymarket + Kalshi via Jupiter) ────────────────
+//
+// Geo policy: Jupiter blocks US + KR IPs on the /orders endpoint. Rather than
+// return 500s to those users, we detect the caller's country via Cloudflare's
+// `cf-ipcountry` header and return a graceful "View on Polymarket" card. Users
+// can also mute the channel entirely via the menu drawer if they'd rather not
+// see the alerts at all.
+
+const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+const JUP_PREDICTION_BASE = "https://api.jup.ag/prediction/v1";
+const USDC_MICRO = 1_000_000;
+const PREDICTION_MAX_USDC = 100;
+const GEOBLOCKED_COUNTRIES = new Set(["US", "KR"]);
+
+interface JupOrderResponse {
+  transaction?: string;
+  message?: string;
+  error?: string;
+}
+
+/** Request an unsigned prediction order transaction from Jupiter. */
+async function getJupiterPredictionOrder(
+  ownerPubkey: string,
+  marketId: string,
+  isYes: boolean,
+  amountUsdc: number,
+  env: Env,
+): Promise<string> {
+  const depositAmount = String(Math.round(amountUsdc * USDC_MICRO));
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (env.JUP_API_KEY) headers["x-api-key"] = env.JUP_API_KEY;
+
+  const body = JSON.stringify({
+    ownerPubkey, marketId, isYes, isBuy: true, depositAmount, depositMint: USDC_MINT,
+  });
+
+  const res = await fetchWithTimeout(
+    `${JUP_PREDICTION_BASE}/orders`,
+    { method: "POST", headers, body },
+    FETCH_TIMEOUT,
+  );
+
+  const text = await res.text();
+  let data: JupOrderResponse;
+  try { data = JSON.parse(text); } catch { data = { error: text }; }
+
+  if (!res.ok || !data.transaction) {
+    const detail = data.error || data.message || text.slice(0, 200);
+    throw new Error(`Jupiter prediction order failed (${res.status}): ${detail}`);
+  }
+  return data.transaction;
+}
+
+// ─── Predict / Bet Actions ────────────────────────────────────────────────────
+
+type PredictKind = "predict" | "bet";
+
+function handlePredictGet(url: URL, kind: PredictKind, request: Request): Response {
+  const marketId = url.searchParams.get("marketId");
+  const side = (url.searchParams.get("side") || "yes").toLowerCase();
+  const amount = url.searchParams.get("amount") || "5";
+  const label = url.searchParams.get("label") || "market";
+  const slug = url.searchParams.get("slug") || "";
+
+  if (!marketId) return errorResponse("Missing marketId");
+  if (side !== "yes" && side !== "no") return errorResponse("side must be yes or no");
+
+  const country = (request.headers.get("cf-ipcountry") || "").toUpperCase();
+  const isGeoBlocked = GEOBLOCKED_COUNTRIES.has(country);
+
+  const sideUpper = side.toUpperCase();
+
+  // Geo-blocked region: show informational card with Polymarket link only.
+  if (isGeoBlocked) {
+    const polymarketUrl = slug
+      ? `https://polymarket.com/event/${encodeURIComponent(slug)}`
+      : "https://polymarket.com/";
+    const title = kind === "bet"
+      ? `Trading restricted — ${decodeURIComponent(label)}`
+      : `Trading restricted — ${decodeURIComponent(label)}`;
+
+    return jsonResponse({
+      type: "action",
+      icon: ACTION_ICON,
+      title: `OnlyMonkes — ${title}`,
+      description: `Jupiter & Polymarket block one-click trading in ${country}. Tap to view the market directly, or mute this channel in the OnlyMonkes menu drawer to hide alerts like this.`,
+      label: "View on Polymarket",
+      links: {
+        actions: [
+          { label: "View on Polymarket", href: polymarketUrl, type: "external-link" as const },
+        ],
+      },
+    }, 200, true);
+  }
+
+  // Non-blocked regions: full Blink with Custom $ + quick amounts
+  const verb = kind === "bet" ? "Bet" : "Buy";
+  const title = kind === "bet"
+    ? `Bet ${sideUpper} — ${decodeURIComponent(label)}`
+    : `Predict ${sideUpper} — ${decodeURIComponent(label)}`;
+  const description = `${verb} ${sideUpper} shares on this market via Jupiter (Polymarket liquidity). Settles in USDC.`;
+
+  const mkHref = (amt: string) =>
+    `/api/actions/${kind}?marketId=${encodeURIComponent(marketId)}&side=${side}&amount=${amt}&label=${encodeURIComponent(label)}&slug=${encodeURIComponent(slug)}`;
+
+  const metadata = {
+    type: "action",
+    icon: ACTION_ICON,
+    title: `OnlyMonkes — ${title}`,
+    description,
+    label: `${verb} ${sideUpper}`,
+    links: {
+      actions: [
+        {
+          label: `${verb} ${sideUpper} Custom $`,
+          href: mkHref("{amount}"),
+          type: "transaction" as const,
+          parameters: [
+            {
+              name: "amount",
+              label: "USDC amount (1–100)",
+              type: "number" as const,
+              required: true,
+              min: 1,
+              max: PREDICTION_MAX_USDC,
+            },
+          ],
+        },
+        { label: "$5",  href: mkHref("5"),  type: "transaction" as const },
+        { label: "$25", href: mkHref("25"), type: "transaction" as const },
+      ],
+    },
+  };
+  return jsonResponse(metadata, 200, true);
+}
+
+async function handlePredictPost(url: URL, body: any, env: Env, kind: PredictKind, request: Request): Promise<Response> {
+  const account = body?.account;
+  if (!account || typeof account !== "string") return errorResponse("Missing account");
+  try { new PublicKey(account); } catch { return errorResponse("Invalid wallet address"); }
+
+  // Geo gate: US/KR → return a clean completed-action payload instead of 500
+  const country = (request.headers.get("cf-ipcountry") || "").toUpperCase();
+  if (GEOBLOCKED_COUNTRIES.has(country)) {
+    return jsonResponse({
+      type: "completed",
+      icon: ACTION_ICON,
+      title: "Trading restricted in your region",
+      description: `Jupiter & Polymarket do not permit one-click trading from ${country}. View the market on polymarket.com to trade via their own interface.`,
+      label: "Restricted",
+    }, 200, true);
+  }
+
+  const marketId = url.searchParams.get("marketId");
+  const side = (url.searchParams.get("side") || "").toLowerCase();
+  const amount = parseFloat(url.searchParams.get("amount") || "0");
+
+  if (!marketId) return errorResponse("Missing marketId");
+  if (side !== "yes" && side !== "no") return errorResponse("side must be yes or no");
+  if (!Number.isFinite(amount) || amount <= 0 || amount > PREDICTION_MAX_USDC) {
+    return errorResponse(`Invalid amount (0 < amount <= ${PREDICTION_MAX_USDC} USDC)`);
+  }
+
+  try {
+    const tx = await getJupiterPredictionOrder(account, marketId, side === "yes", amount, env);
+    const verb = kind === "bet" ? "bet" : "prediction";
+    return jsonResponse({
+      type: "transaction",
+      transaction: tx,
+      message: `Placing $${amount} USDC ${verb} on ${side.toUpperCase()}`,
+    });
+  } catch (err) {
+    return errorResponse(`${kind} failed: ${(err as Error).message}`, 500);
+  }
+}
+
 // ─── actions.json (spec: well-known discovery) ────────────────────────────────
 
 function handleActionsJson(requestUrl: URL): Response {
@@ -507,6 +687,14 @@ function handleActionsJson(requestUrl: URL): Response {
       {
         pathPattern: "/api/actions/tip**",
         apiPath: "/api/actions/tip**",
+      },
+      {
+        pathPattern: "/api/actions/predict**",
+        apiPath: "/api/actions/predict**",
+      },
+      {
+        pathPattern: "/api/actions/bet**",
+        apiPath: "/api/actions/bet**",
       },
     ],
   });
@@ -993,6 +1181,470 @@ function escapeHtml(str: string): string {
     .replace(/'/g, "&#039;");
 }
 
+// ─── Legal pages (Terms / Privacy / Copyright / Index) ───────────────────────
+// Hosted here to satisfy Solana Mobile dApp Store publisher requirements:
+// dedicated, publicly accessible legal documents on a stable URL.
+// Source of truth — do not duplicate this content elsewhere.
+
+const LEGAL_LAST_UPDATED = "April 28, 2026 (v2.37)";
+const LEGAL_CONTACT_EMAIL = "Jumpstreet25@icloud.com";
+const LEGAL_GITHUB_ISSUES = "https://github.com/jumpstreet25/OnlyMonkes/issues";
+
+function legalShell(title: string, body: string): Response {
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="index, follow">
+  <title>OnlyMonkes — ${title}</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0A0A0F; color: #F8F8FF; line-height: 1.7; padding: 40px 20px; }
+    .container { max-width: 720px; margin: 0 auto; }
+    nav { font-size: 13px; color: #8B8B9E; margin-bottom: 24px; }
+    nav a { color: #6CB4EE; text-decoration: none; margin-right: 14px; }
+    nav a:hover { text-decoration: underline; }
+    h1 { font-size: 28px; margin-bottom: 6px; color: #6CB4EE; }
+    h2 { font-size: 20px; margin-top: 32px; margin-bottom: 12px; color: #6CB4EE; border-bottom: 1px solid #1E1E2E; padding-bottom: 6px; }
+    h3 { font-size: 16px; margin-top: 20px; margin-bottom: 8px; color: #A78BFA; }
+    p, li { font-size: 15px; color: #CCCCE0; margin-bottom: 10px; }
+    ul, ol { padding-left: 24px; margin-bottom: 16px; }
+    li { margin-bottom: 6px; }
+    a { color: #6CB4EE; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .updated { font-size: 13px; color: #8B8B9E; margin-bottom: 28px; }
+    .footer { margin-top: 48px; padding-top: 20px; border-top: 1px solid #1E1E2E; font-size: 13px; color: #8B8B9E; }
+    strong { color: #F8F8FF; }
+    code { font-family: ui-monospace, SFMono-Regular, monospace; background: #1E1E2E; padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <nav>
+      <a href="/legal">Legal Index</a>
+      <a href="/terms">Terms of Use</a>
+      <a href="/privacy">Privacy Policy</a>
+      <a href="/copyright">Copyright &amp; DMCA</a>
+    </nav>
+    ${body}
+    <div class="footer">
+      &copy; 2026 OnlyMonkes. All rights reserved. &nbsp;|&nbsp; <a href="mailto:${LEGAL_CONTACT_EMAIL}">${LEGAL_CONTACT_EMAIL}</a>
+    </div>
+  </div>
+</body>
+</html>`;
+  return new Response(html, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "public, max-age=300",
+      "X-Content-Type-Options": "nosniff",
+      "Referrer-Policy": "no-referrer",
+      ...CORS_HEADERS,
+    },
+  });
+}
+
+function handleLegalIndex(): Response {
+  const body = `
+    <h1>OnlyMonkes — Legal</h1>
+    <p class="updated">Last updated: ${LEGAL_LAST_UPDATED}</p>
+    <p>Public legal documents for the OnlyMonkes mobile application.</p>
+    <h2>Documents</h2>
+    <ul>
+      <li><a href="/terms"><strong>Terms of Use &amp; End User License Agreement</strong></a> &mdash; license grant, eligibility, acceptable use, fees, AI &amp; trading disclaimers, liability.</li>
+      <li><a href="/privacy"><strong>Privacy Policy</strong></a> &mdash; what we collect (and don&rsquo;t), third-party services, your rights.</li>
+      <li><a href="/copyright"><strong>Copyright &amp; DMCA Notice</strong></a> &mdash; copyright ownership and procedure for filing infringement notices.</li>
+    </ul>
+    <h2>Contact</h2>
+    <p>Email: <a href="mailto:${LEGAL_CONTACT_EMAIL}">${LEGAL_CONTACT_EMAIL}</a></p>
+    <p>Issue tracker: <a href="${LEGAL_GITHUB_ISSUES}" target="_blank" rel="noopener">github.com/jumpstreet25/OnlyMonkes/issues</a></p>`;
+  return legalShell("Legal", body);
+}
+
+function handleTerms(): Response {
+  const body = `
+    <h1>Terms of Use &amp; End User License Agreement</h1>
+    <p class="updated">Last updated: ${LEGAL_LAST_UPDATED}</p>
+
+    <p>Please read these Terms of Use and End User License Agreement ("Terms") carefully before using the OnlyMonkes application ("the App"). By downloading, installing, or using the App, you agree to be bound by these Terms. If you do not agree, do not use the App.</p>
+
+    <p>Our <a href="/privacy">Privacy Policy</a> describes how we handle information you provide to us when you use the App. By using the App, you also agree to our Privacy Policy.</p>
+
+    <h2>1. License Grant</h2>
+    <ul>
+      <li>Subject to your compliance with these Terms, OnlyMonkes grants you a limited, non-exclusive, non-transferable, revocable license to download, install, and use the App on a compatible mobile device that you own or control, solely for your personal, non-commercial use.</li>
+      <li>You may not copy, modify, distribute, sell, lease, sublicense, or create derivative works of the App or any part thereof.</li>
+      <li>You may not reverse-engineer, decompile, disassemble, or attempt to extract the source code of the App, except to the extent that such restriction is prohibited by applicable law.</li>
+      <li>This license is effective until terminated. It terminates automatically if you fail to comply with any provision of these Terms.</li>
+    </ul>
+
+    <h2>2. Eligibility</h2>
+    <ul>
+      <li>You must be at least 18 years of age to use the App.</li>
+      <li>You must own a verified Saga Monkes NFT in a compatible Solana wallet to access the App's features.</li>
+      <li>You are responsible for maintaining the security of your wallet and private keys.</li>
+    </ul>
+
+    <h2>3. Account and Access</h2>
+    <ul>
+      <li>Access to the App is gated by on-chain NFT verification. You do not create a traditional account &mdash; your Solana wallet and NFT serve as your identity.</li>
+      <li>Your username, profile picture, and bio are broadcast to other users via the XMTP protocol and are visible to all community members.</li>
+      <li>We reserve the right to remove or restrict access to users who violate these Terms.</li>
+    </ul>
+
+    <h2>4. Acceptable Use</h2>
+    <p>You agree NOT to use the App to:</p>
+    <ul>
+      <li>Send spam, unsolicited advertising, or promotional content.</li>
+      <li>Harass, threaten, bully, or intimidate other users.</li>
+      <li>Share illegal content, including but not limited to content that promotes violence, exploitation, or illegal activities.</li>
+      <li>Impersonate other users, public figures, or entities.</li>
+      <li>Distribute malware, phishing links, or other malicious content.</li>
+      <li>Attempt to exploit, hack, or reverse-engineer the App or its infrastructure.</li>
+      <li>Manipulate or abuse the in-app tipping, trading, or swap features for fraudulent purposes.</li>
+      <li>Share content that infringes on the intellectual property rights of others.</li>
+    </ul>
+
+    <h2>5. User Content</h2>
+    <ul>
+      <li>You retain ownership of all content (messages, images, videos) you create and share through the App.</li>
+      <li>By sharing content, you grant other users the ability to view and interact with it within the App.</li>
+      <li>Messages are end-to-end encrypted via XMTP. We cannot access, moderate, or delete message content on the decentralized network.</li>
+      <li>You are solely responsible for the content you share.</li>
+    </ul>
+
+    <h2>6. Digital Assets and Transactions</h2>
+    <ul>
+      <li>The App enables in-app token transfers (tipping with $SKR), token swaps via the Jupiter aggregator, peer-to-peer NFT trading (MonkeMarkets), and autonomous trading (AutonoMonke), all using Solana Mobile Wallet Adapter.</li>
+      <li>All blockchain transactions are <strong>irreversible</strong>. We cannot reverse, cancel, or refund any on-chain transaction.</li>
+      <li>You are solely responsible for verifying transaction details before approving them in your wallet.</li>
+      <li>We are not responsible for any financial losses resulting from token swaps, tips, NFT trades, or autonomous trades made through the App.</li>
+    </ul>
+
+    <h2>6a. Trading Fees</h2>
+    <p>OnlyMonkes charges a platform fee only on specific trading surfaces. All fees are injected atomically into the same transaction as the swap &mdash; if the swap fails, the fee transfer cannot fire. Fees are sent to the OnlyMonkes development wallet to support ongoing development, infrastructure, and maintenance.</p>
+    <ul>
+      <li><strong>NFT Sales (MonkeMarkets):</strong> A <strong>2% fee</strong> is deducted from the sale price of every NFT sold through MonkeMarkets. The fee is built into the atomic swap transaction &mdash; the buyer pays the listed price, the seller receives 98%. Applies to all sales regardless of profit or loss.</li>
+      <li><strong>In-App Token Swap UI:</strong> A <strong>3% fee on realized profits only</strong> when selling tokens back to SOL via the in-app Jupiter swap interface. If a trade results in a loss, no fee is charged. Profit is calculated as: sell proceeds minus proportional cost basis (SOL spent buying those units, tracked locally on your device).</li>
+      <li><strong>Bot-Executed Trades (DM <code>/buy</code> <code>/sell</code> <code>/swap</code> with enrolled hot wallet):</strong> A <strong>3% fee on realized profits only</strong> when the bot executes a sell back to SOL on your behalf from your encrypted hot wallet. The bot DMs you a quote and waits for an explicit <code>YES</code> reply (30-second window) before signing. If you have no enrolled hot wallet, these commands instead generate a fee-free Jupiter web URL (see 6b). Cost basis is tracked server-side per-wallet, AES-256-GCM encrypted at rest.</li>
+      <li><strong>Autonomous Trades (AutonoMonke):</strong> A <strong>5% fee on realized profits only</strong> on positions closed by the AutonoMonke autonomous trading engine. If a position closes at a loss, no fee is charged.</li>
+    </ul>
+    <p>You will be presented with a fee agreement before your first use of each trading feature. By tapping "I Understand" you acknowledge and accept the applicable fees.</p>
+
+    <h2>6b. Fee-Free Surfaces</h2>
+    <p>These features do <strong>not</strong> incur an OnlyMonkes platform fee. Standard Solana network fees and third-party routing fees may still apply.</p>
+    <ul>
+      <li><strong>SKR Tips and SOL Tips</strong> &mdash; <strong>100% to the recipient</strong>. The <code>/tip</code> command and tip-link claims do not skim a platform fee. (As of v2.37; earlier versions of the App applied a 5% dev fee on SKR tips &mdash; that fee has been removed.)</li>
+      <li><strong>Solana Actions / Blinks</strong> &mdash; one-tap swap, tip, predict, and bet cards rendered in chat. The transactions returned by our Actions server are routed through Jupiter's fee-free <code>/build</code> endpoint with no platform fee added.</li>
+      <li><strong>Bot swap commands without an enrolled hot wallet</strong> &mdash; <code>/buy</code>, <code>/sell</code>, and <code>/swap</code> sent in group chat, or in DM by users who have not enrolled an AutonoMonke hot wallet, generate a Jupiter web URL that you click to execute on Jupiter's web interface. OnlyMonkes does not take a platform fee or referral fee on these external links. (Same commands sent in DM with an enrolled hot wallet are bot-executed; see 6a.)</li>
+      <li><strong>Non-trading bot commands</strong> &mdash; <code>/risk</code>, <code>/limit</code>, <code>/dca</code>, <code>/stake</code>, <code>/unstake</code>, <code>/hermes</code>, <code>/portfolio</code>, and informational commands.</li>
+      <li><strong>Predictions and Sports Bets</strong> &mdash; routed through the Jupiter Prediction API. Jupiter's own fee structure applies, but OnlyMonkes adds no platform fee.</li>
+    </ul>
+
+    <h2>6c. MonkeMarkets (Peer-to-Peer NFT Trading)</h2>
+    <ul>
+      <li>MonkeMarkets enables peer-to-peer trading of Saga Monkes NFTs directly within the App. Listings, bids, and trades are coordinated via XMTP protocol messages and executed as atomic Solana transactions.</li>
+      <li>All NFT trades are <strong>peer-to-peer</strong> &mdash; OnlyMonkes is not a party to the transaction and does not hold or custody any NFTs or funds at any time.</li>
+      <li>Non-holders may browse MonkeMarkets listings (read-only access). Bidding and listing require a verified Saga Monkes NFT.</li>
+      <li>The 2% sale fee described in Section 6a is injected atomically into the swap transaction and cannot be circumvented.</li>
+      <li>You are solely responsible for setting fair prices and verifying transaction details before approving in your wallet.</li>
+      <li>OnlyMonkes does not guarantee the authenticity, quality, or value of any NFT listed on MonkeMarkets beyond on-chain verification of the Saga Monkes collection.</li>
+    </ul>
+
+    <h2>7. AI Trading Agent</h2>
+    <ul>
+      <li>The App includes an AI-powered trading agent ("AI Agent #9385") that provides automated technical analysis of Solana tokens, alerts, and the AutonoMonke autonomous trading service.</li>
+      <li>All signals, alerts, and analysis are for <strong>informational and entertainment purposes only</strong> and do not constitute financial advice, investment advice, or trading recommendations.</li>
+      <li>Past performance and hypothetical PNL reports do not guarantee future results.</li>
+      <li>You should conduct your own research (DYOR) and consult a qualified financial advisor before making any investment decisions.</li>
+    </ul>
+
+    <h2>7a. Multi-Device Wallets, Encrypted Backend Memory, and Backups</h2>
+    <p>To enable autonomous trading and consistent service across multiple devices, OnlyMonkes operates an encrypted backend ("Hermes Memory") with the following properties:</p>
+    <ul>
+      <li><strong>Wallet-keyed identity.</strong> Your durable identity is your Solana wallet address. Multiple device sessions (XMTP inbox IDs) may be bound to the same wallet without losing data &mdash; reinstalling the App or signing in on a new device preserves your hot wallet, AutonoMonke positions, alert preferences, and trading history.</li>
+      <li><strong>Per-user AES-256-GCM encryption at rest.</strong> Each user's data is encrypted with a per-wallet salt derived from your wallet address and a master vault key held only by the bot operator. One user's data cannot be decrypted with another user's key derivation path.</li>
+      <li><strong>Operator-encrypted, not end-to-end.</strong> The bot operator (OnlyMonkes) <em>can</em> decrypt your encrypted data when actively managing your AutonoMonke vault or processing trade commands. This is necessary for AutonoMonke to function on your behalf. We do not access your data outside of providing the service. <em>If you require fully end-to-end encryption with no operator access, do not use AutonoMonke.</em></li>
+      <li><strong>Encrypted nightly backups.</strong> Per-user encrypted state is backed up nightly with a separate backup encryption key (split-key disaster recovery). Backups are retained for 30 days then rotated out.</li>
+      <li><strong>What is stored:</strong> AutonoMonke vault state (encrypted hot wallet keypair, position history, risk config), per-user trading memory and alert outcomes, and cost basis for bot-executed <code>/buy</code>/<code>/sell</code>/<code>/swap</code> trades (used to compute the 3%-on-realized-gains fee atomically when you sell). The in-app swap UI cost basis remains on your device only.</li>
+      <li><strong>What is NOT stored centrally:</strong> XMTP messages (decentralized network), private keys of your main connected wallet (we never have access; only your wallet app does), Banana Shop balance and purchases (stored locally on your device, optionally restorable via the in-app "Restore from previous device" flow which signs with your wallet to confirm ownership).</li>
+      <li><strong>Data retention &amp; purge.</strong> Trading data is retained while your AutonoMonke vault is active and for 30 days after vault closure or last activity, then archived to anonymized aggregates and per-user records purged. You may request earlier purge by contacting <a href="mailto:${LEGAL_CONTACT_EMAIL}">${LEGAL_CONTACT_EMAIL}</a> from the email associated with your account, signed with the wallet.</li>
+    </ul>
+
+    <h2>8. Avatar Rooms and Video Calls</h2>
+    <ul>
+      <li><strong>Avatar Rooms</strong> &mdash; animated NFT PFP avatar rooms with MediaPipe face tracking and Krisp AI noise cancellation. Voice + face-driven avatar animation; audio is transmitted in real time and not recorded by us.</li>
+      <li><strong>Video Calls</strong> &mdash; multi-person video built on LiveKit WebRTC with PiP mode. Streams are not recorded or stored by us.</li>
+      <li><strong>Live Audio Rooms</strong> were discontinued in v2.33; messages tagged <code>LIVE_ROOM:</code> remain parsed for backward compatibility but no new audio rooms can be started.</li>
+      <li>You agree to follow the same acceptable use standards in rooms as in text chat.</li>
+      <li>Room hosts may mute or remove participants at their discretion.</li>
+    </ul>
+
+    <h2>9. Third-Party Services</h2>
+    <p>The App integrates with third-party services including but not limited to:</p>
+    <ul>
+      <li><strong>XMTP</strong> &mdash; Decentralized end-to-end encrypted messaging protocol</li>
+      <li><strong>Helius</strong> &mdash; NFT ownership verification via DAS API</li>
+      <li><strong>Cloudinary</strong> &mdash; Media hosting for photos and videos shared in chat</li>
+      <li><strong>LiveKit</strong> &mdash; Live audio, video, and avatar room infrastructure</li>
+      <li><strong>Jupiter</strong> &mdash; Token swap aggregator and prediction order routing</li>
+      <li><strong>Expo / Firebase</strong> &mdash; Push notification delivery</li>
+      <li><strong>Sentry</strong> &mdash; Crash reporting (opt-in)</li>
+    </ul>
+    <p>Your use of these services is subject to their respective terms of service and privacy policies. We are not responsible for the availability, accuracy, or conduct of third-party services.</p>
+
+    <h2>10. Intellectual Property</h2>
+    <ul>
+      <li>The OnlyMonkes name, logo, branding, and app design are the property of the OnlyMonkes team.</li>
+      <li>Saga Monkes NFT artwork is the property of its respective creators and rights holders.</li>
+      <li>You may not reproduce, distribute, or create derivative works of the App without permission.</li>
+      <li>For copyright infringement notices, see our <a href="/copyright">Copyright &amp; DMCA Notice</a>.</li>
+    </ul>
+
+    <h2>11. Disclaimers</h2>
+    <ul>
+      <li>The App is provided <strong>"AS IS"</strong> and <strong>"AS AVAILABLE"</strong> without warranties of any kind, whether express or implied, including but not limited to the implied warranties of merchantability, fitness for a particular purpose, and non-infringement.</li>
+      <li>We do not guarantee uninterrupted access, error-free operation, or that the App will meet your specific requirements.</li>
+      <li>We do not warrant the accuracy, completeness, or reliability of any content, data, or information provided through the App, including AI-generated trading signals.</li>
+      <li>We are not responsible for any loss of data, tokens, NFTs, or other digital assets.</li>
+      <li>We are not responsible for the conduct of other users.</li>
+    </ul>
+
+    <h2>12. Limitation of Liability</h2>
+    <p>TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, ONLYMONKES AND ITS DEVELOPERS, OFFICERS, EMPLOYEES, AGENTS, AND AFFILIATES SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, INCLUDING BUT NOT LIMITED TO LOSS OF PROFITS, DATA, TOKENS, NFTS, OR OTHER DIGITAL ASSETS, ARISING OUT OF OR IN CONNECTION WITH YOUR USE OF OR INABILITY TO USE THE APP, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.</p>
+    <p>In no event shall our total liability to you for all claims arising from or relating to the App exceed the amount you paid us, if any, during the twelve (12) months preceding the claim.</p>
+
+    <h2>13. Indemnification</h2>
+    <p>You agree to indemnify, defend, and hold harmless OnlyMonkes and its developers from and against any claims, liabilities, damages, losses, and expenses (including reasonable legal fees) arising out of or in any way connected with your use of the App, your violation of these Terms, or your violation of any rights of another party.</p>
+
+    <h2>14. Modifications</h2>
+    <ul>
+      <li>We reserve the right to modify these Terms at any time. Updated Terms will be posted on this page with a revised "Last updated" date.</li>
+      <li>Continued use of the App after changes constitutes acceptance of the updated Terms.</li>
+      <li>We may update, modify, or discontinue the App or any feature at any time without prior notice.</li>
+    </ul>
+
+    <h2>15. Termination</h2>
+    <p>We may suspend or terminate your access to the App at any time, for any reason, including violation of these Terms. Upon termination, your right to use the App ceases immediately and you must delete all copies of the App from your devices. Provisions relating to intellectual property, disclaimers, limitation of liability, and indemnification survive termination.</p>
+
+    <h2>16. Governing Law</h2>
+    <p>These Terms shall be governed by and construed in accordance with applicable laws. Any disputes arising from these Terms or your use of the App shall be resolved through good-faith negotiation. If a dispute cannot be resolved through negotiation, it shall be submitted to binding arbitration in accordance with applicable rules.</p>
+
+    <h2>17. Severability</h2>
+    <p>If any provision of these Terms is found to be unenforceable or invalid, that provision shall be limited or eliminated to the minimum extent necessary so that these Terms shall otherwise remain in full force and effect.</p>
+
+    <h2>18. Entire Agreement</h2>
+    <p>These Terms, together with the <a href="/privacy">Privacy Policy</a> and <a href="/copyright">Copyright &amp; DMCA Notice</a>, constitute the entire agreement between you and OnlyMonkes regarding your use of the App and supersede any prior agreements.</p>
+
+    <h2>19. Contact</h2>
+    <p>For questions about these Terms, contact us at <a href="mailto:${LEGAL_CONTACT_EMAIL}">${LEGAL_CONTACT_EMAIL}</a> or open an issue at <a href="${LEGAL_GITHUB_ISSUES}" target="_blank" rel="noopener">github.com/jumpstreet25/OnlyMonkes</a>.</p>`;
+  return legalShell("Terms of Use", body);
+}
+
+function handlePrivacy(): Response {
+  const body = `
+    <h1>Privacy Policy</h1>
+    <p class="updated">Last updated: ${LEGAL_LAST_UPDATED}</p>
+
+    <h2>Overview</h2>
+    <p>OnlyMonkes is an NFT-gated social application for verified Saga Monkes holders on Solana Mobile. We are committed to protecting your privacy and being transparent about the data we handle.</p>
+
+    <h2>Data We Collect</h2>
+
+    <h3>Wallet Address</h3>
+    <ul>
+      <li>Your Solana wallet public address is used solely to verify Saga Monkes NFT ownership via the Helius DAS API.</li>
+      <li>Your wallet address is <strong>never</strong> stored on our servers.</li>
+    </ul>
+
+    <h3>Messages</h3>
+    <ul>
+      <li>All messages are end-to-end encrypted using the XMTP v5 MLS protocol.</li>
+      <li>Messages are stored on the XMTP decentralized network &mdash; we cannot read, access, or decrypt your messages.</li>
+      <li>Message content is cached locally on your device for performance.</li>
+    </ul>
+
+    <h3>Push Notifications</h3>
+    <ul>
+      <li>An Expo push token or FCM token is stored in your XMTP profile to enable push notifications.</li>
+      <li>This token is used only to deliver notifications about new messages, mentions, reactions, live rooms, and community activity.</li>
+      <li>You can disable notifications at any time in your device settings or within the app.</li>
+    </ul>
+
+    <h3>NFT Metadata</h3>
+    <ul>
+      <li>Your selected Saga Monkes NFT image and metadata are cached locally on your device.</li>
+      <li>This data is fetched from public on-chain sources (Helius DAS API, IPFS) and is publicly available on the Solana blockchain.</li>
+    </ul>
+
+    <h3>Photos and Videos</h3>
+    <ul>
+      <li>Photos and videos you choose to share in chat are uploaded to Cloudinary for delivery to other users.</li>
+      <li>Media is uploaded only when you explicitly choose to send it.</li>
+      <li>We do not access or analyze the content of your media.</li>
+    </ul>
+
+    <h3>Username and Profile</h3>
+    <ul>
+      <li>Your chosen username, bio, location, and linked social accounts (e.g., X/Twitter handle) are broadcast to other users via the XMTP protocol.</li>
+      <li>This information is not stored on any centralized server.</li>
+    </ul>
+
+    <h3>In-App Token Swap Cost Basis (device-local)</h3>
+    <ul>
+      <li>If you use the in-app token swap UI, your per-token cost basis (amount of SOL spent per token) is stored locally on your device via AsyncStorage. This data is used solely to calculate the 3%-on-realized-gains fee and is never transmitted off-device.</li>
+      <li>Your acceptance of fee agreements (MonkeMarkets, token trades, AutonoMonke) is stored locally on your device so you are not prompted repeatedly.</li>
+    </ul>
+
+    <h3>Banana Shop and Bananas Balance (device-local)</h3>
+    <ul>
+      <li>Your bananas balance, daily reward streak, and Banana Shop cosmetic purchases are stored locally on your device via AsyncStorage, scoped to your wallet address (so different wallets on the same device don't overwrite each other).</li>
+      <li>This data is <strong>not</strong> automatically synchronized across devices. The "Restore from previous device" flow in Settings allows you to manually copy banana state from one device to another by signing with your wallet to prove ownership.</li>
+      <li>Server-side wallet-keyed banana sync is on the v2.38 roadmap.</li>
+    </ul>
+
+    <h3>AutonoMonke Vault, Trading History, and Bot DM State (encrypted backend)</h3>
+    <ul>
+      <li>If you opt in to AutonoMonke or interact with bot DM commands, the following data is stored on a backend service operated by OnlyMonkes ("Hermes Memory"), encrypted with AES-256-GCM at rest:
+        <ul>
+          <li>Your AutonoMonke hot wallet keypair (encrypted)</li>
+          <li>AutonoMonke vault state (deposit balance, open positions, risk configuration, enrollment status)</li>
+          <li>Per-user trading memory (alerts received, alert outcomes, win-rate, position history)</li>
+          <li>Cost basis for bot-executed trades (separate from the device-local cost basis used by the in-app swap UI)</li>
+        </ul>
+      </li>
+      <li><strong>Per-wallet isolation.</strong> Each user's encrypted data is keyed on a per-wallet salt derived from your wallet address. Even if backend storage were compromised, one user's data cannot be decrypted with another user's key derivation path.</li>
+      <li><strong>Operator-encrypted, not end-to-end.</strong> The bot operator can decrypt your data when actively managing your vault or processing your trade commands. This is necessary for AutonoMonke to function. We do not access your data outside of providing the service.</li>
+      <li><strong>Multi-device support.</strong> Your wallet address is the durable identity &mdash; multiple devices (XMTP inbox IDs) may bind to the same wallet, and switching devices preserves your data.</li>
+      <li><strong>Retention.</strong> Active trading data is retained while your vault is active and for 30 days after vault closure or last activity, then archived to anonymized aggregates and per-user records purged.</li>
+      <li><strong>Encrypted backups.</strong> Per-user encrypted state is backed up nightly with a separate backup encryption key (split-key disaster recovery), retained 30 days, dual-destination (local + external drive), then rotated out.</li>
+      <li><strong>Per-user purge on request.</strong> You may request purge of your per-user data by emailing <a href="mailto:${LEGAL_CONTACT_EMAIL}">${LEGAL_CONTACT_EMAIL}</a> from the address associated with your account, signed with the wallet.</li>
+    </ul>
+
+    <h3>Crash Reporting (Optional)</h3>
+    <ul>
+      <li>The App may send anonymized crash reports to Sentry to help us diagnose and fix bugs. Reports do not include private keys, message content, or wallet addresses.</li>
+    </ul>
+
+    <h2>Data We Do NOT Collect</h2>
+    <ul>
+      <li><strong>Private keys of your main connected wallet</strong> &mdash; we never have access. All transaction signing happens in your wallet app (Phantom, Solflare, etc.) via Mobile Wallet Adapter. The AutonoMonke vault keypair is a <em>separate</em> hot wallet that the bot generates and encrypts on your behalf when you opt in to autonomous trading.</li>
+      <li>Personal identification information (legal name, email address, phone number)</li>
+      <li>Precise device location (only approximate region if you opt in to share it on the Globe feature)</li>
+      <li>Device identifiers beyond the push notification token</li>
+      <li>Browsing history or behavioral analytics</li>
+    </ul>
+
+    <h2>Data Storage Summary</h2>
+    <ul>
+      <li><strong>XMTP messages, profile broadcasts, reactions:</strong> stored on the decentralized XMTP MLS network. Cached locally on your device for performance. Not on OnlyMonkes servers.</li>
+      <li><strong>Session credentials, MWA auth tokens:</strong> device's secure storage (SecureStore).</li>
+      <li><strong>In-app cost basis, fee acceptance flags, bananas balance, Banana Shop purchases, login streak:</strong> device-local AsyncStorage, scoped to your wallet address.</li>
+      <li><strong>NFT image cache, profile cache:</strong> device-local.</li>
+      <li><strong>AutonoMonke vault, bot trading history, per-user trading memory, cost basis for bot-executed trades:</strong> encrypted backend (Hermes Memory) operated by OnlyMonkes &mdash; AES-256-GCM at rest, per-wallet salted.</li>
+      <li><strong>Encrypted nightly backups:</strong> separate backup key, 30-day retention, dual-destination (local + external drive).</li>
+    </ul>
+
+    <h2>Data Sharing</h2>
+    <p>We do not sell, rent, or share your personal data with any third parties. The only data shared externally is:</p>
+    <ul>
+      <li>Your public wallet address, sent to Helius for NFT ownership verification.</li>
+      <li>Push notification tokens, sent to Expo/Google for notification delivery.</li>
+      <li>Media files you choose to share, uploaded to Cloudinary for delivery.</li>
+      <li>Anonymized crash reports, sent to Sentry (if not disabled).</li>
+    </ul>
+
+    <h2>Third-Party Services</h2>
+    <ul>
+      <li><strong>XMTP</strong> &mdash; Decentralized messaging protocol. <a href="https://xmtp.org/privacy" target="_blank" rel="noopener">Privacy Policy</a></li>
+      <li><strong>Helius</strong> &mdash; NFT verification via DAS API. <a href="https://helius.dev/privacy" target="_blank" rel="noopener">Privacy Policy</a></li>
+      <li><strong>Cloudinary</strong> &mdash; Media hosting for in-chat photos and videos. <a href="https://cloudinary.com/privacy" target="_blank" rel="noopener">Privacy Policy</a></li>
+      <li><strong>LiveKit</strong> &mdash; Live audio, video, and avatar room infrastructure. <a href="https://livekit.io/privacy" target="_blank" rel="noopener">Privacy Policy</a></li>
+      <li><strong>Jupiter</strong> &mdash; Token swap aggregator and prediction order routing. <a href="https://docs.jup.ag/legal/privacy-policy" target="_blank" rel="noopener">Privacy Policy</a></li>
+      <li><strong>Expo</strong> &mdash; Push notification delivery. <a href="https://expo.dev/privacy" target="_blank" rel="noopener">Privacy Policy</a></li>
+      <li><strong>Sentry</strong> &mdash; Crash reporting. <a href="https://sentry.io/privacy/" target="_blank" rel="noopener">Privacy Policy</a></li>
+    </ul>
+
+    <h2>Children's Privacy</h2>
+    <p>OnlyMonkes is not intended for use by anyone under the age of 18. We do not knowingly collect data from minors. If we become aware that we have collected data from a person under 18, we will take steps to delete that data.</p>
+
+    <h2>Your Rights</h2>
+    <p>Because OnlyMonkes does not store user data on centralized servers, most data control is in your hands directly:</p>
+    <ul>
+      <li><strong>Access &amp; deletion</strong> &mdash; uninstalling the App removes locally stored data. Messages on the XMTP network are subject to XMTP's own retention.</li>
+      <li><strong>Profile visibility</strong> &mdash; update or clear your profile (username, bio, social handles) at any time from the in-app settings.</li>
+      <li><strong>Notifications</strong> &mdash; disable per-channel or globally from the in-app menu drawer or device settings.</li>
+      <li><strong>Crash reports</strong> &mdash; disable Sentry from the in-app settings.</li>
+    </ul>
+
+    <h2>International Users</h2>
+    <p>The App is operated from the United States. By using the App, users outside the United States acknowledge that their information may be processed in the United States and other locations where our service providers operate.</p>
+
+    <h2>Changes to This Policy</h2>
+    <p>We may update this Privacy Policy from time to time. Any changes will be reflected on this page with an updated revision date. Continued use of the App after changes constitutes acceptance of the revised policy.</p>
+
+    <h2>Contact</h2>
+    <p>For privacy questions or concerns, contact us at <a href="mailto:${LEGAL_CONTACT_EMAIL}">${LEGAL_CONTACT_EMAIL}</a> or open an issue at <a href="${LEGAL_GITHUB_ISSUES}" target="_blank" rel="noopener">github.com/jumpstreet25/OnlyMonkes</a>.</p>
+
+    <p>Please also review our <a href="/terms">Terms of Use &amp; End User License Agreement</a> and <a href="/copyright">Copyright &amp; DMCA Notice</a>.</p>`;
+  return legalShell("Privacy Policy", body);
+}
+
+function handleCopyright(): Response {
+  const body = `
+    <h1>Copyright &amp; DMCA Notice</h1>
+    <p class="updated">Last updated: ${LEGAL_LAST_UPDATED}</p>
+
+    <h2>Copyright Notice</h2>
+    <p>&copy; 2026 OnlyMonkes. All rights reserved.</p>
+    <ul>
+      <li>The OnlyMonkes name, logo, mascot, banana iconography, and App user interface design are the property of the OnlyMonkes team.</li>
+      <li>The App's source code, server code, and original artwork are protected by copyright laws and international treaties.</li>
+      <li>"Saga Monkes" NFT artwork displayed within the App is the property of its respective creators and rights holders. Display within the App is incidental to on-chain verification of holder identity and does not transfer or imply transfer of any rights.</li>
+      <li>Third-party trademarks, logos, and brand names referenced in the App (e.g., Solana, XMTP, Jupiter, LiveKit, Helius, Cloudinary) are the property of their respective owners.</li>
+    </ul>
+
+    <h2>License to End Users</h2>
+    <p>End users receive a limited, revocable license to use the App as described in our <a href="/terms">Terms of Use</a>. No rights to copy, redistribute, sublicense, or create derivative works of the App or its assets are granted.</p>
+
+    <h2>DMCA &mdash; Reporting Copyright Infringement</h2>
+    <p>OnlyMonkes respects the intellectual property rights of others. If you believe that material accessible through the App infringes your copyright, you may submit a notice in accordance with the Digital Millennium Copyright Act (DMCA), 17 U.S.C. &sect; 512.</p>
+
+    <h3>How to Submit a Notice</h3>
+    <p>Send a written notice to our designated agent at <a href="mailto:${LEGAL_CONTACT_EMAIL}">${LEGAL_CONTACT_EMAIL}</a> with the subject line <strong>"DMCA Notice"</strong>. Your notice must include:</p>
+    <ol>
+      <li>A physical or electronic signature of the copyright owner or a person authorized to act on their behalf.</li>
+      <li>Identification of the copyrighted work claimed to have been infringed.</li>
+      <li>Identification of the material that is claimed to be infringing, with sufficient detail to permit us to locate it (including, where applicable, a Solana transaction signature, XMTP message identifier, or NFT mint address).</li>
+      <li>Your contact information (name, address, telephone number, email).</li>
+      <li>A statement that you have a good-faith belief that the use of the material is not authorized by the copyright owner, its agent, or the law.</li>
+      <li>A statement, made under penalty of perjury, that the information in the notice is accurate and that you are the copyright owner or are authorized to act on behalf of the owner.</li>
+    </ol>
+    <p><strong>Note:</strong> Because messages on the XMTP network are end-to-end encrypted and stored on a decentralized protocol, OnlyMonkes does not have the technical ability to remove individual messages from the network. We can, however, take action against repeat infringers within the App where feasible.</p>
+
+    <h3>Counter-Notice</h3>
+    <p>If you believe that material you posted was removed or disabled by mistake or misidentification, you may submit a counter-notice to <a href="mailto:${LEGAL_CONTACT_EMAIL}">${LEGAL_CONTACT_EMAIL}</a> containing:</p>
+    <ol>
+      <li>Your physical or electronic signature.</li>
+      <li>Identification of the material that has been removed or to which access has been disabled, and the location at which it appeared before removal or disablement.</li>
+      <li>A statement under penalty of perjury that you have a good-faith belief that the material was removed or disabled as a result of mistake or misidentification.</li>
+      <li>Your name, address, telephone number, and a statement that you consent to the jurisdiction of the federal court in your judicial district (or, if outside the United States, any judicial district in which OnlyMonkes may be found), and that you will accept service of process from the person who provided the original notice or an agent of that person.</li>
+    </ol>
+
+    <h3>Repeat Infringers</h3>
+    <p>OnlyMonkes will, in appropriate circumstances and at its discretion, restrict or terminate access for users who are determined to be repeat infringers.</p>
+
+    <h2>Misrepresentation</h2>
+    <p>Under 17 U.S.C. &sect; 512(f), any person who knowingly materially misrepresents that material is infringing, or that it was removed by mistake, may be liable for damages.</p>
+
+    <h2>Contact</h2>
+    <p>Designated DMCA Agent: <a href="mailto:${LEGAL_CONTACT_EMAIL}">${LEGAL_CONTACT_EMAIL}</a></p>
+    <p>Issue tracker: <a href="${LEGAL_GITHUB_ISSUES}" target="_blank" rel="noopener">github.com/jumpstreet25/OnlyMonkes/issues</a></p>`;
+  return legalShell("Copyright & DMCA Notice", body);
+}
+
 // ─── Router ───────────────────────────────────────────────────────────────────
 
 export default {
@@ -1007,7 +1659,25 @@ export default {
 
     // Health check
     if (path === "/health") {
-      return jsonResponse({ status: "ok", version: "1.3.0", endpoints: ["/api/actions/swap", "/api/actions/tip", "/escrow", "/claim", "/frames/alert"] });
+      return jsonResponse({ status: "ok", version: "1.7.0", endpoints: ["/api/actions/swap", "/api/actions/tip", "/api/actions/predict", "/api/actions/bet", "/escrow", "/claim", "/frames/alert", "/legal", "/terms", "/privacy", "/copyright"] });
+    }
+
+    // Legal pages (Solana Mobile dApp Store compliance)
+    if (path === "/legal" || path === "/legal/") {
+      if (request.method === "GET") return handleLegalIndex();
+      return errorResponse("Method not allowed", 405);
+    }
+    if (path === "/terms" || path === "/terms.html") {
+      if (request.method === "GET") return handleTerms();
+      return errorResponse("Method not allowed", 405);
+    }
+    if (path === "/privacy" || path === "/privacy.html") {
+      if (request.method === "GET") return handlePrivacy();
+      return errorResponse("Method not allowed", 405);
+    }
+    if (path === "/copyright" || path === "/copyright.html") {
+      if (request.method === "GET") return handleCopyright();
+      return errorResponse("Method not allowed", 405);
     }
 
     // Well-known actions discovery
@@ -1041,6 +1711,22 @@ export default {
           return errorResponse("Invalid JSON body");
         }
         return handleTipPost(url, body, env);
+      }
+      return errorResponse("Method not allowed", 405);
+    }
+
+    // Predict / Bet endpoints (Jupiter Prediction API — geo-gated for US/KR)
+    if (path === "/api/actions/predict" || path === "/api/actions/bet") {
+      const kind: PredictKind = path === "/api/actions/bet" ? "bet" : "predict";
+      if (request.method === "GET") return handlePredictGet(url, kind, request);
+      if (request.method === "POST") {
+        let body: any;
+        try {
+          body = await request.json();
+        } catch {
+          return errorResponse("Invalid JSON body");
+        }
+        return handlePredictPost(url, body, env, kind, request);
       }
       return errorResponse("Method not allowed", 405);
     }
