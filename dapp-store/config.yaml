@@ -6,12 +6,12 @@ publisher:
 
 app:
   name: OnlyMonkes
-  address: ""
+  address: "EFfZv9iWGEtFijK3VBoJF3CnPxXJnayHjVGNMyZyoi6d"
   android_package: com.onlymonkes.app
   urls:
-    license_url: https://jumpstreet25.github.io/OnlyMonkes/terms.html
-    copyright_url: https://jumpstreet25.github.io/OnlyMonkes/terms.html
-    privacy_policy_url: https://jumpstreet25.github.io/OnlyMonkes/privacy.html
+    license_url: https://onlymonkes-actions.jumpstreet25.workers.dev/terms
+    copyright_url: https://onlymonkes-actions.jumpstreet25.workers.dev/copyright
+    privacy_policy_url: https://onlymonkes-actions.jumpstreet25.workers.dev/privacy
     website: https://github.com/jumpstreet25/OnlyMonkes
   media:
     - purpose: icon
@@ -44,7 +44,7 @@ release:
       name: >-
         OnlyMonkes
       short_description: >-
-        NFT-gated Monkes social app with AI trading, live rooms & P2P marketplace
+        NFT-gated Monkes social app with AI trading, avatar rooms & P2P marketplace
       long_description: >-
         OnlyMonkes is the exclusive social hub for verified Saga Monkes NFT holders on Solana Mobile.
 
@@ -52,19 +52,21 @@ release:
 
         🐒 GROUP CHAT — Real-time encrypted group messaging powered by XMTP v5 MLS protocol. Send text, GIFs, images, videos, stickers and reactions. Reply to messages, mention users with @username, and track $TOKEN prices inline.
 
-        💬 DIRECT MESSAGES — Private 1-on-1 encrypted DMs with any verified holder. Full message history, typing indicators, and push notifications.
+        💬 DIRECT MESSAGES — Private 1-on-1 encrypted DMs and DM groups with any verified holder. Full message history, typing indicators, read receipts, and push notifications.
 
-        🎙 LIVE AUDIO & VIDEO ROOMS — Twitter Spaces-style live audio rooms and multi-person video calls built on LiveKit WebRTC. Sticker reactions via data channel, PiP mode, and speaking indicators.
+        🎭 AVATAR ROOMS & VIDEO CALLS — Animated NFT PFP avatar rooms with MediaPipe face tracking, plus multi-person video calls built on LiveKit WebRTC. Sticker reactions via data channel, PiP mode, Krisp AI noise filter, and speaking indicators.
 
-        💸 TIPPING & SWAPS — Send $SKR tokens with /tip, swap any Solana token with /buy and /sell via Jupiter. One-tap Solana Actions (Blinks) render interactive swap cards directly in chat. Powered by Mobile Wallet Adapter — no app switching required.
+        💸 TIPPING & SWAPS — Send $SKR tokens with /tip (100% to recipient, no platform fee). Trade any Solana token via /buy /sell /swap: in DM with an enrolled hot wallet the bot signs and submits the swap on-chain with a 3% fee on realized gains only (no fee on losses); without an enrolled hot wallet the same commands generate a fee-free Jupiter web URL. One-tap Solana Actions (Blinks) render interactive swap cards directly in chat — fee-free. In-app token swap UI takes a 3% fee on realized gains only.
 
-        🤖 AI TRADING AGENT — AI Agent #9385 monitors 100+ Solana tokens 24/7 with multi-timeframe technical analysis (RSI, MACD, EMA, Bollinger Bands, Ichimoku, Fibonacci). Dedicated MonkeTrades, MonkeBets, and MonkePredictions alert channels. DM the bot for personalized trade proposals with one-tap execution via Solana Actions.
+        🤖 AI TRADING AGENT — AI Agent #9385 monitors 100+ Solana tokens 24/7 with multi-timeframe technical analysis (RSI, MACD, EMA, Bollinger Bands, Ichimoku, Fibonacci). Dedicated MonkeTrades, MonkeBets, and MonkePredictions alert channels. AutonoMonke autonomous trading takes 5% on realized gains only.
 
-        🐒 MONKEMARKETS — Peer-to-peer Saga Monkes NFT trading with atomic Solana swaps. Trait filtering, Magic Eden floor pricing, and guest browsing.
+        🐒 MONKEMARKETS — Peer-to-peer Saga Monkes NFT trading with atomic Solana swaps. 2% platform fee per sale. Trait filtering, Magic Eden floor pricing, and guest browsing.
 
-        🍌 BANANA SHOP — Earn bananas daily and spend them on chat cosmetics: neon bubble glows, gold names, PFP auras, pulse frames, and full app themes. Cross-device sync keeps your balance and purchases in sync across phones.
+        🍌 BANANA SHOP — Earn bananas daily and spend them on chat cosmetics: neon bubble glows, gold names, PFP auras, pulse frames, and full app themes. Balance and purchases stored locally per wallet, with manual restore from previous device available in Settings.
 
         🌍 MONKE GLOBE — Interactive 3D globe showing where fellow Monkes are located worldwide, plus Solana ecosystem events from Lu.ma.
+
+        🖼 FARCASTER FRAMES — Share OnlyMonkes trading alerts as interactive Farcaster Frames; community gets a tappable view of TA setups outside the app.
 
         🏆 cNFT BADGES — Earn compressed NFT milestone badges (First Message, Legendary Streak, Top Monke) minted to your wallet via Helius.
 
@@ -74,13 +76,15 @@ release:
 
         🔔 PUSH NOTIFICATIONS — Real-time alerts for messages, mentions, reactions, live rooms, NFT sales, and TA trading signals.
 
-        🛡 DECENTRALIZED & ENCRYPTED — All messages are end-to-end encrypted via XMTP MLS. No central server. Your messages are yours.
+        🛡 SECURITY & PRIVACY — All messages end-to-end encrypted via XMTP MLS. Free-RASP runtime protection (root/jailbreak/Frida detection). Per-user encrypted backend memory (AES-256-GCM, per-wallet salted) for AutonoMonke vault state and trading history. Encrypted nightly backups for disaster recovery.
 
-        REQUIREMENTS: Saga Monkes NFT + compatible Solana wallet (Phantom, Solflare) on Seeker or Saga device.
+        🌟 ACCESSIBILITY — Screen reader support, dynamic type sizing, and high-contrast mode.
+
+        REQUIREMENTS: Saga Monkes NFT + compatible Solana wallet (Phantom, Solflare) on Seeker or Saga device. Users must be 18+. Full legal terms at https://onlymonkes-actions.jumpstreet25.workers.dev/legal
       new_in_version: >-
-        v2.35: Cross-device account sync — same wallet on two phones shares banana balance and Banana Shop purchases automatically. Hermes AI self-tuning thresholds — bot auto-adjusts alert sensitivity weekly based on win rate data. Near-miss peak price tracking over 48h window. Skip decision benchmarking — tracks outcomes of filtered signals. Timeframe combo analysis — learns which specific TF combinations win most. Reply persistence fix — replies survive app restart. Globe button fix. Wallet map persistence for bot NFT gate. Previous: v2.34 Banana Shop cosmetics, OTA alignment, Globe stacked PFPs. v2.33 Avatar Rooms with face tracking, SAK DeFi commands, FlashList chat, wagmi-charts, Free-RASP security. v2.32 Hermes intelligence, 31-point security audit, glassmorphic UI.
+        v2.37: Bot-executed /buy /sell /swap — DM the bot with an enrolled hot wallet and it signs and submits the swap on-chain with a 3%-on-gains fee taken atomically (same transaction as the swap; no separate fee transfer). YES/NO 30-second confirmation flow. SKR tips now go 100% to recipient (no platform fee). All trading-fee paths refactored to atomic injection — in-app swap UI and AutonoMonke close-position now route through Jupiter's /build endpoint and append the fee transfer instruction inside the same v0 transaction (matches the Cloudflare Worker pattern used for Solana Actions). In-app Legal links added to Settings (Terms, Privacy, Copyright). Notification status bar icon fixed (proper white-on-transparent monochrome — no more white square). Multi-device hot wallet support — your AutonoMonke vault is now keyed to your wallet address, so reinstalling or switching devices preserves your hot wallet. Encrypted nightly backups of trading data (per-wallet AES-256-GCM, dual-destination disaster recovery). DM groups, read receipts, marketplace history, Farcaster Frames, LiveKit Agent. ChatModals z-order crash fixed. FlashList → FlatList in message list (fixes black-message rendering). Bot channel sender filter (security hardening). Onboarding 6-slide carousel. Full legal terms now hosted at onlymonkes-actions.jumpstreet25.workers.dev/legal. Previous: v2.36 message deletion, Jupiter DCA + Limit V2 + Ultra V3, cNFT purchase receipts, Hermes intelligence (sweet-spot learning, TA pattern matching, regime prediction). v2.35 cross-device account sync. v2.34 Banana Shop cosmetics. v2.33 Avatar Rooms with face tracking + Free-RASP security.
       saga_features: >-
-        Optimized for Seeker — arm64-v8a only build with minSdk 24. Live audio/video rooms use LiveKit WebRTC with full Bluetooth headset support and PiP mode. Mobile Wallet Adapter biometric prompt for tips, swaps, and Blink Actions (no app switching). Solana Actions server returns serialized transactions signed directly via MWA.
+        Optimized for Seeker — arm64-v8a only build with minSdk 24. Avatar Rooms and video calls use LiveKit WebRTC with full Bluetooth headset support, PiP mode, and Krisp AI noise filter. Mobile Wallet Adapter biometric prompt for tips, swaps, and Blink Actions (no app switching). Solana Actions server returns serialized transactions signed directly via MWA. Hot wallet vault keyed to your wallet address — switching between Seeker devices preserves your AutonoMonke positions.
   android_details:
     locales:
       - en-US
