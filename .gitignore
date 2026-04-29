@@ -53,3 +53,8 @@ worker-actions/node_modules/
 infra/.env.lightrag
 infra/data/lightrag/
 google-services.json# Firebase config
+
+# dApp Store publish cache (auto-written by scripts/publish-dapp-store.sh)
+.last_published_version_code
+.last_release_id
+
