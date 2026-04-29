@@ -981,6 +981,42 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                   <Text style={styles.chevron}>›</Text>
                 </Pressable>
               </View>
+
+              <Text style={[styles.sectionLabel, { marginTop: 20 }]}>Legal</Text>
+              <View style={styles.settingsCard}>
+                <Pressable
+                  style={styles.settingRow}
+                  onPress={() => Linking.openURL("https://onlymonkes-actions.jumpstreet25.workers.dev/terms")}
+                >
+                  <View style={styles.settingInfo}>
+                    <Text style={styles.settingTitle}>Terms of Use & EULA</Text>
+                    <Text style={styles.settingDesc}>End-user license agreement and terms of use</Text>
+                  </View>
+                  <Text style={styles.chevron}>›</Text>
+                </Pressable>
+                <View style={styles.settingDivider} />
+                <Pressable
+                  style={styles.settingRow}
+                  onPress={() => Linking.openURL("https://onlymonkes-actions.jumpstreet25.workers.dev/privacy")}
+                >
+                  <View style={styles.settingInfo}>
+                    <Text style={styles.settingTitle}>Privacy Policy</Text>
+                    <Text style={styles.settingDesc}>What we collect, how it's stored, your rights</Text>
+                  </View>
+                  <Text style={styles.chevron}>›</Text>
+                </Pressable>
+                <View style={styles.settingDivider} />
+                <Pressable
+                  style={styles.settingRow}
+                  onPress={() => Linking.openURL("https://onlymonkes-actions.jumpstreet25.workers.dev/copyright")}
+                >
+                  <View style={styles.settingInfo}>
+                    <Text style={styles.settingTitle}>Copyright & DMCA</Text>
+                    <Text style={styles.settingDesc}>Copyright notice and DMCA takedown procedure</Text>
+                  </View>
+                  <Text style={styles.chevron}>›</Text>
+                </Pressable>
+              </View>
             </>
           )}
 

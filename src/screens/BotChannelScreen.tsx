@@ -30,6 +30,7 @@ import { sendDmMessage } from "@/lib/xmtp";
 import { THEME, FONTS } from "@/lib/constants";
 import { ErrorMessage } from "@/components/ErrorMessage";
 import { useThemeColor } from "@/lib/shopTheme";
+import { markChannelRead } from "@/lib/messageCache";
 import type { ChatMessage } from "@/types";
 
 const BOT_INBOX_ID = "998001a498174b8a194110ee792b10f97de4965665eaf0d088ed2c71bdf62363";
@@ -135,6 +136,23 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
     initialize,
     disconnect,
   } = useGroupChat(groupId, config.name);
+
+  // Mark channel read using the channelId key (matches useXmtp.ts unread-count
+  // lookup at getLastReadTimestamp(key) where key ∈ {bets,trades,sales,predictions}).
+  // useGroupChat marks read under cacheKey="monke_trades" but the unread counter
+  // reads "trades" — keys must match for the badge to clear.
+  useEffect(() => {
+    markChannelRead(channelId).catch(() => {});
+    useAppStore.getState().clearBotChannelCount?.(channelId as any);
+  }, [channelId]);
+
+  // Re-mark on every new message arrival while screen is open
+  useEffect(() => {
+    if (messages.length > 0) {
+      markChannelRead(channelId).catch(() => {});
+      useAppStore.getState().clearBotChannelCount?.(channelId as any);
+    }
+  }, [channelId, messages.length]);
 
   const flatListRef = useRef<FlatList>(null);
   const myAddress = myInboxId ?? "";

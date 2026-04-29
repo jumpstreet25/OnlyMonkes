@@ -4,10 +4,12 @@
  * SKR token tipping helpers.
  * Builds an SPL token transfer transaction and signs it via Mobile Wallet Adapter.
  *
- * Split: 95% to message recipient, 5% to the dev wallet (Jump.skr).
+ * Tips are 100% to the recipient — no platform fee. The dev wallet receives
+ * full amount when used as a tip recipient via sendDevTip().
  *
  * Also provides:
  *  - sendSolTipAsSkr(): swap SOL → SKR via Jupiter then tip (for users without SKR)
+ *  - sendDevTip(): direct dev-wallet support tip (100% to dev)
  *  - getSkrBalance(): check user's SKR balance
  *  - validateRecipientWallet(): verify a wallet address is valid + on-chain
  */
@@ -45,7 +47,6 @@ const APP_IDENTITY = {
   icon: "favicon.ico",
 };
 
-const DEV_FEE_PERCENT = 0.05;
 
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 
@@ -143,7 +144,7 @@ export async function sendShopPayment(
 }
 
 /**
- * Send SKR tips to a recipient with a 5% dev fee.
+ * Send SKR tips — 100% to recipient, no platform fee.
  * @param recipientWallet  Base58 Solana wallet of the message sender to tip
  * @param amountUi         Human-readable SKR amount (e.g. 1 for 1 SKR)
  * @returns transaction signature
@@ -157,7 +158,6 @@ export async function sendSkrTip(
   }
   const connection = new Connection(HELIUS_RPC_URL, "confirmed");
   const mintPubkey = new PublicKey(SKR_MINT);
-  const devPubkey  = new PublicKey(DEV_WALLET);
   const recipientPubkey = new PublicKey(recipientWallet);
 
   // Fetch token decimals
@@ -181,9 +181,7 @@ export async function sendSkrTip(
     }
   }
 
-  const totalLamports = Math.round(amountUi * Math.pow(10, decimals));
-  const devLamports   = Math.round(totalLamports * DEV_FEE_PERCENT);
-  const userLamports  = totalLamports - devLamports;
+  const lamports = Math.round(amountUi * Math.pow(10, decimals));
 
   const signature = await transact(async (mobileWallet: Web3MobileWallet) => {
     // Reauthorize with cached token — biometric prompt only, no app switch
@@ -192,10 +190,9 @@ export async function sendSkrTip(
     // Fetch slot AFTER auth so the simulation context is always fresh
     const minContextSlot = await connection.getSlot();
 
-    // Derive all ATAs
+    // Derive ATAs (sender + recipient only — no dev split)
     const senderATA    = getAssociatedTokenAddressSync(mintPubkey, senderPubkey);
     const recipientATA = getAssociatedTokenAddressSync(mintPubkey, recipientPubkey);
-    const devATA       = getAssociatedTokenAddressSync(mintPubkey, devPubkey);
 
     const { blockhash } = await connection.getLatestBlockhash("confirmed");
 
@@ -213,37 +210,13 @@ export async function sendSkrTip(
       )
     );
 
-    // Create dev ATA if needed
-    tx.add(
-      createAssociatedTokenAccountIdempotentInstruction(
-        senderPubkey,
-        devATA,
-        devPubkey,
-        mintPubkey,
-        TOKEN_PROGRAM_ID,
-        ASSOCIATED_TOKEN_PROGRAM_ID
-      )
-    );
-
-    // Transfer to recipient (95%)
+    // Transfer 100% to recipient
     tx.add(
       createTransferInstruction(
         senderATA,
         recipientATA,
         senderPubkey,
-        BigInt(userLamports),
-        [],
-        TOKEN_PROGRAM_ID
-      )
-    );
-
-    // Transfer to dev (5%)
-    tx.add(
-      createTransferInstruction(
-        senderATA,
-        devATA,
-        senderPubkey,
-        BigInt(devLamports),
+        BigInt(lamports),
         [],
         TOKEN_PROGRAM_ID
       )
@@ -354,7 +327,7 @@ const JUP_BUILD_URL = "https://api.jup.ag/swap/v2/build";
  * Tip a recipient by swapping SOL → SKR via Jupiter, then transferring the SKR.
  * Two MWA-signed transactions in a single transact() session (one biometric prompt):
  *  1. Jupiter swap SOL → SKR
- *  2. Transfer SKR: 95% → recipient, 5% → dev
+ *  2. Transfer SKR: 100% → recipient (no platform fee)
  *
  * @param recipientWallet  Base58 Solana wallet of the tip recipient
  * @param solAmount        Amount of SOL to swap into SKR for the tip
@@ -367,7 +340,6 @@ export async function sendSolTipAsSkr(
 ): Promise<{ swapSig: string; tipSig: string }> {
   const connection = new Connection(HELIUS_RPC_URL, "confirmed");
   const mintPubkey = new PublicKey(SKR_MINT);
-  const devPubkey = new PublicKey(DEV_WALLET);
   const recipientPubkey = new PublicKey(recipientWallet);
 
   // 1. Get Jupiter v2 /build: SOL → SKR (quote + instructions in one call)
@@ -446,17 +418,11 @@ export async function sendSolTipAsSkr(
       minContextSlot,
     });
 
-    // Use outAmount from the build response
-    const quoteData = { outAmount: buildData.outAmount };
-
-    // 3. Build tip transfer: SKR now in user's ATA
-    const outAmount = BigInt(quoteData.outAmount);
-    const devLamports = outAmount * BigInt(5) / BigInt(100);
-    const userLamports = outAmount - devLamports;
+    // 3. Build tip transfer: SKR now in user's ATA — 100% to recipient
+    const outAmount = BigInt(buildData.outAmount);
 
     const senderATA = getAssociatedTokenAddressSync(mintPubkey, senderPubkey);
     const recipientATA = getAssociatedTokenAddressSync(mintPubkey, recipientPubkey);
-    const devATA = getAssociatedTokenAddressSync(mintPubkey, devPubkey);
 
     const { blockhash } = await connection.getLatestBlockhash("confirmed");
     const tipTx = new Transaction({ recentBlockhash: blockhash, feePayer: senderPubkey });
@@ -468,16 +434,7 @@ export async function sendSolTipAsSkr(
       )
     );
     tipTx.add(
-      createAssociatedTokenAccountIdempotentInstruction(
-        senderPubkey, devATA, devPubkey, mintPubkey,
-        TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID
-      )
-    );
-    tipTx.add(
-      createTransferInstruction(senderATA, recipientATA, senderPubkey, userLamports, [], TOKEN_PROGRAM_ID)
-    );
-    tipTx.add(
-      createTransferInstruction(senderATA, devATA, senderPubkey, devLamports, [], TOKEN_PROGRAM_ID)
+      createTransferInstruction(senderATA, recipientATA, senderPubkey, outAmount, [], TOKEN_PROGRAM_ID)
     );
 
     const tipSlot = await connection.getSlot();

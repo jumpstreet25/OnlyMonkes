@@ -421,9 +421,26 @@ export async function executeSwap(quote: SwapQuote): Promise<SwapResult> {
       instructions.push(toInstruction(buildData.cleanupInstruction));
     }
 
+
     // 5. Other
     for (const ix of buildData.otherInstructions) {
       instructions.push(toInstruction(ix));
+    }
+
+    // 6. ATOMIC profit fee — same tx as the swap, after cleanup unwraps WSOL.
+    // Native SOL is in the wallet account post-cleanup; SystemProgram.transfer
+    // sends from there. If the swap fails, the fee transfer cannot fire.
+    // Per CLAUDE.md security rule: "Fee injection must be atomic (same transaction)
+    // — never separate transfers."
+    if (feeSOL > 0.0001) {
+      const feeLamports = Math.round(feeSOL * LAMPORTS_PER_SOL);
+      instructions.push(
+        SystemProgram.transfer({
+          fromPubkey: senderPubkey,
+          toPubkey: new PublicKey(DEV_WALLET),
+          lamports: feeLamports,
+        }),
+      );
     }
 
     // Resolve address lookup tables for v0 transaction
@@ -448,36 +465,12 @@ export async function executeSwap(quote: SwapQuote): Promise<SwapResult> {
 
     const tx = new VersionedTransaction(messageV0);
 
-    // Sign and send via MWA
+    // Sign and send via MWA — fee transfer is now part of the same atomic tx
     const minContextSlot = await connection.getSlot();
     const [sig] = await mobileWallet.signAndSendTransactions({
       transactions: [tx as any],
       minContextSlot,
     });
-
-    // Send profit fee in same MWA session (wallet already unlocked)
-    if (feeSOL > 0.0001) {
-      try {
-        const { blockhash } = await connection.getLatestBlockhash("confirmed");
-        const feeTx = new Transaction({
-          recentBlockhash: blockhash,
-          feePayer: senderPubkey,
-        });
-        feeTx.add(
-          SystemProgram.transfer({
-            fromPubkey: senderPubkey,
-            toPubkey: new PublicKey(DEV_WALLET),
-            lamports: Math.round(feeSOL * LAMPORTS_PER_SOL),
-          }),
-        );
-        await mobileWallet.signAndSendTransactions({
-          transactions: [feeTx as any],
-        });
-      } catch (err) {
-        console.warn("[jupiterSwap] Profit fee transfer failed:", (err as Error).message);
-        feeSOL = 0; // didn't actually charge
-      }
-    }
 
     return sig;
   });

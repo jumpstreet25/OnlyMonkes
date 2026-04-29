@@ -1,9 +1,12 @@
 import React from "react";
 import { View, Text, StyleSheet, Pressable, Linking, ScrollView, StatusBar } from "react-native";
 import { router } from "expo-router";
+import Constants from "expo-constants";
 import { THEME, FONTS, APP_NAME } from "@/lib/constants";
 
 export default function AboutScreen() {
+  // Read from app.config.ts via Constants so this stays in sync forever.
+  const versionName = Constants.expoConfig?.version ?? "?";
   return (
     <View style={styles.root}>
       <StatusBar barStyle="light-content" />
@@ -18,7 +21,7 @@ export default function AboutScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={{ fontSize: 48, textAlign: "center" }}>🐒</Text>
         <Text style={styles.appName}>{APP_NAME}</Text>
-        <Text style={styles.version}>v2.36 (build 36)</Text>
+        <Text style={styles.version}>v{versionName}</Text>
         <Text style={styles.tagline}>The Exclusive Social Hub for Saga Monkes NFT Holders</Text>
 
         <View style={styles.section}>
@@ -34,9 +37,14 @@ export default function AboutScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Links</Text>
           <LinkRow label="GitHub" url="https://github.com/jumpstreet25/OnlyMonkes" />
-          <LinkRow label="Privacy Policy" url="https://jumpstreet25.github.io/OnlyMonkes/privacy.html" />
-          <LinkRow label="Terms of Service" url="https://jumpstreet25.github.io/OnlyMonkes/terms.html" />
           <LinkRow label="Report a Bug" url="https://github.com/jumpstreet25/OnlyMonkes/issues" />
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Legal</Text>
+          <LinkRow label="Terms of Use & EULA" url="https://onlymonkes-actions.jumpstreet25.workers.dev/terms" />
+          <LinkRow label="Privacy Policy" url="https://onlymonkes-actions.jumpstreet25.workers.dev/privacy" />
+          <LinkRow label="Copyright & DMCA" url="https://onlymonkes-actions.jumpstreet25.workers.dev/copyright" />
         </View>
 
         <View style={styles.section}>
