@@ -29,6 +29,14 @@ const AK_MUTED_CHANNELS = 'om_muted_channels';
 const AK_NOTIF_PREFS = 'om_notif_prefs';
 const SK_MWA_TOKEN = 'om_mwa_auth_token';
 
+// Tracks bot channels manually cleared by the user this session. Session-permanent —
+// once cleared, the recompute loop is forbidden from resurrecting the count.
+// Reset to false when a NEW alert arrives via incrementBotChannelCount (so a fresh
+// alert restores normal recompute behavior for that channel).
+const _botChannelCleared: Record<'bets' | 'trades' | 'sales' | 'predictions', boolean> = {
+  bets: false, trades: false, sales: false, predictions: false,
+};
+
 // ── Shared types (re-exported for slice files + consumers) ───────────────────
 
 export interface LiveRoomState extends LiveRoomData {
@@ -372,13 +380,35 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
     set({ joinRequests: get().joinRequests.filter((r) => r.inboxId !== inboxId) }),
   setRemoteGroupId: (remoteGroupId) => set({ remoteGroupId }),
   setBotChannelIds: (botChannelIds) => set({ botChannelIds }),
-  setBotChannelCounts: (botChannelCounts) => set({ botChannelCounts }),
-  clearBotChannelCount: (channel) => set((s) => ({
-    botChannelCounts: { ...s.botChannelCounts, [channel]: 0 },
-  })),
-  incrementBotChannelCount: (channel) => set((s) => ({
-    botChannelCounts: { ...s.botChannelCounts, [channel]: s.botChannelCounts[channel] + 1 },
-  })),
+  setBotChannelCounts: (botChannelCounts) => {
+    // Respect manual clears — once the user taps to clear a channel this session,
+    // the recompute loop is forbidden from resurrecting the count. Cleared by a
+    // fresh increment (real new alert).
+    const filtered = { ...botChannelCounts };
+    for (const k of ['bets', 'trades', 'sales', 'predictions'] as const) {
+      if (_botChannelCleared[k]) filtered[k] = 0;
+    }
+    console.log('[appStore] setBotChannelCounts', { incoming: botChannelCounts, cleared: _botChannelCleared, applied: filtered });
+    set({ botChannelCounts: filtered });
+  },
+  clearBotChannelCount: (channel) => {
+    // Mark session-cleared (blocks recompute loop) AND write lastRead to AsyncStorage
+    // directly so even if markChannelRead races, the timestamp is canonical.
+    _botChannelCleared[channel] = true;
+    AsyncStorage.setItem(`msg_last_read_v1_${channel}`, String(Date.now())).catch(() => {});
+    console.log('[appStore] clearBotChannelCount', channel);
+    set((s) => ({
+      botChannelCounts: { ...s.botChannelCounts, [channel]: 0 },
+    }));
+  },
+  incrementBotChannelCount: (channel) => {
+    // A real new alert — release the session-clear lock so subsequent recomputes work.
+    _botChannelCleared[channel] = false;
+    console.log('[appStore] incrementBotChannelCount', channel);
+    set((s) => ({
+      botChannelCounts: { ...s.botChannelCounts, [channel]: s.botChannelCounts[channel] + 1 },
+    }));
+  },
   setCalendarEvents: (calendarEvents) => set({ calendarEvents }),
   addCalendarEvent: (event) => set((s) => ({ calendarEvents: [...s.calendarEvents, event] })),
   setExpoPushToken: (expoPushToken) => set({ expoPushToken }),

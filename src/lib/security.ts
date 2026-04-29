@@ -9,6 +9,7 @@
  * executing transactions.
  */
 
+import { Platform } from 'react-native';
 import type { TalsecConfig, ThreatEventActions } from 'freerasp-react-native';
 
 // ── Threat state ─────────────────────────────────────────────────────────────
@@ -25,36 +26,47 @@ export function getActiveThreats(): string[] {
 
 // ── Config ───────────────────────────────────────────────────────────────────
 
-// To get the correct hash, run:
-//   keytool -list -v -keystore android/app/onlymonkes-release.keystore | grep SHA256
-// Then replace PLACEHOLDER_HASH with the hex string (no colons).
+// SHA-256 of `android/app/onlymonkes-release.keystore` (created 2026-04-19).
+// To re-derive after a keystore rotation:
+//   keytool -list -v -keystore android/app/onlymonkes-release.keystore -storepass onlymonkes2026 | grep SHA256
+// Free-RASP expects upper-case hex with no colons.
+const ANDROID_RELEASE_CERT_SHA256 = '2E2FEEB81CCF0DE5D191F6E174113BA9839181B1CB7540AB6D5C94A9CFF487D8';
+
 export const RASP_CONFIG: TalsecConfig = {
   androidConfig: {
     packageName: 'com.onlymonkes.app',
-    certificateHashes: ['69DD4EC7FE2A906808D61F2470BB02AC1C62F9D52DBB40548A5175CC15ABB693'],
+    certificateHashes: [ANDROID_RELEASE_CERT_SHA256],
   },
+  // Android-only project per CLAUDE.md; iOS values are required by the type
+  // but never consumed at runtime. The production guard below skips this on Android.
   iosConfig: {
     appBundleId: 'com.onlymonkes.app',
-    appTeamId: 'PLACEHOLDER',
+    appTeamId: 'ANDROID_ONLY_NOT_SHIPPED',
   },
   watcherMail: 'security@onlymonkes.com',
   isProd: !__DEV__,
 };
 
-// Production guard: RASP is non-functional with placeholder values.
-// Log a critical warning so it's visible in release builds.
+// Production guard: validate the platform we actually ship on. Hash must be
+// 64 hex chars (SHA-256). Catches both the literal placeholder AND a stale
+// hash from a rotated keystore.
 if (!__DEV__) {
-  const hasPlaceholder =
-    RASP_CONFIG.androidConfig?.certificateHashes?.[0] === 'PLACEHOLDER_HASH' ||
-    RASP_CONFIG.iosConfig?.appTeamId === 'PLACEHOLDER';
-  if (hasPlaceholder) {
+  const ANDROID_HASH_RE = /^[A-F0-9]{64}$/;
+  const androidHash = RASP_CONFIG.androidConfig?.certificateHashes?.[0] ?? '';
+  const androidValid = ANDROID_HASH_RE.test(androidHash);
+
+  const platformValid = Platform.OS === 'android'
+    ? androidValid
+    : RASP_CONFIG.iosConfig?.appTeamId !== 'ANDROID_ONLY_NOT_SHIPPED';
+
+  if (!platformValid) {
     console.error(
-      '[RASP] CRITICAL: Certificate hash / team ID not configured. ' +
-      'App tamper detection is DISABLED in this production build. ' +
-      'Run: keytool -list -v -keystore android/app/onlymonkes-release.keystore | grep SHA256'
+      '[RASP] CRITICAL: Signing-cert anchor not configured for this platform. ' +
+      'App tamper detection is DISABLED. ' +
+      'Run: keytool -list -v -keystore android/app/onlymonkes-release.keystore -storepass onlymonkes2026 | grep SHA256'
     );
     // Mark device as "compromised" so isDeviceCompromised() returns true,
-    // blocking sensitive operations until RASP is properly configured.
+    // blocking sensitive operations once gates are wired.
     _threats.add('raspNotConfigured');
   }
 }

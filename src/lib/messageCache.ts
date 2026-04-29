@@ -147,10 +147,15 @@ export async function getLastReadTimestamp(channelKey: string): Promise<number> 
 }
 
 /**
- * Mark a channel as read (current time).
+ * Mark a channel as read (current time). Writes synchronously to AsyncStorage —
+ * not debounced — so the timestamp survives an immediate back-out or app kill.
+ * If the write is debounced and the screen unmounts before it fires, the next
+ * cold-launch unread-count loop reads the old timestamp and resurrects the badge.
  */
 export async function markChannelRead(channelKey: string): Promise<void> {
-  debouncedSetItem(AK_LAST_READ + channelKey, String(Date.now()), 1000);
+  try {
+    await AsyncStorage.setItem(AK_LAST_READ + channelKey, String(Date.now()));
+  } catch { /* best-effort */ }
 }
 
 /**

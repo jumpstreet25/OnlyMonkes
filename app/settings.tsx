@@ -92,7 +92,7 @@ export default function SettingsScreen() {
         <Text style={[styles.sectionTitle, { marginTop: 24 }]}>Info</Text>
         <Pressable style={styles.actionRow} onPress={() => router.push("/about" as any)}>
           <Text style={styles.actionText}>About OnlyMonkes</Text>
-          <Text style={styles.actionDesc}>Version, links, credits</Text>
+          <Text style={styles.actionDesc}>Version, links, credits, legal docs</Text>
         </Pressable>
       </ScrollView>
     </View>

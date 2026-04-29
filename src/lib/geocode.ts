@@ -58,7 +58,7 @@ export async function geocodeLocation(location: string): Promise<GeoCoords | nul
       limit: '1',
     });
     const res = await fetchWithTimeout(`${NOMINATIM_URL}?${params}`, {
-      headers: { 'User-Agent': 'OnlyMonkes/2.36' },
+      headers: { 'User-Agent': 'OnlyMonkes/2.37' },
       timeoutMs: 5000,
     });
     if (!res.ok) return null;
