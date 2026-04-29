@@ -3,27 +3,40 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="index, follow">
   <title>OnlyMonkes — Privacy Policy</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0A0A0F; color: #F8F8FF; line-height: 1.7; padding: 40px 20px; }
     .container { max-width: 720px; margin: 0 auto; }
+    nav { font-size: 13px; color: #8B8B9E; margin-bottom: 24px; }
+    nav a { color: #6CB4EE; text-decoration: none; margin-right: 14px; }
+    nav a:hover { text-decoration: underline; }
     h1 { font-size: 28px; margin-bottom: 6px; color: #6CB4EE; }
     h2 { font-size: 20px; margin-top: 32px; margin-bottom: 12px; color: #6CB4EE; border-bottom: 1px solid #1E1E2E; padding-bottom: 6px; }
     h3 { font-size: 16px; margin-top: 20px; margin-bottom: 8px; color: #A78BFA; }
     p, li { font-size: 15px; color: #CCCCE0; margin-bottom: 10px; }
-    ul { padding-left: 24px; margin-bottom: 16px; }
+    ul, ol { padding-left: 24px; margin-bottom: 16px; }
     li { margin-bottom: 6px; }
     a { color: #6CB4EE; text-decoration: none; }
     a:hover { text-decoration: underline; }
     .updated { font-size: 13px; color: #8B8B9E; margin-bottom: 28px; }
     .footer { margin-top: 48px; padding-top: 20px; border-top: 1px solid #1E1E2E; font-size: 13px; color: #8B8B9E; }
+    strong { color: #F8F8FF; }
+    code { font-family: ui-monospace, SFMono-Regular, monospace; background: #1E1E2E; padding: 2px 6px; border-radius: 4px; font-size: 13px; }
   </style>
 </head>
 <body>
   <div class="container">
+    <nav>
+      <a href="legal.html">Legal Index</a>
+      <a href="terms.html">Terms of Use</a>
+      <a href="privacy.html">Privacy Policy</a>
+      <a href="copyright.html">Copyright &amp; DMCA</a>
+    </nav>
+    
     <h1>Privacy Policy</h1>
-    <p class="updated">Last updated: March 20, 2026</p>
+    <p class="updated">Last updated: April 28, 2026 (v2.37)</p>
 
     <h2>Overview</h2>
     <p>OnlyMonkes is an NFT-gated social application for verified Saga Monkes holders on Solana Mobile. We are committed to protecting your privacy and being transparent about the data we handle.</p>
@@ -39,14 +52,14 @@
     <h3>Messages</h3>
     <ul>
       <li>All messages are end-to-end encrypted using the XMTP v5 MLS protocol.</li>
-      <li>Messages are stored on the XMTP decentralized network — we cannot read, access, or decrypt your messages.</li>
-      <li>Message content is cached locally on your device for up to 7 days to improve performance.</li>
+      <li>Messages are stored on the XMTP decentralized network &mdash; we cannot read, access, or decrypt your messages.</li>
+      <li>Message content is cached locally on your device for performance.</li>
     </ul>
 
     <h3>Push Notifications</h3>
     <ul>
       <li>An Expo push token or FCM token is stored in your XMTP profile to enable push notifications.</li>
-      <li>This token is used only to deliver notifications about new messages, mentions, reactions, live audio rooms, and community activity.</li>
+      <li>This token is used only to deliver notifications about new messages, mentions, reactions, live rooms, and community activity.</li>
       <li>You can disable notifications at any time in your device settings or within the app.</li>
     </ul>
 
@@ -65,32 +78,63 @@
 
     <h3>Username and Profile</h3>
     <ul>
-      <li>Your chosen username, bio, and linked social accounts (e.g., X/Twitter handle) are broadcast to other users via the XMTP protocol.</li>
+      <li>Your chosen username, bio, location, and linked social accounts (e.g., X/Twitter handle) are broadcast to other users via the XMTP protocol.</li>
       <li>This information is not stored on any centralized server.</li>
+    </ul>
+
+    <h3>In-App Token Swap Cost Basis (device-local)</h3>
+    <ul>
+      <li>If you use the in-app token swap UI, your per-token cost basis (amount of SOL spent per token) is stored locally on your device via AsyncStorage. This data is used solely to calculate the 3%-on-realized-gains fee and is never transmitted off-device.</li>
+      <li>Your acceptance of fee agreements (MonkeMarkets, token trades, AutonoMonke) is stored locally on your device so you are not prompted repeatedly.</li>
+    </ul>
+
+    <h3>Banana Shop and Bananas Balance (device-local)</h3>
+    <ul>
+      <li>Your bananas balance, daily reward streak, and Banana Shop cosmetic purchases are stored locally on your device via AsyncStorage, scoped to your wallet address (so different wallets on the same device don't overwrite each other).</li>
+      <li>This data is <strong>not</strong> automatically synchronized across devices. The "Restore from previous device" flow in Settings allows you to manually copy banana state from one device to another by signing with your wallet to prove ownership.</li>
+      <li>Server-side wallet-keyed banana sync is on the v2.38 roadmap.</li>
+    </ul>
+
+    <h3>AutonoMonke Vault, Trading History, and Bot DM State (encrypted backend)</h3>
+    <ul>
+      <li>If you opt in to AutonoMonke or interact with bot DM commands, the following data is stored on a backend service operated by OnlyMonkes ("Hermes Memory"), encrypted with AES-256-GCM at rest:
+        <ul>
+          <li>Your AutonoMonke hot wallet keypair (encrypted)</li>
+          <li>AutonoMonke vault state (deposit balance, open positions, risk configuration, enrollment status)</li>
+          <li>Per-user trading memory (alerts received, alert outcomes, win-rate, position history)</li>
+          <li>Cost basis for bot-executed trades (separate from the device-local cost basis used by the in-app swap UI)</li>
+        </ul>
+      </li>
+      <li><strong>Per-wallet isolation.</strong> Each user's encrypted data is keyed on a per-wallet salt derived from your wallet address. Even if backend storage were compromised, one user's data cannot be decrypted with another user's key derivation path.</li>
+      <li><strong>Operator-encrypted, not end-to-end.</strong> The bot operator can decrypt your data when actively managing your vault or processing your trade commands. This is necessary for AutonoMonke to function. We do not access your data outside of providing the service.</li>
+      <li><strong>Multi-device support.</strong> Your wallet address is the durable identity &mdash; multiple devices (XMTP inbox IDs) may bind to the same wallet, and switching devices preserves your data.</li>
+      <li><strong>Retention.</strong> Active trading data is retained while your vault is active and for 30 days after vault closure or last activity, then archived to anonymized aggregates and per-user records purged.</li>
+      <li><strong>Encrypted backups.</strong> Per-user encrypted state is backed up nightly with a separate backup encryption key (split-key disaster recovery), retained 30 days, dual-destination (local + external drive), then rotated out.</li>
+      <li><strong>Per-user purge on request.</strong> You may request purge of your per-user data by emailing <a href="mailto:Jumpstreet25@icloud.com">Jumpstreet25@icloud.com</a> from the address associated with your account, signed with the wallet.</li>
+    </ul>
+
+    <h3>Crash Reporting (Optional)</h3>
+    <ul>
+      <li>The App may send anonymized crash reports to Sentry to help us diagnose and fix bugs. Reports do not include private keys, message content, or wallet addresses.</li>
     </ul>
 
     <h2>Data We Do NOT Collect</h2>
     <ul>
-      <li>Private keys — we never have access to these. All transaction signing happens in your wallet app (Phantom, Solflare, etc.).</li>
-      <li>Personal identification information (name, email, phone number)</li>
-      <li>Location data</li>
+      <li><strong>Private keys of your main connected wallet</strong> &mdash; we never have access. All transaction signing happens in your wallet app (Phantom, Solflare, etc.) via Mobile Wallet Adapter. The AutonoMonke vault keypair is a <em>separate</em> hot wallet that the bot generates and encrypts on your behalf when you opt in to autonomous trading.</li>
+      <li>Personal identification information (legal name, email address, phone number)</li>
+      <li>Precise device location (only approximate region if you opt in to share it on the Globe feature)</li>
       <li>Device identifiers beyond the push notification token</li>
-      <li>Analytics or tracking data</li>
-      <li>Browsing history or app usage patterns</li>
+      <li>Browsing history or behavioral analytics</li>
     </ul>
 
-    <h3>Trading Data</h3>
+    <h2>Data Storage Summary</h2>
     <ul>
-      <li>If you use in-app token swaps, your per-token cost basis (amount of SOL spent per token) is stored locally on your device via AsyncStorage. This data is used solely to calculate profit-based trading fees and is never transmitted off-device.</li>
-      <li>Your acceptance of fee agreements (MonkeMarkets, token trades, AutonoMonke) is stored locally on your device via AsyncStorage so you are not prompted repeatedly. This data is never shared externally.</li>
-    </ul>
-
-    <h2>Data Storage</h2>
-    <ul>
-      <li>All message data is stored on the decentralized XMTP network and cached locally on your device.</li>
-      <li>Session credentials are stored in your device's secure storage (SecureStore) and persist until you log out.</li>
-      <li>Trading cost basis and fee acceptance flags are stored locally on your device via AsyncStorage.</li>
-      <li>No user data is stored on centralized servers controlled by OnlyMonkes.</li>
+      <li><strong>XMTP messages, profile broadcasts, reactions:</strong> stored on the decentralized XMTP MLS network. Cached locally on your device for performance. Not on OnlyMonkes servers.</li>
+      <li><strong>Session credentials, MWA auth tokens:</strong> device's secure storage (SecureStore).</li>
+      <li><strong>In-app cost basis, fee acceptance flags, bananas balance, Banana Shop purchases, login streak:</strong> device-local AsyncStorage, scoped to your wallet address.</li>
+      <li><strong>NFT image cache, profile cache:</strong> device-local.</li>
+      <li><strong>AutonoMonke vault, bot trading history, per-user trading memory, cost basis for bot-executed trades:</strong> encrypted backend (Hermes Memory) operated by OnlyMonkes &mdash; AES-256-GCM at rest, per-wallet salted.</li>
+      <li><strong>Encrypted nightly backups:</strong> separate backup key, 30-day retention, dual-destination (local + external drive).</li>
     </ul>
 
     <h2>Data Sharing</h2>
@@ -99,31 +143,44 @@
       <li>Your public wallet address, sent to Helius for NFT ownership verification.</li>
       <li>Push notification tokens, sent to Expo/Google for notification delivery.</li>
       <li>Media files you choose to share, uploaded to Cloudinary for delivery.</li>
+      <li>Anonymized crash reports, sent to Sentry (if not disabled).</li>
     </ul>
 
     <h2>Third-Party Services</h2>
     <ul>
-      <li><strong>XMTP</strong> — Decentralized messaging protocol. <a href="https://xmtp.org/privacy" target="_blank">Privacy Policy</a></li>
-      <li><strong>Helius</strong> — NFT verification via DAS API. <a href="https://helius.dev/privacy" target="_blank">Privacy Policy</a></li>
-      <li><strong>Cloudinary</strong> — Media hosting for in-chat photos and videos. <a href="https://cloudinary.com/privacy" target="_blank">Privacy Policy</a></li>
-      <li><strong>LiveKit</strong> — Live audio room infrastructure. <a href="https://livekit.io/privacy" target="_blank">Privacy Policy</a></li>
-      <li><strong>Jupiter</strong> — Token swap aggregator for in-app trading. <a href="https://docs.jup.ag/legal/privacy-policy" target="_blank">Privacy Policy</a></li>
-      <li><strong>Expo</strong> — Push notification delivery. <a href="https://expo.dev/privacy" target="_blank">Privacy Policy</a></li>
+      <li><strong>XMTP</strong> &mdash; Decentralized messaging protocol. <a href="https://xmtp.org/privacy" target="_blank" rel="noopener">Privacy Policy</a></li>
+      <li><strong>Helius</strong> &mdash; NFT verification via DAS API. <a href="https://helius.dev/privacy" target="_blank" rel="noopener">Privacy Policy</a></li>
+      <li><strong>Cloudinary</strong> &mdash; Media hosting for in-chat photos and videos. <a href="https://cloudinary.com/privacy" target="_blank" rel="noopener">Privacy Policy</a></li>
+      <li><strong>LiveKit</strong> &mdash; Live audio, video, and avatar room infrastructure. <a href="https://livekit.io/privacy" target="_blank" rel="noopener">Privacy Policy</a></li>
+      <li><strong>Jupiter</strong> &mdash; Token swap aggregator and prediction order routing. <a href="https://docs.jup.ag/legal/privacy-policy" target="_blank" rel="noopener">Privacy Policy</a></li>
+      <li><strong>Expo</strong> &mdash; Push notification delivery. <a href="https://expo.dev/privacy" target="_blank" rel="noopener">Privacy Policy</a></li>
+      <li><strong>Sentry</strong> &mdash; Crash reporting. <a href="https://sentry.io/privacy/" target="_blank" rel="noopener">Privacy Policy</a></li>
     </ul>
 
     <h2>Children's Privacy</h2>
-    <p>OnlyMonkes is not intended for use by anyone under the age of 18. We do not knowingly collect data from minors.</p>
+    <p>OnlyMonkes is not intended for use by anyone under the age of 18. We do not knowingly collect data from minors. If we become aware that we have collected data from a person under 18, we will take steps to delete that data.</p>
+
+    <h2>Your Rights</h2>
+    <p>Because OnlyMonkes does not store user data on centralized servers, most data control is in your hands directly:</p>
+    <ul>
+      <li><strong>Access &amp; deletion</strong> &mdash; uninstalling the App removes locally stored data. Messages on the XMTP network are subject to XMTP's own retention.</li>
+      <li><strong>Profile visibility</strong> &mdash; update or clear your profile (username, bio, social handles) at any time from the in-app settings.</li>
+      <li><strong>Notifications</strong> &mdash; disable per-channel or globally from the in-app menu drawer or device settings.</li>
+      <li><strong>Crash reports</strong> &mdash; disable Sentry from the in-app settings.</li>
+    </ul>
+
+    <h2>International Users</h2>
+    <p>The App is operated from the United States. By using the App, users outside the United States acknowledge that their information may be processed in the United States and other locations where our service providers operate.</p>
 
     <h2>Changes to This Policy</h2>
-    <p>We may update this Privacy Policy from time to time. Any changes will be reflected on this page with an updated revision date. Continued use of the app after changes constitutes acceptance of the revised policy.</p>
+    <p>We may update this Privacy Policy from time to time. Any changes will be reflected on this page with an updated revision date. Continued use of the App after changes constitutes acceptance of the revised policy.</p>
 
     <h2>Contact</h2>
-    <p>For privacy questions or concerns, contact us at <a href="mailto:Jumpstreet25@icloud.com">Jumpstreet25@icloud.com</a> or open an issue at <a href="https://github.com/jumpstreet25/OnlyMonkes/issues" target="_blank">github.com/jumpstreet25/OnlyMonkes</a>.</p>
+    <p>For privacy questions or concerns, contact us at <a href="mailto:Jumpstreet25@icloud.com">Jumpstreet25@icloud.com</a> or open an issue at <a href="https://github.com/jumpstreet25/OnlyMonkes/issues" target="_blank" rel="noopener">github.com/jumpstreet25/OnlyMonkes</a>.</p>
 
-    <p>Please also review our <a href="terms.html">Terms of Use &amp; End User License Agreement</a>.</p>
-
+    <p>Please also review our <a href="terms.html">Terms of Use &amp; End User License Agreement</a> and <a href="copyright.html">Copyright &amp; DMCA Notice</a>.</p>
     <div class="footer">
-      &copy; 2026 OnlyMonkes. All rights reserved.
+      &copy; 2026 OnlyMonkes. All rights reserved. &nbsp;|&nbsp; <a href="mailto:Jumpstreet25@icloud.com">Jumpstreet25@icloud.com</a>
     </div>
   </div>
 </body>
