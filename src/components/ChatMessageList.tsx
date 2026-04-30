@@ -5,7 +5,7 @@ import {
   StyleSheet,
   ActivityIndicator,
 } from "react-native";
-import { FlashList } from "@shopify/flash-list";
+import { FlashList, type FlashListRef } from "@shopify/flash-list";
 import { Swipeable } from "react-native-gesture-handler";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
@@ -31,7 +31,7 @@ export interface ChatMessageListProps {
   isLoadingHistory: boolean;
   refreshingChat: boolean;
   initialMsgIdsRef: React.MutableRefObject<Set<string>>;
-  flatListRef: React.RefObject<FlatList | null>;
+  flatListRef: React.RefObject<FlashListRef<ChatMessage> | null>;
 
   // Callbacks
   handleReact: (emoji: ReactionEmoji, messageId: string) => void;
@@ -57,7 +57,7 @@ export interface ChatMessageListProps {
 
 const SCROLL_THRESHOLD = 270; // ~3 message heights
 
-const ChatMessageListInner = React.forwardRef<FlatList, ChatMessageListProps>(function ChatMessageListInner(props, _ref) {
+const ChatMessageListInner = React.forwardRef<FlashListRef<ChatMessage>, ChatMessageListProps>(function ChatMessageListInner(props, _ref) {
   const {
     messages,
     reactionVersion,
@@ -153,7 +153,6 @@ const ChatMessageListInner = React.forwardRef<FlatList, ChatMessageListProps>(fu
       keyExtractor={keyExtractor}
       contentContainerStyle={styles.listContent}
       inverted
-      estimatedItemSize={80}
       onContentSizeChange={handleContentSizeChange}
       refreshing={refreshingChat}
       onRefresh={handleRefreshChat}
