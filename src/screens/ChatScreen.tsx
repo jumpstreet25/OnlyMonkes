@@ -41,6 +41,7 @@ import { useAppStore } from "@/store/appStore";
 import { useChatStore } from "@/store/chatStore";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useXmtp, triggerProfileRebroadcast } from "@/hooks/useXmtp";
+import { useAbortableFetch } from "@/hooks/useAbortableFetch";
 import { playSound } from "@/lib/sounds";
 import { useNetInfo } from "@react-native-community/netinfo";
 import { ChatInput } from "@/components/ChatInput";
@@ -108,6 +109,7 @@ export default function ChatScreen() {
   const insets = useSafeAreaInsets();
   const netInfo = useNetInfo();
   const isOffline = netInfo.isConnected === false;
+  const fetchAbortable = useAbortableFetch();
   // ── Zustand selectors — subscribe only to fields this screen reads ──────────
   const verifiedNft      = useAppStore(s => s.verifiedNft);
   const allNfts          = useAppStore(s => s.allNfts);
@@ -442,7 +444,7 @@ export default function ChatScreen() {
       if (mounted && cached) setFloorPrice(cached);
     }).catch(() => {});
     const fetchPrices = () => {
-      fetch(`https://api.dexscreener.com/latest/dex/tokens/${SKR_MINT}`)
+      fetchAbortable(`https://api.dexscreener.com/latest/dex/tokens/${SKR_MINT}`)
         .then(r => r.json())
         .then(d => {
           if (!mounted) return;
@@ -450,7 +452,7 @@ export default function ChatScreen() {
           if (p) setSkrPrice(Number(p) < 0.01 ? `$${Number(p).toFixed(6)}` : `$${Number(p).toFixed(4)}`);
         })
         .catch(() => {});
-      fetch('https://api-mainnet.magiceden.dev/v2/collections/sagamonkes/stats')
+      fetchAbortable('https://api-mainnet.magiceden.dev/v2/collections/sagamonkes/stats')
         .then(r => r.json())
         .then(d => {
           if (!mounted) return;

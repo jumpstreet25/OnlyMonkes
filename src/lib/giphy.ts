@@ -27,23 +27,25 @@ function parseItems(data: any[]): GiphyItem[] {
     .filter((g) => g.previewUrl && g.displayUrl);
 }
 
+const GIPHY_TIMEOUT_MS = 8_000;
+
 export async function searchGifs(query: string, limit = 20): Promise<GiphyItem[]> {
   const url = `${BASE_URL}/gifs/search?api_key=${API_KEY}&q=${encodeURIComponent(query)}&limit=${limit}&rating=g`;
-  const res = await fetch(url);
+  const res = await fetch(url, { signal: AbortSignal.timeout(GIPHY_TIMEOUT_MS) });
   const json = await res.json();
   return parseItems(json.data ?? []);
 }
 
 export async function trendingGifs(limit = 20): Promise<GiphyItem[]> {
   const url = `${BASE_URL}/gifs/trending?api_key=${API_KEY}&limit=${limit}&rating=g`;
-  const res = await fetch(url);
+  const res = await fetch(url, { signal: AbortSignal.timeout(GIPHY_TIMEOUT_MS) });
   const json = await res.json();
   return parseItems(json.data ?? []);
 }
 
 export async function searchStickers(query: string, limit = 18): Promise<GiphyItem[]> {
   const url = `${BASE_URL}/stickers/search?api_key=${API_KEY}&q=${encodeURIComponent(query)}&limit=${limit}&rating=g`;
-  const res = await fetch(url);
+  const res = await fetch(url, { signal: AbortSignal.timeout(GIPHY_TIMEOUT_MS) });
   const json = await res.json();
   return parseItems(json.data ?? []);
 }
