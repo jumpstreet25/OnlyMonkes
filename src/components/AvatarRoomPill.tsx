@@ -5,7 +5,7 @@
  * an avatar room but has minimized to Main Chat.
  *
  * Shows animated PFP of current speaker, mute button, reaction button,
- * expand/end controls. Same position and z-index as LiveAudioPill.
+ * expand/end controls.
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
