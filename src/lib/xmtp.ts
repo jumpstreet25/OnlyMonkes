@@ -368,6 +368,7 @@ function decodeStringMessage(raw: any, rawContent: string, myInboxId: string): C
   if (rawContent.startsWith("NFT_SWAP:")) return null;
   if (rawContent.startsWith("NFT_COMPLETE:")) return null;
   if (rawContent.startsWith("AUTOMONKE_STATUS:")) return null;
+  if (rawContent.startsWith("TRADE_CLOSED:")) return null;
   if (rawContent.startsWith("RSVP:")) return null;
   if (rawContent.startsWith("READ:")) return null;
   if (rawContent.startsWith("BANANA_GRANT:")) return null;
@@ -627,6 +628,62 @@ export interface ParsedProfileUpdate {
   bananaBalance?: number;
   shopOwned?: string[];
   pfpBindings?: Record<string, string[]>;
+}
+
+export interface ParsedTradeClosed {
+  source: 'manual' | 'autonomonke';
+  token: string;
+  mint: string;
+  entrySolAmount: number;
+  exitSolAmount: number;
+  pnlSol: number;
+  pnlPct: number;
+  durationMs: number;
+  ts: number;
+  reason?: string;
+  signature?: string;
+}
+
+export function parseTradeClosed(raw: string): ParsedTradeClosed | null {
+  if (!raw.startsWith("TRADE_CLOSED:")) return null;
+  const jsonStr = raw.slice("TRADE_CLOSED:".length);
+  if (jsonStr.length > 4_000) return null;
+
+  let data: any;
+  try { data = JSON.parse(jsonStr); } catch { return null; }
+  if (!data || typeof data !== 'object') return null;
+
+  const numOrNull = (v: unknown): number | null =>
+    typeof v === 'number' && Number.isFinite(v) ? v : null;
+  const strOrNull = (v: unknown): string | null =>
+    typeof v === 'string' && v.length > 0 && v.length < 200 ? v : null;
+
+  const token = strOrNull(data.token);
+  const mint = strOrNull(data.mint);
+  const entrySolAmount = numOrNull(data.entrySolAmount);
+  const exitSolAmount = numOrNull(data.exitSolAmount);
+  const pnlPct = numOrNull(data.pnlPct);
+  const durationMs = numOrNull(data.durationMs);
+  const ts = numOrNull(data.ts);
+  if (!token || !mint || entrySolAmount === null || exitSolAmount === null
+      || pnlPct === null || durationMs === null || ts === null) return null;
+
+  const pnlSol = numOrNull(data.pnlSol) ?? (exitSolAmount - entrySolAmount);
+  const source = data.source === 'autonomonke' ? 'autonomonke' : 'manual';
+
+  return {
+    source,
+    token: token.slice(0, 32),
+    mint: mint.slice(0, 80),
+    entrySolAmount,
+    exitSolAmount,
+    pnlSol,
+    pnlPct,
+    durationMs: Math.max(0, durationMs),
+    ts,
+    reason: strOrNull(data.reason) ?? undefined,
+    signature: strOrNull(data.signature) ?? undefined,
+  };
 }
 
 /**

@@ -336,12 +336,29 @@ export default function ChatScreen() {
   // ─── Re-check streak + banana claim when app returns to foreground ──────────
   useEffect(() => {
     let lastFgCheck = 0;
+    let backgroundedAt = 0;
     const handleAppState = async (nextState: AppStateStatus) => {
-      if (nextState === 'background') {
-        flushPendingWrites().catch(() => {});
+      if (nextState === 'background' || nextState === 'inactive') {
+        if (nextState === 'background') {
+          backgroundedAt = Date.now();
+          flushPendingWrites().catch(() => {});
+        }
         return;
       }
       if (nextState !== 'active') return;
+
+      // Android suspends the XMTP WebSocket in background; streamAlive() can't
+      // detect this (the unsub handle stays valid). If we were backgrounded long
+      // enough that the OS likely killed the socket, force a full re-init.
+      const wasBgFor = backgroundedAt ? Date.now() - backgroundedAt : 0;
+      backgroundedAt = 0;
+      try {
+        if (wasBgFor > 30_000 || !streamAlive()) await initialize();
+        else await syncMessages();
+      } catch {
+        initialize().catch(() => {});
+      }
+
       const now = Date.now();
       if (now - lastFgCheck < 60_000) return;
       lastFgCheck = now;

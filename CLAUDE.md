@@ -29,7 +29,8 @@ Rules are added over time as issues arise.
 
 ## XMTP & Messaging
 
-- **System message prefixes** (PRESENCE:, TYPING:, PROFILE_UPDATE:, EVENT:, EDIT:, REACT:, STICKER_REACT:, LIVE_ROOM:, VIDEO_ROOM:, AVATAR_ROOM:, THREAD:, PIN:, UNPIN:, NFT_LIST:, NFT_BID:, NFT_OFFER:, NFT_ACCEPT:, NFT_DELIST:, NFT_SWAP:, NFT_COMPLETE:) must ALWAYS be filtered in `decodeMessage()` so they never appear as chat messages.
+- **System message prefixes** (PRESENCE:, TYPING:, PROFILE_UPDATE:, EVENT:, EDIT:, REACT:, STICKER_REACT:, LIVE_ROOM:, VIDEO_ROOM:, AVATAR_ROOM:, THREAD:, PIN:, UNPIN:, NFT_LIST:, NFT_BID:, NFT_OFFER:, NFT_ACCEPT:, NFT_DELIST:, NFT_SWAP:, NFT_COMPLETE:, AUTOMONKE_STATUS:, TRADE_CLOSED:) must ALWAYS be filtered in `decodeMessage()` so they never appear as chat messages.
+- **TRADE_CLOSED:** structured DM emitted by the bot's AutonoMonke close path (`engine.ts:closePosition`). Format: `TRADE_CLOSED:{token,mint,entrySolAmount,exitSolAmount,pnlPct,pnlSol,durationMs,reason,ts,...}`. App parses via `parseTradeClosed()` in xmtp.ts (sender must be in `BOT_INBOX_IDS` to prevent spoofing) and pushes a `ClosedTrade` to `tradesStore`. Manual round-trip swaps emit the same `ClosedTrade` shape locally via `src/lib/positions.ts` hooked into `executeSwap`.
 - Bot message format is **always** `MSG:AI Agent #9385:<content>` — any deviation breaks display in the app.
 - PRESENCE heartbeats are sent every 60s via XMTP group `send()` — the bot must ignore them (they are not user messages).
 - After any XMTP DB wipe + group recreation, the group ID changes — update `app-config.json` and bot `.env`.

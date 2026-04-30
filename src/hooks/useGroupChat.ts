@@ -14,6 +14,7 @@
  */
 
 import { useCallback, useRef, useState, useEffect } from "react";
+import { AppState, type AppStateStatus } from "react-native";
 import {
   initXmtpClient,
   getOrCreateDAppGroup,
@@ -304,6 +305,68 @@ export function useGroupChat(groupId: string, groupName: string) {
     // so re-opening the channel is instant.
     unsubscribeRef.current = null;
   }, []);
+
+  // ── Foreground resync — Android suspends the WebSocket in background, so the
+  // stream callback handle is alive but no events arrive until we re-attach.
+  useEffect(() => {
+    const handleAppState = async (nextState: AppStateStatus) => {
+      if (nextState !== 'active') return;
+      const group = groupRef.current;
+      if (!group) return;
+      try {
+        await (group as any).sync();
+        const TEN_HOURS_NS = 10 * 60 * 60 * 1_000_000_000;
+        const afterNs = (Date.now() * 1_000_000) - TEN_HOURS_NS;
+        const raw: any[] = await (group as any).messages({ afterNs });
+        const decoded = raw
+          .map((m) => decodeMessage(m, myInboxIdRef.current))
+          .filter(Boolean) as ChatMessage[];
+
+        setMessages((prev) => {
+          const ids = new Set(prev.map((m) => m.id));
+          const additions = decoded.filter((m) => !ids.has(m.id)).reverse();
+          if (additions.length === 0) return prev;
+          const updated = [...prev, ...additions];
+          const e = _warmCache.get(groupId);
+          if (e) e.messages = updated;
+          return updated;
+        });
+
+        const entry = _warmCache.get(groupId);
+        try { entry?.unsub?.(); } catch { /* dead handle */ }
+        try { unsubscribeRef.current?.(); } catch { /* dead handle */ }
+        unsubscribeRef.current = null;
+        if (entry) entry.unsub = null;
+
+        const newUnsub = await (group as any).streamMessages(async (raw: any) => {
+          try {
+            let content: unknown;
+            try { content = raw.content(); } catch { return; }
+            if (isReactionContent(content)) {
+              setMessages((prev) => applyReaction(prev, raw, myInboxIdRef.current));
+              return;
+            }
+            const msg = decodeMessage(raw, myInboxIdRef.current);
+            if (msg) {
+              setMessages((prev) => {
+                const updated = [...prev, msg];
+                const e = _warmCache.get(groupId);
+                if (e) e.messages = updated;
+                return updated;
+              });
+              await appendCachedMessage(cacheKey, msg);
+            }
+          } catch { /* ignore */ }
+        });
+        unsubscribeRef.current = newUnsub;
+        if (entry) entry.unsub = newUnsub;
+      } catch (err) {
+        if (__DEV__) console.warn(`[useGroupChat] foreground resync failed:`, err);
+      }
+    };
+    const sub = AppState.addEventListener('change', handleAppState);
+    return () => sub.remove();
+  }, [groupId, cacheKey]);
 
   const send = useCallback(async (content: string) => {
     if (!groupRef.current) throw new Error("Not connected");

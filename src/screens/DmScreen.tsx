@@ -11,7 +11,15 @@ import { MessageBubble } from '@/components/MessageBubble';
 import { ChatInput } from '@/components/ChatInput';
 import ImageLightbox from '@/components/ImageLightbox';
 import { useAppStore } from '@/store/appStore';
+import { useTradesStore } from '@/store/tradesStore';
+import { PnLCardMessage } from '@/components/PnLCardMessage';
+import { PnLCardModal } from '@/components/PnLCardModal';
+import type { ClosedTrade } from '@/lib/positions';
 import type { ChatMessage, ReactionEmoji } from '@/types';
+
+type FeedItem =
+  | { kind: 'msg'; key: string; ts: number; msg: ChatMessage }
+  | { kind: 'trade'; key: string; ts: number; trade: ClosedTrade };
 
 export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
   const insets = useSafeAreaInsets();
@@ -21,11 +29,13 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
   const [inputText, setInputText] = useState('');
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
-  const flatListRef = useRef<FlatList>(null);
+  const [activeTradeCard, setActiveTradeCard] = useState<ClosedTrade | null>(null);
+  const flatListRef = useRef<FlatList<FeedItem>>(null);
   useProfileVersion();
   const peerProfile = getCachedProfile(peerInboxId);
   const peerName = peerProfile?.username ?? 'Monke';
   const isBotDm = BOT_INBOX_IDS.includes(peerInboxId);
+  const closedTrades = useTradesStore(s => s.closedTrades);
   const themeBg = useThemeColor('bg');
   const themeSurface = useThemeColor('surface');
   const themeBorder = useThemeColor('border');
@@ -53,6 +63,18 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
     }
     return null;
   }, [messages, myInboxId]);
+
+  // Merged feed: regular messages + synthetic PnL trade cards (bot DM only).
+  const feed: FeedItem[] = useMemo(() => {
+    const msgItems: FeedItem[] = messages.map(m => ({
+      kind: 'msg', key: m.id, ts: m.sentAt.getTime(), msg: m,
+    }));
+    if (!isBotDm) return msgItems;
+    const tradeItems: FeedItem[] = closedTrades.map(t => ({
+      kind: 'trade', key: `trade-${t.id}`, ts: t.closedAt, trade: t,
+    }));
+    return [...msgItems, ...tradeItems].sort((a, b) => a.ts - b.ts);
+  }, [messages, closedTrades, isBotDm]);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top, backgroundColor: themeBg }]}>
@@ -88,22 +110,28 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
       ) : (
         <FlatList
           ref={flatListRef}
-          data={messages}
-          keyExtractor={m => m.id}
-          renderItem={({ item }) => (
-            <>
-              <MessageBubble
-                message={item}
-                isOwn={item.senderAddress === myInboxId}
-                onReact={noop}
-                onReply={handleReply}
-                onPressImage={setLightboxUrl}
-              />
-              {item.id === lastReadOwnId && (
-                <Text style={styles.seenLabel}>Seen</Text>
-              )}
-            </>
-          )}
+          data={feed}
+          keyExtractor={item => item.key}
+          renderItem={({ item }) => {
+            if (item.kind === 'trade') {
+              return <PnLCardMessage trade={item.trade} onPress={setActiveTradeCard} />;
+            }
+            const m = item.msg;
+            return (
+              <>
+                <MessageBubble
+                  message={m}
+                  isOwn={m.senderAddress === myInboxId}
+                  onReact={noop}
+                  onReply={handleReply}
+                  onPressImage={setLightboxUrl}
+                />
+                {m.id === lastReadOwnId && (
+                  <Text style={styles.seenLabel}>Seen</Text>
+                )}
+              </>
+            );
+          }}
           contentContainerStyle={{ paddingVertical: 8, flexGrow: 1, justifyContent: 'flex-end' }}
           onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
           removeClippedSubviews
@@ -132,6 +160,11 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
       />
       <View style={{ height: insets.bottom }} />
       <ImageLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
+      <PnLCardModal
+        trade={activeTradeCard}
+        visible={!!activeTradeCard}
+        onClose={() => setActiveTradeCard(null)}
+      />
     </View>
   );
 }

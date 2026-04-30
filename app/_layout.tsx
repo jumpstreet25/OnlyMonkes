@@ -61,6 +61,9 @@ export default function RootLayout() {
     clearLegacyKeys();
     loadPersistedPrefs();
 
+    import('../src/store/tradesStore').then(m => m.useTradesStore.getState().hydrate());
+    import('../src/lib/positions').then(m => m.loadOpenPositions());
+
     // One-time dev account restore (after keystore loss 2026-04-19)
     // Runs when wallet becomes available (not at init — wallet is null at startup)
     const unsubRestore = useAppStore.subscribe((state) => {
