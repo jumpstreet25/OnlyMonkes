@@ -23,7 +23,7 @@ Rules are added over time as issues arise.
 - **Expo SDK 53 + RN 0.79.6** requires: Gradle 8.11.1, Kotlin 2.0.21, compileSdk 35, NDK 26.1.10909125.
 - **SoLoader must use merged SO mapping**: `SoLoader.init(this, OpenSourceMergedSoMapping)` — NOT `SoLoader.init(this, false)`. RN 0.79 merges native libs into `libreactnative.so`; without the mapping, `libreact_featureflagsjni.so` crash on startup.
 - **R8/ProGuard disabled** for release builds — R8 strips JNI loaders needed by RN 0.79 new arch. APK is ~88MB without minification.
-- **react-native-mediapipe** has a null-safety bug in `FaceLandmarkDetectionFrameProcessorPlugin.kt:19` — patched via `patches/react-native-mediapipe+0.6.0.patch`. Must re-apply after `npm install`.
+- **Face tracking uses Google ML Kit** via `react-native-vision-camera-face-detector`, NOT MediaPipe. `FaceTracker.tsx` runs a 1×1px invisible camera + frame processor and derives blendshape-shaped values (jawOpen from lipGap/faceH, head rotation, smile/blink) for the Avatar Room data channel. MediaPipe was retired — no patch file needed.
 - **Post-build cleanup**: run `scripts/post-build-cleanup.sh` after each build to reclaim ~3GB of native build intermediates. Critical on low-disk Macs.
 - **My Passport** (`/Volumes/MyPassport/OnlyMonkes-cache/`) stores NDK 25, build-tools 36, platforms, and Gradle caches offloaded from local disk.
 
@@ -44,7 +44,7 @@ Rules are added over time as issues arise.
 - **AutonoMonke min composite**: 50 (only medium+ conviction). Stop loss clamped 5-12%. Fib targets validated ±50% from entry.
 - **Hermes Memory** (`hermesMemory.ts`): per-user AES-256-GCM encrypted trading memory + global learning engine. Auto-closes alert outcomes every scan cycle by monitoring real prices against T1/T2/stop. Feeds: Alert Quality Badge, Personalized DM Warnings, Portfolio Copilot, Auto-Tune, Weekly Digest, Bot Self-Awareness, Social Signals, Streaks, `/hermes` command.
 - **Hermes Solana Toolkit**: OpenClaw extension at `~/.openclaw/extensions/solana-toolkit/` — `solana_trending` + `solana_token_chart`. Discoveries written to `~/.hermes_memory/hermes_signals.json`, ingested by bot scanner.
-- **Chat LLM chain**: Hermes/Groq (Llama 70B) → Cerebras (Llama 70B) → Ollama (DeepSeek R1/Qwen 2.5) → Anthropic (last resort).
+- **Chat LLM chain**: Groq direct (Llama 3.3 70B) → Cerebras (Qwen-3 235B) → Gemini Flash → OpenRouter (Llama 3.3 70B aggregator) → Ollama local (DeepSeek R1 1.5B + Qwen 2.5 1.5B). Anthropic SDK has been removed from the chain — circuit breaker (3 failures = 5min cooldown per provider) defined in `src/lib/llm/fallbackChain.ts`.
 - **Trade confidence**: Multi-perspective analysis (Bull/Bear/Risk) via Groq+Cerebras+Ollama in parallel — replaced OpenClaw gate in engine.ts. Synthesis: `bull*0.4 + (100-bear)*0.3 + risk*0.3`.
 - **Solana Agent Kit** (`src/lib/sak/`): DM commands `/limit`, `/stake`, `/unstake` via `solana-agent-kit@2.0.10`. Borrow-and-return keypair pattern via `withSAK()`. Risk-gated through existing `riskManager.ts`.
 - **Bot persona**: "Monke" — ball-busting, banana-obsessed, confident. Defined in `~/.hermes/SOUL.md` + `buildSystemPrompt()`.
@@ -54,9 +54,9 @@ Rules are added over time as issues arise.
 
 - Live room signaling (`AVATAR_ROOM:`, `VIDEO_ROOM:`, `LIVE_ROOM:`) must NEVER show raw JSON in chat. Use `LIVE_PILL:` synthetic messages to display a styled pill with JOIN button.
 - **Live Audio rooms are DISCONTINUED** (v2.33). Replaced by Avatar Rooms. `LIVE_ROOM:` messages still parsed for backward compat but no new audio rooms can be started. Files kept but unused: `liveAudio.ts`, `LiveAudioRoomScreen.tsx`, `LiveAudioPill.tsx`, `app/live-room.tsx`.
-- **Avatar Rooms** (`avatarRoom.ts`): Animated NFT PFP avatars with mouth sprite overlays driven by MediaPipe face tracking jaw openness (or audio energy fallback). Head tilt/nod/turn from face tracking rotation. Skia canvas overlay (`SkiaAvatarOverlay.tsx`) exists but disabled — generic eye/brow positions don't align with Saga Monkes pixel art; needs per-collection calibration. Minimize to pill in Main Chat. Sticker reactions via data channel.
+- **Avatar Rooms** (`avatarRoom.ts`): Animated NFT PFP avatars with mouth sprite overlays driven by ML Kit face tracking jaw openness (or audio energy fallback). Head tilt/nod/turn from face tracking rotation. Skia canvas overlay (`SkiaAvatarOverlay.tsx`) exists but is unwired — the consumer is `AnimatedAvatar.tsx`; `SkiaAvatarOverlay` is a future option pending per-collection (Saga Monkes) calibration of eye/brow positions. Minimize to pill in Main Chat. Sticker reactions via data channel.
 - Messages load newest-first on app open. Older messages load in background without visible flicker.
-- `react-native-svg` is NOT installed — do not use SVG components. Use View-based alternatives.
+- `react-native-svg` is NOT used — do not add SVG components. Use View-based alternatives (the package was removed during 2026-04 dep cleanup).
 - **FlashList** replaces FlatList in ChatScreen for message list (cell recycling, 3-5x fewer frame drops).
 - **$TOKEN mentions are tappable** in chat — opens ChartModal with candlestick chart (react-native-wagmi-charts).
 - **Free-RASP** runtime security: root/jailbreak detection, Frida hook detection, app tampering, emulator detection. `useFreeRasp()` in `_layout.tsx`. Check `isDeviceCompromised()` before sensitive operations.
@@ -71,8 +71,7 @@ Rules are added over time as issues arise.
 - `@xmtp/react-native-sdk` v5 MLS for messaging
 - `@shopify/react-native-skia` for GPU-rendered avatar expression overlays
 - `@shopify/flash-list` for high-performance message list
-- `react-native-mediapipe` for 52-blendshape face tracking
-- `react-native-vision-camera` v4.3.2 + `react-native-worklets-core` for camera frame processing
+- `react-native-vision-camera` + `react-native-vision-camera-face-detector` (Google ML Kit) + `react-native-worklets-core` for camera frame processing & face tracking
 - `react-native-wagmi-charts` for candlestick token charts
 - `freerasp-react-native` for runtime application self-protection
 - `solana-agent-kit` + `@solana-agent-kit/plugin-token` for DeFi DM commands (bot)

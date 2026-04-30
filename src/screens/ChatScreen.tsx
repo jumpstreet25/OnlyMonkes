@@ -299,8 +299,12 @@ export default function ChatScreen() {
       if (newBadges.length > 0) setEarnedBadge(newBadges[0]);
       const onboarded = await hasCompletedOnboarding();
       if (!onboarded) setShowOnboarding(true);
-    }).catch(() => {
-      toast.error("Connection lost — retrying...");
+    }).catch((err) => {
+      // This catch covers BOTH initialize() and the post-init banana/streak/
+      // onboarding chain. The auto-retry effect (isGroupMember/remoteGroupId)
+      // already handles real connection failures silently; useXmtp's own catch
+      // surfaces the toast for genuine XMTP init errors. Don't double-surface.
+      if (__DEV__) console.warn("[ChatScreen] post-init chain error:", err);
     });
 
     setOfflineQueueFlusher(async () => {

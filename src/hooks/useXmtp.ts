@@ -964,6 +964,9 @@ export function useXmtp() {
       _streamAlive = false;
 
       const unsub = await (activeGroup as any).streamMessages(async (raw: any) => {
+        // Stream is healthy — we just received a message. Mark alive even if
+        // the content fails to decode below; that's a per-message issue, not
+        // a stream-level failure.
         _streamAlive = true;
         _lastStreamEvent = Date.now();
         let content: unknown;
@@ -974,7 +977,6 @@ export function useXmtp() {
             content = (content as any).text;
           }
         } catch {
-          _streamAlive = false;
           return;
         }
         // Top-level error boundary — prevents stream crash from killing all message processing
