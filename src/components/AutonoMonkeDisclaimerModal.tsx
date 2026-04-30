@@ -1,5 +1,5 @@
 /**
- * AutoMonkeDisclaimerModal
+ * AutonoMonkeDisclaimerModal
  *
  * Full-screen risk + fee disclaimer for AutonoMonke autonomous trading.
  * Black background, OnlyMonkes blue text, "I Understand" / "Decline" buttons.
@@ -31,19 +31,19 @@ const FEATURE_LABELS: Record<AutonomyFeature, { title: string; subtitle: string 
   predictions: { title: "MonkePredictions", subtitle: "Autonomous Predictions" },
 };
 
-interface AutoMonkeDisclaimerModalProps {
+interface AutonoMonkeDisclaimerModalProps {
   visible: boolean;
   onClose: () => void;
   onConfirm: () => void;
   feature?: AutonomyFeature;
 }
 
-export default function AutoMonkeDisclaimerModal({
+export default function AutonoMonkeDisclaimerModal({
   visible,
   onClose,
   onConfirm,
   feature = "trades",
-}: AutoMonkeDisclaimerModalProps) {
+}: AutonoMonkeDisclaimerModalProps) {
   const labels = FEATURE_LABELS[feature];
   return (
     <GlassModal visible={visible} onClose={onClose} cardStyle={s.container}>
