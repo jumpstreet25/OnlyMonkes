@@ -49,6 +49,7 @@ export async function uploadVideo(videoUri: string): Promise<{ videoUrl: string;
   const vRes = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/video/upload`, {
     method: 'POST',
     body: vForm,
+    signal: AbortSignal.timeout(120_000),
   });
   const vData = await vRes.json();
   if (!vData.secure_url) throw new Error(vData.error?.message ?? 'Video upload failed');
@@ -59,6 +60,7 @@ export async function uploadVideo(videoUri: string): Promise<{ videoUrl: string;
   const tRes = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`, {
     method: 'POST',
     body: tForm,
+    signal: AbortSignal.timeout(60_000),
   });
   const tData = await tRes.json();
   const thumbUrl = tData.secure_url ?? vData.secure_url + '.jpg';

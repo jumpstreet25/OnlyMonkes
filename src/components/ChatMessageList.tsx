@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   ActivityIndicator,
-  FlatList,
 } from "react-native";
 import { FlashList } from "@shopify/flash-list";
 import { Swipeable } from "react-native-gesture-handler";
@@ -146,7 +145,7 @@ const ChatMessageListInner = React.forwardRef<FlatList, ChatMessageListProps>(fu
   }, [flatListRef, isNearBottomRef]);
 
   return (
-    <FlatList
+    <FlashList
       ref={flatListRef as any}
       data={messages}
       extraData={reactionVersion}
@@ -154,9 +153,7 @@ const ChatMessageListInner = React.forwardRef<FlatList, ChatMessageListProps>(fu
       keyExtractor={keyExtractor}
       contentContainerStyle={styles.listContent}
       inverted
-      windowSize={5}
-      maxToRenderPerBatch={10}
-      removeClippedSubviews={false}
+      estimatedItemSize={80}
       onContentSizeChange={handleContentSizeChange}
       refreshing={refreshingChat}
       onRefresh={handleRefreshChat}
