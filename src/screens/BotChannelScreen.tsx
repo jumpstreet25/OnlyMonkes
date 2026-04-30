@@ -24,7 +24,7 @@ import { useAppStore } from "@/store/appStore";
 import { useGroupChat } from "@/hooks/useGroupChat";
 import { MessageBubble } from "@/components/MessageBubble";
 import { triggerProfileRebroadcast } from "@/hooks/useXmtp";
-import AutoMonkeDisclaimerModal, { type AutonomyFeature } from "@/components/AutoMonkeDisclaimerModal";
+import AutonoMonkeDisclaimerModal, { type AutonomyFeature } from "@/components/AutonoMonkeDisclaimerModal";
 import { getXmtpClient } from "@/hooks/useXmtp";
 import { sendDmMessage } from "@/lib/xmtp";
 import { THEME, FONTS } from "@/lib/constants";
@@ -102,7 +102,7 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
   const groupId = botChannelIds[channelId];
   const isMuted = mutedBotChannels[channelId];
   const config = CHANNEL_CONFIG[channelId];
-  const [showAutoMonkeModal, setShowAutoMonkeModal] = useState(false);
+  const [showAutonoMonkeModal, setShowAutonoMonkeModal] = useState(false);
   const [autonomyEnrolled, setAutonomyEnrolled] = useState(false);
   const [showAllOverride, setShowAllOverride] = useState(false);
   const hasAutonomy = channelId in AUTONOMY_CONFIG;
@@ -159,7 +159,7 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
 
   // Autonomy enrollment handler — works for trades, bets, predictions
   const handleAutonomyEnroll = useCallback(async () => {
-    setShowAutoMonkeModal(false);
+    setShowAutonoMonkeModal(false);
     if (!hasAutonomy) return;
     const { command, storageKey } = AUTONOMY_CONFIG[channelId];
     try {
@@ -285,7 +285,7 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
                 if (autonomyEnrolled) {
                   router.push(`/dm/${BOT_INBOX_ID}` as any);
                 } else {
-                  setShowAutoMonkeModal(true);
+                  setShowAutonoMonkeModal(true);
                 }
               }}
               style={[styles.autonomyBtn, autonomyEnrolled && styles.autonomyBtnActive]}
@@ -399,9 +399,9 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
 
       {/* Autonomy disclaimer modal (only for channels with autonomy features) */}
       {hasAutonomy && (
-        <AutoMonkeDisclaimerModal
-          visible={showAutoMonkeModal}
-          onClose={() => setShowAutoMonkeModal(false)}
+        <AutonoMonkeDisclaimerModal
+          visible={showAutonoMonkeModal}
+          onClose={() => setShowAutonoMonkeModal(false)}
           onConfirm={handleAutonomyEnroll}
           feature={channelId as AutonomyFeature}
         />
