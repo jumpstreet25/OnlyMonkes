@@ -14,6 +14,7 @@ import { Canvas, RoundedRect, BlurMask, LinearGradient, Group, Rect, Circle, vec
 import { useAppStore } from "@/store/appStore";
 import { getEarnedBadges, getBadgeDef } from "@/lib/badges";
 import { loadBananaState, type BananaState } from "@/lib/bananaRewards";
+import { getShieldExpiry, daysUntilNextPurchase, purchaseShield, SHIELD_COST_BANANAS } from "@/lib/streakShield";
 import { THEME, FONTS } from "@/lib/constants";
 
 interface ProfileScorecardProps {
@@ -112,8 +113,38 @@ export function ProfileScorecard({ onEditProfile, onPressPfp, onClose }: Profile
 
   const [bananaState, setBananaState] = useState<BananaState | null>(null);
   const [cardSize, setCardSize] = useState({ w: 0, h: 0 });
+  const [shieldExpiry, setShieldExpiry] = useState<string | null>(null);
+  const [shieldCooldown, setShieldCooldown] = useState<number>(0);
+  const [shieldBuying, setShieldBuying] = useState(false);
 
   useEffect(() => { loadBananaState().then(setBananaState).catch(() => {}); }, []);
+  useEffect(() => {
+    let alive = true;
+    const refresh = async () => {
+      const [exp, cd] = await Promise.all([getShieldExpiry(), daysUntilNextPurchase()]);
+      if (!alive) return;
+      setShieldExpiry(exp);
+      setShieldCooldown(cd);
+    };
+    refresh();
+    return () => { alive = false; };
+  }, []);
+
+  const handleBuyShield = async () => {
+    if (shieldBuying) return;
+    setShieldBuying(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const res = await purchaseShield();
+    if (res.ok) {
+      const [exp, cd] = await Promise.all([getShieldExpiry(), daysUntilNextPurchase()]);
+      setShieldExpiry(exp);
+      setShieldCooldown(cd);
+      toast.success("🛡️ Streak Shield active");
+    } else {
+      toast.error(res.reason);
+    }
+    setShieldBuying(false);
+  };
 
   const badgeIds = getEarnedBadges();
   const badges = badgeIds.map(id => getBadgeDef(id)).filter(Boolean);
@@ -200,6 +231,33 @@ export function ProfileScorecard({ onEditProfile, onPressPfp, onClose }: Profile
         ))}
       </View>
 
+      {/* Streak Shield — Discord-style loss aversion */}
+      {(loginStreak ?? 0) >= 2 && (
+        shieldExpiry ? (
+          <View style={[st.shieldRow, { borderColor: glowColor + "33" }]}>
+            <Text style={st.shieldText}>🛡️ Shield active through {shieldExpiry}</Text>
+          </View>
+        ) : (
+          <Pressable
+            onPress={handleBuyShield}
+            disabled={shieldBuying || shieldCooldown > 0 || (bananaBalance ?? 0) < SHIELD_COST_BANANAS}
+            style={({ pressed }) => [
+              st.shieldRow,
+              {
+                borderColor: glowColor + "55",
+                opacity: shieldBuying || shieldCooldown > 0 || (bananaBalance ?? 0) < SHIELD_COST_BANANAS ? 0.45 : pressed ? 0.7 : 1,
+              },
+            ]}
+          >
+            <Text style={st.shieldText}>
+              {shieldCooldown > 0
+                ? `🛡️ Shield cooldown — ${shieldCooldown}d`
+                : `🛡️ Buy Streak Shield · ${SHIELD_COST_BANANAS} 🍌`}
+            </Text>
+          </Pressable>
+        )
+      )}
+
       {/* NFT Traits */}
       {verifiedNft?.traits && verifiedNft.traits.length > 0 && (
         <View style={st.traitsSection}>
@@ -246,6 +304,8 @@ const st = StyleSheet.create({
   statItem: { flex: 1, alignItems: "center", backgroundColor: "rgba(255,255,255,0.02)", borderRadius: 12, paddingVertical: 8, borderWidth: 0.5, borderColor: "rgba(255,255,255,0.04)" },
   statValue: { fontFamily: FONTS.displayMed, fontSize: 18, color: THEME.text },
   statLabel: { fontFamily: FONTS.body, fontSize: 10, color: THEME.textMuted, marginTop: 2 },
+  shieldRow: { backgroundColor: "rgba(255,255,255,0.03)", borderRadius: 12, paddingVertical: 10, paddingHorizontal: 12, borderWidth: 0.5, marginBottom: 12, alignItems: "center" },
+  shieldText: { fontFamily: FONTS.bodyMed, fontSize: 12, color: THEME.text, letterSpacing: 0.3 },
   milestones: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   pill: { backgroundColor: "rgba(255,255,255,0.03)", borderRadius: 10, paddingHorizontal: 8, paddingVertical: 4, borderWidth: 0.5 },
   pillText: { fontFamily: FONTS.body, fontSize: 11, color: THEME.textMuted },

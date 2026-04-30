@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAppStore } from '@/store/appStore';
+import { consumeShield } from '@/lib/streakShield';
 
 const AK_STREAK = 'login_streak_v1';
 
@@ -61,6 +62,9 @@ export async function checkAndUpdateStreak(): Promise<{
     const wasLegendary = data.isLegendary;
 
     if (data.lastLoginDate === getYesterdayISO()) {
+      data.streak += 1;
+    } else if (await consumeShield()) {
+      // Shield absorbed the missed day — extend streak as if user logged in
       data.streak += 1;
     } else {
       data.streak = 1;
