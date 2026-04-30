@@ -1544,6 +1544,34 @@ export function useXmtp() {
               if (typeof content !== 'string') return;
               const senderInboxId: string = raw.senderInboxId ?? '';
               if (senderInboxId === client.inboxId) return;
+
+              // TRADE_CLOSED: structured close payload from the bot.
+              // Only honor messages from a known bot inbox to prevent spoofing.
+              if (content.startsWith('TRADE_CLOSED:')) {
+                const { BOT_INBOX_IDS } = await import('@/lib/constants');
+                if (!BOT_INBOX_IDS.includes(senderInboxId)) return;
+                const { parseTradeClosed } = await import('@/lib/xmtp');
+                const parsed = parseTradeClosed(content);
+                if (!parsed) return;
+                const { useTradesStore } = await import('@/store/tradesStore');
+                useTradesStore.getState().addClosedTrade({
+                  id: `${parsed.mint}-${parsed.ts}`,
+                  source: parsed.source,
+                  token: parsed.token,
+                  mint: parsed.mint,
+                  entrySolAmount: parsed.entrySolAmount,
+                  exitSolAmount: parsed.exitSolAmount,
+                  pnlSol: parsed.pnlSol,
+                  pnlPct: parsed.pnlPct,
+                  durationMs: parsed.durationMs,
+                  openedAt: parsed.ts - parsed.durationMs,
+                  closedAt: parsed.ts,
+                  reason: parsed.reason,
+                  signature: parsed.signature,
+                });
+                return;
+              }
+
               // Skip protocol messages
               if (content.startsWith('TYPING:') || content.startsWith('PROFILE_UPDATE:') || content.startsWith('READ:') || content.startsWith('GIFT_ITEM:')) return;
               useAppStore.getState().incrementCommunityBadge('dms');

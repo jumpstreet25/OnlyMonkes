@@ -42,6 +42,7 @@ import {
 import { HELIUS_RPC_URL, DEV_WALLET, TOKEN_TRADE_FEE_PCT, JUP_API_KEY } from "./constants";
 import { useAppStore } from "@/store/appStore";
 import { loadCostBasis, recordBuy, getCostBasis, recordSell } from "./costBasis";
+import { onBuy as positionOnBuy, onSell as positionOnSell } from "./positions";
 import { getUltraQuote, deserializeUltraTransaction, executeUltraSwap } from "./jupiterUltra";
 import type { UltraQuote } from "./jupiterUltra";
 import bs58 from "bs58";
@@ -475,17 +476,31 @@ export async function executeSwap(quote: SwapQuote): Promise<SwapResult> {
     return sig;
   });
 
-  // Post-swap: update cost basis
+  const sigStr = typeof signature === "string"
+    ? signature
+    : Buffer.from(signature).toString("base64");
+
+  // Post-swap: update cost basis + emit closed-trade for round-trip sells
   if (isBuy) {
     recordBuy(quote.outputMint, quote.inAmountUi);
+    positionOnBuy({ mint: quote.outputMint, symbol: quote.outputSymbol, ts: Date.now() });
   } else if (isSell) {
     recordSell(quote.inputMint, quote.inAmountUi, preSellBalance);
+    if (proportionalCost > 0) {
+      positionOnSell({
+        mint: quote.inputMint,
+        symbol: quote.inputSymbol,
+        proportionalCost,
+        exitSolAmount: quote.outAmountUi,
+        ts: Date.now(),
+        fullClose: getCostBasis(quote.inputMint) === 0,
+        signature: sigStr,
+      });
+    }
   }
 
   return {
-    signature: typeof signature === "string"
-      ? signature
-      : Buffer.from(signature).toString("base64"),
+    signature: sigStr,
     inputAmount: quote.inAmountUi,
     outputAmount: quote.outAmountUi,
     inputSymbol: quote.inputSymbol,
