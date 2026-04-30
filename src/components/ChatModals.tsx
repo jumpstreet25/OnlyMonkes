@@ -9,6 +9,7 @@ import {
   TextInput,
   ActivityIndicator,
 } from "react-native";
+import type { FlashListRef } from "@shopify/flash-list";
 import { router } from "expo-router";
 import { THEME, FONTS } from "@/lib/constants";
 import { ConfettiView } from "@/components/ConfettiView";
@@ -75,7 +76,7 @@ export interface ChatModalsProps {
   // Scroll FAB
   showScrollFab: boolean;
   unreadWhileScrolled: number;
-  flatListRef: React.RefObject<FlatList | null>;
+  flatListRef: React.RefObject<FlashListRef<ChatMessage> | null>;
   setShowScrollFab: (v: boolean) => void;
   setUnreadWhileScrolled: (v: number) => void;
 

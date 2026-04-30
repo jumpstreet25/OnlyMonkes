@@ -30,10 +30,10 @@ import {
   TextInput,
   Alert,
   Linking,
-  FlatList,
   AppState,
   type AppStateStatus,
 } from "react-native";
+import type { FlashListRef } from "@shopify/flash-list";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { OnboardingChecklist, markOnboardingStep } from "@/components/OnboardingChecklist";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -215,7 +215,7 @@ export default function ChatScreen() {
   const [skrPrice, setSkrPrice] = useState<string | null>(null);
   const [floorPrice, setFloorPrice] = useState<string | null>(null);
   const [pinnedMessages, setPinnedMessages] = useState<PinnedMessage[]>([]);
-  const flatListRef = useRef<FlatList>(null);
+  const flatListRef = useRef<FlashListRef<ChatMessage>>(null);
   const initialMsgIdsRef = useRef<Set<string>>(new Set());
   const isNearBottomRef = useRef(true);
 
