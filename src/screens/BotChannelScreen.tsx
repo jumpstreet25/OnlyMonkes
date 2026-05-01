@@ -98,7 +98,7 @@ interface BotChannelScreenProps {
 
 export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
   const insets = useSafeAreaInsets();
-  const { myInboxId, botChannelIds, mutedBotChannels, toggleBotChannelMute, mutedSports, toggleSportMute, username } = useAppStore();
+  const { myInboxId, botChannelIds, mutedBotChannels, toggleBotChannelMute, mutedSports, toggleSportMute, mutedAlertSources, username } = useAppStore();
   const groupId = botChannelIds[channelId];
   const isMuted = mutedBotChannels[channelId];
   const config = CHANNEL_CONFIG[channelId];
@@ -185,19 +185,38 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
     [messages],
   );
 
-  // Client-side filter: hide alerts for muted sports in the Bets channel
+  // Client-side filter: hide alerts for muted sports in the Bets channel,
+  // AND hide alerts for muted sources (Polymarket / Drift) in either lane.
+  // Source label is appended to alert header line 1 as " · Polymarket" or
+  // " · Drift" (see Monke_Eliza formatter.ts).
   const filteredMessages = useMemo(() => {
-    if (channelId !== "bets" || mutedSports.length === 0 || showAllOverride) return reversedMessages;
+    if (showAllOverride) return reversedMessages;
+    const sportFilterActive = channelId === "bets" && mutedSports.length > 0;
+    const sourceFilterActive = mutedAlertSources.length > 0;
+    if (!sportFilterActive && !sourceFilterActive) return reversedMessages;
     return reversedMessages.filter((msg) => {
       const text = msg.content ?? "";
-      const dashMatch = text.match(/—\s*(.+)/);
-      if (!dashMatch) return true;
-      const sportPart = dashMatch[1].trim().split("\n")[0];
-      const key = SPORT_LABEL_TO_KEY[sportPart] ?? SPORT_LABEL_TO_KEY[sportPart.toUpperCase()];
-      if (!key) return true;
-      return !mutedSports.includes(key);
+      const firstLine = text.split("\n")[0] ?? "";
+
+      if (sourceFilterActive) {
+        const srcMatch = firstLine.match(/·\s*(Polymarket|Drift)\b/i);
+        if (srcMatch) {
+          const src = srcMatch[1].toLowerCase();
+          if (mutedAlertSources.includes(src)) return false;
+        }
+      }
+      if (sportFilterActive) {
+        const dashMatch = firstLine.match(/—\s*(.+)/);
+        if (dashMatch) {
+          // Sport label is the first segment after — and before any · source tag.
+          const sportPart = dashMatch[1].trim().split("·")[0].trim();
+          const key = SPORT_LABEL_TO_KEY[sportPart] ?? SPORT_LABEL_TO_KEY[sportPart.toUpperCase()];
+          if (key && mutedSports.includes(key)) return false;
+        }
+      }
+      return true;
     });
-  }, [reversedMessages, mutedSports, channelId, showAllOverride]);
+  }, [reversedMessages, mutedSports, mutedAlertSources, channelId, showAllOverride]);
 
   useEffect(() => {
     if (groupId) initialize().catch((err) => {
@@ -339,6 +358,30 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
                       toggleSportMute(key);
                       triggerProfileRebroadcast(useAppStore.getState().expoPushToken ?? "").catch(() => {});
                     }}
+                    style={[styles.sportPill, muted && styles.sportPillMuted]}
+                  >
+                    <Text style={[styles.sportPillText, muted && styles.sportPillTextMuted]}>
+                      {label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
+
+          {/* Source filter strip — Predictions + Bets channels. Lets US users
+              mute Polymarket (Jupiter is geo-blocked for them) while keeping
+              Drift (US-friendly) alerts visible. */}
+          {(channelId === "predictions" || channelId === "bets") && (
+            <View style={styles.sportsStrip}>
+              <Text style={styles.sportsLabel}>Source:</Text>
+              {(["polymarket", "drift"] as const).map((src) => {
+                const muted = mutedAlertSources.includes(src);
+                const label = src === "drift" ? "Drift" : "Polymarket";
+                return (
+                  <Pressable
+                    key={src}
+                    onPress={() => useAppStore.getState().toggleAlertSourceMute(src)}
                     style={[styles.sportPill, muted && styles.sportPillMuted]}
                   >
                     <Text style={[styles.sportPillText, muted && styles.sportPillTextMuted]}>
