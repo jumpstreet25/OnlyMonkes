@@ -17,6 +17,29 @@ export interface ClosedTrade {
   reason?: string;
 }
 
+/**
+ * Active AutonoMonke position broadcast by the bot via TRADE_OPENED:
+ * structured DM. Persisted in tradesStore.openTrades and removed when a
+ * matching TRADE_CLOSED: arrives (matched by positionId, fall back to mint).
+ */
+export interface OpenTrade {
+  id: string;            // positionId from the bot
+  source: 'autonomonke';
+  token: string;
+  mint: string;
+  entryPriceUsd: number;
+  entrySolAmount: number;
+  tokenAmount: number;
+  stopPrice: number;
+  stopPct?: number;
+  target1?: number;
+  target2?: number;
+  taComposite?: number;
+  openClawConfidence?: number;
+  txHash?: string;
+  openedAt: number;
+}
+
 interface OpenMeta {
   mint: string;
   symbol: string;

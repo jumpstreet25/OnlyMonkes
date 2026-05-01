@@ -30,13 +30,15 @@ const AK_MUTED_ALERT_SOURCES = 'om_muted_alert_sources';
 const AK_NOTIF_PREFS = 'om_notif_prefs';
 const SK_MWA_TOKEN = 'om_mwa_auth_token';
 
-// Tracks bot channels manually cleared by the user this session. Session-permanent —
-// once cleared, the recompute loop is forbidden from resurrecting the count.
-// Reset to false when a NEW alert arrives via incrementBotChannelCount (so a fresh
-// alert restores normal recompute behavior for that channel).
-const _botChannelCleared: Record<'bets' | 'trades' | 'sales' | 'predictions', boolean> = {
-  bets: false, trades: false, sales: false, predictions: false,
-};
+// Note (2026-05-01): the previous _botChannelCleared session-flag was removed
+// — it was over-aggressive. The flag was set true on user clear and only
+// released on a live-stream incrementBotChannelCount(). Android suspends the
+// XMTP WebSocket in background; if the stream died and a new alert arrived
+// while the user was away, the recompute on foreground would correctly count
+// it but the flag forced the count back to 0, permanently hiding badges
+// until cold launch. Trust lastRead (persisted to AsyncStorage) as the
+// single source of truth — clearBotChannelCount now awaits the setItem so
+// recompute can't race against stale data.
 
 // ── Shared types (re-exported for slice files + consumers) ───────────────────
 
@@ -401,30 +403,25 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   setRemoteGroupId: (remoteGroupId) => set({ remoteGroupId }),
   setBotChannelIds: (botChannelIds) => set({ botChannelIds }),
   setBotChannelCounts: (botChannelCounts) => {
-    // Respect manual clears — once the user taps to clear a channel this session,
-    // the recompute loop is forbidden from resurrecting the count. Cleared by a
-    // fresh increment (real new alert).
-    const filtered = { ...botChannelCounts };
-    for (const k of ['bets', 'trades', 'sales', 'predictions'] as const) {
-      if (_botChannelCleared[k]) filtered[k] = 0;
-    }
-    console.log('[appStore] setBotChannelCounts', { incoming: botChannelCounts, cleared: _botChannelCleared, applied: filtered });
-    set({ botChannelCounts: filtered });
+    // Authoritative recompute (driven by lastRead timestamps in syncMessages).
+    // No session-flag filtering anymore — see comment block above on why the
+    // old _botChannelCleared guard was removed.
+    set({ botChannelCounts });
   },
   clearBotChannelCount: (channel) => {
-    // Mark session-cleared (blocks recompute loop) AND write lastRead to AsyncStorage
-    // directly so even if markChannelRead races, the timestamp is canonical.
-    _botChannelCleared[channel] = true;
-    AsyncStorage.setItem(`msg_last_read_v1_${channel}`, String(Date.now())).catch(() => {});
-    console.log('[appStore] clearBotChannelCount', channel);
+    // Persist lastRead synchronously (await the setItem) so a concurrent
+    // recompute cannot read a stale timestamp and resurrect the badge.
+    // Set local count to 0 in the same microtask so the UI updates instantly.
     set((s) => ({
       botChannelCounts: { ...s.botChannelCounts, [channel]: 0 },
     }));
+    void (async () => {
+      try {
+        await AsyncStorage.setItem(`msg_last_read_v1_${channel}`, String(Date.now()));
+      } catch { /* non-critical — recompute will catch up next cycle */ }
+    })();
   },
   incrementBotChannelCount: (channel) => {
-    // A real new alert — release the session-clear lock so subsequent recomputes work.
-    _botChannelCleared[channel] = false;
-    console.log('[appStore] incrementBotChannelCount', channel);
     set((s) => ({
       botChannelCounts: { ...s.botChannelCounts, [channel]: s.botChannelCounts[channel] + 1 },
     }));

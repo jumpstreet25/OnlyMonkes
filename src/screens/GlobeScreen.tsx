@@ -26,7 +26,7 @@ import {
 import { WebView } from "react-native-webview";
 import { router } from "expo-router";
 // date-fns format removed — event formatting moved to EventRsvpModal
-import { THEME, FONTS } from "@/lib/constants";
+import { THEME, FONTS, BOT_INBOX_IDS } from "@/lib/constants";
 import { useAppStore } from "@/store/appStore";
 import { getCachedProfile, getPersistedLocation, useProfileVersion } from "@/lib/userProfile";
 import { isUserOnline, getLastSeenTimestamp } from "@/lib/presence";
@@ -145,6 +145,27 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
             location: myLocation,
           });
         }
+      }
+
+      // 0.5. Pin the bot(s) at Solana Beach, CA. App-side hardcode (not driven
+      // by PROFILE_UPDATE) so the pin works retroactively for users who never
+      // received the bot's profile broadcast — and so it survives any future
+      // bot redeploys that drop the loc field.
+      const BOT_LOCATION = { lat: 32.9914, lng: -117.2714, label: "Solana Beach, CA" };
+      for (const botInboxId of BOT_INBOX_IDS) {
+        if (seenInboxIds.has(botInboxId)) continue;
+        seenInboxIds.add(botInboxId);
+        const botProfile = getCachedProfile(botInboxId);
+        allMarkers.push({
+          id: `user-${botInboxId}`,
+          lat: BOT_LOCATION.lat,
+          lng: BOT_LOCATION.lng,
+          type: "user",
+          label: botProfile?.username ?? "AI Agent #9385",
+          inboxId: botInboxId,
+          username: botProfile?.username ?? "AI Agent #9385",
+          nftImage: botProfile?.nftImage ?? null,
+        });
       }
 
       // 1. Other user locations from profile cache (deduped by wallet)
