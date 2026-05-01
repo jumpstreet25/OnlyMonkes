@@ -30,6 +30,7 @@ import {
   type Web3MobileWallet,
 } from "@solana-mobile/mobile-wallet-adapter-protocol-web3js";
 import { THEME, FONTS, HELIUS_RPC_URL } from "@/lib/constants";
+import { assertDeviceTrusted } from "@/lib/security";
 
 const connection = new Connection(HELIUS_RPC_URL, "confirmed");
 import { useAppStore } from "@/store/appStore";
@@ -81,6 +82,13 @@ export function BlinkCard({ actionUrl }: BlinkCardProps) {
 
   const handleAction = useCallback(
     async (link: ActionLink) => {
+      try {
+        assertDeviceTrusted("Blink action");
+      } catch (e: any) {
+        setState("failed");
+        setError(e?.message ?? "Device security check failed");
+        return;
+      }
       const wallet = useAppStore.getState().wallet;
       if (!wallet) {
         Alert.alert("Wallet Required", "Connect your wallet first.");

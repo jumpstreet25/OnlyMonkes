@@ -24,6 +24,54 @@ export function getActiveThreats(): string[] {
   return [..._threats];
 }
 
+// Severity buckets — used by the trading-path gate. Hard threats imply the
+// device or app integrity itself can't be trusted to sign transactions.
+// Soft threats are warned about but don't block (e.g. emulator for testing).
+const HARD_THREATS = new Set<string>([
+  'privilegedAccess', // root / jailbreak
+  'hooks',            // Frida / Xposed
+  'appIntegrity',     // APK tampered / repackaged
+  'deviceBinding',    // device fingerprint changed (cloned app)
+  'raspNotConfigured', // self-check failed; can't trust detection
+]);
+
+const SOFT_THREATS = new Set<string>([
+  'simulator',
+  'debug',
+  'unofficialStore',
+  'adbEnabled',
+]);
+
+export type ThreatSeverity = 'hard' | 'soft' | 'info';
+
+export function getThreatSeverity(threat: string): ThreatSeverity {
+  if (HARD_THREATS.has(threat)) return 'hard';
+  if (SOFT_THREATS.has(threat)) return 'soft';
+  return 'info';
+}
+
+export function getBlockingThreats(): string[] {
+  return [..._threats].filter((t) => HARD_THREATS.has(t));
+}
+
+/**
+ * Throws if any hard threat is active. Call at the entry point of every
+ * surface that signs a Solana transaction (swap, tip, marketplace bid/accept).
+ * Soft threats (emulator, debug, sideload) do not block — they're surfaced in
+ * Settings instead.
+ *
+ * The thrown error message is intentionally surfaced to the user (toast/Alert
+ * caller side) so they understand why the action was refused.
+ */
+export function assertDeviceTrusted(action: string): void {
+  const blocking = getBlockingThreats();
+  if (blocking.length === 0) return;
+  throw new Error(
+    `${action} blocked: device security check failed (${blocking.join(', ')}). ` +
+    `Resolve and restart the app to continue.`
+  );
+}
+
 // ── Config ───────────────────────────────────────────────────────────────────
 
 // SHA-256 of `android/app/onlymonkes-release.keystore` (created 2026-04-19).

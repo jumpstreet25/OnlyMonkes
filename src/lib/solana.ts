@@ -39,6 +39,7 @@ import {
 } from "@solana-mobile/mobile-wallet-adapter-protocol-web3js";
 import { HELIUS_RPC_URL, SKR_MINT, DEV_WALLET, JUP_API_KEY } from "./constants";
 import { useAppStore } from "@/store/appStore";
+import { assertDeviceTrusted } from "./security";
 import bs58 from "bs58";
 
 const APP_IDENTITY = {
@@ -97,6 +98,7 @@ export async function sendShopPayment(
   usdCost: number,
   solPrice: number,
 ): Promise<string> {
+  assertDeviceTrusted("Purchase");
   if (!Number.isFinite(usdCost) || usdCost <= 0 || usdCost > 10) {
     throw new Error("Invalid purchase amount");
   }
@@ -153,6 +155,7 @@ export async function sendSkrTip(
   recipientWallet: string,
   amountUi: number
 ): Promise<string> {
+  assertDeviceTrusted("Tip");
   if (!Number.isFinite(amountUi) || amountUi <= 0 || amountUi > 10_000) {
     throw new Error("Invalid tip amount");
   }
@@ -238,6 +241,7 @@ export async function sendSkrTip(
  * Send a direct tip to the developer wallet (100% to dev, no split).
  */
 export async function sendDevTip(amountUi: number): Promise<string> {
+  assertDeviceTrusted("Tip");
   if (!Number.isFinite(amountUi) || amountUi <= 0 || amountUi > 10_000) {
     throw new Error("Invalid tip amount");
   }
@@ -338,6 +342,7 @@ export async function sendSolTipAsSkr(
   solAmount: number,
   slippageBps = 100
 ): Promise<{ swapSig: string; tipSig: string }> {
+  assertDeviceTrusted("Tip");
   const connection = new Connection(HELIUS_RPC_URL, "confirmed");
   const mintPubkey = new PublicKey(SKR_MINT);
   const recipientPubkey = new PublicKey(recipientWallet);

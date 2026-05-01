@@ -32,6 +32,7 @@ import {
 import { HELIUS_RPC_URL } from "./constants";
 import { useAppStore } from "@/store/appStore";
 import { fetchWithTimeout } from "./fetchWithTimeout";
+import { assertDeviceTrusted } from "./security";
 
 const APP_IDENTITY = {
   name: "OnlyMonkes",
@@ -58,6 +59,7 @@ export interface TipLinkResult {
  * The URL contains only the token — no secret keys.
  */
 export async function createTipLink(amountSol: number): Promise<TipLinkResult> {
+  assertDeviceTrusted("TipLink");
   if (amountSol <= 0 || amountSol > 10) {
     throw new Error("Tip amount must be between 0.001 and 10 SOL");
   }
