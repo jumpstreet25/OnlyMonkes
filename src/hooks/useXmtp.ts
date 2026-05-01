@@ -491,7 +491,9 @@ export function useXmtp() {
 
               // Notify admin only about users we have never notified for before.
               // Persist notifiedSet immediately so a crash mid-loop still suppresses
-              // the duplicate alert on next initialize().
+              // the duplicate alert on next initialize(). One notification per
+              // user, personalized with their chosen @username (cached profile
+              // fallback when the join request payload doesn't include it).
               const toNotify = newRequests.filter((r) => !notifiedSet.has(r.inboxId));
               if (toNotify.length > 0) {
                 for (const r of toNotify) notifiedSet.add(r.inboxId);
@@ -499,13 +501,14 @@ export function useXmtp() {
                   AK_NOTIFIED_IDS,
                   JSON.stringify([...notifiedSet])
                 );
-                const names = toNotify
-                  .map((r) => r.username || r.inboxId.slice(0, 8))
-                  .join(", ");
-                await showLocalNotification(
-                  `👥 ${toNotify.length} new Monke${toNotify.length > 1 ? "s" : ""} joined!`,
-                  names
-                );
+                for (const r of toNotify) {
+                  const cached = getCachedProfile(r.inboxId);
+                  const handle = r.username || cached?.username;
+                  const title = handle
+                    ? `🍌 @${handle} joined chat`
+                    : `🍌 New Monke joined chat`;
+                  await showLocalNotification(title, "Tap to open OnlyMonkes");
+                }
               }
 
               // Auto-approve each new request.
