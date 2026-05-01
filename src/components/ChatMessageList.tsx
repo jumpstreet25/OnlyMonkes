@@ -57,6 +57,26 @@ export interface ChatMessageListProps {
 
 const SCROLL_THRESHOLD = 270; // ~3 message heights
 
+/**
+ * Bucket each message into a coarse content type so FlashList only recycles
+ * cells of the same shape. Without this, the recycler reuses a tall video
+ * cell for a one-line text message (or vice-versa) and items can render at
+ * the wrong position or get skipped — which is what was making other users'
+ * messages "go missing" on FlashList specifically.
+ */
+function getMessageType(item: ChatMessage): string {
+  const c = item.content;
+  if (c.startsWith("LIVE_PILL:")) return "pill";
+  if (c.startsWith("VIDEO:")) return "video";
+  if (c.startsWith("IMAGE:")) return "image";
+  if (c.startsWith("GIF:")) return "gif";
+  if (c.startsWith("STICKER:")) return "sticker";
+  if (c.startsWith("ATTACHMENT:")) return "attachment";
+  if (c.startsWith("TIPLINK:")) return "tiplink";
+  if (c.startsWith("NFT_LIST:")) return "nftlist";
+  return "text";
+}
+
 const ChatMessageListInner = React.forwardRef<FlashListRef<ChatMessage>, ChatMessageListProps>(function ChatMessageListInner(props, _ref) {
   const {
     messages,
@@ -137,13 +157,13 @@ const ChatMessageListInner = React.forwardRef<FlashListRef<ChatMessage>, ChatMes
   );
 
   const keyExtractor = useCallback((item: ChatMessage) => item.id, []);
+  const getItemType = useCallback((item: ChatMessage) => getMessageType(item), []);
 
   const handleScroll = useCallback(
     (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
-      const distanceFromBottom =
-        contentSize.height - (contentOffset.y + layoutMeasurement.height);
-      const nearBottom = distanceFromBottom <= SCROLL_THRESHOLD;
+      // Inverted: contentOffset.y === 0 means parked at the visual bottom
+      // (newest messages). Distance from bottom is just contentOffset.y.
+      const nearBottom = e.nativeEvent.contentOffset.y <= SCROLL_THRESHOLD;
       isNearBottomRef.current = nearBottom;
       setShowScrollFab(!nearBottom);
       if (nearBottom) setUnreadWhileScrolled(0);
@@ -157,19 +177,14 @@ const ChatMessageListInner = React.forwardRef<FlashListRef<ChatMessage>, ChatMes
       data={messages}
       renderItem={renderMessage as any}
       keyExtractor={keyExtractor}
+      getItemType={getItemType as any}
       contentContainerStyle={styles.listContent}
-      // Render at bottom on first paint, anchor scroll on older-message
-      // prepends, and auto-follow new messages only when parked within 20% of
-      // the bottom — replaces the inverted hack that was causing flicker.
-      maintainVisibleContentPosition={{
-        startRenderingFromBottom: true,
-        autoscrollToBottomThreshold: 0.2,
-      }}
+      inverted
       refreshing={refreshingChat}
       onRefresh={handleRefreshChat}
-      onStartReached={loadOlderMessages}
-      onStartReachedThreshold={0.3}
-      ListHeaderComponent={isLoadingHistory ? (
+      onEndReached={loadOlderMessages}
+      onEndReachedThreshold={0.3}
+      ListFooterComponent={isLoadingHistory ? (
         <View style={{ paddingVertical: 16, alignItems: 'center' }}>
           <ActivityIndicator color={THEME.accent} size="small" />
           <Text style={{ fontFamily: FONTS.mono, fontSize: 10, color: THEME.textFaint, marginTop: 4 }}>Loading older messages…</Text>

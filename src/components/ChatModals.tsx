@@ -226,7 +226,7 @@ export function ChatModals(props: ChatModalsProps) {
         visible={showScrollFab}
         unreadCount={unreadWhileScrolled}
         onPress={() => {
-          flatListRef.current?.scrollToEnd({ animated: true });
+          flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
           setShowScrollFab(false);
           setUnreadWhileScrolled(0);
         }}
