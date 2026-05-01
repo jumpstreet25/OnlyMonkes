@@ -33,6 +33,7 @@ import {
 } from "@solana-mobile/mobile-wallet-adapter-protocol-web3js";
 import { HELIUS_RPC_URL, DEV_WALLET } from "@/lib/constants";
 import { useAppStore } from "@/store/appStore";
+import { assertDeviceTrusted } from "@/lib/security";
 import type { ShopItem } from "@/lib/bananaShop";
 
 // ─── Config (from env) ──────────────────────────────────────────────────────
@@ -353,6 +354,7 @@ export async function mintPurchaseReceipt(
   item: ShopItem,
   buyerWallet: string,
 ): Promise<ReceiptMintResult> {
+  assertDeviceTrusted("Receipt mint");
   // Validate config
   if (!CNFT_MERKLE_TREE || !CNFT_COLLECTION_MINT) {
     return {

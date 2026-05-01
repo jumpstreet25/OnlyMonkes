@@ -45,6 +45,7 @@ import { loadCostBasis, recordBuy, getCostBasis, recordSell } from "./costBasis"
 import { onBuy as positionOnBuy, onSell as positionOnSell } from "./positions";
 import { getUltraQuote, deserializeUltraTransaction, executeUltraSwap } from "./jupiterUltra";
 import type { UltraQuote } from "./jupiterUltra";
+import { assertDeviceTrusted } from "./security";
 import bs58 from "bs58";
 
 const JUP_BUILD_URL = "https://api.jup.ag/swap/v2/build";
@@ -332,6 +333,7 @@ export interface SwapResult {
  * On buys, cost basis is recorded for future profit calculation.
  */
 export async function executeSwap(quote: SwapQuote): Promise<SwapResult> {
+  assertDeviceTrusted("Swap");
   if (!Number.isFinite(quote.inAmountUi) || quote.inAmountUi <= 0) {
     throw new Error("Invalid swap input amount");
   }

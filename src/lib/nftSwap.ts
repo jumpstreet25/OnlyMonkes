@@ -41,6 +41,7 @@ import {
 } from "@solana-mobile/mobile-wallet-adapter-protocol-web3js";
 import { HELIUS_RPC_URL, HELIUS_API_KEY, DEV_WALLET, NFT_SALE_FEE_PCT } from "./constants";
 import { useAppStore } from "@/store/appStore";
+import { assertDeviceTrusted } from "./security";
 
 const APP_IDENTITY = {
   name: "OnlyMonkes",
@@ -212,6 +213,7 @@ export async function buildSwapTransaction(params: SwapParams): Promise<{
  * will counter-sign the SOL transfer and submit.
  */
 export async function sellerSignSwap(params: SwapParams): Promise<string> {
+  assertDeviceTrusted("NFT sale");
   const { transaction } = await buildSwapTransaction(params);
 
   const serialized = await transact(async (mobileWallet: Web3MobileWallet) => {
@@ -370,6 +372,7 @@ export async function buyerCompleteSwap(
   expectedSolPrice: number,
   sellerWallet: string,
 ): Promise<string> {
+  assertDeviceTrusted("NFT purchase");
   // Validate before signing
   const buyerWallet = useAppStore.getState().wallet?.address;
   if (!buyerWallet) throw new Error("Wallet not connected");
