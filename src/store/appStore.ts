@@ -265,7 +265,12 @@ const initialState: AppState = {
   liveRoomNotificationsEnabled: true,
   mutedBotChannels: { bets: false, trades: false, sales: false, predictions: false },
   mutedSports: [],
-  mutedAlertSources: [],
+  // Drift Prediction Markets UI (bet.drift.trade) is currently under
+  // construction. Alerts still fire from the on-chain program but the link
+  // would land users on a stay-tuned page, so we mute by default. Users can
+  // unmute via the Source: Drift pill on Predictions/Bets channels. Bot's
+  // driftUptimeMonitor will announce in-channel when the UI returns.
+  mutedAlertSources: ['drift'],
   isGroupMember: false,
   isGroupAdmin: false,
   joinRequests: [],

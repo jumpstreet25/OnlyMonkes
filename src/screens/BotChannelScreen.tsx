@@ -371,26 +371,34 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
 
           {/* Source filter strip — Predictions + Bets channels. Lets US users
               mute Polymarket (Jupiter is geo-blocked for them) while keeping
-              Drift (US-friendly) alerts visible. */}
+              Drift (US-friendly) alerts visible. Drift is muted by default
+              while bet.drift.trade is under construction. */}
           {(channelId === "predictions" || channelId === "bets") && (
-            <View style={styles.sportsStrip}>
-              <Text style={styles.sportsLabel}>Source:</Text>
-              {(["polymarket", "drift"] as const).map((src) => {
-                const muted = mutedAlertSources.includes(src);
-                const label = src === "drift" ? "Drift" : "Polymarket";
-                return (
-                  <Pressable
-                    key={src}
-                    onPress={() => useAppStore.getState().toggleAlertSourceMute(src)}
-                    style={[styles.sportPill, muted && styles.sportPillMuted]}
-                  >
-                    <Text style={[styles.sportPillText, muted && styles.sportPillTextMuted]}>
-                      {label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
+            <>
+              <View style={styles.sportsStrip}>
+                <Text style={styles.sportsLabel}>Source:</Text>
+                {(["polymarket", "drift"] as const).map((src) => {
+                  const muted = mutedAlertSources.includes(src);
+                  const label = src === "drift" ? "Drift" : "Polymarket";
+                  return (
+                    <Pressable
+                      key={src}
+                      onPress={() => useAppStore.getState().toggleAlertSourceMute(src)}
+                      style={[styles.sportPill, muted && styles.sportPillMuted]}
+                    >
+                      <Text style={[styles.sportPillText, muted && styles.sportPillTextMuted]}>
+                        {label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              {mutedAlertSources.includes("drift") && (
+                <Text style={styles.sourceNote}>
+                  Drift Predictions UI is under construction — bot will announce here when it's back.
+                </Text>
+              )}
+            </>
           )}
 
           {/* Loading history banner */}
@@ -623,6 +631,18 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: THEME.textFaint,
     marginRight: 2,
+  },
+  sourceNote: {
+    fontFamily: FONTS.body,
+    fontSize: 10,
+    color: THEME.textFaint,
+    fontStyle: "italic",
+    paddingHorizontal: 12,
+    paddingTop: 0,
+    paddingBottom: 8,
+    backgroundColor: THEME.bg,
+    borderBottomWidth: 1,
+    borderBottomColor: THEME.border,
   },
   sportPill: {
     paddingHorizontal: 8,
