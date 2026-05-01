@@ -26,6 +26,7 @@ import type { NftSwapMessage } from '../lib/marketplace';
 
 const AK_MUTED_SPORTS = 'om_muted_sports';
 const AK_MUTED_CHANNELS = 'om_muted_channels';
+const AK_MUTED_ALERT_SOURCES = 'om_muted_alert_sources';
 const AK_NOTIF_PREFS = 'om_notif_prefs';
 const SK_MWA_TOKEN = 'om_mwa_auth_token';
 
@@ -138,6 +139,8 @@ interface AppSettingsState {
   liveRoomNotificationsEnabled: boolean;
   mutedBotChannels: { bets: boolean; trades: boolean; sales: boolean; predictions: boolean };
   mutedSports: string[];
+  /** Alert sources hidden from MonkeBets/MonkePredictions. Values: 'polymarket' | 'drift'. */
+  mutedAlertSources: string[];
   isGroupMember: boolean;
   isGroupAdmin: boolean;
   joinRequests: JoinRequest[];
@@ -160,6 +163,7 @@ interface AppSettingsActions {
   setLiveRoomNotificationsEnabled: (enabled: boolean) => void;
   toggleBotChannelMute: (channel: 'bets' | 'trades' | 'sales' | 'predictions') => void;
   toggleSportMute: (sport: string) => void;
+  toggleAlertSourceMute: (source: string) => void;
   setIsGroupMember: (isMember: boolean) => void;
   setIsGroupAdmin: (isAdmin: boolean) => void;
   setJoinRequests: (requests: JoinRequest[]) => void;
@@ -261,6 +265,7 @@ const initialState: AppState = {
   liveRoomNotificationsEnabled: true,
   mutedBotChannels: { bets: false, trades: false, sales: false, predictions: false },
   mutedSports: [],
+  mutedAlertSources: [],
   isGroupMember: false,
   isGroupAdmin: false,
   joinRequests: [],
@@ -366,6 +371,16 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
         : [...s.mutedSports, sport];
       AsyncStorage.setItem(AK_MUTED_SPORTS, JSON.stringify(next)).catch(() => {});
       return { mutedSports: next };
+    });
+  },
+  toggleAlertSourceMute: (source) => {
+    set((s) => {
+      const key = source.toLowerCase();
+      const next = s.mutedAlertSources.includes(key)
+        ? s.mutedAlertSources.filter((x) => x !== key)
+        : [...s.mutedAlertSources, key];
+      AsyncStorage.setItem(AK_MUTED_ALERT_SOURCES, JSON.stringify(next)).catch(() => {});
+      return { mutedAlertSources: next };
     });
   },
   setIsGroupMember: (isGroupMember) => set({ isGroupMember }),
@@ -493,10 +508,11 @@ function _persistNotifPrefs() {
  */
 export async function loadPersistedPrefs(): Promise<void> {
   try {
-    const [sportsRaw, channelsRaw, notifRaw] = await Promise.all([
+    const [sportsRaw, channelsRaw, notifRaw, sourcesRaw] = await Promise.all([
       AsyncStorage.getItem(AK_MUTED_SPORTS),
       AsyncStorage.getItem(AK_MUTED_CHANNELS),
       AsyncStorage.getItem(AK_NOTIF_PREFS),
+      AsyncStorage.getItem(AK_MUTED_ALERT_SOURCES),
     ]);
     const state: Record<string, unknown> = {};
     if (sportsRaw) {
@@ -506,6 +522,10 @@ export async function loadPersistedPrefs(): Promise<void> {
     if (channelsRaw) {
       const parsed = JSON.parse(channelsRaw);
       if (parsed && typeof parsed === 'object') state.mutedBotChannels = parsed;
+    }
+    if (sourcesRaw) {
+      const parsed = JSON.parse(sourcesRaw);
+      if (Array.isArray(parsed)) state.mutedAlertSources = parsed;
     }
     if (notifRaw) {
       const parsed = JSON.parse(notifRaw);
