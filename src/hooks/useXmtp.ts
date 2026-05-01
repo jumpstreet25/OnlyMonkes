@@ -190,6 +190,11 @@ async function _doProfileRebroadcast(pushToken: string): Promise<void> {
 const AK_JOIN_REQUEST_SENT = "xmtp_join_request_sent";
 const AK_IS_ADMIN         = "xmtp_is_group_admin";
 const AK_APPROVED_IDS     = "xmtp_approved_inbox_ids";
+// Inbox IDs we have already shown a "joined" notification for. Tracked
+// separately from approvedSet because approval can fail repeatedly (NFT verify,
+// already-a-member, network) — without this dedup the same user re-notifies on
+// every initialize().
+const AK_NOTIFIED_IDS     = "xmtp_notified_inbox_ids";
 
 /**
  * Validate that an nftImage URL is from a legitimate source (Saga Monkes).
@@ -474,20 +479,34 @@ export function useXmtp() {
             const approvedSet = new Set<string>(
               approvedRaw ? JSON.parse(approvedRaw) : []
             );
+            const notifiedRaw = await AsyncStorage.getItem(AK_NOTIFIED_IDS);
+            const notifiedSet = new Set<string>(
+              notifiedRaw ? JSON.parse(notifiedRaw) : []
+            );
             const newRequests = requests.filter((r) => !approvedSet.has(r.inboxId));
 
             if (newRequests.length > 0) {
               // Update badge so admin sees how many are waiting.
               setJoinRequests(newRequests);
 
-              // Notify admin of new arrivals.
-              const names = newRequests
-                .map((r) => r.username || r.inboxId.slice(0, 8))
-                .join(", ");
-              await showLocalNotification(
-                `👥 ${newRequests.length} new Monke${newRequests.length > 1 ? "s" : ""} joined!`,
-                names
-              );
+              // Notify admin only about users we have never notified for before.
+              // Persist notifiedSet immediately so a crash mid-loop still suppresses
+              // the duplicate alert on next initialize().
+              const toNotify = newRequests.filter((r) => !notifiedSet.has(r.inboxId));
+              if (toNotify.length > 0) {
+                for (const r of toNotify) notifiedSet.add(r.inboxId);
+                await AsyncStorage.setItem(
+                  AK_NOTIFIED_IDS,
+                  JSON.stringify([...notifiedSet])
+                );
+                const names = toNotify
+                  .map((r) => r.username || r.inboxId.slice(0, 8))
+                  .join(", ");
+                await showLocalNotification(
+                  `👥 ${toNotify.length} new Monke${toNotify.length > 1 ? "s" : ""} joined!`,
+                  names
+                );
+              }
 
               // Auto-approve each new request.
               // NFT holders are admitted immediately; others are added normally.
