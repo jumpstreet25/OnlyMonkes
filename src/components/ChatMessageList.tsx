@@ -4,10 +4,11 @@ import {
   Text,
   StyleSheet,
   ActivityIndicator,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
 } from "react-native";
 import { FlashList, type FlashListRef } from "@shopify/flash-list";
 import { Swipeable } from "react-native-gesture-handler";
-import Animated, { FadeInDown } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import { THEME, FONTS } from "@/lib/constants";
 import { MessageBubble } from "@/components/MessageBubble";
@@ -25,7 +26,6 @@ function SwipeReplyAction() {
 
 export interface ChatMessageListProps {
   messages: ChatMessage[];
-  reactionVersion: number;
   myAddress: string;
   isGroupAdmin: boolean;
   isLoadingHistory: boolean;
@@ -60,7 +60,6 @@ const SCROLL_THRESHOLD = 270; // ~3 message heights
 const ChatMessageListInner = React.forwardRef<FlashListRef<ChatMessage>, ChatMessageListProps>(function ChatMessageListInner(props, _ref) {
   const {
     messages,
-    reactionVersion,
     myAddress,
     isGroupAdmin,
     isLoadingHistory,
@@ -90,7 +89,8 @@ const ChatMessageListInner = React.forwardRef<FlashListRef<ChatMessage>, ChatMes
 
   const renderMessage = useCallback(
     ({ item }: { item: ChatMessage }) => {
-      const isNew = !initialMsgIdsRef.current.has(item.id);
+      // Mark item as seen on first render so future loads don't re-flag it.
+      if (!initialMsgIdsRef.current.has(item.id)) initialMsgIdsRef.current.add(item.id);
       return (
         <Swipeable
           ref={(ref) => {
@@ -138,39 +138,44 @@ const ChatMessageListInner = React.forwardRef<FlashListRef<ChatMessage>, ChatMes
 
   const keyExtractor = useCallback((item: ChatMessage) => item.id, []);
 
-  const handleContentSizeChange = useCallback(() => {
-    if (isNearBottomRef.current) {
-      flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
-    }
-  }, [flatListRef, isNearBottomRef]);
+  const handleScroll = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+      const distanceFromBottom =
+        contentSize.height - (contentOffset.y + layoutMeasurement.height);
+      const nearBottom = distanceFromBottom <= SCROLL_THRESHOLD;
+      isNearBottomRef.current = nearBottom;
+      setShowScrollFab(!nearBottom);
+      if (nearBottom) setUnreadWhileScrolled(0);
+    },
+    [isNearBottomRef, setShowScrollFab, setUnreadWhileScrolled]
+  );
 
   return (
     <FlashList
       ref={flatListRef as any}
       data={messages}
-      extraData={reactionVersion}
       renderItem={renderMessage as any}
       keyExtractor={keyExtractor}
       contentContainerStyle={styles.listContent}
-      inverted
-      onContentSizeChange={handleContentSizeChange}
+      // Render at bottom on first paint, anchor scroll on older-message
+      // prepends, and auto-follow new messages only when parked within 20% of
+      // the bottom — replaces the inverted hack that was causing flicker.
+      maintainVisibleContentPosition={{
+        startRenderingFromBottom: true,
+        autoscrollToBottomThreshold: 0.2,
+      }}
       refreshing={refreshingChat}
       onRefresh={handleRefreshChat}
-      onEndReached={loadOlderMessages}
-      onEndReachedThreshold={0.3}
-      ListFooterComponent={isLoadingHistory ? (
+      onStartReached={loadOlderMessages}
+      onStartReachedThreshold={0.3}
+      ListHeaderComponent={isLoadingHistory ? (
         <View style={{ paddingVertical: 16, alignItems: 'center' }}>
           <ActivityIndicator color={THEME.accent} size="small" />
           <Text style={{ fontFamily: FONTS.mono, fontSize: 10, color: THEME.textFaint, marginTop: 4 }}>Loading older messages…</Text>
         </View>
       ) : null}
-      onScroll={({ nativeEvent }: any) => {
-        // Inverted list: offset 0 = newest messages (bottom of chat)
-        const nearBottom = nativeEvent.contentOffset.y <= SCROLL_THRESHOLD;
-        isNearBottomRef.current = nearBottom;
-        setShowScrollFab(!nearBottom);
-        if (nearBottom) setUnreadWhileScrolled(0);
-      }}
+      onScroll={handleScroll}
       scrollEventThrottle={200}
     />
   );

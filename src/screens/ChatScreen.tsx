@@ -158,10 +158,10 @@ export default function ChatScreen() {
   const avatarRoomToken    = useAppStore(s => s.avatarRoomToken);
   const setAvatarRoomToken = useAppStore(s => s.setAvatarRoomToken);
 
-  const messagesAsc      = useChatStore(s => s.messages);
-  const reactionVersion  = useChatStore(s => s._reactionVersion);
-  // inverted FlashList expects newest-first; messagesAsc is oldest-first
-  const messages         = useMemo(() => messagesAsc.slice().reverse(), [messagesAsc]);
+  // Messages are stored oldest-first; FlashList renders in natural order
+  // (newest at the bottom of the visible chat). Avoids the inverted-list
+  // flicker class entirely.
+  const messages         = useChatStore(s => s.messages);
   const replyingTo       = useChatStore(s => s.replyingTo);
   const isLoadingHistory = useChatStore(s => s.isLoadingHistory);
   const setReplyingTo    = useChatStore(s => s.setReplyingTo);
@@ -626,7 +626,7 @@ export default function ChatScreen() {
     useChatStore.getState().addMessage(optimistic);
     setReplyingTo(null);
 
-    setTimeout(() => flatListRef.current?.scrollToOffset({ offset: 0, animated: true }), 50);
+    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 50);
 
     try {
       if (currentReplyingTo) {
@@ -688,7 +688,7 @@ export default function ChatScreen() {
       status: "sending",
     };
     useChatStore.getState().addMessage(optimistic);
-    setTimeout(() => flatListRef.current?.scrollToOffset({ offset: 0, animated: true }), 50);
+    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 50);
     try {
       await send(content);
       useChatStore.getState().updateMessageStatus(optimistic.id, "sent");
@@ -733,7 +733,7 @@ export default function ChatScreen() {
         status: "sending",
       };
       useChatStore.getState().addMessage(optimistic);
-      setTimeout(() => flatListRef.current?.scrollToOffset({ offset: 0, animated: true }), 50);
+      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 50);
       try {
         await send(content);
         useChatStore.getState().updateMessageStatus(optimistic.id, "sent");
@@ -787,7 +787,7 @@ export default function ChatScreen() {
       status: 'sending',
     };
     useChatStore.getState().addMessage(optimistic);
-    setTimeout(() => flatListRef.current?.scrollToOffset({ offset: 0, animated: true }), 50);
+    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 50);
     try {
       await send(content);
       useChatStore.getState().updateMessageStatus(optimistic.id, 'sent');
@@ -1240,7 +1240,6 @@ export default function ChatScreen() {
         {isGroupMember && (
           <ChatMessageList
             messages={messages}
-            reactionVersion={reactionVersion}
             myAddress={myAddress}
             isGroupAdmin={isGroupAdmin}
             isLoadingHistory={isLoadingHistory}
