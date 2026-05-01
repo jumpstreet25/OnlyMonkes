@@ -103,6 +103,7 @@ function getSlashSuggestions(text: string, isDmWithBot?: boolean) {
 // ── Bot channel button with badge ─────────────────────────────────────────────
 function ChannelButton({ channelId, image }: { channelId: 'bets' | 'trades' | 'sales' | 'predictions'; image: any }) {
   const count = useAppStore((s) => s.botChannelCounts[channelId]);
+  const muted = useAppStore((s) => s.mutedBotChannels[channelId]);
   const clearCount = useAppStore((s) => s.clearBotChannelCount);
   const shopStyles = useAppStore(s => s.shopStyles);
   const nftDominantColor = useAppStore(s => s.nftDominantColor);
@@ -126,7 +127,10 @@ function ChannelButton({ channelId, image }: { channelId: 'bets' | 'trades' | 's
       style={({ pressed }) => [styles.toolbarBtn, styles.toolbarChannel, pressed && { opacity: 0.7 }]}
     >
       <Image source={image} style={styles.toolbarChannelImg} />
-      {count > 0 && (
+      {/* Muted channels never show a badge — the user explicitly opted out of
+          alerts for this channel; surfacing a count would re-introduce the
+          notification noise they muted to escape. */}
+      {!muted && count > 0 && (
         <View style={styles.badge}>
           <Text style={[styles.badgeText, pfpTint ? { color: pfpTint } : null]}>{count > 99 ? '99+' : count}</Text>
         </View>

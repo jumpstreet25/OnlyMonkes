@@ -369,6 +369,7 @@ function decodeStringMessage(raw: any, rawContent: string, myInboxId: string): C
   if (rawContent.startsWith("NFT_COMPLETE:")) return null;
   if (rawContent.startsWith("AUTOMONKE_STATUS:")) return null;
   if (rawContent.startsWith("TRADE_CLOSED:")) return null;
+  if (rawContent.startsWith("TRADE_OPENED:")) return null;
   if (rawContent.startsWith("RSVP:")) return null;
   if (rawContent.startsWith("READ:")) return null;
   if (rawContent.startsWith("BANANA_GRANT:")) return null;
@@ -630,6 +631,24 @@ export interface ParsedProfileUpdate {
   pfpBindings?: Record<string, string[]>;
 }
 
+export interface ParsedTradeOpened {
+  source: 'autonomonke';
+  positionId: string;
+  token: string;
+  mint: string;
+  entryPriceUsd: number;
+  entrySolAmount: number;
+  tokenAmount: number;
+  stopPrice: number;
+  stopPct?: number;
+  target1?: number;
+  target2?: number;
+  taComposite?: number;
+  openClawConfidence?: number;
+  txHash?: string;
+  ts: number;
+}
+
 export interface ParsedTradeClosed {
   source: 'manual' | 'autonomonke';
   token: string;
@@ -683,6 +702,55 @@ export function parseTradeClosed(raw: string): ParsedTradeClosed | null {
     ts,
     reason: strOrNull(data.reason) ?? undefined,
     signature: strOrNull(data.signature) ?? undefined,
+  };
+}
+
+/**
+ * Parse and validate a TRADE_OPENED: structured DM. Mirrors parseTradeClosed —
+ * signed-style (sender must be in BOT_INBOX_IDS at the call site).
+ */
+export function parseTradeOpened(raw: string): ParsedTradeOpened | null {
+  if (!raw.startsWith("TRADE_OPENED:")) return null;
+  const jsonStr = raw.slice("TRADE_OPENED:".length);
+  if (jsonStr.length > 4_000) return null;
+
+  let data: any;
+  try { data = JSON.parse(jsonStr); } catch { return null; }
+  if (!data || typeof data !== 'object') return null;
+
+  const numOrNull = (v: unknown): number | null =>
+    typeof v === 'number' && Number.isFinite(v) ? v : null;
+  const strOrNull = (v: unknown): string | null =>
+    typeof v === 'string' && v.length > 0 && v.length < 200 ? v : null;
+
+  const positionId = strOrNull(data.positionId);
+  const token = strOrNull(data.token);
+  const mint = strOrNull(data.mint);
+  const entryPriceUsd = numOrNull(data.entryPriceUsd);
+  const entrySolAmount = numOrNull(data.entrySolAmount);
+  const tokenAmount = numOrNull(data.tokenAmount);
+  const stopPrice = numOrNull(data.stopPrice);
+  const ts = numOrNull(data.ts);
+  if (!positionId || !token || !mint || entryPriceUsd === null
+      || entrySolAmount === null || tokenAmount === null
+      || stopPrice === null || ts === null) return null;
+
+  return {
+    source: 'autonomonke',
+    positionId: positionId.slice(0, 80),
+    token: token.slice(0, 32),
+    mint: mint.slice(0, 80),
+    entryPriceUsd,
+    entrySolAmount,
+    tokenAmount,
+    stopPrice,
+    stopPct: numOrNull(data.stopPct) ?? undefined,
+    target1: numOrNull(data.target1) ?? undefined,
+    target2: numOrNull(data.target2) ?? undefined,
+    taComposite: numOrNull(data.taComposite) ?? undefined,
+    openClawConfidence: numOrNull(data.openClawConfidence) ?? undefined,
+    txHash: strOrNull(data.txHash) ?? undefined,
+    ts,
   };
 }
 

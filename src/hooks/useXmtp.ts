@@ -1594,6 +1594,35 @@ export function useXmtp() {
                 return;
               }
 
+              // TRADE_OPENED: AutonoMonke just opened a position with the user's
+              // hot wallet. Spoof guard same as TRADE_CLOSED.
+              if (content.startsWith('TRADE_OPENED:')) {
+                const { BOT_INBOX_IDS } = await import('@/lib/constants');
+                if (!BOT_INBOX_IDS.includes(senderInboxId)) return;
+                const { parseTradeOpened } = await import('@/lib/xmtp');
+                const parsed = parseTradeOpened(content);
+                if (!parsed) return;
+                const { useTradesStore } = await import('@/store/tradesStore');
+                useTradesStore.getState().addOpenTrade({
+                  id: parsed.positionId,
+                  source: parsed.source,
+                  token: parsed.token,
+                  mint: parsed.mint,
+                  entryPriceUsd: parsed.entryPriceUsd,
+                  entrySolAmount: parsed.entrySolAmount,
+                  tokenAmount: parsed.tokenAmount,
+                  stopPrice: parsed.stopPrice,
+                  stopPct: parsed.stopPct,
+                  target1: parsed.target1,
+                  target2: parsed.target2,
+                  taComposite: parsed.taComposite,
+                  openClawConfidence: parsed.openClawConfidence,
+                  txHash: parsed.txHash,
+                  openedAt: parsed.ts,
+                });
+                return;
+              }
+
               // Skip protocol messages
               if (content.startsWith('TYPING:') || content.startsWith('PROFILE_UPDATE:') || content.startsWith('READ:') || content.startsWith('GIFT_ITEM:')) return;
               useAppStore.getState().incrementCommunityBadge('dms');
