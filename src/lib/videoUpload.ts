@@ -2,6 +2,7 @@ import * as VideoThumbnails from 'expo-video-thumbnails';
 import * as FileSystem from 'expo-file-system';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { CLOUDINARY_CLOUD_NAME, CLOUDINARY_UPLOAD_PRESET } from '@/lib/constants';
+import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 
 const CLOUD_NAME = CLOUDINARY_CLOUD_NAME;
 const UPLOAD_PRESET = CLOUDINARY_UPLOAD_PRESET;
@@ -46,10 +47,10 @@ export async function uploadVideo(videoUri: string): Promise<{ videoUrl: string;
   const vForm = new FormData();
   vForm.append('file', { uri: videoUri, type: 'video/mp4', name: 'video.mp4' } as any);
   vForm.append('upload_preset', UPLOAD_PRESET);
-  const vRes = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/video/upload`, {
+  const vRes = await fetchWithTimeout(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/video/upload`, {
     method: 'POST',
     body: vForm,
-    signal: AbortSignal.timeout(120_000),
+    timeoutMs: 120_000,
   });
   const vData = await vRes.json();
   if (!vData.secure_url) throw new Error(vData.error?.message ?? 'Video upload failed');
@@ -57,10 +58,10 @@ export async function uploadVideo(videoUri: string): Promise<{ videoUrl: string;
   const tForm = new FormData();
   tForm.append('file', { uri: thumbUri, type: 'image/jpeg', name: 'thumb.jpg' } as any);
   tForm.append('upload_preset', UPLOAD_PRESET);
-  const tRes = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`, {
+  const tRes = await fetchWithTimeout(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`, {
     method: 'POST',
     body: tForm,
-    signal: AbortSignal.timeout(60_000),
+    timeoutMs: 60_000,
   });
   const tData = await tRes.json();
   const thumbUrl = tData.secure_url ?? vData.secure_url + '.jpg';

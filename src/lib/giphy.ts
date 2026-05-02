@@ -6,6 +6,7 @@
  */
 
 import { GIPHY_API_KEY } from '@/lib/constants';
+import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 const API_KEY: string = GIPHY_API_KEY;
 const BASE_URL = "https://api.giphy.com/v1";
 
@@ -53,7 +54,10 @@ async function fetchGiphy(label: string, url: string): Promise<GiphyItem[]> {
     return [];
   }
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(GIPHY_TIMEOUT_MS) });
+    // Use fetchWithTimeout — Hermes' bundled AbortSignal polyfill lacks the
+    // static .timeout() helper, so calling it throws "undefined is not a
+    // function" and silently kills every Giphy fetch.
+    const res = await fetchWithTimeout(url, { timeoutMs: GIPHY_TIMEOUT_MS });
     if (!res.ok) {
       setStatus(`${label}: HTTP ${res.status} ${res.statusText || ""}`);
       return [];
