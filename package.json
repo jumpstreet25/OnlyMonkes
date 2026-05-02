@@ -2,6 +2,13 @@
   "name": "onlymonkes",
   "version": "1.0.0",
   "main": "expo-router/entry",
+  "_securityOverridesNote": "Overrides below address findings from SECURITY_AUDIT_2026-05-02.md. protobufjs <7.5.5 = CVSS 9.8 RCE; remaining are HIGH transitive vulns flagged by npm audit. Sit dormant in this file until next `npm install` + APK build cycle (intentional — keeps current OTA bundle / lockfile unchanged).",
+  "overrides": {
+    "protobufjs": "^7.5.5",
+    "undici": "^6.21.0",
+    "@xmldom/xmldom": "^0.9.0",
+    "bigint-buffer": "^1.1.5"
+  },
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",

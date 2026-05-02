@@ -18,6 +18,7 @@ local.properties
 node_modules/
 dist/
 .expo/
+.expo-export-*/
 
 # Android build outputs
 android/app/build/
@@ -52,7 +53,8 @@ worker-actions/node_modules/
 # LightRAG
 infra/.env.lightrag
 infra/data/lightrag/
-google-services.json# Firebase config
+# Firebase config (also listed earlier — keeping a deduplicated entry here)
+google-services.json
 
 # dApp Store publish cache (auto-written by scripts/publish-dapp-store.sh)
 .last_published_version_code
