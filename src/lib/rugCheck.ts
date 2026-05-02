@@ -5,6 +5,8 @@
  * avoid hammering on repeated ChartModal opens.
  */
 
+import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
+
 const RUGCHECK_BASE = "https://api.rugcheck.xyz/v1";
 const CACHE_TTL_MS = 60 * 60_000; // 1 hour
 
@@ -41,9 +43,9 @@ export async function fetchRugCheckSummary(mint: string): Promise<RugCheckSummar
   if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) return cached;
 
   try {
-    const res = await fetch(
+    const res = await fetchWithTimeout(
       `${RUGCHECK_BASE}/tokens/${mint}/report/summary`,
-      { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(8000) },
+      { headers: { Accept: "application/json" }, timeoutMs: 8000 },
     );
     if (!res.ok) return null;
     const json = await res.json() as {
