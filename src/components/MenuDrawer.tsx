@@ -31,6 +31,7 @@ import {
   Switch,
   Alert,
   Platform,
+  ActivityIndicator,
 } from "react-native";
 import Slider from "@react-native-community/slider";
 import { router } from "expo-router";
@@ -42,6 +43,7 @@ import { useThemeColor } from "@/lib/shopTheme";
 import { useChatStore } from "@/store/chatStore";
 import { useAppStore, type CalendarEvent } from "@/store/appStore";
 import { getCachedProfile, useProfileVersion } from "@/lib/userProfile";
+import { fetchSolanaEvents, type LumaEvent } from "@/lib/lumaEvents";
 import { ProfileScorecard } from "@/components/ProfileScorecard";
 import { shortenAddress } from "@/lib/nftVerification";
 import { clearPushToken, registerForPushNotifications, scheduleTestNotification } from "@/lib/notifications";
@@ -226,6 +228,38 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
   const agentAlerts = useMemo(() =>
     messages.filter((m) => m.senderUsername === BOT_USERNAME),
     [messages]);
+
+  // Lu.ma-sourced Solana ecosystem events. Fetched lazily when the user
+  // opens the Events tab. fetchSolanaEvents has a 6h AsyncStorage cache so
+  // repeat opens are free. Same data the MonkeGlobe uses — just surfacing
+  // it in the drawer too.
+  const [solanaEvents, setSolanaEvents] = useState<LumaEvent[]>([]);
+  const [solanaEventsLoading, setSolanaEventsLoading] = useState(false);
+  const [solanaEventsLoaded, setSolanaEventsLoaded] = useState(false);
+  useEffect(() => {
+    if (activeView !== "events" || solanaEventsLoaded) return;
+    let cancelled = false;
+    setSolanaEventsLoading(true);
+    fetchSolanaEvents()
+      .then((evts) => {
+        if (cancelled) return;
+        // Future events only, sorted soonest-first, capped to 12 to keep the
+        // drawer scroll reasonable.
+        const now = Date.now();
+        const upcoming = evts
+          .filter((e) => {
+            const t = Date.parse(e.startAt);
+            return Number.isFinite(t) && t > now;
+          })
+          .sort((a, b) => Date.parse(a.startAt) - Date.parse(b.startAt))
+          .slice(0, 12);
+        setSolanaEvents(upcoming);
+        setSolanaEventsLoaded(true);
+      })
+      .catch(() => { /* non-fatal */ })
+      .finally(() => { if (!cancelled) setSolanaEventsLoading(false); });
+    return () => { cancelled = true; };
+  }, [activeView, solanaEventsLoaded]);
 
 
   const sortedEvents = useMemo(() => {
@@ -643,7 +677,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                 )}
               </View>
               {sortedEvents.length === 0 ? (
-                <Text style={styles.emptyText}>No events yet. Tap + Add Event to create one.</Text>
+                <Text style={styles.emptyText}>No community events yet. Tap + Add Event to create one.</Text>
               ) : (
                 sortedEvents.map((evt) => {
                   // Show "Go Live" for OnlyMonkes events whose start time has passed (within 2h)
@@ -707,6 +741,42 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                             <Text style={styles.startLiveBtnText}>Start Video Call</Text>
                           </Pressable>
                         )}
+                      </View>
+                    </Pressable>
+                  );
+                })
+              )}
+
+              {/* ── Solana Ecosystem (Lu.ma) ─────────────────────────────── */}
+              <View style={[styles.eventsHeader, { marginTop: 18 }]}>
+                <Text style={styles.sectionLabel}>🌐 Solana Ecosystem</Text>
+              </View>
+              {solanaEventsLoading ? (
+                <View style={{ paddingVertical: 12, alignItems: "center" }}>
+                  <ActivityIndicator size="small" color={THEME.accent} />
+                </View>
+              ) : solanaEvents.length === 0 ? (
+                <Text style={styles.emptyText}>
+                  No upcoming Solana events. Pulled from Lu.ma every 6h.
+                </Text>
+              ) : (
+                solanaEvents.map((evt) => {
+                  const start = new Date(evt.startAt);
+                  const dateStr = `${(start.getMonth() + 1)}/${start.getDate()}`;
+                  const timeStr = start.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+                  return (
+                    <Pressable
+                      key={`luma-${evt.id}`}
+                      style={styles.eventRow}
+                      onPress={() => Linking.openURL(evt.url).catch(() => {})}
+                    >
+                      <View style={styles.eventDateBadge}>
+                        <Text style={styles.eventDateText}>{dateStr}</Text>
+                      </View>
+                      <View style={styles.eventInfo}>
+                        <Text style={styles.eventTitle} numberOfLines={1}>{evt.name}</Text>
+                        <Text style={styles.eventMeta}>{timeStr}{evt.location ? ` · ${evt.location}` : ""}</Text>
+                        <Text style={styles.eventCreator}>via Lu.ma · tap to open</Text>
                       </View>
                     </Pressable>
                   );

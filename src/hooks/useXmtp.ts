@@ -1666,6 +1666,29 @@ export function useXmtp() {
               useAppStore.getState().incrementCommunityBadge('dms');
               // Per-DM unread — sender IS the peer in a 1:1 DM
               useAppStore.getState().incrementDmUnread(senderInboxId);
+
+              // Local notification for the incoming DM. Was previously silent —
+              // user only saw the badge, no system-level alert. Strip the MSG:
+              // <username>: prefix from the display body so the notification
+              // body shows the actual message content. Respects the global
+              // notificationsEnabled toggle.
+              const { notificationsEnabled: _dmNotifEnabled } = useAppStore.getState();
+              if (_dmNotifEnabled) {
+                const senderProfile = getCachedProfile(senderInboxId);
+                const senderName = senderProfile?.username ?? senderInboxId.slice(0, 8);
+                let displayBody = content;
+                if (content.startsWith('MSG:')) {
+                  // MSG:<username>:<content> — drop prefix + username
+                  const afterPrefix = content.slice('MSG:'.length);
+                  const colonIdx = afterPrefix.indexOf(':');
+                  if (colonIdx >= 0) displayBody = afterPrefix.slice(colonIdx + 1);
+                }
+                showLocalNotification(
+                  `${senderName} DM'd you 🍌`,
+                  displayBody.slice(0, 100),
+                  CH_ALL,
+                ).catch(() => {});
+              }
             } catch { /* ignore per-message errors */ }
           });
           _botChannelUnsubs.push(unsub);
