@@ -25,7 +25,7 @@ import {
 } from "react-native";
 import { GlassModal } from "@/components/GlassModal";
 import { THEME, FONTS } from "@/lib/constants";
-import { searchGifs, type GiphyItem } from "@/lib/giphy";
+import { searchGifs, getGiphyLastStatus, type GiphyItem } from "@/lib/giphy";
 
 interface GifPickerModalProps {
   visible: boolean;
@@ -118,6 +118,16 @@ export function GifPickerModal({
         {loading ? (
           <View style={styles.loadingWrap}>
             <ActivityIndicator size="large" color={THEME.accent} />
+          </View>
+        ) : items.length === 0 ? (
+          // Diagnostic surface — picker is empty, show the actual Giphy fetch
+          // status so the user can see WHY without needing ADB. Removable
+          // once the empty-picker bug is closed.
+          <View style={styles.loadingWrap}>
+            <Text style={{ fontFamily: FONTS.mono, fontSize: 11, color: THEME.textFaint, textAlign: "center", paddingHorizontal: 24 }}>
+              No results.{"\n"}
+              status: {getGiphyLastStatus()}
+            </Text>
           </View>
         ) : (
           <FlatList

@@ -48,7 +48,7 @@ import { getCachedProfile, useProfileVersion, getDeduplicatedUsers, getPrimaryIn
 import { getEarnedBadges, getBadgeDef } from "@/lib/badges";
 import { getFlairSync } from "@/lib/monkeClout";
 // nftColor no longer needed — glass bubbles use fixed semi-transparent backgrounds
-import { searchStickers, type GiphyItem } from "@/lib/giphy";
+import { searchStickers, getGiphyLastStatus, type GiphyItem } from "@/lib/giphy";
 import type { ChatMessage, ReactionEmoji } from "@/types";
 import type { ProfileTarget } from "@/components/UserProfileModal";
 import { LinkPreviewCard } from "@/components/LinkPreviewCard";
@@ -1150,6 +1150,12 @@ export const MessageBubble = memo(function MessageBubble({
             <View style={styles.stickerSection}>
               {stickersLoading ? (
                 <ActivityIndicator size="small" color={THEME.accent} style={{ marginVertical: 8 }} />
+              ) : stickerItems.length === 0 ? (
+                // Diagnostic surface for the empty-pack bug. Removable once fixed.
+                <Text style={{ fontFamily: FONTS.mono, fontSize: 10, color: THEME.textFaint, textAlign: "center", paddingVertical: 12 }}>
+                  No SagaMonkes stickers loaded.{"\n"}
+                  status: {getGiphyLastStatus()}
+                </Text>
               ) : (
                 <ScrollView style={styles.stickerScroll} showsVerticalScrollIndicator={false}>
                   <View style={styles.stickerGrid}>
