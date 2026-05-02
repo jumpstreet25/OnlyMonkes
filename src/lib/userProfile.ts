@@ -331,13 +331,27 @@ export function getDeduplicatedUsers(): Map<string, string> {
   return result;
 }
 
-/** Count deduplicated users that have a location (profile cache OR persistent location map). */
+/** Count deduplicated users that have a location (profile cache OR persistent location map).
+ * Bot inboxes are pinned to a hardcoded coordinate on the Globe screen
+ * (see GlobeScreen "Pin the bot(s) at Solana Beach" block), so include them
+ * in the header counter even if their PROFILE_UPDATE never carried a `loc`
+ * field. Avoid double-counting if a bot ever does broadcast a location. */
 export function getLocatedUserCount(): number {
+  // Lazy require to avoid a circular import at module load (constants ↔ profile).
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { BOT_INBOX_IDS } = require('@/lib/constants') as { BOT_INBOX_IDS: string[] };
   const deduped = getDeduplicatedUsers();
   let count = 0;
+  const counted = new Set<string>();
   for (const inboxId of deduped.keys()) {
     const profile = _profileCache.get(inboxId);
-    if (profile?.location || _locationMap.has(inboxId)) count++;
+    if (profile?.location || _locationMap.has(inboxId)) {
+      count++;
+      counted.add(inboxId);
+    }
+  }
+  for (const botId of BOT_INBOX_IDS) {
+    if (!counted.has(botId)) count++;
   }
   return count;
 }
