@@ -30,14 +30,27 @@ export const TIP_MIN = 1;
 export const TIP_MAX = 500;
 export const COLLECTION_NAME = 'Saga Monkes';
 export const NFT_COLLECTION_ADDRESS = 'GokAiStXz2Kqbxwz2oqzfEXuUhE7aXySmBGEP7uejKXF';
-export const HELIUS_API_KEY: string = ENV_HELIUS || '';
-export const GIPHY_API_KEY: string = ENV_GIPHY || '';
-export const CLOUDINARY_CLOUD_NAME: string = ENV_CLOUD_NAME || '';
-export const CLOUDINARY_UPLOAD_PRESET: string = ENV_CLOUD_PRESET || '';
-export const LIVEKIT_URL_ENV: string = ENV_LK_URL || '';
-export const LIVEKIT_TOKEN_URL_ENV: string = ENV_LK_TOKEN || '';
-export const JUP_API_KEY: string = ENV_JUP || '';
-export const SENTRY_DSN_ENV: string = ENV_SENTRY || '';
+
+// ── API key resolution with runtime fallback ────────────────────────────────
+// Two paths put env vars into the bundle:
+//   1. react-native-dotenv (babel time) → `@env` imports above
+//   2. app.config.ts `extra` block → Constants.expoConfig.extra at runtime
+// On 2026-05-02 we hit a bug where path 1 silently produced empty strings in
+// OTA bundles (Giphy + GIF picker dark on device while .env was intact and
+// the API itself returned data). Belt-and-suspenders: prefer the inlined
+// `@env` value, fall back to the `extras` value from the runtime manifest,
+// then to a hard default. Either path being healthy keeps the feature alive.
+const _extra = (Constants.expoConfig?.extra ?? {}) as Record<string, unknown>;
+const _str = (v: unknown): string => (typeof v === 'string' ? v : '');
+
+export const HELIUS_API_KEY: string = ENV_HELIUS || _str(_extra.heliusApiKey);
+export const GIPHY_API_KEY: string = ENV_GIPHY || _str(_extra.giphyApiKey);
+export const CLOUDINARY_CLOUD_NAME: string = ENV_CLOUD_NAME || _str(_extra.cloudinaryCloudName);
+export const CLOUDINARY_UPLOAD_PRESET: string = ENV_CLOUD_PRESET || _str(_extra.cloudinaryUploadPreset);
+export const LIVEKIT_URL_ENV: string = ENV_LK_URL || _str(_extra.livekitUrl);
+export const LIVEKIT_TOKEN_URL_ENV: string = ENV_LK_TOKEN || _str(_extra.livekitTokenUrl);
+export const JUP_API_KEY: string = ENV_JUP || _str(_extra.jupApiKey);
+export const SENTRY_DSN_ENV: string = ENV_SENTRY || _str(_extra.sentryDsn);
 export const SHYFT_API_KEY: string = ENV_SHYFT || '';
 export const HELIUS_RPC_URL = `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`;
 export const SOLANA_RPC_URL = 'https://api.mainnet-beta.solana.com';
