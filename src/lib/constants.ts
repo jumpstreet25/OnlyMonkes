@@ -82,6 +82,15 @@ export const BOT_INBOX_IDS = [
   '998001a498174b8a194110ee792b10f97de4965665eaf0d088ed2c71bdf62363', // AI Agent #9385
 ];
 
+// Bot display name + PFP. Mirrored from Monke_Eliza xmtpOnlyMonkes.ts:1643
+// (the bot's PROFILE_UPDATE broadcast on startup). Hardcoded here so the
+// MonkeGlobe pin and any other UI surface that needs the bot's avatar can
+// render it without waiting for the bot's profile broadcast to be received
+// AND processed AND cached. If the bot ever rotates its PFP, update both
+// here and in the bot's xmtpOnlyMonkes.ts pfpPayload simultaneously.
+export const BOT_DISPLAY_NAME = 'AI Agent #9385';
+export const BOT_PFP_URL = 'https://i.imgur.com/Igyhf3p.jpeg';
+
 export const REACTIONS = ['👍', '❤️', '😂', '🔥', '🍌', '🐒', '💎', '🚀'] as const;
 
 export const THEME = {

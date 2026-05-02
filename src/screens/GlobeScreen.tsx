@@ -26,7 +26,7 @@ import {
 import { WebView } from "react-native-webview";
 import { router } from "expo-router";
 // date-fns format removed — event formatting moved to EventRsvpModal
-import { THEME, FONTS, BOT_INBOX_IDS } from "@/lib/constants";
+import { THEME, FONTS, BOT_INBOX_IDS, BOT_DISPLAY_NAME, BOT_PFP_URL } from "@/lib/constants";
 import { useAppStore } from "@/store/appStore";
 import { getCachedProfile, getPersistedLocation, useProfileVersion } from "@/lib/userProfile";
 import { isUserOnline, getLastSeenTimestamp } from "@/lib/presence";
@@ -152,11 +152,14 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
       // received the bot's profile broadcast — and so it survives any future
       // bot redeploys that drop the loc field.
       //
-      // PFP resolution order: cached profile (PROFILE_UPDATE broadcast), then
-      // most-recent bot message's enriched senderNft (same source as the chat
-      // bubble image), then null. The message-array lookup is the safety net
-      // for the case the user hits Globe before the bot's profile broadcast
-      // populates the cache.
+      // PFP resolution order:
+      //   1. Cached profile (from bot's PROFILE_UPDATE broadcast) — freshest
+      //      if the bot has rotated its PFP since the constant was last set.
+      //   2. Most-recent bot message's enriched senderNft (same source as
+      //      the chat bubble image) — covers cache-not-loaded-yet races.
+      //   3. BOT_PFP_URL constant — hardcoded last-resort so the marker is
+      //      NEVER a fallback purple dot, even on first launch with empty
+      //      cache and no bot messages yet visible.
       const BOT_LOCATION = { lat: 32.9914, lng: -117.2714, label: "Solana Beach, CA" };
       const { useChatStore: _ucs } = await import("@/store/chatStore");
       const _allMessages = _ucs.getState().messages;
@@ -171,15 +174,17 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
         if (seenInboxIds.has(botInboxId)) continue;
         seenInboxIds.add(botInboxId);
         const botProfile = getCachedProfile(botInboxId);
-        const botImage = botProfile?.nftImage ?? botPfpFromMessages(botInboxId) ?? null;
+        const botImage = botProfile?.nftImage
+          ?? botPfpFromMessages(botInboxId)
+          ?? BOT_PFP_URL;
         allMarkers.push({
           id: `user-${botInboxId}`,
           lat: BOT_LOCATION.lat,
           lng: BOT_LOCATION.lng,
           type: "user",
-          label: botProfile?.username ?? "AI Agent #9385",
+          label: botProfile?.username ?? BOT_DISPLAY_NAME,
           inboxId: botInboxId,
-          username: botProfile?.username ?? "AI Agent #9385",
+          username: botProfile?.username ?? BOT_DISPLAY_NAME,
           nftImage: botImage,
         });
       }
