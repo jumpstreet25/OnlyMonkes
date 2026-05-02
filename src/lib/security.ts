@@ -75,9 +75,10 @@ export function assertDeviceTrusted(action: string): void {
 // ── Config ───────────────────────────────────────────────────────────────────
 
 // SHA-256 of `android/app/onlymonkes-release.keystore` (created 2026-04-19).
-// To re-derive after a keystore rotation:
-//   keytool -list -v -keystore android/app/onlymonkes-release.keystore -storepass onlymonkes2026 | grep SHA256
-// Free-RASP expects upper-case hex with no colons.
+// To re-derive after a keystore rotation, run keytool against the keystore
+// using the password stored privately (env var or password manager — NOT
+// in this repo or any tracked file). Output format: upper-case hex, no
+// colons. Free-RASP expects exactly that shape.
 const ANDROID_RELEASE_CERT_SHA256 = '2E2FEEB81CCF0DE5D191F6E174113BA9839181B1CB7540AB6D5C94A9CFF487D8';
 
 export const RASP_CONFIG: TalsecConfig = {
@@ -111,7 +112,8 @@ if (!__DEV__) {
     console.error(
       '[RASP] CRITICAL: Signing-cert anchor not configured for this platform. ' +
       'App tamper detection is DISABLED. ' +
-      'Run: keytool -list -v -keystore android/app/onlymonkes-release.keystore -storepass onlymonkes2026 | grep SHA256'
+      'Re-derive ANDROID_RELEASE_CERT_SHA256 from the release keystore using ' +
+      'keytool -list -v -keystore <path> -storepass <see private creds>'
     );
     // Mark device as "compromised" so isDeviceCompromised() returns true,
     // blocking sensitive operations once gates are wired.
