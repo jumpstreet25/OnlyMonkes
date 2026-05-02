@@ -57,6 +57,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { LeaderboardView } from "@/components/LeaderboardView";
 import { EventRsvpModal } from "@/components/EventRsvpModal";
 import { getAttendeeCount } from "@/lib/eventRsvp";
+import { CHAT_THEMES, saveThemeId } from "@/lib/theme";
 
 const DRAWER_WIDTH_RATIO = 0.82;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
@@ -150,7 +151,12 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
   const setExpoPushToken = useAppStore(s => s.setExpoPushToken);
   const communityBadges = useAppStore(s => s.communityBadges);
   const clearCommunityBadge = useAppStore(s => s.clearCommunityBadge);
+  const botChannelCounts = useAppStore(s => s.botChannelCounts);
+  const clearBotChannelCount = useAppStore(s => s.clearBotChannelCount);
   const themeOverrides = useAppStore(s => s.themeOverrides);
+  const themeId = useAppStore(s => s.themeId);
+  const setThemeId = useAppStore(s => s.setThemeId);
+  const shopThemeActive = !!themeOverrides;
   const themeBg = useThemeColor('bg');
   const themeSurface = useThemeColor('surface');
   const themeBorder = useThemeColor('border');
@@ -540,7 +546,8 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                 />
               </View>
 
-              {/* Grid of icon buttons */}
+              {/* Community */}
+              <Text style={styles.navSectionLabel}>Community</Text>
               <View style={styles.gridContainer}>
                 <GridButton
                   icon="✉️"
@@ -549,10 +556,20 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                   onPress={() => { clearCommunityBadge('dms'); markChannelRead('dms').catch(() => {}); onClose(); setTimeout(() => router.push('/dms'), 300); }}
                 />
                 <GridButton
+                  icon="🏆"
+                  label="Leaderboard"
+                  onPress={() => setActiveView("leaderboard")}
+                />
+                <GridButton
                   icon="📅"
                   label="Events"
                   badge={communityBadges.events || undefined}
                   onPress={() => { clearCommunityBadge('events'); setActiveView("events"); }}
+                />
+                <GridButton
+                  icon="🖼"
+                  label="Images"
+                  onPress={() => setActiveView("images")}
                 />
                 <GridButton
                   icon="🔗"
@@ -560,15 +577,49 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                   badge={communityBadges.links || undefined}
                   onPress={() => { clearCommunityBadge('links'); setActiveView("links"); }}
                 />
+              </View>
+
+              {/* Bot */}
+              <Text style={[styles.navSectionLabel, { marginTop: 16 }]}>Bot</Text>
+              <View style={styles.gridContainer}>
+                <GridButton
+                  icon="🤖"
+                  label="Alerts"
+                  onPress={() => setActiveView("alerts")}
+                />
+                <GridButton
+                  icon="🎯"
+                  label="Bets"
+                  badge={botChannelCounts.bets || undefined}
+                  onPress={() => { clearBotChannelCount('bets'); markChannelRead('bets').catch(() => {}); onClose(); setTimeout(() => router.push('/bot-channel?channelId=bets' as any), 300); }}
+                />
+                <GridButton
+                  icon="📈"
+                  label="Trades"
+                  badge={botChannelCounts.trades || undefined}
+                  onPress={() => { clearBotChannelCount('trades'); markChannelRead('trades').catch(() => {}); onClose(); setTimeout(() => router.push('/bot-channel?channelId=trades' as any), 300); }}
+                />
+                <GridButton
+                  icon="💰"
+                  label="Sales"
+                  badge={botChannelCounts.sales || undefined}
+                  onPress={() => { clearBotChannelCount('sales'); markChannelRead('sales').catch(() => {}); onClose(); setTimeout(() => router.push('/bot-channel?channelId=sales' as any), 300); }}
+                />
+                <GridButton
+                  icon="🔮"
+                  label="Predictions"
+                  badge={botChannelCounts.predictions || undefined}
+                  onPress={() => { clearBotChannelCount('predictions'); markChannelRead('predictions').catch(() => {}); onClose(); setTimeout(() => router.push('/bot-channel?channelId=predictions' as any), 300); }}
+                />
+              </View>
+
+              {/* Tools */}
+              <Text style={[styles.navSectionLabel, { marginTop: 16 }]}>Tools</Text>
+              <View style={styles.gridContainer}>
                 <GridButton
                   icon="🏪"
                   label="Marketplace"
                   onPress={() => { onClose(); setTimeout(() => router.push('/marketplace'), 300); }}
-                />
-                <GridButton
-                  icon="🏆"
-                  label="Leaderboard"
-                  onPress={() => setActiveView("leaderboard")}
                 />
                 <GridButton
                   icon="💼"
@@ -581,8 +632,13 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                   onPress={() => { onClose(); setTimeout(() => router.push('/watchlist' as any), 300); }}
                 />
                 <GridButton
+                  icon="🌍"
+                  label="Globe"
+                  onPress={() => { onClose(); setTimeout(() => router.push('/globe' as any), 300); }}
+                />
+                <GridButton
                   icon="🔧"
-                  label="Tools"
+                  label="Monke Tools"
                   onPress={() => setActiveView("tools")}
                 />
                 <GridButton
@@ -985,6 +1041,55 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                   );
                 })}
               </View>
+
+              {/* ── Chat Theme ────────────────────────────────────────── */}
+              <Text style={[styles.sectionLabel, { marginTop: 20 }]}>Chat Theme</Text>
+              {shopThemeActive && (
+                <View style={styles.shopThemeBanner}>
+                  <Text style={styles.shopThemeBannerIcon}>🍌</Text>
+                  <Text style={styles.shopThemeBannerText}>
+                    Banana Shop theme is active — unequip it to use these
+                  </Text>
+                </View>
+              )}
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.themeRow}
+              >
+                {CHAT_THEMES.map((t) => {
+                  const selected = themeId === t.id;
+                  return (
+                    <Pressable
+                      key={t.id}
+                      onPress={async () => {
+                        if (shopThemeActive) return;
+                        setThemeId(t.id);
+                        await saveThemeId(t.id);
+                        Haptics.selectionAsync().catch(() => {});
+                      }}
+                      disabled={shopThemeActive}
+                      style={[
+                        styles.themeCard,
+                        selected && styles.themeCardSelected,
+                        shopThemeActive && styles.themeCardDimmed,
+                      ]}
+                    >
+                      <View style={[styles.themeSwatch, { backgroundColor: t.ownBubble }]}>
+                        <Text style={styles.themeEmoji}>{t.emoji}</Text>
+                      </View>
+                      <Text
+                        style={[styles.themeName, selected && { color: "#FFD54F" }]}
+                        numberOfLines={1}
+                      >
+                        {t.name}
+                      </Text>
+                      <View style={[styles.themeAccentBar, { backgroundColor: t.accentColor }]} />
+                      {selected && <Text style={styles.themeCheck}>✓</Text>}
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
 
               <Text style={[styles.sectionLabel, { marginTop: 20 }]}>Text Size</Text>
               <View style={styles.settingsCard}>
@@ -1416,6 +1521,16 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
     textTransform: "uppercase",
     marginBottom: 10,
+  },
+  navSectionLabel: {
+    fontFamily: FONTS.mono,
+    fontSize: 10,
+    color: "#FFD54F",
+    letterSpacing: 2,
+    textTransform: "uppercase",
+    marginBottom: 10,
+    marginTop: 4,
+    opacity: 0.65,
   },
   emptyText: {
     fontFamily: FONTS.body,
@@ -1865,5 +1980,86 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: THEME.border,
     paddingHorizontal: 20,
+  },
+
+  // Chat Theme picker
+  themeRow: {
+    paddingVertical: 4,
+    paddingRight: 8,
+    gap: 10,
+  },
+  themeCard: {
+    width: 88,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    backgroundColor: "rgba(255,255,255,0.02)",
+    borderRadius: 12,
+    borderWidth: 0.75,
+    borderColor: "rgba(255,255,255,0.06)",
+    alignItems: "center",
+    gap: 6,
+    overflow: "hidden",
+  },
+  themeCardSelected: {
+    borderColor: "rgba(255,213,79,0.45)",
+    backgroundColor: "rgba(255,213,79,0.06)",
+    shadowColor: "#FFD54F",
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  themeCardDimmed: {
+    opacity: 0.4,
+  },
+  themeSwatch: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+  },
+  themeEmoji: { fontSize: 22 },
+  themeName: {
+    fontFamily: FONTS.displayMed,
+    fontSize: 11,
+    color: THEME.text,
+    textAlign: "center",
+  },
+  themeAccentBar: {
+    width: 32,
+    height: 3,
+    borderRadius: 2,
+    opacity: 0.7,
+  },
+  themeCheck: {
+    position: "absolute",
+    top: 4,
+    right: 6,
+    color: "#FFD54F",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  shopThemeBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "rgba(255,213,79,0.06)",
+    borderRadius: 10,
+    borderWidth: 0.75,
+    borderColor: "rgba(255,213,79,0.15)",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginBottom: 10,
+  },
+  shopThemeBannerIcon: { fontSize: 14 },
+  shopThemeBannerText: {
+    flex: 1,
+    fontFamily: FONTS.body,
+    fontSize: 11,
+    color: THEME.textMuted,
+    lineHeight: 15,
   },
 });

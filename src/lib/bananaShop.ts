@@ -20,16 +20,16 @@ function shopKey(): string {
 
 // ─── Item Categories ─────────────────────────────────────────────────────────
 
-export type ShopCategory = "bubble" | "text" | "pfp" | "theme";
+export type ShopCategory = "bubble" | "text" | "pfp" | "theme" | "world";
 
 export interface ShopItem {
   id: string;
   name: string;
   description: string;
   category: ShopCategory;
-  tier: 1 | 2 | 3 | 4;
+  tier: 1 | 2 | 3 | 4 | 5;
   bananaCost: number;      // Bananas deducted from balance
-  usdCost: number;         // $1-4 paid in SKR or SOL
+  usdCost: number;         // $1-4.99 paid in SKR / SOL / USDC
   preview: string;         // Emoji or short visual hint shown in shop
   // Style overrides applied when equipped
   style: Record<string, string | number | boolean>;
@@ -283,6 +283,32 @@ export const SHOP_ITEMS: ShopItem[] = [
     preview: "🌊",
     style: { themeBg: "#020f0f", themeSurface: "#051a1a", themeAccent: "#14B8A6" },
   },
+
+  // ── Tier 5: Chat Worlds (750 🍌, $4.99 — pay in SOL/USDC/SKR, 10% off in SKR) ──
+  {
+    id: "world_banana_grove",
+    name: "Banana Grove",
+    description: "Lush green-to-gold canopy with bananas drifting down across your chat",
+    category: "world", tier: 5, bananaCost: 750, usdCost: 4.99,
+    preview: "🍌",
+    style: { worldId: "world_banana_grove" },
+  },
+  {
+    id: "world_solana_cyberpunk",
+    name: "Solana Cyberpunk",
+    description: "Purple-to-teal neon grid — Saga skyline at night",
+    category: "world", tier: 5, bananaCost: 750, usdCost: 4.99,
+    preview: "🌆",
+    style: { worldId: "world_solana_cyberpunk" },
+  },
+  {
+    id: "world_trading_floor",
+    name: "Trading Floor",
+    description: "Dark room with a faint candlestick chart drifting behind your chat",
+    category: "world", tier: 5, bananaCost: 750, usdCost: 4.99,
+    preview: "📈",
+    style: { worldId: "world_trading_floor" },
+  },
 ];
 
 // ─── Seasonal / Limited Items ────────────────────────────────────────────────
@@ -333,7 +359,7 @@ export const PURCHASE_DISCLAIMER = [
 
 const DEFAULT_SHOP_STATE: ShopState = {
   owned: [],
-  equipped: { bubble: null, text: null, pfp: null, theme: null },
+  equipped: { bubble: null, text: null, pfp: null, theme: null, world: null },
 };
 
 export async function loadShopState(): Promise<ShopState> {
@@ -467,7 +493,7 @@ export async function getEquippedStyles(): Promise<Record<string, any>> {
   // Anyone who has purchased any item gets the banana badge next to their name
   if (state.owned.length > 0) styles.isShopCustomer = true;
 
-  for (const category of ["bubble", "text", "pfp", "theme"] as ShopCategory[]) {
+  for (const category of ["bubble", "text", "pfp", "theme", "world"] as ShopCategory[]) {
     const raw = state.equipped[category];
     if (!raw) continue;
     // Support both single string (legacy) and array (stackable)
@@ -494,6 +520,7 @@ export function getTierInfo(tier: number): { label: string; color: string } {
     case 2: return { label: "TIER 2", color: "#9945FF" };
     case 3: return { label: "TIER 3", color: "#FFD54F" };
     case 4: return { label: "TIER 4", color: "#FF6B6B" };
+    case 5: return { label: "TIER 5", color: "#14F195" };
     default: return { label: "TIER ?", color: "#888" };
   }
 }
@@ -505,6 +532,7 @@ export function getCategoryName(cat: ShopCategory): string {
     case "text": return "Text & Names";
     case "pfp": return "PFP Styles";
     case "theme": return "App Themes";
+    case "world": return "Chat World";
   }
 }
 

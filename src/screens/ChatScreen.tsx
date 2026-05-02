@@ -68,6 +68,8 @@ import { loadThemeId, loadCustomColor } from "@/lib/theme";
 import { sendSkrTip, sendDevTip, parseTipCommand } from "@/lib/solana";
 import { createLivekitToken, createRoomName } from "@/lib/livekit";
 import { LiveRoomBanner } from "@/components/LiveRoomBanner";
+import { EdgePullDetector } from "@/components/drawer/EdgePullDetector";
+import { WorldLayer } from "@/components/worlds/WorldLayer";
 import { VideoRoomBanner } from "@/components/VideoRoomBanner";
 import { VideoCallPip } from "@/components/VideoCallPip";
 import { AvatarRoomPill } from "@/components/AvatarRoomPill";
@@ -1048,6 +1050,9 @@ export default function ChatScreen() {
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         keyboardVerticalOffset={0}
       >
+        {/* Chat World background (renders behind everything when equipped) */}
+        <WorldLayer active={!drawerOpen} />
+
         {/* Header */}
         <ChatHeader
           themeSurface={themeSurface}
@@ -1326,6 +1331,10 @@ export default function ChatScreen() {
         )}
 
         <View style={{ height: insets.bottom }} />
+        <EdgePullDetector
+          onTrigger={() => setDrawerOpen(true)}
+          disabled={drawerOpen}
+        />
       </KeyboardAvoidingView>
       <ChatModals
         showConfetti={showConfetti}

@@ -37,7 +37,7 @@ import {
   transact,
   Web3MobileWallet,
 } from "@solana-mobile/mobile-wallet-adapter-protocol-web3js";
-import { HELIUS_RPC_URL, SKR_MINT, DEV_WALLET, JUP_API_KEY } from "./constants";
+import { HELIUS_RPC_URL, SKR_MINT, DEV_WALLET, JUP_API_KEY, USDC_MINT, SKR_DISCOUNT_PCT } from "./constants";
 import { useAppStore } from "@/store/appStore";
 import { assertDeviceTrusted } from "./security";
 import bs58 from "bs58";
@@ -143,6 +143,175 @@ export async function sendShopPayment(
   });
 
   return typeof signature === "string" ? signature : Buffer.from(signature).toString("base64");
+}
+
+// ─── Multi-currency Banana Shop payments ─────────────────────────────────────
+
+export type ShopCurrency = "SOL" | "USDC" | "SKR";
+
+/** Fetch USD price of a Solana SPL token via Jupiter price API v2. */
+async function fetchTokenPriceUsd(mint: string): Promise<number> {
+  const TIMEOUT = 6000;
+  const c = new AbortController();
+  const t = setTimeout(() => c.abort(), TIMEOUT);
+  try {
+    const r = await fetch(`https://api.jup.ag/price/v2?ids=${mint}`, { signal: c.signal });
+    if (!r.ok) throw new Error(`Jupiter price ${r.status}`);
+    const d = await r.json() as any;
+    const p = parseFloat(d?.data?.[mint]?.price ?? "0");
+    if (!Number.isFinite(p) || p <= 0) throw new Error("invalid price");
+    return p;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+/** Fetch SKR/USD price. Throws on failure — caller should disable SKR payment. */
+export async function fetchSkrPriceUsd(): Promise<number> {
+  return fetchTokenPriceUsd(SKR_MINT);
+}
+
+/** Fetch SOL/USD via Jupiter v2 (CoinGecko fallback handled by caller if needed). */
+export async function fetchSolPriceUsd(): Promise<number> {
+  const SOL_MINT = "So11111111111111111111111111111111111111112";
+  return fetchTokenPriceUsd(SOL_MINT);
+}
+
+/** Compute the effective USD cost after applying any currency-specific discount. */
+export function effectiveUsdCost(usdCost: number, currency: ShopCurrency): number {
+  if (currency === "SKR") return usdCost * (1 - SKR_DISCOUNT_PCT);
+  return usdCost;
+}
+
+// SKR mint decimals are fetched once and cached (immutable).
+let _skrDecimalsCache: number | null = null;
+async function getSkrDecimals(connection: Connection): Promise<number> {
+  if (_skrDecimalsCache !== null) return _skrDecimalsCache;
+  const info = await getMint(connection, new PublicKey(SKR_MINT));
+  _skrDecimalsCache = info.decimals;
+  return _skrDecimalsCache;
+}
+
+/**
+ * Pay for a Banana Shop item in SOL, USDC, or SKR.
+ * 100% to DEV_WALLET. SKR gets SKR_DISCOUNT_PCT off the USD price.
+ *
+ * Pre-flight balance checks fail early before opening MWA.
+ *
+ * @param usdCost  Item's USD price (e.g. 4.99 for a Tier 5 World)
+ * @param currency Payment currency
+ * @returns transaction signature, or "dev-self-purchase" if buyer is DEV_WALLET
+ */
+export async function sendShopPaymentMulti(
+  usdCost: number,
+  currency: ShopCurrency,
+): Promise<string> {
+  assertDeviceTrusted("Purchase");
+  if (!Number.isFinite(usdCost) || usdCost <= 0 || usdCost > 25) {
+    throw new Error("Invalid purchase amount");
+  }
+
+  const myWallet = useAppStore.getState().wallet?.address;
+  if (myWallet && myWallet === DEV_WALLET) return "dev-self-purchase";
+
+  const connection = new Connection(HELIUS_RPC_URL, "confirmed");
+  const devPubkey = new PublicKey(DEV_WALLET);
+  const effUsd = effectiveUsdCost(usdCost, currency);
+
+  // ─── SOL ──────────────────────────────────────────────────────────────────
+  if (currency === "SOL") {
+    const solPrice = await fetchSolPriceUsd();
+    const lamports = Math.ceil((effUsd / solPrice) * 1e9);
+
+    if (myWallet) {
+      try {
+        const bal = await connection.getBalance(new PublicKey(myWallet));
+        // Reserve ~0.000005 SOL for tx fee
+        if (bal < lamports + 5_000) {
+          throw new Error(`Insufficient SOL: ${(bal / 1e9).toFixed(4)} < ${(lamports / 1e9).toFixed(4)}`);
+        }
+      } catch (err: any) {
+        if (err.message?.startsWith("Insufficient")) throw err;
+        // ignore RPC errors — let MWA path handle it
+      }
+    }
+
+    const sig = await transact(async (mobileWallet: Web3MobileWallet) => {
+      const senderPubkey = await mwaAuthorize(mobileWallet);
+      if (senderPubkey.toBase58() === DEV_WALLET) return "dev-self-purchase";
+      const { blockhash } = await connection.getLatestBlockhash("confirmed");
+      const tx = new Transaction({ recentBlockhash: blockhash, feePayer: senderPubkey }).add(
+        SystemProgram.transfer({ fromPubkey: senderPubkey, toPubkey: devPubkey, lamports }),
+      );
+      const [s] = await mobileWallet.signAndSendTransactions({ transactions: [tx] });
+      return s;
+    });
+    return typeof sig === "string" ? sig : Buffer.from(sig).toString("base64");
+  }
+
+  // ─── SPL token (USDC or SKR) ──────────────────────────────────────────────
+  const isUsdc = currency === "USDC";
+  const mintPubkey = new PublicKey(isUsdc ? USDC_MINT : SKR_MINT);
+  let decimals: number;
+  let tokenAmount: number; // ui units
+
+  if (isUsdc) {
+    decimals = 6; // USDC always 6
+    tokenAmount = effUsd; // 1 USDC = $1
+  } else {
+    decimals = await getSkrDecimals(connection);
+    const skrPrice = await fetchSkrPriceUsd();
+    tokenAmount = effUsd / skrPrice;
+  }
+
+  const baseUnits = Math.ceil(tokenAmount * Math.pow(10, decimals));
+
+  // Pre-flight ATA balance check
+  if (myWallet) {
+    try {
+      const senderAta = getAssociatedTokenAddressSync(mintPubkey, new PublicKey(myWallet));
+      const balanceInfo = await connection.getTokenAccountBalance(senderAta);
+      const ui = parseFloat(balanceInfo.value.uiAmountString ?? "0");
+      if (ui < tokenAmount) {
+        throw new Error(`Insufficient ${currency}: ${ui.toFixed(decimals === 6 ? 2 : 4)} < ${tokenAmount.toFixed(decimals === 6 ? 2 : 4)}`);
+      }
+    } catch (err: any) {
+      if (err.message?.startsWith("Insufficient")) throw err;
+      // ATA may not exist — treat as zero balance
+      throw new Error(`No ${currency} balance found — you need ${currency} tokens to use this option`);
+    }
+  }
+
+  const sig = await transact(async (mobileWallet: Web3MobileWallet) => {
+    const senderPubkey = await mwaAuthorize(mobileWallet);
+    if (senderPubkey.toBase58() === DEV_WALLET) return "dev-self-purchase";
+
+    const minContextSlot = await connection.getSlot();
+    const senderATA = getAssociatedTokenAddressSync(mintPubkey, senderPubkey);
+    const devATA = getAssociatedTokenAddressSync(mintPubkey, devPubkey);
+    const { blockhash } = await connection.getLatestBlockhash("confirmed");
+
+    const tx = new Transaction({ recentBlockhash: blockhash, feePayer: senderPubkey });
+    tx.add(
+      createAssociatedTokenAccountIdempotentInstruction(
+        senderPubkey, devATA, devPubkey, mintPubkey,
+        TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID,
+      ),
+    );
+    tx.add(
+      createTransferInstruction(
+        senderATA, devATA, senderPubkey, BigInt(baseUnits), [], TOKEN_PROGRAM_ID,
+      ),
+    );
+
+    const [s] = await mobileWallet.signAndSendTransactions({
+      transactions: [tx],
+      minContextSlot,
+    });
+    return s;
+  });
+
+  return typeof sig === "string" ? sig : Buffer.from(sig).toString("base64");
 }
 
 /**

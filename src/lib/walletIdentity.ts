@@ -16,9 +16,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAppStore } from '@/store/appStore';
 import { loadBananaState, setBananaWalletContext } from '@/lib/bananaRewards';
-import { loadShopState, getEquippedStyles, setShopWalletContext } from '@/lib/bananaShop';
+import { loadShopState, getEquippedStyles, setShopWalletContext, mergeOwnedItems } from '@/lib/bananaShop';
 import { loadHistory, setMarketplaceWalletContext } from '@/lib/marketplace';
 import { applyThemeFromShop } from '@/lib/shopTheme';
+import { fetchPurchaseReceiptsFromChain, isReceiptMintingAvailable } from '@/lib/cnftReceipts';
 
 let _activeWallet: string | null = null;
 
@@ -71,6 +72,26 @@ export async function rehydrateForWallet(walletAddress: string): Promise<void> {
   app.setBananaBalance(bananaState.balance);
   app.setShopStyles(styles);
   applyThemeFromShop(styles);
+
+  // ── Background: reconcile shop ownership from on-chain cNFT receipts. ──
+  // Non-blocking. If a user lands on a fresh device with no chat history
+  // and never runs /reclaim, this still recovers their purchases as long as
+  // they minted on-chain receipts at buy time. Failures are silent — we
+  // still have AsyncStorage + PROFILE_UPDATE merges as fallbacks.
+  if (isReceiptMintingAvailable()) {
+    fetchPurchaseReceiptsFromChain(addr)
+      .then(async (chainItemIds) => {
+        if (chainItemIds.length === 0) return;
+        const changed = await mergeOwnedItems(chainItemIds);
+        if (changed) {
+          // Re-read merged styles + push to Zustand so UI reflects restored items.
+          const merged = await getEquippedStyles();
+          useAppStore.getState().setShopStyles(merged);
+          applyThemeFromShop(merged);
+        }
+      })
+      .catch(() => { /* silent — local + xmtp paths still cover the user */ });
+  }
 }
 
 /**
