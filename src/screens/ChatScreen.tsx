@@ -163,6 +163,9 @@ export default function ChatScreen() {
   // we feed it newest-first.
   const messagesAsc      = useChatStore(s => s.messages);
   const messages         = useMemo(() => messagesAsc.slice().reverse(), [messagesAsc]);
+  // Bumped on every reaction/sticker update — passed to FlashList as
+  // extraData so live reaction inserts re-render the visible cell.
+  const reactionVersion  = useChatStore(s => s._reactionVersion);
   const replyingTo       = useChatStore(s => s.replyingTo);
   const isLoadingHistory = useChatStore(s => s.isLoadingHistory);
   const setReplyingTo    = useChatStore(s => s.setReplyingTo);
@@ -1241,6 +1244,7 @@ export default function ChatScreen() {
         {isGroupMember && (
           <ChatMessageList
             messages={messages}
+            reactionVersion={reactionVersion}
             myAddress={myAddress}
             isGroupAdmin={isGroupAdmin}
             isLoadingHistory={isLoadingHistory}

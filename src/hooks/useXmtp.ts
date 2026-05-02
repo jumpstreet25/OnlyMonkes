@@ -1004,6 +1004,29 @@ export function useXmtp() {
         // Top-level error boundary — prevents stream crash from killing all message processing
         try {
 
+        // Notify the message owner when someone else reacts to their message.
+        // Fires for both emoji REACT and sticker STICKER_REACT. Skips self-
+        // reactions, respects the user's global notificationsEnabled toggle.
+        const notifyMyMessageReaction = (
+          targetId: string,
+          reactorInboxId: string,
+          reactionLabel: string,
+        ) => {
+          if (!targetId || !reactorInboxId || reactorInboxId === _myInboxId) return;
+          const { messages: msgs } = useChatStore.getState();
+          const targetMsg = msgs.find(m => m.id === targetId);
+          if (!targetMsg || targetMsg.senderAddress !== _myInboxId) return;
+          const { notificationsEnabled } = useAppStore.getState();
+          if (!notificationsEnabled) return;
+          const reactorProfile = getCachedProfile(reactorInboxId);
+          const reactorName = reactorProfile?.username ?? reactorInboxId.slice(0, 8);
+          showLocalNotification(
+            `${reactorName} reacted to your message`,
+            reactionLabel,
+            CH_SOCIAL,
+          ).catch(() => {});
+        };
+
         // Native or legacy reaction
         if (isReactionContent(content)) {
           const targetId = getReactionTargetId(content);
@@ -1015,6 +1038,15 @@ export function useXmtp() {
           }
           const updated = applyReaction(messages, raw, _myInboxId);
           applyReactionUpdate(updated);
+          // Pull the emoji from the raw content for the notification body.
+          let emoji = "";
+          if (typeof content === "string" && content.startsWith("REACT:")) {
+            emoji = content.split(":")[1] ?? "";
+          } else if (content && typeof content === "object") {
+            const r = (content as any).reaction ?? (content as any).reactionV2;
+            if (r?.content) emoji = String(r.content);
+          }
+          notifyMyMessageReaction(targetId, raw.senderInboxId as string, emoji ? `(${emoji})` : "(reaction)");
           return;
         }
 
@@ -1022,6 +1054,12 @@ export function useXmtp() {
           const { messages } = useChatStore.getState();
           const updated = applyStickerReaction(messages, raw, _myInboxId);
           applyReactionUpdate(updated);
+          // STICKER_REACT format: STICKER_REACT:<url>:<targetId>. URL contains
+          // colons (https://) so split on LAST colon to get targetId.
+          const withoutPrefix = content.slice("STICKER_REACT:".length);
+          const lastColon = withoutPrefix.lastIndexOf(":");
+          const targetId = lastColon >= 0 ? withoutPrefix.slice(lastColon + 1) : "";
+          notifyMyMessageReaction(targetId, raw.senderInboxId as string, "(MonkeSticker)");
           return;
         }
 
