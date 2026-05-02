@@ -20,13 +20,16 @@ import {
   StatusBar,
 } from "react-native";
 import * as Haptics from "expo-haptics";
+import { toast } from "sonner-native";
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
 import { playSound } from "@/lib/sounds";
 import { THEME, FONTS, DEV_WALLET } from "@/lib/constants";
 import { useAppStore } from "@/store/appStore";
 import { spendBananas, addBananas } from "@/lib/bananaRewards";
-import { sendShopPayment } from "@/lib/solana";
+import { sendShopPaymentMulti, type ShopCurrency } from "@/lib/solana";
+import { CurrencyPickerSheet } from "@/components/CurrencyPickerSheet";
+import { WorldMiniPreview } from "@/components/worlds/WorldLayer";
 import {
   getAvailableItems, loadShopState, saveShopState, addOwnedItem, equipItem, unequipCategory, unequipItem,
   getTierInfo, getCategoryName, getEquippedStyles, PURCHASE_DISCLAIMER, bindPfpItemToNft,
@@ -40,38 +43,6 @@ import { isReceiptMintingAvailable, mintPurchaseReceipt } from "@/lib/cnftReceip
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-/** Fetch SOL/USD price with Jupiter → CoinGecko fallback. */
-async function fetchSolPrice(): Promise<number> {
-  const SOL_MINT = "So11111111111111111111111111111111111111112";
-  const TIMEOUT = 6000;
-  try {
-    const c1 = new AbortController();
-    const t1 = setTimeout(() => c1.abort(), TIMEOUT);
-    const r1 = await fetch(`https://api.jup.ag/price/v2?ids=${SOL_MINT}`, { signal: c1.signal });
-    clearTimeout(t1);
-    if (r1.ok) {
-      const d1 = await r1.json() as any;
-      const p1 = parseFloat(d1?.data?.[SOL_MINT]?.price ?? "0");
-      if (p1 > 0) return p1;
-    }
-  } catch { /* fall through */ }
-  try {
-    const c2 = new AbortController();
-    const t2 = setTimeout(() => c2.abort(), TIMEOUT);
-    const r2 = await fetch(
-      "https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd",
-      { signal: c2.signal },
-    );
-    clearTimeout(t2);
-    if (r2.ok) {
-      const d2 = await r2.json() as any;
-      const p2 = parseFloat(d2?.solana?.usd ?? "0");
-      if (p2 > 0) return p2;
-    }
-  } catch { /* fall through */ }
-  throw new Error("Could not fetch SOL price — check your connection and try again");
-}
 
 function hslToHex(h: number, s: number, l: number): string {
   s /= 100; l /= 100;
@@ -112,6 +83,13 @@ function getEffectSummary(item: ShopItem): string {
       if (item.style.pfpFullTheme) return "Your entire app UI uses colors derived from your NFT's palette";
       const accent = item.style.themeAccent as string | undefined;
       return `App-wide color scheme: background, surfaces, and accent (${accent ?? "custom"})`;
+    }
+    case "world": {
+      const wid = item.style.worldId as string | undefined;
+      if (wid === "world_banana_grove") return "Animated jungle backdrop with bananas drifting down behind your chat";
+      if (wid === "world_solana_cyberpunk") return "Purple-to-teal Saga grid backdrop with a slow neon drift";
+      if (wid === "world_trading_floor") return "Dark room with a candlestick chart layer drifting behind your messages";
+      return item.description;
     }
     default: return item.description;
   }
@@ -304,6 +282,7 @@ function PreviewPopup({ item, owned, equipped, canAfford, onClose, onAction, pur
     }
   }
 
+  const usdLabel = `$${item.usdCost.toFixed(2)}`;
   const actionLabel = purchasing
     ? "Processing..."
     : equipped
@@ -311,7 +290,7 @@ function PreviewPopup({ item, owned, equipped, canAfford, onClose, onAction, pur
       : owned
         ? "Equip"
         : canAfford
-          ? `Buy — ${item.bananaCost} 🍌 + $${item.usdCost} SOL`
+          ? `Buy — ${item.bananaCost} 🍌 + ${usdLabel}`
           : `Need ${item.bananaCost} 🍌`;
 
   return (
@@ -369,6 +348,17 @@ function PreviewPopup({ item, owned, equipped, canAfford, onClose, onAction, pur
                   {item.style.pfpFrame === "pulse" ? "Ring pulses in/out" : item.style.pfpFrame === "glow" ? "Soft constant glow" : "NFT color aura"}
                 </Text>
               </View>
+            ) : item.category === "world" ? (
+              <View style={{ alignItems: "center", gap: 8, width: "100%" }}>
+                <WorldMiniPreview
+                  worldId={(item.style.worldId as string) ?? item.id}
+                  width={SCREEN_W * 0.7}
+                  height={120}
+                />
+                <Text style={{ fontFamily: FONTS.body, fontSize: 10, color: THEME.textMuted, textAlign: "center" }}>
+                  Animated background renders behind your chat messages
+                </Text>
+              </View>
             ) : item.category === "theme" ? (
               <View style={{ gap: 8, width: "100%" }}>
                 {/* Mini theme preview */}
@@ -424,7 +414,7 @@ function PreviewPopup({ item, owned, equipped, canAfford, onClose, onAction, pur
           {/* Price breakdown for unowned */}
           {!owned && (
             <Text style={previewStyles.priceBreakdown}>
-              {item.bananaCost} 🍌 (engagement) + ${item.usdCost} in SOL (wallet)
+              {item.bananaCost} 🍌 (engagement) + ${item.usdCost.toFixed(2)} (SOL · USDC · SKR — 10% off in SKR)
             </Text>
           )}
         </View>
@@ -526,6 +516,7 @@ export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
   const [spinningCrate, setSpinningCrate] = useState(false);
   const [crateResult, setCrateResult] = useState<LootResult | null>(null);
   const [previewItem, setPreviewItem] = useState<ShopItem | null>(null);
+  const [purchaseItem, setPurchaseItem] = useState<ShopItem | null>(null);
 
   useEffect(() => {
     if (visible) loadShopState().then(setShopState);
@@ -539,7 +530,7 @@ export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
   }, [items, activeCategory]);
 
   const groupedByTier = useMemo(() => {
-    const tiers: Record<number, ShopItem[]> = { 1: [], 2: [], 3: [], 4: [] };
+    const tiers: Record<number, ShopItem[]> = { 1: [], 2: [], 3: [], 4: [], 5: [] };
     for (const item of filteredItems) {
       (tiers[item.tier] ??= []).push(item);
     }
@@ -585,95 +576,21 @@ export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
       return;
     }
 
-    // Confirm purchase with disclaimer
+    // All purchases go through the multi-currency picker (SOL / USDC / SKR).
+    // Show disclaimer Alert once on first-ever purchase, then open picker.
     const isFirstPurchase = shopState.owned.length === 0;
-    const disclaimerText = isFirstPurchase ? `\n\n${PURCHASE_DISCLAIMER}` : "";
-    Alert.alert(
-      `Buy ${item.name}?`,
-      `${item.bananaCost} 🍌 + $${item.usdCost} in SOL\n\nYou'll sign a wallet transaction to complete.${disclaimerText}`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Buy Now",
-          onPress: async () => {
-            setPurchasing(item.id);
-            try {
-              const spent = await spendBananas(item.bananaCost);
-              if (!spent) { Alert.alert("Error", "Failed to deduct bananas"); return; }
-              useAppStore.getState().setBananaBalance(bananaBalance - item.bananaCost);
-
-              const myWallet = useAppStore.getState().wallet?.address;
-              const isDevWallet = myWallet && myWallet === DEV_WALLET;
-              if (!isDevWallet) {
-                try {
-                  const solPrice = await fetchSolPrice();
-                  await sendShopPayment(item.usdCost, solPrice);
-                } catch (payErr: any) {
-                  await addBananas(item.bananaCost);
-                  useAppStore.getState().setBananaBalance(bananaBalance);
-                  throw new Error(`Payment failed: ${payErr?.message ?? "wallet rejected"}`);
-                }
-              }
-
-              const updated = await addOwnedItem(item.id);
-              updated.equipped[item.category] = item.id;
-              await saveShopState(updated);
-              setShopState(updated);
-
-              if (item.category === "pfp") {
-                const nftMint = useAppStore.getState().verifiedNft?.mint;
-                if (nftMint) await bindPfpItemToNft(item.id, nftMint);
-              }
-
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-              getEquippedStyles().then(s => {
-                const ndc = useAppStore.getState().nftDominantColor;
-                if (s.pfpAuraEnabled && ndc) s.pfpAuraColor = ndc;
-                useAppStore.getState().setShopStyles(s);
-                applyThemeFromShop(s);
-                triggerProfileRebroadcast("").catch(() => {});
-              }).catch(() => {});
-              const buyerName = useAppStore.getState().username ?? "Unknown";
-              sendRawToGroup(`SHOP_PURCHASE:${buyerName}:${item.name}`).catch(() => {});
-              playSound("purchase");
-
-              // Offer optional cNFT receipt mint (non-blocking)
-              const walletAddr = useAppStore.getState().wallet?.address;
-              if (isReceiptMintingAvailable() && walletAddr) {
-                Alert.alert(
-                  "Purchased!",
-                  `${item.name} is now equipped.\n\nMint a proof-of-purchase cNFT? (< 0.001 SOL)`,
-                  [
-                    { text: "Skip", style: "cancel" },
-                    {
-                      text: "Mint",
-                      onPress: async () => {
-                        try {
-                          const result = await mintPurchaseReceipt(item, walletAddr);
-                          if (result.success) {
-                            Alert.alert("Receipt minted!", "cNFT receipt is in your wallet.");
-                          } else {
-                            Alert.alert("Mint failed", result.error ?? "Try again later.");
-                          }
-                        } catch {
-                          Alert.alert("Mint failed", "Something went wrong. Your purchase is safe.");
-                        }
-                      },
-                    },
-                  ],
-                );
-              } else {
-                Alert.alert("Purchased!", `${item.name} is now equipped.`);
-              }
-            } catch (err: any) {
-              Alert.alert("Purchase failed", err?.message ?? "Please try again");
-            } finally {
-              setPurchasing(null);
-            }
-          },
-        },
-      ],
-    );
+    if (isFirstPurchase) {
+      Alert.alert(
+        `Buy ${item.name}?`,
+        `${item.bananaCost} 🍌 + $${item.usdCost.toFixed(2)}\n\n${PURCHASE_DISCLAIMER}`,
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Continue", onPress: () => setPurchaseItem(item) },
+        ],
+      );
+    } else {
+      setPurchaseItem(item);
+    }
   }, [shopState, bananaBalance]);
 
   const categories: Array<{ key: ShopCategory | "all"; label: string }> = [
@@ -682,6 +599,7 @@ export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
     { key: "text", label: "Text" },
     { key: "pfp", label: "PFP" },
     { key: "theme", label: "Themes" },
+    { key: "world", label: "Worlds" },
   ];
 
   // Helper to check item state
@@ -828,7 +746,7 @@ export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
           )}
 
           {/* Item grid grouped by tier */}
-          {([1, 2, 3, 4] as number[]).map(tier => {
+          {([1, 2, 3, 4, 5] as number[]).map(tier => {
             const tierItems = groupedByTier[tier];
             if (!tierItems || tierItems.length === 0) return null;
             const { label, color } = getTierInfo(tier);
@@ -840,7 +758,9 @@ export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
                     <Text style={[styles.tierBadgeText, { color }]}>{label}</Text>
                   </View>
                   <View style={styles.tierPriceWrap}>
-                    <Text style={styles.tierPriceLabel}>${tier} SOL</Text>
+                    <Text style={styles.tierPriceLabel}>
+                      {tier === 5 ? "$4.99 · SOL/USDC/SKR" : `$${tier} · SOL/USDC/SKR`}
+                    </Text>
                   </View>
                 </View>
 
@@ -954,6 +874,84 @@ export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
             if (shopState?.owned.includes(previewItem.id)) {
               setTimeout(() => setPreviewItem(null), 150);
             }
+          }
+        }}
+      />
+
+      {/* Multi-currency picker — used for all Tier 1-5 purchases */}
+      <CurrencyPickerSheet
+        visible={!!purchaseItem}
+        usdCost={purchaseItem?.usdCost ?? 0}
+        itemName={purchaseItem?.name ?? ""}
+        onClose={() => setPurchaseItem(null)}
+        onChoose={async (currency: ShopCurrency) => {
+          const item = purchaseItem;
+          if (!item || !shopState) return;
+          setPurchaseItem(null);
+          setPurchasing(item.id);
+          try {
+            const spent = await spendBananas(item.bananaCost);
+            if (!spent) { Alert.alert("Error", "Failed to deduct bananas"); return; }
+            useAppStore.getState().setBananaBalance(bananaBalance - item.bananaCost);
+
+            const myWallet = useAppStore.getState().wallet?.address;
+            const isDevWallet = myWallet && myWallet === DEV_WALLET;
+            if (!isDevWallet) {
+              try {
+                await sendShopPaymentMulti(item.usdCost, currency);
+              } catch (payErr: any) {
+                await addBananas(item.bananaCost);
+                useAppStore.getState().setBananaBalance(bananaBalance);
+                throw new Error(`Payment failed: ${payErr?.message ?? "wallet rejected"}`);
+              }
+            }
+
+            const updated = await addOwnedItem(item.id);
+            updated.equipped[item.category] = item.id;
+            await saveShopState(updated);
+            setShopState(updated);
+
+            // PFP-category items are bound to the currently equipped NFT mint
+            if (item.category === "pfp") {
+              const nftMint = useAppStore.getState().verifiedNft?.mint;
+              if (nftMint) await bindPfpItemToNft(item.id, nftMint);
+            }
+
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            getEquippedStyles().then(s => {
+              const ndc = useAppStore.getState().nftDominantColor;
+              if (s.pfpAuraEnabled && ndc) s.pfpAuraColor = ndc;
+              useAppStore.getState().setShopStyles(s);
+              applyThemeFromShop(s);
+              triggerProfileRebroadcast("").catch(() => {});
+            }).catch(() => {});
+            const buyerName = useAppStore.getState().username ?? "Unknown";
+            sendRawToGroup(`SHOP_PURCHASE:${buyerName}:${item.name}`).catch(() => {});
+            playSound("purchase");
+
+            // Show success immediately — receipt minting runs in background.
+            Alert.alert("Purchased!", `${item.name} is now equipped.`);
+
+            // Auto-mint cNFT receipt as a permanent on-chain log entry tied
+            // to the buyer wallet. Non-blocking, fail-silent: the purchase is
+            // already recorded locally + via PROFILE_UPDATE broadcast, so a
+            // failed mint never affects ownership.
+            const walletAddr = useAppStore.getState().wallet?.address;
+            if (isReceiptMintingAvailable() && walletAddr) {
+              mintPurchaseReceipt(item, walletAddr)
+                .then((result) => {
+                  if (result.success) {
+                    toast.success("On-chain receipt minted");
+                  }
+                  // Silent on failure — purchase is still safe via other channels
+                })
+                .catch(() => { /* silent */ });
+            }
+          } catch (err: any) {
+            Alert.alert("Purchase failed", err?.message ?? "Please try again");
+          } finally {
+            setPurchasing(null);
+            setPreviewItem(null);
           }
         }}
       />

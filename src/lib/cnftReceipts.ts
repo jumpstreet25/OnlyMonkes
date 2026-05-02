@@ -333,6 +333,92 @@ export function isReceiptMintingAvailable(): boolean {
 }
 
 /**
+ * Fetch all OnlyMonkes purchase receipt cNFTs owned by `walletAddr` and
+ * return the set of `Item ID`s encoded in their metadata.
+ *
+ * Lets us reconstruct shop ownership from chain alone — the canonical use
+ * case is restoring purchases on a fresh device when local AsyncStorage is
+ * empty and `/reclaim` hasn't been run.
+ *
+ * Uses Helius DAS `getAssetsByOwner` filtered to `CNFT_COLLECTION_MINT`.
+ * Returns an empty array if the collection isn't configured or the wallet
+ * has no receipts. Never throws — failures degrade gracefully (we still
+ * have AsyncStorage + PROFILE_UPDATE merges as fallbacks).
+ */
+export async function fetchPurchaseReceiptsFromChain(walletAddr: string): Promise<string[]> {
+  if (!CNFT_COLLECTION_MINT || !walletAddr) return [];
+  try {
+    new PublicKey(walletAddr); // validate
+  } catch {
+    return [];
+  }
+
+  const itemIds = new Set<string>();
+  const PAGE_LIMIT = 1000;
+  let page = 1;
+  // Hard cap to avoid runaway loops
+  for (let safety = 0; safety < 10; safety++) {
+    const resp = await fetch(HELIUS_RPC_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "om-receipts",
+        method: "getAssetsByOwner",
+        params: {
+          ownerAddress: walletAddr,
+          page,
+          limit: PAGE_LIMIT,
+          displayOptions: { showCollectionMetadata: false },
+        },
+      }),
+    }).catch(() => null);
+
+    if (!resp || !resp.ok) break;
+    const data = await resp.json().catch(() => null) as any;
+    const items: any[] = data?.result?.items ?? [];
+    if (items.length === 0) break;
+
+    for (const asset of items) {
+      // Filter to our collection
+      const grouping: any[] = asset?.grouping ?? [];
+      const inCollection = grouping.some(
+        (g) => g?.group_key === "collection" && g?.group_value === CNFT_COLLECTION_MINT,
+      );
+      if (!inCollection) continue;
+
+      // Extract Item ID from metadata attributes (preferred path — DAS often
+      // returns parsed metadata directly).
+      const attrs: any[] = asset?.content?.metadata?.attributes ?? [];
+      let itemId = attrs.find((a) => a?.trait_type === "Item ID")?.value as string | undefined;
+
+      // Fallback: decode the inline data URI if metadata wasn't parsed.
+      if (!itemId) {
+        const jsonUri: string | undefined = asset?.content?.json_uri;
+        if (jsonUri && jsonUri.startsWith("data:application/json;base64,")) {
+          try {
+            const b64 = jsonUri.slice("data:application/json;base64,".length);
+            const decoded = Buffer.from(b64, "base64").toString("utf8");
+            const meta = JSON.parse(decoded);
+            const a: any[] = meta?.attributes ?? [];
+            itemId = a.find((x) => x?.trait_type === "Item ID")?.value as string | undefined;
+          } catch { /* ignore */ }
+        }
+      }
+
+      if (typeof itemId === "string" && itemId.length > 0) {
+        itemIds.add(itemId);
+      }
+    }
+
+    if (items.length < PAGE_LIMIT) break;
+    page += 1;
+  }
+
+  return Array.from(itemIds);
+}
+
+/**
  * Mint a compressed NFT receipt for a Banana Shop purchase.
  *
  * The buyer signs via MWA and pays the tiny compression cost (~0.00001 SOL).
