@@ -151,11 +151,27 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
       // by PROFILE_UPDATE) so the pin works retroactively for users who never
       // received the bot's profile broadcast — and so it survives any future
       // bot redeploys that drop the loc field.
+      //
+      // PFP resolution order: cached profile (PROFILE_UPDATE broadcast), then
+      // most-recent bot message's enriched senderNft (same source as the chat
+      // bubble image), then null. The message-array lookup is the safety net
+      // for the case the user hits Globe before the bot's profile broadcast
+      // populates the cache.
       const BOT_LOCATION = { lat: 32.9914, lng: -117.2714, label: "Solana Beach, CA" };
+      const { useChatStore: _ucs } = await import("@/store/chatStore");
+      const _allMessages = _ucs.getState().messages;
+      const botPfpFromMessages = (botId: string): string | null => {
+        for (let i = _allMessages.length - 1; i >= 0; i--) {
+          const m = _allMessages[i];
+          if (m.senderAddress === botId && m.senderNft?.image) return m.senderNft.image;
+        }
+        return null;
+      };
       for (const botInboxId of BOT_INBOX_IDS) {
         if (seenInboxIds.has(botInboxId)) continue;
         seenInboxIds.add(botInboxId);
         const botProfile = getCachedProfile(botInboxId);
+        const botImage = botProfile?.nftImage ?? botPfpFromMessages(botInboxId) ?? null;
         allMarkers.push({
           id: `user-${botInboxId}`,
           lat: BOT_LOCATION.lat,
@@ -164,7 +180,7 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
           label: botProfile?.username ?? "AI Agent #9385",
           inboxId: botInboxId,
           username: botProfile?.username ?? "AI Agent #9385",
-          nftImage: botProfile?.nftImage ?? null,
+          nftImage: botImage,
         });
       }
 
