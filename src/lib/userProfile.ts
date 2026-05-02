@@ -110,6 +110,7 @@ export async function loadProfileCache(): Promise<void> {
     for (const [k, v] of Object.entries(obj)) {
       _profileCache.set(k, { ..._profileCache.get(k), ...v });
     }
+    _bumpProfileCacheVersion();
   } catch { /* ignore */ }
 
   // Load dedicated location map (survives cache eviction)
@@ -127,6 +128,7 @@ export async function loadProfileCache(): Promise<void> {
           _profileCache.set(k, { location: v, cachedAt: 0 });
         }
       }
+      _bumpProfileCacheVersion();
     }
   } catch { /* ignore */ }
 }
@@ -185,6 +187,7 @@ export function cacheProfile(inboxId: string, profile: CachedProfile): void {
   }
 
   _profileCache.set(inboxId, merged);
+  _bumpProfileCacheVersion();
   // LRU eviction — remove least recently accessed entry when cache exceeds max
   if (_profileCache.size > MAX_PROFILE_CACHE) {
     let lruKey: string | null = null;
@@ -356,6 +359,19 @@ export function getLocatedUserCount(): number {
   return count;
 }
 
+// Memoized result cache for getPrimaryInboxId. The function does an O(N=200)
+// scan of the entire profile cache to find newer inbox IDs for the same
+// wallet — and was being called from MessageBubble on every render. Now we
+// cache the resolved primary per inboxId, keyed on _profileCacheVersion,
+// which bumps on every cache mutation (cacheProfile / trackUser /
+// loadAllTimeUsers / LRU eviction). On a cache miss or version mismatch
+// the scan re-runs once, then the result is reused until the cache changes.
+let _profileCacheVersion = 0;
+const _primaryInboxCache = new Map<string, { primary: string; v: number }>();
+export function _bumpProfileCacheVersion(): void {
+  _profileCacheVersion++;
+}
+
 /**
  * Resolve an inbox ID to its "primary" inbox ID (most recently active device).
  * If the wallet is known and another inbox ID for the same wallet is newer,
@@ -363,9 +379,15 @@ export function getLocatedUserCount(): number {
  * Use this to merge shop styles from the same wallet across devices.
  */
 export function getPrimaryInboxId(inboxId: string): string {
+  const cached = _primaryInboxCache.get(inboxId);
+  if (cached && cached.v === _profileCacheVersion) return cached.primary;
+
   const profile = _profileCache.get(inboxId);
   const wallet = profile?.walletAddress;
-  if (!wallet) return inboxId;
+  if (!wallet) {
+    _primaryInboxCache.set(inboxId, { primary: inboxId, v: _profileCacheVersion });
+    return inboxId;
+  }
 
   let bestInboxId = inboxId;
   let bestCachedAt = profile?.cachedAt ?? 0;
@@ -380,6 +402,7 @@ export function getPrimaryInboxId(inboxId: string): string {
       }
     }
   }
+  _primaryInboxCache.set(inboxId, { primary: bestInboxId, v: _profileCacheVersion });
   return bestInboxId;
 }
 

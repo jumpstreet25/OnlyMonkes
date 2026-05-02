@@ -551,28 +551,37 @@ export function applyReaction(
     return messages;
   }
 
-  return messages.map((msg) => {
-    if (msg.id !== targetId) return msg;
+  // Perf (2026-05-02): early bail when target isn't in the in-memory window.
+  // Reactions can target ANY message (including ones older than the 300-msg
+  // cap or simply not loaded yet). The previous .map() always allocated a
+  // new top-level array even when no message changed → triggered FlashList
+  // re-render for a no-op update. findIndex + slice keeps the same array
+  // reference when the target is missing, so React.memo + selector identity
+  // cleanly skip the render.
+  const idx = messages.findIndex((m) => m.id === targetId);
+  if (idx === -1) return messages;
 
-    const reactions = { ...msg.reactions };
-    const existing = reactions[emoji as ReactionEmoji] ?? {
-      emoji: emoji as ReactionEmoji, count: 0, reactedByMe: false, reactors: [],
-    };
+  const msg = messages[idx];
+  const reactions = { ...msg.reactions };
+  const existing = reactions[emoji as ReactionEmoji] ?? {
+    emoji: emoji as ReactionEmoji, count: 0, reactedByMe: false, reactors: [],
+  };
 
-    const alreadyReacted = existing.reactors.includes(sender);
-    const newReactors = alreadyReacted
-      ? existing.reactors.filter((r) => r !== sender)
-      : [...existing.reactors, sender].slice(-50); // Cap at 50 reactors per emoji
-    reactions[emoji as ReactionEmoji] = {
-      ...existing,
-      count: newReactors.length,
-      reactedByMe:
-        sender === myInboxId ? !existing.reactedByMe : existing.reactedByMe,
-      reactors: newReactors,
-    };
+  const alreadyReacted = existing.reactors.includes(sender);
+  const newReactors = alreadyReacted
+    ? existing.reactors.filter((r) => r !== sender)
+    : [...existing.reactors, sender].slice(-50); // Cap at 50 reactors per emoji
+  reactions[emoji as ReactionEmoji] = {
+    ...existing,
+    count: newReactors.length,
+    reactedByMe:
+      sender === myInboxId ? !existing.reactedByMe : existing.reactedByMe,
+    reactors: newReactors,
+  };
 
-    return { ...msg, reactions };
-  });
+  const updated = messages.slice();
+  updated[idx] = { ...msg, reactions };
+  return updated;
 }
 
 /**
@@ -600,12 +609,15 @@ export function applyEdit(
   const newContent = parts.slice(2).join(":");
   const sender: string = raw.senderInboxId;
 
-  return messages.map((msg) => {
-    if (msg.id !== targetId) return msg;
-    // Only the original sender can edit their own message
-    if (msg.senderAddress !== sender) return msg;
-    return { ...msg, editedContent: newContent, editedAt: new Date() };
-  });
+  // Perf: same early-bail pattern as applyReaction.
+  const idx = messages.findIndex((m) => m.id === targetId);
+  if (idx === -1) return messages;
+  const msg = messages[idx];
+  // Only the original sender can edit their own message
+  if (msg.senderAddress !== sender) return messages;
+  const updated = messages.slice();
+  updated[idx] = { ...msg, editedContent: newContent, editedAt: new Date() };
+  return updated;
 }
 
 // ─── Profile Update Parsing & Validation ──────────────────────────────────
@@ -1400,39 +1412,42 @@ export function applyStickerReaction(
   const targetId = withoutPrefix.slice(lastColon + 1);
   const sender: string = raw.senderInboxId;
 
-  return messages.map((msg) => {
-    if (msg.id !== targetId) return msg;
+  // Perf: same early-bail pattern as applyReaction.
+  const idx = messages.findIndex((m) => m.id === targetId);
+  if (idx === -1) return messages;
 
-    const existing = (msg.stickerReactions ?? []).find((s) => s.url === url);
-    let stickerReactions: StickerReaction[];
+  const msg = messages[idx];
+  const existing = (msg.stickerReactions ?? []).find((s) => s.url === url);
+  let stickerReactions: StickerReaction[];
 
-    if (!existing) {
-      // First reaction with this sticker
-      stickerReactions = [
-        ...(msg.stickerReactions ?? []),
-        {
-          url,
-          count: 1,
-          reactedByMe: sender === myInboxId,
-          reactors: [sender],
-        },
-      ];
-    } else {
-      const alreadyReacted = existing.reactors.includes(sender);
-      stickerReactions = (msg.stickerReactions ?? []).map((s) => {
-        if (s.url !== url) return s;
-        return {
-          ...s,
-          count: alreadyReacted ? s.count - 1 : s.count + 1,
-          reactedByMe:
-            sender === myInboxId ? !s.reactedByMe : s.reactedByMe,
-          reactors: alreadyReacted
-            ? s.reactors.filter((r) => r !== sender)
-            : [...s.reactors, sender],
-        };
-      }).filter((s) => s.count > 0);
-    }
+  if (!existing) {
+    // First reaction with this sticker
+    stickerReactions = [
+      ...(msg.stickerReactions ?? []),
+      {
+        url,
+        count: 1,
+        reactedByMe: sender === myInboxId,
+        reactors: [sender],
+      },
+    ];
+  } else {
+    const alreadyReacted = existing.reactors.includes(sender);
+    stickerReactions = (msg.stickerReactions ?? []).map((s) => {
+      if (s.url !== url) return s;
+      return {
+        ...s,
+        count: alreadyReacted ? s.count - 1 : s.count + 1,
+        reactedByMe:
+          sender === myInboxId ? !s.reactedByMe : s.reactedByMe,
+        reactors: alreadyReacted
+          ? s.reactors.filter((r) => r !== sender)
+          : [...s.reactors, sender],
+      };
+    }).filter((s) => s.count > 0);
+  }
 
-    return { ...msg, stickerReactions };
-  });
+  const updated = messages.slice();
+  updated[idx] = { ...msg, stickerReactions };
+  return updated;
 }
