@@ -29,32 +29,48 @@ function parseItems(data: any[]): GiphyItem[] {
 
 const GIPHY_TIMEOUT_MS = 8_000;
 
+// Last-call status — exposed so picker UIs can display the actual failure
+// mode inline when the result is empty. Previous "silent return []" version
+// gave no diagnostic without ADB; the on-device debug overlay reads this.
+let _lastStatus: string = "idle";
+export function getGiphyLastStatus(): string {
+  return _lastStatus;
+}
+function setStatus(s: string): void {
+  _lastStatus = s;
+  console.warn(`[giphy] ${s}`);
+}
+
 /**
  * Centralized fetch + parse with real error surfacing. The previous version
  * silently swallowed non-OK responses (401 from missing API key, 429 from
  * rate limiting, etc.) by returning [], which manifested as empty pickers
- * with no diagnostic. Now logs once per failure mode so the cause shows
- * up in dev/Sentry without requiring a debugger.
+ * with no diagnostic.
  */
 async function fetchGiphy(label: string, url: string): Promise<GiphyItem[]> {
   if (!API_KEY) {
-    console.warn(`[giphy:${label}] GIPHY_API_KEY is empty in this build — picker will be blank. Check react-native-dotenv .env loading + Constants.expoConfig.extra.giphyApiKey.`);
+    setStatus(`${label}: API key MISSING in bundle`);
     return [];
   }
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(GIPHY_TIMEOUT_MS) });
     if (!res.ok) {
-      console.warn(`[giphy:${label}] HTTP ${res.status} ${res.statusText}`);
+      setStatus(`${label}: HTTP ${res.status} ${res.statusText || ""}`);
       return [];
     }
     const json = await res.json();
+    const rawCount = json.data?.length ?? 0;
     const items = parseItems(json.data ?? []);
-    if (items.length === 0 && (json.data?.length ?? 0) > 0) {
-      console.warn(`[giphy:${label}] Got ${json.data.length} results but parseItems filtered all out (response shape change?)`);
+    if (items.length === 0 && rawCount > 0) {
+      setStatus(`${label}: ${rawCount} raw → 0 after parseItems (Giphy schema change?)`);
+    } else if (items.length === 0) {
+      setStatus(`${label}: 0 results from Giphy`);
+    } else {
+      setStatus(`${label}: ${items.length} ok (key=${API_KEY.length}c)`);
     }
     return items;
   } catch (err) {
-    console.warn(`[giphy:${label}] Fetch failed:`, (err as Error)?.message);
+    setStatus(`${label}: fetch threw — ${(err as Error)?.message ?? "unknown"}`);
     return [];
   }
 }
