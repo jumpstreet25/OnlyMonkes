@@ -26,6 +26,14 @@ function SwipeReplyAction() {
 
 export interface ChatMessageListProps {
   messages: ChatMessage[];
+  /**
+   * Bumped every time applyReactionUpdate fires (emoji react / sticker react /
+   * edit). Passed to FlashList as `extraData` so the recycler invalidates
+   * visible cells and re-runs renderItem. React.memo on MessageBubble still
+   * bails per cell on message-ref equality, so unaffected cells are cheap
+   * no-ops; only the cell whose message actually changed re-paints.
+   */
+  reactionVersion: number;
   myAddress: string;
   isGroupAdmin: boolean;
   isLoadingHistory: boolean;
@@ -80,6 +88,7 @@ function getMessageType(item: ChatMessage): string {
 const ChatMessageListInner = React.forwardRef<FlashListRef<ChatMessage>, ChatMessageListProps>(function ChatMessageListInner(props, _ref) {
   const {
     messages,
+    reactionVersion,
     myAddress,
     isGroupAdmin,
     isLoadingHistory,
@@ -175,6 +184,7 @@ const ChatMessageListInner = React.forwardRef<FlashListRef<ChatMessage>, ChatMes
     <FlashList
       ref={flatListRef as any}
       data={messages}
+      extraData={reactionVersion}
       renderItem={renderMessage as any}
       keyExtractor={keyExtractor}
       getItemType={getItemType as any}
