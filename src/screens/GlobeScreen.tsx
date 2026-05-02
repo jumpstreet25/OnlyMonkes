@@ -310,12 +310,20 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
   // Send markers to WebView — always sends all markers so WebGL can rebuild clusters correctly.
   // WebGL deduplicates internally and re-groups co-located users on each call.
   const prevMarkerJson = useRef("");
-  const sendMarkersToWebView = useCallback((markersToSend: GlobeMarker[]) => {
-    if (!webViewRef.current || !webViewReady.current) return;
+  // Bumped on WebView error → forces a fresh mount via key prop. Resets the
+  // handshake state so onLoad fires cleanly and markers re-push.
+  const [webViewKey, setWebViewKey] = useState(0);
+  const sendMarkersToWebView = useCallback((markersToSend: GlobeMarker[], opts?: { force?: boolean }) => {
+    if (!webViewRef.current) return;
+    // Watchdog can force a send even if onLoad never fired (Android WebView
+    // quirk where the load callback is silent). Trade-off: the marker payload
+    // may be dropped if the WebView truly isn't ready, but at worst we lose
+    // one redundant send — there's no downside to trying.
+    if (!webViewReady.current && !opts?.force) return;
 
-    // Only resend if the marker set actually changed
+    // Only resend if the marker set actually changed (skipped on force).
     const ids = markersToSend.map(m => m.id).sort().join(",");
-    if (ids === prevMarkerJson.current) return;
+    if (!opts?.force && ids === prevMarkerJson.current) return;
     prevMarkerJson.current = ids;
 
     const payload = markersToSend.map(m => {
@@ -338,6 +346,30 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
     if (markers.length > 0) sendMarkersToWebView(markers);
   }, [markers, sendMarkersToWebView]);
 
+  // FIX #1: when globeHtml swaps from the synchronous fallback to the real
+  // HTML loaded async via loadGlobeHtml(), the WebView remounts. Reset the
+  // handshake state so the new mount's onLoad properly re-pushes markers.
+  // Without this reset, prevMarkerJson keeps the old id-string and the
+  // next setMarkers pass dedupes itself away → empty globe.
+  useEffect(() => {
+    webViewReady.current = false;
+    prevMarkerJson.current = "";
+  }, [globeHtml, webViewKey]);
+
+  // FIX #2: watchdog. On some Android devices the WebView's onLoad callback
+  // doesn't fire (hardware-accelerated layer + heavy JS bundle race). After
+  // 4s, if we still haven't seen onLoad, force a marker push anyway. Worst
+  // case it's a no-op; best case it unblocks an otherwise-empty globe.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (!webViewReady.current && markers.length > 0) {
+        console.warn("[Globe] onLoad watchdog: forcing marker resend after 4s of silence");
+        sendMarkersToWebView(markers, { force: true });
+      }
+    }, 4000);
+    return () => clearTimeout(t);
+  }, [globeHtml, webViewKey, markers, sendMarkersToWebView]);
+
   // When WebView finishes loading, send all current markers
   const handleWebViewLoad = useCallback(() => {
     webViewReady.current = true;
@@ -345,6 +377,21 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
     prevMarkerJson.current = "";
     if (markers.length > 0) sendMarkersToWebView(markers);
   }, [markers, sendMarkersToWebView]);
+
+  // FIX #4: WebView error → soft remount. The previous handler logged but
+  // never recovered, so a single renderer crash left the globe permanently
+  // empty until app restart. Bumping the key forces a fresh WebView, the
+  // ready-state useEffect resets the handshake, and onLoad re-pushes
+  // markers. Capped at one auto-retry per crash to avoid a remount loop.
+  const errorRetryCount = useRef(0);
+  const handleWebViewError = useCallback((e: any) => {
+    console.warn("[Globe WebView error]", e?.nativeEvent);
+    if (errorRetryCount.current < 2) {
+      errorRetryCount.current++;
+      webViewReady.current = false;
+      setWebViewKey((k) => k + 1);
+    }
+  }, []);
 
   // ── Handle messages from WebView (marker taps) ────────────────────────────
   const handleMessage = useCallback((event: any) => {
@@ -400,6 +447,7 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
       {/* 3D Globe (WebView) — loads once, markers injected via postMessage */}
       <View style={styles.globeContainer}>
           <WebView
+            key={webViewKey}
             ref={webViewRef}
             source={{ html: globeHtml }}
             style={styles.webView}
@@ -412,7 +460,7 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
             androidLayerType="hardware"
             onMessage={handleMessage}
             onLoad={handleWebViewLoad}
-            onError={(e) => console.warn("[Globe WebView error]", e.nativeEvent)}
+            onError={handleWebViewError}
             scrollEnabled={false}
             bounces={false}
             overScrollMode="never"
