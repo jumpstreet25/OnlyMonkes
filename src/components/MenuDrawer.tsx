@@ -58,6 +58,7 @@ import { LeaderboardView } from "@/components/LeaderboardView";
 import { EventRsvpModal } from "@/components/EventRsvpModal";
 import { getAttendeeCount } from "@/lib/eventRsvp";
 import { CHAT_THEMES, saveThemeId } from "@/lib/theme";
+import { WebViewModal } from "@/components/WebViewModal";
 
 const DRAWER_WIDTH_RATIO = 0.82;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
@@ -418,6 +419,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
   const [searchText, setSearchText] = useState("");
   const [shopOpen, setShopOpen] = useState(false);
   const [reclaimOpen, setReclaimOpen] = useState(false);
+  const [webView, setWebView] = useState<{ url: string; title: string } | null>(null);
   const [bananaState, setBananaState] = useState<BananaState | null>(null);
   const bananaBalance = useAppStore(s => s.bananaBalance);
 
@@ -1213,7 +1215,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                     idx === TOOLS.length - 1 && styles.toolRowLast,
                     pressed && { opacity: 0.7 },
                   ]}
-                  onPress={() => Linking.openURL(tool.url)}
+                  onPress={() => setWebView({ url: tool.url, title: tool.name })}
                 >
                   <View style={styles.toolIconBox}>
                     <Text style={styles.toolIcon}>{tool.icon}</Text>
@@ -1239,6 +1241,12 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
 
       <BananaShopModal visible={shopOpen} onClose={() => setShopOpen(false)} />
       <ReclaimModal visible={reclaimOpen} onClose={() => setReclaimOpen(false)} />
+      <WebViewModal
+        visible={!!webView}
+        url={webView?.url ?? null}
+        title={webView?.title}
+        onClose={() => setWebView(null)}
+      />
     </Modal>
   );
 }
