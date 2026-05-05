@@ -27,7 +27,7 @@ import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { getAssociatedTokenAddressSync } from "@solana/spl-token";
-import { THEME, FONTS, SKR_MINT, USDC_MINT, HELIUS_RPC_URL } from "@/lib/constants";
+import { THEME, FONTS, SKR_MINT, USDC_MINT, HELIUS_RPC_URL, DEV_WALLET } from "@/lib/constants";
 import { useAppStore } from "@/store/appStore";
 import {
   fetchSkrPriceUsd,
@@ -68,21 +68,26 @@ export function CurrencyPickerSheet({
   const [error, setError] = useState<string | null>(null);
   const slideAnim = React.useRef(new Animated.Value(SCREEN_H)).current;
 
-  // Slide-up animation tied to visibility
+  // Slide-up animation tied to visibility.
+  //
+  // useNativeDriver MUST stay false: native transforms break Android touch
+  // hit-testing when the picker is mounted inside another <Modal>
+  // (BananaShopModal). The sheet slides up visually on the UI thread but the
+  // JS-side hit-target stays at the off-screen origin, so row taps miss.
   useEffect(() => {
     if (visible) {
       Animated.timing(slideAnim, {
         toValue: 0,
         duration: 280,
         easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
+        useNativeDriver: false,
       }).start();
     } else {
       Animated.timing(slideAnim, {
         toValue: SCREEN_H,
         duration: 220,
         easing: Easing.in(Easing.cubic),
-        useNativeDriver: true,
+        useNativeDriver: false,
       }).start();
     }
   }, [visible, slideAnim]);
@@ -182,19 +187,25 @@ export function CurrencyPickerSheet({
       onRequestClose={onClose}
       statusBarTranslucent
     >
-      {/* Backdrop — tap to close */}
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
-        <View style={styles.dimLayer} />
-      </Pressable>
+      {/* Wrap both children in a single root so Android keeps a stable view
+          hierarchy. Without this, the Pressable backdrop and the sliding sheet
+          are direct Modal children, and Android can collapse/reorder them in
+          ways that let the backdrop steal touches from the row Pressables. */}
+      <View style={{ flex: 1 }} collapsable={false}>
+        {/* Backdrop — tap to close */}
+        <Pressable style={styles.backdrop} onPress={onClose}>
+          <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
+          <View style={styles.dimLayer} />
+        </Pressable>
 
-      {/* Sliding sheet */}
-      <Animated.View
-        style={[
-          styles.sheet,
-          { transform: [{ translateY: slideAnim }] },
-        ]}
-      >
+        {/* Sliding sheet */}
+        <Animated.View
+          collapsable={false}
+          style={[
+            styles.sheet,
+            { transform: [{ translateY: slideAnim }] },
+          ]}
+        >
         <LinearGradient
           colors={["rgba(248,248,255,0.06)", "rgba(0,0,0,0.15)"]}
           start={{ x: 0.5, y: 0 }}
@@ -229,7 +240,12 @@ export function CurrencyPickerSheet({
                   row.balance !== null && row.balance >= row.tokenAmount;
                 const priceUnavailable =
                   row.tokenAmount === 0 && row.currency !== "USDC";
-                const disabled = priceUnavailable || !sufficient;
+                // Dev wallet bypasses balance + price checks here so the rest of
+                // the purchase path (handled in BananaShopModal.onChoose) can
+                // exercise the dev-only short-circuit even when balances/prices
+                // briefly fail to load.
+                const isDev = wallet?.address === DEV_WALLET;
+                const disabled = isDev ? false : (priceUnavailable || !sufficient);
                 return (
                   <Pressable
                     key={row.currency}
@@ -277,7 +293,8 @@ export function CurrencyPickerSheet({
             You'll sign a wallet transaction to complete. Crypto payment is non-refundable.
           </Text>
         </View>
-      </Animated.View>
+        </Animated.View>
+      </View>
     </Modal>
   );
 }
