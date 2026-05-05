@@ -61,6 +61,14 @@ export default function RootLayout() {
     clearLegacyKeys();
     loadPersistedPrefs();
 
+    // Proactive AsyncStorage rescue: if the profile cache is over 4MB on
+    // boot, trim it before any write blows up with SQLITE_FULL. Cheap no-op
+    // when the cache is small. Native APK can raise the 6MB SQLite cap via
+    // gradle.properties (queued separately).
+    import('../src/lib/storageRescue').then(m =>
+      m.maybeProactiveShrink().catch(() => {}),
+    ).catch(() => {});
+
     import('../src/store/tradesStore').then(m => m.useTradesStore.getState().hydrate());
     import('../src/lib/positions').then(m => m.loadOpenPositions());
 
