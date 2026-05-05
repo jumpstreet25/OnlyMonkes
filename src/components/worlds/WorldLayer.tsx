@@ -52,6 +52,19 @@ interface WorldMiniPreviewProps {
 
 export function WorldMiniPreview({ worldId, width, height }: WorldMiniPreviewProps) {
   if (worldId === "world_banana_grove") {
+    // Mini-pile mirrors the real world: bananas pile at the bottom, with a
+    // couple drifting in above. Scaled down to fit the preview card.
+    const miniPile = [
+      // Bottom row
+      { xPct: 0.20, yOffset: 0,  size: 16, rot: -20 },
+      { xPct: 0.42, yOffset: 2,  size: 18, rot: 12  },
+      { xPct: 0.62, yOffset: 0,  size: 17, rot: -8  },
+      { xPct: 0.82, yOffset: 4,  size: 15, rot: 22  },
+      // Middle / top
+      { xPct: 0.32, yOffset: 11, size: 14, rot: 28  },
+      { xPct: 0.52, yOffset: 14, size: 15, rot: -16 },
+      { xPct: 0.72, yOffset: 10, size: 13, rot: 6   },
+    ];
     return (
       <View style={[miniStyles.root, { width, height }]}>
         <Canvas style={{ width, height }}>
@@ -59,14 +72,32 @@ export function WorldMiniPreview({ worldId, width, height }: WorldMiniPreviewPro
             <LinearGradient
               start={vec(0, 0)}
               end={vec(0, height)}
-              colors={["#0d2818", "#1a3d22", "#2d5a18", "#5e7a1a"]}
+              colors={["#0A0A0F", "#070708", "#000000"]}
             />
           </Rect>
         </Canvas>
-        {/* Static banana hints */}
-        <Text style={[miniStyles.banana, { left: width * 0.2, top: height * 0.25, fontSize: 18 }]}>🍌</Text>
-        <Text style={[miniStyles.banana, { left: width * 0.7, top: height * 0.55, fontSize: 22 }]}>🍌</Text>
-        <Text style={[miniStyles.banana, { left: width * 0.45, top: height * 0.7, fontSize: 16 }]}>🍌</Text>
+        {/* Drifting bananas (static positions for preview) */}
+        <Text style={[miniStyles.banana, { left: width * 0.30 - 9, top: height * 0.18, fontSize: 18, transform: [{ rotate: "-12deg" }], opacity: 0.85 }]}>🍌</Text>
+        <Text style={[miniStyles.banana, { left: width * 0.70 - 8, top: height * 0.32, fontSize: 16, transform: [{ rotate: "18deg" }], opacity: 0.8 }]}>🍌</Text>
+        {/* Pile at the bottom */}
+        {miniPile.map((b, i) => (
+          <Text
+            key={i}
+            style={[
+              miniStyles.banana,
+              {
+                left: width * b.xPct - b.size / 2,
+                bottom: 6 + b.yOffset,
+                top: undefined,
+                fontSize: b.size,
+                opacity: 0.92,
+                transform: [{ rotate: `${b.rot}deg` }],
+              },
+            ]}
+          >
+            🍌
+          </Text>
+        ))}
       </View>
     );
   }
