@@ -72,6 +72,24 @@ export default function RootLayout() {
     import('../src/store/tradesStore').then(m => m.useTradesStore.getState().hydrate());
     import('../src/lib/positions').then(m => m.loadOpenPositions());
 
+    // One-time wallet-keyed grants (Rugdoctor, future OG drops). Runs in
+    // parallel with the dev-restore subscription below; grants.ts gates per-
+    // device with an AsyncStorage flag so it only fires once. Listed wallets
+    // live in src/lib/grants.ts.
+    const unsubGrants = useAppStore.subscribe((state) => {
+      const addr = state.wallet?.address;
+      if (!addr) return;
+      unsubGrants();
+      import('../src/lib/grants')
+        .then((m) => m.applyGrantIfEligible(addr))
+        .then((res) => {
+          if (res.applied && res.label) {
+            Alert.alert('Account Granted', res.label);
+          }
+        })
+        .catch(() => { /* silent — grant failures don't block boot */ });
+    });
+
     // One-time dev account restore (after keystore loss 2026-04-19)
     // Runs when wallet becomes available (not at init — wallet is null at startup)
     const unsubRestore = useAppStore.subscribe((state) => {
