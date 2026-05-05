@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { safeStorageSet } from '@/lib/storageRescue';
 
 const SK_USERNAME      = 'profile_username';
 const SK_BIO           = 'profile_bio';
@@ -77,7 +78,12 @@ export interface CachedProfile {
 
 const AK_PROFILE_CACHE = 'profile_cache_v2';
 const AK_LOCATION_MAP = 'user_locations_v1'; // Dedicated persistent location store — survives cache eviction
-const MAX_PROFILE_CACHE = 200; // Reduced from 500 — avatar base64 URIs eat ~50KB each; 200 × 50KB = 10MB vs 25MB
+// Reduced 200 → 80 (2026-05-05): Android AsyncStorage SQLite hard-caps at 6MB
+// by default. 200 entries × ~50KB base64 avatar = ~10MB → SQLITE_FULL crashes.
+// 80 × 50KB = 4MB leaves headroom for messageCache + other stores. Native APK
+// can raise the cap via gradle.properties (queued for next build) — until then
+// this is the OTA-safe ceiling.
+const MAX_PROFILE_CACHE = 80;
 const _profileCache = new Map<string, CachedProfile>();
 const _locationMap = new Map<string, string>(); // inboxId → location (never evicted)
 let _persistTimer: ReturnType<typeof setTimeout> | null = null;
@@ -150,7 +156,10 @@ function _schedulePersist() {
     try {
       const obj: Record<string, CachedProfile> = {};
       _profileCache.forEach((v, k) => { obj[k] = v; });
-      await AsyncStorage.setItem(AK_PROFILE_CACHE, JSON.stringify(obj));
+      // safeStorageSet self-heals on SQLITE_FULL by trimming this same cache
+      // and retrying — prevents profile-broadcast spam from blocking writes
+      // when the SQLite DB nears its Android cap.
+      await safeStorageSet(AK_PROFILE_CACHE, JSON.stringify(obj));
     } catch { /* ignore */ }
   }, 2000); // 2s debounce — batches rapid profile updates into single write
 }
