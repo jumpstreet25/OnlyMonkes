@@ -13,6 +13,8 @@
  *   POST /api/actions/predict?marketId=M&side=yes|no&amount=U           → Jupiter tx (or geo-restricted msg)
  *   GET  /api/actions/bet?marketId=M&side=yes|no&amount=U&slug=S        → Actions metadata (geo-aware, sports)
  *   POST /api/actions/bet?marketId=M&side=yes|no&amount=U               → Jupiter tx (or geo-restricted msg)
+ *   GET  /api/actions/kalshi-bet?ticker=T&outputMint=M&side=yes|no&amount=U&slug=S → Actions metadata (US-legal, Kalshi via DFlow)
+ *   POST /api/actions/kalshi-bet?ticker=T&outputMint=M&side=yes|no&amount=U        → DFlow tx (or KYC-required msg)
  *   POST /escrow                                                 → Store ephemeral keypair for tip link
  *   GET  /claim?token=T&wallet=W                                 → Claim a tip link
  *
@@ -54,6 +56,9 @@ interface Env {
   JUP_API_KEY: string;
   BOT_HTTP_SECRET: string;
   ESCROW_ENCRYPT_KEY: string;
+  // Optional in dev — DFlow's dev quote endpoint requires no key. Set in
+  // production via `wrangler secret put DFLOW_API_KEY` once we cut over.
+  DFLOW_API_KEY?: string;
   TIP_ESCROW: KVNamespace;
   FRAME_ALERTS: KVNamespace;
 }
@@ -675,6 +680,266 @@ async function handlePredictPost(url: URL, body: any, env: Env, kind: PredictKin
   }
 }
 
+// ─── DFlow + Kalshi (US-legal one-click bet via Solflare KYC) ─────────────────
+//
+// Why this exists:
+//   Polymarket via Jupiter is geo-blocked for US/KR. Kalshi is the only
+//   CFTC-regulated US-legal prediction exchange, and DFlow tokenizes Kalshi
+//   contracts as SPL tokens on Solana. Solflare ships KYC + DFlow trading
+//   in-wallet to 4M+ users. This endpoint is the matching one-click trade
+//   surface for OnlyMonkes alerts that flow from `dflowKalshiClient.ts`.
+//
+// Geo policy:
+//   NO geo gate. Kalshi is US-legal — that's the entire point. We DO surface
+//   a clean "wallet not KYC'd" error when DFlow rejects the order so users
+//   know to complete the Proof flow in Solflare first.
+//
+// KYC model:
+//   Kalshi binds verification to a wallet PUBLIC KEY (not to Solflare
+//   specifically). Once a wallet completes the DFlow Proof + Kalshi KYC
+//   handshake, the same keypair can sign DFlow orders from any signer —
+//   Solflare in-app, MWA on Seeker, or any wallet that signs Solana txs.
+
+const DFLOW_QUOTE_BASE = "https://quote-api.dflow.net";
+const KALSHI_MAX_USDC = 100;
+// Inline kalshiYesMint / kalshiNoMint instead of a separate side enum: DFlow
+// has no side flag — passing the YES mint as outputMint = buying YES, and
+// vice versa. The bot still sends a `side=yes|no` query param so the GET
+// metadata can render "Bet YES" copy without us having to look up which mint
+// is which.
+
+interface DFlowOrderResponse {
+  outAmount?: string;
+  executionMode?: "sync" | "async";
+  transaction?: string;        // base64 VersionedTransaction
+  lastValidBlockHeight?: number;
+  revertMint?: string;
+  error?: string;
+  message?: string;
+}
+
+/** Build the DFlow /order URL. All params are URL-encoded query string. */
+function buildDFlowOrderUrl(opts: {
+  ownerPubkey: string;
+  outputMint: string;
+  amountUsdc: number;
+}): string {
+  const amountBaseUnits = String(Math.round(opts.amountUsdc * USDC_MICRO));
+  const params = new URLSearchParams({
+    inputMint: USDC_MINT,
+    outputMint: opts.outputMint,
+    amount: amountBaseUnits,
+    userPublicKey: opts.ownerPubkey,
+    slippageBps: "auto",
+    dynamicComputeUnitLimit: "true",
+    prioritizationFeeLamports: "5000",
+  });
+  return `${DFLOW_QUOTE_BASE}/order?${params}`;
+}
+
+/** Hit DFlow's /order endpoint and return the base64 unsigned transaction. */
+async function getDFlowKalshiOrder(opts: {
+  ownerPubkey: string;
+  outputMint: string;
+  amountUsdc: number;
+  env: Env;
+}): Promise<string> {
+  const headers: Record<string, string> = { "Accept": "application/json" };
+  if (opts.env.DFLOW_API_KEY) headers["x-api-key"] = opts.env.DFLOW_API_KEY;
+
+  const res = await fetchWithTimeout(
+    buildDFlowOrderUrl(opts),
+    { method: "GET", headers },
+    FETCH_TIMEOUT,
+  );
+
+  const text = await res.text();
+  let data: DFlowOrderResponse;
+  try { data = JSON.parse(text); } catch { data = { error: text }; }
+
+  if (!res.ok || !data.transaction) {
+    const detail = data.error || data.message || text.slice(0, 200);
+    // Surface the raw status + message so the caller can pattern-match for
+    // KYC rejection and route to a friendlier action card.
+    throw new Error(`DFlow order failed (${res.status}): ${detail}`);
+  }
+  return data.transaction;
+}
+
+/** Detect "wallet not KYC'd" in DFlow's error message. DFlow's exact wording
+ * isn't documented for the dev endpoint, so match on common substrings.
+ * Falls back to false → show generic error. */
+function isKycError(message: string): boolean {
+  const m = message.toLowerCase();
+  return (
+    m.includes("kyc") ||
+    m.includes("verified") ||
+    m.includes("verification") ||
+    m.includes("proof") ||
+    m.includes("not allowed") ||
+    m.includes("forbidden")
+  );
+}
+
+/** Kalshi prices are 0..1 probabilities — but the Blink URL passes them as
+ * cents (integer 1..99) for clean URL encoding. Decode back to a fraction
+ * for payout math. Returns null if missing/invalid → payout copy is omitted. */
+function parseEntryPriceCents(raw: string | null): number | null {
+  if (!raw) return null;
+  const n = parseFloat(raw);
+  if (!Number.isFinite(n) || n < 1 || n > 99) return null;
+  return n / 100;
+}
+
+/** Estimated payout USDC if the bet wins. Kalshi YES/NO contracts settle to
+ * $1 each — buying YES @ $0.42 with $5 nets ~$11.90 if YES wins. Approximate
+ * (ignores DFlow fee + slippage) — the wallet shows the exact figure on sign. */
+function estimatePayoutUsdc(amountUsdc: number, entryPrice: number): number {
+  if (entryPrice <= 0) return 0;
+  return amountUsdc / entryPrice;
+}
+
+function handleKalshiBetGet(url: URL): Response {
+  const ticker = url.searchParams.get("ticker");
+  const outputMint = url.searchParams.get("outputMint");
+  const side = (url.searchParams.get("side") || "yes").toLowerCase();
+  const amount = url.searchParams.get("amount") || "5";
+  const label = url.searchParams.get("label") || "market";
+  const slug = url.searchParams.get("slug") || "";
+  const entryPriceRaw = url.searchParams.get("entryPrice") || "";
+
+  if (!ticker) return errorResponse("Missing ticker");
+  if (!outputMint) return errorResponse("Missing outputMint");
+  try { new PublicKey(outputMint); } catch { return errorResponse("Invalid outputMint"); }
+  if (side !== "yes" && side !== "no") return errorResponse("side must be yes or no");
+
+  const sideUpper = side.toUpperCase();
+  const entryPrice = parseEntryPriceCents(entryPriceRaw);
+  const priceCopy = entryPrice !== null ? ` @ ${(entryPrice * 100).toFixed(0)}¢` : "";
+  const title = `Bet ${sideUpper}${priceCopy} — ${decodeURIComponent(label)}`;
+  const description = `Bet ${sideUpper} on this Kalshi market via DFlow (CFTC-regulated, US-legal). Settles in USDC. Wallet must be Kalshi-verified through Solflare's Proof flow.`;
+
+  // Preserve entryPrice on every action button so the post-trade card has it.
+  const mkHref = (amt: string) =>
+    `/api/actions/kalshi-bet?ticker=${encodeURIComponent(ticker)}&outputMint=${encodeURIComponent(outputMint)}&side=${side}&amount=${amt}&label=${encodeURIComponent(label)}&slug=${encodeURIComponent(slug)}${entryPriceRaw ? `&entryPrice=${encodeURIComponent(entryPriceRaw)}` : ""}`;
+
+  const kalshiUrl = slug
+    ? `https://kalshi.com/markets/${encodeURIComponent(slug)}`
+    : "https://kalshi.com/";
+
+  return jsonResponse({
+    type: "action",
+    icon: ACTION_ICON,
+    title: `OnlyMonkes — ${title}`,
+    description,
+    label: `Bet ${sideUpper}`,
+    links: {
+      actions: [
+        {
+          label: `Bet ${sideUpper} Custom $`,
+          href: mkHref("{amount}"),
+          type: "transaction" as const,
+          parameters: [
+            {
+              name: "amount",
+              label: "USDC amount (1–100)",
+              type: "number" as const,
+              required: true,
+              min: 1,
+              max: KALSHI_MAX_USDC,
+            },
+          ],
+        },
+        { label: "$5",  href: mkHref("5"),  type: "transaction" as const },
+        { label: "$25", href: mkHref("25"), type: "transaction" as const },
+        { label: "View on Kalshi", href: kalshiUrl, type: "external-link" as const },
+      ],
+    },
+  }, 200, true);
+}
+
+async function handleKalshiBetPost(url: URL, body: any, env: Env): Promise<Response> {
+  const account = body?.account;
+  if (!account || typeof account !== "string") return errorResponse("Missing account");
+  try { new PublicKey(account); } catch { return errorResponse("Invalid wallet address"); }
+
+  const outputMint = url.searchParams.get("outputMint");
+  const side = (url.searchParams.get("side") || "").toLowerCase();
+  const amount = parseFloat(url.searchParams.get("amount") || "0");
+  const label = url.searchParams.get("label") || "market";
+  const slug = url.searchParams.get("slug") || "";
+  const entryPrice = parseEntryPriceCents(url.searchParams.get("entryPrice"));
+
+  if (!outputMint) return errorResponse("Missing outputMint");
+  try { new PublicKey(outputMint); } catch { return errorResponse("Invalid outputMint"); }
+  if (side !== "yes" && side !== "no") return errorResponse("side must be yes or no");
+  if (!Number.isFinite(amount) || amount <= 0 || amount > KALSHI_MAX_USDC) {
+    return errorResponse(`Invalid amount (0 < amount <= ${KALSHI_MAX_USDC} USDC)`);
+  }
+
+  try {
+    const tx = await getDFlowKalshiOrder({
+      ownerPubkey: account,
+      outputMint,
+      amountUsdc: amount,
+      env,
+    });
+
+    // Build the polished post-trade card. Inline `links.next` means the wallet
+    // renders this immediately after the user signs — no extra round-trip to
+    // the worker. Spec: any ActionGetResponse shape works; we use `completed`
+    // so it shows as a finished action with no further buttons.
+    const sideUpper = side.toUpperCase();
+    const labelDecoded = decodeURIComponent(label);
+    const payoutCopy = entryPrice !== null
+      ? ` If ${sideUpper} settles, you'll receive ~$${estimatePayoutUsdc(amount, entryPrice).toFixed(2)} USDC (${(1 / entryPrice).toFixed(2)}x).`
+      : "";
+    const entryCopy = entryPrice !== null ? ` @ ${(entryPrice * 100).toFixed(0)}¢` : "";
+    const kalshiUrl = slug
+      ? `https://kalshi.com/markets/${encodeURIComponent(slug)}`
+      : "https://kalshi.com/";
+
+    return jsonResponse({
+      type: "transaction",
+      transaction: tx,
+      message: `Bet $${amount} USDC on ${sideUpper}${entryCopy} — ${labelDecoded}`,
+      links: {
+        next: {
+          type: "inline" as const,
+          action: {
+            type: "completed" as const,
+            icon: ACTION_ICON,
+            title: `Position open — ${sideUpper}${entryCopy}`,
+            description: `You bought $${amount} of ${sideUpper} on "${labelDecoded}".${payoutCopy} Tracking via Kalshi — settles to your wallet automatically.`,
+            label: "Done",
+            links: {
+              actions: [
+                { label: "View on Kalshi", href: kalshiUrl, type: "external-link" as const },
+              ],
+            },
+          },
+        },
+      },
+    });
+  } catch (err) {
+    const msg = (err as Error).message;
+    // KYC rejection path: return a `completed`-type action card with a clear
+    // call-to-action to verify in Solflare. We can't open Solflare's KYC flow
+    // from a Blink directly, so the user has to leave the chat — frame it as
+    // a one-time setup instead of a generic 500.
+    if (isKycError(msg)) {
+      return jsonResponse({
+        type: "completed",
+        icon: ACTION_ICON,
+        title: "Wallet not Kalshi-verified",
+        description: "Kalshi requires KYC before trading prediction markets. Open Solflare → Settings → Proof to complete a one-time identity verification, then come back and try again.",
+        label: "Open Solflare",
+      }, 200, true);
+    }
+    return errorResponse(`Kalshi bet failed: ${msg}`, 500);
+  }
+}
+
 // ─── actions.json (spec: well-known discovery) ────────────────────────────────
 
 function handleActionsJson(requestUrl: URL): Response {
@@ -695,6 +960,10 @@ function handleActionsJson(requestUrl: URL): Response {
       {
         pathPattern: "/api/actions/bet**",
         apiPath: "/api/actions/bet**",
+      },
+      {
+        pathPattern: "/api/actions/kalshi-bet**",
+        apiPath: "/api/actions/kalshi-bet**",
       },
     ],
   });
@@ -1659,7 +1928,7 @@ export default {
 
     // Health check
     if (path === "/health") {
-      return jsonResponse({ status: "ok", version: "1.7.0", endpoints: ["/api/actions/swap", "/api/actions/tip", "/api/actions/predict", "/api/actions/bet", "/escrow", "/claim", "/frames/alert", "/legal", "/terms", "/privacy", "/copyright"] });
+      return jsonResponse({ status: "ok", version: "1.8.0", endpoints: ["/api/actions/swap", "/api/actions/tip", "/api/actions/predict", "/api/actions/bet", "/api/actions/kalshi-bet", "/escrow", "/claim", "/frames/alert", "/legal", "/terms", "/privacy", "/copyright"] });
     }
 
     // Legal pages (Solana Mobile dApp Store compliance)
@@ -1727,6 +1996,21 @@ export default {
           return errorResponse("Invalid JSON body");
         }
         return handlePredictPost(url, body, env, kind, request);
+      }
+      return errorResponse("Method not allowed", 405);
+    }
+
+    // Kalshi bet endpoint (DFlow /order — US-legal via wallet KYC, no geo gate)
+    if (path === "/api/actions/kalshi-bet") {
+      if (request.method === "GET") return handleKalshiBetGet(url);
+      if (request.method === "POST") {
+        let body: any;
+        try {
+          body = await request.json();
+        } catch {
+          return errorResponse("Invalid JSON body");
+        }
+        return handleKalshiBetPost(url, body, env);
       }
       return errorResponse("Method not allowed", 405);
     }
