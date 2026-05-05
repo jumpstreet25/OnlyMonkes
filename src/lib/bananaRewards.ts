@@ -11,6 +11,7 @@
  */
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { safeStorageSet } from "@/lib/storageRescue";
 
 const AK_BANANAS_BASE = "banana_rewards_v1";
 
@@ -76,7 +77,10 @@ export async function loadBananaState(): Promise<BananaState> {
 
 /** Save banana state to AsyncStorage. */
 export async function saveBananaState(state: BananaState): Promise<void> {
-  await AsyncStorage.setItem(bananaKey(), JSON.stringify(state));
+  // Routed through safeStorageSet so SQLITE_FULL on the spendBananas write
+  // path (which fires before saveShopState during a Banana Shop purchase)
+  // self-heals via L1/L2/L3 cleanup instead of failing the entire purchase.
+  await safeStorageSet(bananaKey(), JSON.stringify(state));
 }
 
 /**
