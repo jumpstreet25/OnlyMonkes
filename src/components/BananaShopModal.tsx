@@ -883,13 +883,15 @@ export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
         purchasing={purchasing === previewItem?.id}
         onClose={() => setPreviewItem(null)}
         onAction={() => {
-          if (previewItem) {
-            handleAction(previewItem);
-            // Close preview after action for owned items (equip/unequip is instant)
-            if (shopState?.owned.includes(previewItem.id)) {
-              setTimeout(() => setPreviewItem(null), 150);
-            }
-          }
+          if (!previewItem) return;
+          const item = previewItem;
+          // Always dismiss the preview first so any subsequent UI (disclaimer
+          // Alert, currency picker, MWA prompt) sits at the top of the modal
+          // stack — avoids the picker getting hidden behind the preview.
+          setPreviewItem(null);
+          // Defer handleAction by one frame so the preview's close animation
+          // unmounts cleanly before the next modal opens.
+          setTimeout(() => handleAction(item), 120);
         }}
       />
 
