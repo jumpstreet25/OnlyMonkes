@@ -7,6 +7,7 @@
  */
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { safeStorageSet } from "@/lib/storageRescue";
 
 const AK_SHOP_BASE = "banana_shop_v1";
 
@@ -373,7 +374,11 @@ export async function loadShopState(): Promise<ShopState> {
 }
 
 export async function saveShopState(state: ShopState): Promise<void> {
-  await AsyncStorage.setItem(shopKey(), JSON.stringify(state));
+  // safeStorageSet auto-recovers from SQLITE_FULL by trimming the bloated
+  // profile cache (avatar base64 URIs) and retrying the write. Without this,
+  // a full Android AsyncStorage SQLite DB blocks any new purchase from being
+  // recorded with a "Database or disk is full" error.
+  await safeStorageSet(shopKey(), JSON.stringify(state));
 }
 
 /** Mark an item as owned after successful purchase. */
