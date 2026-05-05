@@ -15,11 +15,24 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAppStore } from '@/store/appStore';
-import { loadBananaState, setBananaWalletContext } from '@/lib/bananaRewards';
+import { loadBananaState, setBananaWalletContext, addBananas } from '@/lib/bananaRewards';
 import { loadShopState, getEquippedStyles, setShopWalletContext, mergeOwnedItems } from '@/lib/bananaShop';
 import { loadHistory, setMarketplaceWalletContext } from '@/lib/marketplace';
 import { applyThemeFromShop } from '@/lib/shopTheme';
 import { fetchPurchaseReceiptsFromChain, isReceiptMintingAvailable } from '@/lib/cnftReceipts';
+import { DEV_WALLET } from '@/lib/constants';
+
+// Hardcoded list of known dev/test wallet addresses that get auto-topped-up
+// to a testing balance when their banana count drops below the threshold.
+// Includes both the env-driven DEV_WALLET (might be a custom value in .env)
+// and the canonical Saga Monkes dev wallet, so the bypass works regardless
+// of how the app was built.
+const DEV_TEST_WALLETS = new Set<string>([
+  DEV_WALLET,
+  '7tLrnPvgcR5mLtyUcVwvmhAD1wXbAKgWcLBPWxpwyZ1J',
+]);
+const DEV_BANANA_FLOOR = 1000;
+const DEV_BANANA_GRANT = 5000;
 
 let _activeWallet: string | null = null;
 
@@ -69,7 +82,19 @@ export async function rehydrateForWallet(walletAddress: string): Promise<void> {
   // cosmetics/theme reflect the wallet's purchases, not device defaults.
   const styles = await getEquippedStyles();
   const app = useAppStore.getState();
-  app.setBananaBalance(bananaState.balance);
+
+  // ── Dev wallet test top-up. ──
+  // Auto-grant bananas to known dev/test wallets when their balance drops
+  // below DEV_BANANA_FLOOR. Lets the dev test any shop tier (incl. 750 🍌
+  // Tier 5 Worlds) without grinding daily claims. No-op for production users.
+  let effectiveBalance = bananaState.balance;
+  if (DEV_TEST_WALLETS.has(addr) && effectiveBalance < DEV_BANANA_FLOOR) {
+    try {
+      effectiveBalance = await addBananas(DEV_BANANA_GRANT);
+    } catch { /* non-fatal */ }
+  }
+
+  app.setBananaBalance(effectiveBalance);
   app.setShopStyles(styles);
   applyThemeFromShop(styles);
 
