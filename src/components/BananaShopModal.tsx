@@ -650,6 +650,11 @@ export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
           <View style={styles.balancePill}>
             <Text style={styles.balanceText}>{bananaBalance} 🍌</Text>
           </View>
+          {useAppStore.getState().wallet?.address === DEV_WALLET && (
+            <View style={styles.devPill}>
+              <Text style={styles.devPillText}>DEV</Text>
+            </View>
+          )}
         </View>
 
         {/* Category filter */}
@@ -677,7 +682,9 @@ export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
               onPress={async () => {
                 if (spinningCrate) return;
                 const cost = getCrateCost();
-                if (bananaBalance < cost) {
+                const crateWallet = useAppStore.getState().wallet?.address;
+                const isDevCrate = crateWallet === DEV_WALLET;
+                if (!isDevCrate && bananaBalance < cost) {
                   Alert.alert("Not enough bananas", `You need ${cost} 🍌 to open a Banana Chest.`);
                   return;
                 }
@@ -685,14 +692,18 @@ export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
                   { text: "Cancel", style: "cancel" },
                   { text: "Open!", onPress: async () => {
                     setSpinningCrate(true);
-                    const spent = await spendBananas(cost);
-                    if (!spent) { setSpinningCrate(false); return; }
-                    useAppStore.getState().setBananaBalance(bananaBalance - cost);
+                    if (!isDevCrate) {
+                      const spent = await spendBananas(cost);
+                      if (!spent) { setSpinningCrate(false); return; }
+                      useAppStore.getState().setBananaBalance(bananaBalance - cost);
+                    }
                     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                     const result = await openCrate();
                     if (result.bananaBonus) {
                       await addBananas(result.bananaBonus);
-                      useAppStore.getState().setBananaBalance(bananaBalance - cost + result.bananaBonus);
+                      useAppStore.getState().setBananaBalance(
+                        (isDevCrate ? bananaBalance : bananaBalance - cost) + result.bananaBonus,
+                      );
                     }
                     setCrateResult(result);
                     setSpinningCrate(false);
@@ -1019,6 +1030,22 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderWidth: 1,
     borderColor: "rgba(255,213,79,0.18)",
+  },
+  devPill: {
+    marginLeft: 6,
+    backgroundColor: "rgba(20,241,149,0.10)",
+    borderRadius: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderWidth: 0.75,
+    borderColor: "rgba(20,241,149,0.35)",
+  },
+  devPillText: {
+    fontFamily: FONTS.mono,
+    fontSize: 8,
+    color: "#14F195",
+    fontWeight: "700",
+    letterSpacing: 0.6,
   },
   balanceText: {
     fontFamily: FONTS.display,
