@@ -47,6 +47,49 @@ function shouldInjectBridge(url: string | null): boolean {
   }
 }
 
+// Local error boundary — catches any render error inside the WebView modal
+// so it doesn't bubble up to the ChatScreen-level boundary and crash chat.
+class WebViewErrorBoundary extends React.Component<
+  { onClose: () => void; children: React.ReactNode },
+  { error: Error | null }
+> {
+  state = { error: null as Error | null };
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    if (__DEV__) console.warn("[WebViewModal] caught:", error, info);
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <View style={[styles.root, { justifyContent: "center", alignItems: "center", padding: 24 }]}>
+          <Text style={{ fontFamily: FONTS.display, fontSize: 18, color: THEME.text, marginBottom: 8 }}>
+            Couldn't open this page
+          </Text>
+          <Text style={{ fontFamily: FONTS.body, fontSize: 13, color: THEME.textMuted, textAlign: "center", marginBottom: 24 }}>
+            {this.state.error.message ?? "Unexpected error"}
+          </Text>
+          <Pressable
+            onPress={this.props.onClose}
+            style={{
+              paddingHorizontal: 24,
+              paddingVertical: 12,
+              borderRadius: 12,
+              backgroundColor: "rgba(255,255,255,0.06)",
+              borderWidth: 0.75,
+              borderColor: "rgba(255,255,255,0.1)",
+            }}
+          >
+            <Text style={{ fontFamily: FONTS.bodyMed, color: THEME.text, fontSize: 14 }}>Close</Text>
+          </Pressable>
+        </View>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 interface WebViewModalProps {
   visible: boolean;
   url: string | null;
@@ -67,16 +110,28 @@ export function WebViewModal({ visible, url, title, onClose }: WebViewModalProps
 
   // Build the bridge JS once per (target host, wallet) pair. The host is
   // checked at injection time — bridge is only active on allowlisted Saga
-  // Monkes hosts.
+  // Monkes hosts. Wrapped in try/catch: any failure here falls back to plain
+  // WebView rather than crashing the parent (ChatScreen).
   const injectedBridgeJs = useMemo(() => {
-    if (!url || !walletAddress) return undefined;
-    if (!shouldInjectBridge(url)) return undefined;
-    return buildWalletBridgeJs(walletAddress);
+    try {
+      if (!url || !walletAddress) return undefined;
+      if (!shouldInjectBridge(url)) return undefined;
+      return buildWalletBridgeJs(walletAddress);
+    } catch (err) {
+      if (__DEV__) console.warn("[WebViewModal] bridge init failed:", err);
+      return undefined;
+    }
   }, [url, walletAddress]);
 
   const handleMessage = React.useCallback(
     (event: WebViewMessageEvent) => {
-      handleBridgeMessage(event.nativeEvent.data, webRef).catch(() => {});
+      try {
+        handleBridgeMessage(event.nativeEvent.data, webRef).catch((err) => {
+          if (__DEV__) console.warn("[WebViewModal] bridge msg failed:", err);
+        });
+      } catch (err) {
+        if (__DEV__) console.warn("[WebViewModal] onMessage threw:", err);
+      }
     },
     [],
   );
@@ -100,6 +155,7 @@ export function WebViewModal({ visible, url, title, onClose }: WebViewModalProps
       statusBarTranslucent
     >
       <StatusBar barStyle="light-content" backgroundColor="#0A0A0F" translucent />
+      <WebViewErrorBoundary onClose={onClose}>
       <View style={styles.root}>
         {/* Top bar */}
         <View style={styles.bar}>
@@ -156,10 +212,14 @@ export function WebViewModal({ visible, url, title, onClose }: WebViewModalProps
           domStorageEnabled
           decelerationRate="normal"
           // Wallet bridge: only injected for allowlisted Saga Monkes hosts.
-          injectedJavaScriptBeforeContentLoaded={injectedBridgeJs}
+          // `injectedJavaScript` runs after the document loads — works on both
+          // iOS and Android. Bridge re-checks if it's already installed via
+          // the window.__OM_WALLET_BRIDGE__ guard, so re-runs are no-ops.
+          injectedJavaScript={injectedBridgeJs}
           onMessage={injectedBridgeJs ? handleMessage : undefined}
         />
       </View>
+      </WebViewErrorBoundary>
     </Modal>
   );
 }
