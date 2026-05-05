@@ -105,28 +105,36 @@ export function CurrencyPickerSheet({
         const connection = new Connection(HELIUS_RPC_URL, "confirmed");
         const userPub = wallet?.address ? new PublicKey(wallet.address) : null;
 
-        const [solPrice, skrPriceRes, solBal, usdcBal, skrBal] = await Promise.all([
-          fetchSolPriceUsd().catch(() => 0),
-          fetchSkrPriceUsd().catch(() => 0),
+        // Balance fetches return `null` on failure (RPC error, missing ATA)
+        // so we can distinguish "user has 0" (number) from "we don't know"
+        // (null). Unknown balances let the row stay tappable — Solflare/MWA
+        // checks the real balance at signing time and rejects gracefully if
+        // truly insufficient. This prevents a transient Helius blip from
+        // dead-locking the picker for any non-dev user with funds.
+        const [solPrice, skrPriceRes, solBal, usdcBal, skrBal] = await Promise.all<
+          number | null
+        >([
+          fetchSolPriceUsd().catch(() => null),
+          fetchSkrPriceUsd().catch(() => null),
           userPub
-            ? connection.getBalance(userPub).catch(() => 0)
-            : Promise.resolve(0),
+            ? connection.getBalance(userPub).catch(() => null)
+            : Promise.resolve(null),
           userPub
             ? connection
                 .getTokenAccountBalance(
                   getAssociatedTokenAddressSync(new PublicKey(USDC_MINT), userPub),
                 )
                 .then((r) => parseFloat(r.value.uiAmountString ?? "0"))
-                .catch(() => 0)
-            : Promise.resolve(0),
+                .catch(() => null)
+            : Promise.resolve(null),
           userPub
             ? connection
                 .getTokenAccountBalance(
                   getAssociatedTokenAddressSync(new PublicKey(SKR_MINT), userPub),
                 )
                 .then((r) => parseFloat(r.value.uiAmountString ?? "0"))
-                .catch(() => 0)
-            : Promise.resolve(0),
+                .catch(() => null)
+            : Promise.resolve(null),
         ]);
 
         if (cancelled) return;
@@ -141,8 +149,8 @@ export function CurrencyPickerSheet({
             label: "Solana",
             symbol: "SOL",
             effUsd: solEff,
-            tokenAmount: solPrice > 0 ? solEff / solPrice : 0,
-            balance: solBal / 1e9,
+            tokenAmount: solPrice && solPrice > 0 ? solEff / solPrice : 0,
+            balance: solBal === null ? null : solBal / 1e9,
             hasDiscount: false,
           },
           {
@@ -159,8 +167,8 @@ export function CurrencyPickerSheet({
             label: "SKR",
             symbol: "SKR",
             effUsd: skrEff,
-            tokenAmount: skrPriceRes > 0 ? skrEff / skrPriceRes : 0,
-            balance: skrPriceRes > 0 ? skrBal : null,
+            tokenAmount: skrPriceRes && skrPriceRes > 0 ? skrEff / skrPriceRes : 0,
+            balance: skrPriceRes && skrPriceRes > 0 ? skrBal : null,
             hasDiscount: true,
           },
         ];
@@ -236,16 +244,24 @@ export function CurrencyPickerSheet({
           {rows && (
             <View style={styles.rows}>
               {rows.map((row) => {
-                const sufficient =
-                  row.balance !== null && row.balance >= row.tokenAmount;
+                // priceUnavailable: SOL/SKR can't be quoted without their USD
+                // price (we need it to convert USD cost → token amount). USDC
+                // is always 1:1, so it's never priceUnavailable.
                 const priceUnavailable =
                   row.tokenAmount === 0 && row.currency !== "USDC";
-                // Dev wallet bypasses balance + price checks here so the rest of
-                // the purchase path (handled in BananaShopModal.onChoose) can
-                // exercise the dev-only short-circuit even when balances/prices
-                // briefly fail to load.
+                // balanceUnknown: our app-side fetch failed (RPC blip, missing
+                // ATA on USDC/SKR, etc). DON'T disable in this case — the user
+                // may genuinely hold the token; let Solflare/MWA validate at
+                // signing time and reject gracefully if truly insufficient.
+                const balanceUnknown = row.balance === null;
+                const knownInsufficient =
+                  row.balance !== null && row.balance < row.tokenAmount;
+                // Dev wallet bypasses every check (matches the dev short-circuit
+                // in BananaShopModal.onChoose).
                 const isDev = wallet?.address === DEV_WALLET;
-                const disabled = isDev ? false : (priceUnavailable || !sufficient);
+                const disabled = isDev ? false : (priceUnavailable || knownInsufficient);
+                const sufficient =
+                  row.balance !== null && row.balance >= row.tokenAmount;
                 return (
                   <Pressable
                     key={row.currency}
