@@ -23,6 +23,14 @@ import {
   Platform,
 } from "react-native";
 import { WebView, type WebViewMessageEvent } from "react-native-webview";
+
+// Inline shape of the WebView's onShouldStartLoadWithRequest argument —
+// avoids depending on a non-public subpath import.
+interface NavRequest {
+  url: string;
+  navigationType?: string;
+  isTopFrame?: boolean;
+}
 import { THEME, FONTS } from "@/lib/constants";
 import { useAppStore } from "@/store/appStore";
 import { buildWalletBridgeJs, handleBridgeMessage } from "@/lib/walletBridge";
@@ -136,6 +144,53 @@ export function WebViewModal({ visible, url, title, onClose }: WebViewModalProps
     [],
   );
 
+  // ── Navigation allowlist guard ────────────────────────────────────────────
+  // When the WebView opened with the bridge active (URL on the allowlist), we
+  // refuse to navigate to any non-allowlisted host for the rest of the session.
+  // Closes a real-but-narrow attack vector: if a Saga Monkes property is ever
+  // compromised and tries to redirect to attacker.com, the malicious page never
+  // loads in our WebView — so it can't construct a tx and call our injected
+  // signAndSendTransaction.
+  const [blockedHost, setBlockedHost] = useState<string | null>(null);
+  const [blockedUrl, setBlockedUrl] = useState<string | null>(null);
+  const onShouldStartLoadWithRequest = React.useCallback(
+    (req: NavRequest): boolean => {
+      // Only enforce when bridge is active. Plain WebViews (no MWA exposure)
+      // are free to navigate anywhere — same trust level as a regular browser.
+      if (!injectedBridgeJs) return true;
+      let parsed: URL;
+      try {
+        parsed = new URL(req.url);
+      } catch {
+        // about:blank, data:, blob:, javascript:, etc. — allow (no http host
+        // to evaluate; these can't reach attacker.com on their own).
+        return true;
+      }
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+        return true;
+      }
+      if (WALLET_BRIDGE_HOSTS.has(parsed.host)) {
+        return true;
+      }
+      // Block + surface to user.
+      if (__DEV__) console.warn("[WebViewModal] blocked off-allowlist nav:", parsed.host);
+      setBlockedHost(parsed.host);
+      setBlockedUrl(req.url);
+      return false;
+    },
+    [injectedBridgeJs],
+  );
+
+  const dismissBlocked = React.useCallback(() => {
+    setBlockedHost(null);
+    setBlockedUrl(null);
+  }, []);
+
+  const openBlockedExternally = React.useCallback(() => {
+    if (blockedUrl) Linking.openURL(blockedUrl).catch(() => {});
+    dismissBlocked();
+  }, [blockedUrl, dismissBlocked]);
+
   if (!url) return null;
 
   const displayHost = (() => {
@@ -199,6 +254,28 @@ export function WebViewModal({ visible, url, title, onClose }: WebViewModalProps
           </View>
         )}
 
+        {/* Off-allowlist navigation warning — appears only when the bridge
+            blocked an attempted navigation to a non-Saga-Monkes host. */}
+        {blockedHost && (
+          <View style={styles.blockedBar}>
+            <Text style={styles.blockedIcon}>⚠</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.blockedTitle}>
+                Blocked navigation to {blockedHost}
+              </Text>
+              <Text style={styles.blockedSub}>
+                The wallet bridge only allows Saga Monkes properties.
+              </Text>
+            </View>
+            <Pressable onPress={openBlockedExternally} hitSlop={10} style={styles.blockedBtn}>
+              <Text style={styles.blockedBtnText}>Open externally</Text>
+            </Pressable>
+            <Pressable onPress={dismissBlocked} hitSlop={10} style={styles.blockedBtn}>
+              <Text style={styles.blockedBtnText}>Dismiss</Text>
+            </Pressable>
+          </View>
+        )}
+
         <WebView
           ref={webRef}
           source={{ uri: url }}
@@ -210,6 +287,10 @@ export function WebViewModal({ visible, url, title, onClose }: WebViewModalProps
           allowsBackForwardNavigationGestures={Platform.OS === "ios"}
           javaScriptEnabled
           domStorageEnabled
+          // Hard-fail on off-allowlist navigation when bridge is active.
+          // Defence-in-depth against a hijacked Saga Monkes property trying to
+          // redirect to attacker.com to steal an MWA sign.
+          onShouldStartLoadWithRequest={onShouldStartLoadWithRequest}
           // Wallet bridge: only injected for allowlisted Saga Monkes hosts.
           // `injectedJavaScript` runs after the document loads — works on both
           // iOS and Android. Bridge re-checks if it's already installed via
@@ -286,5 +367,41 @@ const styles = StyleSheet.create({
     color: "#14F195",
     fontWeight: "700",
     letterSpacing: 0.5,
+  },
+  blockedBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: "rgba(239,68,68,0.12)",
+    borderBottomWidth: 0.75,
+    borderBottomColor: "rgba(239,68,68,0.30)",
+  },
+  blockedIcon: { fontSize: 16, color: "#EF4444" },
+  blockedTitle: {
+    fontFamily: FONTS.displayMed,
+    fontSize: 12,
+    color: "#EF4444",
+  },
+  blockedSub: {
+    fontFamily: FONTS.body,
+    fontSize: 10,
+    color: THEME.textMuted,
+    marginTop: 1,
+  },
+  blockedBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderWidth: 0.75,
+    borderColor: "rgba(255,255,255,0.10)",
+  },
+  blockedBtnText: {
+    fontFamily: FONTS.mono,
+    fontSize: 9,
+    color: THEME.text,
+    letterSpacing: 0.3,
   },
 });
