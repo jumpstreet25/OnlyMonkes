@@ -466,19 +466,29 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: THEME.bg,
   },
+  // Header geometry matched to ChatHeader.tsx (Main Chat) so the banner
+  // image renders at the same visible size and is centered the same way.
+  // Bot channels' headerRight is wider (mute pill + AutonoMonke pill stacked
+  // vertically) than Main Chat's banana pill, so the centered banner has
+  // slightly less horizontal room — but the height + scale + margin all
+  // match, which is what the community feedback was about.
   header: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 12,
-    height: 80,
+    paddingHorizontal: 8,
+    height: 100,
     borderBottomWidth: 1,
     borderBottomColor: THEME.border,
     backgroundColor: "transparent",
   },
   headerCenter: {
     flex: 1,
-    height: 68,
+    height: 96,
     alignSelf: "center",
+    justifyContent: "center",
+    alignItems: "center",
+    marginHorizontal: -8,
+    transform: [{ scale: 1.35 }],
     overflow: "hidden",
   },
   bannerTintOverlay: {

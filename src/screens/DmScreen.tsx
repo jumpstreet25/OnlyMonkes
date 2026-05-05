@@ -14,12 +14,14 @@ import { useAppStore } from '@/store/appStore';
 import { useTradesStore } from '@/store/tradesStore';
 import { PnLCardMessage } from '@/components/PnLCardMessage';
 import { PnLCardModal } from '@/components/PnLCardModal';
-import type { ClosedTrade } from '@/lib/positions';
+import { OpenTradeCardMessage } from '@/components/OpenTradeCardMessage';
+import type { ClosedTrade, OpenTrade } from '@/lib/positions';
 import type { ChatMessage, ReactionEmoji } from '@/types';
 
 type FeedItem =
   | { kind: 'msg'; key: string; ts: number; msg: ChatMessage }
-  | { kind: 'trade'; key: string; ts: number; trade: ClosedTrade };
+  | { kind: 'trade'; key: string; ts: number; trade: ClosedTrade }
+  | { kind: 'open'; key: string; ts: number; openTrade: OpenTrade };
 
 export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
   const insets = useSafeAreaInsets();
@@ -36,6 +38,7 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
   const peerName = peerProfile?.username ?? 'Monke';
   const isBotDm = BOT_INBOX_IDS.includes(peerInboxId);
   const closedTrades = useTradesStore(s => s.closedTrades);
+  const openTrades = useTradesStore(s => s.openTrades);
   const themeBg = useThemeColor('bg');
   const themeSurface = useThemeColor('surface');
   const themeBorder = useThemeColor('border');
@@ -64,17 +67,24 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
     return null;
   }, [messages, myInboxId]);
 
-  // Merged feed: regular messages + synthetic PnL trade cards (bot DM only).
+  // Merged feed: regular messages + synthetic PnL trade cards (closed) and
+  // OpenTrade cards (active AutonoMonke positions). Both card types only
+  // appear in the bot DM thread. Open cards self-prune from the store when
+  // their matching TRADE_CLOSED arrives, so a position naturally transitions
+  // open card → closed PnL card without overlap.
   const feed: FeedItem[] = useMemo(() => {
     const msgItems: FeedItem[] = messages.map(m => ({
       kind: 'msg', key: m.id, ts: m.sentAt.getTime(), msg: m,
     }));
     if (!isBotDm) return msgItems;
-    const tradeItems: FeedItem[] = closedTrades.map(t => ({
+    const closedItems: FeedItem[] = closedTrades.map(t => ({
       kind: 'trade', key: `trade-${t.id}`, ts: t.closedAt, trade: t,
     }));
-    return [...msgItems, ...tradeItems].sort((a, b) => a.ts - b.ts);
-  }, [messages, closedTrades, isBotDm]);
+    const openItems: FeedItem[] = openTrades.map(o => ({
+      kind: 'open', key: `open-${o.id}`, ts: o.openedAt, openTrade: o,
+    }));
+    return [...msgItems, ...closedItems, ...openItems].sort((a, b) => a.ts - b.ts);
+  }, [messages, closedTrades, openTrades, isBotDm]);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top, backgroundColor: themeBg }]}>
@@ -115,6 +125,9 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
           renderItem={({ item }) => {
             if (item.kind === 'trade') {
               return <PnLCardMessage trade={item.trade} onPress={setActiveTradeCard} />;
+            }
+            if (item.kind === 'open') {
+              return <OpenTradeCardMessage trade={item.openTrade} />;
             }
             const m = item.msg;
             return (
