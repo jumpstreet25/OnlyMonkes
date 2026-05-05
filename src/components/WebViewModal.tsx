@@ -4,14 +4,13 @@
  * Top bar: close (✕), title, refresh, open-in-external-browser fallback.
  * Loading bar appears at the top while the page loads.
  *
- * Note on wallet integration: this is a vanilla WebView. dApps loaded here
- * will see no injected wallet provider — they'll prompt the user to install
- * Phantom/Solflare/etc. inside the WebView and fail to connect. A future
- * iteration will inject a Solana wallet provider that bridges to MWA so
- * dApps like MonkeShop/MonkeSwap can use the user's already-connected wallet.
+ * For allowlisted hosts (WALLET_BRIDGE_HOSTS), injects a Wallet Standard
+ * provider that bridges sign requests to the user's already-connected MWA
+ * wallet (Solflare/Seeker biometric). dApps see "OnlyMonkes Wallet" in their
+ * wallet adapter list. See src/lib/walletBridge.ts for the bridge protocol.
  */
 
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useMemo } from "react";
 import {
   View,
   Text,
@@ -23,8 +22,30 @@ import {
   StatusBar,
   Platform,
 } from "react-native";
-import { WebView } from "react-native-webview";
+import { WebView, type WebViewMessageEvent } from "react-native-webview";
 import { THEME, FONTS } from "@/lib/constants";
+import { useAppStore } from "@/store/appStore";
+import { buildWalletBridgeJs, handleBridgeMessage } from "@/lib/walletBridge";
+
+// Hosts that get the Wallet Standard bridge injected. Only first-party Saga
+// Monkes properties — strict allowlist so random sites can't trigger MWA.
+const WALLET_BRIDGE_HOSTS: ReadonlySet<string> = new Set([
+  "shop.sagamonkes.com",
+  "swap.sagamonkes.com",
+  "explorer.sagamonkes.com",
+  "merits.sagamonkes.com",
+  "signal.sagamonkes.com",
+  "snap.sagamonkes.com",
+]);
+
+function shouldInjectBridge(url: string | null): boolean {
+  if (!url) return false;
+  try {
+    return WALLET_BRIDGE_HOSTS.has(new URL(url).host);
+  } catch {
+    return false;
+  }
+}
 
 interface WebViewModalProps {
   visible: boolean;
@@ -37,11 +58,28 @@ export function WebViewModal({ visible, url, title, onClose }: WebViewModalProps
   const webRef = useRef<WebView>(null);
   const [loading, setLoading] = useState(true);
   const [currentUrl, setCurrentUrl] = useState<string | null>(url);
+  const walletAddress = useAppStore((s) => s.wallet?.address);
 
   // Reset URL when re-opening with a new target
   React.useEffect(() => {
     if (visible && url) setCurrentUrl(url);
   }, [visible, url]);
+
+  // Build the bridge JS once per (target host, wallet) pair. The host is
+  // checked at injection time — bridge is only active on allowlisted Saga
+  // Monkes hosts.
+  const injectedBridgeJs = useMemo(() => {
+    if (!url || !walletAddress) return undefined;
+    if (!shouldInjectBridge(url)) return undefined;
+    return buildWalletBridgeJs(walletAddress);
+  }, [url, walletAddress]);
+
+  const handleMessage = React.useCallback(
+    (event: WebViewMessageEvent) => {
+      handleBridgeMessage(event.nativeEvent.data, webRef).catch(() => {});
+    },
+    [],
+  );
 
   if (!url) return null;
 
@@ -52,6 +90,7 @@ export function WebViewModal({ visible, url, title, onClose }: WebViewModalProps
       return currentUrl ?? url;
     }
   })();
+  const bridgeActive = !!injectedBridgeJs;
 
   return (
     <Modal
@@ -70,7 +109,14 @@ export function WebViewModal({ visible, url, title, onClose }: WebViewModalProps
 
           <View style={styles.titleWrap}>
             {title && <Text style={styles.title} numberOfLines={1}>{title}</Text>}
-            <Text style={styles.host} numberOfLines={1}>{displayHost}</Text>
+            <View style={styles.hostRow}>
+              <Text style={styles.host} numberOfLines={1}>{displayHost}</Text>
+              {bridgeActive && (
+                <View style={styles.bridgePill}>
+                  <Text style={styles.bridgePillText}>WALLET</Text>
+                </View>
+              )}
+            </View>
           </View>
 
           <Pressable
@@ -109,6 +155,9 @@ export function WebViewModal({ visible, url, title, onClose }: WebViewModalProps
           javaScriptEnabled
           domStorageEnabled
           decelerationRate="normal"
+          // Wallet bridge: only injected for allowlisted Saga Monkes hosts.
+          injectedJavaScriptBeforeContentLoaded={injectedBridgeJs}
+          onMessage={injectedBridgeJs ? handleMessage : undefined}
         />
       </View>
     </Modal>
@@ -157,5 +206,26 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,213,79,0.08)",
     alignItems: "center",
     justifyContent: "center",
+  },
+  hostRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 1,
+  },
+  bridgePill: {
+    backgroundColor: "rgba(20,241,149,0.10)",
+    borderRadius: 6,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderWidth: 0.75,
+    borderColor: "rgba(20,241,149,0.30)",
+  },
+  bridgePillText: {
+    fontFamily: FONTS.mono,
+    fontSize: 8,
+    color: "#14F195",
+    fontWeight: "700",
+    letterSpacing: 0.5,
   },
 });
