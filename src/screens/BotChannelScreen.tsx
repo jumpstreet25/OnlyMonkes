@@ -186,9 +186,9 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
   );
 
   // Client-side filter: hide alerts for muted sports in the Bets channel,
-  // AND hide alerts for muted sources (Polymarket / Drift) in either lane.
-  // Source label is appended to alert header line 1 as " · Polymarket" or
-  // " · Drift" (see Monke_Eliza formatter.ts).
+  // AND hide alerts for muted sources (Polymarket / Drift / Kalshi) in either lane.
+  // Source label is appended to alert header line 1 as " · Polymarket",
+  // " · Drift", or " · Kalshi 🇺🇸" (see Monke_Eliza formatter.ts).
   const filteredMessages = useMemo(() => {
     if (showAllOverride) return reversedMessages;
     const sportFilterActive = channelId === "bets" && mutedSports.length > 0;
@@ -199,7 +199,7 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
       const firstLine = text.split("\n")[0] ?? "";
 
       if (sourceFilterActive) {
-        const srcMatch = firstLine.match(/·\s*(Polymarket|Drift)\b/i);
+        const srcMatch = firstLine.match(/·\s*(Polymarket|Drift|Kalshi)\b/i);
         if (srcMatch) {
           const src = srcMatch[1].toLowerCase();
           if (mutedAlertSources.includes(src)) return false;
@@ -371,15 +371,18 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
 
           {/* Source filter strip — Predictions + Bets channels. Lets US users
               mute Polymarket (Jupiter is geo-blocked for them) while keeping
-              Drift (US-friendly) alerts visible. Drift is muted by default
-              while bet.drift.trade is under construction. */}
+              US-friendly sources visible. Kalshi is the only one US users can
+              actually one-click trade today (via DFlow + Solflare KYC). Drift
+              is muted by default while bet.drift.trade is under construction. */}
           {(channelId === "predictions" || channelId === "bets") && (
             <>
               <View style={styles.sportsStrip}>
                 <Text style={styles.sportsLabel}>Source:</Text>
-                {(["polymarket", "drift"] as const).map((src) => {
+                {(["polymarket", "kalshi", "drift"] as const).map((src) => {
                   const muted = mutedAlertSources.includes(src);
-                  const label = src === "drift" ? "Drift" : "Polymarket";
+                  const label = src === "drift" ? "Drift"
+                              : src === "kalshi" ? "Kalshi 🇺🇸"
+                              : "Polymarket";
                   return (
                     <Pressable
                       key={src}
