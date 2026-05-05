@@ -210,7 +210,6 @@ export function WebViewModal({ visible, url, title, onClose }: WebViewModalProps
           allowsBackForwardNavigationGestures={Platform.OS === "ios"}
           javaScriptEnabled
           domStorageEnabled
-          decelerationRate="normal"
           // Wallet bridge: only injected for allowlisted Saga Monkes hosts.
           // `injectedJavaScript` runs after the document loads — works on both
           // iOS and Android. Bridge re-checks if it's already installed via
