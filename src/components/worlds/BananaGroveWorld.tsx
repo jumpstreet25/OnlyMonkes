@@ -19,6 +19,7 @@
 import React, { useEffect, useMemo } from "react";
 import { View, Text, StyleSheet, Dimensions } from "react-native";
 import { Canvas, Rect, LinearGradient, vec } from "@shopify/react-native-skia";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -30,6 +31,12 @@ import Animated, {
 } from "react-native-reanimated";
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
+
+// Approx height of the chat input bar's content (minHeight 44 + paddingTop 10
+// + paddingBottom 8 + borderTop ≈ 65px), padded to ~96 to leave breathing room
+// when the action row expands. Safe-area inset is added on top dynamically so
+// the pile clears Android nav bar (48) + iOS home indicator (34) automatically.
+const INPUT_BAR_HEIGHT = 96;
 
 const PARTICLE_COUNT = 10;
 const FALL_DURATION_MS = 9_000;
@@ -55,13 +62,13 @@ function buildParticles(): Particle[] {
 }
 
 // ─── Static banana pile at the bottom of the screen ─────────────────────────
-// Sits above the chat input bar (clears ~110px from world bottom for input +
-// safe area). Three layers: bottom row largest/brightest (foreground), middle
-// row partially behind, top row smallest (tip of pile). Bananas never grow or
+// Sits above the chat input bar. Bottom offset = INPUT_BAR_HEIGHT (96) +
+// safe-area inset bottom (computed at render time from useSafeAreaInsets so
+// the pile clears Android nav bar / iOS home indicator on every device).
+// Three layers: bottom row largest/brightest (foreground), middle row
+// partially behind, top row smallest (tip of pile). Bananas never grow or
 // move — falling particles fade out before reaching pile-top to give the
 // illusion of "landing" on it.
-
-const PILE_BOTTOM = 110;
 
 interface PileBanana {
   xPct: number;     // 0..1 — horizontal center as fraction of screen width
@@ -90,8 +97,10 @@ const PILE_BANANAS: PileBanana[] = [
 ];
 
 function BananaPile() {
+  const insets = useSafeAreaInsets();
+  const pileBottom = INPUT_BAR_HEIGHT + insets.bottom;
   return (
-    <View style={styles.pile} pointerEvents="none">
+    <View style={[styles.pile, { bottom: pileBottom }]} pointerEvents="none">
       {PILE_BANANAS.map((b, i) => (
         <Text
           key={i}
@@ -199,10 +208,10 @@ const styles = StyleSheet.create({
   root: { ...StyleSheet.absoluteFillObject },
   particle: { position: "absolute", left: 0, top: 0 },
   pile: {
+    // bottom set dynamically by BananaPile() from useSafeAreaInsets()
     position: "absolute",
     left: 0,
     right: 0,
-    bottom: PILE_BOTTOM,
     height: 80,
   },
 });
