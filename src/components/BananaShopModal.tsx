@@ -37,7 +37,7 @@ import {
 } from "@/lib/bananaShop";
 import { applyThemeFromShop } from "@/lib/shopTheme";
 import { openCrate, getCrateCost, getRarityColor, type LootResult } from "@/lib/lootCrate";
-import { triggerProfileRebroadcast, sendRawToGroup } from "@/hooks/useXmtp";
+import { triggerProfileRebroadcast } from "@/hooks/useXmtp";
 import { isReceiptMintingAvailable, mintPurchaseReceipt } from "@/lib/cnftReceipts";
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
@@ -925,8 +925,6 @@ export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
               applyThemeFromShop(s);
               triggerProfileRebroadcast("").catch(() => {});
             }).catch(() => {});
-            const buyerName = useAppStore.getState().username ?? "Unknown";
-            sendRawToGroup(`SHOP_PURCHASE:${buyerName}:${item.name}`).catch(() => {});
             playSound("purchase");
 
             // Show success immediately — receipt minting runs in background.
