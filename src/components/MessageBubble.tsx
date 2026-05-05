@@ -760,6 +760,17 @@ export const MessageBubble = memo(function MessageBubble({
                 !hasSkiaGlow && shopStyles.borderOpacity != null ? { borderColor: `rgba(248, 248, 255, ${shopStyles.borderOpacity})` } : null,
                 isOwn && shopStyles.pfpThemeEnabled && nftDominantColor && !shopStyles.glowColor ? { borderColor: nftDominantColor + "30" } : null,
                 isBot ? { borderColor: BOT_THEME_COLOR + "35", backgroundColor: "rgba(0, 201, 167, 0.06)" } : null,
+                // World-aware bubble transparency: when MY world is equipped,
+                // drop bubble bg from 0.65 → 0.32 so the world layer (bananas,
+                // candles, cyberpunk grid) shows through both my OWN and OTHER
+                // bubbles. Bot bubbles already use rgba(0,201,167,0.06) above
+                // so this skips them. Skips when a Skia bubble is rendering
+                // (it owns its own surface). Skips when shopStyles.bgColor is
+                // explicitly set by an equipped Bubble cosmetic — the user
+                // chose that color and we shouldn't override it.
+                !hasSkiaGlow && !isBot && myShopStyles?.worldId && !shopStyles.bgColor
+                  ? { backgroundColor: "rgba(26, 26, 40, 0.32)" }
+                  : null,
               ]}>
                 {/* Glass gradient — only for non-Skia bubbles */}
                 {!hasSkiaGlow ? (
