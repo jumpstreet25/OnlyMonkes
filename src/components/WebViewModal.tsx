@@ -4,14 +4,11 @@
  * Top bar: close (✕), title, refresh, open-in-external-browser fallback.
  * Loading bar appears at the top while the page loads.
  *
- * For dApps that require wallet sign-in (allowlisted in WALLET_REQUIRED_HOSTS),
- * a banner shows below the top bar: "Sign-in needs Solflare — Open there".
- * Tapping the banner deep-links to Solflare's in-app browser with the same URL,
- * where the user's wallet context is already active.
- *
- * Long-term: a JS-injected Wallet Standard provider could bridge MWA into the
- * WebView so all 6 MonkeTools work fully in-app (see memory:
- * project_webview_wallet_bridge_pending.md).
+ * Note on wallet integration: this is a vanilla WebView. dApps loaded here
+ * will see no injected wallet provider — they'll prompt the user to install
+ * Phantom/Solflare/etc. inside the WebView and fail to connect. A future
+ * iteration will inject a Solana wallet provider that bridges to MWA so
+ * dApps like MonkeShop/MonkeSwap can use the user's already-connected wallet.
  */
 
 import React, { useRef, useState } from "react";
@@ -28,21 +25,6 @@ import {
 } from "react-native";
 import { WebView } from "react-native-webview";
 import { THEME, FONTS } from "@/lib/constants";
-
-// Hosts that require wallet sign-in to be useful. WebViewModal shows a banner
-// nudging the user to open these in Solflare's in-app browser (their tested
-// known-good context). Add a host here if a new dApp needs wallet auth.
-const WALLET_REQUIRED_HOSTS: ReadonlySet<string> = new Set([
-  "shop.sagamonkes.com",
-  "swap.sagamonkes.com",
-]);
-
-/** Build a Solflare universal-link to open `url` inside Solflare's in-app browser. */
-function solflareBrowseUrl(url: string): string {
-  const encoded = encodeURIComponent(url);
-  const ref = encodeURIComponent("https://onlymonkes.com");
-  return `https://solflare.com/ul/v1/browse/${encoded}?ref=${ref}`;
-}
 
 interface WebViewModalProps {
   visible: boolean;
@@ -63,20 +45,13 @@ export function WebViewModal({ visible, url, title, onClose }: WebViewModalProps
 
   if (!url) return null;
 
-  const activeUrl = currentUrl ?? url;
   const displayHost = (() => {
     try {
-      return new URL(activeUrl).host;
+      return new URL(currentUrl ?? url).host;
     } catch {
-      return activeUrl;
+      return currentUrl ?? url;
     }
   })();
-  const needsWallet = WALLET_REQUIRED_HOSTS.has(displayHost);
-
-  const handleOpenInSolflare = () => {
-    Linking.openURL(solflareBrowseUrl(activeUrl)).catch(() => {});
-    onClose();
-  };
 
   return (
     <Modal
@@ -120,22 +95,6 @@ export function WebViewModal({ visible, url, title, onClose }: WebViewModalProps
           <View style={styles.loadingBar}>
             <ActivityIndicator size="small" color="#FFD54F" />
           </View>
-        )}
-
-        {/* Wallet sign-in banner — only shown for hosts that need wallet auth */}
-        {needsWallet && (
-          <Pressable style={styles.walletBanner} onPress={handleOpenInSolflare}>
-            <Text style={styles.walletBannerIcon}>🔐</Text>
-            <View style={styles.walletBannerText}>
-              <Text style={styles.walletBannerTitle}>
-                Sign-in needs your wallet
-              </Text>
-              <Text style={styles.walletBannerSub}>
-                Tap to open this page in Solflare to connect
-              </Text>
-            </View>
-            <Text style={styles.walletBannerArrow}>↗</Text>
-          </Pressable>
         )}
 
         <WebView
@@ -198,32 +157,5 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,213,79,0.08)",
     alignItems: "center",
     justifyContent: "center",
-  },
-  walletBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    backgroundColor: "rgba(255,213,79,0.08)",
-    borderBottomWidth: 0.75,
-    borderBottomColor: "rgba(255,213,79,0.18)",
-  },
-  walletBannerIcon: { fontSize: 18 },
-  walletBannerText: { flex: 1 },
-  walletBannerTitle: {
-    fontFamily: FONTS.displayMed,
-    fontSize: 13,
-    color: "#FFD54F",
-  },
-  walletBannerSub: {
-    fontFamily: FONTS.body,
-    fontSize: 11,
-    color: THEME.textMuted,
-    marginTop: 1,
-  },
-  walletBannerArrow: {
-    fontSize: 16,
-    color: "#FFD54F",
   },
 });
