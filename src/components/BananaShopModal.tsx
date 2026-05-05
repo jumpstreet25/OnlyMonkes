@@ -570,8 +570,12 @@ export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
       return;
     }
 
-    // Check banana balance
-    if (bananaBalance < item.bananaCost) {
+    // Dev wallet bypasses both banana check and crypto payment — for testing.
+    // Production users still hit the full balance check below.
+    const myWalletForCheck = useAppStore.getState().wallet?.address;
+    const isDevForBananaCheck = myWalletForCheck === DEV_WALLET;
+
+    if (!isDevForBananaCheck && bananaBalance < item.bananaCost) {
       Alert.alert("Not enough bananas", `You need ${item.bananaCost} 🍌 but have ${bananaBalance}. Keep logging in daily!`);
       return;
     }
@@ -890,13 +894,15 @@ export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
           setPurchaseItem(null);
           setPurchasing(item.id);
           try {
-            const spent = await spendBananas(item.bananaCost);
-            if (!spent) { Alert.alert("Error", "Failed to deduct bananas"); return; }
-            useAppStore.getState().setBananaBalance(bananaBalance - item.bananaCost);
-
             const myWallet = useAppStore.getState().wallet?.address;
             const isDevWallet = myWallet && myWallet === DEV_WALLET;
+
+            // Dev wallet skips banana spend AND crypto payment (test path).
             if (!isDevWallet) {
+              const spent = await spendBananas(item.bananaCost);
+              if (!spent) { Alert.alert("Error", "Failed to deduct bananas"); return; }
+              useAppStore.getState().setBananaBalance(bananaBalance - item.bananaCost);
+
               try {
                 await sendShopPaymentMulti(item.usdCost, currency);
               } catch (payErr: any) {
