@@ -1047,7 +1047,7 @@ export default function ChatScreen() {
   return (
     <ErrorBoundary fallbackMessage="Chat hit an error. Tap below to reload.">
       <KeyboardAvoidingView
-        style={[styles.container, { paddingTop: insets.top, backgroundColor: themeBg }]}
+        style={[styles.container, { backgroundColor: themeBg }]}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         keyboardVerticalOffset={0}
       >
@@ -1297,11 +1297,14 @@ export default function ChatScreen() {
 
         {/* Support banner — 3-column: [SKR] [Support] [Floor] */}
         {/* Match the chat header / input bar bg when a Chat World is equipped
-            so all three bars read as one unified frame around the world. */}
+            so all three bars read as one unified frame around the world.
+            Bottom safe-area padding lives INSIDE the bar so its bg extends
+            edge-to-edge behind the Android nav bar / iOS home indicator —
+            no black themeBg gap below. */}
         {isGroupMember && (
           <View style={[
             styles.supportBanner,
-            { borderTopColor: themeBorder },
+            { borderTopColor: themeBorder, paddingBottom: 9 + insets.bottom },
             myShopStyles?.worldId ? { backgroundColor: WORLD_BAR_BG } : null,
           ]}>
             <View style={{ minWidth: 70, alignItems: 'flex-start' }}>
@@ -1337,7 +1340,12 @@ export default function ChatScreen() {
           </View>
         )}
 
-        <View style={{ height: insets.bottom }} />
+        {/* Non-members don't render the support banner (which carries the
+            bottom safe-area padding for group members), so add a transparent
+            fallback spacer here. World layer still shows through. */}
+        {!isGroupMember && insets.bottom > 0 && (
+          <View pointerEvents="none" style={{ height: insets.bottom }} />
+        )}
         <EdgePullDetector
           onTrigger={() => setDrawerOpen(true)}
           disabled={drawerOpen}

@@ -7,6 +7,7 @@ import {
   ImageBackground,
 } from "react-native";
 import { router } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { THEME, FONTS, WORLD_BAR_BG } from "@/lib/constants";
 import { getLocatedUserCount } from "@/lib/userProfile";
 import { markOnboardingStep } from "@/components/OnboardingChecklist";
@@ -41,8 +42,12 @@ export function ChatHeader({
   // render through it. Falls back to the theme surface when no world is set.
   const worldId = useAppStore((s) => s.shopStyles?.worldId) as string | undefined;
   const headerBg = worldId ? WORLD_BAR_BG : themeSurface;
+  // Status-bar safe-area padding lives INSIDE the header so the bg extends
+  // edge-to-edge (behind the status bar) — keeps the world layer visible up
+  // top and avoids a black themeBg gap above the chrome.
+  const insets = useSafeAreaInsets();
   return (
-    <View style={[styles.header, { backgroundColor: headerBg, borderBottomColor: themeBorder }]}>
+    <View style={[styles.header, { backgroundColor: headerBg, borderBottomColor: themeBorder, paddingTop: insets.top }]}>
       {/* Left: Globe with monke count */}
       <View style={styles.headerLeft}>
         <Pressable
