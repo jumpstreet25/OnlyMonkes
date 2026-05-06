@@ -131,7 +131,7 @@ try {
 
     Notifications.setNotificationChannelAsync(CH_MARKET, {
       ...BASE,
-      name: "Marketplace",
+      name: "MonkeMarkets",
     }).catch(() => {});
 
     Notifications.setNotificationChannelAsync(CH_SOCIAL, {
