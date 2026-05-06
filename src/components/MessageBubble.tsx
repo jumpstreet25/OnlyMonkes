@@ -407,7 +407,16 @@ export const MessageBubble = memo(function MessageBubble({
   const shopStyles = isOwn ? myShopStyles : (senderProfile?.shopStyles ?? {});
   const { width: SCREEN_W } = useWindowDimensions();
   const [bubbleSize, setBubbleSize] = useState<{ w: number; h: number } | null>(null);
-  const hasSkiaGlow = !!(shopStyles.hasBubbleCosmetic && shopStyles.glowColor);
+  // World bubble skin TRUMPS any equipped Bubble cosmetic — the world is
+  // a higher tier of purchase and should override prior cosmetics for the
+  // user who bought it. Bot bubbles always opt out (their teal theme is
+  // their identity). Resolved against the SENDER's shopStyles so the
+  // skin follows whoever bought the world (per `feedback_world_bubble_ownership`).
+  const isBotSender = message.senderUsername === "AI Agent #9385";
+  const isCyberpunkWorld = shopStyles.worldId === "world_solana_cyberpunk";
+  const useGlitchBubble = isCyberpunkWorld && !isBotSender;
+  const hasSkiaGlow =
+    !!(shopStyles.hasBubbleCosmetic && shopStyles.glowColor) && !useGlitchBubble;
   // Max bubble width is 72% of screen minus horizontal padding (14px each side)
   const mediaWidth = Math.round(SCREEN_W * 0.72 - 28);
 
@@ -566,22 +575,12 @@ export const MessageBubble = memo(function MessageBubble({
   const primarySenderInbox = isOwn ? message.senderAddress : getPrimaryInboxId(message.senderAddress);
   const cachedSender = getCachedProfile(primarySenderInbox);
   const displayName  = cachedSender?.username ?? message.senderUsername ?? 'Monke';
-  const isBot = message.senderUsername === "AI Agent #9385";
+  // isBot / useGlitchBubble / hasSkiaGlow derived earlier (above mediaWidth)
+  // so they could feed into hasSkiaGlow's effective value. Re-alias for
+  // legacy references in this scope.
+  const isBot = isBotSender;
   // Bot PFP theme — teal from the bot's pixel art visor/eyes
   const BOT_THEME_COLOR = "#00C9A7";
-  // Cyberpunk world-aware glitch bubble. Bubble skin follows the SENDER —
-  // the user who PURCHASED the world wears that look on their outgoing
-  // messages, visible to everyone. Viewer's own world purchase is
-  // independent. `shopStyles` already resolves to sender styles for
-  // non-own messages (see line above isBot derivation). An equipped
-  // Bubble cosmetic still wins — user-picked styles trump world default.
-  // Bot bubbles opt out (their teal theme is the bot's identity).
-  const useGlitchBubble = !!(
-    shopStyles.worldId === "world_solana_cyberpunk" &&
-    !isBot &&
-    !hasSkiaGlow &&
-    !shopStyles.bgColor
-  );
   // Cyan = my own messages (so I can spot myself); magenta = other senders.
   // Viewer-relative coloring keeps the cyan/magenta distinction useful
   // even when several senders all have Cyberpunk equipped.

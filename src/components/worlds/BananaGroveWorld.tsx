@@ -384,7 +384,9 @@ export function BananaGroveWorld({ active = true }: BananaGroveWorldProps) {
   return (
     <View style={styles.root} pointerEvents="none">
       <Canvas style={StyleSheet.absoluteFill}>
-        <Rect x={0} y={0} width={SCREEN_W} height={SCREEN_H}>
+        {/* Gradient height oversized 25% to cover Android edge-to-edge system
+            bar zones where Dimensions.get("window") may underreport. */}
+        <Rect x={0} y={0} width={SCREEN_W} height={SCREEN_H * 1.25}>
           <LinearGradient
             start={vec(0, 0)}
             end={vec(0, SCREEN_H)}
