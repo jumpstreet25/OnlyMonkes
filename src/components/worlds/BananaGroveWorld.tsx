@@ -93,6 +93,13 @@ interface PileBanana {
 const SUCTION_DURATION_MS = 420;
 const SUCTION_TRIGGER_RANGE_PX = 18; // intake catches bananas within ±this px
 const SUCTION_INTAKE_Y_FROM_PILE_BOTTOM_PX = MOWER_GEOMETRY.intakeYFromBottom;
+// Approach wobble — banana shakes when the mower's intake is heading toward
+// it but hasn't quite reached suction range. APPROACH_RANGE_PX is the max
+// distance (pixels, intake to banana) at which the wobble starts; intensity
+// grows linearly from 0 → 1 as the intake closes the gap.
+const APPROACH_RANGE_PX = 90;
+const WOBBLE_AMPLITUDE_PX = 3;
+const WOBBLE_ROTATION_DEG = 6;
 
 interface FallingBananaProps {
   banana: PileBanana;
@@ -185,6 +192,26 @@ function FallingBanana({ banana, pileBottomPx, mowerIntakeX, onSucked }: Falling
       // Scale down + fade out in the second half.
       scale = 1 - 0.6 * tSuck;
       opacity = interpolate(tSuck, [0.7, 1], [1, 0], Extrapolation.CLAMP);
+    } else {
+      // Approach wobble — mower's intake is nearby but hasn't sucked yet.
+      // Mower drives R→L so the intake is to the RIGHT of the banana when
+      // approaching (positive distance = intake to the right).
+      const intakeNow = mowerIntakeX.value;
+      if (intakeNow !== MOWER_INTAKE_IDLE_X) {
+        const distance = intakeNow - bananaScreenX;
+        if (distance > SUCTION_TRIGGER_RANGE_PX && distance < APPROACH_RANGE_PX) {
+          // proximity: 0 just entering range → 1 about to be sucked
+          const proximity =
+            1 - (distance - SUCTION_TRIGGER_RANGE_PX) /
+            (APPROACH_RANGE_PX - SUCTION_TRIGGER_RANGE_PX);
+          // Use intake X as the time variable for the sin wave so the
+          // wobble oscillates continuously as the mower closes the gap
+          // (intake X changes linearly with time during the drive).
+          const phase = intakeNow * 0.45;
+          translateX += Math.sin(phase) * WOBBLE_AMPLITUDE_PX * proximity;
+          rot += Math.sin(phase * 1.3) * WOBBLE_ROTATION_DEG * proximity;
+        }
+      }
     }
 
     return {
