@@ -36,6 +36,7 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import { SkiaGlowBubble, SkiaGlassFront, SkiaGlowPfp } from "@/components/SkiaGlowBubble";
+import { CyberpunkGlitchBubble } from "@/components/CyberpunkGlitchBubble";
 import { setLatestBubbleHeight } from "@/lib/chatViewport";
 import * as Clipboard from "expo-clipboard";
 import { Image as ExpoImage } from "expo-image";
@@ -568,6 +569,17 @@ export const MessageBubble = memo(function MessageBubble({
   const isBot = message.senderUsername === "AI Agent #9385";
   // Bot PFP theme — teal from the bot's pixel art visor/eyes
   const BOT_THEME_COLOR = "#00C9A7";
+  // Cyberpunk world-aware glitch bubble. Auto-applies when MY world is the
+  // Solana Cyberpunk world AND no explicit Bubble cosmetic is equipped (an
+  // equipped Bubble cosmetic always wins — user choice trumps world default).
+  // Bot bubbles opt out (their own teal theme reads as the bot's identity).
+  const useGlitchBubble = !!(
+    myShopStyles?.worldId === "world_solana_cyberpunk" &&
+    !isBot &&
+    !hasSkiaGlow &&
+    !shopStyles.bgColor
+  );
+  const glitchVariant: "cyan" | "magenta" = isOwn ? "cyan" : "magenta";
   // Show expand control when bot message likely exceeds 9 lines
   const showBotExpand = useMemo(
     () => isBot && (message.content.split("\n").length > 9 || message.content.length > 380),
@@ -740,11 +752,20 @@ export const MessageBubble = memo(function MessageBubble({
                   glassOpacity={shopStyles.glassOpacity as number | undefined}
                 />
               ) : null}
+              {/* ── Cyberpunk world glitch chrome — neon HUD frame ── */}
+              {useGlitchBubble && bubbleSize ? (
+                <CyberpunkGlitchBubble
+                  width={bubbleSize.w}
+                  height={bubbleSize.h}
+                  variant={glitchVariant}
+                  radius={22}
+                />
+              ) : null}
               {/* Glass bubble — dark glass with glow-tinted border */}
               <View
-                onLayout={(hasSkiaGlow || isLatest) ? (e) => {
+                onLayout={(hasSkiaGlow || useGlitchBubble || isLatest) ? (e) => {
                   const { width: bw, height: bh } = e.nativeEvent.layout;
-                  if (hasSkiaGlow) {
+                  if (hasSkiaGlow || useGlitchBubble) {
                     if (!bubbleSize || Math.abs(bubbleSize.w - bw) > 1 || Math.abs(bubbleSize.h - bh) > 1) {
                       setBubbleSize({ w: bw, h: bh });
                     }
@@ -760,19 +781,19 @@ export const MessageBubble = memo(function MessageBubble({
                 isOwn && !centerBubble ? styles.glassBubbleOwn : null,
                 !isOwn && !centerBubble ? styles.glassBubbleOther : null,
                 centerBubble && styles.glassBubbleBot,
-                // Skia handles glass rendering — make RN View transparent
-                hasSkiaGlow ? {
-                  borderRadius: 24,
+                // Skia / glitch overlay handles bubble surface — make RN View transparent
+                (hasSkiaGlow || useGlitchBubble) ? {
+                  borderRadius: 22,
                   paddingHorizontal: 20,
                   paddingVertical: 14,
                   backgroundColor: "transparent",
                   borderWidth: 0,
                 } : null,
                 // Non-Skia shop overrides
-                !hasSkiaGlow && shopStyles.bgColor ? { backgroundColor: shopStyles.bgColor as string } : null,
-                !hasSkiaGlow && shopStyles.bgOpacity != null ? { backgroundColor: `rgba(26, 26, 40, ${shopStyles.bgOpacity})` } : null,
-                !hasSkiaGlow && shopStyles.borderOpacity != null ? { borderColor: `rgba(248, 248, 255, ${shopStyles.borderOpacity})` } : null,
-                isOwn && shopStyles.pfpThemeEnabled && nftDominantColor && !shopStyles.glowColor ? { borderColor: nftDominantColor + "30" } : null,
+                !hasSkiaGlow && !useGlitchBubble && shopStyles.bgColor ? { backgroundColor: shopStyles.bgColor as string } : null,
+                !hasSkiaGlow && !useGlitchBubble && shopStyles.bgOpacity != null ? { backgroundColor: `rgba(26, 26, 40, ${shopStyles.bgOpacity})` } : null,
+                !hasSkiaGlow && !useGlitchBubble && shopStyles.borderOpacity != null ? { borderColor: `rgba(248, 248, 255, ${shopStyles.borderOpacity})` } : null,
+                isOwn && !useGlitchBubble && shopStyles.pfpThemeEnabled && nftDominantColor && !shopStyles.glowColor ? { borderColor: nftDominantColor + "30" } : null,
                 isBot ? { borderColor: BOT_THEME_COLOR + "35", backgroundColor: "rgba(0, 201, 167, 0.06)" } : null,
                 // World-aware bubble transparency: when MY world is equipped,
                 // drop bubble bg from 0.65 → 0.32 so the world layer (bananas,
@@ -781,13 +802,14 @@ export const MessageBubble = memo(function MessageBubble({
                 // so this skips them. Skips when a Skia bubble is rendering
                 // (it owns its own surface). Skips when shopStyles.bgColor is
                 // explicitly set by an equipped Bubble cosmetic — the user
-                // chose that color and we shouldn't override it.
-                !hasSkiaGlow && !isBot && myShopStyles?.worldId && !shopStyles.bgColor
+                // chose that color and we shouldn't override it. Also skips
+                // when useGlitchBubble — glitch overlay paints its own body.
+                !hasSkiaGlow && !useGlitchBubble && !isBot && myShopStyles?.worldId && !shopStyles.bgColor
                   ? { backgroundColor: "rgba(26, 26, 40, 0.32)" }
                   : null,
               ]}>
-                {/* Glass gradient — only for non-Skia bubbles */}
-                {!hasSkiaGlow ? (
+                {/* Glass gradient — only for non-Skia, non-glitch bubbles */}
+                {!hasSkiaGlow && !useGlitchBubble ? (
                   <LinearGradient
                     colors={["rgba(248,248,255,0.08)", "rgba(0,0,0,0.15)"]}
                     start={{ x: 0.5, y: 0 }}
@@ -795,7 +817,7 @@ export const MessageBubble = memo(function MessageBubble({
                     style={[StyleSheet.absoluteFill, { borderRadius: 22 }]}
                   />
                 ) : null}
-                {!hasSkiaGlow ? <View style={styles.glassHighlight} /> : null}
+                {!hasSkiaGlow && !useGlitchBubble ? <View style={styles.glassHighlight} /> : null}
 
               {/* Non-media content rendered inside glass bubble */}
               {message.content.startsWith("STICKER:") ? (
