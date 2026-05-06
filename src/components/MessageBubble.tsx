@@ -37,6 +37,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import { SkiaGlowBubble, SkiaGlassFront, SkiaGlowPfp } from "@/components/SkiaGlowBubble";
 import { CyberpunkGlitchBubble } from "@/components/CyberpunkGlitchBubble";
+import { getOrExtractNftColor } from "@/lib/nftColor";
 import { setLatestBubbleHeight } from "@/lib/chatViewport";
 import * as Clipboard from "expo-clipboard";
 import { Image as ExpoImage } from "expo-image";
@@ -341,6 +342,26 @@ function renderRichContent(
   });
 }
 
+// ── Cyberpunk glitch bubble accent helpers ────────────────────────────────
+// Bot's glitch bubble color (matches the existing BOT_THEME_COLOR teal —
+// the bot's identity carries through the cyberpunk chrome).
+const BOT_GLITCH_COLOR = "#00C9A7";
+
+// Curated neon palette for stable per-user fallback colors before the
+// async PFP-color extraction completes. Hashed off inboxId so each user
+// always lands on the same vibrant color. Once getOrExtractNftColor()
+// resolves, the bubble updates to the actual PFP-derived color.
+const NEON_FALLBACK_PALETTE = [
+  "#FF3DFF", "#00D4FF", "#14F195", "#FFE066",
+  "#9945FF", "#FF6B6B", "#7DFF6B", "#FF8FAB",
+  "#FFB000", "#3DFFB0", "#FF3D8F", "#3D8FFF",
+];
+function stableNeonFromString(s: string): string {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+  return NEON_FALLBACK_PALETTE[Math.abs(h) % NEON_FALLBACK_PALETTE.length];
+}
+
 interface MessageBubbleProps {
   message: ChatMessage;
   isOwn: boolean;
@@ -409,12 +430,14 @@ export const MessageBubble = memo(function MessageBubble({
   const [bubbleSize, setBubbleSize] = useState<{ w: number; h: number } | null>(null);
   // World bubble skin TRUMPS any equipped Bubble cosmetic — the world is
   // a higher tier of purchase and should override prior cosmetics for the
-  // user who bought it. Bot bubbles always opt out (their teal theme is
-  // their identity). Resolved against the SENDER's shopStyles so the
+  // user who bought it. Resolved against the SENDER's shopStyles so the
   // skin follows whoever bought the world (per `feedback_world_bubble_ownership`).
+  // Bot is the exception: it has no world purchase, so its bubble follows
+  // the VIEWER's world — so the bot adapts to your equipped UI environment.
   const isBotSender = message.senderUsername === "AI Agent #9385";
-  const isCyberpunkWorld = shopStyles.worldId === "world_solana_cyberpunk";
-  const useGlitchBubble = isCyberpunkWorld && !isBotSender;
+  const senderHasCyberpunk = shopStyles.worldId === "world_solana_cyberpunk";
+  const viewerHasCyberpunk = myShopStyles?.worldId === "world_solana_cyberpunk";
+  const useGlitchBubble = isBotSender ? viewerHasCyberpunk : senderHasCyberpunk;
   const hasSkiaGlow =
     !!(shopStyles.hasBubbleCosmetic && shopStyles.glowColor) && !useGlitchBubble;
   // Max bubble width is 72% of screen minus horizontal padding (14px each side)
@@ -581,10 +604,19 @@ export const MessageBubble = memo(function MessageBubble({
   const isBot = isBotSender;
   // Bot PFP theme — teal from the bot's pixel art visor/eyes
   const BOT_THEME_COLOR = "#00C9A7";
-  // Cyan = my own messages (so I can spot myself); magenta = other senders.
-  // Viewer-relative coloring keeps the cyan/magenta distinction useful
-  // even when several senders all have Cyberpunk equipped.
-  const glitchVariant: "cyan" | "magenta" = isOwn ? "cyan" : "magenta";
+  // Glitch bubble accent — sender's PFP dominant color so each user wears
+  // their own color around their bubbles. Bot uses fixed teal. Falls back
+  // to a stable per-inboxId hashed neon while the async PFP extraction
+  // resolves, so bubbles never flash a default color.
+  const accentFallback = useMemo(
+    () => (isBot ? BOT_GLITCH_COLOR : stableNeonFromString(primarySenderInbox || "monke")),
+    [isBot, primarySenderInbox],
+  );
+  const [glitchAccent, setGlitchAccent] = useState<string>(() => {
+    if (isBot) return BOT_GLITCH_COLOR;
+    if (isOwn && nftDominantColor) return nftDominantColor;
+    return accentFallback;
+  });
   // Show expand control when bot message likely exceeds 9 lines
   const showBotExpand = useMemo(
     () => isBot && (message.content.split("\n").length > 9 || message.content.length > 380),
@@ -627,6 +659,32 @@ export const MessageBubble = memo(function MessageBubble({
   const avatarUri = isOwn
     ? (verifiedNft?.image ?? null)
     : (cachedSender?.nftImage ?? message.senderNft?.image ?? null);
+
+  // ── Cyberpunk glitch accent — extract sender's PFP dominant color ──────
+  // Only runs when the glitch bubble is active. Bot uses fixed teal; own
+  // messages reuse the viewer's already-extracted nftDominantColor; other
+  // senders fire getOrExtractNftColor (cached on disk by inboxId, so it's
+  // free after first extraction across the whole app). Updates state once
+  // resolved so the bubble color flips from hash-fallback → real PFP color.
+  useEffect(() => {
+    if (!useGlitchBubble) return;
+    if (isBot) {
+      setGlitchAccent(BOT_GLITCH_COLOR);
+      return;
+    }
+    if (isOwn) {
+      if (nftDominantColor) setGlitchAccent(nftDominantColor);
+      return;
+    }
+    if (!avatarUri || !primarySenderInbox) return;
+    let cancelled = false;
+    getOrExtractNftColor(avatarUri, primarySenderInbox, accentFallback)
+      .then((c) => {
+        if (!cancelled && c) setGlitchAccent(c);
+      })
+      .catch(() => { /* keep fallback on failure */ });
+    return () => { cancelled = true; };
+  }, [useGlitchBubble, isBot, isOwn, avatarUri, primarySenderInbox, nftDominantColor, accentFallback]);
 
   // PFP Aura color — uses equipped bubble glow color, falls back to NFT dominant color
   const pfpAuraColor = shopStyles.pfpAuraEnabled
@@ -762,7 +820,7 @@ export const MessageBubble = memo(function MessageBubble({
                 <CyberpunkGlitchBubble
                   width={bubbleSize.w}
                   height={bubbleSize.h}
-                  variant={glitchVariant}
+                  color={glitchAccent}
                   radius={22}
                 />
               ) : null}
