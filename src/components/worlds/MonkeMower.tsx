@@ -59,10 +59,18 @@ const SHOW_PFP = false;
 // deck is the LEADING edge, so intake reaches the bananas first.
 const INTAKE_X_PCT = 0.10;
 const INTAKE_Y_PCT = 0.85;
-const CRATE_X_PCT = 0.74;           // top-left of crate banana area
-const CRATE_Y_PCT = 0.22;
+// Crate banana render region. Spans from the very top of the mower image
+// (y=0) down to mid-mower (y=0.55). The basket's RIM in the asset sits at
+// roughly y_pct=0.48 — slot y values are kept below that so all rendered
+// bananas pile UP from the rim instead of disappearing inside the basket.
+const CRATE_X_PCT = 0.74;
+const CRATE_Y_PCT = 0.00;
 const CRATE_W_PCT = 0.22;
-const CRATE_H_PCT = 0.32;
+const CRATE_H_PCT = 0.55;
+// First N sucked bananas are conceptually "inside" the basket — hidden
+// behind the wireframe walls. Only after this threshold do bananas start
+// piling visibly above the rim, exactly as the original asset shows.
+const HIDDEN_INSIDE_BASKET = 5;
 
 // ── Drive parameters ───────────────────────────────────────────────────────
 const DRIVE_DURATION_MS = 5500;     // off-screen-left → off-screen-right
@@ -75,30 +83,25 @@ const BOUNCE_FREQUENCY = 0.04;      // higher = more bounces per pixel of drive
 const INTAKE_IDLE_X = -100_000;
 
 // ── Crate fill positions ───────────────────────────────────────────────────
-// Compact pile, tightly packed like the original asset's static bananas.
-// Stable random-looking positions inside the crate area. Bananas appear at
-// these slots in order as `crateCount` grows. y is fraction-from-top of the
-// crate region; bottom rows fill first, then mound upward.
+// All slots sit ABOVE the basket rim (y < 0.48). Bananas are full pile size
+// (matches the in-chat falling bananas — user wanted "same size in basket
+// as on the screen"). Filled in order as the visible-count (crateCount minus
+// HIDDEN_INSIDE_BASKET) grows: bottom row first (just over the rim), then
+// stacking upward into a mound, with an apex banana at the top.
 const CRATE_BANANA_SLOTS = [
-  // Bottom row — tight overlap, larger size (foreground)
-  { x: 0.20, y: 0.92, rot: -14, size: 14 },
-  { x: 0.42, y: 0.94, rot:   8, size: 14 },
-  { x: 0.62, y: 0.92, rot: -22, size: 14 },
-  { x: 0.82, y: 0.94, rot:  18, size: 13 },
-  // Row 2 — slightly higher, packed
-  { x: 0.30, y: 0.80, rot:  20, size: 13 },
-  { x: 0.50, y: 0.81, rot: -10, size: 13 },
-  { x: 0.72, y: 0.80, rot:   6, size: 13 },
-  { x: 0.12, y: 0.78, rot: -18, size: 12 },
-  // Row 3
-  { x: 0.40, y: 0.68, rot:  14, size: 12 },
-  { x: 0.60, y: 0.69, rot: -12, size: 12 },
-  { x: 0.22, y: 0.66, rot:  22, size: 11 },
-  { x: 0.80, y: 0.67, rot:  -8, size: 11 },
-  // Top mound — smaller, slightly chaotic
-  { x: 0.35, y: 0.55, rot:  -6, size: 11 },
-  { x: 0.55, y: 0.56, rot:  16, size: 11 },
-  { x: 0.50, y: 0.45, rot: -20, size: 10 },
+  // Row 1 — just over the rim
+  { x: 0.18, y: 0.42, rot: -12, size: 28 },
+  { x: 0.50, y: 0.46, rot:   8, size: 30 },
+  { x: 0.80, y: 0.42, rot:  -8, size: 26 },
+  // Row 2 — packed mid
+  { x: 0.30, y: 0.26, rot:  14, size: 26 },
+  { x: 0.62, y: 0.24, rot: -16, size: 28 },
+  // Row 3 — upper mound
+  { x: 0.20, y: 0.10, rot:  18, size: 24 },
+  { x: 0.50, y: 0.06, rot:  -8, size: 24 },
+  { x: 0.78, y: 0.10, rot:  12, size: 22 },
+  // Apex
+  { x: 0.45, y: -0.08, rot: -10, size: 22 },
 ];
 const MAX_CRATE_VISIBLE = CRATE_BANANA_SLOTS.length;
 
@@ -175,10 +178,16 @@ export function MonkeMower({
     ],
   }));
 
-  const visibleCrateSlots = useMemo(
-    () => CRATE_BANANA_SLOTS.slice(0, Math.min(crateCount, MAX_CRATE_VISIBLE)),
-    [crateCount],
-  );
+  const visibleCrateSlots = useMemo(() => {
+    // First HIDDEN_INSIDE_BASKET sucks fill the basket "internally" without
+    // any visible bananas — they're behind the wireframe walls. After the
+    // threshold, surplus bananas pile UP above the rim using slots in order.
+    const visibleCount = Math.max(
+      0,
+      Math.min(crateCount - HIDDEN_INSIDE_BASKET, MAX_CRATE_VISIBLE),
+    );
+    return CRATE_BANANA_SLOTS.slice(0, visibleCount);
+  }, [crateCount]);
 
   if (!active) return null;
 
