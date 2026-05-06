@@ -70,6 +70,7 @@ import { createLivekitToken, createRoomName } from "@/lib/livekit";
 import { LiveRoomBanner } from "@/components/LiveRoomBanner";
 import { EdgePullDetector } from "@/components/drawer/EdgePullDetector";
 import { WorldLayer } from "@/components/worlds/WorldLayer";
+import { BananaMowerOverlay } from "@/components/worlds/BananaMowerOverlay";
 import { VideoRoomBanner } from "@/components/VideoRoomBanner";
 import { VideoCallPip } from "@/components/VideoCallPip";
 import { AvatarRoomPill } from "@/components/AvatarRoomPill";
@@ -1335,6 +1336,11 @@ export default function ChatScreen() {
           onTrigger={() => setDrawerOpen(true)}
           disabled={drawerOpen}
         />
+        {/* MonkeMower overlay — renders ABOVE chat content during a cleanup
+            cycle (which is triggered from inside BananaGroveWorld but must
+            sit in the foreground to be visible). Renders nothing when the
+            mower isn't active. */}
+        <BananaMowerOverlay />
       </KeyboardAvoidingView>
       <ChatModals
         showConfetti={showConfetti}

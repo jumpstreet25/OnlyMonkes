@@ -46,10 +46,11 @@ const MOWER_ASPECT = 1.5;
 const MOWER_WIDTH = MOWER_HEIGHT * MOWER_ASPECT;
 
 // Anchor positions inside the asset (fractions of MOWER_WIDTH × MOWER_HEIGHT).
-// Eyeballed from the asset; adjust here if the art is reworked.
-const PFP_SEAT_X_PCT = 0.40;
-const PFP_SEAT_Y_PCT = 0.28;
-const PFP_SIZE = 36;
+// PFP is centered in the now-empty driver hole (asset's pixels x=600..920,
+// y=140..720, native 1536×1024 → fractional center 0.50, 0.42).
+const PFP_SEAT_X_PCT = 0.50;
+const PFP_SEAT_Y_PCT = 0.42;
+const PFP_SIZE = 88;
 const INTAKE_X_PCT = 0.10;          // intake = front-left (mowing deck)
 const INTAKE_Y_PCT = 0.85;
 const CRATE_X_PCT = 0.74;           // top-left of crate banana area
@@ -176,8 +177,9 @@ export function MonkeMower({
         resizeMode="contain"
       />
 
-      {/* PFP overlay on the driver seat. Borderless circle — keeps the focus
-          on the Monke face. Rendered above the asset. */}
+      {/* PFP on the driver seat — raw NFT image, no border, no rounded
+          corners, no background. Just the user's Monke as it appears
+          everywhere else. */}
       {pfpUri ? (
         <Image
           source={{ uri: pfpUri }}
@@ -187,11 +189,8 @@ export function MonkeMower({
             top: MOWER_HEIGHT * PFP_SEAT_Y_PCT - PFP_SIZE / 2,
             width: PFP_SIZE,
             height: PFP_SIZE,
-            borderRadius: PFP_SIZE / 2,
-            borderWidth: 1.5,
-            borderColor: "rgba(255,213,79,0.85)", // soft gold ring
           }}
-          resizeMode="cover"
+          resizeMode="contain"
         />
       ) : null}
 

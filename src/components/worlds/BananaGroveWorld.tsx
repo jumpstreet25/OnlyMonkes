@@ -36,7 +36,12 @@ import Animated, {
 } from "react-native-reanimated";
 import { latestBubbleHeightSV } from "@/lib/chatViewport";
 import { useAppStore } from "@/store/appStore";
-import { MonkeMower, MOWER_GEOMETRY } from "@/components/worlds/MonkeMower";
+import { MOWER_GEOMETRY } from "@/components/worlds/MonkeMower";
+import {
+  mowerIntakeXSV,
+  MOWER_INTAKE_IDLE_X,
+  useMowerStore,
+} from "@/lib/bananaMowerState";
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
 
@@ -127,7 +132,7 @@ function FallingBanana({ banana, pileBottomPx, mowerIntakeX, onSucked }: Falling
     () => mowerIntakeX.value,
     (curr) => {
       if (suction.value !== 0) return;
-      if (curr === MOWER_GEOMETRY.intakeIdleX) return;
+      if (curr === MOWER_INTAKE_IDLE_X) return;
       if (
         curr >= bananaScreenX - SUCTION_TRIGGER_RANGE_PX &&
         curr <= bananaScreenX + SUCTION_TRIGGER_RANGE_PX
@@ -228,18 +233,12 @@ function BananaPile({ active }: BananaPileProps) {
   // bananas visibly stack up THROUGH it.
   const pileBottomPx = insets.bottom;
   const [bananas, setBananas] = useState<PileBanana[]>([]);
-  const [mowerActive, setMowerActive] = useState(false);
-  const [crateCount, setCrateCount] = useState(0);
   const idRef = useRef(0);
   const laneHeightsRef = useRef<number[]>(new Array(NUM_LANES).fill(0));
   const mowerActiveRef = useRef(false);
-  // Mower writes its current intake X here; FallingBananas read it to know
-  // when to trigger their suction animation. Parked at idle sentinel value
-  // when mower is inactive.
-  const mowerIntakeX = useSharedValue<number>(MOWER_GEOMETRY.intakeIdleX);
 
-  // User's NFT image — drawn as a circle on the mower's driver seat so
-  // every Monke holder sees themselves driving when the cleanup happens.
+  // User's NFT image — drawn on the mower's driver seat so every Monke
+  // holder sees themselves driving when the cleanup happens.
   const verifiedNft = useAppStore((s) => s.verifiedNft);
   const pfpUri = verifiedNft?.image ?? null;
 
@@ -253,13 +252,12 @@ function BananaPile({ active }: BananaPileProps) {
       const lane = Math.floor(random() * NUM_LANES);
       const stackIndex = laneHeightsRef.current[lane];
 
-      // Mower trigger: any lane's stack is about to push the pile-top above
-      // the latest message bubble's bottom edge. Compare prospective max
-      // lane height (px) against the threshold.
+      // Mower trigger: pile crosses ~half the input-bar height. Lower than
+      // the previous "bubble bottom" threshold — fires sooner so the
+      // cleanup is a regular delight rather than rare.
       const prospectiveLaneHeight = (stackIndex + 1) * STACK_LIFT_PX;
-      const bubbleH = latestBubbleHeightSV.value || 60;
-      const dynamicThreshold = INPUT_BAR_HEIGHT + Math.min(bubbleH * 0.15, 12);
-      if (prospectiveLaneHeight >= dynamicThreshold) {
+      const triggerThreshold = INPUT_BAR_HEIGHT * 0.55;
+      if (prospectiveLaneHeight >= triggerThreshold) {
         triggerMower();
         return;
       }
@@ -287,32 +285,26 @@ function BananaPile({ active }: BananaPileProps) {
   const triggerMower = () => {
     if (mowerActiveRef.current) return;
     mowerActiveRef.current = true;
-    setCrateCount(0);
-    setMowerActive(true);
+    // Hand off to the chat-screen-level overlay (BananaMowerOverlay reads
+    // the same store and renders MonkeMower above the chat content).
+    useMowerStore.getState().trigger({
+      pileBottomPx,
+      pfpUri,
+      onSucked: handleBananaSucked,
+      onComplete: handleMowerComplete,
+    });
   };
 
-  // Called by FallingBanana when its suction animation finishes — banana
-  // is fully consumed by the mower. Remove from pile, increment crate fill.
   const handleBananaSucked = (id: number) => {
     setBananas((prev) => prev.filter((b) => b.id !== id));
-    setCrateCount((c) => c + 1);
+    useMowerStore.getState().bumpCrate();
   };
 
   const handleMowerComplete = () => {
-    // Mower has driven off-screen right. Clear any bananas the suction
-    // missed (edge cases — newly spawned mid-cycle, etc.) and reset lanes.
     laneHeightsRef.current = new Array(NUM_LANES).fill(0);
     setBananas([]);
-    setMowerActive(false);
     mowerActiveRef.current = false;
-    // Tiny delay before bananas start raining again — feels like a beat
-    // of "all clear" before the next pile begins.
-    setTimeout(() => {
-      // Reset crate so next cycle starts empty (visual). The mower's render
-      // is gated on `mowerActive`, so by now the crate display is unmounted —
-      // resetting just keeps state tidy for next cycle.
-      setCrateCount(0);
-    }, 600);
+    useMowerStore.getState().reset();
   };
 
   return (
@@ -322,18 +314,10 @@ function BananaPile({ active }: BananaPileProps) {
           key={b.id}
           banana={b}
           pileBottomPx={pileBottomPx}
-          mowerIntakeX={mowerIntakeX}
+          mowerIntakeX={mowerIntakeXSV}
           onSucked={handleBananaSucked}
         />
       ))}
-      <MonkeMower
-        active={mowerActive}
-        pfpUri={pfpUri}
-        bottomPx={pileBottomPx}
-        intakeX={mowerIntakeX}
-        crateCount={crateCount}
-        onComplete={handleMowerComplete}
-      />
     </View>
   );
 }
