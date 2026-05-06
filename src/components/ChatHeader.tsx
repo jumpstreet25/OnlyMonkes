@@ -115,8 +115,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 8,
     height: 100,
-    borderBottomWidth: 1,
-    borderBottomColor: THEME.border,
+    // No borderBottom — design pass 2026-05-06 removed all horizontal
+    // separator lines across the chat surface.
     backgroundColor: HEADER_BG,
   },
   tickerWrap: {
