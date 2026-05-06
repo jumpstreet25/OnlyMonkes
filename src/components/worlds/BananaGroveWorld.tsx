@@ -111,32 +111,84 @@ interface BananaPileProps {
   active: boolean;
 }
 
+interface FallingBanana {
+  id: number;
+  slot: PileSlot;
+}
+
+const PILE_FALL_DURATION_MS = 1500;
+
+/** Single pile banana that animates down from above the screen and lands at
+ * its target slot, then stays there as part of the pile. Wrapped in
+ * Animated.View so the parent's global opacity (fade-out on reset) cascades. */
+function FallingPileBanana({ slot, pileBottomPx }: { slot: PileSlot; pileBottomPx: number }) {
+  const fallProgress = useSharedValue(0);
+
+  useEffect(() => {
+    fallProgress.value = withTiming(1, {
+      duration: PILE_FALL_DURATION_MS,
+      easing: Easing.in(Easing.cubic), // accelerating fall = gravity feel
+    });
+  }, [fallProgress]);
+
+  const animStyle = useAnimatedStyle(() => {
+    // 0 → fully off-screen above, 1 → resting at the slot's pile-relative Y.
+    // The parent View positions us at `bottom: pileBottomPx + slot.yOffset`,
+    // so translateY interpolates from a big negative offset (above screen)
+    // back to 0 (resting position).
+    const y = interpolate(fallProgress.value, [0, 1], [-SCREEN_H * 0.85, 0]);
+    return {
+      transform: [{ translateY: y }, { rotate: `${slot.rot}deg` }],
+    };
+  });
+
+  return (
+    <Animated.View
+      style={[
+        {
+          position: "absolute",
+          left: SCREEN_W * slot.xPct - slot.size / 2,
+          bottom: pileBottomPx + slot.yOffset,
+        },
+        animStyle,
+      ]}
+      pointerEvents="none"
+    >
+      <Text style={{ fontSize: slot.size, opacity: slot.opacity }}>🍌</Text>
+    </Animated.View>
+  );
+}
+
 function BananaPile({ active }: BananaPileProps) {
   const insets = useSafeAreaInsets();
-  const pileBottomPx = INPUT_BAR_HEIGHT + insets.bottom;
-  const [pileCount, setPileCount] = useState(0);
+  // Pile sits at the ABSOLUTE bottom of the screen — just above the Android
+  // nav bar / iOS home indicator. The chat input bar (now translucent when a
+  // World is equipped) renders on top of this layer, so bananas visibly pile
+  // up THROUGH the input bar before reaching the latest message bubble.
+  const pileBottomPx = insets.bottom;
+  const [bananas, setBananas] = useState<FallingBanana[]>([]);
   const opacity = useSharedValue(1);
-  const cycleRef = useRef(0); // bumps on each fade so stale callbacks no-op
-
-  // Refs to avoid stale closures in the interval handler.
-  const pileBottomRef = useRef(pileBottomPx);
-  pileBottomRef.current = pileBottomPx;
+  const cycleRef = useRef(0);
+  const idRef = useRef(0);
 
   useEffect(() => {
     if (!active) return;
     const intervalId = setInterval(() => {
-      setPileCount((prev) => {
-        // Compute prospective pile top after adding one. Pile top Y in
-        // screen coords = SCREEN_H - pileBottom - (next * PER_BANANA_LIFT).
-        // Reset trigger: pile top reaches latest-bubble bottom edge.
-        // Latest-bubble BOTTOM Y on screen ≈ SCREEN_H - pileBottom - <bubble height>
-        // Latest-bubble TOP Y on screen ≈ that minus the bubble height.
-        // We trigger when the pile's TOP would cross the bubble's TOP, so
-        // threshold compares pile height vs latest-bubble height + padding.
-        const next = prev + 1;
+      setBananas((prev) => {
+        const next = prev.length + 1;
+        const slot = PILE_SLOTS[Math.min(next - 1, PILE_SLOTS.length - 1)];
+        // Reset trigger: pile-top Y has reached the latest message bubble's
+        // bottom edge. Pile-top Y = SCREEN_H - pileBottom - pileHeight.
+        // Latest-bubble bottom Y ≈ SCREEN_H - pileBottom - INPUT_BAR_HEIGHT
+        // (input bar sits on top of pile; bubble sits above input bar).
+        // So pile-top reaches bubble-bottom when pileHeight ≈ INPUT_BAR_HEIGHT.
+        // We let it grow into the bubble itself (full visual contact) by
+        // adding the bubble's height before triggering the fade.
         const pileHeight = next * PER_BANANA_LIFT;
         const bubbleH = latestBubbleHeightSV.value || 60;
-        const shouldReset = next >= MAX_PILE || pileHeight >= bubbleH + RESET_PADDING;
+        const shouldReset =
+          next >= MAX_PILE ||
+          pileHeight >= INPUT_BAR_HEIGHT + bubbleH + RESET_PADDING;
         if (shouldReset) {
           const myCycle = cycleRef.current;
           opacity.value = withTiming(0, { duration: FADE_OUT_MS }, (finished) => {
@@ -145,46 +197,29 @@ function BananaPile({ active }: BananaPileProps) {
             }
           });
         }
-        return next;
+        return [...prev, { id: idRef.current++, slot }];
       });
     }, TICK_MS);
     return () => clearInterval(intervalId);
-    // active toggles between focused / backgrounded chat — restart the cycle
-    // on each transition. opacity is a stable SharedValue so excluding it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active]);
 
   const handleResetComplete = (forCycle: number) => {
-    // Guard against races: if cycleRef advanced past forCycle, a newer reset
-    // already fired — skip the JS-side bookkeeping.
     if (forCycle !== cycleRef.current) return;
     cycleRef.current += 1;
-    setPileCount(0);
+    setBananas([]);
     opacity.value = withTiming(1, { duration: FADE_IN_MS });
   };
 
   const animStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
-  const visibleSlots = PILE_SLOTS.slice(0, Math.min(pileCount, MAX_PILE));
 
   return (
     <Animated.View
       style={[styles.pile, { bottom: pileBottomPx }, animStyle]}
       pointerEvents="none"
     >
-      {visibleSlots.map((b, i) => (
-        <Text
-          key={i}
-          style={{
-            position: "absolute",
-            left: SCREEN_W * b.xPct - b.size / 2,
-            bottom: b.yOffset,
-            fontSize: b.size,
-            opacity: b.opacity,
-            transform: [{ rotate: `${b.rot}deg` }],
-          }}
-        >
-          🍌
-        </Text>
+      {bananas.map((b) => (
+        <FallingPileBanana key={b.id} slot={b.slot} pileBottomPx={0} />
       ))}
     </Animated.View>
   );
@@ -279,9 +314,12 @@ const styles = StyleSheet.create({
   particle: { position: "absolute", left: 0, top: 0 },
   pile: {
     // bottom set dynamically by BananaPile() from useSafeAreaInsets()
+    // height intentionally unbounded — each FallingPileBanana absolute-
+    // positions itself by `bottom: slot.yOffset`, growing the pile upward
+    // as far as it needs to before the reset trigger fires.
     position: "absolute",
     left: 0,
     right: 0,
-    height: 80,
+    top: 0,
   },
 });

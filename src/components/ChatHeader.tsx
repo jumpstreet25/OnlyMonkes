@@ -11,6 +11,7 @@ import { THEME, FONTS } from "@/lib/constants";
 import { getLocatedUserCount } from "@/lib/userProfile";
 import { markOnboardingStep } from "@/components/OnboardingChecklist";
 import { BotCommandTicker } from "@/components/BotCommandTicker";
+import { useAppStore } from "@/store/appStore";
 
 const HEADER_BG = "rgba(10, 10, 15, 0.85)";
 
@@ -35,8 +36,13 @@ export function ChatHeader({
   onOpenDrawer,
   onDmNavigation,
 }: ChatHeaderProps) {
+  // World-aware transparency: when a Chat World is equipped, drop the header
+  // background so the falling bananas / drifting candles / cyberpunk grid
+  // render through it. Falls back to the theme surface when no world is set.
+  const worldId = useAppStore((s) => s.shopStyles?.worldId) as string | undefined;
+  const headerBg = worldId ? "rgba(10,10,20,0.32)" : themeSurface;
   return (
-    <View style={[styles.header, { backgroundColor: themeSurface, borderBottomColor: themeBorder }]}>
+    <View style={[styles.header, { backgroundColor: headerBg, borderBottomColor: themeBorder }]}>
       {/* Left: Globe with monke count */}
       <View style={styles.headerLeft}>
         <Pressable
