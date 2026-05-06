@@ -180,6 +180,8 @@ async function getJupiterBuild(
     amount: amountLamports,
     taker,
     slippageBps: String(slippageBps),
+    dynamicSlippage: "true",
+    prioritizationFeeLamports: "auto",
     wrapAndUnwrapSol: "true",
   });
 
