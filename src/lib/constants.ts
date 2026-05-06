@@ -114,6 +114,8 @@ export const THEME = {
   gold: '#FFD700',
 };
 
+export const WORLD_BAR_BG = 'rgba(10,10,20,0.32)';
+
 export const FONTS = {
   display: 'SpaceGrotesk-Bold',
   displayMed: 'SpaceGrotesk-Medium',

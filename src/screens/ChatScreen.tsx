@@ -48,7 +48,7 @@ import { ChatInput } from "@/components/ChatInput";
 import { ChatSkeleton } from "@/components/SkeletonLoader";
 import type { ProfileTarget } from "@/components/UserProfileModal";
 import { router } from "expo-router";
-import { THEME, FONTS, SKR_MINT } from "@/lib/constants";
+import { THEME, FONTS, SKR_MINT, WORLD_BAR_BG } from "@/lib/constants";
 import { loadUserProfile, getCachedProfile, getDeduplicatedUsers, cacheProfile } from "@/lib/userProfile";
 import { checkAndUpdateStreak } from "@/lib/streaks";
 import { claimDailyBananas, type ClaimResult } from "@/lib/bananaRewards";
@@ -1296,8 +1296,14 @@ export default function ChatScreen() {
         />}
 
         {/* Support banner — 3-column: [SKR] [Support] [Floor] */}
+        {/* Match the chat header / input bar bg when a Chat World is equipped
+            so all three bars read as one unified frame around the world. */}
         {isGroupMember && (
-          <View style={[styles.supportBanner, { borderTopColor: themeBorder }]}>
+          <View style={[
+            styles.supportBanner,
+            { borderTopColor: themeBorder },
+            myShopStyles?.worldId ? { backgroundColor: WORLD_BAR_BG } : null,
+          ]}>
             <View style={{ minWidth: 70, alignItems: 'flex-start' }}>
               {skrPrice && (
                 <Pressable

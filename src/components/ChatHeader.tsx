@@ -7,7 +7,7 @@ import {
   ImageBackground,
 } from "react-native";
 import { router } from "expo-router";
-import { THEME, FONTS } from "@/lib/constants";
+import { THEME, FONTS, WORLD_BAR_BG } from "@/lib/constants";
 import { getLocatedUserCount } from "@/lib/userProfile";
 import { markOnboardingStep } from "@/components/OnboardingChecklist";
 import { BotCommandTicker } from "@/components/BotCommandTicker";
@@ -40,7 +40,7 @@ export function ChatHeader({
   // background so the falling bananas / drifting candles / cyberpunk grid
   // render through it. Falls back to the theme surface when no world is set.
   const worldId = useAppStore((s) => s.shopStyles?.worldId) as string | undefined;
-  const headerBg = worldId ? "rgba(10,10,20,0.32)" : themeSurface;
+  const headerBg = worldId ? WORLD_BAR_BG : themeSurface;
   return (
     <View style={[styles.header, { backgroundColor: headerBg, borderBottomColor: themeBorder }]}>
       {/* Left: Globe with monke count */}
