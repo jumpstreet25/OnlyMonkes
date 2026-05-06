@@ -173,25 +173,23 @@ function FallingBanana({ banana, pileBottomPx, mowerIntakeX, onSucked }: Falling
     let opacity = 1;
 
     if (tSuck > 0) {
-      // Compute target intake position in screen coords. We follow the
-      // mower's CURRENT X so the banana visibly tracks the moving target —
-      // but we anchor against the mower's X at suction-start so the curved
-      // path stays a fixed shape (not infinitely chasing).
+      // Suction = banana drops DOWN under the mower (vacuum-style), drifts
+      // slightly leftward toward the mower's intake/center as it descends,
+      // and fades out before reaching the bottom. Reappears (counted) in
+      // the basket via the crate fill render. NO spin, NO scale change —
+      // the banana keeps its size and orientation as it gets pulled under.
       const intakeNowX = mowerIntakeX.value;
-      const intakeNowY = SCREEN_H - pileBottomPx - SUCTION_INTAKE_Y_FROM_PILE_BOTTOM_PX;
-      // Banana's natural landed position in screen coords.
-      const landedY = SCREEN_H - pileBottomPx - banana.stackIndex * STACK_LIFT_PX;
-
-      const dx = intakeNowX - bananaScreenX;
-      const dy = intakeNowY - landedY;
+      // Drift horizontally toward the mower's intake X (small inward pull).
+      const dx = (intakeNowX - bananaScreenX) * 0.4;
+      // Drop downward — distance enough to clear the mower bottom + safe
+      // area. Going positive in translateY means moving DOWN the screen.
+      const SUCK_DROP_PX = 80;
       translateX = dx * tSuck;
-      translateY = fallY + dy * tSuck;
-
-      // Spin while being pulled in — 2 full rotations on top of base rot.
-      rot += tSuck * 720;
-      // Scale down + fade out in the second half.
-      scale = 1 - 0.6 * tSuck;
-      opacity = interpolate(tSuck, [0.7, 1], [1, 0], Extrapolation.CLAMP);
+      translateY = fallY + SUCK_DROP_PX * tSuck;
+      // Fade to 0 — most of the fade happens in the first half so the
+      // banana is invisible by the time it would visually leave the mower.
+      opacity = 1 - tSuck;
+      // Keep base rotation (no spin during suction).
     } else {
       // Approach wobble — mower's intake is nearby but hasn't sucked yet.
       // Mower drives R→L so the intake is to the RIGHT of the banana when
