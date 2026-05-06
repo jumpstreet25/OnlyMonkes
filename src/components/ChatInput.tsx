@@ -190,6 +190,11 @@ export const ChatInput = memo(function ChatInput({
   const shopStyles = useAppStore(s => s.shopStyles);
   const nftDominantColor = useAppStore(s => s.nftDominantColor);
   const toolbarColor = shopStyles?.pfpFullTheme && nftDominantColor ? nftDominantColor : "#6CB4EE";
+  // World-aware transparency: when a Chat World is equipped, drop the input
+  // bar background so falling bananas / candles can be seen piling up behind
+  // it. Returns to opaque theme surface when no world is set.
+  const worldId = shopStyles?.worldId as string | undefined;
+  const inputBarBg = worldId ? "rgba(10,10,20,0.32)" : themeSurface;
 
   const slashSuggestions = useMemo(() => getSlashSuggestions(value, isDmWithBot), [value, isDmWithBot]);
 
@@ -263,7 +268,7 @@ export const ChatInput = memo(function ChatInput({
   const isNearLimit = charsLeft <= 50;
 
   return (
-    <View style={[styles.container, { backgroundColor: themeSurface, borderTopColor: themeBorder }]}>
+    <View style={[styles.container, { backgroundColor: inputBarBg, borderTopColor: themeBorder }]}>
       {/* Slash command suggestions */}
       {slashSuggestions.length > 0 && (
         <View style={styles.mentionList}>
