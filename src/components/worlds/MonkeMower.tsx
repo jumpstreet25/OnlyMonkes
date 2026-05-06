@@ -41,8 +41,9 @@ const { width: SCREEN_W } = Dimensions.get("window");
 // ── Asset geometry ─────────────────────────────────────────────────────────
 // Native asset is 1360×768 (≈1.77:1). Mower faces RIGHT; basket trails on
 // the LEFT. Driving L→R, the deck on the right is the leading edge.
-// Display height reduced 15% per design pass — was 200, now 170.
-const MOWER_HEIGHT = 170;
+// Display height reduced 200 → 170 (15%) and again 170 → 150 so the
+// driver's head sits at/just below the chat input bar bottom.
+const MOWER_HEIGHT = 150;
 const MOWER_ASPECT = 1360 / 768;
 const MOWER_WIDTH = MOWER_HEIGHT * MOWER_ASPECT;
 // New asset has wheels at the asset's bottom edge — negligible padding.

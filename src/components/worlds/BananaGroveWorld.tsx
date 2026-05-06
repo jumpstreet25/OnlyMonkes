@@ -50,15 +50,18 @@ const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
 // fades just as it visually reaches the bottom of the latest message bubble.
 const INPUT_BAR_HEIGHT = 96;
 
-// Spawn cadence — every TICK_MS one banana drops. 700ms feels active without
-// flooding the screen.
-const TICK_MS = 700;
+// Spawn cadence — every TICK_MS one banana drops. 870ms = previous 700ms
+// slowed 20% per design pass (mower cycle slows proportionally since pile
+// takes correspondingly longer to fill).
+const TICK_MS = 870;
 
 // Stacking — each new banana in a lane adds STACK_LIFT_PX to that lane's
-// stack height (overlaps slightly so bananas pack tightly, like a real pile).
+// stack height. 8px gives a tighter overlap than the visual size of the
+// banana, so the pile reads as a compact heap (rather than a tall stack)
+// and the MonkeMower's intake comfortably clears the pile top.
 const NUM_LANES = 20;
 const LANE_WIDTH = SCREEN_W / NUM_LANES;
-const STACK_LIFT_PX = 14;
+const STACK_LIFT_PX = 8;
 const BANANA_BASE_SIZE = 24;
 const BANANA_SIZE_VARIANCE = 8;
 
@@ -283,7 +286,10 @@ function BananaPile({ active }: BananaPileProps) {
       // the previous "bubble bottom" threshold — fires sooner so the
       // cleanup is a regular delight rather than rare.
       const prospectiveLaneHeight = (stackIndex + 1) * STACK_LIFT_PX;
-      const triggerThreshold = INPUT_BAR_HEIGHT * 0.55;
+      // Lower threshold so the pile stays short — mower's intake (about
+      // ~22px above ground at the new MOWER_HEIGHT=150) is comfortably
+      // taller than the pile top, which sells the "sucking it up" visual.
+      const triggerThreshold = INPUT_BAR_HEIGHT * 0.35;
       if (prospectiveLaneHeight >= triggerThreshold) {
         triggerMower();
         return;
