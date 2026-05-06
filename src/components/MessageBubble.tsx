@@ -569,16 +569,22 @@ export const MessageBubble = memo(function MessageBubble({
   const isBot = message.senderUsername === "AI Agent #9385";
   // Bot PFP theme — teal from the bot's pixel art visor/eyes
   const BOT_THEME_COLOR = "#00C9A7";
-  // Cyberpunk world-aware glitch bubble. Auto-applies when MY world is the
-  // Solana Cyberpunk world AND no explicit Bubble cosmetic is equipped (an
-  // equipped Bubble cosmetic always wins — user choice trumps world default).
-  // Bot bubbles opt out (their own teal theme reads as the bot's identity).
+  // Cyberpunk world-aware glitch bubble. Bubble skin follows the SENDER —
+  // the user who PURCHASED the world wears that look on their outgoing
+  // messages, visible to everyone. Viewer's own world purchase is
+  // independent. `shopStyles` already resolves to sender styles for
+  // non-own messages (see line above isBot derivation). An equipped
+  // Bubble cosmetic still wins — user-picked styles trump world default.
+  // Bot bubbles opt out (their teal theme is the bot's identity).
   const useGlitchBubble = !!(
-    myShopStyles?.worldId === "world_solana_cyberpunk" &&
+    shopStyles.worldId === "world_solana_cyberpunk" &&
     !isBot &&
     !hasSkiaGlow &&
     !shopStyles.bgColor
   );
+  // Cyan = my own messages (so I can spot myself); magenta = other senders.
+  // Viewer-relative coloring keeps the cyan/magenta distinction useful
+  // even when several senders all have Cyberpunk equipped.
   const glitchVariant: "cyan" | "magenta" = isOwn ? "cyan" : "magenta";
   // Show expand control when bot message likely exceeds 9 lines
   const showBotExpand = useMemo(
