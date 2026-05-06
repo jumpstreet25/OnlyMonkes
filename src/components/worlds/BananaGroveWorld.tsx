@@ -192,15 +192,16 @@ function FallingBanana({ banana, pileBottomPx, mowerIntakeX, onSucked }: Falling
       // Keep base rotation (no spin during suction).
     } else {
       // Approach wobble — mower's intake is nearby but hasn't sucked yet.
-      // Mower drives R→L so the intake is to the RIGHT of the banana when
-      // approaching (positive distance = intake to the right).
+      // Mower drives L→R so the intake is to the LEFT of the banana when
+      // approaching (negative distance = intake to the left of banana).
       const intakeNow = mowerIntakeX.value;
       if (intakeNow !== MOWER_INTAKE_IDLE_X) {
         const distance = intakeNow - bananaScreenX;
-        if (distance > SUCTION_TRIGGER_RANGE_PX && distance < APPROACH_RANGE_PX) {
+        if (distance < -SUCTION_TRIGGER_RANGE_PX && distance > -APPROACH_RANGE_PX) {
           // proximity: 0 just entering range → 1 about to be sucked
+          const absDist = -distance;
           const proximity =
-            1 - (distance - SUCTION_TRIGGER_RANGE_PX) /
+            1 - (absDist - SUCTION_TRIGGER_RANGE_PX) /
             (APPROACH_RANGE_PX - SUCTION_TRIGGER_RANGE_PX);
           // Use intake X as the time variable for the sin wave so the
           // wobble oscillates continuously as the mower closes the gap

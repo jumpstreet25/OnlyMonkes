@@ -39,37 +39,36 @@ import Animated, {
 const { width: SCREEN_W } = Dimensions.get("window");
 
 // ── Asset geometry ─────────────────────────────────────────────────────────
-// Native asset is 1536×1024 (3:2). We render at a fixed height; width follows.
+// Native asset is 1360×768 (≈1.77:1). Mower faces RIGHT; basket trails on
+// the LEFT. Driving L→R, the deck on the right is the leading edge.
 const MOWER_HEIGHT = 200;
-const MOWER_ASPECT = 1.5;
+const MOWER_ASPECT = 1360 / 768;
 const MOWER_WIDTH = MOWER_HEIGHT * MOWER_ASPECT;
-// The wheels of the mower sit ~30px above the asset's bottom edge (the
-// original render had ground/shadow area beneath them). Offset the mower
-// container DOWN by this amount so the wheels visually land on the same
-// plane as the banana pile floor (insets.bottom).
-const ASSET_WHEEL_OFFSET_PX = 30;
+// New asset has wheels at the asset's bottom edge — negligible padding.
+const ASSET_WHEEL_OFFSET_PX = 2;
 
 // PFP overlay disabled per user feedback — voxel driver shows as-is.
 // Constants retained so we can re-enable easily later.
-const PFP_SEAT_X_PCT = 0.515;
-const PFP_SEAT_Y_PCT = 0.324;
+const PFP_SEAT_X_PCT = 0.55;
+const PFP_SEAT_Y_PCT = 0.18;
 const PFP_SIZE = 44;
 const SHOW_PFP = false;
-// Intake = front-left of asset (the mowing deck). When driving R→L the
-// deck is the LEADING edge, so intake reaches the bananas first.
-const INTAKE_X_PCT = 0.10;
+// Intake = front-RIGHT of asset (the mowing deck). When driving L→R the
+// deck on the right is the LEADING edge, so intake reaches bananas first.
+const INTAKE_X_PCT = 0.93;
 const INTAKE_Y_PCT = 0.85;
-// Crate banana render region. Spans from the very top of the mower image
-// (y=0) down to mid-mower (y=0.55). The basket's RIM in the asset sits at
-// roughly y_pct=0.48 — slot y values are kept below that so all rendered
-// bananas pile UP from the rim instead of disappearing inside the basket.
-const CRATE_X_PCT = 0.74;
+// Crate banana render region — basket sits at the LEFT side of the new
+// asset. Region extends from y=0 (top of mower) DOWN to the basket rim
+// (~y_pct = 0.40). Slot y values map within this region; y close to 1.0
+// means at the rim, y close to 0 means high mound apex above the rim.
+const CRATE_X_PCT = 0.06;
 const CRATE_Y_PCT = 0.00;
-const CRATE_W_PCT = 0.22;
-const CRATE_H_PCT = 0.55;
+const CRATE_W_PCT = 0.24;
+const CRATE_H_PCT = 0.40;
 // First N sucked bananas are conceptually "inside" the basket — hidden
-// behind the wireframe walls. Only after this threshold do bananas start
-// piling visibly above the rim, exactly as the original asset shows.
+// behind the OPAQUE basket walls (basket is solid black, not transparent).
+// Only after this threshold do bananas start piling visibly above the rim
+// in a tight pyramid.
 const HIDDEN_INSIDE_BASKET = 5;
 
 // ── Drive parameters ───────────────────────────────────────────────────────
@@ -83,25 +82,40 @@ const BOUNCE_FREQUENCY = 0.04;      // higher = more bounces per pixel of drive
 const INTAKE_IDLE_X = -100_000;
 
 // ── Crate fill positions ───────────────────────────────────────────────────
-// All slots sit ABOVE the basket rim (y < 0.48). Bananas are full pile size
-// (matches the in-chat falling bananas — user wanted "same size in basket
-// as on the screen"). Filled in order as the visible-count (crateCount minus
-// HIDDEN_INSIDE_BASKET) grows: bottom row first (just over the rim), then
-// stacking upward into a mound, with an apex banana at the top.
+// Tight makeshift pyramid — bananas overlap with no gaps between them, like
+// a real fruit pile mounding above the basket rim. Each row offset and one
+// banana shorter than the row below, building toward an apex.
+//
+// Coords:
+//  - x: fraction of CRATE_W_PCT (0=left edge of basket interior, 1=right)
+//  - y: fraction of CRATE_H_PCT (1.0=at the rim, decreasing = higher mound)
+//  - size: 24-30 px to match in-pile banana sizes (user wanted "same size
+//    in the basket as on the screen")
+//
+// Slot ORDER matters: bottom row first (filled as visible count goes 1, 2,
+// 3, 4, 5...), stacking up to apex. Pile grows visibly with each suck.
 const CRATE_BANANA_SLOTS = [
-  // Row 1 — just over the rim
-  { x: 0.18, y: 0.42, rot: -12, size: 28 },
-  { x: 0.50, y: 0.46, rot:   8, size: 30 },
-  { x: 0.80, y: 0.42, rot:  -8, size: 26 },
-  // Row 2 — packed mid
-  { x: 0.30, y: 0.26, rot:  14, size: 26 },
-  { x: 0.62, y: 0.24, rot: -16, size: 28 },
-  // Row 3 — upper mound
-  { x: 0.20, y: 0.10, rot:  18, size: 24 },
-  { x: 0.50, y: 0.06, rot:  -8, size: 24 },
-  { x: 0.78, y: 0.10, rot:  12, size: 22 },
-  // Apex
-  { x: 0.45, y: -0.08, rot: -10, size: 22 },
+  // Row 1 — 5 bananas at the rim, tightly overlapping (centers ~17% apart,
+  // size 28 → ~10px overlap between neighbors)
+  { x: 0.10, y: 0.92, rot: -10, size: 28 },
+  { x: 0.30, y: 0.95, rot:   8, size: 28 },
+  { x: 0.50, y: 0.92, rot: -14, size: 30 },
+  { x: 0.70, y: 0.95, rot:  12, size: 28 },
+  { x: 0.90, y: 0.92, rot:  -6, size: 26 },
+  // Row 2 — 4 bananas, offset between row-1 centers, ~20% lifted
+  { x: 0.20, y: 0.72, rot:  14, size: 28 },
+  { x: 0.40, y: 0.74, rot: -10, size: 28 },
+  { x: 0.60, y: 0.72, rot:  16, size: 28 },
+  { x: 0.80, y: 0.74, rot:  -8, size: 26 },
+  // Row 3 — 3 bananas
+  { x: 0.30, y: 0.50, rot: -12, size: 26 },
+  { x: 0.50, y: 0.52, rot:  10, size: 28 },
+  { x: 0.70, y: 0.50, rot: -18, size: 26 },
+  // Row 4 — 2 bananas
+  { x: 0.40, y: 0.28, rot:  14, size: 26 },
+  { x: 0.60, y: 0.30, rot: -10, size: 26 },
+  // Apex — 1 banana, slightly offset
+  { x: 0.50, y: 0.08, rot:  -8, size: 24 },
 ];
 const MAX_CRATE_VISIBLE = CRATE_BANANA_SLOTS.length;
 
@@ -128,12 +142,12 @@ export function MonkeMower({
   crateCount,
   onComplete,
 }: MonkeMowerProps) {
-  // Mower drives RIGHT-TO-LEFT (the asset shows the vehicle facing left
-  // with the mowing deck on the LEFT — driving left = facing forward;
-  // driving right looked like reverse). driveX = mower's LEFT edge.
-  // Starts off-screen RIGHT, ends off-screen LEFT.
-  const DRIVE_START_X = SCREEN_W + 20;
-  const DRIVE_END_X = -MOWER_WIDTH - 20;
+  // Mower drives LEFT-TO-RIGHT. New asset shows the vehicle facing RIGHT
+  // (deck on the right, basket trailing on the left). Driving right = facing
+  // forward. driveX = mower's LEFT edge. Starts off-screen LEFT, ends
+  // off-screen RIGHT.
+  const DRIVE_START_X = -MOWER_WIDTH - 20;
+  const DRIVE_END_X = SCREEN_W + 20;
   const driveX = useSharedValue(DRIVE_START_X);
   // Subtle vertical bounce derived from drive distance — gives "crossing
   // lumpy pile" feel without any per-banana collision math.
