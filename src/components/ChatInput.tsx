@@ -506,8 +506,7 @@ export const ChatInput = memo(function ChatInput({
 const styles = StyleSheet.create({
   container: {
     backgroundColor: THEME.surface,
-    borderTopWidth: 1,
-    borderTopColor: THEME.border,
+    // No borderTop — separator removed per design pass 2026-05-06.
     paddingBottom: 8,
   },
   replyBanner: {

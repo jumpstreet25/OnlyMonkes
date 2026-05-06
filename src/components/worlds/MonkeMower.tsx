@@ -75,21 +75,30 @@ const BOUNCE_FREQUENCY = 0.04;      // higher = more bounces per pixel of drive
 const INTAKE_IDLE_X = -100_000;
 
 // ── Crate fill positions ───────────────────────────────────────────────────
+// Compact pile, tightly packed like the original asset's static bananas.
 // Stable random-looking positions inside the crate area. Bananas appear at
-// these slots in order as `crateCount` grows.
+// these slots in order as `crateCount` grows. y is fraction-from-top of the
+// crate region; bottom rows fill first, then mound upward.
 const CRATE_BANANA_SLOTS = [
-  { x: 0.10, y: 0.85, rot: -12, size: 14 },
-  { x: 0.55, y: 0.80, rot: 18, size: 13 },
-  { x: 0.30, y: 0.75, rot: -6, size: 14 },
-  { x: 0.75, y: 0.70, rot: 22, size: 12 },
-  { x: 0.18, y: 0.62, rot: 8, size: 13 },
-  { x: 0.50, y: 0.55, rot: -20, size: 12 },
-  { x: 0.85, y: 0.55, rot: 4, size: 11 },
-  { x: 0.30, y: 0.42, rot: -14, size: 12 },
-  { x: 0.65, y: 0.40, rot: 16, size: 11 },
-  { x: 0.10, y: 0.30, rot: 10, size: 11 },
-  { x: 0.45, y: 0.22, rot: -8, size: 11 },
-  { x: 0.78, y: 0.20, rot: 14, size: 10 },
+  // Bottom row — tight overlap, larger size (foreground)
+  { x: 0.20, y: 0.92, rot: -14, size: 14 },
+  { x: 0.42, y: 0.94, rot:   8, size: 14 },
+  { x: 0.62, y: 0.92, rot: -22, size: 14 },
+  { x: 0.82, y: 0.94, rot:  18, size: 13 },
+  // Row 2 — slightly higher, packed
+  { x: 0.30, y: 0.80, rot:  20, size: 13 },
+  { x: 0.50, y: 0.81, rot: -10, size: 13 },
+  { x: 0.72, y: 0.80, rot:   6, size: 13 },
+  { x: 0.12, y: 0.78, rot: -18, size: 12 },
+  // Row 3
+  { x: 0.40, y: 0.68, rot:  14, size: 12 },
+  { x: 0.60, y: 0.69, rot: -12, size: 12 },
+  { x: 0.22, y: 0.66, rot:  22, size: 11 },
+  { x: 0.80, y: 0.67, rot:  -8, size: 11 },
+  // Top mound — smaller, slightly chaotic
+  { x: 0.35, y: 0.55, rot:  -6, size: 11 },
+  { x: 0.55, y: 0.56, rot:  16, size: 11 },
+  { x: 0.50, y: 0.45, rot: -20, size: 10 },
 ];
 const MAX_CRATE_VISIBLE = CRATE_BANANA_SLOTS.length;
 

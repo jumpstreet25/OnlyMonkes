@@ -480,9 +480,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 8,
     height: 100,
-    borderBottomWidth: 1,
-    borderBottomColor: THEME.border,
     backgroundColor: "transparent",
+    // No borderBottom — separator removed per design pass 2026-05-06.
   },
   headerCenter: {
     flex: 1,
@@ -516,9 +515,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 6,
     paddingVertical: 6,
-    borderBottomWidth: 1,
-    borderBottomColor: THEME.border,
     backgroundColor: THEME.bg,
+    // No borderBottom — separator removed per design pass 2026-05-06.
   },
   liveDot: {
     width: 6,
@@ -593,8 +591,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 8,
     padding: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: THEME.border,
+    // No borderBottom — separator removed per design pass 2026-05-06.
   },
   historyLoadingText: {
     fontFamily: FONTS.body,

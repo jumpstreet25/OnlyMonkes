@@ -1435,8 +1435,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 8,
     padding: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: THEME.border,
+    // No borderBottom — separator removed per design pass 2026-05-06.
   },
   historyLoadingText: {
     fontFamily: FONTS.body,
@@ -1571,8 +1570,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 9,
     paddingHorizontal: 12,
-    borderTopWidth: 1,
-    borderTopColor: THEME.border,
+    // No borderTop — separator removed per design pass 2026-05-06.
   },
   supportBannerText: {
     fontFamily: FONTS.mono,
