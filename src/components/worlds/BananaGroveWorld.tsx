@@ -92,16 +92,16 @@ interface PileBanana {
 
 // ── Falling banana component ───────────────────────────────────────────────
 
-const SUCTION_DURATION_MS = 420;
-const SUCTION_TRIGGER_RANGE_PX = 18; // intake catches bananas within ±this px
+const SUCTION_DURATION_MS = 650;
+const SUCTION_TRIGGER_RANGE_PX = 22; // intake catches bananas within ±this px
 const SUCTION_INTAKE_Y_FROM_PILE_BOTTOM_PX = MOWER_GEOMETRY.intakeYFromBottom;
 // Approach wobble — banana shakes when the mower's intake is heading toward
 // it but hasn't quite reached suction range. APPROACH_RANGE_PX is the max
 // distance (pixels, intake to banana) at which the wobble starts; intensity
 // grows linearly from 0 → 1 as the intake closes the gap.
-const APPROACH_RANGE_PX = 90;
-const WOBBLE_AMPLITUDE_PX = 3;
-const WOBBLE_ROTATION_DEG = 6;
+const APPROACH_RANGE_PX = 120;
+const WOBBLE_AMPLITUDE_PX = 5;
+const WOBBLE_ROTATION_DEG = 14;
 
 interface FallingBananaProps {
   banana: PileBanana;
@@ -175,23 +175,42 @@ function FallingBanana({ banana, pileBottomPx, mowerIntakeX, onSucked }: Falling
     let opacity = 1;
 
     if (tSuck > 0) {
-      // Suction = banana drops DOWN under the mower (vacuum-style), drifts
-      // slightly leftward toward the mower's intake/center as it descends,
-      // and fades out before reaching the bottom. Reappears (counted) in
-      // the basket via the crate fill render. NO spin, NO scale change —
-      // the banana keeps its size and orientation as it gets pulled under.
+      // Phase 1 (0 → 0.55): banana yanked toward the mower's intake at the
+      // front-right of the deck — full horizontal slide with a violent
+      // wiggle + fast spin so it reads as "sucked with force". Slight
+      // upward lift, like the vacuum lifts it off the pile.
+      // Phase 2 (0.55 → 1.0): banana dives UNDER the mower deck — small
+      // downward dip, shrink, fade. The mower image renders above the
+      // banana layer so the body visually swallows it. After fade-out
+      // onSucked fires → banana removed → crateCount bumps → banana
+      // reappears in the basket via the mower's crate-fill render.
       const intakeNowX = mowerIntakeX.value;
-      // Drift horizontally toward the mower's intake X (small inward pull).
-      const dx = (intakeNowX - bananaScreenX) * 0.4;
-      // Drop downward — distance enough to clear the mower bottom + safe
-      // area. Going positive in translateY means moving DOWN the screen.
-      const SUCK_DROP_PX = 80;
-      translateX = dx * tSuck;
-      translateY = fallY + SUCK_DROP_PX * tSuck;
-      // Fade to 0 — most of the fade happens in the first half so the
-      // banana is invisible by the time it would visually leave the mower.
-      opacity = 1 - tSuck;
-      // Keep base rotation (no spin during suction).
+      const dx = intakeNowX - bananaScreenX;
+
+      const slideT = Math.min(tSuck / 0.55, 1);
+      const slideEased = 1 - Math.pow(1 - slideT, 2.2); // ease-out, snaps to intake
+      translateX = dx * slideEased;
+
+      // Wiggle — strongest at start, decays as banana reaches intake.
+      const wobbleStrength = Math.max(0, 1 - slideT);
+      const wobblePhase = tSuck * 65;
+      translateX += Math.sin(wobblePhase) * 7 * wobbleStrength;
+
+      // Force spin throughout suction + extra jitter spin during wiggle phase.
+      rot += tSuck * 540 + Math.sin(wobblePhase * 1.3) * 30 * wobbleStrength;
+
+      // Slight upward lift during phase 1 (vacuum picks it up off pile).
+      const liftCurve = Math.sin(slideT * Math.PI); // 0 → 1 → 0
+      let suctionDeltaY = -10 * liftCurve;
+
+      // Phase 2 — dive under the deck.
+      if (tSuck > 0.55) {
+        const diveT = (tSuck - 0.55) / 0.45;
+        suctionDeltaY += 16 * diveT;
+        scale = 1 - 0.4 * diveT;
+        opacity = 1 - diveT;
+      }
+      translateY = fallY + suctionDeltaY;
     } else {
       // Approach wobble — mower's intake is nearby but hasn't sucked yet.
       // Mower drives L→R so the intake is to the LEFT of the banana when
