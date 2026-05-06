@@ -39,20 +39,25 @@ import Animated, {
 const { width: SCREEN_W } = Dimensions.get("window");
 
 // ── Asset geometry ─────────────────────────────────────────────────────────
-// Native asset is roughly 384×256 voxel render (3:2). We render at a fixed
-// height; width follows aspect.
+// Native asset is 1536×1024 (3:2). We render at a fixed height; width follows.
 const MOWER_HEIGHT = 200;
 const MOWER_ASPECT = 1.5;
 const MOWER_WIDTH = MOWER_HEIGHT * MOWER_ASPECT;
+// The wheels of the mower sit ~30px above the asset's bottom edge (the
+// original render had ground/shadow area beneath them). Offset the mower
+// container DOWN by this amount so the wheels visually land on the same
+// plane as the banana pile floor (insets.bottom).
+const ASSET_WHEEL_OFFSET_PX = 30;
 
-// PFP anchor — sits ON the voxel monke's head in the original asset (native
-// pixels ~x=790, y=332 → fractional 0.515, 0.324). Sized to roughly cover
-// just the head; circle crop pulls the head shape out of the square NFT
-// without dragging the NFT's surrounding background into view.
+// PFP overlay disabled per user feedback — voxel driver shows as-is.
+// Constants retained so we can re-enable easily later.
 const PFP_SEAT_X_PCT = 0.515;
 const PFP_SEAT_Y_PCT = 0.324;
 const PFP_SIZE = 44;
-const INTAKE_X_PCT = 0.10;          // intake = front-left (mowing deck)
+const SHOW_PFP = false;
+// Intake = front-left of asset (the mowing deck). When driving R→L the
+// deck is the LEADING edge, so intake reaches the bananas first.
+const INTAKE_X_PCT = 0.10;
 const INTAKE_Y_PCT = 0.85;
 const CRATE_X_PCT = 0.74;           // top-left of crate banana area
 const CRATE_Y_PCT = 0.22;
@@ -111,8 +116,13 @@ export function MonkeMower({
   crateCount,
   onComplete,
 }: MonkeMowerProps) {
-  // driveX = mower's LEFT edge x-coordinate. Starts off-screen left.
-  const driveX = useSharedValue(-MOWER_WIDTH);
+  // Mower drives RIGHT-TO-LEFT (the asset shows the vehicle facing left
+  // with the mowing deck on the LEFT — driving left = facing forward;
+  // driving right looked like reverse). driveX = mower's LEFT edge.
+  // Starts off-screen RIGHT, ends off-screen LEFT.
+  const DRIVE_START_X = SCREEN_W + 20;
+  const DRIVE_END_X = -MOWER_WIDTH - 20;
+  const driveX = useSharedValue(DRIVE_START_X);
   // Subtle vertical bounce derived from drive distance — gives "crossing
   // lumpy pile" feel without any per-banana collision math.
   const bounceY = useDerivedValue(() => {
@@ -132,14 +142,14 @@ export function MonkeMower({
   useEffect(() => {
     if (!active) {
       cancelAnimation(driveX);
-      driveX.value = -MOWER_WIDTH;
+      driveX.value = DRIVE_START_X;
       intakeX.value = INTAKE_IDLE_X;
       return;
     }
-    // Reset to off-screen-left, then drive across.
-    driveX.value = -MOWER_WIDTH;
+    // Reset to off-screen-right, then drive across leftward.
+    driveX.value = DRIVE_START_X;
     driveX.value = withTiming(
-      SCREEN_W + 20,
+      DRIVE_END_X,
       { duration: DRIVE_DURATION_MS, easing: Easing.linear },
       (finished) => {
         if (finished) runOnJS(onComplete)();
@@ -168,7 +178,9 @@ export function MonkeMower({
       pointerEvents="none"
       style={[
         styles.container,
-        { bottom: bottomPx, width: MOWER_WIDTH, height: MOWER_HEIGHT },
+        // Shift container DOWN by ASSET_WHEEL_OFFSET_PX so the wheels visually
+        // sit on the banana floor (instead of hovering above it).
+        { bottom: bottomPx - ASSET_WHEEL_OFFSET_PX, width: MOWER_WIDTH, height: MOWER_HEIGHT },
         containerStyle,
       ]}
     >
@@ -178,11 +190,9 @@ export function MonkeMower({
         resizeMode="contain"
       />
 
-      {/* User's NFT head, circle-cropped to drop the surrounding NFT
-          background. Sits on top of the voxel monke's head in the asset —
-          replaces the head only, leaves the voxel body + arms untouched.
-          No border / no glow / no decoration. */}
-      {pfpUri ? (
+      {/* User PFP overlay — disabled per design pass. Voxel driver stands
+          in for now. To re-enable: set SHOW_PFP = true at the top. */}
+      {SHOW_PFP && pfpUri ? (
         <Image
           source={{ uri: pfpUri }}
           style={{
@@ -191,7 +201,7 @@ export function MonkeMower({
             top: MOWER_HEIGHT * PFP_SEAT_Y_PCT - PFP_SIZE / 2,
             width: PFP_SIZE,
             height: PFP_SIZE,
-            borderRadius: PFP_SIZE / 2, // circle crop pulls just the head
+            borderRadius: PFP_SIZE / 2,
           }}
           resizeMode="cover"
         />
