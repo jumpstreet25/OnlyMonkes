@@ -37,39 +37,62 @@ async function persistCache() {
  * @param imageUrl  Remote URL of the NFT image
  * @param cacheKey  Unique key (inboxId or mint) to cache the result
  * @param fallback  Hex color to return if extraction fails
+ * @param prefer    Which Palette API color to prefer:
+ *                    - "dominant" (default) — most-frequent pixel color;
+ *                      best for theme/aura where you want the overall hue.
+ *                    - "vibrant" — POP color; the saturated identity hue
+ *                      humans associate with the image. Best for borders
+ *                      and bubble accents (matches what users perceive
+ *                      as "their PFP color"). Falls back to dominant if
+ *                      vibrant is unavailable.
+ *                  Cache is keyed separately per preference so the two
+ *                  modes don't collide.
  */
 export async function getOrExtractNftColor(
   imageUrl: string | null | undefined,
   cacheKey: string,
-  fallback = "#7C3AED"
+  fallback = "#7C3AED",
+  prefer: "dominant" | "vibrant" = "dominant"
 ): Promise<string> {
   if (!imageUrl) return fallback;
 
   await ensureCacheLoaded();
 
-  if (_mem[cacheKey]) return _mem[cacheKey];
+  const memKey = prefer === "vibrant" ? `${cacheKey}::vibrant` : cacheKey;
+  if (_mem[memKey]) return _mem[memKey];
 
   try {
     const result = await ImageColors.getColors(imageUrl, {
       fallback,
       cache: true,
-      key: cacheKey,
+      key: memKey,
       quality: "low",       // faster extraction
       pixelSpacing: 5,      // Android: sample every 5th pixel
     });
 
     let color = fallback;
     if (result.platform === "android") {
-      // Prefer dominant → vibrant → muted
-      color =
-        result.dominant ??
-        result.vibrant ??
-        result.darkVibrant ??
-        result.muted ??
-        fallback;
+      if (prefer === "vibrant") {
+        // POP color first — better identity match than dominant which
+        // often returns a shadow/background tone.
+        color =
+          result.vibrant ??
+          result.lightVibrant ??
+          result.darkVibrant ??
+          result.dominant ??
+          result.muted ??
+          fallback;
+      } else {
+        color =
+          result.dominant ??
+          result.vibrant ??
+          result.darkVibrant ??
+          result.muted ??
+          fallback;
+      }
     }
 
-    _mem[cacheKey] = color;
+    _mem[memKey] = color;
     persistCache(); // fire-and-forget
     return color;
   } catch {

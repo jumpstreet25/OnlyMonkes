@@ -660,31 +660,30 @@ export const MessageBubble = memo(function MessageBubble({
     ? (verifiedNft?.image ?? null)
     : (cachedSender?.nftImage ?? message.senderNft?.image ?? null);
 
-  // ── Cyberpunk glitch accent — extract sender's PFP dominant color ──────
-  // Only runs when the glitch bubble is active. Bot uses fixed teal; own
-  // messages reuse the viewer's already-extracted nftDominantColor; other
-  // senders fire getOrExtractNftColor (cached on disk by inboxId, so it's
-  // free after first extraction across the whole app). Updates state once
-  // resolved so the bubble color flips from hash-fallback → real PFP color.
+  // ── Cyberpunk glitch accent — extract sender's PFP VIBRANT color ──────
+  // Only runs when the glitch bubble is active. Bot uses fixed teal.
+  // For everyone else (own + others alike) we extract VIBRANT via the
+  // Palette API — that's the saturated POP color humans associate with
+  // the image (e.g., a green Saga Monke gives green), as opposed to
+  // "dominant" which often returns a shadow/background tone and so the
+  // bubble didn't visually match the user's PFP.
+  // Cached on disk by inboxId so it's free after first extraction across
+  // the whole app. Updates state once resolved.
   useEffect(() => {
     if (!useGlitchBubble) return;
     if (isBot) {
       setGlitchAccent(BOT_GLITCH_COLOR);
       return;
     }
-    if (isOwn) {
-      if (nftDominantColor) setGlitchAccent(nftDominantColor);
-      return;
-    }
     if (!avatarUri || !primarySenderInbox) return;
     let cancelled = false;
-    getOrExtractNftColor(avatarUri, primarySenderInbox, accentFallback)
+    getOrExtractNftColor(avatarUri, primarySenderInbox, accentFallback, "vibrant")
       .then((c) => {
         if (!cancelled && c) setGlitchAccent(c);
       })
       .catch(() => { /* keep fallback on failure */ });
     return () => { cancelled = true; };
-  }, [useGlitchBubble, isBot, isOwn, avatarUri, primarySenderInbox, nftDominantColor, accentFallback]);
+  }, [useGlitchBubble, isBot, avatarUri, primarySenderInbox, accentFallback]);
 
   // PFP Aura color — uses equipped bubble glow color, falls back to NFT dominant color
   const pfpAuraColor = shopStyles.pfpAuraEnabled
