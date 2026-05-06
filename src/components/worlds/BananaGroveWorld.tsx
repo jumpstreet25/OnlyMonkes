@@ -22,7 +22,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { View, Text, StyleSheet, Dimensions } from "react-native";
 import { Canvas, Rect, LinearGradient, vec } from "@shopify/react-native-skia";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -253,11 +252,13 @@ interface BananaPileProps {
 }
 
 function BananaPile({ active }: BananaPileProps) {
-  const insets = useSafeAreaInsets();
-  // Pile sits at the absolute bottom (just clears Android nav bar / iOS home
-  // indicator). The translucent chat input bar renders above this layer, so
-  // bananas visibly stack up THROUGH it.
-  const pileBottomPx = insets.bottom;
+  // Pile + mower sit at the very bottom edge of the screen — under the
+  // Android nav bar (App Switcher area) and iOS home indicator. Previously
+  // this was offset by `insets.bottom` to clear those bars; user pulled it
+  // down so the mower visibly hugs the App Switcher bar. The Android system
+  // bar is translucent over edge-to-edge content, so the mower silhouette
+  // reads cleanly against it.
+  const pileBottomPx = 0;
   const [bananas, setBananas] = useState<PileBanana[]>([]);
   const idRef = useRef(0);
   const laneHeightsRef = useRef<number[]>(new Array(NUM_LANES).fill(0));
