@@ -19,20 +19,24 @@
  *     place" feel.
  */
 
-import React, { useEffect, useRef, useState, useMemo } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { View, Text, StyleSheet, Dimensions } from "react-native";
 import { Canvas, Rect, LinearGradient, vec } from "@shopify/react-native-skia";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
+  useAnimatedReaction,
   withTiming,
   runOnJS,
   Easing,
   interpolate,
   Extrapolation,
+  type SharedValue,
 } from "react-native-reanimated";
 import { latestBubbleHeightSV } from "@/lib/chatViewport";
+import { useAppStore } from "@/store/appStore";
+import { MonkeMower, MOWER_GEOMETRY } from "@/components/worlds/MonkeMower";
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
 
@@ -63,9 +67,6 @@ const RESET_THRESHOLD_PX = INPUT_BAR_HEIGHT + 8;
 // Animation durations
 const FALL_DURATION_MIN_MS = 1100;
 const FALL_DURATION_MAX_MS = 1700;
-const FADE_OUT_MS = 1200;
-const FADE_IN_MS = 500;
-const RESET_COOLDOWN_MS = 250;
 
 const random = () => Math.random();
 
@@ -84,13 +85,31 @@ interface PileBanana {
 
 // ── Falling banana component ───────────────────────────────────────────────
 
+const SUCTION_DURATION_MS = 420;
+const SUCTION_TRIGGER_RANGE_PX = 18; // intake catches bananas within ±this px
+const SUCTION_INTAKE_Y_FROM_PILE_BOTTOM_PX = MOWER_GEOMETRY.intakeYFromBottom;
+
 interface FallingBananaProps {
   banana: PileBanana;
   pileBottomPx: number;
+  /** Mower's current intake X — written by MonkeMower, read here. Far off-
+   * screen sentinel value when the mower is inactive (no suction triggers). */
+  mowerIntakeX: SharedValue<number>;
+  /** Called when this banana has been fully sucked into the mower. Parent
+   * removes it from the pile + increments the crate count. */
+  onSucked: (id: number) => void;
 }
 
-function FallingBanana({ banana, pileBottomPx }: FallingBananaProps) {
+function FallingBanana({ banana, pileBottomPx, mowerIntakeX, onSucked }: FallingBananaProps) {
   const fall = useSharedValue(0);
+  // 0 = not being sucked, animates to 1 as the banana is pulled into the
+  // mower's intake. Triggered exactly once when the mower's intake passes
+  // this banana's lane.
+  const suction = useSharedValue(0);
+  // Capture mower's X at the MOMENT suction starts so the banana's curved
+  // path has a concrete starting reference for the moving target. Without
+  // this, the banana would chase the mower forever.
+  const suctionStartMowerX = useSharedValue(0);
 
   useEffect(() => {
     fall.value = withTiming(1, {
@@ -99,32 +118,84 @@ function FallingBanana({ banana, pileBottomPx }: FallingBananaProps) {
     });
   }, [fall, banana.fallDurationMs]);
 
+  const laneCenterX = banana.lane * LANE_WIDTH + LANE_WIDTH / 2;
+  const bananaScreenX = laneCenterX + banana.lateralJitter;
+
+  // Watch mower's intake X. When it crosses this banana's lane (within a
+  // small range), trigger the one-shot suction animation.
+  useAnimatedReaction(
+    () => mowerIntakeX.value,
+    (curr) => {
+      if (suction.value !== 0) return;
+      if (curr === MOWER_GEOMETRY.intakeIdleX) return;
+      if (
+        curr >= bananaScreenX - SUCTION_TRIGGER_RANGE_PX &&
+        curr <= bananaScreenX + SUCTION_TRIGGER_RANGE_PX
+      ) {
+        suctionStartMowerX.value = curr;
+        suction.value = withTiming(
+          1,
+          { duration: SUCTION_DURATION_MS, easing: Easing.out(Easing.cubic) },
+          (finished) => {
+            if (finished) runOnJS(onSucked)(banana.id);
+          },
+        );
+      }
+    },
+  );
+
   const animStyle = useAnimatedStyle(() => {
-    const t = fall.value;
-    // Falls from above the screen down to its target landed position. The
-    // parent View positions the banana at `bottom: pileBottom + landedY`,
-    // so translateY interpolates from -screen-height back to 0 (resting).
-    const y = interpolate(t, [0, 1], [-SCREEN_H * 0.95, 0]);
-    // Tumble during fall — total tumbleSpins full rotations — then settle
-    // to finalRot in the last 15% of the fall. The blend factor `settle`
-    // ramps 0→1 in that window so the transition reads as "rolled into place".
-    const tumble = t * banana.tumbleSpins * 360;
-    const settle = interpolate(
-      t,
-      [0.85, 1],
-      [0, 1],
-      Extrapolation.CLAMP,
-    );
-    const rot = (1 - settle) * tumble + settle * banana.finalRot;
+    const tFall = fall.value;
+    const tSuck = suction.value;
+
+    // Base falling translation: from -SCREEN_H * 0.95 to 0 (the resting
+    // landed position, anchored by the parent's bottom: pileBottom + stack).
+    const fallY = interpolate(tFall, [0, 1], [-SCREEN_H * 0.95, 0]);
+    const tumble = tFall * banana.tumbleSpins * 360;
+    const settle = interpolate(tFall, [0.85, 1], [0, 1], Extrapolation.CLAMP);
+    let rot = (1 - settle) * tumble + settle * banana.finalRot;
+
+    let translateX = 0;
+    let translateY = fallY;
+    let scale = 1;
+    let opacity = 1;
+
+    if (tSuck > 0) {
+      // Compute target intake position in screen coords. We follow the
+      // mower's CURRENT X so the banana visibly tracks the moving target —
+      // but we anchor against the mower's X at suction-start so the curved
+      // path stays a fixed shape (not infinitely chasing).
+      const intakeNowX = mowerIntakeX.value;
+      const intakeNowY = SCREEN_H - pileBottomPx - SUCTION_INTAKE_Y_FROM_PILE_BOTTOM_PX;
+      // Banana's natural landed position in screen coords.
+      const landedY = SCREEN_H - pileBottomPx - banana.stackIndex * STACK_LIFT_PX;
+
+      const dx = intakeNowX - bananaScreenX;
+      const dy = intakeNowY - landedY;
+      translateX = dx * tSuck;
+      translateY = fallY + dy * tSuck;
+
+      // Spin while being pulled in — 2 full rotations on top of base rot.
+      rot += tSuck * 720;
+      // Scale down + fade out in the second half.
+      scale = 1 - 0.6 * tSuck;
+      opacity = interpolate(tSuck, [0.7, 1], [1, 0], Extrapolation.CLAMP);
+    }
+
     return {
-      transform: [{ translateY: y }, { rotate: `${rot}deg` }],
+      transform: [
+        { translateX },
+        { translateY },
+        { rotate: `${rot}deg` },
+        { scale },
+      ],
+      opacity,
     };
   });
 
   // Landed pixel position — left edge based on lane center + jitter, bottom
-  // based on stackIndex. The translateY in animStyle handles "in flight" Y.
-  const laneCenterX = banana.lane * LANE_WIDTH + LANE_WIDTH / 2;
-  const leftPx = laneCenterX + banana.lateralJitter - banana.size / 2;
+  // based on stackIndex. The translateX/Y in animStyle handles "in flight".
+  const leftPx = bananaScreenX - banana.size / 2;
   const bottomPx = pileBottomPx + banana.stackIndex * STACK_LIFT_PX;
 
   return (
@@ -157,29 +228,39 @@ function BananaPile({ active }: BananaPileProps) {
   // bananas visibly stack up THROUGH it.
   const pileBottomPx = insets.bottom;
   const [bananas, setBananas] = useState<PileBanana[]>([]);
-  const opacity = useSharedValue(1);
+  const [mowerActive, setMowerActive] = useState(false);
+  const [crateCount, setCrateCount] = useState(0);
   const idRef = useRef(0);
-  const cycleRef = useRef(0);
   const laneHeightsRef = useRef<number[]>(new Array(NUM_LANES).fill(0));
-  const fadingRef = useRef(false); // suppress spawns mid-fade
+  const mowerActiveRef = useRef(false);
+  // Mower writes its current intake X here; FallingBananas read it to know
+  // when to trigger their suction animation. Parked at idle sentinel value
+  // when mower is inactive.
+  const mowerIntakeX = useSharedValue<number>(MOWER_GEOMETRY.intakeIdleX);
+
+  // User's NFT image — drawn as a circle on the mower's driver seat so
+  // every Monke holder sees themselves driving when the cleanup happens.
+  const verifiedNft = useAppStore((s) => s.verifiedNft);
+  const pfpUri = verifiedNft?.image ?? null;
 
   useEffect(() => {
     if (!active) return;
     const intervalId = setInterval(() => {
-      if (fadingRef.current) return;
+      // Spawning is paused while the mower is on its run.
+      if (mowerActiveRef.current) return;
       // Pick a random lane, look up its current stack count, and spawn a
       // banana destined for the top of that lane's stack.
       const lane = Math.floor(random() * NUM_LANES);
       const stackIndex = laneHeightsRef.current[lane];
 
-      // Reset trigger: any lane's stack is about to push the pile-top above
-      // the latest message bubble's bottom edge. Compare the prospective max
-      // lane height (in pixels) against the threshold.
+      // Mower trigger: any lane's stack is about to push the pile-top above
+      // the latest message bubble's bottom edge. Compare prospective max
+      // lane height (px) against the threshold.
       const prospectiveLaneHeight = (stackIndex + 1) * STACK_LIFT_PX;
       const bubbleH = latestBubbleHeightSV.value || 60;
       const dynamicThreshold = INPUT_BAR_HEIGHT + Math.min(bubbleH * 0.15, 12);
       if (prospectiveLaneHeight >= dynamicThreshold) {
-        triggerReset();
+        triggerMower();
         return;
       }
 
@@ -203,42 +284,57 @@ function BananaPile({ active }: BananaPileProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active]);
 
-  const triggerReset = () => {
-    if (fadingRef.current) return;
-    fadingRef.current = true;
-    const myCycle = cycleRef.current;
-    opacity.value = withTiming(0, { duration: FADE_OUT_MS }, (finished) => {
-      if (finished) {
-        runOnJS(handleResetComplete)(myCycle);
-      }
-    });
+  const triggerMower = () => {
+    if (mowerActiveRef.current) return;
+    mowerActiveRef.current = true;
+    setCrateCount(0);
+    setMowerActive(true);
   };
 
-  const handleResetComplete = (forCycle: number) => {
-    if (forCycle !== cycleRef.current) return;
-    cycleRef.current += 1;
+  // Called by FallingBanana when its suction animation finishes — banana
+  // is fully consumed by the mower. Remove from pile, increment crate fill.
+  const handleBananaSucked = (id: number) => {
+    setBananas((prev) => prev.filter((b) => b.id !== id));
+    setCrateCount((c) => c + 1);
+  };
+
+  const handleMowerComplete = () => {
+    // Mower has driven off-screen right. Clear any bananas the suction
+    // missed (edge cases — newly spawned mid-cycle, etc.) and reset lanes.
     laneHeightsRef.current = new Array(NUM_LANES).fill(0);
     setBananas([]);
-    // Brief pause so the screen reads as "cleared" before bananas start
-    // raining again — feels more like a discrete cycle than a constant
-    // strobing reset.
+    setMowerActive(false);
+    mowerActiveRef.current = false;
+    // Tiny delay before bananas start raining again — feels like a beat
+    // of "all clear" before the next pile begins.
     setTimeout(() => {
-      fadingRef.current = false;
-      opacity.value = withTiming(1, { duration: FADE_IN_MS });
-    }, RESET_COOLDOWN_MS);
+      // Reset crate so next cycle starts empty (visual). The mower's render
+      // is gated on `mowerActive`, so by now the crate display is unmounted —
+      // resetting just keeps state tidy for next cycle.
+      setCrateCount(0);
+    }, 600);
   };
 
-  const animStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
-
   return (
-    <Animated.View
-      style={[StyleSheet.absoluteFill, animStyle]}
-      pointerEvents="none"
-    >
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
       {bananas.map((b) => (
-        <FallingBanana key={b.id} banana={b} pileBottomPx={pileBottomPx} />
+        <FallingBanana
+          key={b.id}
+          banana={b}
+          pileBottomPx={pileBottomPx}
+          mowerIntakeX={mowerIntakeX}
+          onSucked={handleBananaSucked}
+        />
       ))}
-    </Animated.View>
+      <MonkeMower
+        active={mowerActive}
+        pfpUri={pfpUri}
+        bottomPx={pileBottomPx}
+        intakeX={mowerIntakeX}
+        crateCount={crateCount}
+        onComplete={handleMowerComplete}
+      />
+    </View>
   );
 }
 
