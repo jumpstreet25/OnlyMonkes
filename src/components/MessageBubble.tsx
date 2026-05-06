@@ -36,6 +36,7 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import { SkiaGlowBubble, SkiaGlassFront, SkiaGlowPfp } from "@/components/SkiaGlowBubble";
+import { setLatestBubbleHeight } from "@/lib/chatViewport";
 import * as Clipboard from "expo-clipboard";
 import { Image as ExpoImage } from "expo-image";
 import * as Haptics from "expo-haptics";
@@ -356,6 +357,10 @@ interface MessageBubbleProps {
   onThread?: (message: ChatMessage) => void;
   isGroupAdmin?: boolean;
   isBotChannel?: boolean;
+  /** True for the bottommost (newest) bubble in main chat. Triggers an
+   * onLayout pulse to chatViewport.latestBubbleHeightSV so background world
+   * layers (Banana Grove pile) can size + reset against this bubble. */
+  isLatest?: boolean;
 }
 
 /** Custom comparator — only re-render when message content actually changed */
@@ -364,6 +369,7 @@ function arePropsEqual(prev: MessageBubbleProps, next: MessageBubbleProps): bool
   if (prev.message !== next.message) return false;
   if (prev.isOwn !== next.isOwn) return false;
   if (prev.isBotChannel !== next.isBotChannel) return false;
+  if (prev.isLatest !== next.isLatest) return false;
   // onPin presence changes when admin status toggles
   if (!!prev.onPin !== !!next.onPin) return false;
   if (prev.isGroupAdmin !== next.isGroupAdmin) return false;
@@ -387,6 +393,7 @@ export const MessageBubble = memo(function MessageBubble({
   onThread,
   isGroupAdmin,
   isBotChannel,
+  isLatest,
 }: MessageBubbleProps) {
   const verifiedNft = useAppStore(s => s.verifiedNft);
   const myInboxId = useAppStore(s => s.myInboxId);
@@ -735,10 +742,17 @@ export const MessageBubble = memo(function MessageBubble({
               ) : null}
               {/* Glass bubble — dark glass with glow-tinted border */}
               <View
-                onLayout={hasSkiaGlow ? (e) => {
+                onLayout={(hasSkiaGlow || isLatest) ? (e) => {
                   const { width: bw, height: bh } = e.nativeEvent.layout;
-                  if (!bubbleSize || Math.abs(bubbleSize.w - bw) > 1 || Math.abs(bubbleSize.h - bh) > 1) {
-                    setBubbleSize({ w: bw, h: bh });
+                  if (hasSkiaGlow) {
+                    if (!bubbleSize || Math.abs(bubbleSize.w - bw) > 1 || Math.abs(bubbleSize.h - bh) > 1) {
+                      setBubbleSize({ w: bw, h: bh });
+                    }
+                  }
+                  if (isLatest) {
+                    // Push to chatViewport so BananaGroveWorld's pile knows
+                    // when to fade + reset (when its height ≈ this height).
+                    setLatestBubbleHeight(bh);
                   }
                 } : undefined}
                 style={[

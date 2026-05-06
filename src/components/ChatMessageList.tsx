@@ -117,9 +117,14 @@ const ChatMessageListInner = React.forwardRef<FlashListRef<ChatMessage>, ChatMes
   const swipeableRefs = useRef<Map<string, Swipeable>>(new Map());
 
   const renderMessage = useCallback(
-    ({ item }: { item: ChatMessage }) => {
+    ({ item, index }: { item: ChatMessage; index: number }) => {
       // Mark item as seen on first render so future loads don't re-flag it.
       if (!initialMsgIdsRef.current.has(item.id)) initialMsgIdsRef.current.add(item.id);
+      // FlashList is `inverted` with newest-first data, so index === 0 is the
+      // bottommost (newest) message visually. Banana Grove world reads the
+      // latest bubble's measured height to decide when its growing pile
+      // should reset (so the pile never visually overlaps this message).
+      const isLatest = index === 0;
       return (
         <Swipeable
           ref={(ref) => {
@@ -144,6 +149,7 @@ const ChatMessageListInner = React.forwardRef<FlashListRef<ChatMessage>, ChatMes
             <MessageBubble
               message={item}
               isOwn={item.senderAddress === myAddress}
+              isLatest={isLatest}
               onReact={handleReact}
               onReply={setReplyingTo}
               onPressUser={handlePressUser}

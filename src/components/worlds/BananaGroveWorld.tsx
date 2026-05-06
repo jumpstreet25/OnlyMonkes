@@ -16,7 +16,7 @@
  * remain.
  */
 
-import React, { useEffect, useMemo } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import { View, Text, StyleSheet, Dimensions } from "react-native";
 import { Canvas, Rect, LinearGradient, vec } from "@shopify/react-native-skia";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -26,9 +26,11 @@ import Animated, {
   withRepeat,
   withTiming,
   cancelAnimation,
+  runOnJS,
   Easing,
   interpolate,
 } from "react-native-reanimated";
+import { latestBubbleHeightSV } from "@/lib/chatViewport";
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
 
@@ -61,47 +63,115 @@ function buildParticles(): Particle[] {
   return arr;
 }
 
-// ─── Static banana pile at the bottom of the screen ─────────────────────────
-// Sits above the chat input bar. Bottom offset = INPUT_BAR_HEIGHT (96) +
-// safe-area inset bottom (computed at render time from useSafeAreaInsets so
-// the pile clears Android nav bar / iOS home indicator on every device).
-// Three layers: bottom row largest/brightest (foreground), middle row
-// partially behind, top row smallest (tip of pile). Bananas never grow or
-// move — falling particles fade out before reaching pile-top to give the
-// illusion of "landing" on it.
+// ─── Dynamic banana pile at the bottom of the screen ────────────────────────
+// Pile bananas accumulate one at a time on a tick (TICK_MS). Each new banana
+// claims a precomputed PILE_SLOTS position, so the pile builds up in stable
+// (looks-random) places. When the pile's top edge would overlap the bottom
+// of the bottommost (newest) message bubble — read from chatViewport's
+// latestBubbleHeightSV — the whole pile fades out, count resets to 0, and
+// a new pile starts forming. MAX_PILE is a hard ceiling so the pile resets
+// even when chat is empty / latest-bubble height isn't reported.
+//
+// Bottom offset = INPUT_BAR_HEIGHT + safe-area inset bottom so the pile
+// clears Android nav bar / iOS home indicator on every device.
 
-interface PileBanana {
-  xPct: number;     // 0..1 — horizontal center as fraction of screen width
+const TICK_MS = 850;          // banana lands every 850ms (~50 bananas/min)
+const MAX_PILE = 60;          // hard cap — pile resets at this size regardless
+const PER_BANANA_LIFT = 5;    // every banana adds ~5px to pile-top height
+const FADE_OUT_MS = 1400;
+const FADE_IN_MS = 600;
+const RESET_PADDING = 12;     // breathing room above the latest message bubble
+
+interface PileSlot {
+  xPct: number;     // 0..1 horizontal center
   yOffset: number;  // px upward from pile base
   size: number;     // font size
   rot: number;      // rotation degrees
   opacity: number;
 }
 
-const PILE_BANANAS: PileBanana[] = [
-  // Bottom row — foreground, brightest, largest
-  { xPct: 0.15, yOffset: 0,  size: 32, rot: -22, opacity: 0.95 },
-  { xPct: 0.36, yOffset: 4,  size: 36, rot: 14,  opacity: 0.95 },
-  { xPct: 0.56, yOffset: 0,  size: 34, rot: -10, opacity: 0.95 },
-  { xPct: 0.78, yOffset: 6,  size: 30, rot: 24,  opacity: 0.92 },
-  // Middle row — partially behind bottom
-  { xPct: 0.25, yOffset: 18, size: 28, rot: 30,  opacity: 0.85 },
-  { xPct: 0.46, yOffset: 22, size: 30, rot: -18, opacity: 0.85 },
-  { xPct: 0.66, yOffset: 16, size: 26, rot: 6,   opacity: 0.82 },
-  { xPct: 0.87, yOffset: 18, size: 24, rot: -28, opacity: 0.78 },
-  // Top row — tip of the pile, smallest
-  { xPct: 0.30, yOffset: 38, size: 22, rot: -16, opacity: 0.75 },
-  { xPct: 0.50, yOffset: 42, size: 24, rot: 12,  opacity: 0.78 },
-  { xPct: 0.70, yOffset: 36, size: 20, rot: 26,  opacity: 0.72 },
-  { xPct: 0.10, yOffset: 26, size: 22, rot: 8,   opacity: 0.75 },
-];
+// Deterministic pseudo-random pile slots. Each slot's yOffset grows roughly
+// linearly so the pile builds upward visibly. xPct cycles across the screen
+// using a golden-ratio-ish multiplier for natural spread.
+const PILE_SLOTS: PileSlot[] = Array.from({ length: MAX_PILE }, (_, i) => {
+  // Cheap LCG-style pseudo-random for stable per-slot variance
+  const seed = ((i * 9301 + 49297) % 233280) / 233280;
+  const xCycle = (i * 0.1618) % 1;       // golden-ratio walk across screen
+  const xJitter = (seed - 0.5) * 0.08;
+  return {
+    xPct: 0.05 + Math.min(0.9, Math.max(0, xCycle + xJitter)) * 0.9,
+    yOffset: i * PER_BANANA_LIFT,
+    size: 22 + seed * 14,                // 22..36
+    rot: -28 + seed * 56,                // -28..28
+    opacity: 0.75 + seed * 0.20,         // 0.75..0.95
+  };
+});
 
-function BananaPile() {
+interface BananaPileProps {
+  active: boolean;
+}
+
+function BananaPile({ active }: BananaPileProps) {
   const insets = useSafeAreaInsets();
-  const pileBottom = INPUT_BAR_HEIGHT + insets.bottom;
+  const pileBottomPx = INPUT_BAR_HEIGHT + insets.bottom;
+  const [pileCount, setPileCount] = useState(0);
+  const opacity = useSharedValue(1);
+  const cycleRef = useRef(0); // bumps on each fade so stale callbacks no-op
+
+  // Refs to avoid stale closures in the interval handler.
+  const pileBottomRef = useRef(pileBottomPx);
+  pileBottomRef.current = pileBottomPx;
+
+  useEffect(() => {
+    if (!active) return;
+    const intervalId = setInterval(() => {
+      setPileCount((prev) => {
+        // Compute prospective pile top after adding one. Pile top Y in
+        // screen coords = SCREEN_H - pileBottom - (next * PER_BANANA_LIFT).
+        // Reset trigger: pile top reaches latest-bubble bottom edge.
+        // Latest-bubble BOTTOM Y on screen ≈ SCREEN_H - pileBottom - <bubble height>
+        // Latest-bubble TOP Y on screen ≈ that minus the bubble height.
+        // We trigger when the pile's TOP would cross the bubble's TOP, so
+        // threshold compares pile height vs latest-bubble height + padding.
+        const next = prev + 1;
+        const pileHeight = next * PER_BANANA_LIFT;
+        const bubbleH = latestBubbleHeightSV.value || 60;
+        const shouldReset = next >= MAX_PILE || pileHeight >= bubbleH + RESET_PADDING;
+        if (shouldReset) {
+          const myCycle = cycleRef.current;
+          opacity.value = withTiming(0, { duration: FADE_OUT_MS }, (finished) => {
+            if (finished) {
+              runOnJS(handleResetComplete)(myCycle);
+            }
+          });
+        }
+        return next;
+      });
+    }, TICK_MS);
+    return () => clearInterval(intervalId);
+    // active toggles between focused / backgrounded chat — restart the cycle
+    // on each transition. opacity is a stable SharedValue so excluding it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active]);
+
+  const handleResetComplete = (forCycle: number) => {
+    // Guard against races: if cycleRef advanced past forCycle, a newer reset
+    // already fired — skip the JS-side bookkeeping.
+    if (forCycle !== cycleRef.current) return;
+    cycleRef.current += 1;
+    setPileCount(0);
+    opacity.value = withTiming(1, { duration: FADE_IN_MS });
+  };
+
+  const animStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
+  const visibleSlots = PILE_SLOTS.slice(0, Math.min(pileCount, MAX_PILE));
+
   return (
-    <View style={[styles.pile, { bottom: pileBottom }]} pointerEvents="none">
-      {PILE_BANANAS.map((b, i) => (
+    <Animated.View
+      style={[styles.pile, { bottom: pileBottomPx }, animStyle]}
+      pointerEvents="none"
+    >
+      {visibleSlots.map((b, i) => (
         <Text
           key={i}
           style={{
@@ -116,7 +186,7 @@ function BananaPile() {
           🍌
         </Text>
       ))}
-    </View>
+    </Animated.View>
   );
 }
 
@@ -159,9 +229,9 @@ export function BananaGroveWorld({ active = true }: BananaGroveWorldProps) {
           <BananaParticle key={i} particle={p} progress={progress} />
         ))}
 
-      {/* Static pile renders LAST so it sits on top of any falling particle
-          that hasn't fully faded by the time it overlaps the pile. */}
-      <BananaPile />
+      {/* Pile renders LAST so it sits on top of any falling particle that
+          hasn't fully faded by the time it overlaps the pile. */}
+      <BananaPile active={active} />
     </View>
   );
 }
