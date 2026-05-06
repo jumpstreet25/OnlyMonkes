@@ -41,7 +41,8 @@ const { width: SCREEN_W } = Dimensions.get("window");
 // ── Asset geometry ─────────────────────────────────────────────────────────
 // Native asset is 1360×768 (≈1.77:1). Mower faces RIGHT; basket trails on
 // the LEFT. Driving L→R, the deck on the right is the leading edge.
-const MOWER_HEIGHT = 200;
+// Display height reduced 15% per design pass — was 200, now 170.
+const MOWER_HEIGHT = 170;
 const MOWER_ASPECT = 1360 / 768;
 const MOWER_WIDTH = MOWER_HEIGHT * MOWER_ASPECT;
 // New asset has wheels at the asset's bottom edge — negligible padding.
@@ -82,40 +83,50 @@ const BOUNCE_FREQUENCY = 0.04;      // higher = more bounces per pixel of drive
 const INTAKE_IDLE_X = -100_000;
 
 // ── Crate fill positions ───────────────────────────────────────────────────
-// Tight makeshift pyramid — bananas overlap with no gaps between them, like
-// a real fruit pile mounding above the basket rim. Each row offset and one
-// banana shorter than the row below, building toward an apex.
+// Tight MOUND — think mud hut / dirt piled in the back of a dump truck.
+// NOT a clean pyramid. Bananas overlap heavily (you shouldn't be able to
+// count them), positions are scattered across the basket interior with
+// random-ish jitter, and the overall shape is a low rounded heap rather
+// than a stepped pyramid.
+//
+// All slots positioned ABOVE the basket rim — the entire pyramid was lifted
+// 2 rows from the previous version (per design pass) so the bottom of the
+// pile no longer pokes through the basket walls.
 //
 // Coords:
-//  - x: fraction of CRATE_W_PCT (0=left edge of basket interior, 1=right)
-//  - y: fraction of CRATE_H_PCT (1.0=at the rim, decreasing = higher mound)
-//  - size: 24-30 px to match in-pile banana sizes (user wanted "same size
-//    in the basket as on the screen")
-//
-// Slot ORDER matters: bottom row first (filled as visible count goes 1, 2,
-// 3, 4, 5...), stacking up to apex. Pile grows visibly with each suck.
+//  - x: fraction of CRATE_W_PCT (0=left edge of basket, 1=right)
+//  - y: fraction of CRATE_H_PCT (smaller y = higher above the rim).
+//    Negative y values render ABOVE the asset's top edge — fine, those
+//    bananas just sit higher on the mound.
+//  - size: 18-24 px — smaller than pile so the heap reads as packed
+//    debris, not individual fruit. Heavy overlap obscures count.
 const CRATE_BANANA_SLOTS = [
-  // Row 1 — 5 bananas at the rim, tightly overlapping (centers ~17% apart,
-  // size 28 → ~10px overlap between neighbors)
-  { x: 0.10, y: 0.92, rot: -10, size: 28 },
-  { x: 0.30, y: 0.95, rot:   8, size: 28 },
-  { x: 0.50, y: 0.92, rot: -14, size: 30 },
-  { x: 0.70, y: 0.95, rot:  12, size: 28 },
-  { x: 0.90, y: 0.92, rot:  -6, size: 26 },
-  // Row 2 — 4 bananas, offset between row-1 centers, ~20% lifted
-  { x: 0.20, y: 0.72, rot:  14, size: 28 },
-  { x: 0.40, y: 0.74, rot: -10, size: 28 },
-  { x: 0.60, y: 0.72, rot:  16, size: 28 },
-  { x: 0.80, y: 0.74, rot:  -8, size: 26 },
-  // Row 3 — 3 bananas
-  { x: 0.30, y: 0.50, rot: -12, size: 26 },
-  { x: 0.50, y: 0.52, rot:  10, size: 28 },
-  { x: 0.70, y: 0.50, rot: -18, size: 26 },
-  // Row 4 — 2 bananas
-  { x: 0.40, y: 0.28, rot:  14, size: 26 },
-  { x: 0.60, y: 0.30, rot: -10, size: 26 },
-  // Apex — 1 banana, slightly offset
-  { x: 0.50, y: 0.08, rot:  -8, size: 24 },
+  // Base layer (just above rim) — densely packed, lots of overlap
+  { x: 0.06, y: 0.55, rot: -12, size: 22 },
+  { x: 0.18, y: 0.58, rot:  16, size: 24 },
+  { x: 0.32, y: 0.55, rot:  -8, size: 22 },
+  { x: 0.46, y: 0.57, rot:  20, size: 24 },
+  { x: 0.60, y: 0.55, rot: -16, size: 22 },
+  { x: 0.74, y: 0.58, rot:  10, size: 22 },
+  { x: 0.88, y: 0.55, rot: -22, size: 20 },
+  // Layer 2 — slightly higher, offset between layer-1 centers
+  { x: 0.12, y: 0.40, rot:  18, size: 22 },
+  { x: 0.26, y: 0.42, rot: -10, size: 22 },
+  { x: 0.40, y: 0.40, rot:  14, size: 22 },
+  { x: 0.54, y: 0.42, rot: -18, size: 22 },
+  { x: 0.68, y: 0.40, rot:  22, size: 22 },
+  { x: 0.82, y: 0.42, rot:  -8, size: 20 },
+  // Layer 3 — narrowing
+  { x: 0.20, y: 0.25, rot: -14, size: 20 },
+  { x: 0.36, y: 0.27, rot:  20, size: 22 },
+  { x: 0.52, y: 0.25, rot: -10, size: 22 },
+  { x: 0.68, y: 0.27, rot:  16, size: 20 },
+  // Layer 4 — top of mound, rounded
+  { x: 0.32, y: 0.10, rot:  18, size: 20 },
+  { x: 0.48, y: 0.08, rot: -16, size: 22 },
+  { x: 0.62, y: 0.10, rot:  10, size: 20 },
+  // Apex
+  { x: 0.50, y: -0.08, rot: -8, size: 20 },
 ];
 const MAX_CRATE_VISIBLE = CRATE_BANANA_SLOTS.length;
 
