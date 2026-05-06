@@ -1,20 +1,22 @@
 /**
- * SolanaCyberpunkWorld — premium reactive layer (Tier 3).
+ * SolanaCyberpunkWorld — premium reactive layer.
  *
  * Composition:
  *   - Skia gradient backdrop (purple → teal).
  *   - Drifting neon grid (vertical scroll, infinite loop).
- *   - Bright glyph particles ("data packets") that travel along grid lines —
- *     8 packets cycling neon colors, fading in/out at the line edges.
- *   - Rare lightning crack across the screen every 30–60s with a brief
- *     full-screen cyan flash.
+ *   - Lightning storms — primary bolt + after-shock on a slightly offset
+ *     path every 8–20s, with a strong cyan full-screen flash and a
+ *     residual neon trail that fades out over ~400ms.
  *   - Tiny $SOL/$SKR ember glyphs (◎ ◈ $SOL $SKR) drifting upward like
  *     embers — easter-egg level, mostly transparent.
  *
- * Everything that animates uses Reanimated SharedValues + Skia derived
- * values so it runs on the UI thread. The ember overlay is a separate RN
- * Animated.View layer because Skia text needs fonts pre-loaded into Skia
- * and text rendering quality is better via the native RN text path.
+ * Animation runs on the UI thread via Reanimated SharedValues + Skia
+ * derived values. The ember overlay is a separate RN Animated.View layer
+ * because Skia text needs fonts pre-loaded into Skia and text rendering
+ * quality is better via the native RN text path.
+ *
+ * The earlier "data packet" dots traveling along grid lines were removed
+ * 2026-05-06 — too busy; the world reads cleaner with just the storms.
  */
 
 import React, { useEffect, useMemo, useState, useCallback } from "react";
@@ -26,7 +28,6 @@ import {
   vec,
   Path,
   Group,
-  Circle,
   BlurMask,
 } from "@shopify/react-native-skia";
 import Animated, {
@@ -48,18 +49,11 @@ const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
 const GRID_SPACING = 38;
 const DRIFT_DURATION_MS = 14_000;
 
-// ── Data packets ───────────────────────────────────────────────────────────
-const NUM_PACKETS = 8;
-const PACKET_DURATION_MIN_MS = 1800;
-const PACKET_DURATION_MAX_MS = 3400;
-const PACKET_COLORS = ["#14F195", "#00D4FF", "#FF3DFF", "#FFE066"];
-const PACKET_CORE_RADIUS = 2.5;
-const PACKET_GLOW_RADIUS = 7;
-
 // ── Lightning ──────────────────────────────────────────────────────────────
-const LIGHTNING_INTERVAL_MIN_MS = 30_000;
-const LIGHTNING_INTERVAL_MAX_MS = 60_000;
-const LIGHTNING_FLASH_DURATION_MS = 220;
+const LIGHTNING_INTERVAL_MIN_MS = 8_000;
+const LIGHTNING_INTERVAL_MAX_MS = 20_000;
+const LIGHTNING_BOLT_FADE_MS = 400;       // bolt lingers after the flash
+const LIGHTNING_AFTERSHOCK_DELAY_MS = 140; // secondary strike after main
 
 // ── Embers ─────────────────────────────────────────────────────────────────
 const NUM_EMBERS = 6;
@@ -82,118 +76,13 @@ function buildGridPath(): string {
   return parts.join(" ");
 }
 
-// ── Data packet ────────────────────────────────────────────────────────────
-// Travels along a single grid line (horizontal OR vertical), fading in/out
-// at the edges. Respawns with new line + color when the timing completes.
-
-interface PacketConfig {
-  key: number;
-  axis: "h" | "v";
-  lineCoord: number; // y-pos for horizontal lines, x-pos for vertical
-  fromStart: boolean; // true = travel forward, false = reverse
-  color: string;
-  durationMs: number;
-}
-
-let packetKeyCounter = 0;
-function makePacketConfig(): PacketConfig {
-  const axis: "h" | "v" = random() < 0.5 ? "h" : "v";
-  const lines =
-    axis === "h"
-      ? Math.max(2, Math.floor(SCREEN_H / GRID_SPACING))
-      : Math.max(2, Math.floor(SCREEN_W / GRID_SPACING));
-  // Skip the very edge lines so packets stay visually inside the screen.
-  const idx = 1 + Math.floor(random() * (lines - 1));
-  return {
-    key: ++packetKeyCounter,
-    axis,
-    lineCoord: idx * GRID_SPACING,
-    fromStart: random() < 0.5,
-    color: pick(PACKET_COLORS),
-    durationMs:
-      PACKET_DURATION_MIN_MS +
-      random() * (PACKET_DURATION_MAX_MS - PACKET_DURATION_MIN_MS),
-  };
-}
-
-interface DataPacketProps {
-  active: boolean;
-  initialDelayMs: number;
-}
-
-function DataPacket({ active, initialDelayMs }: DataPacketProps) {
-  const [config, setConfig] = useState<PacketConfig>(() => makePacketConfig());
-  const t = useSharedValue(0);
-
-  const respawn = useCallback(() => {
-    setConfig(makePacketConfig());
-  }, []);
-
-  useEffect(() => {
-    if (!active) {
-      cancelAnimation(t);
-      return;
-    }
-    t.value = 0;
-    t.value = withDelay(
-      initialDelayMs,
-      withTiming(
-        1,
-        { duration: config.durationMs, easing: Easing.linear },
-        (finished) => {
-          if (finished) runOnJS(respawn)();
-        },
-      ),
-    );
-    return () => cancelAnimation(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [config, active]);
-
-  const cx = useDerivedValue(() => {
-    if (config.axis === "h") {
-      const start = config.fromStart ? 0 : SCREEN_W;
-      const end = config.fromStart ? SCREEN_W : 0;
-      return start + (end - start) * t.value;
-    }
-    return config.lineCoord;
-  }, [config]);
-
-  const cy = useDerivedValue(() => {
-    if (config.axis === "v") {
-      const start = config.fromStart ? 0 : SCREEN_H;
-      const end = config.fromStart ? SCREEN_H : 0;
-      return start + (end - start) * t.value;
-    }
-    return config.lineCoord;
-  }, [config]);
-
-  // Edge fade: 0 → 1 over first 12%, 1 → 0 over last 12%, hold in middle.
-  const opacity = useDerivedValue(() => {
-    const p = t.value;
-    if (p < 0.12) return p / 0.12;
-    if (p > 0.88) return (1 - p) / 0.12;
-    return 1;
-  });
-
-  return (
-    <Group opacity={opacity}>
-      {/* Soft glow halo */}
-      <Circle cx={cx} cy={cy} r={PACKET_GLOW_RADIUS} color={config.color} opacity={0.35}>
-        <BlurMask blur={6} style="normal" />
-      </Circle>
-      {/* Bright core */}
-      <Circle cx={cx} cy={cy} r={PACKET_CORE_RADIUS} color="#FFFFFF" />
-      <Circle cx={cx} cy={cy} r={PACKET_CORE_RADIUS * 1.6} color={config.color} opacity={0.7} />
-    </Group>
-  );
-}
-
 // ── Lightning ──────────────────────────────────────────────────────────────
-// Triggers every 30-60s. Renders a jagged path + screen-wide flash for
-// ~220ms, then disappears. Path regenerated each strike.
+// Storm cycle: every 8-20s, fire a primary bolt + aftershock on a slightly
+// offset path 140ms later. Each bolt has a punchy cyan full-screen flash and
+// the bolt itself fades over ~400ms so the residual neon trail lingers.
 
-function makeLightningPath(): string {
-  const startX = SCREEN_W * (0.25 + random() * 0.5);
+function makeLightningPath(jitterScale = 1): string {
+  const startX = SCREEN_W * (0.2 + random() * 0.6);
   const endX = SCREEN_W * (0.15 + random() * 0.7);
   const segments = 7 + Math.floor(random() * 3);
   const dy = SCREEN_H / segments;
@@ -201,10 +90,16 @@ function makeLightningPath(): string {
   for (let i = 1; i <= segments; i++) {
     const t = i / segments;
     const baseX = startX + (endX - startX) * t;
-    const jitter = (random() - 0.5) * 90;
+    const jitter = (random() - 0.5) * 90 * jitterScale;
     parts.push(`L${baseX + jitter} ${i * dy}`);
   }
   return parts.join(" ");
+}
+
+interface BoltState {
+  primaryPath: string;
+  aftershockPath: string;
+  key: number;
 }
 
 interface LightningProps {
@@ -212,72 +107,109 @@ interface LightningProps {
 }
 
 function Lightning({ active }: LightningProps) {
-  const [strike, setStrike] = useState<{ path: string; key: number } | null>(null);
-  const alpha = useSharedValue(0);
+  const [bolt, setBolt] = useState<BoltState | null>(null);
+  // Primary bolt opacity — strong onset, slow ~400ms fade so the trail lingers.
+  const primaryAlpha = useSharedValue(0);
+  // Aftershock — fires 140ms after primary on the offset path, shorter fade.
+  const aftershockAlpha = useSharedValue(0);
+  // Cyan full-screen flash — strong (0.32) on primary, softer follow-up.
   const flashAlpha = useSharedValue(0);
 
   useEffect(() => {
     if (!active) {
-      setStrike(null);
-      cancelAnimation(alpha);
+      setBolt(null);
+      cancelAnimation(primaryAlpha);
+      cancelAnimation(aftershockAlpha);
       cancelAnimation(flashAlpha);
       return;
     }
 
     let alive = true;
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    let clearTimeoutId: ReturnType<typeof setTimeout> | undefined;
 
     const fire = () => {
       if (!alive) return;
-      const path = makeLightningPath();
-      const key = Date.now();
-      setStrike({ path, key });
-      alpha.value = 0;
-      flashAlpha.value = 0;
-      alpha.value = withSequence(
-        withTiming(1, { duration: 60, easing: Easing.out(Easing.quad) }),
-        withTiming(0.7, { duration: 50 }),
-        withTiming(0, { duration: LIGHTNING_FLASH_DURATION_MS - 110 }),
-      );
-      flashAlpha.value = withSequence(
-        withTiming(0.18, { duration: 60 }),
-        withTiming(0, { duration: 200 }),
-      );
-      // Clear the strike from React state after animation completes so the
-      // path node unmounts; new strikes regenerate the path fresh.
-      setTimeout(() => {
-        if (alive) setStrike(null);
-      }, LIGHTNING_FLASH_DURATION_MS + 50);
+      const next: BoltState = {
+        primaryPath: makeLightningPath(1),
+        aftershockPath: makeLightningPath(1.4),
+        key: Date.now(),
+      };
+      setBolt(next);
 
-      // Schedule next strike
+      // Primary: punch in over 50ms, hold briefly, then linger-fade for ~350ms.
+      primaryAlpha.value = 0;
+      primaryAlpha.value = withSequence(
+        withTiming(1, { duration: 50, easing: Easing.out(Easing.quad) }),
+        withTiming(0.85, { duration: 40 }),
+        withTiming(0, { duration: LIGHTNING_BOLT_FADE_MS - 90, easing: Easing.in(Easing.quad) }),
+      );
+
+      // Aftershock: same envelope, delayed.
+      aftershockAlpha.value = 0;
+      aftershockAlpha.value = withDelay(
+        LIGHTNING_AFTERSHOCK_DELAY_MS,
+        withSequence(
+          withTiming(0.9, { duration: 40, easing: Easing.out(Easing.quad) }),
+          withTiming(0, { duration: 320, easing: Easing.in(Easing.quad) }),
+        ),
+      );
+
+      // Flash: strong primary + softer secondary on aftershock.
+      flashAlpha.value = 0;
+      flashAlpha.value = withSequence(
+        withTiming(0.32, { duration: 50 }),
+        withTiming(0.05, { duration: 80 }),
+        withDelay(
+          LIGHTNING_AFTERSHOCK_DELAY_MS - 130,
+          withTiming(0.18, { duration: 40 }),
+        ),
+        withTiming(0, { duration: 260 }),
+      );
+
+      const totalDuration =
+        LIGHTNING_AFTERSHOCK_DELAY_MS + LIGHTNING_BOLT_FADE_MS + 80;
+      clearTimeoutId = setTimeout(() => {
+        if (alive) setBolt(null);
+      }, totalDuration);
+
       const wait =
         LIGHTNING_INTERVAL_MIN_MS +
         random() * (LIGHTNING_INTERVAL_MAX_MS - LIGHTNING_INTERVAL_MIN_MS);
       timeoutId = setTimeout(fire, wait);
     };
 
-    // First strike — give the user 8-20s of calm before the first one.
-    timeoutId = setTimeout(fire, 8000 + random() * 12000);
+    // First strike: 4-10s calm before the storm starts (was 8-20s).
+    timeoutId = setTimeout(fire, 4000 + random() * 6000);
 
     return () => {
       alive = false;
       if (timeoutId) clearTimeout(timeoutId);
-      cancelAnimation(alpha);
+      if (clearTimeoutId) clearTimeout(clearTimeoutId);
+      cancelAnimation(primaryAlpha);
+      cancelAnimation(aftershockAlpha);
       cancelAnimation(flashAlpha);
     };
-  }, [active, alpha, flashAlpha]);
+  }, [active, primaryAlpha, aftershockAlpha, flashAlpha]);
 
-  if (!strike) return null;
+  if (!bolt) return null;
   return (
     <>
-      {/* Cyan screen flash */}
+      {/* Cyan screen flash — covers the whole canvas */}
       <Rect x={0} y={0} width={SCREEN_W} height={SCREEN_H} color="#00D4FF" opacity={flashAlpha} />
-      {/* Bolt — outer glow + inner bright core */}
-      <Group opacity={alpha}>
-        <Path path={strike.path} color="#7DDFFF" style="stroke" strokeWidth={6} opacity={0.35}>
+      {/* Primary bolt — outer glow + inner bright core */}
+      <Group opacity={primaryAlpha}>
+        <Path path={bolt.primaryPath} color="#7DDFFF" style="stroke" strokeWidth={7} opacity={0.4}>
+          <BlurMask blur={10} style="normal" />
+        </Path>
+        <Path path={bolt.primaryPath} color="#FFFFFF" style="stroke" strokeWidth={1.8} />
+      </Group>
+      {/* Aftershock — slightly offset path, thinner */}
+      <Group opacity={aftershockAlpha}>
+        <Path path={bolt.aftershockPath} color="#A6E8FF" style="stroke" strokeWidth={5} opacity={0.32}>
           <BlurMask blur={8} style="normal" />
         </Path>
-        <Path path={strike.path} color="#FFFFFF" style="stroke" strokeWidth={1.6} />
+        <Path path={bolt.aftershockPath} color="#FFFFFF" style="stroke" strokeWidth={1.2} />
       </Group>
     </>
   );
@@ -418,15 +350,7 @@ export function SolanaCyberpunkWorld({ active = true }: SolanaCyberpunkWorldProp
     [progress],
   );
 
-  // Stagger packet/ember start times so they don't all fire on frame 0.
-  const packets = useMemo(
-    () =>
-      Array.from({ length: NUM_PACKETS }, (_, i) => ({
-        id: i,
-        delay: i * 250,
-      })),
-    [],
-  );
+  // Stagger ember start times so they don't all fire on frame 0.
   const embers = useMemo(
     () =>
       Array.from({ length: NUM_EMBERS }, (_, i) => ({
@@ -467,13 +391,7 @@ export function SolanaCyberpunkWorld({ active = true }: SolanaCyberpunkWorldProp
           />
         )}
 
-        {/* Data packets */}
-        {active &&
-          packets.map((p) => (
-            <DataPacket key={p.id} active={active} initialDelayMs={p.delay} />
-          ))}
-
-        {/* Lightning */}
+        {/* Lightning storms */}
         <Lightning active={active} />
       </Canvas>
 
