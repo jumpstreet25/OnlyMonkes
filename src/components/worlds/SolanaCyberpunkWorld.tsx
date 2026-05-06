@@ -363,8 +363,14 @@ export function SolanaCyberpunkWorld({ active = true }: SolanaCyberpunkWorldProp
   return (
     <View style={styles.root} pointerEvents="none">
       <Canvas style={StyleSheet.absoluteFill}>
-        {/* Gradient backdrop */}
-        <Rect x={0} y={0} width={SCREEN_W} height={SCREEN_H}>
+        {/* Gradient backdrop — oversized to cover edge-to-edge Android system
+            bars. Dimensions.get("window") may underreport on some devices
+            (gesture nav, translucent status bar, etc.); painting a Rect
+            larger than the screen guarantees no themeBg leaks at the bottom
+            edge near the app switcher. The gradient end vector still points
+            to (SCREEN_W, SCREEN_H) so the visible portion looks the same;
+            beyond it the gradient saturates at the end color (#0f7a85). */}
+        <Rect x={0} y={0} width={SCREEN_W} height={SCREEN_H * 1.25}>
           <LinearGradient
             start={vec(0, 0)}
             end={vec(SCREEN_W, SCREEN_H)}
