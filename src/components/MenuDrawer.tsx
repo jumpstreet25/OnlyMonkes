@@ -620,7 +620,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
               <View style={styles.gridContainer}>
                 <GridButton
                   icon="🏪"
-                  label="Marketplace"
+                  label="MonkeMarkets"
                   onPress={() => { onClose(); setTimeout(() => router.push('/marketplace'), 300); }}
                 />
                 <GridButton
