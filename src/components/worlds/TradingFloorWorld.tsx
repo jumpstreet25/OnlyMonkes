@@ -61,8 +61,31 @@ const RED = "#EF4444";
 // gentle nudge per-pattern to give each one its own visual character.
 
 const PATTERN_LENGTH = 14;
-const clamp = (n: number, lo = 0.05, hi = 0.95) => Math.max(lo, Math.min(hi, n));
 const rand = () => Math.random();
+
+// Mean-reverting clamp. Hard-clamps to [lo, hi] for safety, but ALSO dampens
+// any delta that would push the price further toward an edge. This keeps
+// prices spending most of their time in the playable middle range and stops
+// the chart from saturating at one extreme (which used to make every candle
+// after the first ~5 look like a doji "+" sign pinned to the top/bottom).
+function meanReverted(prev: number, delta: number, lo = 0.05, hi = 0.95): number {
+  const center = 0.5;
+  // Distance from center, normalized to [0, 1].
+  const distance = Math.abs(prev - center) / 0.45;
+  // If we're already past 65% of the way to an edge, halve any delta that
+  // pushes further in the same direction. Past 85%, quarter it.
+  const pushingFurther =
+    (prev > center && delta > 0) || (prev < center && delta < 0);
+  let damped = delta;
+  if (pushingFurther) {
+    if (distance > 0.85) damped *= 0.25;
+    else if (distance > 0.65) damped *= 0.5;
+  }
+  return Math.max(lo, Math.min(hi, prev + damped));
+}
+
+// Convenience wrapper so pattern definitions stay readable.
+const clamp = (prev: number, delta: number) => meanReverted(prev, delta);
 
 interface PatternStep {
   close: number;
@@ -73,43 +96,43 @@ type Pattern = (prev: number, step: number) => PatternStep;
 
 const PATTERNS: Pattern[] = [
   // 1. Steady bull climb
-  (prev) => ({ close: clamp(prev + 0.015 + rand() * 0.04) }),
+  (prev) => ({ close: clamp(prev, 0.015 + rand() * 0.04) }),
   // 2. Pump → dump → recovery
   (prev, i) => {
-    if (i < 4) return { close: clamp(prev + 0.05 + rand() * 0.05), wickFactor: 1.4 };
-    if (i < 7) return { close: clamp(prev - 0.04 - rand() * 0.05), wickFactor: 1.4 };
-    return { close: clamp(prev + 0.025 + rand() * 0.04) };
+    if (i < 4) return { close: clamp(prev, 0.05 + rand() * 0.05), wickFactor: 1.4 };
+    if (i < 7) return { close: clamp(prev, -0.04 - rand() * 0.05), wickFactor: 1.4 };
+    return { close: clamp(prev, 0.025 + rand() * 0.04) };
   },
   // 3. Bullish breakout — tight consolidation then strong rally
   (prev, i) => {
-    if (i < 3) return { close: clamp(prev + (rand() - 0.5) * 0.02), wickFactor: 0.6 };
-    return { close: clamp(prev + 0.04 + rand() * 0.05), wickFactor: 1.2 };
+    if (i < 3) return { close: clamp(prev, (rand() - 0.5) * 0.02), wickFactor: 0.6 };
+    return { close: clamp(prev, 0.04 + rand() * 0.05), wickFactor: 1.2 };
   },
   // 4. Choppy sideways
-  (prev) => ({ close: clamp(prev + (rand() - 0.5) * 0.06), wickFactor: 1.5 }),
+  (prev) => ({ close: clamp(prev, (rand() - 0.5) * 0.06), wickFactor: 1.5 }),
   // 5. V recovery — dump, doji bottom, strong recovery
   (prev, i) => {
-    if (i < 4) return { close: clamp(prev - 0.03 - rand() * 0.04) };
-    if (i < 5) return { close: clamp(prev + (rand() - 0.5) * 0.012) };
-    return { close: clamp(prev + 0.045 + rand() * 0.04) };
+    if (i < 4) return { close: clamp(prev, -0.03 - rand() * 0.04) };
+    if (i < 5) return { close: clamp(prev, (rand() - 0.5) * 0.012) };
+    return { close: clamp(prev, 0.045 + rand() * 0.04) };
   },
   // 6. Strong rally — big greens, magnitude grows
   (prev, i) => {
     const magnitude = 0.025 + (i / PATTERN_LENGTH) * 0.05;
-    return { close: clamp(prev + magnitude), wickFactor: 1.1 };
+    return { close: clamp(prev, magnitude), wickFactor: 1.1 };
   },
   // 7. Bull flag — pole, flag (sideways), resume
   (prev, i) => {
     const phase = i / PATTERN_LENGTH;
-    if (phase < 0.3) return { close: clamp(prev + 0.04 + rand() * 0.02) };
-    if (phase < 0.6) return { close: clamp(prev + (rand() - 0.5) * 0.018), wickFactor: 0.8 };
-    return { close: clamp(prev + 0.04 + rand() * 0.02) };
+    if (phase < 0.3) return { close: clamp(prev, 0.04 + rand() * 0.02) };
+    if (phase < 0.6) return { close: clamp(prev, (rand() - 0.5) * 0.018), wickFactor: 0.8 };
+    return { close: clamp(prev, 0.04 + rand() * 0.02) };
   },
   // 8. Fakeout — green run, brief red trap, rally resumes
   (prev, i) => {
-    if (i < 3) return { close: clamp(prev + 0.04 + rand() * 0.02) };
-    if (i < 5) return { close: clamp(prev - 0.025 - rand() * 0.025), wickFactor: 1.3 };
-    return { close: clamp(prev + 0.045 + rand() * 0.04) };
+    if (i < 3) return { close: clamp(prev, 0.04 + rand() * 0.02) };
+    if (i < 5) return { close: clamp(prev, -0.025 - rand() * 0.025), wickFactor: 1.3 };
+    return { close: clamp(prev, 0.045 + rand() * 0.04) };
   },
 ];
 
@@ -266,12 +289,17 @@ export function TradingFloorWorld({ active = true }: TradingFloorWorldProps) {
   };
 
   // Pre-fill the chart with VISIBLE_COUNT candles so it's not empty on equip.
-  // These count as already-printed (CandleView's isFreshRef will be false
-  // because slotIndex > 0 on mount for all but the leftmost).
+  // Generate them in chronological order (oldest first), then REVERSE so the
+  // newest sits at array index 0 — the renderer maps array index → slotIndex
+  // with index 0 = rightmost slot, so the newest pre-fill candle visually
+  // anchors the right side and the price walk reads naturally left-to-right.
+  // The candle at index 0 mounts with slotIndex=0 → its formation animation
+  // runs (printing the rightmost candle); subsequent runtime spawns also land
+  // at slotIndex=0 with formation, so prints continue every TICK_MS.
   const initialCandles = useMemo(() => {
     const arr: CandleData[] = [];
     for (let i = 0; i < VISIBLE_COUNT; i++) arr.push(nextCandle());
-    return arr;
+    return arr.reverse();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -291,11 +319,16 @@ export function TradingFloorWorld({ active = true }: TradingFloorWorldProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active]);
 
-  // Chart fills the chat area: top of chat header to top of input bar (with
-  // safe-area inset on the bottom so we clear Android nav bar / iOS home
-  // indicator). Same dimensions as the previous Trading Floor.
-  const chartTop = CHART_TOP_INSET;
-  const chartBottom = SCREEN_H - INPUT_BAR_HEIGHT - insets.bottom;
+  // Chart Y range EXTENDS BEYOND the chat area on top + bottom by OVERFLOW_PX.
+  // Effect: a candle at extreme price (close ≈ 0.95) renders with its body
+  // partly inside the translucent header bar at the top of the screen; a
+  // candle at close ≈ 0.05 extends into the translucent input bar at the
+  // bottom. Most price action stays in the playable middle (mean-reversion
+  // keeps it there) so this overflow only kicks in for genuine spikes — no
+  // more "+" sign clipping at the chart edges.
+  const OVERFLOW_PX = 70;
+  const chartTop = CHART_TOP_INSET - OVERFLOW_PX;
+  const chartBottom = SCREEN_H - INPUT_BAR_HEIGHT - insets.bottom + OVERFLOW_PX;
   const chartHeight = Math.max(200, chartBottom - chartTop);
 
   // Slot 0 (rightmost) sits with its right edge inset ~12px from the screen
