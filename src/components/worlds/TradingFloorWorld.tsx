@@ -1,85 +1,235 @@
 /**
- * TradingFloorWorld — green-pumpamental candlestick chart filling the chat
- * background. Procedurally-generated candles drift right-to-left via a
- * Reanimated clock; the random walk is biased ~85% bullish so the chart
- * mostly climbs (the occasional red wick adds realism without breaking the
- * "we're winning" vibe). Two parallax rows give visual depth — a back row
- * drifting slower behind the foreground.
+ * TradingFloorWorld — live-printing candlestick chart that fills the chat bg.
  *
- * Cheap to render: ~70 rectangles + 70 lines redrawn at 60fps on the UI
- * thread. Layer opacity is moderated so chat text remains readable.
+ * Design (per Banana Grove design discussion 2026-05-06):
+ *   - Single foreground row (no parallax back row).
+ *   - Each candle "prints" over 4s on the rightmost slot: body height grows
+ *     from 0 (open price line) to full close-price extent. Green candles grow
+ *     UP from the open; red candles grow DOWN from the open.
+ *   - When a candle finishes printing, the whole row shifts left by one
+ *     candle-stride (smooth ~250ms transition) and a fresh candle starts
+ *     forming on the right. Already-printed candles stay frozen during their
+ *     own printing window — they only move when the row shifts.
+ *   - 8 chart "patterns" (steady climb, pump-and-dump, V recovery, etc.)
+ *     cycle randomly so the chart shape stays varied without looking random.
+ *   - Pre-filled with VISIBLE_COUNT candles on mount so the chart is never
+ *     empty when the user equips the world.
+ *
+ * Wicks render at full extent immediately (high/low pre-known); only the body
+ * animates during formation. Candles drift off the left edge and unmount
+ * automatically when the array exceeds VISIBLE_COUNT * 2.
  */
 
-import React, { useEffect, useMemo } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { View, StyleSheet, Dimensions } from "react-native";
 import {
   Canvas,
   Rect,
   LinearGradient,
   vec,
-  Group,
-  Line,
 } from "@shopify/react-native-skia";
 import {
   useSharedValue,
-  useDerivedValue,
-  withRepeat,
+  useAnimatedStyle,
   withTiming,
-  cancelAnimation,
   Easing,
 } from "react-native-reanimated";
+import Animated from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
 
-const CANDLE_COUNT = 36;          // foreground row — ~1.5× screen width worth
-const BACK_CANDLE_COUNT = 30;     // background row (parallax) — fewer + wider
+// ── Layout constants ────────────────────────────────────────────────────────
 const CANDLE_W = 16;
 const CANDLE_GAP = 7;
-const BACK_CANDLE_W = 22;
-const BACK_CANDLE_GAP = 10;
-// Approx chrome above the chart (status bar + chat header). Bottom bound is
-// the safe-area inset + input bar height computed at render time.
-const CHART_TOP_INSET = 110;
-const INPUT_BAR_HEIGHT = 96;
-const DRIFT_DURATION_MS = 22_000;
-const BACK_DRIFT_DURATION_MS = 38_000; // slower → parallax depth illusion
-// Bullish bias: 85% of candles close above their open. Reds are smaller in
-// magnitude than greens so the chart still trends up overall — feels like a
-// monke trading floor that only knows green.
-const BULLISH_PROBABILITY = 0.85;
+const STRIDE = CANDLE_W + CANDLE_GAP;
+const CHART_TOP_INSET = 110;       // clears chat header
+const INPUT_BAR_HEIGHT = 96;       // matches chat input bar
+const FORMATION_MS = 4000;         // each candle prints over 4s
+const SHIFT_MS = 250;              // smooth row shift between prints
+const VISIBLE_COUNT = Math.ceil(SCREEN_W / STRIDE) + 2; // +2 buffer
+const MAX_CANDLES = VISIBLE_COUNT + 4;
+const BODY_OPACITY = 0.5;
+const WICK_OPACITY = 0.45;
+const GREEN = "#10B981";
+const RED = "#EF4444";
 
-interface Candle {
-  open: number;   // 0..1 normalized
+// ── Pattern engine ──────────────────────────────────────────────────────────
+//
+// Each pattern is a function (prevClose, stepIndex, patternLength) → close.
+// The wickFactor scales how much the high/low extend beyond the body — a
+// gentle nudge per-pattern to give each one its own visual character.
+
+const PATTERN_LENGTH = 14;
+const clamp = (n: number, lo = 0.05, hi = 0.95) => Math.max(lo, Math.min(hi, n));
+const rand = () => Math.random();
+
+interface PatternStep {
+  close: number;
+  wickFactor?: number; // multiplier on default wick range (default 1)
+}
+
+type Pattern = (prev: number, step: number) => PatternStep;
+
+const PATTERNS: Pattern[] = [
+  // 1. Steady bull climb
+  (prev) => ({ close: clamp(prev + 0.015 + rand() * 0.04) }),
+  // 2. Pump → dump → recovery
+  (prev, i) => {
+    if (i < 4) return { close: clamp(prev + 0.05 + rand() * 0.05), wickFactor: 1.4 };
+    if (i < 7) return { close: clamp(prev - 0.04 - rand() * 0.05), wickFactor: 1.4 };
+    return { close: clamp(prev + 0.025 + rand() * 0.04) };
+  },
+  // 3. Bullish breakout — tight consolidation then strong rally
+  (prev, i) => {
+    if (i < 3) return { close: clamp(prev + (rand() - 0.5) * 0.02), wickFactor: 0.6 };
+    return { close: clamp(prev + 0.04 + rand() * 0.05), wickFactor: 1.2 };
+  },
+  // 4. Choppy sideways
+  (prev) => ({ close: clamp(prev + (rand() - 0.5) * 0.06), wickFactor: 1.5 }),
+  // 5. V recovery — dump, doji bottom, strong recovery
+  (prev, i) => {
+    if (i < 4) return { close: clamp(prev - 0.03 - rand() * 0.04) };
+    if (i < 5) return { close: clamp(prev + (rand() - 0.5) * 0.012) };
+    return { close: clamp(prev + 0.045 + rand() * 0.04) };
+  },
+  // 6. Strong rally — big greens, magnitude grows
+  (prev, i) => {
+    const magnitude = 0.025 + (i / PATTERN_LENGTH) * 0.05;
+    return { close: clamp(prev + magnitude), wickFactor: 1.1 };
+  },
+  // 7. Bull flag — pole, flag (sideways), resume
+  (prev, i) => {
+    const phase = i / PATTERN_LENGTH;
+    if (phase < 0.3) return { close: clamp(prev + 0.04 + rand() * 0.02) };
+    if (phase < 0.6) return { close: clamp(prev + (rand() - 0.5) * 0.018), wickFactor: 0.8 };
+    return { close: clamp(prev + 0.04 + rand() * 0.02) };
+  },
+  // 8. Fakeout — green run, brief red trap, rally resumes
+  (prev, i) => {
+    if (i < 3) return { close: clamp(prev + 0.04 + rand() * 0.02) };
+    if (i < 5) return { close: clamp(prev - 0.025 - rand() * 0.025), wickFactor: 1.3 };
+    return { close: clamp(prev + 0.045 + rand() * 0.04) };
+  },
+];
+
+interface CandleData {
+  id: number;
+  open: number;
   close: number;
   high: number;
   low: number;
 }
 
-function generateCandles(count: number): Candle[] {
-  const candles: Candle[] = [];
-  let price = 0.2; // start low so we have headroom to climb
-  for (let i = 0; i < count; i++) {
-    const isBullish = Math.random() < BULLISH_PROBABILITY;
-    const magnitude = 0.02 + Math.random() * 0.08;
-    const open = price;
-    const close = isBullish
-      ? Math.min(0.95, price + magnitude)
-      : Math.max(0.05, price - magnitude * 0.55); // red candles half as tall
-    const wickRange = 0.015 + Math.random() * 0.045;
-    const high = Math.max(open, close) + wickRange * Math.random();
-    const low = Math.min(open, close) - wickRange * Math.random();
-    candles.push({
-      open,
-      close,
-      high: Math.min(0.98, high),
-      low: Math.max(0.02, low),
-    });
-    // After a strong rally, dip slightly so we don't pin to the ceiling.
-    price = close > 0.85 ? 0.55 + Math.random() * 0.2 : close;
-  }
-  return candles;
+// ── Per-candle component ────────────────────────────────────────────────────
+
+interface CandleViewProps {
+  candle: CandleData;
+  slotIndex: number;        // 0 = newest (rightmost), grows leftward
+  chartTop: number;
+  chartHeight: number;
+  baseRightX: number;       // x-coord of slot 0's left edge
 }
+
+function CandleView({ candle, slotIndex, chartTop, chartHeight, baseRightX }: CandleViewProps) {
+  // Snapshot whether this candle was MOUNTED at the freshly-printing slot.
+  // If yes, animate body scaleY from 0 → 1 over FORMATION_MS. If no (pre-
+  // filled candles or candles created during a batch refill), they're already
+  // "printed" — render at full body size immediately.
+  const isFreshRef = useRef(slotIndex === 0);
+  const isFresh = isFreshRef.current;
+
+  const formation = useSharedValue(isFresh ? 0 : 1);
+  const slot = useSharedValue(slotIndex);
+
+  // One-shot formation animation on initial mount when fresh.
+  useEffect(() => {
+    if (isFresh) {
+      formation.value = withTiming(1, {
+        duration: FORMATION_MS,
+        easing: Easing.out(Easing.cubic),
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Animate to new slot when row shifts.
+  useEffect(() => {
+    slot.value = withTiming(slotIndex, {
+      duration: SHIFT_MS,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [slotIndex, slot]);
+
+  const isGreen = candle.close >= candle.open;
+  const color = isGreen ? GREEN : RED;
+
+  const yFor = (norm: number) => chartTop + (1 - norm) * chartHeight;
+  const openY = yFor(candle.open);
+  const closeY = yFor(candle.close);
+  const highY = yFor(candle.high);
+  const lowY = yFor(candle.low);
+  const bodyHeightFull = Math.max(1.5, Math.abs(openY - closeY));
+
+  // Position the candle column at slot 0 (rightmost), then animate translateX
+  // leftward by `slot * STRIDE`. So slot=0 → no shift, slot=5 → 5 strides left.
+  const containerStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: -slot.value * STRIDE }],
+  }));
+
+  // Body grows from open price line: green grows UP, red grows DOWN. We can't
+  // use `transform-origin` reliably across RN versions, so we explicitly
+  // compute top + height from the formation progress.
+  const bodyStyle = useAnimatedStyle(() => {
+    const h = bodyHeightFull * formation.value;
+    const top = isGreen ? openY - h : openY;
+    return { top, height: Math.max(0.5, h) };
+  });
+
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        {
+          position: "absolute",
+          left: baseRightX,
+          top: 0,
+          width: CANDLE_W,
+          height: SCREEN_H,
+        },
+        containerStyle,
+      ]}
+    >
+      {/* Wick — full extent immediately (high/low are pre-known) */}
+      <View
+        style={{
+          position: "absolute",
+          left: CANDLE_W / 2 - 0.5,
+          top: highY,
+          width: 1,
+          height: Math.max(1, lowY - highY),
+          backgroundColor: color,
+          opacity: WICK_OPACITY,
+        }}
+      />
+      {/* Body — animates */}
+      <Animated.View
+        style={[
+          {
+            position: "absolute",
+            left: 0,
+            width: CANDLE_W,
+            backgroundColor: color,
+            opacity: BODY_OPACITY,
+          },
+          bodyStyle,
+        ]}
+      />
+    </Animated.View>
+  );
+}
+
+// ── Main world component ────────────────────────────────────────────────────
 
 interface TradingFloorWorldProps {
   active?: boolean;
@@ -87,58 +237,74 @@ interface TradingFloorWorldProps {
 
 export function TradingFloorWorld({ active = true }: TradingFloorWorldProps) {
   const insets = useSafeAreaInsets();
-  const foreCandles = useMemo(() => generateCandles(CANDLE_COUNT), []);
-  const backCandles = useMemo(() => generateCandles(BACK_CANDLE_COUNT), []);
-  const progress = useSharedValue(0);
-  const backProgress = useSharedValue(0);
+  const idRef = useRef(0);
+  const lastCloseRef = useRef(0.4);
+  const patternIdxRef = useRef(Math.floor(rand() * PATTERNS.length));
+  const stepRef = useRef(0);
+
+  // Generate next candle from the current pattern, then advance the pattern
+  // step. Picks a new (different) pattern at the end of each PATTERN_LENGTH.
+  const nextCandle = (): CandleData => {
+    const open = lastCloseRef.current;
+    const pattern = PATTERNS[patternIdxRef.current];
+    const { close, wickFactor = 1 } = pattern(open, stepRef.current);
+    const wickRange = 0.025 * wickFactor;
+    const high = Math.min(0.98, Math.max(open, close) + wickRange * rand());
+    const low = Math.max(0.02, Math.min(open, close) - wickRange * rand());
+
+    lastCloseRef.current = close;
+    stepRef.current += 1;
+    if (stepRef.current >= PATTERN_LENGTH) {
+      let next = Math.floor(rand() * PATTERNS.length);
+      if (next === patternIdxRef.current && PATTERNS.length > 1) {
+        next = (next + 1) % PATTERNS.length;
+      }
+      patternIdxRef.current = next;
+      stepRef.current = 0;
+    }
+    return { id: idRef.current++, open, close, high, low };
+  };
+
+  // Pre-fill the chart with VISIBLE_COUNT candles so it's not empty on equip.
+  // These count as already-printed (CandleView's isFreshRef will be false
+  // because slotIndex > 0 on mount for all but the leftmost).
+  const initialCandles = useMemo(() => {
+    const arr: CandleData[] = [];
+    for (let i = 0; i < VISIBLE_COUNT; i++) arr.push(nextCandle());
+    return arr;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const [candles, setCandles] = useState<CandleData[]>(initialCandles);
 
   useEffect(() => {
-    if (!active) {
-      cancelAnimation(progress);
-      cancelAnimation(backProgress);
-      return;
-    }
-    progress.value = 0;
-    backProgress.value = 0;
-    progress.value = withRepeat(
-      withTiming(1, { duration: DRIFT_DURATION_MS, easing: Easing.linear }),
-      -1,
-      false,
-    );
-    backProgress.value = withRepeat(
-      withTiming(1, { duration: BACK_DRIFT_DURATION_MS, easing: Easing.linear }),
-      -1,
-      false,
-    );
-    return () => {
-      cancelAnimation(progress);
-      cancelAnimation(backProgress);
-    };
-  }, [active, progress, backProgress]);
+    if (!active) return;
+    const intervalId = setInterval(() => {
+      setCandles((prev) => {
+        const next = [nextCandle(), ...prev];
+        // Cap to MAX_CANDLES — older candles fall off the left edge and
+        // unmount cleanly.
+        return next.length > MAX_CANDLES ? next.slice(0, MAX_CANDLES) : next;
+      });
+    }, FORMATION_MS);
+    return () => clearInterval(intervalId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active]);
 
-  const candleStride = CANDLE_W + CANDLE_GAP;
-  const backStride = BACK_CANDLE_W + BACK_CANDLE_GAP;
-  const transform = useDerivedValue(
-    () => [{ translateX: -progress.value * candleStride }],
-    [progress, candleStride],
-  );
-  const backTransform = useDerivedValue(
-    () => [{ translateX: -backProgress.value * backStride }],
-    [backProgress, backStride],
-  );
-
-  // Chart fills most of the chat area: from below the header to above the
-  // input bar (with safe-area inset). Both rows share the same vertical span
-  // so the parallax reads as depth, not as separate stacked charts.
+  // Chart fills the chat area: top of chat header to top of input bar (with
+  // safe-area inset on the bottom so we clear Android nav bar / iOS home
+  // indicator). Same dimensions as the previous Trading Floor.
   const chartTop = CHART_TOP_INSET;
   const chartBottom = SCREEN_H - INPUT_BAR_HEIGHT - insets.bottom;
   const chartHeight = Math.max(200, chartBottom - chartTop);
-  const yFor = (norm: number) => chartTop + (1 - norm) * chartHeight;
+
+  // Slot 0 (rightmost) sits with its right edge inset ~12px from the screen
+  // edge so the newest candle isn't mashed against the right border.
+  const baseRightX = SCREEN_W - STRIDE - 12;
 
   return (
     <View style={styles.root} pointerEvents="none">
       <Canvas style={StyleSheet.absoluteFill}>
-        {/* Dark backdrop — slightly green-tinted to lean into the bullish vibe */}
         <Rect x={0} y={0} width={SCREEN_W} height={SCREEN_H}>
           <LinearGradient
             start={vec(0, 0)}
@@ -146,67 +312,18 @@ export function TradingFloorWorld({ active = true }: TradingFloorWorldProps) {
             colors={["#06070d", "#08130d", "#06140e"]}
           />
         </Rect>
-
-        {/* Background row — wider candles, lower opacity, slower drift */}
-        <Group transform={active ? backTransform : undefined} opacity={0.18}>
-          {backCandles.map((c, i) => {
-            const x = i * backStride;
-            const isUp = c.close >= c.open;
-            const color = isUp ? "#10B981" : "#EF4444";
-            const bodyTop = yFor(Math.max(c.open, c.close));
-            const bodyBot = yFor(Math.min(c.open, c.close));
-            const bodyH = Math.max(1, bodyBot - bodyTop);
-            const wickX = x + BACK_CANDLE_W / 2;
-            return (
-              <Group key={`b${i}`}>
-                <Line
-                  p1={vec(wickX, yFor(c.high))}
-                  p2={vec(wickX, yFor(c.low))}
-                  color={color}
-                  strokeWidth={1.5}
-                />
-                <Rect
-                  x={x}
-                  y={bodyTop}
-                  width={BACK_CANDLE_W}
-                  height={bodyH}
-                  color={color}
-                />
-              </Group>
-            );
-          })}
-        </Group>
-
-        {/* Foreground row */}
-        <Group transform={active ? transform : undefined} opacity={0.42}>
-          {foreCandles.map((c, i) => {
-            const x = i * candleStride;
-            const isUp = c.close >= c.open;
-            const color = isUp ? "#10B981" : "#EF4444";
-            const bodyTop = yFor(Math.max(c.open, c.close));
-            const bodyBot = yFor(Math.min(c.open, c.close));
-            const bodyH = Math.max(1, bodyBot - bodyTop);
-            const wickX = x + CANDLE_W / 2;
-            return (
-              <Group key={i}>
-                <Line
-                  p1={vec(wickX, yFor(c.high))}
-                  p2={vec(wickX, yFor(c.low))}
-                  color={color}
-                  strokeWidth={1}
-                />
-                <Rect
-                  x={x}
-                  y={bodyTop}
-                  width={CANDLE_W}
-                  height={bodyH}
-                  color={color}
-                />
-              </Group>
-            );
-          })}
-        </Group>
       </Canvas>
+
+      {candles.map((c, i) => (
+        <CandleView
+          key={c.id}
+          candle={c}
+          slotIndex={i}
+          chartTop={chartTop}
+          chartHeight={chartHeight}
+          baseRightX={baseRightX}
+        />
+      ))}
     </View>
   );
 }
