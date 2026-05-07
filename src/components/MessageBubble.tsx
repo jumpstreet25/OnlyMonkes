@@ -455,6 +455,12 @@ export const MessageBubble = memo(function MessageBubble({
   const senderHasCyberpunk = shopStyles.worldId === "world_solana_cyberpunk";
   const viewerHasCyberpunk = myShopStyles?.worldId === "world_solana_cyberpunk";
   const useGlitchBubble = isBotSender ? viewerHasCyberpunk : senderHasCyberpunk;
+  // Banana Grove world — same sender-keyed rule. When the SENDER has
+  // Banana Grove equipped, their messages drop+bounce in instead of
+  // floating in (gravity vibe matches the falling-banana world).
+  const senderHasBananaGrove = shopStyles.worldId === "world_banana_grove";
+  const viewerHasBananaGrove = myShopStyles?.worldId === "world_banana_grove";
+  const useBananaGroveEntry = isBotSender ? viewerHasBananaGrove : senderHasBananaGrove;
   const hasSkiaGlow =
     !!(shopStyles.hasBubbleCosmetic && shopStyles.glowColor) && !useGlitchBubble;
 
@@ -472,10 +478,22 @@ export const MessageBubble = memo(function MessageBubble({
 
   useEffect(() => {
     if (isNew) {
-      floatY.value = 12;
-      floatOpacity.value = 0;
-      floatY.value = withTiming(0, { duration: 400, easing: REasing.out(REasing.quad) });
-      floatOpacity.value = withTiming(1, { duration: 400, easing: REasing.out(REasing.quad) });
+      if (useBananaGroveEntry) {
+        // Drop + bounce — message falls in from above and bounces on
+        // arrival, matching the falling-banana aesthetic of the world.
+        // Easing.bounce applies the bounce at the END of the animation,
+        // so the bubble drops fast then settles with 2-3 small bounces.
+        floatY.value = -22;
+        floatOpacity.value = 0;
+        floatY.value = withTiming(0, { duration: 700, easing: REasing.bounce });
+        floatOpacity.value = withTiming(1, { duration: 220, easing: REasing.out(REasing.quad) });
+      } else {
+        // Universal float-in — Cyberpunk + default chat. Drift up + fade.
+        floatY.value = 12;
+        floatOpacity.value = 0;
+        floatY.value = withTiming(0, { duration: 400, easing: REasing.out(REasing.quad) });
+        floatOpacity.value = withTiming(1, { duration: 400, easing: REasing.out(REasing.quad) });
+      }
     } else {
       floatOpacity.value = 1;
     }
