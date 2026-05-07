@@ -114,7 +114,12 @@ export const THEME = {
   gold: '#FFD700',
 };
 
-export const WORLD_BAR_BG = 'rgba(10,10,20,0.32)';
+// Translucent chrome-bar background applied to header / input bar /
+// support banner / bot-channel chrome whenever a Chat World is equipped,
+// so the world layer reads through. Tightened from 0.32 → 0.22 on
+// 2026-05-07 per user feedback that the bars felt too solid against
+// the world.
+export const WORLD_BAR_BG = 'rgba(10,10,20,0.22)';
 
 export const FONTS = {
   display: 'SpaceGrotesk-Bold',
