@@ -181,10 +181,8 @@ export const CyberpunkGlitchBubble = React.memo(function CyberpunkGlitchBubble({
     [x, y, width, height, radius, tailSide],
   );
 
-  // Faint scanlines drawn inside the bubble interior. Keep them simple —
-  // 5 evenly spaced thin lines, accent-tinted at low alpha. They sit in
-  // the rectangular interior; the path's tail/corner clipping isn't worth
-  // the perf cost for such a subtle effect.
+  // Faint scanlines drawn inside the bubble interior. 5 evenly spaced
+  // thin lines, accent-tinted at low alpha.
   const scanPath = useMemo(() => {
     if (width <= 0 || height <= 0) return "";
     const lines = 5;
@@ -194,6 +192,17 @@ export const CyberpunkGlitchBubble = React.memo(function CyberpunkGlitchBubble({
       parts.push(`M ${x + 6} ${ly} L ${x + width - 6} ${ly}`);
     }
     return parts.join(" ");
+  }, [x, y, width, height]);
+
+  // ── Interference scanline — one corrupted/torn scanline at ~60% down
+  // the bubble. Renders alongside the normal scanlines but brighter
+  // (~3× the alpha), thicker (1.5px), and shifted 3px horizontally so
+  // it reads as a CRT signal-tear among the regular faint lines. Picks
+  // up the bubble's accent color so it ties into the user's identity.
+  const interferencePath = useMemo(() => {
+    if (width <= 0 || height <= 0) return "";
+    const ly = y + height * 0.62;
+    return `M ${x + 9} ${ly} L ${x + width - 3} ${ly}`;
   }, [x, y, width, height]);
 
   if (width <= 0 || height <= 0) return null;
@@ -229,6 +238,17 @@ export const CyberpunkGlitchBubble = React.memo(function CyberpunkGlitchBubble({
         color={scanlineColor}
         style="stroke"
         strokeWidth={1}
+      />
+
+      {/* 4b. Interference scanline — one brighter, slightly offset
+          line among the others, like a CRT signal tear baked into the
+          bubble. Sits at ~62% down the bubble, shifted 3px right of
+          the normal scanline column. */}
+      <Path
+        path={interferencePath}
+        color={hexToRgba(color, 0.55)}
+        style="stroke"
+        strokeWidth={1.5}
       />
 
       {/* 5. Magenta chromatic ghost border — offset −1.5px */}
