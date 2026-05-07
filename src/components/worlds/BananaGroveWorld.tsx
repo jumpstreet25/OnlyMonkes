@@ -427,42 +427,9 @@ const VINE_LEAVES: Array<{ x: number; y: number; size: number; rot: number; glyp
   { x: 2,  y: 305, size: 16, rot: -22, glyph: "🌿" },
 ];
 
-// ── Barrel (Skia rects) ──
-// Wooden barrel sitting at the bottom-left, just above the pile floor.
-// 7-stripe rendering with darker hoops at top/middle/bottom.
-function Barrel() {
-  // Anchored bottom-left, 14px in from the edge so it doesn't crowd the
-  // very corner. Height 44 + sits 96px above screen bottom (above the
-  // input-bar zone) so it reads as a prop on the ground floor.
-  const w = 38;
-  const h = 44;
-  const x = 14;
-  const y = SCREEN_H - 96 - h - 4; // 4px gap above input bar top
-  const wood1 = "#7A4F28";
-  const wood2 = "#6E4720";
-  const hoopDark = "#3F2710";
-  const woodHi = "#9C6E45";
-  return (
-    <Group>
-      {/* Top hoop — darker, slightly wider than body */}
-      <Rect x={x - 1} y={y} width={w + 2} height={4} color={hoopDark} />
-      {/* Body planks */}
-      <Rect x={x} y={y + 4}  width={w} height={5} color={wood1} />
-      <Rect x={x} y={y + 9}  width={w} height={5} color={wood2} />
-      <Rect x={x} y={y + 14} width={w} height={4} color={wood1} />
-      {/* Mid hoop */}
-      <Rect x={x - 1} y={y + 18} width={w + 2} height={3} color={hoopDark} />
-      {/* More planks */}
-      <Rect x={x} y={y + 21} width={w} height={5} color={wood2} />
-      <Rect x={x} y={y + 26} width={w} height={5} color={wood1} />
-      <Rect x={x} y={y + 31} width={w} height={5} color={wood2} />
-      {/* Bottom hoop */}
-      <Rect x={x - 1} y={y + 36} width={w + 2} height={4} color={hoopDark} />
-      {/* Top rim highlight (subtle) */}
-      <Rect x={x + 1} y={y + 4}  width={w - 2} height={1} color={woodHi} />
-    </Group>
-  );
-}
+// (Barrel prop removed 2026-05-07 — read as a flat brown board next to
+// the input-bar PFP rather than as a 3D barrel. Will revisit with a
+// proper curved silhouette if we want a scenery prop in this world.)
 
 // ── Drifting leaves ──
 // Counterpart to Cyberpunk's embers — leaves drift DOWN from the top with
@@ -597,9 +564,6 @@ export function BananaGroveWorld({ active = true }: BananaGroveWorldProps) {
 
         {/* Vine drape — top-left edge, hanging down */}
         <VineDrape />
-
-        {/* Barrel — bottom-left, sitting on the input-bar line */}
-        <Barrel />
       </Canvas>
 
       {/* Vine leaves (RN text — outside Skia for proper emoji rendering). */}
