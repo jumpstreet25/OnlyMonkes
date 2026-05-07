@@ -50,9 +50,12 @@ interface CyberpunkGlitchBubbleProps {
 const GHOST_MAGENTA = "#FF3DFF";
 const GHOST_CYAN = "#00D4FF";
 const STEPS_PER_CORNER = 3;
-const TAIL_HALF_WIDTH = 5;
-const TAIL_HEIGHT = 9;
-const TAIL_INSET_FROM_CORNER = 12;
+// Side-tail geometry — sits on the right (own) or left (others) edge,
+// just above the bottom staircase, pointing horizontally toward the
+// sender's PFP.
+const TAIL_LENGTH = 11;          // how far the tip extends out from the edge
+const TAIL_BASE_HEIGHT = 18;     // vertical height of the tail base on the edge
+const TAIL_GAP_ABOVE_STAIRCASE = 6; // px between tail base bottom and BR/BL staircase start
 
 function hexToRgba(hex: string, alpha: number): string {
   if (!hex.startsWith("#") || (hex.length !== 7 && hex.length !== 4)) return hex;
@@ -100,8 +103,20 @@ function buildBubblePath(
     parts.push(`L ${xR - r + (i + 1) * s} ${y + (i + 1) * s}`);
   }
 
-  // Right edge → BR corner start
-  parts.push(`L ${xR} ${yB - r}`);
+  // Right edge → BR corner start, optionally interrupted by the right
+  // tail just above the BR staircase. Tail extends OUT (positive X)
+  // toward the user's PFP.
+  if (tailSide === "right") {
+    const tailBaseBottom = yB - r - TAIL_GAP_ABOVE_STAIRCASE;
+    const tailBaseTop = tailBaseBottom - TAIL_BASE_HEIGHT;
+    const tailTipY = (tailBaseTop + tailBaseBottom) / 2;
+    parts.push(`L ${xR} ${tailBaseTop}`);
+    parts.push(`L ${xR + TAIL_LENGTH} ${tailTipY}`);
+    parts.push(`L ${xR} ${tailBaseBottom}`);
+    parts.push(`L ${xR} ${yB - r}`);
+  } else {
+    parts.push(`L ${xR} ${yB - r}`);
+  }
 
   // BR corner — DOWN, LEFT alternating
   for (let i = 0; i < STEPS_PER_CORNER; i++) {
@@ -109,22 +124,8 @@ function buildBubblePath(
     parts.push(`L ${xR - (i + 1) * s} ${yB - r + (i + 1) * s}`);
   }
 
-  // Bottom edge — optionally interrupted by the tail
-  if (tailSide === "right") {
-    const tailX = xR - r - TAIL_INSET_FROM_CORNER;
-    parts.push(`L ${tailX + TAIL_HALF_WIDTH} ${yB}`);
-    parts.push(`L ${tailX} ${yB + TAIL_HEIGHT}`);
-    parts.push(`L ${tailX - TAIL_HALF_WIDTH} ${yB}`);
-    parts.push(`L ${x + r} ${yB}`);
-  } else if (tailSide === "left") {
-    const tailX = x + r + TAIL_INSET_FROM_CORNER;
-    parts.push(`L ${tailX + TAIL_HALF_WIDTH} ${yB}`);
-    parts.push(`L ${tailX} ${yB + TAIL_HEIGHT}`);
-    parts.push(`L ${tailX - TAIL_HALF_WIDTH} ${yB}`);
-    parts.push(`L ${x + r} ${yB}`);
-  } else {
-    parts.push(`L ${x + r} ${yB}`);
-  }
+  // Bottom edge — clean (tail moved to side per design 2026-05-07)
+  parts.push(`L ${x + r} ${yB}`);
 
   // BL corner — LEFT, UP alternating
   for (let i = 0; i < STEPS_PER_CORNER; i++) {
@@ -132,8 +133,24 @@ function buildBubblePath(
     parts.push(`L ${x + r - (i + 1) * s} ${yB - (i + 1) * s}`);
   }
 
-  // Left edge → TL corner start
-  parts.push(`L ${x} ${y + r}`);
+  // Left edge → TL corner start, optionally interrupted by the left
+  // tail just above the BL staircase. Path is going UP (clockwise)
+  // here, so we visit tailBaseBottom (lower-Y? higher screen?) ... wait —
+  // going UP = Y decreasing. From (x, yB-r) we move toward (x, y+r).
+  // tailBaseBottom is at yB-r-GAP (4px up); tailBaseTop is further up
+  // (smaller Y). So in clockwise/UP order: tailBaseBottom first, tip,
+  // tailBaseTop, then continue up.
+  if (tailSide === "left") {
+    const tailBaseBottom = yB - r - TAIL_GAP_ABOVE_STAIRCASE;
+    const tailBaseTop = tailBaseBottom - TAIL_BASE_HEIGHT;
+    const tailTipY = (tailBaseTop + tailBaseBottom) / 2;
+    parts.push(`L ${x} ${tailBaseBottom}`);
+    parts.push(`L ${x - TAIL_LENGTH} ${tailTipY}`);
+    parts.push(`L ${x} ${tailBaseTop}`);
+    parts.push(`L ${x} ${y + r}`);
+  } else {
+    parts.push(`L ${x} ${y + r}`);
+  }
 
   // TL corner — UP, RIGHT alternating
   for (let i = 0; i < STEPS_PER_CORNER; i++) {
