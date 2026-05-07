@@ -821,7 +821,8 @@ export const MessageBubble = memo(function MessageBubble({
                   width={bubbleSize.w}
                   height={bubbleSize.h}
                   color={glitchAccent}
-                  radius={22}
+                  radius={14}
+                  tailSide={centerBubble ? "none" : isOwn ? "right" : "left"}
                 />
               ) : null}
               {/* Glass bubble — dark glass with glow-tinted border */}
