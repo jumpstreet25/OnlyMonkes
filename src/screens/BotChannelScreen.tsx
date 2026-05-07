@@ -106,6 +106,7 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
   const [showAutonoMonkeModal, setShowAutonoMonkeModal] = useState(false);
   const [autonomyEnrolled, setAutonomyEnrolled] = useState(false);
   const [showAllOverride, setShowAllOverride] = useState(false);
+  const [openDropdown, setOpenDropdown] = useState<"sports" | "sources" | null>(null);
   const hasAutonomy = channelId in AUTONOMY_CONFIG;
 
   const themeBg = useThemeColor('bg');
@@ -334,11 +335,8 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
         </View>
       </View>
 
-      {/* Bot Alerts · Live status bar */}
-      <View style={[styles.statusBar, { backgroundColor: chromeBg, borderBottomColor: themeBorder }]}>
-        <View style={[styles.liveDot, hasThemeOverride && { backgroundColor: themeAccent }, pfpFullThemeActive && { backgroundColor: nftDominantColor }]} />
-        <Text style={[styles.statusText, hasThemeOverride && { color: themeAccent }, pfpFullThemeActive && { color: nftDominantColor }]}>Bot Alerts · Live</Text>
-      </View>
+      {/* Bot Alerts · Live status bar removed 2026-05-07 — redundant chrome.
+          Filter band sits directly below the header now. */}
 
       {/* Loading / connecting state */}
       {isLoading && (
@@ -358,14 +356,35 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
       {/* Main content */}
       {!isLoading && !error && (
         <>
-          {/* Unified filter band — sports pills + source pills in one visual
-              strip with no labels (the pills speak for themselves). Sources
-              get a subtle separator dot so they read as a distinct group.
-              Background matches the rest of the chrome so the world layer
-              shows through consistently. */}
+          {/* Filter band — two minimalist dropdown triggers (Sports + Source).
+              Tap either to open a text-list panel below. Tapping the open
+              one again closes it; tapping the other swaps content. Sports
+              shows for Bets only; Source shows for Bets + Predictions. */}
           {(channelId === "bets" || channelId === "predictions") && (
             <View style={[styles.filterBand, { backgroundColor: chromeBg, borderBottomColor: themeBorder }]}>
-              {channelId === "bets" && SPORTS_LIST.map(({ key, label }) => {
+              {channelId === "bets" && (
+                <Pressable
+                  onPress={() => setOpenDropdown(d => d === "sports" ? null : "sports")}
+                  style={[styles.filterTrigger, openDropdown === "sports" && styles.filterTriggerActive]}
+                >
+                  <Text style={styles.filterTriggerText}>Sports Filter</Text>
+                  <Text style={styles.filterCaret}>{openDropdown === "sports" ? "▴" : "▾"}</Text>
+                </Pressable>
+              )}
+              <Pressable
+                onPress={() => setOpenDropdown(d => d === "sources" ? null : "sources")}
+                style={[styles.filterTrigger, openDropdown === "sources" && styles.filterTriggerActive]}
+              >
+                <Text style={styles.filterTriggerText}>Source Filter</Text>
+                <Text style={styles.filterCaret}>{openDropdown === "sources" ? "▴" : "▾"}</Text>
+              </Pressable>
+            </View>
+          )}
+
+          {/* Sports dropdown panel */}
+          {openDropdown === "sports" && channelId === "bets" && (
+            <View style={[styles.dropdownPanel, { backgroundColor: chromeBg, borderBottomColor: themeBorder }]}>
+              {SPORTS_LIST.map(({ key, label }) => {
                 const muted = mutedSports.includes(key);
                 return (
                   <Pressable
@@ -374,20 +393,21 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
                       toggleSportMute(key);
                       triggerProfileRebroadcast(useAppStore.getState().expoPushToken ?? "").catch(() => {});
                     }}
-                    style={[styles.sportPill, muted && styles.sportPillMuted]}
+                    style={styles.dropdownRow}
                   >
-                    <Text style={[styles.sportPillText, muted && styles.sportPillTextMuted]}>
+                    <Text style={styles.dropdownDot}>{muted ? "○" : "●"}</Text>
+                    <Text style={[styles.dropdownLabel, muted && styles.dropdownLabelMuted]}>
                       {label}
                     </Text>
                   </Pressable>
                 );
               })}
-              {/* Soft visual separator between sports + sources (only when both groups render) */}
-              {channelId === "bets" && <View style={styles.filterDivider} />}
-              {/* Source toggles — Predictions + Bets. US users mute Polymarket
-                  (Jupiter geo-blocked); Kalshi is the only one with one-click
-                  trading today (DFlow + Solflare KYC); Drift muted by default
-                  while bet.drift.trade is under construction. */}
+            </View>
+          )}
+
+          {/* Source dropdown panel */}
+          {openDropdown === "sources" && (channelId === "bets" || channelId === "predictions") && (
+            <View style={[styles.dropdownPanel, { backgroundColor: chromeBg, borderBottomColor: themeBorder }]}>
               {(["polymarket", "kalshi", "drift"] as const).map((src) => {
                 const muted = mutedAlertSources.includes(src);
                 const label = src === "drift" ? "Drift"
@@ -397,20 +417,21 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
                   <Pressable
                     key={src}
                     onPress={() => useAppStore.getState().toggleAlertSourceMute(src)}
-                    style={[styles.sportPill, muted && styles.sportPillMuted]}
+                    style={styles.dropdownRow}
                   >
-                    <Text style={[styles.sportPillText, muted && styles.sportPillTextMuted]}>
+                    <Text style={styles.dropdownDot}>{muted ? "○" : "●"}</Text>
+                    <Text style={[styles.dropdownLabel, muted && styles.dropdownLabelMuted]}>
                       {label}
                     </Text>
                   </Pressable>
                 );
               })}
+              {mutedAlertSources.includes("drift") && (
+                <Text style={styles.dropdownNote}>
+                  Drift Predictions UI is under construction — bot will announce here when it's back.
+                </Text>
+              )}
             </View>
-          )}
-          {(channelId === "predictions" || channelId === "bets") && mutedAlertSources.includes("drift") && (
-            <Text style={[styles.sourceNote, { backgroundColor: chromeBg }]}>
-              Drift Predictions UI is under construction — bot will announce here when it's back.
-            </Text>
           )}
 
           {/* Loading history banner */}
@@ -523,26 +544,6 @@ const styles = StyleSheet.create({
     color: "#fff",
     lineHeight: 38,
   },
-  statusBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingVertical: 6,
-    backgroundColor: THEME.bg,
-    // No borderBottom — separator removed per design pass 2026-05-06.
-  },
-  liveDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: "#44ff88",
-  },
-  statusText: {
-    fontFamily: FONTS.mono,
-    fontSize: 10,
-    color: THEME.textFaint,
-  },
   headerRight: {
     alignItems: "center",
     gap: 6,
@@ -639,53 +640,77 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
 
-  // Unified sports + source filter band — replaces the previous two
-  // separate strips (with "Filter:" / "Source:" labels). One visual row,
-  // no labels, soft inline divider between sport pills and source pills.
+  // Filter band — two dropdown triggers (Sports / Source) sit directly
+  // below the header. The "Bot Alerts · Live" status bar was removed
+  // 2026-05-07; redundant chrome.
   filterBand: {
     flexDirection: "row",
-    flexWrap: "wrap",
     alignItems: "center",
-    gap: 6,
+    gap: 8,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderBottomWidth: 1,
   },
-  filterDivider: {
-    width: 1,
-    height: 14,
-    backgroundColor: "rgba(255,255,255,0.12)",
-    marginHorizontal: 4,
+  filterTrigger: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
   },
-  sourceNote: {
+  filterTriggerActive: {
+    backgroundColor: "rgba(108,180,238,0.12)",
+    borderColor: "rgba(108,180,238,0.30)",
+  },
+  filterTriggerText: {
+    fontFamily: FONTS.bodyMed,
+    fontSize: 11,
+    color: THEME.text,
+  },
+  filterCaret: {
+    fontSize: 9,
+    color: THEME.textMuted,
+    marginTop: 1,
+  },
+  // Dropdown panel — minimalist text list of options with a leading
+  // dot indicator (● active, ○ muted). Tap a row to toggle.
+  dropdownPanel: {
+    paddingHorizontal: 16,
+    paddingVertical: 4,
+    borderBottomWidth: 1,
+  },
+  dropdownRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 7,
+  },
+  dropdownDot: {
+    fontSize: 14,
+    color: "#6CB4EE",
+    width: 14,
+    textAlign: "center",
+  },
+  dropdownLabel: {
+    fontFamily: FONTS.body,
+    fontSize: 13,
+    color: THEME.text,
+  },
+  dropdownLabelMuted: {
+    color: THEME.textFaint,
+    textDecorationLine: "line-through",
+  },
+  dropdownNote: {
     fontFamily: FONTS.body,
     fontSize: 10,
     color: THEME.textFaint,
     fontStyle: "italic",
-    paddingHorizontal: 12,
-    paddingTop: 0,
-    paddingBottom: 6,
+    paddingTop: 4,
+    paddingBottom: 4,
   },
-  sportPill: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    backgroundColor: "rgba(108, 180, 238, 0.15)",
-  },
-  sportPillMuted: {
-    backgroundColor: "rgba(255, 255, 255, 0.05)",
-    opacity: 0.45,
-  },
-  sportPillText: {
-    fontFamily: FONTS.bodyMed,
-    fontSize: 11,
-    color: "#6CB4EE",
-  },
-  sportPillTextMuted: {
-    color: THEME.textFaint,
-    textDecorationLine: "line-through",
-  },
-
   filteredNotice: {
     alignItems: "center",
     justifyContent: "center",
