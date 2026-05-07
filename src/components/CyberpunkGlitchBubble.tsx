@@ -132,14 +132,17 @@ export const CyberpunkGlitchBubble = React.memo(function CyberpunkGlitchBubble({
         <BlurMask blur={14} style="normal" />
       </RoundedRect>
 
-      {/* 2. Dark glass base body — readable text contrast */}
+      {/* 2. Dark glass base body — readable text contrast.
+            Alpha 0.55 (was 0.72) so the world layer shows through more
+            of the bubble. White text remains readable against the
+            tint+world composite. */}
       <RoundedRect
         x={x}
         y={y}
         width={width}
         height={height}
         r={radius}
-        color="rgba(8,8,20,0.72)"
+        color="rgba(8,8,20,0.55)"
       />
 
       {/* 3. Accent tint — gives the bubble its PFP-color identity */}

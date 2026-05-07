@@ -343,9 +343,10 @@ function renderRichContent(
 }
 
 // ── Cyberpunk glitch bubble accent helpers ────────────────────────────────
-// Bot's glitch bubble color (matches the existing BOT_THEME_COLOR teal —
-// the bot's identity carries through the cyberpunk chrome).
-const BOT_GLITCH_COLOR = "#00C9A7";
+// Bot's cyberpunk-world glitch bubble color — dark neon pink matching the
+// bot's hair. Distinct from BOT_THEME_COLOR (#00C9A7 teal) which still
+// drives the bot's identity in non-cyberpunk contexts.
+const BOT_GLITCH_COLOR = "#FF1493";
 
 // Curated neon palette for stable per-user fallback colors before the
 // async PFP-color extraction completes. Hashed off inboxId so each user
