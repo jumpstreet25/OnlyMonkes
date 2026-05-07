@@ -490,7 +490,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginHorizontal: -8,
-    transform: [{ scale: 1.35 }],
+    // No 1.35 scale here — main chat (ChatHeader) uses scale(1.35) because
+    // its source asset is 1:1 square (header.png 2084×2084). Bot channel
+    // banners are wide rectangles (~1.7-2.05 aspect), so the same scale
+    // makes them extend 230-266px wide vs main's 130×130, which read as
+    // "way too big" in user testing 2026-05-07. At scale 1.0 they cap at
+    // ~96 height x (aspect × 96) wide, comparable visual weight to main.
     overflow: "hidden",
   },
   bannerTintOverlay: {
