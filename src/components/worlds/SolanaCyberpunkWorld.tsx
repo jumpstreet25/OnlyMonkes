@@ -80,25 +80,88 @@ function buildGridPath(): string {
 // Storm cycle: every 8-20s, fire a primary bolt + aftershock on a slightly
 // offset path 140ms later. Each bolt has a punchy cyan full-screen flash and
 // the bolt itself fades over ~400ms so the residual neon trail lingers.
+//
+// Detail upgrade 2026-05-07:
+//   - Thicker strokes per user feedback (primary 7→9 / inner 1.8→2.6).
+//   - 1-3 forked BRANCHES split off the primary bolt at random vertices
+//     and trail into mid-screen — gives the strike texture and direction.
+//   - Brighter pure-white inner core (0.7px stroke at 0.95 alpha) over
+//     the existing white inner stroke for a hot-plasma center.
+
+interface BoltSegment {
+  x: number;
+  y: number;
+}
+
+function buildBoltVertices(
+  startX: number,
+  endX: number,
+  segments: number,
+  jitterScale: number,
+): BoltSegment[] {
+  const dy = SCREEN_H / segments;
+  const out: BoltSegment[] = [{ x: startX, y: 0 }];
+  for (let i = 1; i <= segments; i++) {
+    const t = i / segments;
+    const baseX = startX + (endX - startX) * t;
+    const jitter = (random() - 0.5) * 90 * jitterScale;
+    out.push({ x: baseX + jitter, y: i * dy });
+  }
+  return out;
+}
+
+function verticesToPath(verts: BoltSegment[]): string {
+  if (verts.length === 0) return "";
+  const parts: string[] = [`M${verts[0].x} ${verts[0].y}`];
+  for (let i = 1; i < verts.length; i++) {
+    parts.push(`L${verts[i].x} ${verts[i].y}`);
+  }
+  return parts.join(" ");
+}
 
 function makeLightningPath(jitterScale = 1): string {
   const startX = SCREEN_W * (0.2 + random() * 0.6);
   const endX = SCREEN_W * (0.15 + random() * 0.7);
   const segments = 7 + Math.floor(random() * 3);
-  const dy = SCREEN_H / segments;
-  const parts: string[] = [`M${startX} 0`];
-  for (let i = 1; i <= segments; i++) {
-    const t = i / segments;
-    const baseX = startX + (endX - startX) * t;
-    const jitter = (random() - 0.5) * 90 * jitterScale;
-    parts.push(`L${baseX + jitter} ${i * dy}`);
+  return verticesToPath(buildBoltVertices(startX, endX, segments, jitterScale));
+}
+
+/**
+ * Fork 1-3 small branch bolts off the primary bolt's vertices. Each branch
+ * starts mid-bolt and runs 3-5 jagged segments toward the screen edges
+ * before terminating. Returns one combined path string.
+ */
+function makeBranchPaths(primaryVerts: BoltSegment[]): string {
+  if (primaryVerts.length < 4) return "";
+  const branchCount = 1 + Math.floor(random() * 3); // 1-3
+  const out: string[] = [];
+  for (let i = 0; i < branchCount; i++) {
+    // Pick a random non-edge vertex on the primary as the fork point.
+    const idx = 1 + Math.floor(random() * (primaryVerts.length - 2));
+    const fork = primaryVerts[idx];
+    const goLeft = random() < 0.5;
+    const branchSegs = 3 + Math.floor(random() * 3); // 3-5 segments
+    const dx = goLeft ? -1 : 1;
+    const segLen = 28 + random() * 22; // 28-50px per segment, average
+    const verts: BoltSegment[] = [{ x: fork.x, y: fork.y }];
+    let cx = fork.x;
+    let cy = fork.y;
+    for (let j = 0; j < branchSegs; j++) {
+      cx += dx * (segLen * (0.5 + random() * 0.7));
+      cy += segLen * (0.4 + random() * 0.6);
+      // Add some perpendicular jitter so the branch zigzags
+      const jitter = (random() - 0.5) * 24;
+      verts.push({ x: cx + jitter, y: cy });
+    }
+    out.push(verticesToPath(verts));
   }
-  return parts.join(" ");
+  return out.join(" ");
 }
 
 interface BoltState {
   primaryPath: string;
   aftershockPath: string;
+  branchPath: string;
   key: number;
 }
 
@@ -130,9 +193,16 @@ function Lightning({ active }: LightningProps) {
 
     const fire = () => {
       if (!alive) return;
+      // Build the primary bolt as vertices first so we can fork branches
+      // off its mid-points before serializing to a path string.
+      const primaryStart = SCREEN_W * (0.2 + random() * 0.6);
+      const primaryEnd = SCREEN_W * (0.15 + random() * 0.7);
+      const primarySegs = 7 + Math.floor(random() * 3);
+      const primaryVerts = buildBoltVertices(primaryStart, primaryEnd, primarySegs, 1);
       const next: BoltState = {
-        primaryPath: makeLightningPath(1),
+        primaryPath: verticesToPath(primaryVerts),
         aftershockPath: makeLightningPath(1.4),
+        branchPath: makeBranchPaths(primaryVerts),
         key: Date.now(),
       };
       setBolt(next);
@@ -197,19 +267,36 @@ function Lightning({ active }: LightningProps) {
     <>
       {/* Cyan screen flash — covers the whole canvas */}
       <Rect x={0} y={0} width={SCREEN_W} height={SCREEN_H} color="#00D4FF" opacity={flashAlpha} />
-      {/* Primary bolt — outer glow + inner bright core */}
+      {/* Primary bolt — three-layer stack: outer glow, mid stroke, hot
+          plasma core. Strokes thickened from 7/1.8 → 11/2.6 with an
+          extra 0.7px super-bright inner highlight. */}
       <Group opacity={primaryAlpha}>
-        <Path path={bolt.primaryPath} color="#7DDFFF" style="stroke" strokeWidth={7} opacity={0.4}>
-          <BlurMask blur={10} style="normal" />
+        {/* Outer diffuse glow */}
+        <Path path={bolt.primaryPath} color="#7DDFFF" style="stroke" strokeWidth={11} opacity={0.4}>
+          <BlurMask blur={14} style="normal" />
         </Path>
-        <Path path={bolt.primaryPath} color="#FFFFFF" style="stroke" strokeWidth={1.8} />
+        {/* Mid stroke — sharper neon edge */}
+        <Path path={bolt.primaryPath} color="#C8F1FF" style="stroke" strokeWidth={2.6} opacity={0.85} />
+        {/* Hot plasma core — pure white center for that lightning "burnt-in" feel */}
+        <Path path={bolt.primaryPath} color="#FFFFFF" style="stroke" strokeWidth={0.9} />
       </Group>
-      {/* Aftershock — slightly offset path, thinner */}
+      {/* Forked branches off the primary bolt — adds the jagged
+          "splintering" texture that real lightning has. Same color
+          scheme as primary but thinner. */}
+      {bolt.branchPath ? (
+        <Group opacity={primaryAlpha}>
+          <Path path={bolt.branchPath} color="#7DDFFF" style="stroke" strokeWidth={5} opacity={0.32}>
+            <BlurMask blur={9} style="normal" />
+          </Path>
+          <Path path={bolt.branchPath} color="#FFFFFF" style="stroke" strokeWidth={1.1} opacity={0.85} />
+        </Group>
+      ) : null}
+      {/* Aftershock — slightly offset path, mid-tier thickness */}
       <Group opacity={aftershockAlpha}>
-        <Path path={bolt.aftershockPath} color="#A6E8FF" style="stroke" strokeWidth={5} opacity={0.32}>
-          <BlurMask blur={8} style="normal" />
+        <Path path={bolt.aftershockPath} color="#A6E8FF" style="stroke" strokeWidth={7} opacity={0.32}>
+          <BlurMask blur={9} style="normal" />
         </Path>
-        <Path path={bolt.aftershockPath} color="#FFFFFF" style="stroke" strokeWidth={1.2} />
+        <Path path={bolt.aftershockPath} color="#FFFFFF" style="stroke" strokeWidth={1.6} />
       </Group>
     </>
   );

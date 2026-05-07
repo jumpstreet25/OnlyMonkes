@@ -979,8 +979,11 @@ export const MessageBubble = memo(function MessageBubble({
                   centerBubble && { justifyContent: "center" as const },
                   isOwn && { justifyContent: "flex-end" as const },
                 ]}>
-                  {/* Sender name — always below bubble for all non-own messages */}
-                  {!isOwn ? (
+                  {/* Sender name — below bubble for all non-own messages.
+                      Skipped for bot messages in bot channels: every
+                      message there is from the same bot, so the username
+                      ("AI Agent #9385") is redundant noise. */}
+                  {!isOwn && !(isBotChannel && isBot) ? (
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 4, flexShrink: 1 }}>
                       <Text style={{
                         fontFamily: FONTS.body,
