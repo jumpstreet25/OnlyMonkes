@@ -27,9 +27,10 @@ import { triggerProfileRebroadcast } from "@/hooks/useXmtp";
 import AutonoMonkeDisclaimerModal, { type AutonomyFeature } from "@/components/AutonoMonkeDisclaimerModal";
 import { getXmtpClient } from "@/hooks/useXmtp";
 import { sendDmMessage } from "@/lib/xmtp";
-import { THEME, FONTS } from "@/lib/constants";
+import { THEME, FONTS, WORLD_BAR_BG } from "@/lib/constants";
 import { ErrorMessage } from "@/components/ErrorMessage";
 import { useThemeColor } from "@/lib/shopTheme";
+import { WorldLayer } from "@/components/worlds/WorldLayer";
 import { markChannelRead } from "@/lib/messageCache";
 import type { ChatMessage } from "@/types";
 
@@ -111,6 +112,12 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
   const themeSurface = useThemeColor('surface');
   const themeBorder = useThemeColor('border');
   const themeAccent = useThemeColor('accent');
+  // Equipped Chat World propagates to bot channels too — purchasers get
+  // their world's backdrop everywhere they read alerts. Chrome bars get
+  // the same WORLD_BAR_BG translucent treatment as the main chat so the
+  // world reads through them.
+  const worldId = useAppStore((s) => s.shopStyles?.worldId) as string | undefined;
+  const chromeBg = worldId ? WORLD_BAR_BG : themeSurface;
   const hasThemeOverride = useAppStore(s => !!s.themeOverrides);
 
   // PFP Full Theme: tint channel headers with NFT color
@@ -265,9 +272,15 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
   }
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top, backgroundColor: themeBg }]}>
-      {/* Header — matches Main Chat header layout exactly */}
-      <View style={[styles.header, { backgroundColor: themeSurface, borderBottomColor: themeBorder }]}>
+    <View style={[styles.container, { backgroundColor: themeBg }]}>
+      {/* Chat World background — same equipped world as main chat. Renders
+          behind all bot-channel chrome when a world is purchased. */}
+      <WorldLayer active={!isLoading} />
+
+      {/* Header — matches Main Chat header layout exactly. Status-bar safe-
+          area lives inside so the bg extends edge-to-edge behind the
+          status bar (no themeBg gap above the chrome). */}
+      <View style={[styles.header, { backgroundColor: chromeBg, borderBottomColor: themeBorder, paddingTop: insets.top }]}>
         <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={8}>
           <Text style={styles.backIcon}>{"\u2039"}</Text>
         </Pressable>
@@ -322,7 +335,7 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
       </View>
 
       {/* Bot Alerts · Live status bar */}
-      <View style={[styles.statusBar, hasThemeOverride && { backgroundColor: themeSurface, borderBottomColor: themeBorder }]}>
+      <View style={[styles.statusBar, { backgroundColor: chromeBg, borderBottomColor: themeBorder }]}>
         <View style={[styles.liveDot, hasThemeOverride && { backgroundColor: themeAccent }, pfpFullThemeActive && { backgroundColor: nftDominantColor }]} />
         <Text style={[styles.statusText, hasThemeOverride && { color: themeAccent }, pfpFullThemeActive && { color: nftDominantColor }]}>Bot Alerts · Live</Text>
       </View>
@@ -345,11 +358,14 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
       {/* Main content */}
       {!isLoading && !error && (
         <>
-          {/* Sports filter strip — Bets channel only */}
-          {channelId === "bets" && (
-            <View style={styles.sportsStrip}>
-              <Text style={styles.sportsLabel}>Filter:</Text>
-              {SPORTS_LIST.map(({ key, label }) => {
+          {/* Unified filter band — sports pills + source pills in one visual
+              strip with no labels (the pills speak for themselves). Sources
+              get a subtle separator dot so they read as a distinct group.
+              Background matches the rest of the chrome so the world layer
+              shows through consistently. */}
+          {(channelId === "bets" || channelId === "predictions") && (
+            <View style={[styles.filterBand, { backgroundColor: chromeBg, borderBottomColor: themeBorder }]}>
+              {channelId === "bets" && SPORTS_LIST.map(({ key, label }) => {
                 const muted = mutedSports.includes(key);
                 return (
                   <Pressable
@@ -366,42 +382,35 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
                   </Pressable>
                 );
               })}
+              {/* Soft visual separator between sports + sources (only when both groups render) */}
+              {channelId === "bets" && <View style={styles.filterDivider} />}
+              {/* Source toggles — Predictions + Bets. US users mute Polymarket
+                  (Jupiter geo-blocked); Kalshi is the only one with one-click
+                  trading today (DFlow + Solflare KYC); Drift muted by default
+                  while bet.drift.trade is under construction. */}
+              {(["polymarket", "kalshi", "drift"] as const).map((src) => {
+                const muted = mutedAlertSources.includes(src);
+                const label = src === "drift" ? "Drift"
+                            : src === "kalshi" ? "Kalshi 🇺🇸"
+                            : "Polymarket";
+                return (
+                  <Pressable
+                    key={src}
+                    onPress={() => useAppStore.getState().toggleAlertSourceMute(src)}
+                    style={[styles.sportPill, muted && styles.sportPillMuted]}
+                  >
+                    <Text style={[styles.sportPillText, muted && styles.sportPillTextMuted]}>
+                      {label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
             </View>
           )}
-
-          {/* Source filter strip — Predictions + Bets channels. Lets US users
-              mute Polymarket (Jupiter is geo-blocked for them) while keeping
-              US-friendly sources visible. Kalshi is the only one US users can
-              actually one-click trade today (via DFlow + Solflare KYC). Drift
-              is muted by default while bet.drift.trade is under construction. */}
-          {(channelId === "predictions" || channelId === "bets") && (
-            <>
-              <View style={styles.sportsStrip}>
-                <Text style={styles.sportsLabel}>Source:</Text>
-                {(["polymarket", "kalshi", "drift"] as const).map((src) => {
-                  const muted = mutedAlertSources.includes(src);
-                  const label = src === "drift" ? "Drift"
-                              : src === "kalshi" ? "Kalshi 🇺🇸"
-                              : "Polymarket";
-                  return (
-                    <Pressable
-                      key={src}
-                      onPress={() => useAppStore.getState().toggleAlertSourceMute(src)}
-                      style={[styles.sportPill, muted && styles.sportPillMuted]}
-                    >
-                      <Text style={[styles.sportPillText, muted && styles.sportPillTextMuted]}>
-                        {label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-              {mutedAlertSources.includes("drift") && (
-                <Text style={styles.sourceNote}>
-                  Drift Predictions UI is under construction — bot will announce here when it's back.
-                </Text>
-              )}
-            </>
+          {(channelId === "predictions" || channelId === "bets") && mutedAlertSources.includes("drift") && (
+            <Text style={[styles.sourceNote, { backgroundColor: chromeBg }]}>
+              Drift Predictions UI is under construction — bot will announce here when it's back.
+            </Text>
           )}
 
           {/* Loading history banner */}
@@ -630,22 +639,23 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
 
-  sportsStrip: {
+  // Unified sports + source filter band — replaces the previous two
+  // separate strips (with "Filter:" / "Source:" labels). One visual row,
+  // no labels, soft inline divider between sport pills and source pills.
+  filterBand: {
     flexDirection: "row",
     flexWrap: "wrap",
     alignItems: "center",
     gap: 6,
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 6,
     borderBottomWidth: 1,
-    borderBottomColor: THEME.border,
-    backgroundColor: THEME.bg,
   },
-  sportsLabel: {
-    fontFamily: FONTS.bodyMed,
-    fontSize: 11,
-    color: THEME.textFaint,
-    marginRight: 2,
+  filterDivider: {
+    width: 1,
+    height: 14,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    marginHorizontal: 4,
   },
   sourceNote: {
     fontFamily: FONTS.body,
@@ -654,10 +664,7 @@ const styles = StyleSheet.create({
     fontStyle: "italic",
     paddingHorizontal: 12,
     paddingTop: 0,
-    paddingBottom: 8,
-    backgroundColor: THEME.bg,
-    borderBottomWidth: 1,
-    borderBottomColor: THEME.border,
+    paddingBottom: 6,
   },
   sportPill: {
     paddingHorizontal: 8,
