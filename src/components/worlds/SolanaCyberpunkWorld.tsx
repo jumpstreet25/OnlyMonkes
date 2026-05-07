@@ -263,37 +263,53 @@ function Lightning({ active }: LightningProps) {
   }, [active, primaryAlpha, aftershockAlpha, flashAlpha]);
 
   if (!bolt) return null;
+  // Vertical energy gradient along the screen — runs from saturated
+  // cyan at the apex (where the strike originates) through pure white
+  // at mid-height (hottest plasma) to soft purple at the bottom (where
+  // the energy dissipates). Reads as a "real" lightning gradient
+  // rather than a uniform stroke. Same start/end vectors are reused
+  // across every gradient stroke layer below — defining inline so
+  // each layer pins its own paint.
+  const gradStart = vec(0, 0);
+  const gradEnd = vec(0, SCREEN_H);
+  const gradColors = ["#00D4FF", "#FFFFFF", "#B388FF"];
+  const gradPositions = [0, 0.5, 1];
   return (
     <>
       {/* Cyan screen flash — covers the whole canvas */}
       <Rect x={0} y={0} width={SCREEN_W} height={SCREEN_H} color="#00D4FF" opacity={flashAlpha} />
       {/* Primary bolt — three-layer stack: outer glow, mid stroke, hot
-          plasma core. Strokes thickened from 7/1.8 → 11/2.6 with an
-          extra 0.7px super-bright inner highlight. */}
+          plasma core. Outer + mid carry the cyan→white→purple energy
+          gradient; core stays pure white for the burnt-in heart. */}
       <Group opacity={primaryAlpha}>
-        {/* Outer diffuse glow */}
-        <Path path={bolt.primaryPath} color="#7DDFFF" style="stroke" strokeWidth={11} opacity={0.4}>
+        {/* Outer diffuse glow — gradient */}
+        <Path path={bolt.primaryPath} style="stroke" strokeWidth={11} opacity={0.4}>
+          <LinearGradient start={gradStart} end={gradEnd} colors={gradColors} positions={gradPositions} />
           <BlurMask blur={14} style="normal" />
         </Path>
-        {/* Mid stroke — sharper neon edge */}
-        <Path path={bolt.primaryPath} color="#C8F1FF" style="stroke" strokeWidth={2.6} opacity={0.85} />
-        {/* Hot plasma core — pure white center for that lightning "burnt-in" feel */}
+        {/* Mid stroke — sharper neon edge with the gradient */}
+        <Path path={bolt.primaryPath} style="stroke" strokeWidth={2.6} opacity={0.85}>
+          <LinearGradient start={gradStart} end={gradEnd} colors={gradColors} positions={gradPositions} />
+        </Path>
+        {/* Hot plasma core — pure white center for the burnt-in feel */}
         <Path path={bolt.primaryPath} color="#FFFFFF" style="stroke" strokeWidth={0.9} />
       </Group>
-      {/* Forked branches off the primary bolt — adds the jagged
-          "splintering" texture that real lightning has. Same color
-          scheme as primary but thinner. */}
+      {/* Forked branches — same gradient, thinner. Branches inherit
+          the parent's vertical energy color since they fork off the
+          primary at varying heights. */}
       {bolt.branchPath ? (
         <Group opacity={primaryAlpha}>
-          <Path path={bolt.branchPath} color="#7DDFFF" style="stroke" strokeWidth={5} opacity={0.32}>
+          <Path path={bolt.branchPath} style="stroke" strokeWidth={5} opacity={0.32}>
+            <LinearGradient start={gradStart} end={gradEnd} colors={gradColors} positions={gradPositions} />
             <BlurMask blur={9} style="normal" />
           </Path>
           <Path path={bolt.branchPath} color="#FFFFFF" style="stroke" strokeWidth={1.1} opacity={0.85} />
         </Group>
       ) : null}
-      {/* Aftershock — slightly offset path, mid-tier thickness */}
+      {/* Aftershock — gradient at mid-tier thickness */}
       <Group opacity={aftershockAlpha}>
-        <Path path={bolt.aftershockPath} color="#A6E8FF" style="stroke" strokeWidth={7} opacity={0.32}>
+        <Path path={bolt.aftershockPath} style="stroke" strokeWidth={7} opacity={0.32}>
+          <LinearGradient start={gradStart} end={gradEnd} colors={gradColors} positions={gradPositions} />
           <BlurMask blur={9} style="normal" />
         </Path>
         <Path path={bolt.aftershockPath} color="#FFFFFF" style="stroke" strokeWidth={1.6} />
