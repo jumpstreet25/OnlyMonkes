@@ -43,7 +43,6 @@ import Reanimated, {
   withTiming,
   withRepeat,
   withSequence,
-  withDelay,
   cancelAnimation,
   Easing as REasing,
 } from "react-native-reanimated";
@@ -502,7 +501,12 @@ export const MessageBubble = memo(function MessageBubble({
 
   useEffect(() => {
     // Only the latest bubble bobs, and only inside a Cyberpunk-world chat.
-    // Wait briefly so the bob doesn't fight the entry animation.
+    // No `else` branch here — the entry animation in the other effect
+    // owns the floatY value when isNew. Adding an else with cancelAnimation
+    // would kill non-Cyberpunk entries (Banana Grove drop+bounce, default
+    // float-in) the moment they start. The cleanup function handles the
+    // case where this bubble stops being the latest (newer message
+    // arrived) — that's when we want to cancel the bob and settle to 0.
     if (isLatest && useGlitchBubble) {
       const startBob = () => {
         floatY.value = withRepeat(
@@ -515,16 +519,12 @@ export const MessageBubble = memo(function MessageBubble({
         );
       };
       // If isNew, give the entry animation room before bobbing kicks in.
-      floatY.value = withDelay(isNew ? 450 : 0, withTiming(0, { duration: 1 }));
       const t = setTimeout(startBob, isNew ? 460 : 10);
       return () => {
         clearTimeout(t);
         cancelAnimation(floatY);
         floatY.value = withTiming(0, { duration: 200 });
       };
-    } else {
-      cancelAnimation(floatY);
-      if (!isNew) floatY.value = withTiming(0, { duration: 200 });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLatest, useGlitchBubble]);

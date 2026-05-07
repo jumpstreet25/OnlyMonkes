@@ -19,14 +19,16 @@
  *     place" feel.
  */
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { View, Text, StyleSheet, Dimensions } from "react-native";
-import { Canvas, Rect, LinearGradient, vec } from "@shopify/react-native-skia";
+import { Canvas, Rect, LinearGradient, vec, Path, Group } from "@shopify/react-native-skia";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
   useAnimatedReaction,
   withTiming,
+  withDelay,
+  cancelAnimation,
   runOnJS,
   Easing,
   interpolate,
@@ -374,6 +376,195 @@ function BananaPile({ active }: BananaPileProps) {
   );
 }
 
+// ── Lower-third clutter — barrel, vine drape, drifting leaves ──────────────
+// Decorative props that give Banana Grove a "rural jungle" tier of
+// premium polish, paralleling Cyberpunk's embers + lightning.
+
+// ── Vine drape (Skia path) ──
+// Static vine hanging from the top-left edge, curving slightly down. Plant-
+// stem green. Anchored ~14px from the left edge so it doesn't crowd
+// chat-message left margins.
+const VINE_PATH = (() => {
+  // Quadratic bezier curve down with gentle sway
+  const x0 = 14;
+  return `M ${x0} 0
+          Q ${x0 + 8} 40 ${x0 - 2} 80
+          Q ${x0 - 6} 130 ${x0 + 4} 175
+          Q ${x0 + 9} 220 ${x0 + 2} 260
+          Q ${x0 - 3} 300 ${x0 + 5} 340`;
+})();
+
+function VineDrape() {
+  return (
+    <Group>
+      {/* Stem outer (slightly translucent darker green) */}
+      <Path
+        path={VINE_PATH}
+        color="rgba(35, 70, 30, 0.55)"
+        style="stroke"
+        strokeWidth={3.5}
+      />
+      {/* Stem core — brighter green */}
+      <Path
+        path={VINE_PATH}
+        color="rgba(70, 130, 60, 0.85)"
+        style="stroke"
+        strokeWidth={1.5}
+      />
+    </Group>
+  );
+}
+
+// Static leaves attached to the vine — emoji-based for visual richness.
+// Positions are deliberately along the vine's general curve.
+const VINE_LEAVES: Array<{ x: number; y: number; size: number; rot: number; glyph: string }> = [
+  { x: 4,  y: 28,  size: 18, rot: -28, glyph: "🌿" },
+  { x: 22, y: 75,  size: 16, rot: 18,  glyph: "🍃" },
+  { x: 0,  y: 122, size: 19, rot: -42, glyph: "🌿" },
+  { x: 18, y: 168, size: 15, rot: 24,  glyph: "🍃" },
+  { x: 6,  y: 215, size: 17, rot: -18, glyph: "🌿" },
+  { x: 20, y: 260, size: 14, rot: 35,  glyph: "🍃" },
+  { x: 2,  y: 305, size: 16, rot: -22, glyph: "🌿" },
+];
+
+// ── Barrel (Skia rects) ──
+// Wooden barrel sitting at the bottom-left, just above the pile floor.
+// 7-stripe rendering with darker hoops at top/middle/bottom.
+function Barrel() {
+  // Anchored bottom-left, 14px in from the edge so it doesn't crowd the
+  // very corner. Height 44 + sits 96px above screen bottom (above the
+  // input-bar zone) so it reads as a prop on the ground floor.
+  const w = 38;
+  const h = 44;
+  const x = 14;
+  const y = SCREEN_H - 96 - h - 4; // 4px gap above input bar top
+  const wood1 = "#7A4F28";
+  const wood2 = "#6E4720";
+  const hoopDark = "#3F2710";
+  const woodHi = "#9C6E45";
+  return (
+    <Group>
+      {/* Top hoop — darker, slightly wider than body */}
+      <Rect x={x - 1} y={y} width={w + 2} height={4} color={hoopDark} />
+      {/* Body planks */}
+      <Rect x={x} y={y + 4}  width={w} height={5} color={wood1} />
+      <Rect x={x} y={y + 9}  width={w} height={5} color={wood2} />
+      <Rect x={x} y={y + 14} width={w} height={4} color={wood1} />
+      {/* Mid hoop */}
+      <Rect x={x - 1} y={y + 18} width={w + 2} height={3} color={hoopDark} />
+      {/* More planks */}
+      <Rect x={x} y={y + 21} width={w} height={5} color={wood2} />
+      <Rect x={x} y={y + 26} width={w} height={5} color={wood1} />
+      <Rect x={x} y={y + 31} width={w} height={5} color={wood2} />
+      {/* Bottom hoop */}
+      <Rect x={x - 1} y={y + 36} width={w + 2} height={4} color={hoopDark} />
+      {/* Top rim highlight (subtle) */}
+      <Rect x={x + 1} y={y + 4}  width={w - 2} height={1} color={woodHi} />
+    </Group>
+  );
+}
+
+// ── Drifting leaves ──
+// Counterpart to Cyberpunk's embers — leaves drift DOWN from the top with
+// rotation, gentle horizontal sway, and a gradual fade. ~5 active at a time.
+
+interface LeafConfig {
+  key: number;
+  glyph: string;
+  startX: number;
+  size: number;
+  durationMs: number;
+  delayMs: number;
+  driftX: number;
+  spinDeg: number;
+}
+
+const LEAF_GLYPHS = ["🍃", "🌿"];
+const NUM_LEAVES = 5;
+const LEAF_DURATION_MIN_MS = 9000;
+const LEAF_DURATION_MAX_MS = 16_000;
+
+let leafKeyCounter = 0;
+function makeLeafConfig(): LeafConfig {
+  return {
+    key: ++leafKeyCounter,
+    glyph: LEAF_GLYPHS[Math.floor(Math.random() * LEAF_GLYPHS.length)],
+    startX: Math.random() * (SCREEN_W - 32) + 16,
+    size: 14 + Math.random() * 10,
+    durationMs:
+      LEAF_DURATION_MIN_MS +
+      Math.random() * (LEAF_DURATION_MAX_MS - LEAF_DURATION_MIN_MS),
+    delayMs: Math.random() * 4000,
+    driftX: (Math.random() - 0.5) * 90,
+    spinDeg: (Math.random() - 0.5) * 720,
+  };
+}
+
+interface LeafDriftProps {
+  active: boolean;
+  initialDelayMs: number;
+}
+
+function LeafDrift({ active, initialDelayMs }: LeafDriftProps) {
+  const [config, setConfig] = useState<LeafConfig>(() => makeLeafConfig());
+  const t = useSharedValue(0);
+
+  const respawn = useCallback(() => setConfig(makeLeafConfig()), []);
+
+  useEffect(() => {
+    if (!active) {
+      cancelAnimation(t);
+      return;
+    }
+    t.value = 0;
+    t.value = withDelay(
+      initialDelayMs + config.delayMs,
+      withTiming(
+        1,
+        { duration: config.durationMs, easing: Easing.linear },
+        (finished) => {
+          if (finished) runOnJS(respawn)();
+        },
+      ),
+    );
+    return () => cancelAnimation(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config, active]);
+
+  const animStyle = useAnimatedStyle(() => {
+    const p = t.value;
+    // Fall the full screen height (slightly past the bottom for clean exit).
+    const translateY = p * SCREEN_H * 1.05;
+    // Gentle horizontal sway via sin
+    const translateX = config.driftX * Math.sin(p * Math.PI * 1.6);
+    const rotate = p * config.spinDeg;
+    let opacity = 0;
+    if (p < 0.1) opacity = (p / 0.1) * 0.45;
+    else if (p < 0.85) opacity = 0.45;
+    else opacity = (1 - (p - 0.85) / 0.15) * 0.45;
+    return {
+      transform: [
+        { translateX },
+        { translateY },
+        { rotate: `${rotate}deg` },
+      ],
+      opacity: Math.max(0, opacity),
+    };
+  });
+
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        { position: "absolute", left: config.startX, top: -16 },
+        animStyle,
+      ]}
+    >
+      <Text style={{ fontSize: config.size }}>{config.glyph}</Text>
+    </Animated.View>
+  );
+}
+
 // ── World root ─────────────────────────────────────────────────────────────
 
 interface BananaGroveWorldProps {
@@ -381,6 +572,16 @@ interface BananaGroveWorldProps {
 }
 
 export function BananaGroveWorld({ active = true }: BananaGroveWorldProps) {
+  // Stagger leaf start times so they don't all fall on frame 0.
+  const leaves = useMemo(
+    () =>
+      Array.from({ length: NUM_LEAVES }, (_, i) => ({
+        id: i,
+        delay: i * 1800,
+      })),
+    [],
+  );
+
   return (
     <View style={styles.root} pointerEvents="none">
       <Canvas style={StyleSheet.absoluteFill}>
@@ -393,7 +594,41 @@ export function BananaGroveWorld({ active = true }: BananaGroveWorldProps) {
             colors={["#0A0A0F", "#070708", "#000000"]}
           />
         </Rect>
+
+        {/* Vine drape — top-left edge, hanging down */}
+        <VineDrape />
+
+        {/* Barrel — bottom-left, sitting on the input-bar line */}
+        <Barrel />
       </Canvas>
+
+      {/* Vine leaves (RN text — outside Skia for proper emoji rendering). */}
+      <View style={StyleSheet.absoluteFill} pointerEvents="none">
+        {VINE_LEAVES.map((leaf, i) => (
+          <Text
+            key={`vine-${i}`}
+            style={{
+              position: "absolute",
+              left: leaf.x,
+              top: leaf.y,
+              fontSize: leaf.size,
+              transform: [{ rotate: `${leaf.rot}deg` }],
+              opacity: 0.85,
+            }}
+          >
+            {leaf.glyph}
+          </Text>
+        ))}
+      </View>
+
+      {/* Drifting leaves — animated counterpart to Cyberpunk's embers */}
+      {active && (
+        <View style={StyleSheet.absoluteFill} pointerEvents="none">
+          {leaves.map((l) => (
+            <LeafDrift key={l.id} active={active} initialDelayMs={l.delay} />
+          ))}
+        </View>
+      )}
 
       {/* Falling + stacking pile. The decorative ambient particle stream from
           the previous design has been removed — every falling banana is now
