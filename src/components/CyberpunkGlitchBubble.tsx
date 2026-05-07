@@ -51,11 +51,16 @@ const GHOST_MAGENTA = "#FF3DFF";
 const GHOST_CYAN = "#00D4FF";
 const STEPS_PER_CORNER = 3;
 // Side-tail geometry — sits on the right (own) or left (others) edge,
-// just above the bottom staircase, pointing horizontally toward the
-// sender's PFP.
+// pointing horizontally toward the sender's PFP.
 const TAIL_LENGTH = 11;          // how far the tip extends out from the edge
 const TAIL_BASE_HEIGHT = 18;     // vertical height of the tail base on the edge
-const TAIL_GAP_ABOVE_STAIRCASE = 6; // px between tail base bottom and BR/BL staircase start
+const TAIL_GAP_ABOVE_STAIRCASE = 6; // px between tail base bottom and BL staircase start (left tail only)
+// Own-message PFP is bottom-aligned beside the bubble (avatarOuter is
+// 40px tall + 2px marginBottom = 42px total). Right tail base bottom
+// sits PFP_GAP_ABOVE_TOP px above the PFP top so the tail visibly
+// points at the PFP without overlapping it.
+const PFP_TOTAL_HEIGHT = 42;
+const PFP_GAP_ABOVE_TOP = 4;
 
 function hexToRgba(hex: string, alpha: number): string {
   if (!hex.startsWith("#") || (hex.length !== 7 && hex.length !== 4)) return hex;
@@ -104,15 +109,23 @@ function buildBubblePath(
   }
 
   // Right edge → BR corner start, optionally interrupted by the right
-  // tail just above the BR staircase. Tail extends OUT (positive X)
-  // toward the user's PFP.
+  // tail. The own-message PFP is bottom-aligned with the bubble (sits
+  // beside the bubble at its bottom), so the tail points at the PFP
+  // by sitting JUST ABOVE the PFP top — at local Y = (yB - PFP_HEIGHT - GAP).
+  // For very short bubbles where there's no room above the PFP and
+  // below the TR staircase, we skip the tail entirely.
   if (tailSide === "right") {
-    const tailBaseBottom = yB - r - TAIL_GAP_ABOVE_STAIRCASE;
+    const tailBaseBottom = yB - PFP_TOTAL_HEIGHT - PFP_GAP_ABOVE_TOP;
     const tailBaseTop = tailBaseBottom - TAIL_BASE_HEIGHT;
-    const tailTipY = (tailBaseTop + tailBaseBottom) / 2;
-    parts.push(`L ${xR} ${tailBaseTop}`);
-    parts.push(`L ${xR + TAIL_LENGTH} ${tailTipY}`);
-    parts.push(`L ${xR} ${tailBaseBottom}`);
+    // Need the tail base to fit between TR staircase end (y + r) and
+    // its target position above the PFP. 4px buffer below TR staircase.
+    const fits = tailBaseTop >= y + r + 4;
+    if (fits) {
+      const tailTipY = (tailBaseTop + tailBaseBottom) / 2;
+      parts.push(`L ${xR} ${tailBaseTop}`);
+      parts.push(`L ${xR + TAIL_LENGTH} ${tailTipY}`);
+      parts.push(`L ${xR} ${tailBaseBottom}`);
+    }
     parts.push(`L ${xR} ${yB - r}`);
   } else {
     parts.push(`L ${xR} ${yB - r}`);
@@ -194,16 +207,6 @@ export const CyberpunkGlitchBubble = React.memo(function CyberpunkGlitchBubble({
     return parts.join(" ");
   }, [x, y, width, height]);
 
-  // ── Interference scanline — one corrupted/torn scanline at ~60% down
-  // the bubble. Renders alongside the normal scanlines but brighter
-  // (~3× the alpha), thicker (1.5px), and shifted 3px horizontally so
-  // it reads as a CRT signal-tear among the regular faint lines. Picks
-  // up the bubble's accent color so it ties into the user's identity.
-  const interferencePath = useMemo(() => {
-    if (width <= 0 || height <= 0) return "";
-    const ly = y + height * 0.62;
-    return `M ${x + 9} ${ly} L ${x + width - 3} ${ly}`;
-  }, [x, y, width, height]);
 
   if (width <= 0 || height <= 0) return null;
 
@@ -240,16 +243,6 @@ export const CyberpunkGlitchBubble = React.memo(function CyberpunkGlitchBubble({
         strokeWidth={1}
       />
 
-      {/* 4b. Interference scanline — one brighter, slightly offset
-          line among the others, like a CRT signal tear baked into the
-          bubble. Sits at ~62% down the bubble, shifted 3px right of
-          the normal scanline column. */}
-      <Path
-        path={interferencePath}
-        color={hexToRgba(color, 0.55)}
-        style="stroke"
-        strokeWidth={1.5}
-      />
 
       {/* 5. Magenta chromatic ghost border — offset −1.5px */}
       <Group transform={[{ translateX: -1.5 }]}>
