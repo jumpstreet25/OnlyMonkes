@@ -37,6 +37,16 @@ import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import { SkiaGlowBubble, SkiaGlassFront, SkiaGlowPfp } from "@/components/SkiaGlowBubble";
 import { CyberpunkGlitchBubble } from "@/components/CyberpunkGlitchBubble";
+import Reanimated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  withRepeat,
+  withSequence,
+  withDelay,
+  cancelAnimation,
+  Easing as REasing,
+} from "react-native-reanimated";
 import { getOrExtractNftColor } from "@/lib/nftColor";
 import { setLatestBubbleHeight } from "@/lib/chatViewport";
 import * as Clipboard from "expo-clipboard";
@@ -384,6 +394,10 @@ interface MessageBubbleProps {
    * onLayout pulse to chatViewport.latestBubbleHeightSV so background world
    * layers (Banana Grove pile) can size + reset against this bubble. */
   isLatest?: boolean;
+  /** True when the message just arrived (not part of the initial history
+   * load). Drives the float-in entry animation. Set by ChatMessageList
+   * via the initialMsgIdsRef pre-seeded after history loads. */
+  isNew?: boolean;
 }
 
 /** Custom comparator — only re-render when message content actually changed */
@@ -393,6 +407,7 @@ function arePropsEqual(prev: MessageBubbleProps, next: MessageBubbleProps): bool
   if (prev.isOwn !== next.isOwn) return false;
   if (prev.isBotChannel !== next.isBotChannel) return false;
   if (prev.isLatest !== next.isLatest) return false;
+  if (prev.isNew !== next.isNew) return false;
   // onPin presence changes when admin status toggles
   if (!!prev.onPin !== !!next.onPin) return false;
   if (prev.isGroupAdmin !== next.isGroupAdmin) return false;
@@ -417,6 +432,7 @@ export const MessageBubble = memo(function MessageBubble({
   isGroupAdmin,
   isBotChannel,
   isLatest,
+  isNew,
 }: MessageBubbleProps) {
   const verifiedNft = useAppStore(s => s.verifiedNft);
   const myInboxId = useAppStore(s => s.myInboxId);
@@ -441,6 +457,64 @@ export const MessageBubble = memo(function MessageBubble({
   const useGlitchBubble = isBotSender ? viewerHasCyberpunk : senderHasCyberpunk;
   const hasSkiaGlow =
     !!(shopStyles.hasBubbleCosmetic && shopStyles.glowColor) && !useGlitchBubble;
+
+  // ── Float-in entry + latest-bubble hover bob (Cyberpunk world only) ──
+  // floatY drives the bubble column's translateY:
+  //   - On mount of a NEW message (post history-load arrival): animates
+  //     from +12 to 0 over 400ms — the "drift up + settle" entry.
+  //   - When isLatest && useGlitchBubble (the newest bubble in a chat
+  //     where the world bubble skin is active): continuous ±2.5px bob
+  //     on a 3.5s loop after the entry settles. Stops + returns to 0
+  //     when the bubble is no longer the latest.
+  // floatOpacity pairs with the entry slide for a subtle fade-in.
+  const floatY = useSharedValue(isNew ? 12 : 0);
+  const floatOpacity = useSharedValue(isNew ? 0 : 1);
+
+  useEffect(() => {
+    if (isNew) {
+      floatY.value = 12;
+      floatOpacity.value = 0;
+      floatY.value = withTiming(0, { duration: 400, easing: REasing.out(REasing.quad) });
+      floatOpacity.value = withTiming(1, { duration: 400, easing: REasing.out(REasing.quad) });
+    } else {
+      floatOpacity.value = 1;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isNew]);
+
+  useEffect(() => {
+    // Only the latest bubble bobs, and only inside a Cyberpunk-world chat.
+    // Wait briefly so the bob doesn't fight the entry animation.
+    if (isLatest && useGlitchBubble) {
+      const startBob = () => {
+        floatY.value = withRepeat(
+          withSequence(
+            withTiming(-2.5, { duration: 1750, easing: REasing.inOut(REasing.sin) }),
+            withTiming(2.5, { duration: 1750, easing: REasing.inOut(REasing.sin) }),
+          ),
+          -1,
+          true,
+        );
+      };
+      // If isNew, give the entry animation room before bobbing kicks in.
+      floatY.value = withDelay(isNew ? 450 : 0, withTiming(0, { duration: 1 }));
+      const t = setTimeout(startBob, isNew ? 460 : 10);
+      return () => {
+        clearTimeout(t);
+        cancelAnimation(floatY);
+        floatY.value = withTiming(0, { duration: 200 });
+      };
+    } else {
+      cancelAnimation(floatY);
+      if (!isNew) floatY.value = withTiming(0, { duration: 200 });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLatest, useGlitchBubble]);
+
+  const floatStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: floatY.value }],
+    opacity: floatOpacity.value,
+  }));
   // Max bubble width is 72% of screen minus horizontal padding (14px each side)
   const mediaWidth = Math.round(SCREEN_W * 0.72 - 28);
 
@@ -761,11 +835,15 @@ export const MessageBubble = memo(function MessageBubble({
         </Pressable>
       )}
 
-      {/* ── Bubble column ────────────────────────────────────────────── */}
-      <View style={[
+      {/* ── Bubble column ──────────────────────────────────────────────
+          Reanimated.View so it can carry the float-in entry + latest-
+          bubble hover bob (Cyberpunk world). Bubble alone floats; the
+          PFP stays anchored. */}
+      <Reanimated.View style={[
         styles.bubbleGroup,
         isOwn && !centerBubble && styles.bubbleGroupOwn,
         centerBubble && styles.bubbleGroupCenter,
+        floatStyle,
       ]}>
 
         {/* Sender name moved below bubble for all users */}
@@ -1136,7 +1214,7 @@ export const MessageBubble = memo(function MessageBubble({
           <LinkPreviewCard content={message.editedContent ?? message.content} />
         )}
 
-      </View>
+      </Reanimated.View>
 
       {/* ── Timestamp outside bubble ─────────────────────────────────── */}
       {(

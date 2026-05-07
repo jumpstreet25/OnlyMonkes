@@ -118,8 +118,12 @@ const ChatMessageListInner = React.forwardRef<FlashListRef<ChatMessage>, ChatMes
 
   const renderMessage = useCallback(
     ({ item, index }: { item: ChatMessage; index: number }) => {
-      // Mark item as seen on first render so future loads don't re-flag it.
-      if (!initialMsgIdsRef.current.has(item.id)) initialMsgIdsRef.current.add(item.id);
+      // A message is "new" only on its very first render in this session
+      // — i.e. before the initialMsgIdsRef set has it. The set is pre-
+      // seeded after history loads, so historical messages are never
+      // flagged new. Used by MessageBubble to drive the float-in entry.
+      const isNew = !initialMsgIdsRef.current.has(item.id);
+      if (isNew) initialMsgIdsRef.current.add(item.id);
       // FlashList is `inverted` with newest-first data, so index === 0 is the
       // bottommost (newest) message visually. Banana Grove world reads the
       // latest bubble's measured height to decide when its growing pile
@@ -150,6 +154,7 @@ const ChatMessageListInner = React.forwardRef<FlashListRef<ChatMessage>, ChatMes
               message={item}
               isOwn={item.senderAddress === myAddress}
               isLatest={isLatest}
+              isNew={isNew}
               onReact={handleReact}
               onReply={setReplyingTo}
               onPressUser={handlePressUser}
