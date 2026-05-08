@@ -25,6 +25,8 @@ import { Platform } from "react-native";
 import {
   Canvas,
   Text as SkiaText,
+  LinearGradient,
+  vec,
   matchFont,
   type SkFont,
 } from "@shopify/react-native-skia";
@@ -40,23 +42,24 @@ interface BananaGroveCarvedTextProps {
   pfpColor: string;
 }
 
-// v14 (2026-05-08): carve-fill switched from pure black to palette.deep
-// (the deepest stop of the SAME wood species the bubble surface is using).
-// Reasons:
-//   - Pure black against light woods read as "black holes" punched through
-//     the surface — too harsh, eyestrain-y per user feedback.
-//   - Wood-colored carve (palette.deep) reads as a real recessed cut into
-//     the SAME wood — letters belong to the wood family.
-//   - Carve interior is still meaningfully darker than surface (which
-//     uses light → mid gradient ending at .mid), so contrast is preserved.
-
-// Top-bevel highlight — bright warm cream, full alpha. Visible as a clean
-// sliver peeking from each letter's upper-left edge. Reads as overhead
-// light catching the upper rim of a real V-shaped carve.
-const CARVE_HIGHLIGHT = "#FFE5B0";
-
-const HIGHLIGHT_DX = -2.5;
-const HIGHLIGHT_DY = -2.5;
+// v15 (2026-05-08): single-glyph render with PER-LETTER vertical gradient
+// as the paint. Replaces the 2-layer offset bevel approach.
+//
+// Why: 2-layer offset (cream highlight glyph + dark fill glyph on top) at
+// 15px font produced a visible cream "halo" around each letter, reading
+// as "black on cream" rather than "carved into wood." The fundamental
+// problem: separate cream + dark colors don't belong to the same material.
+//
+// Solution: paint each letter with a vertical gradient running from
+// CARVE_BEVEL_TOP (bright cream — overhead light catching the carve's
+// upper rim) through palette.dark (mid-stop wood tone) to palette.deep
+// (deepest shadow inside the carve). Each letter naturally has bevel
+// shading WITHIN ITS OWN SHAPE — the top edge of the letter is bright,
+// the bottom is dark, exactly mirroring how light hits a V-shaped carve.
+// No separate highlight glyph means no "halo" or "background" perception.
+//
+// This is effectively a per-letter normal-map illusion via gradient.
+const CARVE_BEVEL_TOP = "#FFE0B0";   // bright cream — top rim catching light
 
 /**
  * Word-wrap a paragraph into lines that fit within maxWidth using Skia's
@@ -144,37 +147,33 @@ export const BananaGroveCarvedText = React.memo(function BananaGroveCarvedText({
       pointerEvents="none"
     >
       {lines.map((line, i) => {
-        // Skia <Text> y is the BASELINE, not top. Position so each line
-        // sits within its lineHeight slot with comfortable descender room.
+        // Skia <Text> y is the BASELINE. Each letter spans roughly from
+        // (baselineY - fontSize) at the top to (baselineY + descender)
+        // at the bottom. We paint a vertical gradient across that range
+        // so each letter's TOP is bright cream and BOTTOM is deep shadow.
         const baselineY = PAD_Y + (i + 1) * lineHeight - lineHeight * 0.25;
         const baseX = PAD_X;
+        const glyphTop = baselineY - fontSize * 0.85;
+        const glyphBottom = baselineY + fontSize * 0.18;
         return (
-          <React.Fragment key={i}>
-            {/* 1. Top-left HIGHLIGHT layer — cream, offset up-left by 2.5 px.
-                  Visible as a clear sliver on each letter's upper-left rim.
-                  This is the signature "light catching the carve edge" that
-                  reads as engraved when paired with the dark fill on top. */}
-            <SkiaText
-              text={line}
-              x={baseX + HIGHLIGHT_DX}
-              y={baselineY + HIGHLIGHT_DY}
-              font={font}
-              color={CARVE_HIGHLIGHT}
+          <SkiaText
+            key={i}
+            text={line}
+            x={baseX}
+            y={baselineY}
+            font={font}
+          >
+            {/* Per-letter bevel gradient: cream top → mid wood → deep
+                shadow bottom. This is the carve illusion — light catches
+                the upper rim of each letter, deepest shadow at the
+                bottom of the carve. Same wood species as the surface so
+                it reads as a recessed cut INTO the same plank. */}
+            <LinearGradient
+              start={vec(0, glyphTop)}
+              end={vec(0, glyphBottom)}
+              colors={[CARVE_BEVEL_TOP, palette.dark, palette.deep]}
             />
-            {/* 2. CARVE INTERIOR — palette.deep fill on top. Letters are
-                  the deepest shade of the SAME wood species as the bubble
-                  surface, reading as a recessed cut INTO the wood (not as
-                  a black hole punched through it). The cream highlight
-                  peeks out from underneath at the upper-left only,
-                  exactly where light would catch a V-shaped carve edge. */}
-            <SkiaText
-              text={line}
-              x={baseX}
-              y={baselineY}
-              font={font}
-              color={palette.deep}
-            />
-          </React.Fragment>
+          </SkiaText>
         );
       })}
     </Canvas>
