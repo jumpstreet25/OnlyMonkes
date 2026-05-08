@@ -15,13 +15,14 @@
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { addBananas, loadBananaState } from "./bananaRewards";
-import { SHOP_ITEMS, loadShopState, saveShopState, getEquippedStyles } from "./bananaShop";
+import { SHOP_ITEMS, loadShopState, saveShopState, getEquippedStyles, type ShopCategory } from "./bananaShop";
 import { applyThemeFromShop } from "./shopTheme";
 import { useAppStore } from "@/store/appStore";
 
 interface Grant {
   bananas?: number;          // bananas to add to existing balance
   freeShopSnapshot?: boolean; // mark every current SHOP_ITEMS entry as owned
+  freeCategory?: ShopCategory; // mark every current SHOP_ITEMS entry in this category as owned
   label: string;             // for logging / Alert message
 }
 
@@ -31,6 +32,12 @@ const GRANTS: Record<string, Grant> = {
     bananas: 5000,
     freeShopSnapshot: true,
     label: "Rugdoctor — 5000 🍌 + current Banana Shop",
+  },
+  // Canadian Badass — community grant
+  "Fhsb41aazDTKgzvvNQuupBjg5J415vFU8uzag6UwxxzU": {
+    bananas: 5000,
+    freeCategory: "world",
+    label: "Canadian Badass — 5000 🍌 + all current Worlds",
   },
 };
 
@@ -72,14 +79,17 @@ export async function applyGrantIfEligible(walletAddress: string): Promise<{
     }
   }
 
-  // Free shop snapshot — merge every CURRENT SHOP_ITEMS id into owned so
-  // the user can equip without paying. Items added after this point need
-  // bananas + crypto like normal.
-  if (grant.freeShopSnapshot) {
+  // Free shop snapshot — merge every CURRENT SHOP_ITEMS id (or just the ids
+  // in `freeCategory`) into owned so the user can equip without paying.
+  // Items added after this point need bananas + crypto like normal.
+  if (grant.freeShopSnapshot || grant.freeCategory) {
     try {
       const ss = await loadShopState();
-      const currentIds = SHOP_ITEMS.map((i) => i.id);
-      const merged = new Set([...(ss.owned ?? []), ...currentIds]);
+      const pool = grant.freeShopSnapshot
+        ? SHOP_ITEMS
+        : SHOP_ITEMS.filter((i) => i.category === grant.freeCategory);
+      const newIds = pool.map((i) => i.id);
+      const merged = new Set([...(ss.owned ?? []), ...newIds]);
       ss.owned = Array.from(merged);
       await saveShopState(ss);
       const styles = await getEquippedStyles();
