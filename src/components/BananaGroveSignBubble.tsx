@@ -30,7 +30,6 @@ import {
   Canvas,
   Path,
   Oval,
-  BlurMask,
   LinearGradient,
   vec,
   rect,
@@ -45,16 +44,38 @@ interface BananaGroveSignBubbleProps {
   tailSide?: "left" | "right" | "none";
 }
 
-// Warmer brown palette — more orange-brown saturation than v2's gray-brown.
-const WOOD_LIGHT = "#7A4A26";
-const WOOD_MID = "#5A3318";
-const WOOD_DARK = "#3A2110";
-const WOOD_DEEP = "#1F1206"; // deepest — used for the back face / wood "side"
-const GRAIN_COLOR_BASE = "rgba(20, 10, 4, 1)";
-const HIGHLIGHT_COLOR_BASE = "rgba(180, 130, 80, 1)";
-const KNOT_RING_OUTER = "rgba(20, 10, 4, 0.65)";
-const KNOT_RING_MID = "rgba(40, 22, 10, 0.85)";
-const KNOT_CENTER = "rgba(10, 5, 2, 0.95)";
+// ── Natural wood palettes (v7 2026-05-08) ────────────────────────────────
+// Each species defines its own 4-stop palette: light (top of vertical
+// gradient), mid, dark (bottom), deep (back face — visible wood "side"
+// in shadow). All 4 stops are real-wood color references; nothing is
+// tinted with the sender's PFP color (that lives only in the polished
+// edge in earlier versions, removed in v6).
+//
+// Picker uses HSL lightness + hue: lightness picks the BAND (very-dark →
+// light), hue picks the species WITHIN the band (warm → cool → neutral).
+interface WoodPalette {
+  name: string;
+  light: string;
+  mid: string;
+  dark: string;
+  deep: string;
+}
+
+const WOOD_MAPLE: WoodPalette       = { name: "maple",       light: "#F0DBB0", mid: "#C9A87C", dark: "#997A52", deep: "#5C4828" };
+const WOOD_BIRCH: WoodPalette       = { name: "birch",       light: "#ECD9B0", mid: "#C2A47A", dark: "#8C7548", deep: "#4F3D22" };
+const WOOD_ASH: WoodPalette         = { name: "ash",         light: "#DCC9A8", mid: "#A89576", dark: "#756547", deep: "#423626" };
+const WOOD_PINE: WoodPalette        = { name: "pine",        light: "#DEB887", mid: "#B8895A", dark: "#835E2E", deep: "#4F3815" };
+const WOOD_CEDAR: WoodPalette       = { name: "cedar",       light: "#C99878", mid: "#9E6B4A", dark: "#704528", deep: "#432712" };
+const WOOD_TEAK: WoodPalette        = { name: "teak",        light: "#B89970", mid: "#8B6F4A", dark: "#5F4A2C", deep: "#382B15" };
+const WOOD_OAK: WoodPalette         = { name: "oak",         light: "#7A4A26", mid: "#5A3318", dark: "#3A2110", deep: "#1F1206" };
+const WOOD_CHERRY: WoodPalette      = { name: "cherry",      light: "#A55B3D", mid: "#7B3F26", dark: "#5C2A15", deep: "#3A1808" };
+const WOOD_MAHOGANY: WoodPalette    = { name: "mahogany",    light: "#6B3520", mid: "#4F2415", dark: "#38180A", deep: "#210D04" };
+const WOOD_WALNUT: WoodPalette      = { name: "walnut",      light: "#5A3822", mid: "#3D2514", dark: "#28190B", deep: "#180E06" };
+const WOOD_BLACK_MAPLE: WoodPalette = { name: "black_maple", light: "#3F3025", mid: "#2A1E15", dark: "#19110A", deep: "#0C0805" };
+const WOOD_ROSEWOOD: WoodPalette    = { name: "rosewood",    light: "#5C2D2A", mid: "#3F1D1B", dark: "#2A1311", deep: "#170A09" };
+const WOOD_WENGE: WoodPalette       = { name: "wenge",       light: "#382820", mid: "#221813", dark: "#14100A", deep: "#080606" };
+const WOOD_EBONY: WoodPalette       = { name: "ebony",       light: "#261E18", mid: "#14100C", dark: "#080604", deep: "#030201" };
+
 const FRAME_INNER = "rgba(15, 8, 4, 0.55)";
 const TOP_EDGE_HIGHLIGHT = "rgba(255, 220, 170, 0.45)"; // light catching top of plank
 // 3D thickness — back face offset (down + right) by this many pixels.
@@ -83,6 +104,92 @@ function hexToRgba(hex: string, alpha: number): string {
   }
   if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) return hex;
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+/** Convert hex to HSL — used to pick the wood species from the sender's PFP color. */
+function hexToHsl(hex: string): { h: number; s: number; l: number } {
+  if (!hex.startsWith("#") || hex.length !== 7) return { h: 0, s: 0, l: 0.5 };
+  const r = parseInt(hex.slice(1, 3), 16) / 255;
+  const g = parseInt(hex.slice(3, 5), 16) / 255;
+  const b = parseInt(hex.slice(5, 7), 16) / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  let h = 0;
+  let s = 0;
+  if (max !== min) {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    if (max === r) h = ((g - b) / d) + (g < b ? 6 : 0);
+    else if (max === g) h = ((b - r) / d) + 2;
+    else h = ((r - g) / d) + 4;
+    h /= 6;
+  }
+  return { h, s, l };
+}
+
+/**
+ * Pick a natural wood species based on the sender's PFP color.
+ * Lightness chooses the BAND (very-dark → dark → medium → light → very-light).
+ * Hue/saturation refines WITHIN the band: warm hues get red-tinged species
+ * (Cherry, Mahogany, Rosewood), cool hues get neutral-to-cool species
+ * (Oak, Walnut, Wenge), low-saturation grays get neutral species (Teak,
+ * Black Maple, Ebony). Yellow hues get warm-honey species (Pine, Maple).
+ */
+function pickWoodPalette(pfpColor: string): WoodPalette {
+  const { h, s, l } = hexToHsl(pfpColor);
+
+  // Low-sat grays → neutral species ladder by lightness
+  if (s < 0.18) {
+    if (l < 0.10) return WOOD_EBONY;
+    if (l < 0.22) return WOOD_WENGE;
+    if (l < 0.40) return WOOD_BLACK_MAPLE;
+    if (l < 0.58) return WOOD_TEAK;
+    if (l < 0.78) return WOOD_ASH;
+    return WOOD_BIRCH;
+  }
+
+  // Hue groups (0..1 normalized):
+  //   warm     = red / orange / pink-magenta → red-toned woods
+  //   yellow   = yellow / gold              → honey-toned woods
+  //   cool     = green / cyan / blue        → neutral-to-cool woods
+  const isWarm   = h < 0.07 || h >= 0.85;
+  const isYellow = h >= 0.07 && h < 0.18;
+  const isCool   = h >= 0.18 && h < 0.85;
+
+  // Very-dark band (l < 0.18)
+  if (l < 0.18) {
+    if (isWarm)   return WOOD_ROSEWOOD;
+    if (isYellow) return WOOD_BLACK_MAPLE;
+    if (isCool)   return WOOD_WENGE;
+  }
+
+  // Dark band (0.18-0.35)
+  if (l < 0.35) {
+    if (isWarm)   return WOOD_MAHOGANY;
+    if (isYellow) return WOOD_BLACK_MAPLE;
+    if (isCool)   return WOOD_WALNUT;
+  }
+
+  // Medium band (0.35-0.55)
+  if (l < 0.55) {
+    if (isWarm)   return WOOD_CHERRY;
+    if (isYellow) return WOOD_TEAK;
+    if (isCool)   return WOOD_OAK;
+  }
+
+  // Medium-light band (0.55-0.72)
+  if (l < 0.72) {
+    if (isWarm)   return WOOD_CEDAR;
+    if (isYellow) return WOOD_PINE;
+    if (isCool)   return WOOD_TEAK;
+  }
+
+  // Light band (>= 0.72)
+  if (isWarm)   return WOOD_BIRCH;
+  if (isYellow) return WOOD_MAPLE;
+  if (isCool)   return WOOD_ASH;
+  return WOOD_OAK; // shouldn't reach here, but safe fallback
 }
 
 /** Bubble outline with diagonal corner chips (carved-by-hand feel). */
@@ -218,10 +325,6 @@ function buildKnots(x: number, y: number, w: number, h: number): Knot[] {
   ];
 }
 
-function rgbaWithAlpha(rgbaBase: string, alpha: number): string {
-  return rgbaBase.replace(/, ?1\)$/, `, ${alpha})`);
-}
-
 export const BananaGroveSignBubble = React.memo(function BananaGroveSignBubble({
   width,
   height,
@@ -246,9 +349,12 @@ export const BananaGroveSignBubble = React.memo(function BananaGroveSignBubble({
     () => buildKnots(x, y, width, height),
     [x, y, width, height],
   );
-  if (width <= 0 || height <= 0) return null;
+  // Pick natural wood species from the sender's PFP color (lightness + hue).
+  // Bot's hot pink → warm/dark band → Mahogany. Bright golden NFT → Pine.
+  // Pale white NFT → Maple. Dark green → Walnut. Etc.
+  const palette = useMemo(() => pickWoodPalette(color), [color]);
 
-  const tintBody = hexToRgba(color, 0.14);
+  if (width <= 0 || height <= 0) return null;
 
   return (
     <Canvas
@@ -261,76 +367,73 @@ export const BananaGroveSignBubble = React.memo(function BananaGroveSignBubble({
       }}
       pointerEvents="none"
     >
-      {/* 1. Cast shadow — sharp directional shadow, NOT a centered halo.
-            Tuned to read as the chunk's shadow on the chat below; v6 bumps
-            the offset and alpha so it's clearly visible against the dusk
-            world bg without bleeding into a halo. */}
-      <Path
-        path={bubblePath}
-        color="rgba(0, 0, 0, 0.65)"
-        transform={[{ translateX: 6 }, { translateY: 14 }]}
-      >
-        <BlurMask blur={4} style="normal" />
-      </Path>
+      {/* (v7 2026-05-08) Cast shadow REMOVED — read as a heavy black halo
+          behind the bubble; thickness already shows via the back-face
+          peek-through. (v7) PFP-color tint REMOVED — was causing the
+          bot's bubble to read as "brownish pink"; wood now stays natural. */}
 
-      {/* 2. Back face — visible thickness on the bottom-right edge. Same
-            silhouette as the front face, offset down-right by ~5px. The
-            visible band where this peeks out from behind the front face
-            is the "side" of the 2-inch-thick wood chunk. */}
+      {/* 1. Back face — visible thickness on the bottom-right edge. Same
+            silhouette as the front face, offset down-right by 10px. The
+            visible band where this peeks out is the wood "side" — the
+            entire reason the bubble reads as a 2-inch-thick chunk. Color
+            is the species' deepest stop (in-shadow side). */}
       <Path
         path={bubblePath}
-        color={WOOD_DEEP}
+        color={palette.deep}
         transform={[{ translateX: THICKNESS_OFFSET_X }, { translateY: THICKNESS_OFFSET_Y }]}
       />
 
-      {/* 3. Wood gradient body — 3-stop warm brown (the plank's TOP face) */}
+      {/* 2. Wood gradient body — species' light → mid → dark */}
       <Path path={bubblePath}>
         <LinearGradient
           start={vec(0, y)}
           end={vec(0, y + height)}
-          colors={[WOOD_LIGHT, WOOD_MID, WOOD_DARK]}
+          colors={[palette.light, palette.mid, palette.dark]}
         />
       </Path>
 
-      {/* 4. PFP-color tint — wood "species" undertone per sender. */}
-      <Path path={bubblePath} color={tintBody} />
-
-      {/* 5. Wood grain — dark cubic S-curves + lighter highlight strokes */}
+      {/* 3. Wood grain — dark strokes use palette.deep, light highlights
+            use palette.light. Both tones stay within the species' family
+            so grain reads natural for that wood (subtle on light wood,
+            visible on dark wood, never artificial). */}
       {grainStrokes.map((g, i) => (
         <Path
           key={`grain-${i}`}
           path={g.path}
-          color={rgbaWithAlpha(g.isHighlight ? HIGHLIGHT_COLOR_BASE : GRAIN_COLOR_BASE, g.alpha)}
+          color={hexToRgba(g.isHighlight ? palette.light : palette.deep, g.alpha)}
           style="stroke"
           strokeWidth={g.width}
           strokeCap="round"
         />
       ))}
 
-      {/* 6. Wood knots — concentric rings (outer ring + middle fill + dark center) */}
+      {/* 4. Wood knots — concentric rings using palette.deep at varied
+            alpha. Knots are inherently darker than the wood surface, so
+            using palette.deep gives the right "carbonized" look across
+            all species (stark on Maple, subtle on Wenge). */}
       {knots.map((k, i) => (
         <React.Fragment key={`knot-${i}`}>
-          {/* Outer dark ring */}
+          {/* Outer ring */}
           <Oval
             rect={rect(k.cx - k.rx, k.cy - k.ry, k.rx * 2, k.ry * 2)}
-            color={KNOT_RING_OUTER}
+            color={hexToRgba(palette.deep, 0.65)}
             style="stroke"
             strokeWidth={1}
           />
-          {/* Middle medium-dark fill */}
+          {/* Middle fill */}
           <Oval
             rect={rect(k.cx - k.rx * 0.7, k.cy - k.ry * 0.7, k.rx * 1.4, k.ry * 1.4)}
-            color={KNOT_RING_MID}
+            color={hexToRgba(palette.deep, 0.85)}
           />
           {/* Inner darkest center */}
           <Oval
             rect={rect(k.cx - k.rx * 0.32, k.cy - k.ry * 0.32, k.rx * 0.64, k.ry * 0.64)}
-            color={KNOT_CENTER}
+            color={hexToRgba(palette.deep, 0.98)}
           />
         </React.Fragment>
       ))}
 
-      {/* 7. Recessed inner frame — chiseled border feel */}
+      {/* 5. Recessed inner frame — chiseled border feel */}
       <Path
         path={bubblePath}
         color={FRAME_INNER}
@@ -342,7 +445,7 @@ export const BananaGroveSignBubble = React.memo(function BananaGroveSignBubble({
           consistently flagged it as a "colored outline around the wood".
           The wood now stands without a chrome ring. */}
 
-      {/* 8. Top-edge highlight — thin warm light stroke just inside the
+      {/* 6. Top-edge highlight — thin warm light stroke just inside the
             top edge. Reinforces the 3D thickness — light catching the top
             face of the wood chunk. */}
       <Path
@@ -353,7 +456,7 @@ export const BananaGroveSignBubble = React.memo(function BananaGroveSignBubble({
         strokeCap="round"
       />
 
-      {/* 9. Bottom-edge plank seam — thin DARK stroke at the bottom of the
+      {/* 7. Bottom-edge plank seam — thin DARK stroke at the bottom of the
             wood top face. Marks where the top face meets the side face,
             making the thickness illusion read more clearly. */}
       <Path
