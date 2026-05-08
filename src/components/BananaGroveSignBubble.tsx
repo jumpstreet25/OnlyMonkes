@@ -25,7 +25,7 @@
  *
  * Contract matches CyberpunkGlitchBubble for drop-in swap in MessageBubble.
  */
-import React, { useEffect, useMemo } from "react";
+import React, { useMemo } from "react";
 import {
   Canvas,
   Path,
@@ -34,13 +34,6 @@ import {
   vec,
   rect,
 } from "@shopify/react-native-skia";
-import {
-  useSharedValue,
-  useDerivedValue,
-  withRepeat,
-  withTiming,
-  Easing,
-} from "react-native-reanimated";
 
 interface BananaGroveSignBubbleProps {
   width: number;
@@ -86,10 +79,13 @@ const WOOD_EBONY: WoodPalette       = { name: "ebony",       light: "#261E18", m
 const FRAME_INNER = "rgba(15, 8, 4, 0.55)";
 const TOP_EDGE_HIGHLIGHT = "rgba(255, 220, 170, 0.45)"; // light catching top of plank
 // 3D thickness — back face offset (down + right) by this many pixels.
-// Doubled in v6 (5 → 10) so the chunk's thickness is unmistakable; v5's 5px
-// was getting lost against the world's dark gradient.
-const THICKNESS_OFFSET_X = 10;
-const THICKNESS_OFFSET_Y = 10;
+// v9 (2026-05-08): 10 → 6. v6's 10px was reading as a heavy shadow strip;
+// 6px gives a clearer "side of a wood block" look. Combined with the v9
+// front-face gradient change (2-stop instead of 3-stop), the back face
+// now sits clearly behind a brighter front face, no longer registering
+// as a shadow.
+const THICKNESS_OFFSET_X = 6;
+const THICKNESS_OFFSET_Y = 6;
 
 const PAD = 22;
 const TAIL_LENGTH = 10;
@@ -364,23 +360,10 @@ function buildCracks(x: number, y: number, w: number, h: number): string[] {
   return cracks;
 }
 
-/**
- * Translucent PFP-color stain patches — 3 soft oval blobs distributed
- * across the wood surface. Read as resin pooling / illuminated wood stain
- * trapped in the grain. Lower alpha so the wood color dominates and the
- * PFP color "bleeds" through subtly. Phase 1 — full-bubble overlay (not
- * clipped to text glyph shapes; that's Phase 2 with Skia text).
- */
-interface StainBlob { cx: number; cy: number; rx: number; ry: number; }
-
-function buildStainBlobs(x: number, y: number, w: number, h: number): StainBlob[] {
-  if (w < 80 || h < 30) return [];
-  return [
-    { cx: x + w * 0.30, cy: y + h * 0.45, rx: w * 0.18, ry: h * 0.30 },
-    { cx: x + w * 0.65, cy: y + h * 0.55, rx: w * 0.22, ry: h * 0.32 },
-    { cx: x + w * 0.85, cy: y + h * 0.30, rx: w * 0.12, ry: h * 0.22 },
-  ];
-}
+// (v9 2026-05-08) Stain blob system removed entirely — the Phase 1
+// full-bubble overlay read as floating colored orbs on top of the wood,
+// not as in-groove resin. Per-glyph color resin requires the Phase 2
+// Skia-text rendering refactor (parked, multi-day project).
 
 export const BananaGroveSignBubble = React.memo(function BananaGroveSignBubble({
   width,
@@ -410,27 +393,9 @@ export const BananaGroveSignBubble = React.memo(function BananaGroveSignBubble({
     () => buildCracks(x, y, width, height),
     [x, y, width, height],
   );
-  const stainBlobs = useMemo(
-    () => buildStainBlobs(x, y, width, height),
-    [x, y, width, height],
-  );
 
   // Pick natural wood species from the sender's PFP color (lightness + hue).
   const palette = useMemo(() => pickWoodPalette(color), [color]);
-
-  // Subtle pulse for the PFP-color stain blobs — opacity oscillates 0.08 →
-  // 0.22 over 5s loops (matches user spec: "Glow opacity should fluctuate
-  // between 8%–22%, pulse subtly and asynchronously").
-  const stainPulse = useSharedValue(0);
-  useEffect(() => {
-    stainPulse.value = withRepeat(
-      withTiming(1, { duration: 5000, easing: Easing.inOut(Easing.sin) }),
-      -1,
-      true,
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  const stainOpacity = useDerivedValue(() => 0.08 + stainPulse.value * 0.14);
 
   if (width <= 0 || height <= 0) return null;
 
@@ -461,12 +426,17 @@ export const BananaGroveSignBubble = React.memo(function BananaGroveSignBubble({
         transform={[{ translateX: THICKNESS_OFFSET_X }, { translateY: THICKNESS_OFFSET_Y }]}
       />
 
-      {/* 2. Wood gradient body — species' light → mid → dark */}
+      {/* 2. Wood gradient body — 2-stop light → mid (v9 2026-05-08).
+            Was 3-stop light/mid/dark; the .dark bottom merged into the
+            back-face .dark, making one continuous dark band that read
+            as a heavy shadow. Now the front-face bottom is .mid and the
+            back face is .dark, giving clear front-vs-back light/shadow
+            contrast. */}
       <Path path={bubblePath}>
         <LinearGradient
           start={vec(0, y)}
           end={vec(0, y + height)}
-          colors={[palette.light, palette.mid, palette.dark]}
+          colors={[palette.light, palette.mid]}
         />
       </Path>
 
@@ -524,21 +494,11 @@ export const BananaGroveSignBubble = React.memo(function BananaGroveSignBubble({
         />
       ))}
 
-      {/* 6. Translucent PFP-color stain blobs — soft resin-like patches
-            of the sender's color absorbed into the wood. Pulse 0.08–0.22
-            on a 5s sine loop for the "subsurface glow" feel from the
-            spec. Phase 1 — full-bubble overlay (not yet clipped to text
-            shape; that's Phase 2 with Skia text rendering). */}
-      {stainBlobs.map((b, i) => (
-        <Oval
-          key={`stain-${i}`}
-          rect={rect(b.cx - b.rx, b.cy - b.ry, b.rx * 2, b.ry * 2)}
-          color={color}
-          opacity={stainOpacity}
-        />
-      ))}
+      {/* (v9 2026-05-08) Stain blobs removed — read as orbs on top of
+          wood, not as in-groove resin. Per-glyph color requires Phase 2
+          (Skia text rendering refactor). */}
 
-      {/* 7. Recessed inner frame — chiseled border feel */}
+      {/* 6. Recessed inner frame — chiseled border feel */}
       <Path
         path={bubblePath}
         color={FRAME_INNER}
@@ -550,7 +510,7 @@ export const BananaGroveSignBubble = React.memo(function BananaGroveSignBubble({
           consistently flagged it as a "colored outline around the wood".
           The wood now stands without a chrome ring. */}
 
-      {/* 8. Top-edge highlight — thin warm light stroke just inside the
+      {/* 7. Top-edge highlight — thin warm light stroke just inside the
             top edge. Reinforces the 3D thickness — light catching the top
             face of the wood chunk. */}
       <Path
@@ -561,7 +521,7 @@ export const BananaGroveSignBubble = React.memo(function BananaGroveSignBubble({
         strokeCap="round"
       />
 
-      {/* 9. Bottom-edge plank seam — thin DARK stroke at the bottom of the
+      {/* 8. Bottom-edge plank seam — thin DARK stroke at the bottom of the
             wood top face. Marks where the top face meets the side face,
             making the thickness illusion read more clearly. */}
       <Path
