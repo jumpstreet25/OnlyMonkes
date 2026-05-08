@@ -38,6 +38,7 @@ import { BlurView } from "expo-blur";
 import { SkiaGlowBubble, SkiaGlassFront, SkiaGlowPfp } from "@/components/SkiaGlowBubble";
 import { CyberpunkGlitchBubble } from "@/components/CyberpunkGlitchBubble";
 import { BananaGroveSignBubble } from "@/components/BananaGroveSignBubble";
+import { BananaGroveCarvedText } from "@/components/BananaGroveCarvedText";
 import Reanimated, {
   useSharedValue,
   useAnimatedStyle,
@@ -1053,43 +1054,55 @@ export const MessageBubble = memo(function MessageBubble({
                         style={{ fontSize: 15 * (useAppStore.getState().textScale ?? 1) }}
                       />
                     </View>
-                  ) : (
-                    <Text
-                      style={[
-                        styles.content,
-                        { color: textColor, fontSize: 15 * (useAppStore.getState().textScale ?? 1) },
-                        shopStyles.fontWeight === "bold" ? { fontWeight: "bold" } : null,
-                        shopStyles.fontFamily === "mono" ? { fontFamily: FONTS.mono } : null,
-                        shopStyles.hasBubbleCosmetic ? { textShadowColor: "rgba(0,0,0,0.5)", textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 } : null,
-                        shopStyles.textGlow ? { textShadowColor: "rgba(255,255,255,0.6)", textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 8 } : null,
-                        // Carved-INTO-wood effect (v5 2026-05-08). Cream
-                        // text + dark drop shadow looked PAINTED-ON-TOP,
-                        // not engraved. Real carved letters are darker
-                        // than the wood (the carve interior is in shadow)
-                        // with a subtle warm HIGHLIGHT on the upper edge
-                        // (where light catches the top of the carve). The
-                        // upper-left textShadow simulates that highlight.
-                        // letterSpacing widens the letters slightly so
-                        // they look chiseled, not printed.
-                        useBananaGroveBubble ? {
-                          // v8 (2026-05-08) carve-strengthening: deepest
-                          // text color, larger upper-left highlight offset,
-                          // slightly more letter-spacing for chiseled feel.
-                          // True per-letter resin/glow/AO awaits Phase 2
-                          // (Skia text rendering refactor).
-                          color: "#080402",
-                          textShadowColor: "rgba(255, 230, 175, 0.95)",
-                          textShadowOffset: { width: -1.5, height: -1.5 },
-                          textShadowRadius: 1.2,
-                          fontWeight: "700",
-                          letterSpacing: 0.5,
-                        } : null,
-                      ]}
-                      selectable={false}
-                    >
-                      {renderRichContent(displayContent, handlePressMention, onTokenPress)}
-                    </Text>
-                  )}
+                  ) : (() => {
+                    // Phase 2 Day 1+2 (2026-05-08): for PLAIN-TEXT messages
+                    // in Banana Grove (no @mention / $TOKEN), render via the
+                    // Skia carved-text component. Messages with rich content
+                    // tokens still go through the RN Text path so mentions /
+                    // $TOKEN remain tappable. Day 5 will bring rich content
+                    // into Skia. The fontSize matches the RN Text fontSize
+                    // exactly so the layout footprint stays equivalent.
+                    const baseFontSize = 15 * (useAppStore.getState().textScale ?? 1);
+                    const hasRichTokens = displayContent.search(RICH_SPLIT) !== -1;
+                    const useSkiaCarve = useBananaGroveBubble && !hasRichTokens && !shopStyles.hasBubbleCosmetic && !shopStyles.textGlow;
+                    if (useSkiaCarve) {
+                      return (
+                        <BananaGroveCarvedText
+                          text={displayContent}
+                          maxWidth={Math.round(SCREEN_W * 0.72 - 60)}
+                          fontSize={baseFontSize}
+                          pfpColor={glitchAccent}
+                        />
+                      );
+                    }
+                    return (
+                      <Text
+                        style={[
+                          styles.content,
+                          { color: textColor, fontSize: baseFontSize },
+                          shopStyles.fontWeight === "bold" ? { fontWeight: "bold" } : null,
+                          shopStyles.fontFamily === "mono" ? { fontFamily: FONTS.mono } : null,
+                          shopStyles.hasBubbleCosmetic ? { textShadowColor: "rgba(0,0,0,0.5)", textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 } : null,
+                          shopStyles.textGlow ? { textShadowColor: "rgba(255,255,255,0.6)", textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 8 } : null,
+                          // Banana Grove fallback for messages with rich
+                          // tokens (mentions, $TOKEN). Same v11 carved
+                          // shadow recipe — Day 5 will replace this with a
+                          // hybrid Skia/RN approach.
+                          useBananaGroveBubble ? {
+                            color: "#080402",
+                            textShadowColor: "rgba(255, 230, 175, 0.95)",
+                            textShadowOffset: { width: -1.5, height: -1.5 },
+                            textShadowRadius: 1.2,
+                            fontWeight: "700",
+                            letterSpacing: 0.5,
+                          } : null,
+                        ]}
+                        selectable={false}
+                      >
+                        {renderRichContent(displayContent, handlePressMention, onTokenPress)}
+                      </Text>
+                    );
+                  })()}
                   {message.editedAt && (
                     <Text style={[styles.editedLabel, { color: textColor }]}>(edited)</Text>
                   )}
