@@ -37,6 +37,8 @@ import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import { SkiaGlowBubble, SkiaGlassFront, SkiaGlowPfp } from "@/components/SkiaGlowBubble";
 import { CyberpunkGlitchBubble } from "@/components/CyberpunkGlitchBubble";
+import { BananaGroveSignBubble } from "@/components/BananaGroveSignBubble";
+import { BananaGroveVineBubble } from "@/components/BananaGroveVineBubble";
 import Reanimated, {
   useSharedValue,
   useAnimatedStyle,
@@ -455,8 +457,15 @@ export const MessageBubble = memo(function MessageBubble({
     ?? (shopStyles.worldId as string | undefined);
   const useGlitchBubble = effectiveWorld === "world_solana_cyberpunk";
   const useBananaGroveEntry = effectiveWorld === "world_banana_grove";
+  // ── Banana Grove bubble chrome — A/B preview, 2026-05-08 ──
+  // While the user evaluates Sign vs Vine, render Sign for own messages and
+  // Vine for received so both styles appear simultaneously in chat. Single
+  // OTA, side-by-side empirical comparison. After user picks the winner,
+  // collapse this to a single component and rip out the loser.
+  const useBananaGroveBubble = useBananaGroveEntry;
+  const hasWorldChrome = useGlitchBubble || useBananaGroveBubble;
   const hasSkiaGlow =
-    !!(shopStyles.hasBubbleCosmetic && shopStyles.glowColor) && !useGlitchBubble;
+    !!(shopStyles.hasBubbleCosmetic && shopStyles.glowColor) && !hasWorldChrome;
 
   // ── Float-in entry + latest-bubble hover bob (Cyberpunk world only) ──
   // floatY drives the bubble column's translateY:
@@ -755,7 +764,7 @@ export const MessageBubble = memo(function MessageBubble({
   // Cached on disk by inboxId so it's free after first extraction across
   // the whole app. Updates state once resolved.
   useEffect(() => {
-    if (!useGlitchBubble) return;
+    if (!hasWorldChrome) return;
     if (isBot) {
       setGlitchAccent(BOT_GLITCH_COLOR);
       return;
@@ -768,7 +777,7 @@ export const MessageBubble = memo(function MessageBubble({
       })
       .catch(() => { /* keep fallback on failure */ });
     return () => { cancelled = true; };
-  }, [useGlitchBubble, isBot, avatarUri, primarySenderInbox, accentFallback]);
+  }, [hasWorldChrome, isBot, avatarUri, primarySenderInbox, accentFallback]);
 
   // PFP Aura color — uses equipped bubble glow color, falls back to NFT dominant color
   const pfpAuraColor = shopStyles.pfpAuraEnabled
@@ -913,6 +922,31 @@ export const MessageBubble = memo(function MessageBubble({
                   tailSide={centerBubble ? "none" : isOwn ? "right" : "left"}
                 />
               ) : null}
+              {/* ── Banana Grove world chrome (A/B preview, 2026-05-08) ──
+                  Sign for own messages, Vine for received messages so the
+                  user can compare both styles in the same chat without two
+                  OTAs. Bot uses Vine (treated as a "received" message for
+                  this preview). After user picks the winner, collapse to a
+                  single component. */}
+              {useBananaGroveBubble && bubbleSize ? (
+                isOwn ? (
+                  <BananaGroveSignBubble
+                    width={bubbleSize.w}
+                    height={bubbleSize.h}
+                    color={glitchAccent}
+                    radius={14}
+                    tailSide={centerBubble ? "none" : "right"}
+                  />
+                ) : (
+                  <BananaGroveVineBubble
+                    width={bubbleSize.w}
+                    height={bubbleSize.h}
+                    color={glitchAccent}
+                    radius={14}
+                    tailSide={centerBubble ? "none" : "left"}
+                  />
+                )
+              ) : null}
               {/* Glass bubble — dark glass with glow-tinted border */}
               <View
                 // Always attach onLayout. If we gate this prop on the world
@@ -924,7 +958,7 @@ export const MessageBubble = memo(function MessageBubble({
                 // free; an unattached layout pass is what costs us.
                 onLayout={(e) => {
                   const { width: bw, height: bh } = e.nativeEvent.layout;
-                  if (hasSkiaGlow || useGlitchBubble) {
+                  if (hasSkiaGlow || hasWorldChrome) {
                     if (!bubbleSize || Math.abs(bubbleSize.w - bw) > 1 || Math.abs(bubbleSize.h - bh) > 1) {
                       setBubbleSize({ w: bw, h: bh });
                     }
@@ -938,8 +972,8 @@ export const MessageBubble = memo(function MessageBubble({
                 isOwn && !centerBubble ? styles.glassBubbleOwn : null,
                 !isOwn && !centerBubble ? styles.glassBubbleOther : null,
                 centerBubble && styles.glassBubbleBot,
-                // Skia / glitch overlay handles bubble surface — make RN View transparent
-                (hasSkiaGlow || useGlitchBubble) ? {
+                // Skia / world-chrome overlay handles bubble surface — make RN View transparent
+                (hasSkiaGlow || hasWorldChrome) ? {
                   borderRadius: 22,
                   paddingHorizontal: 20,
                   paddingVertical: 14,
@@ -947,10 +981,10 @@ export const MessageBubble = memo(function MessageBubble({
                   borderWidth: 0,
                 } : null,
                 // Non-Skia shop overrides
-                !hasSkiaGlow && !useGlitchBubble && shopStyles.bgColor ? { backgroundColor: shopStyles.bgColor as string } : null,
-                !hasSkiaGlow && !useGlitchBubble && shopStyles.bgOpacity != null ? { backgroundColor: `rgba(26, 26, 40, ${shopStyles.bgOpacity})` } : null,
-                !hasSkiaGlow && !useGlitchBubble && shopStyles.borderOpacity != null ? { borderColor: `rgba(248, 248, 255, ${shopStyles.borderOpacity})` } : null,
-                isOwn && !useGlitchBubble && shopStyles.pfpThemeEnabled && nftDominantColor && !shopStyles.glowColor ? { borderColor: nftDominantColor + "30" } : null,
+                !hasSkiaGlow && !hasWorldChrome && shopStyles.bgColor ? { backgroundColor: shopStyles.bgColor as string } : null,
+                !hasSkiaGlow && !hasWorldChrome && shopStyles.bgOpacity != null ? { backgroundColor: `rgba(26, 26, 40, ${shopStyles.bgOpacity})` } : null,
+                !hasSkiaGlow && !hasWorldChrome && shopStyles.borderOpacity != null ? { borderColor: `rgba(248, 248, 255, ${shopStyles.borderOpacity})` } : null,
+                isOwn && !hasWorldChrome && shopStyles.pfpThemeEnabled && nftDominantColor && !shopStyles.glowColor ? { borderColor: nftDominantColor + "30" } : null,
                 isBot ? { borderColor: BOT_THEME_COLOR + "35", backgroundColor: "rgba(0, 201, 167, 0.06)" } : null,
                 // World-aware bubble transparency: when MY world is equipped,
                 // drop bubble bg from 0.65 → 0.32 so the world layer (bananas,
@@ -960,13 +994,13 @@ export const MessageBubble = memo(function MessageBubble({
                 // (it owns its own surface). Skips when shopStyles.bgColor is
                 // explicitly set by an equipped Bubble cosmetic — the user
                 // chose that color and we shouldn't override it. Also skips
-                // when useGlitchBubble — glitch overlay paints its own body.
-                !hasSkiaGlow && !useGlitchBubble && !isBot && myShopStyles?.worldId && !shopStyles.bgColor
+                // when world chrome is active — overlay paints its own body.
+                !hasSkiaGlow && !hasWorldChrome && !isBot && myShopStyles?.worldId && !shopStyles.bgColor
                   ? { backgroundColor: "rgba(26, 26, 40, 0.32)" }
                   : null,
               ]}>
-                {/* Glass gradient — only for non-Skia, non-glitch bubbles */}
-                {!hasSkiaGlow && !useGlitchBubble ? (
+                {/* Glass gradient — only for non-Skia, non-world-chrome bubbles */}
+                {!hasSkiaGlow && !hasWorldChrome ? (
                   <LinearGradient
                     colors={["rgba(248,248,255,0.08)", "rgba(0,0,0,0.15)"]}
                     start={{ x: 0.5, y: 0 }}
@@ -974,7 +1008,7 @@ export const MessageBubble = memo(function MessageBubble({
                     style={[StyleSheet.absoluteFill, { borderRadius: 22 }]}
                   />
                 ) : null}
-                {!hasSkiaGlow && !useGlitchBubble ? <View style={styles.glassHighlight} /> : null}
+                {!hasSkiaGlow && !hasWorldChrome ? <View style={styles.glassHighlight} /> : null}
 
               {/* Non-media content rendered inside glass bubble */}
               {message.content.startsWith("STICKER:") ? (
