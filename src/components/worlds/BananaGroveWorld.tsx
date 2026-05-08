@@ -492,11 +492,14 @@ function LeafDrift({ active, initialDelayMs }: LeafDriftProps) {
 // with two flanking palm-tree silhouettes. Sits in front of the gradient but
 // behind everything else so the world reads as "tropical scene at dusk"
 // instead of "near-black void with chrome."
-// Pushed down 2026-05-08 — palm tops should sit JUST ABOVE the input bar,
-// floor silhouette behind it. Was 0.7 (too high, looked like a wall);
-// now anchored 12px above the screen bottom so the floor is mostly hidden
-// and only the palm canopies peek above the message bar.
-const SKYLINE_BASE_Y = SCREEN_H - 12;
+// v3 2026-05-08 — raised so the floor visibly meets the banana pile (user
+// asked for floor at "top of the banana pile so the bananas are on the
+// jungle floor"). Pile + mower live at the very bottom of the screen
+// (pileBottomPx=0); raising SKYLINE_BASE_Y to SCREEN_H - 50 puts the
+// floor's TOP edge at SCREEN_H - 46 to SCREEN_H - 24 (varying with the
+// bump pattern), so the bananas appear to be resting on the visible
+// jungle floor when seen through the translucent input bar.
+const SKYLINE_BASE_Y = SCREEN_H - 50;
 const SKYLINE_COLOR = "rgba(8, 18, 12, 0.92)"; // slightly translucent so gradient bleeds through
 
 const JUNGLE_FLOOR_PATH = (() => {
@@ -536,8 +539,11 @@ function buildPalmPaths(baseX: number, mirror: boolean, height: number): { trunk
   return { trunk, fronds };
 }
 
-const PALM_LEFT = buildPalmPaths(SCREEN_W * 0.16, false, 130);
-const PALM_RIGHT = buildPalmPaths(SCREEN_W * 0.84, true, 145);
+// Taller trees (v3 2026-05-08) — was 130 / 145, felt stubby. New 200 / 225
+// puts the tallest fronds well into the chat area, reading as towering
+// jungle palms framing the conversation.
+const PALM_LEFT = buildPalmPaths(SCREEN_W * 0.16, false, 200);
+const PALM_RIGHT = buildPalmPaths(SCREEN_W * 0.84, true, 225);
 
 function JungleSkyline() {
   return (

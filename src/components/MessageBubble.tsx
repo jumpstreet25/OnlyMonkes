@@ -1076,6 +1076,16 @@ export const MessageBubble = memo(function MessageBubble({
                         shopStyles.fontFamily === "mono" ? { fontFamily: FONTS.mono } : null,
                         shopStyles.hasBubbleCosmetic ? { textShadowColor: "rgba(0,0,0,0.5)", textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 } : null,
                         shopStyles.textGlow ? { textShadowColor: "rgba(255,255,255,0.6)", textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 8 } : null,
+                        // Etched-into-wood effect for Banana Grove Sign
+                        // (own messages). Hard 1px dark inset shadow with
+                        // zero blur — text reads as engraved/burnt into
+                        // the wood surface.
+                        useBananaGroveBubble && isOwn ? {
+                          color: "#F5E0C0",
+                          textShadowColor: "rgba(0, 0, 0, 0.85)",
+                          textShadowOffset: { width: 0, height: 1.2 },
+                          textShadowRadius: 0,
+                        } : null,
                       ]}
                       selectable={false}
                     >
