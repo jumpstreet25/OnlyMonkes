@@ -1062,15 +1062,22 @@ export const MessageBubble = memo(function MessageBubble({
                         shopStyles.fontFamily === "mono" ? { fontFamily: FONTS.mono } : null,
                         shopStyles.hasBubbleCosmetic ? { textShadowColor: "rgba(0,0,0,0.5)", textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 } : null,
                         shopStyles.textGlow ? { textShadowColor: "rgba(255,255,255,0.6)", textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 8 } : null,
-                        // Etched-into-wood effect for Banana Grove Sign
-                        // (all messages — own AND received). Hard 1.2px
-                        // dark inset shadow with zero blur reads as
-                        // engraved/burnt into the wood surface.
+                        // Carved-INTO-wood effect (v5 2026-05-08). Cream
+                        // text + dark drop shadow looked PAINTED-ON-TOP,
+                        // not engraved. Real carved letters are darker
+                        // than the wood (the carve interior is in shadow)
+                        // with a subtle warm HIGHLIGHT on the upper edge
+                        // (where light catches the top of the carve). The
+                        // upper-left textShadow simulates that highlight.
+                        // letterSpacing widens the letters slightly so
+                        // they look chiseled, not printed.
                         useBananaGroveBubble ? {
-                          color: "#F5E0C0",
-                          textShadowColor: "rgba(0, 0, 0, 0.85)",
-                          textShadowOffset: { width: 0, height: 1.2 },
-                          textShadowRadius: 0,
+                          color: "#1A0D04",
+                          textShadowColor: "rgba(255, 230, 175, 0.65)",
+                          textShadowOffset: { width: -0.7, height: -0.7 },
+                          textShadowRadius: 0.5,
+                          fontWeight: "700",
+                          letterSpacing: 0.3,
                         } : null,
                       ]}
                       selectable={false}
