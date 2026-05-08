@@ -1,26 +1,29 @@
 /**
- * BananaGroveVineBubble — golden vine traces the bubble perimeter with
- * banana-leaf shapes sprouting at each corner.
- * Sketch v1, 2026-05-08.
+ * BananaGroveVineBubble — smooth bubble with two-layer gold neon vine
+ * border tracing the perimeter.
+ * v2, 2026-05-08.
+ *
+ * v2 changes:
+ *   - Corner leaves removed. Were ornament that didn't earn their visual
+ *     cost; the dual-layer gold neon border carries the identity alone.
+ *   - Sender-keyed halo — was a fixed gold regardless of sender, which
+ *     made the bot (teal palette) wear a gold halo. Now derives from
+ *     `color` so each sender's halo matches their identity.
  *
  * Visual identity:
  *   - Smooth rounded-rect silhouette (organic — opposite of Cyberpunk's
  *     pixelated stairsteps).
  *   - Two-layer vine border: thicker low-alpha gold vine outside, brighter
- *     thin gold vine inside (gives the "thick neon" feel without saturating).
- *   - Banana-leaf shapes at each of the 4 corners, drawn outward from each
- *     corner anchor point. Two-tone green (dark fill + light highlight).
- *   - Smooth tapered tail toward PFP (curved bezier — not a triangular
- *     pointer; reads as a vine tendril pointing).
- *   - Warm golden halo behind, like sunlight glowing through canopy.
+ *     thin gold vine inside.
+ *   - Smooth tapered tail toward PFP (curved bezier — vine tendril
+ *     pointing at the sender's PFP).
  *
  * Layers (back → front):
- *   1. Warm golden halo
+ *   1. Sender-keyed halo
  *   2. Dark green-brown body (semi-transparent for text contrast)
  *   3. PFP-color tint underlay (low alpha)
  *   4. Outer vine — thicker gold low-alpha stroke
  *   5. Inner vine — thinner gold high-alpha stroke
- *   6. Corner leaves — dark green base + light green highlight
  *
  * Contract matches CyberpunkGlitchBubble for drop-in swap in MessageBubble.
  */
@@ -29,22 +32,18 @@ import {
   Canvas,
   Path,
   BlurMask,
-  Group,
 } from "@shopify/react-native-skia";
 
 interface BananaGroveVineBubbleProps {
   width: number;
   height: number;
-  /** Sender's PFP dominant color — drives the inner tint underlay. */
+  /** Sender's PFP dominant color — drives the inner tint underlay + halo. */
   color: string;
   radius?: number;
   tailSide?: "left" | "right" | "none";
 }
 
 const VINE_GOLD = "#FFD24A";
-const HALO_GOLD = "rgba(255, 200, 92, 0.34)";
-const LEAF_GREEN_DARK = "#5D8A38";
-const LEAF_GREEN_LIGHT = "#A6D070";
 
 const PAD = 22;
 const TAIL_LENGTH = 12;
@@ -119,32 +118,6 @@ function buildBubblePath(
   return parts.join(" ");
 }
 
-/**
- * Banana-leaf shape — base anchored at (baseX, baseY), extends outward in
- * `angleDeg` direction for `length` px, max width `width` px at midpoint.
- * Returns a closed teardrop path.
- */
-function leafPath(
-  baseX: number,
-  baseY: number,
-  length: number,
-  angleDeg: number,
-  width: number,
-): string {
-  const rad = (angleDeg * Math.PI) / 180;
-  const tipX = baseX + Math.cos(rad) * length;
-  const tipY = baseY + Math.sin(rad) * length;
-  const perpRad = rad + Math.PI / 2;
-  const halfW = width / 2;
-  const midX = baseX + Math.cos(rad) * length * 0.5;
-  const midY = baseY + Math.sin(rad) * length * 0.5;
-  const ctrl1X = midX + Math.cos(perpRad) * halfW;
-  const ctrl1Y = midY + Math.sin(perpRad) * halfW;
-  const ctrl2X = midX - Math.cos(perpRad) * halfW;
-  const ctrl2Y = midY - Math.sin(perpRad) * halfW;
-  return `M ${baseX} ${baseY} Q ${ctrl1X} ${ctrl1Y} ${tipX} ${tipY} Q ${ctrl2X} ${ctrl2Y} ${baseX} ${baseY} Z`;
-}
-
 export const BananaGroveVineBubble = React.memo(function BananaGroveVineBubble({
   width,
   height,
@@ -162,22 +135,13 @@ export const BananaGroveVineBubble = React.memo(function BananaGroveVineBubble({
     [x, y, width, height, radius, tailSide],
   );
 
-  // 4 corner leaves — base at each corner anchor, pointing outward
-  // diagonally. Length 11 / width 6 keeps them small enough not to overlap
-  // adjacent UI but large enough to register as leaves.
-  const leaves = useMemo(
-    () => [
-      leafPath(x, y, 11, -135, 6),                     // TL → up-left
-      leafPath(x + width, y, 11, -45, 6),              // TR → up-right
-      leafPath(x + width, y + height, 11, 45, 6),      // BR → down-right
-      leafPath(x, y + height, 11, 135, 6),             // BL → down-left
-    ],
-    [x, y, width, height],
-  );
-
   if (width <= 0 || height <= 0) return null;
 
   const tintBody = hexToRgba(color, 0.20);
+  // Sender-keyed halo — was a fixed gold that mismatched the bot (teal
+  // palette). Now each sender's PFP color drives the halo so the bubble
+  // glow matches their identity.
+  const halo = hexToRgba(color, 0.34);
 
   return (
     <Canvas
@@ -190,8 +154,8 @@ export const BananaGroveVineBubble = React.memo(function BananaGroveVineBubble({
       }}
       pointerEvents="none"
     >
-      {/* 1. Warm golden halo */}
-      <Path path={bubblePath} color={HALO_GOLD}>
+      {/* 1. Sender-keyed halo */}
+      <Path path={bubblePath} color={halo}>
         <BlurMask blur={14} style="normal" />
       </Path>
 
@@ -217,14 +181,6 @@ export const BananaGroveVineBubble = React.memo(function BananaGroveVineBubble({
         strokeWidth={1.2}
         opacity={0.95}
       />
-
-      {/* 6. Corner leaves — dark green fill + lighter green highlight overlay */}
-      {leaves.map((p, i) => (
-        <Group key={`leaf-${i}`}>
-          <Path path={p} color={LEAF_GREEN_DARK} style="fill" />
-          <Path path={p} color={LEAF_GREEN_LIGHT} style="fill" opacity={0.55} />
-        </Group>
-      ))}
     </Canvas>
   );
 });
