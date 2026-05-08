@@ -378,57 +378,10 @@ function BananaPile({ active }: BananaPileProps) {
   );
 }
 
-// ── Lower-third clutter — barrel, vine drape, drifting leaves ──────────────
-// Decorative props that give Banana Grove a "rural jungle" tier of
-// premium polish, paralleling Cyberpunk's embers + lightning.
-
-// ── Vine drape (Skia path) ──
-// Static vine hanging from the top-left edge, curving slightly down. Plant-
-// stem green. Anchored ~14px from the left edge so it doesn't crowd
-// chat-message left margins.
-const VINE_PATH = (() => {
-  // Quadratic bezier curve down with gentle sway
-  const x0 = 14;
-  return `M ${x0} 0
-          Q ${x0 + 8} 40 ${x0 - 2} 80
-          Q ${x0 - 6} 130 ${x0 + 4} 175
-          Q ${x0 + 9} 220 ${x0 + 2} 260
-          Q ${x0 - 3} 300 ${x0 + 5} 340`;
-})();
-
-function VineDrape() {
-  return (
-    <Group>
-      {/* Stem outer (slightly translucent darker green) */}
-      <Path
-        path={VINE_PATH}
-        color="rgba(35, 70, 30, 0.55)"
-        style="stroke"
-        strokeWidth={3.5}
-      />
-      {/* Stem core — brighter green */}
-      <Path
-        path={VINE_PATH}
-        color="rgba(70, 130, 60, 0.85)"
-        style="stroke"
-        strokeWidth={1.5}
-      />
-    </Group>
-  );
-}
-
-// Static leaves attached to the vine — emoji-based for visual richness.
-// Positions are deliberately along the vine's general curve.
-const VINE_LEAVES: Array<{ x: number; y: number; size: number; rot: number; glyph: string }> = [
-  { x: 4,  y: 28,  size: 18, rot: -28, glyph: "🌿" },
-  { x: 22, y: 75,  size: 16, rot: 18,  glyph: "🍃" },
-  { x: 0,  y: 122, size: 19, rot: -42, glyph: "🌿" },
-  { x: 18, y: 168, size: 15, rot: 24,  glyph: "🍃" },
-  { x: 6,  y: 215, size: 17, rot: -18, glyph: "🌿" },
-  { x: 20, y: 260, size: 14, rot: 35,  glyph: "🍃" },
-  { x: 2,  y: 305, size: 16, rot: -22, glyph: "🌿" },
-];
-
+// ── Lower-third clutter — drifting leaves only ─────────────────────────────
+// (Vine drape removed 2026-05-08 — read as cluttered/odd against the new
+//  Tier 1 background; replaced by the cleaner palm silhouettes that already
+//  carry the foliage identity from the top-down jungle horizon.)
 // (Barrel prop removed 2026-05-07 — read as a flat brown board next to
 // the input-bar PFP rather than as a 3D barrel. Will revisit with a
 // proper curved silhouette if we want a scenery prop in this world.)
@@ -539,7 +492,11 @@ function LeafDrift({ active, initialDelayMs }: LeafDriftProps) {
 // with two flanking palm-tree silhouettes. Sits in front of the gradient but
 // behind everything else so the world reads as "tropical scene at dusk"
 // instead of "near-black void with chrome."
-const SKYLINE_BASE_Y = SCREEN_H * 0.7;
+// Pushed down 2026-05-08 — palm tops should sit JUST ABOVE the input bar,
+// floor silhouette behind it. Was 0.7 (too high, looked like a wall);
+// now anchored 12px above the screen bottom so the floor is mostly hidden
+// and only the palm canopies peek above the message bar.
+const SKYLINE_BASE_Y = SCREEN_H - 12;
 const SKYLINE_COLOR = "rgba(8, 18, 12, 0.92)"; // slightly translucent so gradient bleeds through
 
 const JUNGLE_FLOOR_PATH = (() => {
@@ -700,29 +657,7 @@ export function BananaGroveWorld({ active = true }: BananaGroveWorldProps) {
 
         {/* Jungle skyline — flanking palm silhouettes + irregular jungle floor */}
         <JungleSkyline />
-
-        {/* Vine drape — top-left edge, hanging down */}
-        <VineDrape />
       </Canvas>
-
-      {/* Vine leaves (RN text — outside Skia for proper emoji rendering). */}
-      <View style={StyleSheet.absoluteFill} pointerEvents="none">
-        {VINE_LEAVES.map((leaf, i) => (
-          <Text
-            key={`vine-${i}`}
-            style={{
-              position: "absolute",
-              left: leaf.x,
-              top: leaf.y,
-              fontSize: leaf.size,
-              transform: [{ rotate: `${leaf.rot}deg` }],
-              opacity: 0.85,
-            }}
-          >
-            {leaf.glyph}
-          </Text>
-        ))}
-      </View>
 
       {/* Drifting leaves — animated counterpart to Cyberpunk's embers */}
       {active && (
