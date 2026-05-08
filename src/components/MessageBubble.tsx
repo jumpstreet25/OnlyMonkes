@@ -1072,12 +1072,12 @@ export const MessageBubble = memo(function MessageBubble({
                         // letterSpacing widens the letters slightly so
                         // they look chiseled, not printed.
                         useBananaGroveBubble ? {
-                          color: "#1A0D04",
-                          textShadowColor: "rgba(255, 230, 175, 0.65)",
-                          textShadowOffset: { width: -0.7, height: -0.7 },
-                          textShadowRadius: 0.5,
+                          color: "#0D0703",
+                          textShadowColor: "rgba(255, 230, 175, 0.85)",
+                          textShadowOffset: { width: -1.2, height: -1.2 },
+                          textShadowRadius: 0.8,
                           fontWeight: "700",
-                          letterSpacing: 0.3,
+                          letterSpacing: 0.4,
                         } : null,
                       ]}
                       selectable={false}

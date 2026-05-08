@@ -57,12 +57,11 @@ const KNOT_RING_MID = "rgba(40, 22, 10, 0.85)";
 const KNOT_CENTER = "rgba(10, 5, 2, 0.95)";
 const FRAME_INNER = "rgba(15, 8, 4, 0.55)";
 const TOP_EDGE_HIGHLIGHT = "rgba(255, 220, 170, 0.45)"; // light catching top of plank
-const CAST_SHADOW_COLOR = "rgba(0, 0, 0, 0.55)";
-
-// 3D thickness — back face offset (down + right) by this many pixels. ~5px
-// reads as a 2-inch-thick wood chunk at typical bubble size.
-const THICKNESS_OFFSET_X = 5;
-const THICKNESS_OFFSET_Y = 5;
+// 3D thickness — back face offset (down + right) by this many pixels.
+// Doubled in v6 (5 → 10) so the chunk's thickness is unmistakable; v5's 5px
+// was getting lost against the world's dark gradient.
+const THICKNESS_OFFSET_X = 10;
+const THICKNESS_OFFSET_Y = 10;
 
 const PAD = 22;
 const TAIL_LENGTH = 10;
@@ -250,7 +249,6 @@ export const BananaGroveSignBubble = React.memo(function BananaGroveSignBubble({
   if (width <= 0 || height <= 0) return null;
 
   const tintBody = hexToRgba(color, 0.14);
-  const polishedEdge = hexToRgba(color, 0.85);
 
   return (
     <Canvas
@@ -263,15 +261,16 @@ export const BananaGroveSignBubble = React.memo(function BananaGroveSignBubble({
       }}
       pointerEvents="none"
     >
-      {/* 1. Cast shadow — sharp, offset down-right (NOT a centered halo).
-            Small blur + directional offset reads as a real cast shadow on
-            the chat surface below the wood, not a glow around the bubble. */}
+      {/* 1. Cast shadow — sharp directional shadow, NOT a centered halo.
+            Tuned to read as the chunk's shadow on the chat below; v6 bumps
+            the offset and alpha so it's clearly visible against the dusk
+            world bg without bleeding into a halo. */}
       <Path
         path={bubblePath}
-        color={CAST_SHADOW_COLOR}
-        transform={[{ translateX: 4 }, { translateY: 10 }]}
+        color="rgba(0, 0, 0, 0.65)"
+        transform={[{ translateX: 6 }, { translateY: 14 }]}
       >
-        <BlurMask blur={3} style="normal" />
+        <BlurMask blur={4} style="normal" />
       </Path>
 
       {/* 2. Back face — visible thickness on the bottom-right edge. Same
@@ -339,20 +338,27 @@ export const BananaGroveSignBubble = React.memo(function BananaGroveSignBubble({
         strokeWidth={0.8}
       />
 
-      {/* 8. Polished outer edge — sender's PFP color (the "lacquered" edge of the wood) */}
+      {/* (v6 2026-05-08) Polished colored outer edge REMOVED — user
+          consistently flagged it as a "colored outline around the wood".
+          The wood now stands without a chrome ring. */}
+
+      {/* 8. Top-edge highlight — thin warm light stroke just inside the
+            top edge. Reinforces the 3D thickness — light catching the top
+            face of the wood chunk. */}
       <Path
-        path={bubblePath}
-        color={polishedEdge}
+        path={`M ${x + 5} ${y + 1} L ${x + width - 5} ${y + 1}`}
+        color={TOP_EDGE_HIGHLIGHT}
         style="stroke"
-        strokeWidth={1.3}
+        strokeWidth={1.5}
+        strokeCap="round"
       />
 
-      {/* 9. Top-edge highlight — thin warm light stroke just inside the
-            top edge, suggesting daylight catching the upper face of the
-            wood chunk. Reinforces the 3D thickness illusion. */}
+      {/* 9. Bottom-edge plank seam — thin DARK stroke at the bottom of the
+            wood top face. Marks where the top face meets the side face,
+            making the thickness illusion read more clearly. */}
       <Path
-        path={`M ${x + 5} ${y + 0.8} L ${x + width - 5} ${y + 0.8}`}
-        color={TOP_EDGE_HIGHLIGHT}
+        path={`M ${x + 5} ${y + height - 1} L ${x + width - 5} ${y + height - 1}`}
+        color="rgba(0, 0, 0, 0.55)"
         style="stroke"
         strokeWidth={1}
         strokeCap="round"
