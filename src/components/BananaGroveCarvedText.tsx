@@ -39,19 +39,19 @@ interface BananaGroveCarvedTextProps {
   pfpColor: string;
 }
 
-// Layer colors for the 3-layer carve effect (Day 2).
-// Carve interior fill — near-black, sits at the deepest point of the carve.
-const CARVE_FILL = "#0D0703";
-// Top-bevel highlight — warm cream, offset up-left to catch overhead light.
-const CARVE_HIGHLIGHT = "rgba(255, 230, 175, 0.90)";
-// Bottom-bevel ambient occlusion — pure shadow, offset down-right.
-const CARVE_AO = "rgba(0, 0, 0, 0.85)";
+// Layer colors for the carve effect (Day 2 amp v13).
+// Carve interior fill — pure black for maximum contrast against any wood.
+const CARVE_FILL = "#000000";
+// Top-bevel highlight — bright warm cream, full alpha, offset up-left to
+// catch overhead light. Visible as a 2-3 px sliver peeking from each
+// letter's upper-left edge — the unmistakable carved-into-wood signature.
+const CARVE_HIGHLIGHT = "#FFE5B0";
 
-// Bevel offsets — sub-pixel-ish nudges so the carve feels precise + chiseled.
-const HIGHLIGHT_DX = -1.2;
-const HIGHLIGHT_DY = -1.2;
-const AO_DX = 1.0;
-const AO_DY = 1.0;
+// Bevel offsets — amplified from v12's 1.2 → 2.5 so the asymmetric reveal
+// is visibly carved instead of subliminal. AO layer dropped entirely; it
+// was adding visual mud without adding readable depth at small font sizes.
+const HIGHLIGHT_DX = -2.5;
+const HIGHLIGHT_DY = -2.5;
 
 /**
  * Word-wrap a paragraph into lines that fit within maxWidth using Skia's
@@ -118,11 +118,10 @@ export const BananaGroveCarvedText = React.memo(function BananaGroveCarvedText({
 
   if (!font || lines.length === 0 || maxWidth <= 0) return null;
 
-  // Canvas needs a small horizontal pad to contain the offset bevel glyphs
-  // (highlight extends -1.2 px left, AO extends +1 px right). Add 4px on
-  // each side; vertical pad similar at 4px top/bottom.
-  const PAD_X = 4;
-  const PAD_Y = 4;
+  // Canvas pad accommodates the amplified bevel offsets (highlight extends
+  // -2.5 px to the upper-left). 6 px each side gives breathing room.
+  const PAD_X = 6;
+  const PAD_Y = 6;
   const canvasWidth = maxWidth + PAD_X * 2;
   const canvasHeight = totalHeight + PAD_Y * 2;
 
@@ -143,10 +142,10 @@ export const BananaGroveCarvedText = React.memo(function BananaGroveCarvedText({
         const baseX = PAD_X;
         return (
           <React.Fragment key={i}>
-            {/* 1. Top-left HIGHLIGHT layer — cream, offset up-left.
-                  Visible only on the upper-left rim of each letter where the
-                  main fill doesn't cover it. Reads as light catching the top
-                  edge of the carve. */}
+            {/* 1. Top-left HIGHLIGHT layer — cream, offset up-left by 2.5 px.
+                  Visible as a clear sliver on each letter's upper-left rim.
+                  This is the signature "light catching the carve edge" that
+                  reads as engraved when paired with the dark fill on top. */}
             <SkiaText
               text={line}
               x={baseX + HIGHLIGHT_DX}
@@ -154,19 +153,10 @@ export const BananaGroveCarvedText = React.memo(function BananaGroveCarvedText({
               font={font}
               color={CARVE_HIGHLIGHT}
             />
-            {/* 2. Bottom-right AMBIENT OCCLUSION layer — black, offset down-
-                  right. Visible only on the lower-right rim — light is
-                  blocked by the carve walls there, deepest shadow inside. */}
-            <SkiaText
-              text={line}
-              x={baseX + AO_DX}
-              y={baselineY + AO_DY}
-              font={font}
-              color={CARVE_AO}
-            />
-            {/* 3. CARVE INTERIOR — the main dark fill, on top. Letters
-                  read as recessed because the highlight + AO peek out
-                  asymmetrically from underneath this fill. */}
+            {/* 2. CARVE INTERIOR — pure black fill on top. Letters read as
+                  recessed because the cream highlight peeks out from
+                  underneath only at the upper-left, exactly where light
+                  would catch a real V-shaped carve. */}
             <SkiaText
               text={line}
               x={baseX}
