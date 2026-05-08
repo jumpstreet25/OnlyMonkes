@@ -38,7 +38,6 @@ import { BlurView } from "expo-blur";
 import { SkiaGlowBubble, SkiaGlassFront, SkiaGlowPfp } from "@/components/SkiaGlowBubble";
 import { CyberpunkGlitchBubble } from "@/components/CyberpunkGlitchBubble";
 import { BananaGroveSignBubble } from "@/components/BananaGroveSignBubble";
-import { BananaGroveVineBubble } from "@/components/BananaGroveVineBubble";
 import Reanimated, {
   useSharedValue,
   useAnimatedStyle,
@@ -922,30 +921,17 @@ export const MessageBubble = memo(function MessageBubble({
                   tailSide={centerBubble ? "none" : isOwn ? "right" : "left"}
                 />
               ) : null}
-              {/* ── Banana Grove world chrome (A/B preview, 2026-05-08) ──
-                  Sign for own messages, Vine for received messages so the
-                  user can compare both styles in the same chat without two
-                  OTAs. Bot uses Vine (treated as a "received" message for
-                  this preview). After user picks the winner, collapse to a
-                  single component. */}
+              {/* ── Banana Grove world chrome — wooden Sign for ALL messages
+                  (v4 2026-05-08, A/B winner). Tail side flips own vs received
+                  so the wooden peg points at the sender's PFP. */}
               {useBananaGroveBubble && bubbleSize ? (
-                isOwn ? (
-                  <BananaGroveSignBubble
-                    width={bubbleSize.w}
-                    height={bubbleSize.h}
-                    color={glitchAccent}
-                    radius={14}
-                    tailSide={centerBubble ? "none" : "right"}
-                  />
-                ) : (
-                  <BananaGroveVineBubble
-                    width={bubbleSize.w}
-                    height={bubbleSize.h}
-                    color={glitchAccent}
-                    radius={14}
-                    tailSide={centerBubble ? "none" : "left"}
-                  />
-                )
+                <BananaGroveSignBubble
+                  width={bubbleSize.w}
+                  height={bubbleSize.h}
+                  color={glitchAccent}
+                  radius={14}
+                  tailSide={centerBubble ? "none" : isOwn ? "right" : "left"}
+                />
               ) : null}
               {/* Glass bubble — dark glass with glow-tinted border */}
               <View
@@ -1077,10 +1063,10 @@ export const MessageBubble = memo(function MessageBubble({
                         shopStyles.hasBubbleCosmetic ? { textShadowColor: "rgba(0,0,0,0.5)", textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 } : null,
                         shopStyles.textGlow ? { textShadowColor: "rgba(255,255,255,0.6)", textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 8 } : null,
                         // Etched-into-wood effect for Banana Grove Sign
-                        // (own messages). Hard 1px dark inset shadow with
-                        // zero blur — text reads as engraved/burnt into
-                        // the wood surface.
-                        useBananaGroveBubble && isOwn ? {
+                        // (all messages — own AND received). Hard 1.2px
+                        // dark inset shadow with zero blur reads as
+                        // engraved/burnt into the wood surface.
+                        useBananaGroveBubble ? {
                           color: "#F5E0C0",
                           textShadowColor: "rgba(0, 0, 0, 0.85)",
                           textShadowOffset: { width: 0, height: 1.2 },

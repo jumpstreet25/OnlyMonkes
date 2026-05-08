@@ -539,11 +539,11 @@ function buildPalmPaths(baseX: number, mirror: boolean, height: number): { trunk
   return { trunk, fronds };
 }
 
-// Taller trees (v3 2026-05-08) — was 130 / 145, felt stubby. New 200 / 225
-// puts the tallest fronds well into the chat area, reading as towering
-// jungle palms framing the conversation.
-const PALM_LEFT = buildPalmPaths(SCREEN_W * 0.16, false, 200);
-const PALM_RIGHT = buildPalmPaths(SCREEN_W * 0.84, true, 225);
+// Taller trees (v4 2026-05-08) — bumped 50% from v3's 200/225 to 300/338,
+// reading as towering jungle palms whose fronds reach well up into the
+// chat scroll area.
+const PALM_LEFT = buildPalmPaths(SCREEN_W * 0.16, false, 300);
+const PALM_RIGHT = buildPalmPaths(SCREEN_W * 0.84, true, 338);
 
 function JungleSkyline() {
   return (
