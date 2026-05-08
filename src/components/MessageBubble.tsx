@@ -1072,12 +1072,17 @@ export const MessageBubble = memo(function MessageBubble({
                         // letterSpacing widens the letters slightly so
                         // they look chiseled, not printed.
                         useBananaGroveBubble ? {
-                          color: "#0D0703",
-                          textShadowColor: "rgba(255, 230, 175, 0.85)",
-                          textShadowOffset: { width: -1.2, height: -1.2 },
-                          textShadowRadius: 0.8,
+                          // v8 (2026-05-08) carve-strengthening: deepest
+                          // text color, larger upper-left highlight offset,
+                          // slightly more letter-spacing for chiseled feel.
+                          // True per-letter resin/glow/AO awaits Phase 2
+                          // (Skia text rendering refactor).
+                          color: "#080402",
+                          textShadowColor: "rgba(255, 230, 175, 0.95)",
+                          textShadowOffset: { width: -1.5, height: -1.5 },
+                          textShadowRadius: 1.2,
                           fontWeight: "700",
-                          letterSpacing: 0.4,
+                          letterSpacing: 0.5,
                         } : null,
                       ]}
                       selectable={false}
