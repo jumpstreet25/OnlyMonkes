@@ -80,14 +80,11 @@ const WOOD_EBONY: WoodPalette       = { name: "ebony",       light: "#261E18", m
 
 const FRAME_INNER = "rgba(15, 8, 4, 0.55)";
 const TOP_EDGE_HIGHLIGHT = "rgba(255, 220, 170, 0.45)"; // light catching top of plank
-// 3D thickness — back face offset (down + right) by this many pixels.
-// v9 (2026-05-08): 10 → 6. v6's 10px was reading as a heavy shadow strip;
-// 6px gives a clearer "side of a wood block" look. Combined with the v9
-// front-face gradient change (2-stop instead of 3-stop), the back face
-// now sits clearly behind a brighter front face, no longer registering
-// as a shadow.
-const THICKNESS_OFFSET_X = 6;
-const THICKNESS_OFFSET_Y = 6;
+// (v11 2026-05-08) Back-face thickness REMOVED. An offset duplicate
+// silhouette literally IS the shape of a CSS box-shadow — there's no way
+// to render it that doesn't read as one. Real thickness on a 2D surface
+// comes from asymmetric edge bevels, not an offset shape behind the
+// front face. The bevel strokes below replace the back face.
 
 const PAD = 22;
 const TAIL_LENGTH = 10;
@@ -208,9 +205,10 @@ function buildSignPath(
 ): string {
   const xR = x + w;
   const yB = y + h;
-  // Chip size — small triangular cut at each corner. Smaller than the
-  // legacy `radius` so corners feel chipped, not chamfered.
-  const c = Math.min(r * 0.45, 5);
+  // Chip size — small triangular cut at each corner. Reduced in v11
+  // from 5 → 2 px for sharper, chunkier wood-block edges per spec
+  // ("thick sharp edges and a slightly chunky stylized shape").
+  const c = Math.min(r * 0.2, 2);
   const parts: string[] = [];
 
   parts.push(`M ${x + c} ${y}`);
@@ -417,22 +415,12 @@ export const BananaGroveSignBubble = React.memo(function BananaGroveSignBubble({
           peek-through. (v7) PFP-color tint REMOVED — was causing the
           bot's bubble to read as "brownish pink"; wood now stays natural. */}
 
-      {/* 1. Back face — wood SIDE with its own vertical lighting gradient
-            (v10 2026-05-08): mid at top (catching ambient light), dark at
-            bottom (in deep shadow). Reads as a real wood face being
-            shaded, not a flat shadow plane. */}
-      <Path
-        path={bubblePath}
-        transform={[{ translateX: THICKNESS_OFFSET_X }, { translateY: THICKNESS_OFFSET_Y }]}
-      >
-        <LinearGradient
-          start={vec(0, y)}
-          end={vec(0, y + height)}
-          colors={[palette.mid, palette.dark]}
-        />
-      </Path>
+      {/* (v11 2026-05-08) Back-face render REMOVED — no offset duplicate
+          shape. Thickness now comes from asymmetric edge bevels (layers
+          10–11 below) which create directional 3D edge lighting without
+          the shape-behind-a-shape that read as a box-shadow. */}
 
-      {/* 2. Wood gradient body (front face top) */}
+      {/* 1. Wood gradient body (front face top) */}
       <Path path={bubblePath}>
         <LinearGradient
           start={vec(0, y)}
@@ -441,7 +429,7 @@ export const BananaGroveSignBubble = React.memo(function BananaGroveSignBubble({
         />
       </Path>
 
-      {/* 3. Wood grain — dark strokes use palette.deep, light highlights
+      {/* 2. Wood grain — dark strokes use palette.deep, light highlights
             use palette.light. Both tones stay within the species' family
             so grain reads natural for that wood (subtle on light wood,
             visible on dark wood, never artificial). */}
@@ -535,17 +523,10 @@ export const BananaGroveSignBubble = React.memo(function BananaGroveSignBubble({
         />
       </Path>
 
-      {/* 9. Inner-shadow stroke — dark line just inside the bubble path,
-            offset slightly to suggest the wood face is recessed below
-            its outer edge. Adds chunky carved-frame depth. */}
-      <Path
-        path={bubblePath}
-        color="rgba(0, 0, 0, 0.40)"
-        style="stroke"
-        strokeWidth={1.5}
-      />
+      {/* (v11 2026-05-08) Inner-shadow stroke removed — was contributing
+          to the "framed by darkness" perception alongside the back-face. */}
 
-      {/* 10. Recessed inner frame — chiseled border feel */}
+      {/* 9. Recessed inner frame — chiseled border feel */}
       <Path
         path={bubblePath}
         color={FRAME_INNER}
@@ -557,9 +538,33 @@ export const BananaGroveSignBubble = React.memo(function BananaGroveSignBubble({
           consistently flagged it as a "colored outline around the wood".
           The wood now stands without a chrome ring. */}
 
-      {/* 11. Top-edge highlight — thin warm light stroke just inside the
-            top edge. Reinforces the 3D thickness — light catching the top
-            face of the wood chunk. */}
+      {/* 10. Top-left bevel — bright cream stroke offset up-left by 1px.
+            Creates the illusion that the upper-left edge of the wood face
+            catches overhead light, suggesting a chamfered 3D edge.
+            Asymmetric edge lighting is the actual technique game UIs use
+            for thickness — no offset duplicate-shape needed. */}
+      <Path
+        path={bubblePath}
+        color="rgba(255, 230, 175, 0.55)"
+        style="stroke"
+        strokeWidth={1.4}
+        transform={[{ translateX: -0.8 }, { translateY: -0.8 }]}
+      />
+
+      {/* 11. Bottom-right bevel — dark stroke offset down-right by 1px.
+            Pairs with the top-left highlight: bottom-right edge in deeper
+            shadow. Together these two offset strokes make the bubble read
+            as a 3D wood block lit from above-left. */}
+      <Path
+        path={bubblePath}
+        color="rgba(10, 5, 2, 0.55)"
+        style="stroke"
+        strokeWidth={1.4}
+        transform={[{ translateX: 1 }, { translateY: 1 }]}
+      />
+
+      {/* 12. Top-edge inner highlight — thin warm light stroke just inside
+            the top edge. Light catching the upper face of the wood chunk. */}
       <Path
         path={`M ${x + 5} ${y + 1} L ${x + width - 5} ${y + 1}`}
         color={TOP_EDGE_HIGHLIGHT}
@@ -568,9 +573,8 @@ export const BananaGroveSignBubble = React.memo(function BananaGroveSignBubble({
         strokeCap="round"
       />
 
-      {/* 12. Bottom-edge plank seam — thin DARK stroke at the bottom of the
-            wood top face. Marks where the top face meets the side face,
-            making the thickness illusion read more clearly. */}
+      {/* 13. Bottom-edge inner plank seam — thin dark stroke marking the
+            bottom of the top face. Subtle 3D reinforcement. */}
       <Path
         path={`M ${x + 5} ${y + height - 1} L ${x + width - 5} ${y + height - 1}`}
         color="rgba(0, 0, 0, 0.55)"
