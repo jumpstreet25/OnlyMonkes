@@ -43,8 +43,6 @@ interface BananaGroveVineBubbleProps {
   tailSide?: "left" | "right" | "none";
 }
 
-const VINE_GOLD = "#FFD24A";
-
 const PAD = 22;
 const TAIL_LENGTH = 12;
 const TAIL_HEIGHT = 16;
@@ -165,22 +163,9 @@ export const BananaGroveVineBubble = React.memo(function BananaGroveVineBubble({
       {/* 3. PFP-color tint underlay */}
       <Path path={bubblePath} color={tintBody} />
 
-      {/* 4. Outer vine — thick, low alpha (the "neon haze") */}
-      <Path
-        path={bubblePath}
-        color={hexToRgba(VINE_GOLD, 0.55)}
-        style="stroke"
-        strokeWidth={2.6}
-      />
-
-      {/* 5. Inner vine — thin, bright (the "neon core") */}
-      <Path
-        path={bubblePath}
-        color={VINE_GOLD}
-        style="stroke"
-        strokeWidth={1.2}
-        opacity={0.95}
-      />
+      {/* (v3 2026-05-08) Gold neon vine outlines removed — read as a yellow
+          frame that clashed against bot's pink palette and didn't earn its
+          visual cost. Bubble now reads as a soft sender-tinted glass orb. */}
     </Canvas>
   );
 });

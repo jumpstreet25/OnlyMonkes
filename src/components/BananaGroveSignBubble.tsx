@@ -45,12 +45,18 @@ interface BananaGroveSignBubbleProps {
   tailSide?: "left" | "right" | "none";
 }
 
-const WOOD_LIGHT = "#5C3A1F";
-const WOOD_DARK = "#2D1810";
-const GRAIN_COLOR_BASE = "rgba(28, 18, 10, 1)"; // alpha applied per-stroke
-const KNOT_COLOR = "rgba(15, 8, 3, 0.55)";
+// Warmer brown palette — more orange-brown saturation than v2's gray-brown.
+// Real wood reads warm; v2's #5C3A1F → #2D1810 was too desaturated.
+const WOOD_LIGHT = "#7A4A26";
+const WOOD_MID = "#5A3318";
+const WOOD_DARK = "#3A2110";
+const GRAIN_COLOR_BASE = "rgba(20, 10, 4, 1)"; // alpha applied per-stroke
+const HIGHLIGHT_COLOR_BASE = "rgba(180, 130, 80, 1)"; // light grain — sells 3D
+const KNOT_RING_OUTER = "rgba(20, 10, 4, 0.65)";
+const KNOT_RING_MID = "rgba(40, 22, 10, 0.85)";
+const KNOT_CENTER = "rgba(10, 5, 2, 0.95)";
 const FRAME_INNER = "rgba(15, 8, 4, 0.55)";
-const SHADOW_COLOR = "rgba(0, 0, 0, 0.45)";
+const SHADOW_COLOR = "rgba(0, 0, 0, 0.5)";
 
 const PAD = 22;
 const TAIL_LENGTH = 10;
@@ -140,61 +146,74 @@ function buildSignPath(
 }
 
 /**
- * Wood grain — 9 short bezier S-curves. Varied alpha + stroke width.
- * Not all lines span the full width (some fade in/out partway). The S-curve
- * comes from a CUBIC bezier with two control points on opposite sides,
- * giving real wood-like flow vs. the soft single-Q arc of v1.
+ * Wood grain — 12 long bezier curves with varied amplitude, plus shorter
+ * highlight curves (lighter brown) that sit just above darker grain to
+ * sell 3D depth. Real wood reads as a layered surface, not flat lines.
  */
-interface GrainStroke { path: string; alpha: number; width: number; }
+interface GrainStroke { path: string; alpha: number; width: number; isHighlight: boolean; }
 
 function buildGrainStrokes(x: number, y: number, w: number, h: number): GrainStroke[] {
-  const lines = 9;
+  const lines = 12;
   const strokes: GrainStroke[] = [];
   for (let i = 0; i < lines; i++) {
-    // Y baseline with deterministic jitter so the pattern is stable
     const baseY = y + (h / (lines + 1)) * (i + 1);
-    const jitterY = baseY + Math.sin(i * 7.3) * 1.6;
+    const jitterY = baseY + Math.sin(i * 7.3) * 2.0;
 
-    // Some lines start partway in, end partway out — fade-in/out feel
-    const startFrac = (Math.abs(Math.sin(i * 3.7)) % 1) * 0.18;
-    const endFrac = 0.82 + (Math.abs(Math.cos(i * 1.9)) % 1) * 0.18;
-    const startX = x + 6 + startFrac * w;
-    const endX = x + endFrac * w - 6;
-    if (endX <= startX + 12) continue;
+    // Some lines fade in/out partway — natural variation
+    const startFrac = (Math.abs(Math.sin(i * 3.7)) % 1) * 0.22;
+    const endFrac = 0.78 + (Math.abs(Math.cos(i * 1.9)) % 1) * 0.22;
+    const startX = x + 5 + startFrac * w;
+    const endX = x + endFrac * w - 5;
+    if (endX <= startX + 14) continue;
 
-    // Cubic S-curve — two control points on opposite sides of the baseline
+    // Cubic S-curve with stronger amplitude for visible wood flow
     const span = endX - startX;
     const c1x = startX + span * 0.28;
     const c2x = startX + span * 0.72;
-    const c1y = jitterY + Math.sin(i * 1.3 + 0.5) * 4.5;
-    const c2y = jitterY + Math.cos(i * 2.1 + 0.7) * 3.6;
+    const amp = 4 + (Math.abs(Math.sin(i * 1.7)) % 1) * 4; // 4-8px amplitude
+    const c1y = jitterY + Math.sin(i * 1.3 + 0.5) * amp;
+    const c2y = jitterY + Math.cos(i * 2.1 + 0.7) * amp * 0.7;
 
     const path = `M ${startX} ${jitterY} C ${c1x} ${c1y} ${c2x} ${c2y} ${endX} ${jitterY}`;
-    const alpha = 0.15 + (Math.abs(Math.cos(i * 5.1)) % 1) * 0.18; // 0.15-0.33
-    const width = 0.45 + (Math.abs(Math.sin(i * 4.3)) % 1) * 0.55; // 0.45-1.00
-    strokes.push({ path, alpha, width });
+    // Higher alpha than v2 — wood grain should read clearly
+    const alpha = 0.30 + (Math.abs(Math.cos(i * 5.1)) % 1) * 0.25; // 0.30-0.55
+    const width = 0.55 + (Math.abs(Math.sin(i * 4.3)) % 1) * 0.85; // 0.55-1.40
+    strokes.push({ path, alpha, width, isHighlight: false });
+
+    // Add a HIGHLIGHT stroke on every 3rd line — lighter brown ~1.5px above
+    // the dark line. Sells the 3D feel of a grain ridge catching light.
+    if (i % 3 === 0 && i > 0) {
+      const hPath = `M ${startX} ${jitterY - 1.6} C ${c1x} ${c1y - 1.6} ${c2x} ${c2y - 1.6} ${endX} ${jitterY - 1.6}`;
+      strokes.push({
+        path: hPath,
+        alpha: 0.15 + (Math.abs(Math.cos(i * 2.7)) % 1) * 0.10,
+        width: 0.5,
+        isHighlight: true,
+      });
+    }
   }
   return strokes;
 }
 
+/**
+ * Wood knots — concentric oval rings. Each knot has 3 layers: outer dark
+ * ring (stroke), middle medium ring (fill), inner darkest center (fill).
+ * Reads as a real wood knot vs. a single dot.
+ */
 interface Knot { cx: number; cy: number; rx: number; ry: number; }
 
 function buildKnots(x: number, y: number, w: number, h: number): Knot[] {
-  // 3 small darker oval knots at deterministic-but-irregular positions.
-  // Larger inner radius gives an organic "wood eye" rather than a dot.
   if (w < 80 || h < 30) {
-    // Tiny bubbles get fewer knots (avoid overcrowding)
-    return [{ cx: x + w * 0.35, cy: y + h * 0.55, rx: 2.4, ry: 1.6 }];
+    return [{ cx: x + w * 0.35, cy: y + h * 0.55, rx: 3.2, ry: 2.4 }];
   }
   return [
-    { cx: x + w * 0.22, cy: y + h * 0.32, rx: 3.2, ry: 2.0 },
-    { cx: x + w * 0.68, cy: y + h * 0.62, rx: 2.4, ry: 1.6 },
-    { cx: x + w * 0.85, cy: y + h * 0.28, rx: 1.8, ry: 1.4 },
+    { cx: x + w * 0.22, cy: y + h * 0.32, rx: 4.5, ry: 3.2 },
+    { cx: x + w * 0.68, cy: y + h * 0.62, rx: 3.6, ry: 2.6 },
+    { cx: x + w * 0.85, cy: y + h * 0.28, rx: 2.6, ry: 1.9 },
   ];
 }
 
 function rgbaWithAlpha(rgbaBase: string, alpha: number): string {
-  // rgbaBase like "rgba(28, 18, 10, 1)" — replace last component
   return rgbaBase.replace(/, ?1\)$/, `, ${alpha})`);
 }
 
@@ -229,12 +248,8 @@ export const BananaGroveSignBubble = React.memo(function BananaGroveSignBubble({
 
   if (width <= 0 || height <= 0) return null;
 
-  const tintBody = hexToRgba(color, 0.18);
+  const tintBody = hexToRgba(color, 0.14);
   const polishedEdge = hexToRgba(color, 0.85);
-  // Sender-keyed halo — replaces the fixed amber that made bot bubbles
-  // (teal palette) glow orange. Each sender's PFP color drives the halo
-  // so the bubble glow matches the user's identity.
-  const halo = hexToRgba(color, 0.32);
 
   return (
     <Canvas
@@ -247,51 +262,62 @@ export const BananaGroveSignBubble = React.memo(function BananaGroveSignBubble({
       }}
       pointerEvents="none"
     >
-      {/* 1. Drop shadow — offset down, blurred. Sells the "plaque hanging
-            in space" tactility without needing literal hanging vines. */}
+      {/* 1. Drop shadow — offset down, blurred. Sells the "plaque" tactility.
+            Halo intentionally removed (v3) — wood plaques shouldn't glow. */}
       <Path path={shadowPath} color={SHADOW_COLOR} transform={[{ translateY: 6 }]}>
         <BlurMask blur={10} style="normal" />
       </Path>
 
-      {/* 2. Sender-keyed halo */}
-      <Path path={bubblePath} color={halo}>
-        <BlurMask blur={16} style="normal" />
-      </Path>
-
-      {/* 3. Wood gradient body */}
+      {/* 2. Wood gradient body — 3-stop, warmer palette */}
       <Path path={bubblePath}>
         <LinearGradient
           start={vec(0, y)}
           end={vec(0, y + height)}
-          colors={[WOOD_LIGHT, WOOD_DARK]}
+          colors={[WOOD_LIGHT, WOOD_MID, WOOD_DARK]}
         />
       </Path>
 
-      {/* 4. PFP-color tint — wood "species" undertone per sender */}
+      {/* 3. PFP-color tint — wood "species" undertone per sender. Lower
+            alpha than v2 so the wood color reads as wood, not as the user's
+            color. */}
       <Path path={bubblePath} color={tintBody} />
 
-      {/* 5. Wood grain — varied S-curves */}
+      {/* 4. Wood grain — dark cubic S-curves + lighter highlight strokes */}
       {grainStrokes.map((g, i) => (
         <Path
           key={`grain-${i}`}
           path={g.path}
-          color={rgbaWithAlpha(GRAIN_COLOR_BASE, g.alpha)}
+          color={rgbaWithAlpha(g.isHighlight ? HIGHLIGHT_COLOR_BASE : GRAIN_COLOR_BASE, g.alpha)}
           style="stroke"
           strokeWidth={g.width}
           strokeCap="round"
         />
       ))}
 
-      {/* 6. Wood knots — small darker ovals */}
+      {/* 5. Wood knots — concentric rings (outer ring + middle fill + dark center) */}
       {knots.map((k, i) => (
-        <Oval
-          key={`knot-${i}`}
-          rect={rect(k.cx - k.rx, k.cy - k.ry, k.rx * 2, k.ry * 2)}
-          color={KNOT_COLOR}
-        />
+        <React.Fragment key={`knot-${i}`}>
+          {/* Outer dark ring */}
+          <Oval
+            rect={rect(k.cx - k.rx, k.cy - k.ry, k.rx * 2, k.ry * 2)}
+            color={KNOT_RING_OUTER}
+            style="stroke"
+            strokeWidth={1}
+          />
+          {/* Middle medium-dark fill */}
+          <Oval
+            rect={rect(k.cx - k.rx * 0.7, k.cy - k.ry * 0.7, k.rx * 1.4, k.ry * 1.4)}
+            color={KNOT_RING_MID}
+          />
+          {/* Inner darkest center */}
+          <Oval
+            rect={rect(k.cx - k.rx * 0.32, k.cy - k.ry * 0.32, k.rx * 0.64, k.ry * 0.64)}
+            color={KNOT_CENTER}
+          />
+        </React.Fragment>
       ))}
 
-      {/* 7. Recessed inner frame — chiseled border feel */}
+      {/* 6. Recessed inner frame — chiseled border feel */}
       <Path
         path={bubblePath}
         color={FRAME_INNER}
@@ -299,7 +325,7 @@ export const BananaGroveSignBubble = React.memo(function BananaGroveSignBubble({
         strokeWidth={0.8}
       />
 
-      {/* 8. Polished outer edge — sender's PFP color */}
+      {/* 7. Polished outer edge — sender's PFP color */}
       <Path
         path={bubblePath}
         color={polishedEdge}
