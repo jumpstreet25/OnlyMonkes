@@ -21,13 +21,15 @@
 
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { View, Text, StyleSheet, Dimensions } from "react-native";
-import { Canvas, Rect, LinearGradient, vec, Path, Group } from "@shopify/react-native-skia";
+import { Canvas, Rect, LinearGradient, vec, Path, Group, Circle, BlurMask } from "@shopify/react-native-skia";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
   useAnimatedReaction,
+  useDerivedValue,
   withTiming,
   withDelay,
+  withRepeat,
   cancelAnimation,
   runOnJS,
   Easing,
@@ -532,6 +534,133 @@ function LeafDrift({ active, initialDelayMs }: LeafDriftProps) {
   );
 }
 
+// ── Jungle skyline silhouette (Tier 1 foundation, 2026-05-08) ──────────────
+// Black-green silhouette horizon at SCREEN_H * ~0.7 — irregular jungle floor
+// with two flanking palm-tree silhouettes. Sits in front of the gradient but
+// behind everything else so the world reads as "tropical scene at dusk"
+// instead of "near-black void with chrome."
+const SKYLINE_BASE_Y = SCREEN_H * 0.7;
+const SKYLINE_COLOR = "rgba(8, 18, 12, 0.92)"; // slightly translucent so gradient bleeds through
+
+const JUNGLE_FLOOR_PATH = (() => {
+  const segments = 18;
+  const step = SCREEN_W / segments;
+  const variance = 22;
+  let p = `M 0 ${SKYLINE_BASE_Y + 12}`;
+  for (let i = 1; i <= segments; i++) {
+    const x = step * i;
+    const h = Math.abs(Math.sin(i * 12.9898) * 43758.5453) % 1;
+    const y = SKYLINE_BASE_Y + 4 + h * variance;
+    p += ` L ${x} ${y}`;
+  }
+  p += ` L ${SCREEN_W} ${SCREEN_H} L 0 ${SCREEN_H} Z`;
+  return p;
+})();
+
+// Palm tree — curved trunk + radiating fronds. Two trees flank the screen so
+// the foreground frames the chat instead of being a single isolated tree.
+function buildPalmPaths(baseX: number, mirror: boolean, height: number): { trunk: string; fronds: string[] } {
+  const m = mirror ? -1 : 1;
+  const trunkBottomY = SKYLINE_BASE_Y + 6;
+  const trunkTopX = baseX + 14 * m;
+  const trunkTopY = trunkBottomY - height;
+  const trunk = `M ${baseX} ${trunkBottomY} Q ${baseX + 6 * m} ${trunkBottomY - height / 2} ${trunkTopX} ${trunkTopY}`;
+  const angles = [-150, -118, -85, -55, -30, 0]; // 6 fronds — fan covering the canopy hemisphere
+  const fronds: string[] = [];
+  for (const a of angles) {
+    const rad = (a * Math.PI) / 180;
+    const len = 52 + (Math.abs(Math.sin(a * 4.7)) % 1) * 14; // small variance per frond
+    const endX = trunkTopX + Math.cos(rad) * len * m; // mirror flips horizontal direction
+    const endY = trunkTopY + Math.sin(rad) * len;
+    const ctrlX = trunkTopX + (Math.cos(rad) * len * 0.5 + Math.sin(rad) * 14) * m;
+    const ctrlY = trunkTopY + Math.sin(rad) * len * 0.5 - Math.cos(rad) * 14;
+    fronds.push(`M ${trunkTopX} ${trunkTopY} Q ${ctrlX} ${ctrlY} ${endX} ${endY}`);
+  }
+  return { trunk, fronds };
+}
+
+const PALM_LEFT = buildPalmPaths(SCREEN_W * 0.16, false, 130);
+const PALM_RIGHT = buildPalmPaths(SCREEN_W * 0.84, true, 145);
+
+function JungleSkyline() {
+  return (
+    <Group>
+      {/* Solid jungle-floor silhouette */}
+      <Path path={JUNGLE_FLOOR_PATH} color={SKYLINE_COLOR} />
+      {/* Palm trunks — thick rounded strokes */}
+      <Path path={PALM_LEFT.trunk} color={SKYLINE_COLOR} style="stroke" strokeWidth={9} strokeCap="round" />
+      <Path path={PALM_RIGHT.trunk} color={SKYLINE_COLOR} style="stroke" strokeWidth={10} strokeCap="round" />
+      {/* Fronds — lighter strokes, drawn after trunks so they sit on top */}
+      {PALM_LEFT.fronds.map((f, i) => (
+        <Path key={`pl-${i}`} path={f} color={SKYLINE_COLOR} style="stroke" strokeWidth={5} strokeCap="round" />
+      ))}
+      {PALM_RIGHT.fronds.map((f, i) => (
+        <Path key={`pr-${i}`} path={f} color={SKYLINE_COLOR} style="stroke" strokeWidth={5} strokeCap="round" />
+      ))}
+    </Group>
+  );
+}
+
+// ── Drifting dappled-light orbs (Tier 1 atmosphere, 2026-05-08) ────────────
+// Counterpart to Cyberpunk's lightning storms — 4 soft yellow blurred circles
+// drift slowly across the upper canopy region simulating sunlight filtering
+// through leaves. Warm continuous instead of violent episodic. Animated on
+// the UI thread via Reanimated SharedValues fed into Skia.
+interface OrbConfig {
+  startX: number;
+  startY: number;
+  endX: number;
+  endY: number;
+  radius: number;
+  durationMs: number;
+  delayMs: number;
+}
+
+const ORB_COLOR = "rgba(255, 220, 130, 0.18)";
+
+const ORB_CONFIGS: OrbConfig[] = [
+  { startX: -40,            startY: SCREEN_H * 0.18, endX: SCREEN_W + 40, endY: SCREEN_H * 0.30, radius: 50, durationMs: 22000, delayMs: 0 },
+  { startX: SCREEN_W + 40,  startY: SCREEN_H * 0.42, endX: -40,           endY: SCREEN_H * 0.32, radius: 38, durationMs: 26000, delayMs: 5000 },
+  { startX: SCREEN_W * 0.3, startY: -30,             endX: SCREEN_W * 0.65, endY: SCREEN_H * 0.55, radius: 28, durationMs: 30000, delayMs: 11000 },
+  { startX: SCREEN_W * 0.85, startY: SCREEN_H * 0.10, endX: SCREEN_W * 0.10, endY: SCREEN_H * 0.45, radius: 44, durationMs: 28000, delayMs: 3000 },
+];
+
+function DappledLightOrb({ config }: { config: OrbConfig }) {
+  const t = useSharedValue(0);
+
+  useEffect(() => {
+    t.value = withDelay(
+      config.delayMs,
+      withRepeat(
+        withTiming(1, { duration: config.durationMs, easing: Easing.inOut(Easing.sin) }),
+        -1,
+        true, // reverse — orb drifts back along the same path, like wind
+      ),
+    );
+    return () => cancelAnimation(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const cx = useDerivedValue(() => config.startX + (config.endX - config.startX) * t.value);
+  const cy = useDerivedValue(() => config.startY + (config.endY - config.startY) * t.value);
+
+  return (
+    <Circle cx={cx} cy={cy} r={config.radius} color={ORB_COLOR}>
+      <BlurMask blur={config.radius * 0.85} style="solid" />
+    </Circle>
+  );
+}
+
+function DappledLightOrbs() {
+  return (
+    <Group>
+      {ORB_CONFIGS.map((c, i) => (
+        <DappledLightOrb key={i} config={c} />
+      ))}
+    </Group>
+  );
+}
+
 // ── World root ─────────────────────────────────────────────────────────────
 
 interface BananaGroveWorldProps {
@@ -553,14 +682,24 @@ export function BananaGroveWorld({ active = true }: BananaGroveWorldProps) {
     <View style={styles.root} pointerEvents="none">
       <Canvas style={StyleSheet.absoluteFill}>
         {/* Gradient height oversized 25% to cover Android edge-to-edge system
-            bar zones where Dimensions.get("window") may underreport. */}
+            bar zones where Dimensions.get("window") may underreport.
+            Tropical dusk palette (Tier 1, 2026-05-08): twilight sky → sunset
+            orange band at the horizon → deep jungle floor. The mid-band orange
+            sits right around the skyline silhouette so the foreground reads as
+            silhouetted jungle against a setting sun. */}
         <Rect x={0} y={0} width={SCREEN_W} height={SCREEN_H * 1.25}>
           <LinearGradient
             start={vec(0, 0)}
             end={vec(0, SCREEN_H)}
-            colors={["#0A0A0F", "#070708", "#000000"]}
+            colors={["#3A2418", "#7A4A20", "#0D2818"]}
           />
         </Rect>
+
+        {/* Dappled-light orbs — soft warm sunlight filtering through canopy */}
+        <DappledLightOrbs />
+
+        {/* Jungle skyline — flanking palm silhouettes + irregular jungle floor */}
+        <JungleSkyline />
 
         {/* Vine drape — top-left edge, hanging down */}
         <VineDrape />

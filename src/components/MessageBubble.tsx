@@ -444,22 +444,17 @@ export const MessageBubble = memo(function MessageBubble({
   const shopStyles = isOwn ? myShopStyles : (senderProfile?.shopStyles ?? {});
   const { width: SCREEN_W } = useWindowDimensions();
   const [bubbleSize, setBubbleSize] = useState<{ w: number; h: number } | null>(null);
-  // World bubble skin TRUMPS any equipped Bubble cosmetic — the world is
-  // a higher tier of purchase and should override prior cosmetics for the
-  // user who bought it. Resolved against the SENDER's shopStyles so the
-  // skin follows whoever bought the world (per `feedback_world_bubble_ownership`).
-  // Bot is the exception: it has no world purchase, so its bubble follows
-  // the VIEWER's world — so the bot adapts to your equipped UI environment.
-  const isBotSender = message.senderUsername === "AI Agent #9385";
-  const senderHasCyberpunk = shopStyles.worldId === "world_solana_cyberpunk";
-  const viewerHasCyberpunk = myShopStyles?.worldId === "world_solana_cyberpunk";
-  const useGlitchBubble = isBotSender ? viewerHasCyberpunk : senderHasCyberpunk;
-  // Banana Grove world — same sender-keyed rule. When the SENDER has
-  // Banana Grove equipped, their messages drop+bounce in instead of
-  // floating in (gravity vibe matches the falling-banana world).
-  const senderHasBananaGrove = shopStyles.worldId === "world_banana_grove";
-  const viewerHasBananaGrove = myShopStyles?.worldId === "world_banana_grove";
-  const useBananaGroveEntry = isBotSender ? viewerHasBananaGrove : senderHasBananaGrove;
+  // World bubble skin: viewer wins, sender is fallback (per
+  // `feedback_world_bubble_ownership`). If the viewer owns a world, every
+  // bubble is themed in the viewer's world — owners get a clean, uniform
+  // immersive view. If the viewer owns no world, fall back to the sender's
+  // world theme — non-owners see themed bubbles from owners as a "show off"
+  // / sales pitch. Non-owner ↔ non-owner = default. Bot has no world
+  // purchase, so it falls through to viewer's world automatically.
+  const effectiveWorld = (myShopStyles?.worldId as string | undefined)
+    ?? (shopStyles.worldId as string | undefined);
+  const useGlitchBubble = effectiveWorld === "world_solana_cyberpunk";
+  const useBananaGroveEntry = effectiveWorld === "world_banana_grove";
   const hasSkiaGlow =
     !!(shopStyles.hasBubbleCosmetic && shopStyles.glowColor) && !useGlitchBubble;
 
@@ -691,10 +686,7 @@ export const MessageBubble = memo(function MessageBubble({
   const primarySenderInbox = isOwn ? message.senderAddress : getPrimaryInboxId(message.senderAddress);
   const cachedSender = getCachedProfile(primarySenderInbox);
   const displayName  = cachedSender?.username ?? message.senderUsername ?? 'Monke';
-  // isBot / useGlitchBubble / hasSkiaGlow derived earlier (above mediaWidth)
-  // so they could feed into hasSkiaGlow's effective value. Re-alias for
-  // legacy references in this scope.
-  const isBot = isBotSender;
+  const isBot = message.senderUsername === "AI Agent #9385";
   // Bot PFP theme — teal from the bot's pixel art visor/eyes
   const BOT_THEME_COLOR = "#00C9A7";
   // Glitch bubble accent — sender's PFP dominant color so each user wears
@@ -923,7 +915,14 @@ export const MessageBubble = memo(function MessageBubble({
               ) : null}
               {/* Glass bubble — dark glass with glow-tinted border */}
               <View
-                onLayout={(hasSkiaGlow || useGlitchBubble || isLatest) ? (e) => {
+                // Always attach onLayout. If we gate this prop on the world
+                // flags, RN won't refire onLayout when shopStyles hydrates
+                // late — the layout is already settled by then. That race
+                // left useGlitchBubble=true with bubbleSize=null, painting
+                // a transparent surface and no glitch overlay (missing
+                // bubble on cold load). Guarding setBubbleSize inside is
+                // free; an unattached layout pass is what costs us.
+                onLayout={(e) => {
                   const { width: bw, height: bh } = e.nativeEvent.layout;
                   if (hasSkiaGlow || useGlitchBubble) {
                     if (!bubbleSize || Math.abs(bubbleSize.w - bw) > 1 || Math.abs(bubbleSize.h - bh) > 1) {
@@ -931,11 +930,9 @@ export const MessageBubble = memo(function MessageBubble({
                     }
                   }
                   if (isLatest) {
-                    // Push to chatViewport so BananaGroveWorld's pile knows
-                    // when to fade + reset (when its height ≈ this height).
                     setLatestBubbleHeight(bh);
                   }
-                } : undefined}
+                }}
                 style={[
                 styles.glassBubble,
                 isOwn && !centerBubble ? styles.glassBubbleOwn : null,
