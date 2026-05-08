@@ -30,7 +30,6 @@ import {
   Canvas,
   Path,
   Oval,
-  BlurMask,
   LinearGradient,
   vec,
   rect,
@@ -56,7 +55,6 @@ const KNOT_RING_OUTER = "rgba(20, 10, 4, 0.65)";
 const KNOT_RING_MID = "rgba(40, 22, 10, 0.85)";
 const KNOT_CENTER = "rgba(10, 5, 2, 0.95)";
 const FRAME_INNER = "rgba(15, 8, 4, 0.55)";
-const SHADOW_COLOR = "rgba(0, 0, 0, 0.5)";
 
 const PAD = 22;
 const TAIL_LENGTH = 10;
@@ -241,11 +239,6 @@ export const BananaGroveSignBubble = React.memo(function BananaGroveSignBubble({
     () => buildKnots(x, y, width, height),
     [x, y, width, height],
   );
-  // Drop-shadow path — same shape, offset slightly down. Built as a
-  // transformed path string by adjusting Y values directly so we can
-  // blur it independently. Cheaper than another full Skia path build.
-  const shadowPath = bubblePath; // same path; we'll transform via translateY at render
-
   if (width <= 0 || height <= 0) return null;
 
   const tintBody = hexToRgba(color, 0.14);
@@ -262,13 +255,12 @@ export const BananaGroveSignBubble = React.memo(function BananaGroveSignBubble({
       }}
       pointerEvents="none"
     >
-      {/* 1. Drop shadow — offset down, blurred. Sells the "plaque" tactility.
-            Halo intentionally removed (v3) — wood plaques shouldn't glow. */}
-      <Path path={shadowPath} color={SHADOW_COLOR} transform={[{ translateY: 6 }]}>
-        <BlurMask blur={10} style="normal" />
-      </Path>
+      {/* (v4 2026-05-08) Drop shadow removed — read as a green halo behind
+          the bubble against the dusk gradient (black blur over warm/green
+          world bg muddied into a green ring). Wood plaque now stands on
+          its own; texture + frame + polished edge carry the tactility. */}
 
-      {/* 2. Wood gradient body — 3-stop, warmer palette */}
+      {/* 1. Wood gradient body — 3-stop warm brown */}
       <Path path={bubblePath}>
         <LinearGradient
           start={vec(0, y)}
@@ -277,12 +269,12 @@ export const BananaGroveSignBubble = React.memo(function BananaGroveSignBubble({
         />
       </Path>
 
-      {/* 3. PFP-color tint — wood "species" undertone per sender. Lower
+      {/* 2. PFP-color tint — wood "species" undertone per sender. Lower
             alpha than v2 so the wood color reads as wood, not as the user's
             color. */}
       <Path path={bubblePath} color={tintBody} />
 
-      {/* 4. Wood grain — dark cubic S-curves + lighter highlight strokes */}
+      {/* 3. Wood grain — dark cubic S-curves + lighter highlight strokes */}
       {grainStrokes.map((g, i) => (
         <Path
           key={`grain-${i}`}
@@ -294,7 +286,7 @@ export const BananaGroveSignBubble = React.memo(function BananaGroveSignBubble({
         />
       ))}
 
-      {/* 5. Wood knots — concentric rings (outer ring + middle fill + dark center) */}
+      {/* 4. Wood knots — concentric rings (outer ring + middle fill + dark center) */}
       {knots.map((k, i) => (
         <React.Fragment key={`knot-${i}`}>
           {/* Outer dark ring */}
@@ -317,7 +309,7 @@ export const BananaGroveSignBubble = React.memo(function BananaGroveSignBubble({
         </React.Fragment>
       ))}
 
-      {/* 6. Recessed inner frame — chiseled border feel */}
+      {/* 5. Recessed inner frame — chiseled border feel */}
       <Path
         path={bubblePath}
         color={FRAME_INNER}
@@ -325,7 +317,7 @@ export const BananaGroveSignBubble = React.memo(function BananaGroveSignBubble({
         strokeWidth={0.8}
       />
 
-      {/* 7. Polished outer edge — sender's PFP color */}
+      {/* 6. Polished outer edge — sender's PFP color */}
       <Path
         path={bubblePath}
         color={polishedEdge}
