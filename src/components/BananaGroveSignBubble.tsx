@@ -30,7 +30,9 @@ import {
   Canvas,
   Path,
   Oval,
+  Group,
   LinearGradient,
+  RadialGradient,
   vec,
   rect,
 } from "@shopify/react-native-skia";
@@ -415,23 +417,22 @@ export const BananaGroveSignBubble = React.memo(function BananaGroveSignBubble({
           peek-through. (v7) PFP-color tint REMOVED — was causing the
           bot's bubble to read as "brownish pink"; wood now stays natural. */}
 
-      {/* 1. Back face — visible thickness on the bottom-right edge.
-            (v8 2026-05-08) Switched from palette.deep → palette.dark so
-            the side reads as wood-in-shadow instead of pure black; v7's
-            deep stop was registering as a heavy shadow rather than a
-            wood face. */}
+      {/* 1. Back face — wood SIDE with its own vertical lighting gradient
+            (v10 2026-05-08): mid at top (catching ambient light), dark at
+            bottom (in deep shadow). Reads as a real wood face being
+            shaded, not a flat shadow plane. */}
       <Path
         path={bubblePath}
-        color={palette.dark}
         transform={[{ translateX: THICKNESS_OFFSET_X }, { translateY: THICKNESS_OFFSET_Y }]}
-      />
+      >
+        <LinearGradient
+          start={vec(0, y)}
+          end={vec(0, y + height)}
+          colors={[palette.mid, palette.dark]}
+        />
+      </Path>
 
-      {/* 2. Wood gradient body — 2-stop light → mid (v9 2026-05-08).
-            Was 3-stop light/mid/dark; the .dark bottom merged into the
-            back-face .dark, making one continuous dark band that read
-            as a heavy shadow. Now the front-face bottom is .mid and the
-            back face is .dark, giving clear front-vs-back light/shadow
-            contrast. */}
+      {/* 2. Wood gradient body (front face top) */}
       <Path path={bubblePath}>
         <LinearGradient
           start={vec(0, y)}
@@ -494,11 +495,57 @@ export const BananaGroveSignBubble = React.memo(function BananaGroveSignBubble({
         />
       ))}
 
-      {/* (v9 2026-05-08) Stain blobs removed — read as orbs on top of
-          wood, not as in-groove resin. Per-glyph color requires Phase 2
-          (Skia text rendering refactor). */}
+      {/* ── Layered lighting (v10 2026-05-08) ─────────────────────────────
+          The five layers below treat the bubble like a 3D-lit game UI
+          surface, not a CSS gradient. Order matters — AO darkens first,
+          specular highlight catches light over the AO, PFP ambient adds
+          NFT-color light bounce, inner shadow recesses the perimeter. */}
 
-      {/* 6. Recessed inner frame — chiseled border feel */}
+      {/* 6. Ambient occlusion — dark radial in the bottom-right interior.
+            Simulates the corner of the wood face being deeper in shadow.
+            Clipped to the bubble path (so it doesn't bleed beyond edges). */}
+      <Path path={bubblePath}>
+        <RadialGradient
+          c={vec(x + width * 0.78, y + height * 0.82)}
+          r={Math.max(width, height) * 0.65}
+          colors={["rgba(0, 0, 0, 0.42)", "rgba(0, 0, 0, 0)"]}
+        />
+      </Path>
+
+      {/* 7. Specular highlight — bright cream radial at top-left.
+            Simulates overhead light catching the wood face. Soft + low
+            opacity so it reads as ambient light, not a hot spot. */}
+      <Path path={bubblePath}>
+        <RadialGradient
+          c={vec(x + width * 0.22, y + height * 0.22)}
+          r={Math.max(width, height) * 0.55}
+          colors={["rgba(255, 240, 210, 0.30)", "rgba(255, 240, 210, 0)"]}
+        />
+      </Path>
+
+      {/* 8. PFP-color ambient bounce — sender's color tints the upper-right
+            of the wood very subtly, like NFT-colored light reflecting off
+            an unseen surface. ~6% alpha — subliminal "normal-map illusion
+            using NFT colors" per spec. NOT a stain blob. */}
+      <Path path={bubblePath}>
+        <RadialGradient
+          c={vec(x + width * 0.65, y + height * 0.18)}
+          r={Math.max(width, height) * 0.5}
+          colors={[hexToRgba(color, 0.10), hexToRgba(color, 0)]}
+        />
+      </Path>
+
+      {/* 9. Inner-shadow stroke — dark line just inside the bubble path,
+            offset slightly to suggest the wood face is recessed below
+            its outer edge. Adds chunky carved-frame depth. */}
+      <Path
+        path={bubblePath}
+        color="rgba(0, 0, 0, 0.40)"
+        style="stroke"
+        strokeWidth={1.5}
+      />
+
+      {/* 10. Recessed inner frame — chiseled border feel */}
       <Path
         path={bubblePath}
         color={FRAME_INNER}
@@ -510,7 +557,7 @@ export const BananaGroveSignBubble = React.memo(function BananaGroveSignBubble({
           consistently flagged it as a "colored outline around the wood".
           The wood now stands without a chrome ring. */}
 
-      {/* 7. Top-edge highlight — thin warm light stroke just inside the
+      {/* 11. Top-edge highlight — thin warm light stroke just inside the
             top edge. Reinforces the 3D thickness — light catching the top
             face of the wood chunk. */}
       <Path
@@ -521,7 +568,7 @@ export const BananaGroveSignBubble = React.memo(function BananaGroveSignBubble({
         strokeCap="round"
       />
 
-      {/* 8. Bottom-edge plank seam — thin DARK stroke at the bottom of the
+      {/* 12. Bottom-edge plank seam — thin DARK stroke at the bottom of the
             wood top face. Marks where the top face meets the side face,
             making the thickness illusion read more clearly. */}
       <Path
