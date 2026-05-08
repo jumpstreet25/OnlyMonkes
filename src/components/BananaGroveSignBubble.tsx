@@ -25,7 +25,7 @@
  *
  * Contract matches CyberpunkGlitchBubble for drop-in swap in MessageBubble.
  */
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo } from "react";
 import {
   Canvas,
   Path,
@@ -34,6 +34,13 @@ import {
   vec,
   rect,
 } from "@shopify/react-native-skia";
+import {
+  useSharedValue,
+  useDerivedValue,
+  withRepeat,
+  withTiming,
+  Easing,
+} from "react-native-reanimated";
 
 interface BananaGroveSignBubbleProps {
   width: number;
@@ -265,7 +272,7 @@ function buildSignPath(
 interface GrainStroke { path: string; alpha: number; width: number; isHighlight: boolean; }
 
 function buildGrainStrokes(x: number, y: number, w: number, h: number): GrainStroke[] {
-  const lines = 12;
+  const lines = 16;
   const strokes: GrainStroke[] = [];
   for (let i = 0; i < lines; i++) {
     const baseY = y + (h / (lines + 1)) * (i + 1);
@@ -325,6 +332,56 @@ function buildKnots(x: number, y: number, w: number, h: number): Knot[] {
   ];
 }
 
+/**
+ * Hairline cracks — 3 short jagged paths that hint at age + handcrafted
+ * irregularity. Each crack is 3-4 short segments at varied angles, drawn
+ * with very thin strokes at low alpha. Deterministic positions seeded by
+ * sin/cos so the pattern is stable across renders.
+ */
+function buildCracks(x: number, y: number, w: number, h: number): string[] {
+  if (w < 100 || h < 40) return [];
+  const cracks: string[] = [];
+  const positions = [
+    { sx: 0.30, sy: 0.18, dir: 1 },
+    { sx: 0.55, sy: 0.78, dir: -1 },
+    { sx: 0.78, sy: 0.42, dir: 1 },
+  ];
+  positions.forEach((p, i) => {
+    let curX = x + w * p.sx;
+    let curY = y + h * p.sy;
+    let path = `M ${curX} ${curY}`;
+    const segments = 4;
+    const baseLen = 6 + (Math.abs(Math.sin(i * 5.1)) % 1) * 8;
+    for (let s = 0; s < segments; s++) {
+      const dx = baseLen * (0.6 + (Math.abs(Math.sin(i * 3.7 + s * 1.7)) % 1) * 0.5) * p.dir;
+      const dy = (Math.sin(i * 9.3 + s * 2.1) % 1) * 3.5;
+      curX += dx;
+      curY += dy;
+      path += ` L ${curX} ${curY}`;
+    }
+    cracks.push(path);
+  });
+  return cracks;
+}
+
+/**
+ * Translucent PFP-color stain patches — 3 soft oval blobs distributed
+ * across the wood surface. Read as resin pooling / illuminated wood stain
+ * trapped in the grain. Lower alpha so the wood color dominates and the
+ * PFP color "bleeds" through subtly. Phase 1 — full-bubble overlay (not
+ * clipped to text glyph shapes; that's Phase 2 with Skia text).
+ */
+interface StainBlob { cx: number; cy: number; rx: number; ry: number; }
+
+function buildStainBlobs(x: number, y: number, w: number, h: number): StainBlob[] {
+  if (w < 80 || h < 30) return [];
+  return [
+    { cx: x + w * 0.30, cy: y + h * 0.45, rx: w * 0.18, ry: h * 0.30 },
+    { cx: x + w * 0.65, cy: y + h * 0.55, rx: w * 0.22, ry: h * 0.32 },
+    { cx: x + w * 0.85, cy: y + h * 0.30, rx: w * 0.12, ry: h * 0.22 },
+  ];
+}
+
 export const BananaGroveSignBubble = React.memo(function BananaGroveSignBubble({
   width,
   height,
@@ -349,10 +406,31 @@ export const BananaGroveSignBubble = React.memo(function BananaGroveSignBubble({
     () => buildKnots(x, y, width, height),
     [x, y, width, height],
   );
+  const cracks = useMemo(
+    () => buildCracks(x, y, width, height),
+    [x, y, width, height],
+  );
+  const stainBlobs = useMemo(
+    () => buildStainBlobs(x, y, width, height),
+    [x, y, width, height],
+  );
+
   // Pick natural wood species from the sender's PFP color (lightness + hue).
-  // Bot's hot pink → warm/dark band → Mahogany. Bright golden NFT → Pine.
-  // Pale white NFT → Maple. Dark green → Walnut. Etc.
   const palette = useMemo(() => pickWoodPalette(color), [color]);
+
+  // Subtle pulse for the PFP-color stain blobs — opacity oscillates 0.08 →
+  // 0.22 over 5s loops (matches user spec: "Glow opacity should fluctuate
+  // between 8%–22%, pulse subtly and asynchronously").
+  const stainPulse = useSharedValue(0);
+  useEffect(() => {
+    stainPulse.value = withRepeat(
+      withTiming(1, { duration: 5000, easing: Easing.inOut(Easing.sin) }),
+      -1,
+      true,
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const stainOpacity = useDerivedValue(() => 0.08 + stainPulse.value * 0.14);
 
   if (width <= 0 || height <= 0) return null;
 
@@ -372,14 +450,14 @@ export const BananaGroveSignBubble = React.memo(function BananaGroveSignBubble({
           peek-through. (v7) PFP-color tint REMOVED — was causing the
           bot's bubble to read as "brownish pink"; wood now stays natural. */}
 
-      {/* 1. Back face — visible thickness on the bottom-right edge. Same
-            silhouette as the front face, offset down-right by 10px. The
-            visible band where this peeks out is the wood "side" — the
-            entire reason the bubble reads as a 2-inch-thick chunk. Color
-            is the species' deepest stop (in-shadow side). */}
+      {/* 1. Back face — visible thickness on the bottom-right edge.
+            (v8 2026-05-08) Switched from palette.deep → palette.dark so
+            the side reads as wood-in-shadow instead of pure black; v7's
+            deep stop was registering as a heavy shadow rather than a
+            wood face. */}
       <Path
         path={bubblePath}
-        color={palette.deep}
+        color={palette.dark}
         transform={[{ translateX: THICKNESS_OFFSET_X }, { translateY: THICKNESS_OFFSET_Y }]}
       />
 
@@ -433,7 +511,34 @@ export const BananaGroveSignBubble = React.memo(function BananaGroveSignBubble({
         </React.Fragment>
       ))}
 
-      {/* 5. Recessed inner frame — chiseled border feel */}
+      {/* 5. Hairline cracks — short jagged paths across the surface.
+            Hint at age + handcrafted feel without overwhelming the wood. */}
+      {cracks.map((c, i) => (
+        <Path
+          key={`crack-${i}`}
+          path={c}
+          color={hexToRgba(palette.deep, 0.45)}
+          style="stroke"
+          strokeWidth={0.7}
+          strokeCap="round"
+        />
+      ))}
+
+      {/* 6. Translucent PFP-color stain blobs — soft resin-like patches
+            of the sender's color absorbed into the wood. Pulse 0.08–0.22
+            on a 5s sine loop for the "subsurface glow" feel from the
+            spec. Phase 1 — full-bubble overlay (not yet clipped to text
+            shape; that's Phase 2 with Skia text rendering). */}
+      {stainBlobs.map((b, i) => (
+        <Oval
+          key={`stain-${i}`}
+          rect={rect(b.cx - b.rx, b.cy - b.ry, b.rx * 2, b.ry * 2)}
+          color={color}
+          opacity={stainOpacity}
+        />
+      ))}
+
+      {/* 7. Recessed inner frame — chiseled border feel */}
       <Path
         path={bubblePath}
         color={FRAME_INNER}
@@ -445,7 +550,7 @@ export const BananaGroveSignBubble = React.memo(function BananaGroveSignBubble({
           consistently flagged it as a "colored outline around the wood".
           The wood now stands without a chrome ring. */}
 
-      {/* 6. Top-edge highlight — thin warm light stroke just inside the
+      {/* 8. Top-edge highlight — thin warm light stroke just inside the
             top edge. Reinforces the 3D thickness — light catching the top
             face of the wood chunk. */}
       <Path
@@ -456,7 +561,7 @@ export const BananaGroveSignBubble = React.memo(function BananaGroveSignBubble({
         strokeCap="round"
       />
 
-      {/* 7. Bottom-edge plank seam — thin DARK stroke at the bottom of the
+      {/* 9. Bottom-edge plank seam — thin DARK stroke at the bottom of the
             wood top face. Marks where the top face meets the side face,
             making the thickness illusion read more clearly. */}
       <Path
