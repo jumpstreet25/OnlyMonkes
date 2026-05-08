@@ -28,6 +28,7 @@ import {
   matchFont,
   type SkFont,
 } from "@shopify/react-native-skia";
+import { pickWoodPalette } from "@/lib/woodPalettes";
 
 interface BananaGroveCarvedTextProps {
   text: string;
@@ -35,21 +36,25 @@ interface BananaGroveCarvedTextProps {
   maxWidth: number;
   /** Font size — defaults to 15. Multiplied by user's textScale upstream. */
   fontSize?: number;
-  /** Sender's PFP color — currently unused, hooked up in Day 4 (resin). */
+  /** Sender's PFP color — picks the wood species + carve depth color. */
   pfpColor: string;
 }
 
-// Layer colors for the carve effect (Day 2 amp v13).
-// Carve interior fill — pure black for maximum contrast against any wood.
-const CARVE_FILL = "#000000";
-// Top-bevel highlight — bright warm cream, full alpha, offset up-left to
-// catch overhead light. Visible as a 2-3 px sliver peeking from each
-// letter's upper-left edge — the unmistakable carved-into-wood signature.
+// v14 (2026-05-08): carve-fill switched from pure black to palette.deep
+// (the deepest stop of the SAME wood species the bubble surface is using).
+// Reasons:
+//   - Pure black against light woods read as "black holes" punched through
+//     the surface — too harsh, eyestrain-y per user feedback.
+//   - Wood-colored carve (palette.deep) reads as a real recessed cut into
+//     the SAME wood — letters belong to the wood family.
+//   - Carve interior is still meaningfully darker than surface (which
+//     uses light → mid gradient ending at .mid), so contrast is preserved.
+
+// Top-bevel highlight — bright warm cream, full alpha. Visible as a clean
+// sliver peeking from each letter's upper-left edge. Reads as overhead
+// light catching the upper rim of a real V-shaped carve.
 const CARVE_HIGHLIGHT = "#FFE5B0";
 
-// Bevel offsets — amplified from v12's 1.2 → 2.5 so the asymmetric reveal
-// is visibly carved instead of subliminal. AO layer dropped entirely; it
-// was adding visual mud without adding readable depth at small font sizes.
 const HIGHLIGHT_DX = -2.5;
 const HIGHLIGHT_DY = -2.5;
 
@@ -89,9 +94,12 @@ export const BananaGroveCarvedText = React.memo(function BananaGroveCarvedText({
   text,
   maxWidth,
   fontSize = 15,
-  // pfpColor reserved for Day 4 (resin pool); destructured to keep contract.
-  pfpColor: _pfpColor,
+  pfpColor,
 }: BananaGroveCarvedTextProps) {
+  // Pick the same wood species the Sign bubble is using, so letters carve
+  // INTO the same wood (continuity of material). palette.deep is the
+  // darkest stop — used as the carve interior color.
+  const palette = useMemo(() => pickWoodPalette(pfpColor), [pfpColor]);
   // Build a Skia font once per fontSize change. matchFont is a sync call
   // that resolves a system font matching the requested style.
   const font = useMemo(() => {
@@ -153,16 +161,18 @@ export const BananaGroveCarvedText = React.memo(function BananaGroveCarvedText({
               font={font}
               color={CARVE_HIGHLIGHT}
             />
-            {/* 2. CARVE INTERIOR — pure black fill on top. Letters read as
-                  recessed because the cream highlight peeks out from
-                  underneath only at the upper-left, exactly where light
-                  would catch a real V-shaped carve. */}
+            {/* 2. CARVE INTERIOR — palette.deep fill on top. Letters are
+                  the deepest shade of the SAME wood species as the bubble
+                  surface, reading as a recessed cut INTO the wood (not as
+                  a black hole punched through it). The cream highlight
+                  peeks out from underneath at the upper-left only,
+                  exactly where light would catch a V-shaped carve edge. */}
             <SkiaText
               text={line}
               x={baseX}
               y={baselineY}
               font={font}
-              color={CARVE_FILL}
+              color={palette.deep}
             />
           </React.Fragment>
         );
