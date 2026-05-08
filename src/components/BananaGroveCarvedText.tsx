@@ -24,6 +24,9 @@ import React, { useMemo } from "react";
 import { Platform } from "react-native";
 import {
   Canvas,
+  Group,
+  Rect,
+  Path,
   Text as SkiaText,
   LinearGradient,
   vec,
@@ -42,24 +45,17 @@ interface BananaGroveCarvedTextProps {
   pfpColor: string;
 }
 
-// v15 (2026-05-08): single-glyph render with PER-LETTER vertical gradient
-// as the paint. Replaces the 2-layer offset bevel approach.
+// v16 (2026-05-08): SKIA MASK approach. Real wood material (gradient +
+// grain lines) is clipped to the letter glyph shapes via BlendMode.dstIn.
+// Inside each letter, you see the wood texture continuing through — like
+// real chiseled letters that exposed the deeper wood layer. Outside the
+// letter shapes, transparent (the bubble's wood surface shows through).
 //
-// Why: 2-layer offset (cream highlight glyph + dark fill glyph on top) at
-// 15px font produced a visible cream "halo" around each letter, reading
-// as "black on cream" rather than "carved into wood." The fundamental
-// problem: separate cream + dark colors don't belong to the same material.
-//
-// Solution: paint each letter with a vertical gradient running from
-// CARVE_BEVEL_TOP (bright cream — overhead light catching the carve's
-// upper rim) through palette.dark (mid-stop wood tone) to palette.deep
-// (deepest shadow inside the carve). Each letter naturally has bevel
-// shading WITHIN ITS OWN SHAPE — the top edge of the letter is bright,
-// the bottom is dark, exactly mirroring how light hits a V-shaped carve.
-// No separate highlight glyph means no "halo" or "background" perception.
-//
-// This is effectively a per-letter normal-map illusion via gradient.
-const CARVE_BEVEL_TOP = "#FFE0B0";   // bright cream — top rim catching light
+// Why this finally works: prior versions painted the letter as a flat
+// color or smooth gradient, which always read as "text on top of wood."
+// With the mask, the letter IS wood — the bubble's same material continues
+// through the cut, just darker / shaded as the V-shape interior would be.
+const CARVE_BEVEL_TOP = "#FFE5B0"; // bright sliver at the top of each carve
 
 /**
  * Word-wrap a paragraph into lines that fit within maxWidth using Skia's
@@ -147,33 +143,71 @@ export const BananaGroveCarvedText = React.memo(function BananaGroveCarvedText({
       pointerEvents="none"
     >
       {lines.map((line, i) => {
-        // Skia <Text> y is the BASELINE. Each letter spans roughly from
-        // (baselineY - fontSize) at the top to (baselineY + descender)
-        // at the bottom. We paint a vertical gradient across that range
-        // so each letter's TOP is bright cream and BOTTOM is deep shadow.
         const baselineY = PAD_Y + (i + 1) * lineHeight - lineHeight * 0.25;
         const baseX = PAD_X;
         const glyphTop = baselineY - fontSize * 0.85;
         const glyphBottom = baselineY + fontSize * 0.18;
+        const glyphHeight = glyphBottom - glyphTop;
+
+        // Three thin horizontal grain paths spanning the line — they get
+        // masked to the letter shapes by the dstIn group below, so each
+        // grain only shows where it overlaps a letter. Sin-jittered Y so
+        // grain looks natural, not perfectly straight.
+        const grainPaths: string[] = [];
+        for (let g = 0; g < 3; g++) {
+          const gy = glyphTop + (g + 1) * (glyphHeight / 4) + Math.sin(g * 5.1) * 1.2;
+          grainPaths.push(`M ${baseX - 2} ${gy} Q ${baseX + maxWidth / 2} ${gy + 0.8} ${baseX + maxWidth + 2} ${gy}`);
+        }
+
         return (
-          <SkiaText
-            key={i}
-            text={line}
-            x={baseX}
-            y={baselineY}
-            font={font}
-          >
-            {/* Per-letter bevel gradient: cream top → mid wood → deep
-                shadow bottom. This is the carve illusion — light catches
-                the upper rim of each letter, deepest shadow at the
-                bottom of the carve. Same wood species as the surface so
-                it reads as a recessed cut INTO the same plank. */}
-            <LinearGradient
-              start={vec(0, glyphTop)}
-              end={vec(0, glyphBottom)}
-              colors={[CARVE_BEVEL_TOP, palette.dark, palette.deep]}
-            />
-          </SkiaText>
+          <Group key={i}>
+            {/* DESTINATION layer — wood texture inside the line bounds.
+                Sharp top cream stop concentrates the bright sliver at the
+                very top of the V-carve. Then quick transition to wood
+                mid-tones running down to deepest carve interior. */}
+            <Rect x={baseX - 2} y={glyphTop} width={maxWidth + 4} height={glyphHeight}>
+              <LinearGradient
+                start={vec(0, glyphTop)}
+                end={vec(0, glyphBottom)}
+                colors={[
+                  CARVE_BEVEL_TOP,
+                  CARVE_BEVEL_TOP,
+                  palette.mid,
+                  palette.dark,
+                  palette.deep,
+                ]}
+                positions={[0, 0.08, 0.20, 0.55, 1]}
+              />
+            </Rect>
+
+            {/* Grain inside the carve — subtle dark paths that show only
+                where they overlap letter shapes (clipped by the dstIn
+                mask below). Same wood family as the rest. */}
+            {grainPaths.map((p, gi) => (
+              <Path
+                key={`grain-${gi}`}
+                path={p}
+                color={palette.deep}
+                style="stroke"
+                strokeWidth={0.7}
+                opacity={0.5}
+              />
+            ))}
+
+            {/* SOURCE / MASK layer — text glyphs in white, applied with
+                blendMode "dstIn" so the destination (wood + grain) is
+                kept ONLY where the glyphs are opaque. Result: wood
+                texture visible only inside letter shapes. */}
+            <Group blendMode="dstIn">
+              <SkiaText
+                text={line}
+                x={baseX}
+                y={baselineY}
+                font={font}
+                color="white"
+              />
+            </Group>
+          </Group>
         );
       })}
     </Canvas>
