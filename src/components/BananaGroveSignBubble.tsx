@@ -30,6 +30,7 @@ import {
   Canvas,
   Path,
   Oval,
+  BlurMask,
   LinearGradient,
   vec,
   rect,
@@ -45,16 +46,23 @@ interface BananaGroveSignBubbleProps {
 }
 
 // Warmer brown palette — more orange-brown saturation than v2's gray-brown.
-// Real wood reads warm; v2's #5C3A1F → #2D1810 was too desaturated.
 const WOOD_LIGHT = "#7A4A26";
 const WOOD_MID = "#5A3318";
 const WOOD_DARK = "#3A2110";
-const GRAIN_COLOR_BASE = "rgba(20, 10, 4, 1)"; // alpha applied per-stroke
-const HIGHLIGHT_COLOR_BASE = "rgba(180, 130, 80, 1)"; // light grain — sells 3D
+const WOOD_DEEP = "#1F1206"; // deepest — used for the back face / wood "side"
+const GRAIN_COLOR_BASE = "rgba(20, 10, 4, 1)";
+const HIGHLIGHT_COLOR_BASE = "rgba(180, 130, 80, 1)";
 const KNOT_RING_OUTER = "rgba(20, 10, 4, 0.65)";
 const KNOT_RING_MID = "rgba(40, 22, 10, 0.85)";
 const KNOT_CENTER = "rgba(10, 5, 2, 0.95)";
 const FRAME_INNER = "rgba(15, 8, 4, 0.55)";
+const TOP_EDGE_HIGHLIGHT = "rgba(255, 220, 170, 0.45)"; // light catching top of plank
+const CAST_SHADOW_COLOR = "rgba(0, 0, 0, 0.55)";
+
+// 3D thickness — back face offset (down + right) by this many pixels. ~5px
+// reads as a 2-inch-thick wood chunk at typical bubble size.
+const THICKNESS_OFFSET_X = 5;
+const THICKNESS_OFFSET_Y = 5;
 
 const PAD = 22;
 const TAIL_LENGTH = 10;
@@ -255,12 +263,28 @@ export const BananaGroveSignBubble = React.memo(function BananaGroveSignBubble({
       }}
       pointerEvents="none"
     >
-      {/* (v4 2026-05-08) Drop shadow removed — read as a green halo behind
-          the bubble against the dusk gradient (black blur over warm/green
-          world bg muddied into a green ring). Wood plaque now stands on
-          its own; texture + frame + polished edge carry the tactility. */}
+      {/* 1. Cast shadow — sharp, offset down-right (NOT a centered halo).
+            Small blur + directional offset reads as a real cast shadow on
+            the chat surface below the wood, not a glow around the bubble. */}
+      <Path
+        path={bubblePath}
+        color={CAST_SHADOW_COLOR}
+        transform={[{ translateX: 4 }, { translateY: 10 }]}
+      >
+        <BlurMask blur={3} style="normal" />
+      </Path>
 
-      {/* 1. Wood gradient body — 3-stop warm brown */}
+      {/* 2. Back face — visible thickness on the bottom-right edge. Same
+            silhouette as the front face, offset down-right by ~5px. The
+            visible band where this peeks out from behind the front face
+            is the "side" of the 2-inch-thick wood chunk. */}
+      <Path
+        path={bubblePath}
+        color={WOOD_DEEP}
+        transform={[{ translateX: THICKNESS_OFFSET_X }, { translateY: THICKNESS_OFFSET_Y }]}
+      />
+
+      {/* 3. Wood gradient body — 3-stop warm brown (the plank's TOP face) */}
       <Path path={bubblePath}>
         <LinearGradient
           start={vec(0, y)}
@@ -269,12 +293,10 @@ export const BananaGroveSignBubble = React.memo(function BananaGroveSignBubble({
         />
       </Path>
 
-      {/* 2. PFP-color tint — wood "species" undertone per sender. Lower
-            alpha than v2 so the wood color reads as wood, not as the user's
-            color. */}
+      {/* 4. PFP-color tint — wood "species" undertone per sender. */}
       <Path path={bubblePath} color={tintBody} />
 
-      {/* 3. Wood grain — dark cubic S-curves + lighter highlight strokes */}
+      {/* 5. Wood grain — dark cubic S-curves + lighter highlight strokes */}
       {grainStrokes.map((g, i) => (
         <Path
           key={`grain-${i}`}
@@ -286,7 +308,7 @@ export const BananaGroveSignBubble = React.memo(function BananaGroveSignBubble({
         />
       ))}
 
-      {/* 4. Wood knots — concentric rings (outer ring + middle fill + dark center) */}
+      {/* 6. Wood knots — concentric rings (outer ring + middle fill + dark center) */}
       {knots.map((k, i) => (
         <React.Fragment key={`knot-${i}`}>
           {/* Outer dark ring */}
@@ -309,7 +331,7 @@ export const BananaGroveSignBubble = React.memo(function BananaGroveSignBubble({
         </React.Fragment>
       ))}
 
-      {/* 5. Recessed inner frame — chiseled border feel */}
+      {/* 7. Recessed inner frame — chiseled border feel */}
       <Path
         path={bubblePath}
         color={FRAME_INNER}
@@ -317,12 +339,23 @@ export const BananaGroveSignBubble = React.memo(function BananaGroveSignBubble({
         strokeWidth={0.8}
       />
 
-      {/* 6. Polished outer edge — sender's PFP color */}
+      {/* 8. Polished outer edge — sender's PFP color (the "lacquered" edge of the wood) */}
       <Path
         path={bubblePath}
         color={polishedEdge}
         style="stroke"
         strokeWidth={1.3}
+      />
+
+      {/* 9. Top-edge highlight — thin warm light stroke just inside the
+            top edge, suggesting daylight catching the upper face of the
+            wood chunk. Reinforces the 3D thickness illusion. */}
+      <Path
+        path={`M ${x + 5} ${y + 0.8} L ${x + width - 5} ${y + 0.8}`}
+        color={TOP_EDGE_HIGHLIGHT}
+        style="stroke"
+        strokeWidth={1}
+        strokeCap="round"
       />
     </Canvas>
   );
