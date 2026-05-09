@@ -15,13 +15,19 @@ import { useTradesStore } from '@/store/tradesStore';
 import { PnLCardMessage } from '@/components/PnLCardMessage';
 import { PnLCardModal } from '@/components/PnLCardModal';
 import { OpenTradeCardMessage } from '@/components/OpenTradeCardMessage';
+import { PortfolioMiniCard } from '@/components/PortfolioMiniCard';
+import { PortfolioResponseBubble } from '@/components/PortfolioResponseBubble';
+import { LivePnLCardModal } from '@/components/LivePnLCardModal';
 import type { ClosedTrade, OpenTrade } from '@/lib/positions';
+import type { PortfolioCard, PortfolioResponse } from '@/store/tradesStore';
 import type { ChatMessage, ReactionEmoji } from '@/types';
 
 type FeedItem =
   | { kind: 'msg'; key: string; ts: number; msg: ChatMessage }
   | { kind: 'trade'; key: string; ts: number; trade: ClosedTrade }
-  | { kind: 'open'; key: string; ts: number; openTrade: OpenTrade };
+  | { kind: 'open'; key: string; ts: number; openTrade: OpenTrade }
+  | { kind: 'portfolio'; key: string; ts: number; card: PortfolioCard }
+  | { kind: 'portfolio_response'; key: string; ts: number; response: PortfolioResponse };
 
 export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
   const insets = useSafeAreaInsets();
@@ -32,6 +38,7 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [activeTradeCard, setActiveTradeCard] = useState<ClosedTrade | null>(null);
+  const [activeLiveCard, setActiveLiveCard] = useState<PortfolioCard | null>(null);
   const flatListRef = useRef<FlatList<FeedItem>>(null);
   useProfileVersion();
   const peerProfile = getCachedProfile(peerInboxId);
@@ -39,6 +46,8 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
   const isBotDm = BOT_INBOX_IDS.includes(peerInboxId);
   const closedTrades = useTradesStore(s => s.closedTrades);
   const openTrades = useTradesStore(s => s.openTrades);
+  const portfolioCards = useTradesStore(s => s.portfolioCards);
+  const portfolioResponse = useTradesStore(s => s.portfolioResponse);
   const themeBg = useThemeColor('bg');
   const themeSurface = useThemeColor('surface');
   const themeBorder = useThemeColor('border');
@@ -83,8 +92,16 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
     const openItems: FeedItem[] = openTrades.map(o => ({
       kind: 'open', key: `open-${o.id}`, ts: o.openedAt, openTrade: o,
     }));
-    return [...msgItems, ...closedItems, ...openItems].sort((a, b) => a.ts - b.ts);
-  }, [messages, closedTrades, openTrades, isBotDm]);
+    const portfolioItems: FeedItem[] = portfolioCards.map(c => ({
+      kind: 'portfolio', key: `pf-${c.positionId}`, ts: c.ts, card: c,
+    }));
+    // The composite portfolio response — only one at a time, latest from /portfolio.
+    // Renders as a single rich bubble (header + positions with sparklines).
+    const portfolioResponseItems: FeedItem[] = portfolioResponse
+      ? [{ kind: 'portfolio_response', key: `pr-${portfolioResponse.ts}`, ts: portfolioResponse.ts, response: portfolioResponse }]
+      : [];
+    return [...msgItems, ...closedItems, ...openItems, ...portfolioItems, ...portfolioResponseItems].sort((a, b) => a.ts - b.ts);
+  }, [messages, closedTrades, openTrades, portfolioCards, portfolioResponse, isBotDm]);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top, backgroundColor: themeBg }]}>
@@ -128,6 +145,12 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
             }
             if (item.kind === 'open') {
               return <OpenTradeCardMessage trade={item.openTrade} />;
+            }
+            if (item.kind === 'portfolio') {
+              return <PortfolioMiniCard card={item.card} onPress={setActiveLiveCard} />;
+            }
+            if (item.kind === 'portfolio_response') {
+              return <PortfolioResponseBubble response={item.response} />;
             }
             const m = item.msg;
             return (
@@ -177,6 +200,11 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
         trade={activeTradeCard}
         visible={!!activeTradeCard}
         onClose={() => setActiveTradeCard(null)}
+      />
+      <LivePnLCardModal
+        card={activeLiveCard}
+        visible={!!activeLiveCard}
+        onClose={() => setActiveLiveCard(null)}
       />
     </View>
   );
