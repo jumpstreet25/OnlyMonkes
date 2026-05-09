@@ -60,6 +60,7 @@ import { shortenAddress } from "@/lib/nftVerification";
 import { useAppStore } from "@/store/appStore";
 import { getCachedProfile, useProfileVersion, getDeduplicatedUsers, getPrimaryInboxId } from "@/lib/userProfile";
 import { getEarnedBadges, getBadgeDef } from "@/lib/badges";
+import { BadgeGlyph } from "./BadgeGlyph";
 import { getFlairSync } from "@/lib/monkeClout";
 // nftColor no longer needed — glass bubbles use fixed semi-transparent backgrounds
 import { searchStickers, getGiphyLastStatus, type GiphyItem } from "@/lib/giphy";
@@ -720,15 +721,18 @@ export const MessageBubble = memo(function MessageBubble({
     ? useAppStore.getState().isLegendary
     : !!(cachedSender?.legendary);
 
-  // Earned badge emojis — own: from local storage, others: from PROFILE_UPDATE cache
-  const badgeEmojis = useMemo(() => {
+  // (v41 2026-05-09) Keep badge emojis as an array — splitting a joined
+  // string by codepoint is unreliable for multi-codepoint emojis like ✉️.
+  // BadgeGlyph maps each entry to a Skia glyph (or falls through to Text
+  // for any emoji without a Skia counterpart yet).
+  const badgeEmojiArray = useMemo(() => {
     const earned = isOwn
       ? getEarnedBadges()
       : (cachedSender?.badges ?? []);
-    if (earned.length === 0) return "";
+    if (earned.length === 0) return [] as string[];
     // Show up to 3 most recent badge emojis after the name
     const defs = earned.slice(-3).map(id => getBadgeDef(id)).filter(Boolean);
-    return defs.map(d => d!.emoji).join("");
+    return defs.map(d => d!.emoji);
   }, [isOwn, cachedSender?.badges]);
 
   // Alpha Ape flair from CloutScore (top 3)
@@ -1144,18 +1148,29 @@ export const MessageBubble = memo(function MessageBubble({
                       ("AI Agent #9385") is redundant noise. */}
                   {!isOwn && !(isBotChannel && isBot) ? (
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 4, flexShrink: 1 }}>
-                      <Text style={{
-                        fontFamily: FONTS.body,
-                        fontSize: 11,
-                        color: isBot
-                          ? BOT_THEME_COLOR + "CC"
-                          : shopStyles.glowColor
-                            ? (shopStyles.glowColor as string) + "AA"
-                            : "rgba(108, 180, 238, 0.55)",
-                        ...(shopStyles.nameColor && !isBot ? { color: shopStyles.nameColor as string } : {}),
-                      }}>
-                        {displayName}{cloutFlair ? " 🦍" : ""}{isShopCustomer ? " 🍌" : ""}{isLegendarySender ? " 🌟" : ""}{badgeEmojis ? ` ${badgeEmojis}` : ""}
+                      <Text
+                        style={{
+                          fontFamily: FONTS.body,
+                          fontSize: 11,
+                          color: isBot
+                            ? BOT_THEME_COLOR + "CC"
+                            : shopStyles.glowColor
+                              ? (shopStyles.glowColor as string) + "AA"
+                              : "rgba(108, 180, 238, 0.55)",
+                          ...(shopStyles.nameColor && !isBot ? { color: shopStyles.nameColor as string } : {}),
+                        }}
+                        numberOfLines={1}
+                      >
+                        {displayName}
                       </Text>
+                      {/* (v41) Flair + badges as Skia glyphs.
+                          Order: clout 🦍 → shop 🍌 → legendary 🌟 → up to 3 badges. */}
+                      {cloutFlair ? <BadgeGlyph emoji="🦍" size={12} /> : null}
+                      {isShopCustomer ? <BadgeGlyph emoji="🍌" size={12} /> : null}
+                      {isLegendarySender ? <BadgeGlyph emoji="🌟" size={12} /> : null}
+                      {badgeEmojiArray.map((e, i) => (
+                        <BadgeGlyph key={`${e}-${i}`} emoji={e} size={12} />
+                      ))}
                       <OnlineDot online={isUserOnline(message.senderAddress)} />
                     </View>
                   ) : null}

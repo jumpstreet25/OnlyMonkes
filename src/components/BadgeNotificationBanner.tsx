@@ -11,6 +11,7 @@ import * as Haptics from "expo-haptics";
 import { THEME, FONTS } from "@/lib/constants";
 import { shareBadgeEarned } from "@/lib/shareToX";
 import type { Badge } from "@/lib/activityBadges";
+import { BadgeGlyph } from "@/components/BadgeGlyph";
 
 interface BadgeNotificationBannerProps {
   badge: Badge | null;
@@ -63,7 +64,8 @@ export function BadgeNotificationBanner({ badge, onDismiss }: BadgeNotificationB
   return (
     <Animated.View style={[styles.banner, { transform: [{ translateY: slideAnim }] }]}>
       <Pressable style={styles.content} onPress={handleTap}>
-        <Text style={styles.emoji}>{badge.emoji}</Text>
+        {/* (v41) Skia glyph at toast scale; falls back to text emoji if unmapped */}
+        <BadgeGlyph emoji={badge.emoji} size={36} />
         <View style={styles.textCol}>
           <Text style={styles.title}>Badge Earned!</Text>
           <Text style={styles.name}>{badge.name}</Text>

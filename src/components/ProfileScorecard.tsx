@@ -17,6 +17,7 @@ import { loadBananaState, type BananaState } from "@/lib/bananaRewards";
 import { getShieldExpiry, daysUntilNextPurchase, purchaseShield, SHIELD_COST_BANANAS } from "@/lib/streakShield";
 import { THEME, FONTS, getWorldAccent } from "@/lib/constants";
 import { MenuIcon } from "@/components/MenuIcon";
+import { BadgeGlyph } from "@/components/BadgeGlyph";
 
 // Banana glyph stays brand-yellow regardless of world tinting (per user
 // 2026-05-09 spec — bananas are core OnlyMonkes brand element).
@@ -304,12 +305,13 @@ export function ProfileScorecard({ onEditProfile, onPressPfp, onClose }: Profile
         </View>
       )}
 
-      {/* Milestones */}
+      {/* Milestones — Skia glyphs replace inline emoji (v41) */}
       {badges.length > 0 && (
         <View style={st.milestones}>
           {badges.map(b => (
             <View key={b!.id} style={[st.pill, { borderColor: glowColor + "18" }]}>
-              <Text style={st.pillText}>{b!.emoji} {b!.name}</Text>
+              <BadgeGlyph emoji={b!.emoji} size={12} />
+              <Text style={st.pillText}>{b!.name}</Text>
             </View>
           ))}
         </View>
@@ -344,7 +346,7 @@ const st = StyleSheet.create({
   shieldRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: "rgba(255,255,255,0.03)", borderRadius: 12, paddingVertical: 10, paddingHorizontal: 12, borderWidth: 0.5, marginBottom: 12 },
   shieldText: { fontFamily: FONTS.bodyMed, fontSize: 12, color: THEME.text, letterSpacing: 0.3 },
   milestones: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
-  pill: { backgroundColor: "rgba(255,255,255,0.03)", borderRadius: 10, paddingHorizontal: 8, paddingVertical: 4, borderWidth: 0.5 },
+  pill: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "rgba(255,255,255,0.03)", borderRadius: 10, paddingHorizontal: 8, paddingVertical: 4, borderWidth: 0.5 },
   pillText: { fontFamily: FONTS.body, fontSize: 11, color: THEME.textMuted },
   traitsSection: { marginTop: 12, gap: 6 },
   traitsTitle: { fontFamily: FONTS.bodyMed, fontSize: 11, color: THEME.textMuted, marginBottom: 2 },

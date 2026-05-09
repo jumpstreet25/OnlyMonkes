@@ -45,7 +45,24 @@ export type MenuIconName =
   | "pin"          // 📍 location
   | "banana"      // 🍌 (caller passes #FFD24A or similar)
   | "cart"        // 🛒 shopping cart (Banana Shop button)
-  | "search";     // 🔍 search bar magnifier
+  | "search"      // 🔍 search bar magnifier
+  // (v41 2026-05-09) Badge glyphs — replace emoji rendering for the badge
+  // system across MessageBubble / ProfileScorecard / UserProfileModal /
+  // BadgeNotificationBanner. Emoji→Skia map lives in BadgeGlyph.tsx.
+  | "crown"       // 👑 messages_1000
+  | "gem"         // 💎 streak_30 / diamond_hands
+  | "trophy"      // 🏆 top_monke
+  | "confetti"    // 🎉 reactions_50
+  | "speech"      // 💬 messages_100 / chatterbox
+  | "letter"      // ✉️ first_message
+  | "monkeface"   // 🐒 og_monke
+  | "chart_up"    // 📈 top_trader
+  | "target"      // 🎯 sharp_shooter
+  | "gift"        // 🎁 generous_ape
+  | "bolt"        // ⚡ reaction_king
+  | "clover"      // 🍀 lucky_monke
+  | "palm"        // 🌴 og_jungle_king
+  | "gorilla";    // 🦍 clout-flair suffix
 
 interface MenuIconProps {
   name: MenuIconName;
@@ -83,6 +100,20 @@ export const MenuIcon = React.memo(function MenuIcon({
       {name === "banana" && <BananaIcon s={s} color={color} />}
       {name === "cart" && <CartIcon s={s} color={color} />}
       {name === "search" && <SearchIcon s={s} color={color} />}
+      {name === "crown" && <CrownIcon s={s} color={color} />}
+      {name === "gem" && <GemIcon s={s} color={color} />}
+      {name === "trophy" && <TrophyIcon s={s} color={color} />}
+      {name === "confetti" && <ConfettiIcon s={s} color={color} />}
+      {name === "speech" && <SpeechIcon s={s} color={color} />}
+      {name === "letter" && <LetterIcon s={s} color={color} />}
+      {name === "monkeface" && <MonkeFaceIcon s={s} color={color} />}
+      {name === "chart_up" && <ChartUpIcon s={s} color={color} />}
+      {name === "target" && <TargetIcon s={s} color={color} />}
+      {name === "gift" && <GiftIcon s={s} color={color} />}
+      {name === "bolt" && <BoltIcon s={s} color={color} />}
+      {name === "clover" && <CloverIcon s={s} color={color} />}
+      {name === "palm" && <PalmIcon s={s} color={color} />}
+      {name === "gorilla" && <GorillaIcon s={s} color={color} />}
     </Canvas>
   );
 });
@@ -583,6 +614,284 @@ function BananaIcon({ s, color }: { s: number; color: string }) {
       <Path path={banana} color={color} />
       <Path path={banana} color="rgba(0,0,0,0.35)" style="stroke" strokeWidth={stroke * 0.8} strokeJoin="round" />
       <Path path={stem} color="rgba(0,0,0,0.5)" style="stroke" strokeWidth={stroke * 1.4} strokeCap="round" />
+    </Group>
+  );
+}
+
+// ── Crown — 👑 messages_1000 ───────────────────────────────────────────────
+function CrownIcon({ s, color }: { s: number; color: string }) {
+  const stroke = STROKE * s;
+  // Three peaks + base. Five points outline: bl → up to peak1 → down to v1 →
+  // up to peak2 (taller) → down to v2 → up to peak3 → br → bl.
+  const crown = `
+    M ${4 * s} ${20 * s}
+    L ${6 * s} ${9 * s}
+    L ${10 * s} ${14 * s}
+    L ${14 * s} ${6 * s}
+    L ${18 * s} ${14 * s}
+    L ${22 * s} ${9 * s}
+    L ${24 * s} ${20 * s}
+    Z
+  `;
+  return (
+    <Group>
+      <Path path={crown} color={color} style="stroke" strokeWidth={stroke} strokeJoin="round" />
+      <Circle cx={6 * s} cy={9 * s} r={1.4 * s} color={color} />
+      <Circle cx={14 * s} cy={6 * s} r={1.6 * s} color={color} />
+      <Circle cx={22 * s} cy={9 * s} r={1.4 * s} color={color} />
+      <Path path={`M ${4 * s} ${22 * s} L ${24 * s} ${22 * s}`} color={color} style="stroke" strokeWidth={stroke} strokeCap="round" />
+    </Group>
+  );
+}
+
+// ── Gem — 💎 streak_30 / diamond_hands ─────────────────────────────────────
+function GemIcon({ s, color }: { s: number; color: string }) {
+  const stroke = STROKE * s;
+  // Classic faceted diamond: top trapezoid + V point.
+  const outline = `
+    M ${8 * s} ${10 * s}
+    L ${14 * s} ${4 * s}
+    L ${20 * s} ${10 * s}
+    L ${14 * s} ${24 * s}
+    Z
+  `;
+  // Inner facet lines
+  const facet1 = `M ${8 * s} ${10 * s} L ${20 * s} ${10 * s}`;
+  const facet2 = `M ${11 * s} ${10 * s} L ${14 * s} ${4 * s}`;
+  const facet3 = `M ${17 * s} ${10 * s} L ${14 * s} ${4 * s}`;
+  const facet4 = `M ${11 * s} ${10 * s} L ${14 * s} ${24 * s}`;
+  const facet5 = `M ${17 * s} ${10 * s} L ${14 * s} ${24 * s}`;
+  return (
+    <Group>
+      <Path path={outline} color={color} style="stroke" strokeWidth={stroke} strokeJoin="round" />
+      <Path path={facet1} color={color} style="stroke" strokeWidth={stroke * 0.7} />
+      <Path path={facet2} color={color} style="stroke" strokeWidth={stroke * 0.7} />
+      <Path path={facet3} color={color} style="stroke" strokeWidth={stroke * 0.7} />
+      <Path path={facet4} color={color} style="stroke" strokeWidth={stroke * 0.7} />
+      <Path path={facet5} color={color} style="stroke" strokeWidth={stroke * 0.7} />
+    </Group>
+  );
+}
+
+// ── Trophy — 🏆 top_monke ──────────────────────────────────────────────────
+function TrophyIcon({ s, color }: { s: number; color: string }) {
+  const stroke = STROKE * s;
+  // Cup body + side handles + stem + base.
+  const cup = `
+    M ${8 * s} ${5 * s}
+    L ${20 * s} ${5 * s}
+    L ${19 * s} ${14 * s}
+    Q ${14 * s} ${17 * s} ${9 * s} ${14 * s}
+    Z
+  `;
+  // Left handle
+  const handleL = `M ${8 * s} ${7 * s} Q ${4 * s} ${8 * s} ${5 * s} ${12 * s} Q ${6 * s} ${13 * s} ${8.5 * s} ${13 * s}`;
+  // Right handle
+  const handleR = `M ${20 * s} ${7 * s} Q ${24 * s} ${8 * s} ${23 * s} ${12 * s} Q ${22 * s} ${13 * s} ${19.5 * s} ${13 * s}`;
+  // Stem + base
+  const stem = `M ${14 * s} ${17 * s} L ${14 * s} ${21 * s}`;
+  const base = `M ${9 * s} ${21 * s} L ${19 * s} ${21 * s}`;
+  return (
+    <Group>
+      <Path path={cup} color={color} style="stroke" strokeWidth={stroke} strokeJoin="round" />
+      <Path path={handleL} color={color} style="stroke" strokeWidth={stroke} strokeCap="round" />
+      <Path path={handleR} color={color} style="stroke" strokeWidth={stroke} strokeCap="round" />
+      <Path path={stem} color={color} style="stroke" strokeWidth={stroke} strokeCap="round" />
+      <Path path={base} color={color} style="stroke" strokeWidth={stroke * 1.2} strokeCap="round" />
+    </Group>
+  );
+}
+
+// ── Confetti — 🎉 reactions_50 ─────────────────────────────────────────────
+function ConfettiIcon({ s, color }: { s: number; color: string }) {
+  const stroke = STROKE * s;
+  // Cone (party popper) + flying confetti dots.
+  const cone = `
+    M ${5 * s} ${24 * s}
+    L ${11 * s} ${10 * s}
+    L ${17 * s} ${16 * s}
+    Z
+  `;
+  return (
+    <Group>
+      <Path path={cone} color={color} style="stroke" strokeWidth={stroke} strokeJoin="round" />
+      <Circle cx={19 * s} cy={6 * s} r={1.4 * s} color={color} />
+      <Circle cx={23 * s} cy={10 * s} r={1.2 * s} color={color} />
+      <Circle cx={22 * s} cy={16 * s} r={1.2 * s} color={color} />
+      <Circle cx={15 * s} cy={5 * s} r={1.2 * s} color={color} />
+      <Path path={`M ${20 * s} ${20 * s} L ${24 * s} ${22 * s}`} color={color} style="stroke" strokeWidth={stroke * 0.8} strokeCap="round" />
+    </Group>
+  );
+}
+
+// ── Speech — 💬 messages_100 / chatterbox ──────────────────────────────────
+function SpeechIcon({ s, color }: { s: number; color: string }) {
+  const stroke = STROKE * s;
+  return (
+    <Group>
+      <RoundedRect x={4 * s} y={5 * s} width={20 * s} height={14 * s} r={4 * s} color={color} style="stroke" strokeWidth={stroke} />
+      {/* Tail */}
+      <Path path={`M ${10 * s} ${19 * s} L ${8 * s} ${24 * s} L ${14 * s} ${19 * s}`} color={color} style="stroke" strokeWidth={stroke} strokeJoin="round" />
+      {/* Three dots inside */}
+      <Circle cx={10 * s} cy={12 * s} r={1.2 * s} color={color} />
+      <Circle cx={14 * s} cy={12 * s} r={1.2 * s} color={color} />
+      <Circle cx={18 * s} cy={12 * s} r={1.2 * s} color={color} />
+    </Group>
+  );
+}
+
+// ── Letter — ✉️ first_message ──────────────────────────────────────────────
+function LetterIcon({ s, color }: { s: number; color: string }) {
+  const stroke = STROKE * s;
+  return (
+    <Group>
+      <RoundedRect x={4 * s} y={7 * s} width={20 * s} height={14 * s} r={1.5 * s} color={color} style="stroke" strokeWidth={stroke} />
+      {/* Envelope flap V */}
+      <Path path={`M ${4 * s} ${8 * s} L ${14 * s} ${15 * s} L ${24 * s} ${8 * s}`} color={color} style="stroke" strokeWidth={stroke} strokeJoin="round" strokeCap="round" />
+    </Group>
+  );
+}
+
+// ── MonkeFace — 🐒 og_monke ────────────────────────────────────────────────
+function MonkeFaceIcon({ s, color }: { s: number; color: string }) {
+  const stroke = STROKE * s;
+  return (
+    <Group>
+      {/* Outer head circle */}
+      <Circle cx={14 * s} cy={14 * s} r={9 * s} color={color} style="stroke" strokeWidth={stroke} />
+      {/* Two ears */}
+      <Circle cx={5.5 * s} cy={11 * s} r={2.5 * s} color={color} style="stroke" strokeWidth={stroke} />
+      <Circle cx={22.5 * s} cy={11 * s} r={2.5 * s} color={color} style="stroke" strokeWidth={stroke} />
+      {/* Inner face oval (muzzle) */}
+      <Path path={`M ${9 * s} ${17 * s} Q ${14 * s} ${22 * s} ${19 * s} ${17 * s}`} color={color} style="stroke" strokeWidth={stroke * 0.85} strokeCap="round" />
+      {/* Eyes */}
+      <Circle cx={11 * s} cy={13 * s} r={1.1 * s} color={color} />
+      <Circle cx={17 * s} cy={13 * s} r={1.1 * s} color={color} />
+    </Group>
+  );
+}
+
+// ── ChartUp — 📈 top_trader ────────────────────────────────────────────────
+function ChartUpIcon({ s, color }: { s: number; color: string }) {
+  const stroke = STROKE * s;
+  // Axes + ascending zig-zag with arrow head.
+  const axes = `M ${4 * s} ${4 * s} L ${4 * s} ${24 * s} L ${24 * s} ${24 * s}`;
+  const line = `M ${6 * s} ${20 * s} L ${11 * s} ${15 * s} L ${15 * s} ${17 * s} L ${22 * s} ${8 * s}`;
+  // Arrow head at upper right
+  const arrow = `M ${22 * s} ${8 * s} L ${17 * s} ${8 * s} M ${22 * s} ${8 * s} L ${22 * s} ${13 * s}`;
+  return (
+    <Group>
+      <Path path={axes} color={color} style="stroke" strokeWidth={stroke} strokeCap="round" strokeJoin="round" />
+      <Path path={line} color={color} style="stroke" strokeWidth={stroke * 1.1} strokeCap="round" strokeJoin="round" />
+      <Path path={arrow} color={color} style="stroke" strokeWidth={stroke} strokeCap="round" />
+    </Group>
+  );
+}
+
+// ── Target — 🎯 sharp_shooter ──────────────────────────────────────────────
+function TargetIcon({ s, color }: { s: number; color: string }) {
+  const stroke = STROKE * s;
+  return (
+    <Group>
+      <Circle cx={14 * s} cy={14 * s} r={10 * s} color={color} style="stroke" strokeWidth={stroke} />
+      <Circle cx={14 * s} cy={14 * s} r={6.5 * s} color={color} style="stroke" strokeWidth={stroke * 0.85} />
+      <Circle cx={14 * s} cy={14 * s} r={3 * s} color={color} style="stroke" strokeWidth={stroke * 0.7} />
+      <Circle cx={14 * s} cy={14 * s} r={1.2 * s} color={color} />
+    </Group>
+  );
+}
+
+// ── Gift — 🎁 generous_ape ─────────────────────────────────────────────────
+function GiftIcon({ s, color }: { s: number; color: string }) {
+  const stroke = STROKE * s;
+  return (
+    <Group>
+      {/* Box body */}
+      <RoundedRect x={4 * s} y={11 * s} width={20 * s} height={13 * s} r={1 * s} color={color} style="stroke" strokeWidth={stroke} />
+      {/* Vertical ribbon */}
+      <Path path={`M ${14 * s} ${11 * s} L ${14 * s} ${24 * s}`} color={color} style="stroke" strokeWidth={stroke} />
+      {/* Horizontal ribbon (cap) */}
+      <Path path={`M ${4 * s} ${11 * s} L ${24 * s} ${11 * s}`} color={color} style="stroke" strokeWidth={stroke} />
+      {/* Bow loops */}
+      <Circle cx={10 * s} cy={8 * s} r={3 * s} color={color} style="stroke" strokeWidth={stroke} />
+      <Circle cx={18 * s} cy={8 * s} r={3 * s} color={color} style="stroke" strokeWidth={stroke} />
+    </Group>
+  );
+}
+
+// ── Bolt — ⚡ reaction_king ─────────────────────────────────────────────────
+function BoltIcon({ s, color }: { s: number; color: string }) {
+  const stroke = STROKE * s;
+  const bolt = `
+    M ${15 * s} ${3 * s}
+    L ${7 * s} ${15 * s}
+    L ${13 * s} ${15 * s}
+    L ${11 * s} ${25 * s}
+    L ${21 * s} ${12 * s}
+    L ${15 * s} ${12 * s}
+    Z
+  `;
+  return <Path path={bolt} color={color} style="stroke" strokeWidth={stroke} strokeJoin="round" />;
+}
+
+// ── Clover — 🍀 lucky_monke ────────────────────────────────────────────────
+function CloverIcon({ s, color }: { s: number; color: string }) {
+  const stroke = STROKE * s;
+  // Four heart-leaves centered around (14, 13).
+  return (
+    <Group>
+      <Circle cx={14 * s} cy={7 * s} r={4 * s} color={color} style="stroke" strokeWidth={stroke} />
+      <Circle cx={14 * s} cy={19 * s} r={4 * s} color={color} style="stroke" strokeWidth={stroke} />
+      <Circle cx={8 * s} cy={13 * s} r={4 * s} color={color} style="stroke" strokeWidth={stroke} />
+      <Circle cx={20 * s} cy={13 * s} r={4 * s} color={color} style="stroke" strokeWidth={stroke} />
+      {/* Stem */}
+      <Path path={`M ${14 * s} ${21 * s} Q ${17 * s} ${24 * s} ${18 * s} ${26 * s}`} color={color} style="stroke" strokeWidth={stroke * 0.8} strokeCap="round" />
+    </Group>
+  );
+}
+
+// ── Palm — 🌴 og_jungle_king ───────────────────────────────────────────────
+function PalmIcon({ s, color }: { s: number; color: string }) {
+  const stroke = STROKE * s;
+  // Trunk with two slight curves
+  const trunk = `M ${14 * s} ${10 * s} Q ${13 * s} ${17 * s} ${15 * s} ${24 * s}`;
+  // Five fronds radiating from top
+  return (
+    <Group>
+      <Path path={trunk} color={color} style="stroke" strokeWidth={stroke * 1.4} strokeCap="round" />
+      {/* Fronds */}
+      <Path path={`M ${14 * s} ${9 * s} Q ${8 * s} ${5 * s} ${3 * s} ${7 * s}`} color={color} style="stroke" strokeWidth={stroke} strokeCap="round" />
+      <Path path={`M ${14 * s} ${9 * s} Q ${20 * s} ${5 * s} ${25 * s} ${7 * s}`} color={color} style="stroke" strokeWidth={stroke} strokeCap="round" />
+      <Path path={`M ${14 * s} ${9 * s} Q ${10 * s} ${3 * s} ${5 * s} ${2 * s}`} color={color} style="stroke" strokeWidth={stroke} strokeCap="round" />
+      <Path path={`M ${14 * s} ${9 * s} Q ${18 * s} ${3 * s} ${23 * s} ${2 * s}`} color={color} style="stroke" strokeWidth={stroke} strokeCap="round" />
+      <Path path={`M ${14 * s} ${9 * s} L ${14 * s} ${2 * s}`} color={color} style="stroke" strokeWidth={stroke} strokeCap="round" />
+      {/* Coconut */}
+      <Circle cx={11 * s} cy={11 * s} r={1.2 * s} color={color} />
+    </Group>
+  );
+}
+
+// ── Gorilla — 🦍 clout flair ───────────────────────────────────────────────
+function GorillaIcon({ s, color }: { s: number; color: string }) {
+  const stroke = STROKE * s;
+  // Bulkier-than-monkey shape: wide head, brow ridge, no ears.
+  return (
+    <Group>
+      {/* Wider head */}
+      <Path
+        path={`M ${5 * s} ${14 * s} Q ${5 * s} ${5 * s} ${14 * s} ${5 * s} Q ${23 * s} ${5 * s} ${23 * s} ${14 * s} Q ${23 * s} ${22 * s} ${14 * s} ${23 * s} Q ${5 * s} ${22 * s} ${5 * s} ${14 * s} Z`}
+        color={color}
+        style="stroke"
+        strokeWidth={stroke}
+        strokeJoin="round"
+      />
+      {/* Brow ridge */}
+      <Path path={`M ${8 * s} ${11 * s} Q ${14 * s} ${9 * s} ${20 * s} ${11 * s}`} color={color} style="stroke" strokeWidth={stroke} strokeCap="round" />
+      {/* Eyes */}
+      <Circle cx={11 * s} cy={13 * s} r={1.1 * s} color={color} />
+      <Circle cx={17 * s} cy={13 * s} r={1.1 * s} color={color} />
+      {/* Frown */}
+      <Path path={`M ${11 * s} ${19 * s} Q ${14 * s} ${17 * s} ${17 * s} ${19 * s}`} color={color} style="stroke" strokeWidth={stroke * 0.85} strokeCap="round" />
     </Group>
   );
 }
