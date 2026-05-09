@@ -43,10 +43,9 @@ interface BananaGroveCarvedTextProps {
   pfpColor: string;
 }
 
-// (v27 2026-05-08) Scale 1.95 → 1.6 per user — "a bit smaller." Gives
-// 15 * 1.6 = 24 px effective. Still meaningfully larger than chat
-// default for bevel readability, sits comfortably in the viewport.
-const FONT_SCALE = 1.6;
+// (v28 2026-05-08) Scale -10% per user iteration: 1.6 → 1.44.
+// 15 * 1.44 ≈ 22 px effective.
+const FONT_SCALE = 1.44;
 
 // (v27 2026-05-08) Unified fresh-cut text fill — all Banana Grove
 // senders' carved letters render in the same light cream tone (matching
