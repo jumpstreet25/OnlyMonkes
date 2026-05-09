@@ -39,6 +39,7 @@ import { SkiaGlowBubble, SkiaGlassFront, SkiaGlowPfp } from "@/components/SkiaGl
 import { CyberpunkGlitchBubble } from "@/components/CyberpunkGlitchBubble";
 import { BananaGroveSignBubble } from "@/components/BananaGroveSignBubble";
 import { BananaGroveCarvedText } from "@/components/BananaGroveCarvedText";
+import { BotAlertCard, parseTopSalesAlert } from "@/components/BotAlertCard";
 import Reanimated, {
   useSharedValue,
   useAnimatedStyle,
@@ -1047,22 +1048,40 @@ export const MessageBubble = memo(function MessageBubble({
                 })()
               ) : (
                 <View style={{ gap: 4 }}>
-                  {isBot && !useBananaGroveBubble ? (
-                    // (v23 2026-05-08) Bot messages in Banana Grove now
-                    // route through the Skia carve path below for visual
-                    // consistency. The bot's MarkdownContent rendering
-                    // (bold/italic/links) was bypassing every change to
-                    // the carved text. In Banana Grove, plain Skia carve
-                    // takes precedence over markdown formatting; in other
-                    // worlds (Cyberpunk, Trading Floor, default), the bot
-                    // keeps full markdown rendering.
-                    <View style={showBotExpand && !botExpanded ? { maxHeight: 9 * 22, overflow: "hidden" } : undefined}>
-                      <MarkdownContent
-                        content={displayContent}
-                        style={{ fontSize: 15 * (useAppStore.getState().textScale ?? 1) }}
-                      />
-                    </View>
-                  ) : (() => {
+                  {(() => {
+                    // (v33 2026-05-09) Top Sales card — bot's structured
+                    // "Top Sales (24h)" alert renders as a compact list
+                    // instead of a wall of carved text. Detected via the
+                    // /Top Sales/ pattern; if parsing fails the IIFE falls
+                    // through to default routing.
+                    if (isBot && /Top Sales/i.test(displayContent)) {
+                      const parsed = parseTopSalesAlert(displayContent);
+                      if (parsed) {
+                        const card = <BotAlertCard content={displayContent} />;
+                        if (showBotExpand && !botExpanded) {
+                          return (
+                            <View style={{ maxHeight: 9 * 22, overflow: "hidden" }}>
+                              {card}
+                            </View>
+                          );
+                        }
+                        return card;
+                      }
+                    }
+                    // Bot in non-Banana-Grove worlds → MarkdownContent.
+                    if (isBot && !useBananaGroveBubble) {
+                      return (
+                        <View style={showBotExpand && !botExpanded ? { maxHeight: 9 * 22, overflow: "hidden" } : undefined}>
+                          <MarkdownContent
+                            content={displayContent}
+                            style={{ fontSize: 15 * (useAppStore.getState().textScale ?? 1) }}
+                          />
+                        </View>
+                      );
+                    }
+                    // Banana Grove (own + bot + others) AND non-bot in any
+                    // world → original Skia carve OR RN Text fallback path.
+                    return (() => {
                     // Phase 2 Day 1+2 (2026-05-08): for PLAIN-TEXT messages
                     // in Banana Grove (no @mention / $TOKEN), render via the
                     // Skia carved-text component. Messages with rich content
@@ -1135,6 +1154,7 @@ export const MessageBubble = memo(function MessageBubble({
                         {renderRichContent(displayContent, handlePressMention, onTokenPress)}
                       </Text>
                     );
+                  })();
                   })()}
                   {message.editedAt && (
                     <Text style={[styles.editedLabel, { color: textColor }]}>(edited)</Text>
