@@ -522,10 +522,15 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                         {canClaim ? "Ready!" : `${hrsLeft}h ${minsLeft}m`}
                       </Text>
                     </Text>
+                    {/* Banana balance pill — Skia banana + count (v39).
+                        Banana stays brand-yellow regardless of world. */}
                     <View style={styles.bananaBalancePill}>
-                      <Text style={styles.bananaBalanceText}>{bananaBalance} 🍌</Text>
+                      <Text style={styles.bananaBalanceText}>{bananaBalance}</Text>
+                      <MenuIcon name="banana" size={13} color="#FFD24A" />
                     </View>
                   </View>
+                  {/* 7-day streak strip — Skia banana per slot (v39).
+                      Filled slots: full opacity yellow. Unfilled: 0.2 alpha. */}
                   <View style={styles.bananaBar}>
                     {[1, 2, 3, 4, 5, 6, 7].map(day => {
                       const filled = day <= bananaState.streakDay;
@@ -533,17 +538,20 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                         <View key={day} style={[
                           styles.bananaSlot,
                           filled && styles.bananaSlotFilled,
+                          !filled && { opacity: 0.2 },
                         ]}>
-                          <Text style={[styles.bananaSlotEmoji, !filled && { opacity: 0.2 }]}>🍌</Text>
+                          <MenuIcon name="banana" size={20} color="#FFD24A" />
                         </View>
                       );
                     })}
                   </View>
+                  {/* Banana Shop button — Skia cart (iconAccent) + label (v39) */}
                   <Pressable
                     style={({ pressed }) => [styles.shopBtn, pressed && { opacity: 0.8 }]}
                     onPress={() => setShopOpen(true)}
                   >
-                    <Text style={styles.shopBtnText}>🛒 Banana Shop</Text>
+                    <MenuIcon name="cart" size={16} color={iconAccent} />
+                    <Text style={styles.shopBtnText}>Banana Shop</Text>
                   </Pressable>
                 </View>
                 );
@@ -1555,6 +1563,9 @@ const styles = StyleSheet.create({
     color: "#FFD54F",
   },
   bananaBalancePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
     backgroundColor: "rgba(255, 213, 79, 0.1)",
     borderRadius: 10,
     paddingHorizontal: 10,
@@ -1591,10 +1602,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   shopBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
     backgroundColor: "rgba(6, 6, 14, 0.75)",
     borderRadius: 12,
     paddingVertical: 10,
-    alignItems: "center",
     borderWidth: 0.75,
     borderColor: "rgba(255, 213, 79, 0.12)",
   },

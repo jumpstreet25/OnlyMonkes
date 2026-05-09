@@ -43,7 +43,8 @@ export type MenuIconName =
   | "shield"       // 🛡️ streak shield
   | "clipboard"    // 📋 copy wallet
   | "pin"          // 📍 location
-  | "banana";      // 🍌 (caller passes #FFD24A or similar)
+  | "banana"      // 🍌 (caller passes #FFD24A or similar)
+  | "cart";       // 🛒 shopping cart (Banana Shop button)
 
 interface MenuIconProps {
   name: MenuIconName;
@@ -79,6 +80,7 @@ export const MenuIcon = React.memo(function MenuIcon({
       {name === "clipboard" && <ClipboardIcon s={s} color={color} />}
       {name === "pin" && <PinIcon s={s} color={color} />}
       {name === "banana" && <BananaIcon s={s} color={color} />}
+      {name === "cart" && <CartIcon s={s} color={color} />}
     </Canvas>
   );
 });
@@ -507,6 +509,30 @@ function PinIcon({ s, color }: { s: number; color: string }) {
     <Group>
       <Path path={pin} color={color} style="stroke" strokeWidth={stroke} strokeJoin="round" />
       <Circle cx={14 * s} cy={11 * s} r={2.6 * s} color={color} />
+    </Group>
+  );
+}
+
+// ── Cart — Banana Shop button ──────────────────────────────────────────────
+function CartIcon({ s, color }: { s: number; color: string }) {
+  const stroke = STROKE * s;
+  // Cart body — angled trapezoid (front taller than back to show 3D)
+  const body = `
+    M ${5 * s} ${10 * s}
+    L ${22 * s} ${10 * s}
+    L ${20 * s} ${19 * s}
+    L ${8 * s} ${19 * s}
+    Z
+  `;
+  // Handle — line from top-back of cart up to a small hook
+  const handle = `M ${3 * s} ${6 * s} L ${7 * s} ${6 * s} L ${8 * s} ${10 * s}`;
+  // Wheels
+  return (
+    <Group>
+      <Path path={handle} color={color} style="stroke" strokeWidth={stroke} strokeCap="round" strokeJoin="round" />
+      <Path path={body} color={color} style="stroke" strokeWidth={stroke} strokeJoin="round" />
+      <Circle cx={10 * s} cy={22.5 * s} r={1.6 * s} color={color} style="stroke" strokeWidth={stroke} />
+      <Circle cx={18 * s} cy={22.5 * s} r={1.6 * s} color={color} style="stroke" strokeWidth={stroke} />
     </Group>
   );
 }
