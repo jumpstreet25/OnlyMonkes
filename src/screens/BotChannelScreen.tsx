@@ -27,7 +27,8 @@ import { triggerProfileRebroadcast } from "@/hooks/useXmtp";
 import AutonoMonkeDisclaimerModal, { type AutonomyFeature } from "@/components/AutonoMonkeDisclaimerModal";
 import { getXmtpClient } from "@/hooks/useXmtp";
 import { sendDmMessage } from "@/lib/xmtp";
-import { THEME, FONTS, getWorldBarTint } from "@/lib/constants";
+import { THEME, FONTS, getWorldBarTint, getWorldAccent } from "@/lib/constants";
+import { BotChannelIcon } from "@/components/BotChannelIcon";
 import { ErrorMessage } from "@/components/ErrorMessage";
 import { useThemeColor } from "@/lib/shopTheme";
 import { WorldLayer } from "@/components/worlds/WorldLayer";
@@ -69,25 +70,24 @@ for (const s of SPORTS_LIST) {
 const CHANNEL_CONFIG = {
   bets: {
     name: "Monke Bets",
-    img: require("../../assets/MonkeBets.png"),
+    // (v30 2026-05-09) PNG icons retired in favor of BotChannelIcon
+    // (Skia vectors). The `banner` here is a separate larger artwork
+    // (Bets.png / Trade.png / etc.) used elsewhere on the screen.
     banner: require("../../assets/Bets.png"),
     emptyText: "No sports bet alerts yet.",
   },
   trades: {
     name: "Monke Trades",
-    img: require("../../assets/MonkeTrades.png"),
     banner: require("../../assets/Trade.png"),
     emptyText: "No trade alerts yet.",
   },
   sales: {
     name: "Monke Sales",
-    img: require("../../assets/MonkeSales.png"),
     banner: require("../../assets/Sales.png"),
     emptyText: "No sales alerts yet.",
   },
   predictions: {
     name: "Monke Predictions",
-    img: require("../../assets/MonkePredictions.png"),
     banner: require("../../assets/Predictions.png"),
     emptyText: "No prediction alerts yet.",
   },
@@ -263,7 +263,7 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
       <View
         style={[styles.container, styles.centerState, { paddingTop: insets.top }]}
       >
-        <Image source={config.img} style={styles.emptyImage} />
+        <BotChannelIcon channel={channelId} size={80} color={getWorldAccent(worldId)} />
         <Text style={styles.centerText}>{config.name} channel not configured yet.</Text>
         <Pressable onPress={() => router.back()} style={styles.retryBtn}>
           <Text style={styles.retryText}>Go Back</Text>
@@ -458,7 +458,7 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
           {/* Empty state */}
           {!isLoadingHistory && filteredMessages.length === 0 && (messages.length === 0 || channelId !== "bets") && (
             <View style={styles.emptyState}>
-              <Image source={config.img} style={styles.emptyImage} />
+              <BotChannelIcon channel={channelId} size={80} color={getWorldAccent(worldId)} />
               <Text style={styles.emptyTitle}>No alerts yet</Text>
               <Text style={styles.emptySubtitle}>{config.emptyText}</Text>
             </View>

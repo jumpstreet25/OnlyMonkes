@@ -30,6 +30,7 @@ import { shortenAddress } from "@/lib/nftVerification";
 import { getCachedProfile, searchUsersByPrefix } from "@/lib/userProfile";
 import { useAppStore } from "@/store/appStore";
 import { markChannelRead } from "@/lib/messageCache";
+import { BotChannelIcon } from "@/components/BotChannelIcon";
 import type { ChatMessage } from "@/types";
 
 function getActiveMention(text: string): { start: number; query: string } | null {
@@ -101,13 +102,18 @@ function getSlashSuggestions(text: string, isDmWithBot?: boolean) {
 }
 
 // ── Bot channel button with badge ─────────────────────────────────────────────
-function ChannelButton({ channelId, image }: { channelId: 'bets' | 'trades' | 'sales' | 'predictions'; image: any }) {
+function ChannelButton({ channelId }: { channelId: 'bets' | 'trades' | 'sales' | 'predictions' }) {
   const count = useAppStore((s) => s.botChannelCounts[channelId]);
   const muted = useAppStore((s) => s.mutedBotChannels[channelId]);
   const clearCount = useAppStore((s) => s.clearBotChannelCount);
   const shopStyles = useAppStore(s => s.shopStyles);
   const nftDominantColor = useAppStore(s => s.nftDominantColor);
   const pfpTint = shopStyles?.pfpFullTheme && nftDominantColor ? nftDominantColor : null;
+  // (v30 2026-05-09) Icon color follows the same priority as toolbarColor
+  // above: PFP-theme override > world accent > default light blue.
+  const iconColor = (shopStyles?.pfpFullTheme && nftDominantColor)
+    ? nftDominantColor
+    : getWorldAccent(shopStyles?.worldId as string | undefined);
 
   return (
     <Pressable
@@ -126,7 +132,7 @@ function ChannelButton({ channelId, image }: { channelId: 'bets' | 'trades' | 's
       accessibilityRole="button"
       style={({ pressed }) => [styles.toolbarBtn, styles.toolbarChannel, pressed && { opacity: 0.7 }]}
     >
-      <Image source={image} style={styles.toolbarChannelImg} />
+      <BotChannelIcon channel={channelId} size={49} color={iconColor} />
       {/* Muted channels never show a badge — the user explicitly opted out of
           alerts for this channel; surfacing a count would re-introduce the
           notification noise they muted to escape. */}
@@ -444,10 +450,10 @@ export const ChatInput = memo(function ChatInput({
           </Pressable>
         )}
 
-        <ChannelButton channelId="bets" image={require("../../assets/MonkeBets.png")} />
-        <ChannelButton channelId="trades" image={require("../../assets/MonkeTrades.png")} />
-        <ChannelButton channelId="sales" image={require("../../assets/MonkeSales.png")} />
-        <ChannelButton channelId="predictions" image={require("../../assets/MonkePredictions.png")} />
+        <ChannelButton channelId="bets" />
+        <ChannelButton channelId="trades" />
+        <ChannelButton channelId="sales" />
+        <ChannelButton channelId="predictions" />
       </View>
 
       {/* Live picker popup — choose Audio or Video */}
