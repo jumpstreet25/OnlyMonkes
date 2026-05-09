@@ -15,7 +15,12 @@ import { useAppStore } from "@/store/appStore";
 import { getEarnedBadges, getBadgeDef } from "@/lib/badges";
 import { loadBananaState, type BananaState } from "@/lib/bananaRewards";
 import { getShieldExpiry, daysUntilNextPurchase, purchaseShield, SHIELD_COST_BANANAS } from "@/lib/streakShield";
-import { THEME, FONTS } from "@/lib/constants";
+import { THEME, FONTS, getWorldAccent } from "@/lib/constants";
+import { MenuIcon } from "@/components/MenuIcon";
+
+// Banana glyph stays brand-yellow regardless of world tinting (per user
+// 2026-05-09 spec — bananas are core OnlyMonkes brand element).
+const BANANA_YELLOW = "#FFD24A";
 
 interface ProfileScorecardProps {
   onEditProfile: () => void;
@@ -110,6 +115,13 @@ export function ProfileScorecard({ onEditProfile, onPressPfp, onClose }: Profile
   const shopStyles = useAppStore(s => s.shopStyles);
   const isLegendary = useAppStore(s => s.isLegendary);
   const nftDominantColor = useAppStore(s => s.nftDominantColor);
+  // (v38 2026-05-09) Per-world Skia-icon accent. Priority chain:
+  // PFP-theme override (NFT color) > world accent > OnlyMonkes blue.
+  const themeOverrides = useAppStore(s => s.themeOverrides);
+  const worldId = shopStyles?.worldId as string | undefined;
+  const iconAccent = themeOverrides && nftDominantColor
+    ? nftDominantColor
+    : (worldId ? getWorldAccent(worldId) : "#6CB4EE");
 
   const [bananaState, setBananaState] = useState<BananaState | null>(null);
   const [cardSize, setCardSize] = useState({ w: 0, h: 0 });
@@ -199,43 +211,58 @@ export function ProfileScorecard({ onEditProfile, onPressPfp, onClose }: Profile
         </Pressable>
 
         <View style={st.info}>
-          <Text style={st.username} numberOfLines={1}>
-            {username ?? "Monke"}{isLegendary ? " 🌟" : ""}{shopStyles.isShopCustomer ? " 🍌" : ""}
-          </Text>
+          {/* Username row — name + legendary star + shop-customer banana
+              as Skia icons inline (v38). 🐒 monke fallback emoji kept. */}
+          <View style={st.usernameRow}>
+            <Text style={st.username} numberOfLines={1}>{username ?? "Monke"}</Text>
+            {isLegendary ? <MenuIcon name="star" size={14} color={BANANA_YELLOW} /> : null}
+            {shopStyles.isShopCustomer ? <MenuIcon name="banana" size={14} color={BANANA_YELLOW} /> : null}
+          </View>
           {verifiedNft?.name ? <Text style={st.sub} numberOfLines={1}>{verifiedNft.name}</Text> : null}
           {xAccount ? <Text style={st.sub} numberOfLines={1}>@{xAccount}</Text> : null}
           {walletShort ? (
-            <Pressable onPress={handleCopyWallet} style={{ flexDirection: "row" }}>
-              <Text style={st.wallet}>{walletShort} 📋</Text>
+            <Pressable onPress={handleCopyWallet} style={st.iconRow}>
+              <Text style={st.wallet}>{walletShort}</Text>
+              <MenuIcon name="clipboard" size={11} color={iconAccent} />
             </Pressable>
           ) : null}
-          {location ? <Text style={st.sub} numberOfLines={1}>📍 {location}</Text> : null}
+          {location ? (
+            <View style={st.iconRow}>
+              <MenuIcon name="pin" size={12} color={iconAccent} />
+              <Text style={st.sub} numberOfLines={1}>{location}</Text>
+            </View>
+          ) : null}
           {bananaState && bananaState.totalCycles > 0 ? (
             <Text style={st.sub}>🐒 {bananaState.totalCycles * 7}+ days active</Text>
           ) : null}
         </View>
       </View>
 
-      {/* Stats */}
+      {/* Stats — Skia icons in label row (v38). Banana stays yellow,
+          others adopt iconAccent (world or default OnlyMonkes blue). */}
       <View style={st.statsGrid}>
         {[
-          { val: bananaState?.totalEarned ?? bananaBalance, label: "🍌 Earned" },
-          { val: loginStreak ?? 0, label: "🔥 Streak" },
-          { val: badges.length, label: "⭐ Badges" },
-          { val: bananaState?.totalCycles ?? 0, label: "🔄 Cycles" },
+          { val: bananaState?.totalEarned ?? bananaBalance, label: "Earned",  iconName: "banana" as const, iconColor: BANANA_YELLOW },
+          { val: loginStreak ?? 0,                          label: "Streak",  iconName: "flame"  as const, iconColor: iconAccent },
+          { val: badges.length,                             label: "Badges",  iconName: "star"   as const, iconColor: iconAccent },
+          { val: bananaState?.totalCycles ?? 0,             label: "Cycles",  iconName: "cycles" as const, iconColor: iconAccent },
         ].map((s, i) => (
           <View key={i} style={st.statItem}>
             <Text style={st.statValue}>{s.val}</Text>
-            <Text style={st.statLabel}>{s.label}</Text>
+            <View style={st.statLabelRow}>
+              <MenuIcon name={s.iconName} size={11} color={s.iconColor} />
+              <Text style={st.statLabel}>{s.label}</Text>
+            </View>
           </View>
         ))}
       </View>
 
-      {/* Streak Shield — Discord-style loss aversion */}
+      {/* Streak Shield — Discord-style loss aversion (v38: Skia icons) */}
       {(loginStreak ?? 0) >= 2 && (
         shieldExpiry ? (
           <View style={[st.shieldRow, { borderColor: glowColor + "33" }]}>
-            <Text style={st.shieldText}>🛡️ Shield active through {shieldExpiry}</Text>
+            <MenuIcon name="shield" size={14} color={iconAccent} />
+            <Text style={st.shieldText}>Shield active through {shieldExpiry}</Text>
           </View>
         ) : (
           <Pressable
@@ -249,11 +276,15 @@ export function ProfileScorecard({ onEditProfile, onPressPfp, onClose }: Profile
               },
             ]}
           >
-            <Text style={st.shieldText}>
-              {shieldCooldown > 0
-                ? `🛡️ Shield cooldown — ${shieldCooldown}d`
-                : `🛡️ Buy Streak Shield · ${SHIELD_COST_BANANAS} 🍌`}
-            </Text>
+            <MenuIcon name="shield" size={14} color={iconAccent} />
+            {shieldCooldown > 0 ? (
+              <Text style={st.shieldText}>Shield cooldown — {shieldCooldown}d</Text>
+            ) : (
+              <>
+                <Text style={st.shieldText}>Buy Streak Shield · {SHIELD_COST_BANANAS}</Text>
+                <MenuIcon name="banana" size={14} color={BANANA_YELLOW} />
+              </>
+            )}
           </Pressable>
         )
       )}
@@ -298,13 +329,19 @@ const st = StyleSheet.create({
   pfpFallback: { alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.05)" },
   info: { flex: 1, gap: 2 },
   username: { fontFamily: FONTS.displayMed, fontSize: 17, color: THEME.text },
+  // (v38) Username row + small icon-text rows for wallet / location.
+  usernameRow: { flexDirection: "row", alignItems: "center", gap: 5 },
+  iconRow: { flexDirection: "row", alignItems: "center", gap: 5 },
   sub: { fontFamily: FONTS.body, fontSize: 12, color: THEME.textMuted },
   wallet: { fontFamily: FONTS.mono, fontSize: 11, color: THEME.textMuted },
   statsGrid: { flexDirection: "row", justifyContent: "space-between", marginBottom: 12, gap: 6 },
   statItem: { flex: 1, alignItems: "center", backgroundColor: "rgba(255,255,255,0.02)", borderRadius: 12, paddingVertical: 8, borderWidth: 0.5, borderColor: "rgba(255,255,255,0.04)" },
   statValue: { fontFamily: FONTS.displayMed, fontSize: 18, color: THEME.text },
-  statLabel: { fontFamily: FONTS.body, fontSize: 10, color: THEME.textMuted, marginTop: 2 },
-  shieldRow: { backgroundColor: "rgba(255,255,255,0.03)", borderRadius: 12, paddingVertical: 10, paddingHorizontal: 12, borderWidth: 0.5, marginBottom: 12, alignItems: "center" },
+  statLabelRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2 },
+  statLabel: { fontFamily: FONTS.body, fontSize: 10, color: THEME.textMuted },
+  // Shield row now uses flexDirection row to seat the Skia icon next to the
+  // text (v38). Was just `alignItems: center` for the legacy emoji-string.
+  shieldRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: "rgba(255,255,255,0.03)", borderRadius: 12, paddingVertical: 10, paddingHorizontal: 12, borderWidth: 0.5, marginBottom: 12 },
   shieldText: { fontFamily: FONTS.bodyMed, fontSize: 12, color: THEME.text, letterSpacing: 0.3 },
   milestones: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   pill: { backgroundColor: "rgba(255,255,255,0.03)", borderRadius: 10, paddingHorizontal: 8, paddingVertical: 4, borderWidth: 0.5 },

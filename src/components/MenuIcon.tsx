@@ -34,7 +34,16 @@ export type MenuIconName =
   | "monkemarkets"
   | "monketools"
   | "globe"
-  | "settings";
+  | "settings"
+  // (v38 2026-05-09) ProfileScorecard / user card additions.
+  // Banana stays brand-yellow regardless of world; caller passes color.
+  | "flame"        // 🔥 streak
+  | "star"         // ⭐ badges, 🌟 legendary
+  | "cycles"       // 🔄 banana cycles
+  | "shield"       // 🛡️ streak shield
+  | "clipboard"    // 📋 copy wallet
+  | "pin"          // 📍 location
+  | "banana";      // 🍌 (caller passes #FFD24A or similar)
 
 interface MenuIconProps {
   name: MenuIconName;
@@ -63,6 +72,13 @@ export const MenuIcon = React.memo(function MenuIcon({
       {name === "monketools" && <MonkeToolsIcon s={s} color={color} />}
       {name === "globe" && <GlobeIcon s={s} color={color} />}
       {name === "settings" && <SettingsIcon s={s} color={color} />}
+      {name === "flame" && <FlameIcon s={s} color={color} />}
+      {name === "star" && <StarIcon s={s} color={color} />}
+      {name === "cycles" && <CyclesIcon s={s} color={color} />}
+      {name === "shield" && <ShieldIcon s={s} color={color} />}
+      {name === "clipboard" && <ClipboardIcon s={s} color={color} />}
+      {name === "pin" && <PinIcon s={s} color={color} />}
+      {name === "banana" && <BananaIcon s={s} color={color} />}
     </Canvas>
   );
 });
@@ -333,6 +349,190 @@ function SettingsIcon({ s, color }: { s: number; color: string }) {
       {teeth.map((p, i) => (
         <Path key={i} path={p} color={color} style="stroke" strokeWidth={stroke * 1.4} strokeCap="round" />
       ))}
+    </Group>
+  );
+}
+
+// ── Flame — streak fire ────────────────────────────────────────────────────
+function FlameIcon({ s, color }: { s: number; color: string }) {
+  const stroke = STROKE * s;
+  // Outer flame teardrop — pointed top, rounded base. Inner ember curl
+  // suggests heat. Asymmetric to feel hand-drawn.
+  const flame = `
+    M ${14 * s} ${3 * s}
+    Q ${20 * s} ${10 * s} ${20 * s} ${15 * s}
+    Q ${21 * s} ${20 * s} ${17 * s} ${22 * s}
+    Q ${14 * s} ${24 * s} ${11 * s} ${22 * s}
+    Q ${7 * s} ${20 * s} ${8 * s} ${15 * s}
+    Q ${8 * s} ${11 * s} ${10 * s} ${9 * s}
+    Q ${11 * s} ${12 * s} ${13 * s} ${10 * s}
+    Q ${12 * s} ${6 * s} ${14 * s} ${3 * s}
+    Z
+  `;
+  // Inner ember curl
+  const inner = `
+    M ${14 * s} ${14 * s}
+    Q ${17 * s} ${17 * s} ${15 * s} ${20 * s}
+    Q ${13 * s} ${21 * s} ${12 * s} ${18 * s}
+    Q ${11 * s} ${15 * s} ${14 * s} ${14 * s}
+    Z
+  `;
+  return (
+    <Group>
+      <Path path={flame} color={color} style="stroke" strokeWidth={stroke} strokeJoin="round" />
+      <Path path={inner} color={color} />
+    </Group>
+  );
+}
+
+// ── Star — 5-point ─────────────────────────────────────────────────────────
+function StarIcon({ s, color }: { s: number; color: string }) {
+  const stroke = STROKE * s;
+  // 5-point star: 10 alternating points (5 outer, 5 inner)
+  const cx = 14 * s;
+  const cy = 14 * s;
+  const outerR = 10 * s;
+  const innerR = 4.2 * s;
+  const points: Array<[number, number]> = [];
+  for (let i = 0; i < 10; i++) {
+    const angle = (Math.PI / 5) * i - Math.PI / 2; // start at top
+    const r = i % 2 === 0 ? outerR : innerR;
+    points.push([cx + Math.cos(angle) * r, cy + Math.sin(angle) * r]);
+  }
+  let path = `M ${points[0][0]} ${points[0][1]}`;
+  for (let i = 1; i < points.length; i++) {
+    path += ` L ${points[i][0]} ${points[i][1]}`;
+  }
+  path += " Z";
+  return (
+    <Path path={path} color={color} style="stroke" strokeWidth={stroke} strokeJoin="round" />
+  );
+}
+
+// ── Cycles — circular arrow loop ───────────────────────────────────────────
+function CyclesIcon({ s, color }: { s: number; color: string }) {
+  const stroke = STROKE * s;
+  const cx = 14 * s;
+  const cy = 14 * s;
+  const r = 8.5 * s;
+  // Circular arc 270° (3/4 circle) leaving a gap at the top-right where
+  // the arrowhead sits — classic refresh-cycle shape.
+  // Start at top (12 o'clock), sweep clockwise 270° to right (3 o'clock).
+  // Use SVG arc command. From (cx, cy-r) → (cx+r, cy) is 90°; instead we
+  // want a full loop minus a small gap so we sweep ~280°.
+  const startX = cx + Math.cos(-Math.PI / 2 + Math.PI / 6) * r;
+  const startY = cy + Math.sin(-Math.PI / 2 + Math.PI / 6) * r;
+  const endX = cx + Math.cos(-Math.PI / 2) * r;
+  const endY = cy + Math.sin(-Math.PI / 2) * r;
+  const arc = `M ${startX} ${startY} A ${r} ${r} 0 1 0 ${endX} ${endY}`;
+  // Arrowhead at the top — small triangle pointing right
+  const arrowSize = 3 * s;
+  const ax = endX;
+  const ay = endY;
+  const head = `
+    M ${ax - arrowSize * 0.6} ${ay - arrowSize * 0.6}
+    L ${ax + arrowSize * 0.4} ${ay - arrowSize * 0.6}
+    L ${ax + arrowSize * 0.1} ${ay + arrowSize * 0.4}
+    Z
+  `;
+  return (
+    <Group>
+      <Path path={arc} color={color} style="stroke" strokeWidth={stroke * 1.2} strokeCap="round" />
+      <Path path={head} color={color} />
+    </Group>
+  );
+}
+
+// ── Shield — streak protection ─────────────────────────────────────────────
+function ShieldIcon({ s, color }: { s: number; color: string }) {
+  const stroke = STROKE * s;
+  // Heater-shield silhouette: rounded top, sides curving down to a point.
+  const shield = `
+    M ${14 * s} ${3 * s}
+    Q ${22 * s} ${5 * s} ${22 * s} ${10 * s}
+    Q ${22 * s} ${18 * s} ${14 * s} ${24 * s}
+    Q ${6 * s} ${18 * s} ${6 * s} ${10 * s}
+    Q ${6 * s} ${5 * s} ${14 * s} ${3 * s}
+    Z
+  `;
+  // Center checkmark — small "✓" indicating active
+  const check = `
+    M ${10 * s} ${13 * s}
+    L ${13 * s} ${16 * s}
+    L ${18 * s} ${10 * s}
+  `;
+  return (
+    <Group>
+      <Path path={shield} color={color} style="stroke" strokeWidth={stroke} strokeJoin="round" />
+      <Path path={check} color={color} style="stroke" strokeWidth={stroke * 1.3} strokeCap="round" strokeJoin="round" />
+    </Group>
+  );
+}
+
+// ── Clipboard — copy ───────────────────────────────────────────────────────
+function ClipboardIcon({ s, color }: { s: number; color: string }) {
+  const stroke = STROKE * s;
+  const r = 1.3 * s;
+  // Body + clip at top (small protrusion centered)
+  return (
+    <Group>
+      <RoundedRect x={6 * s} y={5 * s} width={16 * s} height={20 * s} r={r} color={color} style="stroke" strokeWidth={stroke} />
+      {/* Clip at top — small rounded rect overlapping body top */}
+      <RoundedRect x={10 * s} y={3 * s} width={8 * s} height={5 * s} r={r * 0.8} color={color} style="stroke" strokeWidth={stroke} />
+      {/* 3 lines suggesting text content */}
+      <Path
+        path={`M ${10 * s} ${13 * s} L ${18 * s} ${13 * s} M ${10 * s} ${17 * s} L ${18 * s} ${17 * s} M ${10 * s} ${21 * s} L ${15 * s} ${21 * s}`}
+        color={color}
+        style="stroke"
+        strokeWidth={stroke * 0.8}
+        strokeCap="round"
+      />
+    </Group>
+  );
+}
+
+// ── Pin — location ─────────────────────────────────────────────────────────
+function PinIcon({ s, color }: { s: number; color: string }) {
+  const stroke = STROKE * s;
+  // Map-pin teardrop: rounded top, narrows to a point at the bottom.
+  const pin = `
+    M ${14 * s} ${3 * s}
+    Q ${22 * s} ${3 * s} ${22 * s} ${11 * s}
+    Q ${22 * s} ${17 * s} ${14 * s} ${25 * s}
+    Q ${6 * s} ${17 * s} ${6 * s} ${11 * s}
+    Q ${6 * s} ${3 * s} ${14 * s} ${3 * s}
+    Z
+  `;
+  return (
+    <Group>
+      <Path path={pin} color={color} style="stroke" strokeWidth={stroke} strokeJoin="round" />
+      <Circle cx={14 * s} cy={11 * s} r={2.6 * s} color={color} />
+    </Group>
+  );
+}
+
+// ── Banana — brand glyph (caller passes banana yellow) ─────────────────────
+function BananaIcon({ s, color }: { s: number; color: string }) {
+  const stroke = STROKE * s;
+  // Crescent banana shape with stem at top-right.
+  // Outer curve: top-right (stem) → swooping down-left → bottom-left tip
+  // Inner curve back along the inside.
+  const banana = `
+    M ${20 * s} ${5 * s}
+    Q ${24 * s} ${10 * s} ${22 * s} ${17 * s}
+    Q ${18 * s} ${24 * s} ${8 * s} ${24 * s}
+    Q ${5 * s} ${24 * s} ${4 * s} ${22 * s}
+    Q ${10 * s} ${22 * s} ${15 * s} ${18 * s}
+    Q ${20 * s} ${13 * s} ${20 * s} ${5 * s}
+    Z
+  `;
+  // Small stem nub at top-right
+  const stem = `M ${20 * s} ${5 * s} L ${21 * s} ${3 * s}`;
+  return (
+    <Group>
+      <Path path={banana} color={color} />
+      <Path path={banana} color="rgba(0,0,0,0.35)" style="stroke" strokeWidth={stroke * 0.8} strokeJoin="round" />
+      <Path path={stem} color="rgba(0,0,0,0.5)" style="stroke" strokeWidth={stroke * 1.4} strokeCap="round" />
     </Group>
   );
 }
