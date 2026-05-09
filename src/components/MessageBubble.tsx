@@ -1047,7 +1047,15 @@ export const MessageBubble = memo(function MessageBubble({
                 })()
               ) : (
                 <View style={{ gap: 4 }}>
-                  {isBot ? (
+                  {isBot && !useBananaGroveBubble ? (
+                    // (v23 2026-05-08) Bot messages in Banana Grove now
+                    // route through the Skia carve path below for visual
+                    // consistency. The bot's MarkdownContent rendering
+                    // (bold/italic/links) was bypassing every change to
+                    // the carved text. In Banana Grove, plain Skia carve
+                    // takes precedence over markdown formatting; in other
+                    // worlds (Cyberpunk, Trading Floor, default), the bot
+                    // keeps full markdown rendering.
                     <View style={showBotExpand && !botExpanded ? { maxHeight: 9 * 22, overflow: "hidden" } : undefined}>
                       <MarkdownContent
                         content={displayContent}
