@@ -24,7 +24,7 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
-import { THEME, FONTS, MAX_MESSAGE_LENGTH, WORLD_BAR_BG } from "@/lib/constants";
+import { THEME, FONTS, MAX_MESSAGE_LENGTH, getWorldBarTint } from "@/lib/constants";
 import { useThemeColor } from "@/lib/shopTheme";
 import { shortenAddress } from "@/lib/nftVerification";
 import { getCachedProfile, searchUsersByPrefix } from "@/lib/userProfile";
@@ -194,7 +194,7 @@ export const ChatInput = memo(function ChatInput({
   // bar background so falling bananas / candles can be seen piling up behind
   // it. Returns to opaque theme surface when no world is set.
   const worldId = shopStyles?.worldId as string | undefined;
-  const inputBarBg = worldId ? WORLD_BAR_BG : themeSurface;
+  const inputBarBg = worldId ? getWorldBarTint(worldId) : themeSurface;
 
   const slashSuggestions = useMemo(() => getSlashSuggestions(value, isDmWithBot), [value, isDmWithBot]);
 

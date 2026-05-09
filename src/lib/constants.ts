@@ -121,6 +121,32 @@ export const THEME = {
 // the world.
 export const WORLD_BAR_BG = 'rgba(10,10,20,0.22)';
 
+/**
+ * Per-world tint for chrome bars (header, input, bot channel, support
+ * banner). Returns a low-alpha rgba color matching the world's dominant
+ * background palette, so the bars visually integrate with the world's
+ * mood instead of being a flat dark band on top of it. All bars stay
+ * mostly translucent (alpha ~0.28) so the world layer bleeds through.
+ *
+ * Falls back to WORLD_BAR_BG (default neutral dark) for unknown worlds.
+ */
+export function getWorldBarTint(worldId: string | undefined | null): string {
+  switch (worldId) {
+    // Banana Grove — warm dusk gradient (#3A2418 → #7A4A20 → #0D2818).
+    // Bar tint = dark warm brown matching the upper twilight stop.
+    case 'world_banana_grove':
+      return 'rgba(40, 22, 12, 0.32)';
+    // Solana Cyberpunk — purple/black neon. Dark cool purple tint.
+    case 'world_solana_cyberpunk':
+      return 'rgba(22, 12, 40, 0.30)';
+    // Trading Floor — financial dark. Dark navy tint.
+    case 'world_trading_floor':
+      return 'rgba(10, 18, 32, 0.30)';
+    default:
+      return WORLD_BAR_BG;
+  }
+}
+
 export const FONTS = {
   display: 'SpaceGrotesk-Bold',
   displayMed: 'SpaceGrotesk-Medium',

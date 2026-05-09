@@ -31,6 +31,7 @@ import {
   Alert,
   Linking,
   AppState,
+  Share,
   type AppStateStatus,
 } from "react-native";
 import type { FlashListRef } from "@shopify/flash-list";
@@ -48,7 +49,7 @@ import { ChatInput } from "@/components/ChatInput";
 import { ChatSkeleton } from "@/components/SkeletonLoader";
 import type { ProfileTarget } from "@/components/UserProfileModal";
 import { router } from "expo-router";
-import { THEME, FONTS, SKR_MINT, WORLD_BAR_BG } from "@/lib/constants";
+import { THEME, FONTS, SKR_MINT, getWorldBarTint } from "@/lib/constants";
 import { loadUserProfile, getCachedProfile, getDeduplicatedUsers, cacheProfile } from "@/lib/userProfile";
 import { checkAndUpdateStreak } from "@/lib/streaks";
 import { claimDailyBananas, type ClaimResult } from "@/lib/bananaRewards";
@@ -831,12 +832,26 @@ export default function ChatScreen() {
   }, [edit, editTarget, editText]);
 
   // ─── X / Twitter share for own images ─────────────────────────────────────────
-  const handleShareToX = useCallback(() => {
-    const caption = encodeURIComponent("I snapped this using @xOnlyMonkes via Solana Mobile, The Future is Monke! 🐒");
-    const url = `https://x.com/intent/tweet?text=${caption}`;
-    Linking.openURL(url);
+  // Twitter's web intent (https://x.com/intent/tweet?text=…) is text-only by
+  // design — there's no image param. To carry both image and text we use the
+  // OS share sheet via Share.share({url, message}); the user picks X (or any
+  // other app) from the sheet and the image attaches naturally.
+  // 2026-05-08: replaced openURL flow that lost the image.
+  const handleShareToX = useCallback(async () => {
+    const caption = "I snapped this using @xOnlyMonkes via Solana Mobile, The Future is Monke! 🐒";
+    const imageUri = xShareImageUri;
     setXShareImageUri(null);
-  }, []);
+    if (!imageUri) {
+      // Fallback: text-only intent if somehow no image is available.
+      Linking.openURL(`https://x.com/intent/tweet?text=${encodeURIComponent(caption)}`).catch(() => {});
+      return;
+    }
+    try {
+      await Share.share({ url: imageUri, message: caption });
+    } catch {
+      /* user dismissed share sheet — non-fatal */
+    }
+  }, [xShareImageUri, setXShareImageUri]);
 
   // ─── Profile popup ────────────────────────────────────────────────────────────
   const handlePressUser = useCallback((target: ProfileTarget) => {
@@ -1305,7 +1320,7 @@ export default function ChatScreen() {
           <View style={[
             styles.supportBanner,
             { borderTopColor: themeBorder, paddingBottom: 9 + insets.bottom },
-            myShopStyles?.worldId ? { backgroundColor: WORLD_BAR_BG } : null,
+            myShopStyles?.worldId ? { backgroundColor: getWorldBarTint(myShopStyles.worldId as string | undefined) } : null,
           ]}>
             <View style={{ minWidth: 70, alignItems: 'flex-start' }}>
               {skrPrice && (
