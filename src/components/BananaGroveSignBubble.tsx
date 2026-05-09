@@ -278,6 +278,11 @@ export const BananaGroveSignBubble = React.memo(function BananaGroveSignBubble({
         position: "absolute",
         top: -PAD,
         left: -PAD,
+        // (v22 2026-05-08) Wood plaque made semi-translucent so the world
+        // layer (banana pile, palms, dusk gradient) shows through subtly
+        // — gives the bubble more atmosphere without affecting carved
+        // text legibility (text Canvas is separate, stays full opacity).
+        opacity: 0.82,
       }}
       pointerEvents="none"
     >
