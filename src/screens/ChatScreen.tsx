@@ -49,7 +49,7 @@ import { ChatInput } from "@/components/ChatInput";
 import { ChatSkeleton } from "@/components/SkeletonLoader";
 import type { ProfileTarget } from "@/components/UserProfileModal";
 import { router } from "expo-router";
-import { THEME, FONTS, SKR_MINT, getWorldBarTint } from "@/lib/constants";
+import { THEME, FONTS, SKR_MINT, getWorldBarTint, getWorldAccent } from "@/lib/constants";
 import { loadUserProfile, getCachedProfile, getDeduplicatedUsers, cacheProfile } from "@/lib/userProfile";
 import { checkAndUpdateStreak } from "@/lib/streaks";
 import { claimDailyBananas, type ClaimResult } from "@/lib/bananaRewards";
@@ -1316,20 +1316,34 @@ export default function ChatScreen() {
             Bottom safe-area padding lives INSIDE the bar so its bg extends
             edge-to-edge behind the Android nav bar / iOS home indicator —
             no black themeBg gap below. */}
-        {isGroupMember && (
+        {isGroupMember && (() => {
+          // Per-world tappable accent (v29). When no PFP theme override,
+          // tappable chrome (SKR price btn, Floor btn, Help Support text)
+          // adopts the world's accent — warm honey gold for Banana Grove,
+          // neon pink for Cyberpunk, gold for Trading Floor. PFP theme
+          // override (if user has an NFT-color theme equipped) still
+          // takes precedence.
+          const worldId = myShopStyles?.worldId as string | undefined;
+          const worldAccent = worldId ? getWorldAccent(worldId) : null;
+          const useWorldAccent = !hasThemeOverride && worldAccent;
+          const accent = hasThemeOverride ? themeAccent : (worldAccent ?? null);
+          const accentBtnStyle = accent ? { backgroundColor: accent + '1A', borderColor: accent + '33' } : null;
+          const accentTextStyle = accent ? { color: accent } : null;
+          const accentSupportTextStyle = accent ? { color: accent + '99' } : null;
+          return (
           <View style={[
             styles.supportBanner,
             { borderTopColor: themeBorder, paddingBottom: 9 + insets.bottom },
-            myShopStyles?.worldId ? { backgroundColor: getWorldBarTint(myShopStyles.worldId as string | undefined) } : null,
+            worldId ? { backgroundColor: getWorldBarTint(worldId) } : null,
           ]}>
             <View style={{ minWidth: 70, alignItems: 'flex-start' }}>
               {skrPrice && (
                 <Pressable
                   onPress={() => Linking.openURL(`https://jup.ag/swap/SOL-${SKR_MINT}`)}
-                  style={({ pressed }) => [styles.floorBtn, hasThemeOverride && { backgroundColor: themeAccent + '1A', borderColor: themeAccent + '33' }, pressed && { opacity: 0.7 }]}
+                  style={({ pressed }) => [styles.floorBtn, accentBtnStyle, pressed && { opacity: 0.7 }]}
                   hitSlop={6}
                 >
-                  <Text style={[styles.floorBtnText, hasThemeOverride && { color: themeAccent }]}>$SKR {skrPrice}</Text>
+                  <Text style={[styles.floorBtnText, accentTextStyle]}>$SKR {skrPrice}</Text>
                 </Pressable>
               )}
             </View>
@@ -1337,7 +1351,7 @@ export default function ChatScreen() {
               onPress={() => setDevTipOpen(true)}
               style={({ pressed }) => [{ flex: 1, alignItems: 'center' }, pressed && { opacity: 0.6 }]}
             >
-              <Text style={[styles.supportBannerText, hasThemeOverride && { color: themeAccent + '99' }]} numberOfLines={1}>
+              <Text style={[styles.supportBannerText, accentSupportTextStyle]} numberOfLines={1}>
                 Help Support OnlyMonkes
               </Text>
             </Pressable>
@@ -1345,15 +1359,16 @@ export default function ChatScreen() {
               {floorPrice && (
                 <Pressable
                   onPress={() => router.push('/marketplace')}
-                  style={({ pressed }) => [styles.floorBtn, hasThemeOverride && { backgroundColor: themeAccent + '1A', borderColor: themeAccent + '33' }, pressed && { opacity: 0.7 }]}
+                  style={({ pressed }) => [styles.floorBtn, accentBtnStyle, pressed && { opacity: 0.7 }]}
                   hitSlop={6}
                 >
-                  <Text style={[styles.floorBtnText, hasThemeOverride && { color: themeAccent }]}>Floor {floorPrice}</Text>
+                  <Text style={[styles.floorBtnText, accentTextStyle]}>Floor {floorPrice}</Text>
                 </Pressable>
               )}
             </View>
           </View>
-        )}
+          );
+        })()}
 
         {/* Non-members don't render the support banner (which carries the
             bottom safe-area padding for group members), so add a transparent

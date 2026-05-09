@@ -122,6 +122,30 @@ export const THEME = {
 export const WORLD_BAR_BG = 'rgba(10,10,20,0.22)';
 
 /**
+ * Per-world ACCENT color for tappable chrome elements (toolbar labels:
+ * CAM/LIVE/GIF, $SKR price button, Saga Monkes Floor, Help Support
+ * OnlyMonkes link). Returns a vibrant color matching the world's mood
+ * so tappable chrome reads as part of the same theme.
+ *
+ * Falls back to OnlyMonkes light blue ('#6CB4EE') for default / unknown.
+ */
+export function getWorldAccent(worldId: string | undefined | null): string {
+  switch (worldId) {
+    // Banana Grove — warm honey gold, fits dusk/wood palette
+    case 'world_banana_grove':
+      return '#E6B870';
+    // Cyberpunk — neon magenta-pink (matches the bot's pink glitch color)
+    case 'world_solana_cyberpunk':
+      return '#FF6CB4';
+    // Trading Floor — bright gold (financial/ticker feel)
+    case 'world_trading_floor':
+      return '#FFD24A';
+    default:
+      return '#6CB4EE';
+  }
+}
+
+/**
  * Per-world tint for chrome bars (header, input, bot channel, support
  * banner). Returns a low-alpha rgba color matching the world's dominant
  * background palette, so the bars visually integrate with the world's

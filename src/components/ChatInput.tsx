@@ -24,7 +24,7 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
-import { THEME, FONTS, MAX_MESSAGE_LENGTH, getWorldBarTint } from "@/lib/constants";
+import { THEME, FONTS, MAX_MESSAGE_LENGTH, getWorldBarTint, getWorldAccent } from "@/lib/constants";
 import { useThemeColor } from "@/lib/shopTheme";
 import { shortenAddress } from "@/lib/nftVerification";
 import { getCachedProfile, searchUsersByPrefix } from "@/lib/userProfile";
@@ -186,10 +186,16 @@ export const ChatInput = memo(function ChatInput({
   const themeSurface = useThemeColor('surface');
   const themeBorder = useThemeColor('border');
 
-  // PFP Full Theme: tint toolbar labels with NFT dominant color
+  // Toolbar label accent (CAM / LIVE / GIF). Priority:
+  //   1) PFP Full Theme override (user equipped NFT-color theme)
+  //   2) World accent (per-world via getWorldAccent — Banana Grove =
+  //      warm honey gold, Cyberpunk = neon pink, Trading Floor = gold)
+  //   3) Default OnlyMonkes light blue
   const shopStyles = useAppStore(s => s.shopStyles);
   const nftDominantColor = useAppStore(s => s.nftDominantColor);
-  const toolbarColor = shopStyles?.pfpFullTheme && nftDominantColor ? nftDominantColor : "#6CB4EE";
+  const toolbarColor = (shopStyles?.pfpFullTheme && nftDominantColor)
+    ? nftDominantColor
+    : getWorldAccent(shopStyles?.worldId as string | undefined);
   // World-aware transparency: when a Chat World is equipped, drop the input
   // bar background so falling bananas / candles can be seen piling up behind
   // it. Returns to opaque theme surface when no world is set.
