@@ -1064,7 +1064,13 @@ export const MessageBubble = memo(function MessageBubble({
                     // exactly so the layout footprint stays equivalent.
                     const baseFontSize = 15 * (useAppStore.getState().textScale ?? 1);
                     const hasRichTokens = displayContent.search(RICH_SPLIT) !== -1;
-                    const useSkiaCarve = useBananaGroveBubble && !hasRichTokens && !shopStyles.hasBubbleCosmetic && !shopStyles.textGlow;
+                    // (v18 2026-05-08) Cosmetic guards dropped. The Banana
+                    // Grove wood plaque already overrides bubble cosmetics
+                    // visually, so the !hasBubbleCosmetic / !textGlow guards
+                    // were silently skipping the Skia carve path for any
+                    // user with a Shop cosmetic equipped — meaning v12-v17's
+                    // Skia work was never even rendered for them.
+                    const useSkiaCarve = useBananaGroveBubble && !hasRichTokens;
                     if (useSkiaCarve) {
                       return (
                         <BananaGroveCarvedText

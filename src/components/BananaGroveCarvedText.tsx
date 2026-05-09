@@ -22,13 +22,16 @@
  *      shadow at the carve's lower lip).
  */
 import React, { useMemo } from "react";
+import { Platform } from "react-native";
 import {
   Canvas,
   Group,
   Rect,
   Text as SkiaText,
   ImageShader,
+  LinearGradient,
   RadialGradient,
+  matchFont,
   useFont,
   useImage,
   vec,
@@ -49,17 +52,17 @@ interface BananaGroveCarvedTextProps {
 // Bevel offsets — small but enough to catch the sharp Fredoka edges.
 const BEVEL_OFFSET = 1;
 
-// Cream stroke for the top-edge bevel highlight (light catching upper rim
-// of the V-shape carve). Bright + warm so it reads against any wood tone.
 const BEVEL_HIGHLIGHT = "rgba(255, 230, 175, 0.9)";
-// Dark stroke for the bottom-edge bevel ambient occlusion (deepest shadow
-// at the carve's lower lip).
 const BEVEL_AO = "rgba(0, 0, 0, 0.85)";
+// (v18) Bevel layer opacity dropped 0.55 → 0.18 so the bevels read as
+// THIN slivers at the offset edges instead of dominant overlays that
+// obscure the photographic wood + PFP glow inside the masked carve.
+const BEVEL_OPACITY = 0.18;
 
-// Multiplier overlay alpha for darkening the wood texture inside the carve.
-// Real carved letters expose deeper wood that's been in shadow — we darken
-// the same texture by ~45% inside the mask.
-const CARVE_DARKEN_ALPHA = 0.45;
+// (v18) Carve darken overlay reduced 0.45 → 0.22 — light enough that
+// the photographic wood texture is clearly visible inside letters while
+// still reading as "deeper layer in shadow."
+const CARVE_DARKEN_ALPHA = 0.22;
 
 function wrapLines(text: string, font: ReturnType<typeof useFont> | null, maxWidth: number): string[] {
   if (!text || maxWidth <= 0 || !font) return [];
@@ -94,13 +97,28 @@ export const BananaGroveCarvedText = React.memo(function BananaGroveCarvedText({
   fontSize = 15,
   pfpColor,
 }: BananaGroveCarvedTextProps) {
-  // Fredoka-Bold font (chunky rounded sans-serif, weight 700).
-  const font = useFont(
+  // Fredoka-Bold (bundled asset). Falls back to system bold if the asset
+  // fails to load — guarantees text always renders, never returns null
+  // silently due to asset issues.
+  const fredokaFont = useFont(
     require("../../assets/fonts/Fredoka-Bold.ttf"),
     Math.round(fontSize),
   );
-  // Photographic wood texture — same source as the bubble surface so the
-  // carve interior shows the SAME wood, just darker.
+  const systemFont = useMemo(() => {
+    try {
+      return matchFont({
+        fontFamily: Platform.select({ ios: "Helvetica", default: "sans-serif" }),
+        fontSize: Math.round(fontSize),
+        fontStyle: "normal",
+        fontWeight: "700",
+      });
+    } catch { return null; }
+  }, [fontSize]);
+  const font = fredokaFont ?? systemFont;
+
+  // Photographic wood texture (bundled asset). Component still works if
+  // texture is null — the destination layer just renders without the
+  // ImageShader (using a wood-color rect instead).
   const woodTexture = useImage(
     require("../../assets/textures/TextureGrove.png"),
   );
@@ -118,7 +136,7 @@ export const BananaGroveCarvedText = React.memo(function BananaGroveCarvedText({
     return { lines: ls, lineHeight: lh, totalHeight: lh * ls.length };
   }, [text, font, maxWidth, fontSize]);
 
-  if (!font || !woodTexture || lines.length === 0 || maxWidth <= 0) return null;
+  if (!font || lines.length === 0 || maxWidth <= 0) return null;
 
   const PAD_X = 8;
   const PAD_Y = 8;
@@ -152,33 +170,40 @@ export const BananaGroveCarvedText = React.memo(function BananaGroveCarvedText({
 
         return (
           <Group key={i}>
-            {/* ── Layer A: wood texture + dark overlay + PFP resin glow,
-                  all clipped to the letter glyph shapes via dstIn mask. */}
+            {/* ── Layer A: wood + dark + PFP glow, clipped to letters. */}
             <Group>
-              {/* A1: photographic wood texture covering the line bounds */}
+              {/* A1: wood — photographic if texture loaded, fallback wood
+                    gradient if not. Either way, fills the line bounds. */}
               <Rect rect={lineRect}>
-                <ImageShader
-                  image={woodTexture}
-                  fit="cover"
-                  rect={lineRect}
-                />
+                {woodTexture ? (
+                  <ImageShader
+                    image={woodTexture}
+                    fit="cover"
+                    rect={lineRect}
+                  />
+                ) : (
+                  <LinearGradient
+                    start={vec(0, glyphTop)}
+                    end={vec(0, glyphBottom)}
+                    colors={[palette.mid, palette.deep]}
+                  />
+                )}
               </Rect>
-              {/* A2: dark multiply overlay — darkens the wood inside the
-                    carve so it reads as recessed (deeper wood layer). */}
+              {/* A2: subtle dark overlay (was 0.45, now 0.22) — wood
+                    visible through, just slightly recessed-looking. */}
               <Rect
                 rect={lineRect}
                 color={`rgba(0, 0, 0, ${CARVE_DARKEN_ALPHA})`}
               />
-              {/* A3: PFP-color resin glows — two RadialGradients at
-                    different positions for "uneven pooling" per spec. */}
+              {/* A3-A4: PFP-color resin glows at uneven positions. */}
               <Rect rect={lineRect}>
                 <RadialGradient
                   c={vec(c1x, c1y)}
                   r={glyphHeight * 1.2}
                   colors={[
-                    `${pfpColor}CC`,  // ~80% alpha at center
-                    `${pfpColor}55`,  // ~33% mid
-                    `${pfpColor}00`,  // 0% edge
+                    `${pfpColor}DD`,
+                    `${pfpColor}66`,
+                    `${pfpColor}00`,
                   ]}
                 />
               </Rect>
@@ -187,14 +212,13 @@ export const BananaGroveCarvedText = React.memo(function BananaGroveCarvedText({
                   c={vec(c2x, c2y)}
                   r={glyphHeight * 1.0}
                   colors={[
-                    `${pfpColor}AA`,
-                    `${pfpColor}44`,
+                    `${pfpColor}BB`,
+                    `${pfpColor}55`,
                     `${pfpColor}00`,
                   ]}
                 />
               </Rect>
-              {/* A4: text glyphs as alpha mask via dstIn — keeps the
-                    layered destination only where the text is opaque. */}
+              {/* A5: text glyphs as alpha mask via dstIn. */}
               <Group blendMode="dstIn">
                 <SkiaText
                   text={line}
@@ -206,30 +230,28 @@ export const BananaGroveCarvedText = React.memo(function BananaGroveCarvedText({
               </Group>
             </Group>
 
-            {/* ── Layer B: bevel AMBIENT OCCLUSION — dark stroke offset
-                  down-right by 1 px. Reads as the deepest shadow at the
-                  bottom-right lip of the carve (where the V-shape interior
-                  meets the wood surface, in deepest shadow). */}
+            {/* ── Layer B: bevel AO — dark glyph offset down-right at
+                  18% opacity. THIN sliver visible only on the lower-right
+                  rim of letters. No longer dominates the carve interior. */}
             <SkiaText
               text={line}
               x={baseX + BEVEL_OFFSET}
               y={baselineY + BEVEL_OFFSET}
               font={font}
               color={BEVEL_AO}
-              opacity={0.55}
+              opacity={BEVEL_OPACITY}
             />
 
-            {/* ── Layer C: bevel HIGHLIGHT — bright cream stroke offset
-                  up-left by 1 px. Reads as overhead light catching the
-                  upper-left rim of the V-carve. Renders ON TOP so it's
-                  the brightest visible feature, defining the carve edge. */}
+            {/* ── Layer C: bevel HIGHLIGHT — cream glyph offset up-left
+                  at 18% opacity. Visible only as a bright sliver on the
+                  upper-left rim — the V-carve light edge. */}
             <SkiaText
               text={line}
               x={baseX - BEVEL_OFFSET}
               y={baselineY - BEVEL_OFFSET}
               font={font}
               color={BEVEL_HIGHLIGHT}
-              opacity={0.55}
+              opacity={BEVEL_OPACITY}
             />
           </Group>
         );
