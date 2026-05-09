@@ -15,7 +15,7 @@
  * Active Monkes 24hr lives at the bottom of the main list.
  */
 
-import React, { useEffect, useRef, useMemo, useState } from "react";
+import React, { useEffect, useRef, useMemo, useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -172,6 +172,16 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
   const worldId = shopStyles?.worldId as string | undefined;
   const drawerBg = worldId ? getWorldBarTint(worldId) : themeSurface;
   const iconAccent = themeOverrides ? themeAccent : (worldId ? getWorldAccent(worldId) : '#6CB4EE');
+  // (v40 2026-05-09) Hex → rgba helper so per-world chrome (search bar
+  // border, etc.) can tint at low alpha without hardcoding rgba per world.
+  const accentRgba = useCallback((alpha: number) => {
+    const hex = iconAccent.replace('#', '');
+    if (hex.length !== 6) return iconAccent; // already rgba/named — leave it
+    const r = parseInt(hex.slice(0, 2), 16);
+    const g = parseInt(hex.slice(2, 4), 16);
+    const b = parseInt(hex.slice(4, 6), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }, [iconAccent]);
   const [activeView, setActiveView] = useState<ActiveView>("list");
 
   useProfileVersion();
@@ -557,9 +567,14 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                 );
               })()}
 
-              {/* Search bar */}
-              <View style={styles.searchBar}>
-                <Text style={styles.searchIcon}>🔍</Text>
+              {/* Search bar (v40 polish): world-aware border tint + Skia
+                  magnifier replacing the 🔍 emoji. Icon + border use the
+                  same iconAccent priority chain (PFP-theme > world > blue). */}
+              <View style={[
+                styles.searchBar,
+                worldId ? { borderColor: accentRgba(0.22) } : null,
+              ]}>
+                <MenuIcon name="search" size={16} color={iconAccent} />
                 <TextInput
                   style={styles.searchInput}
                   placeholder="Search messages…"
@@ -1631,7 +1646,6 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     gap: 8,
   },
-  searchIcon: { fontSize: 16 },
   searchInput: {
     flex: 1,
     fontFamily: FONTS.body,
