@@ -31,7 +31,9 @@ import {
   matchFont,
   useFont,
 } from "@shopify/react-native-skia";
-import { pickWoodPalette } from "@/lib/woodPalettes";
+// (v27) pickWoodPalette no longer needed in this component — text fill
+// is unified via FRESH_CUT_FILL. Wood surface palette still chosen per
+// PFP in BananaGroveSignBubble.
 
 interface BananaGroveCarvedTextProps {
   text: string;
@@ -41,11 +43,23 @@ interface BananaGroveCarvedTextProps {
   pfpColor: string;
 }
 
-// (v26 2026-05-08) Scale 3 → 1.95 per user — v24's 3x (45 px) was too
-// large; 35% reduction gives 15 * 1.95 = 29 px effective. Still meaningfully
-// larger than chat default for the carved bevel + char rim to read,
-// but no longer dominating the viewport.
-const FONT_SCALE = 1.95;
+// (v27 2026-05-08) Scale 1.95 → 1.6 per user — "a bit smaller." Gives
+// 15 * 1.6 = 24 px effective. Still meaningfully larger than chat
+// default for bevel readability, sits comfortably in the viewport.
+const FONT_SCALE = 1.6;
+
+// (v27 2026-05-08) Unified fresh-cut text fill — all Banana Grove
+// senders' carved letters render in the same light cream tone (matching
+// the lightest wood light-stops, e.g. Maple's #F0DBB0) instead of each
+// sender's own palette.light. User feedback: "make the font color for
+// all Banana Grove viewers/buyers the same as Rugdoctor's (light color)
+// but keep the wooden background color picker the same as it is."
+//
+// Wood surface still picks per-PFP species (palette in BananaGroveSignBubble).
+// Only the CARVE-INTERIOR fill is unified. Marked "perfect for now,
+// figure a way forward later" by user — likely revisited when per-PFP
+// fill comes back via the parked PFP-color-in-carved-text feature.
+const FRESH_CUT_FILL = "#F0DBB0";
 
 // Char-rim stroke width (px). v21: bumped 2.5 → 3.5 + switched to pure
 // black "#000000" so the rim reads as clearly burnt/charred against
@@ -83,7 +97,10 @@ export const BananaGroveCarvedText = React.memo(function BananaGroveCarvedText({
   text,
   maxWidth,
   fontSize = 15,
-  pfpColor,
+  // pfpColor reserved — kept in the contract for the parked
+  // PFP-color-in-carved-text feature (when it lands, swap FRESH_CUT_FILL
+  // for a sender-derived color).
+  pfpColor: _pfpColor,
 }: BananaGroveCarvedTextProps) {
   const effectiveFontSize = Math.round(fontSize * FONT_SCALE);
 
@@ -103,7 +120,9 @@ export const BananaGroveCarvedText = React.memo(function BananaGroveCarvedText({
   }, [effectiveFontSize]);
   const font = fredokaFont ?? systemFont;
 
-  const palette = useMemo(() => pickWoodPalette(pfpColor), [pfpColor]);
+  // (v27) palette no longer derived here — text fill uses FRESH_CUT_FILL
+  // for all senders. Wood surface palette is computed per-PFP in
+  // BananaGroveSignBubble where it still drives the surface color.
 
   const { lines, lineHeight, totalHeight } = useMemo(() => {
     if (!font) return { lines: [] as string[], lineHeight: 0, totalHeight: 0 };
@@ -158,17 +177,15 @@ export const BananaGroveCarvedText = React.memo(function BananaGroveCarvedText({
               />
             </Group>
 
-            {/* Inner fresh-cut wood fill — palette.light is the brightest
-                stop of the species. Against the now-weathered surface
-                (palette.mid → palette.dark in BananaGroveSignBubble),
-                this gives clear contrast: weathered wood plaque with
-                fresh-cut wood freshly exposed inside each carved letter. */}
+            {/* Inner fresh-cut fill — UNIFIED across all senders (v27).
+                Light cream tone reads cleanly against any weathered wood
+                surface, matches Rugdoctor's existing light-species look. */}
             <SkiaText
               text={line}
               x={baseX}
               y={baselineY}
               font={font}
-              color={palette.light}
+              color={FRESH_CUT_FILL}
             />
           </Group>
         );
