@@ -38,7 +38,6 @@ import { BlurView } from "expo-blur";
 import { SkiaGlowBubble, SkiaGlassFront, SkiaGlowPfp } from "@/components/SkiaGlowBubble";
 import { CyberpunkGlitchBubble } from "@/components/CyberpunkGlitchBubble";
 import { BananaGroveSignBubble } from "@/components/BananaGroveSignBubble";
-import { BananaGroveCarvedText } from "@/components/BananaGroveCarvedText";
 import { BotAlertCard, parseTopSalesAlert } from "@/components/BotAlertCard";
 import Reanimated, {
   useSharedValue,
@@ -1079,62 +1078,15 @@ export const MessageBubble = memo(function MessageBubble({
                         </View>
                       );
                     }
-                    // Banana Grove (own + bot + others) AND non-bot in any
-                    // world → original Skia carve OR RN Text fallback path.
-                    return (() => {
-                    // Phase 2 Day 1+2 (2026-05-08): for PLAIN-TEXT messages
-                    // in Banana Grove (no @mention / $TOKEN), render via the
-                    // Skia carved-text component. Messages with rich content
-                    // tokens still go through the RN Text path so mentions /
-                    // $TOKEN remain tappable. Day 5 will bring rich content
-                    // into Skia. The fontSize matches the RN Text fontSize
-                    // exactly so the layout footprint stays equivalent.
+                    // (v35 2026-05-09) Single RN Text path for all
+                    // remaining cases. Banana Grove uses Fredoka-Bold
+                    // (loaded via expo-font in app/_layout.tsx) with
+                    // carved-shadow styling. Skia carve dropped — chat
+                    // text is too small for cinematic carving, and Skia
+                    // can't fall back to system emoji fonts so emoji
+                    // rendered as tofu. RN Text gives proper emoji
+                    // fallback automatically.
                     const baseFontSize = 15 * (useAppStore.getState().textScale ?? 1);
-                    // (v20 2026-05-08) Rich-token guard ALSO dropped. Bot
-                    // messages typically contain $TOKEN tags ($SOL, $BANANA)
-                    // which were routing them all to RN Text — making the
-                    // bot's bubbles look fundamentally different (system
-                    // font + flat styling) from user bubbles (Skia carve).
-                    // Now ALL Banana Grove messages use the Skia carve path.
-                    // Tradeoff: @mentions / $TOKEN lose their tappable color
-                    // highlighting in Banana Grove, but visual consistency
-                    // wins. Will bring tappable rich tokens into Skia in a
-                    // follow-up if user wants them back.
-                    // (v34 2026-05-09) Emoji detection — Fredoka-Bold has
-                    // no emoji glyphs, so 😎🤘 etc render as white-square
-                    // tofu in Skia. When the message contains any emoji,
-                    // fall through to the RN Text path which uses the
-                    // system font (full emoji coverage). v11 carved-shadow
-                    // styling keeps the wood feel on those messages even
-                    // without the Fredoka chunk + burnt rim.
-                    const hasEmoji = /\p{Extended_Pictographic}/u.test(displayContent);
-                    const useSkiaCarve = useBananaGroveBubble && !hasEmoji;
-                    if (useSkiaCarve) {
-                      // (v32 2026-05-09) Apply the same maxHeight collapse
-                      // constraint that the MarkdownContent path uses, so
-                      // bot alerts in Banana Grove can be expanded /
-                      // collapsed by tap. Was missing — Skia path rendered
-                      // the full text always, ignoring botExpanded state.
-                      const carve = (
-                        <BananaGroveCarvedText
-                          text={displayContent}
-                          maxWidth={Math.round(SCREEN_W * 0.72 - 60)}
-                          fontSize={baseFontSize}
-                          pfpColor={glitchAccent}
-                        />
-                      );
-                      // Wrap with the same collapse constraint MarkdownContent
-                      // had — only when this is a bot message + showBotExpand
-                      // is true + user hasn't expanded. Same maxHeight value.
-                      if (isBot && showBotExpand && !botExpanded) {
-                        return (
-                          <View style={{ maxHeight: 9 * 22, overflow: "hidden" }}>
-                            {carve}
-                          </View>
-                        );
-                      }
-                      return carve;
-                    }
                     return (
                       <Text
                         style={[
@@ -1144,11 +1096,12 @@ export const MessageBubble = memo(function MessageBubble({
                           shopStyles.fontFamily === "mono" ? { fontFamily: FONTS.mono } : null,
                           shopStyles.hasBubbleCosmetic ? { textShadowColor: "rgba(0,0,0,0.5)", textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 } : null,
                           shopStyles.textGlow ? { textShadowColor: "rgba(255,255,255,0.6)", textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 8 } : null,
-                          // Banana Grove fallback for messages with rich
-                          // tokens (mentions, $TOKEN). Same v11 carved
-                          // shadow recipe — Day 5 will replace this with a
-                          // hybrid Skia/RN approach.
+                          // Banana Grove: Fredoka-Bold + carved-shadow
+                          // recipe. Cream highlight offset up-left, dark
+                          // letter color, slight letter-spacing for the
+                          // chunky-chiseled look.
                           useBananaGroveBubble ? {
+                            fontFamily: 'Fredoka-Bold',
                             color: "#080402",
                             textShadowColor: "rgba(255, 230, 175, 0.95)",
                             textShadowOffset: { width: -1.5, height: -1.5 },
@@ -1162,7 +1115,6 @@ export const MessageBubble = memo(function MessageBubble({
                         {renderRichContent(displayContent, handlePressMention, onTokenPress)}
                       </Text>
                     );
-                    })();
                   })()}
                   {message.editedAt && (
                     <Text style={[styles.editedLabel, { color: textColor }]}>(edited)</Text>

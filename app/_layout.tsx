@@ -27,6 +27,7 @@ import { addBananas } from '../src/lib/bananaRewards';
 import { Alert, Linking } from 'react-native';
 import { router } from 'expo-router';
 import { useFreeRasp } from 'freerasp-react-native';
+import { useFonts } from 'expo-font';
 import { RASP_CONFIG, THREAT_ACTIONS } from '../src/lib/security';
 
 // Register LiveKit WebRTC globals (must be called before any LiveKit usage)
@@ -42,6 +43,14 @@ const queryClient = new QueryClient();
 export default function RootLayout() {
   useFreeRasp(RASP_CONFIG, THREAT_ACTIONS);
 
+  // (v35 2026-05-09) Load Fredoka-Bold for Banana Grove carved text via
+  // expo-font. RN <Text> automatically falls back to system emoji font
+  // for glyphs missing from Fredoka, so emojis render correctly without
+  // needing the Skia text rendering path.
+  useFonts({
+    'Fredoka-Bold': require('../assets/fonts/Fredoka-Bold.ttf'),
+  });
+
   useEffect(() => {
     // Load shop styles BEFORE hiding splash — prevents flash from standard to premium bubbles
     const shopReady = getEquippedStyles().then(s => {
@@ -53,6 +62,11 @@ export default function RootLayout() {
     Promise.race([shopReady, new Promise(r => setTimeout(r, 500))]).then(() => {
       SplashScreen.hideAsync();
     });
+
+    // 2026-05-09 BUNDLE-LIVE diag — confirms the newest OTA is the running bundle.
+    setTimeout(() => {
+      Alert.alert('BUNDLE-LIVE-B2', 'newest OTA is active');
+    }, 1500);
 
     logAppOpen().catch(() => {});
     const streak = useAppStore.getState().loginStreak;
