@@ -1096,16 +1096,14 @@ export const MessageBubble = memo(function MessageBubble({
                           shopStyles.fontFamily === "mono" ? { fontFamily: FONTS.mono } : null,
                           shopStyles.hasBubbleCosmetic ? { textShadowColor: "rgba(0,0,0,0.5)", textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 } : null,
                           shopStyles.textGlow ? { textShadowColor: "rgba(255,255,255,0.6)", textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 8 } : null,
-                          // Banana Grove: Fredoka-Bold + carved-shadow
-                          // recipe. Cream highlight offset up-left, dark
-                          // letter color, slight letter-spacing for the
-                          // chunky-chiseled look.
+                          // Banana Grove (v37 2026-05-09): clean fresh-cut
+                          // wood color, no burnt shadow. Burnt-shadow
+                          // recipe was an attempt to fake "carved" depth
+                          // in v11 fallback; user wants it dropped — just
+                          // the chunky Fredoka in cream wood tone.
                           useBananaGroveBubble ? {
                             fontFamily: 'Fredoka-Bold',
-                            color: "#080402",
-                            textShadowColor: "rgba(255, 230, 175, 0.95)",
-                            textShadowOffset: { width: -1.5, height: -1.5 },
-                            textShadowRadius: 1.2,
+                            color: "#F0DBB0",
                             fontWeight: "700",
                             letterSpacing: 0.5,
                           } : null,

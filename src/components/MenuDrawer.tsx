@@ -40,6 +40,7 @@ import * as Clipboard from "expo-clipboard";
 import { toast } from "sonner-native";
 import { THEME, FONTS, SKR_MINT, JUP_API_KEY, getWorldBarTint, getWorldAccent } from "@/lib/constants";
 import { MenuIcon, type MenuIconName } from "@/components/MenuIcon";
+import { WorldLayer } from "@/components/worlds/WorldLayer";
 import { useThemeColor } from "@/lib/shopTheme";
 import { useChatStore } from "@/store/chatStore";
 import { useAppStore, type CalendarEvent } from "@/store/appStore";
@@ -449,7 +450,19 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
         <View style={styles.overlay} />
       </Pressable>
 
-      <View style={[styles.popup, { backgroundColor: drawerBg, borderColor: themeBorder }]}>
+      <View style={[styles.popup, { borderColor: themeBorder }, worldId ? null : { backgroundColor: drawerBg }]}>
+        {/* (v37 2026-05-09) When a world is equipped, render the WorldLayer
+            (paused) inside the drawer so its background — gradient,
+            silhouette skyline, dappled-light orbs — shows through behind
+            the menu content. Replaces the translucent tint that was
+            letting the live chat bleed through. active={false} stops
+            world animations while the drawer is open so we're not
+            double-rendering banana mowers etc. */}
+        {worldId ? (
+          <View style={StyleSheet.absoluteFill} pointerEvents="none">
+            <WorldLayer active={false} />
+          </View>
+        ) : null}
         {/* Glass gradient overlay */}
         <LinearGradient
           colors={["rgba(248,248,255,0.06)", "rgba(0,0,0,0.12)"]}
