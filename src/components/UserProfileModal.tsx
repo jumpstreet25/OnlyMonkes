@@ -30,6 +30,7 @@ import { TipQrModal } from "@/components/TipQrModal";
 import { isValidSolanaAddress } from "@/lib/solanaPay";
 import { getDailySparkline } from "@/lib/activityTracker";
 import { MiniChart } from "@/components/MiniChart";
+import { BadgeGlyph } from "@/components/BadgeGlyph";
 
 export interface ProfileTarget {
   senderAddress: string;      // XMTP inboxId
@@ -168,7 +169,8 @@ export function UserProfileModal({ visible, target, onClose, onEditProfile, onCh
                     if (!def) return null;
                     return (
                       <View key={id} style={styles.badgePill}>
-                        <Text style={styles.badgeEmoji}>{def.emoji}</Text>
+                        {/* (v41) Skia glyph replaces emoji */}
+                        <BadgeGlyph emoji={def.emoji} size={14} />
                         <Text style={styles.badgeName}>{def.name}</Text>
                       </View>
                     );
