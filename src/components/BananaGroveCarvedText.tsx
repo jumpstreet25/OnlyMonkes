@@ -27,13 +27,9 @@ import { Platform } from "react-native";
 import {
   Canvas,
   Group,
-  Rect,
   Text as SkiaText,
-  RadialGradient,
   matchFont,
   useFont,
-  vec,
-  rect,
 } from "@shopify/react-native-skia";
 import { pickWoodPalette } from "@/lib/woodPalettes";
 
@@ -50,9 +46,11 @@ interface BananaGroveCarvedTextProps {
 // space to read, and feel more "premium plaque sign" than chat default.
 const FONT_BUMP = 2;
 
-// Char-rim stroke width (px). 2.5 gives a clearly visible dark indented
-// border around each letter without crowding letter spacing.
-const CHAR_RIM_STROKE = 2.5;
+// Char-rim stroke width (px). v21: bumped 2.5 → 3.5 + switched to pure
+// black "#000000" so the rim reads as clearly burnt/charred against
+// the now-weathered (darker) bubble surface.
+const CHAR_RIM_STROKE = 3.5;
+const CHAR_RIM_COLOR = "#000000";
 
 function wrapLines(text: string, font: ReturnType<typeof useFont> | null, maxWidth: number): string[] {
   if (!text || maxWidth <= 0 || !font) return [];
@@ -135,49 +133,21 @@ export const BananaGroveCarvedText = React.memo(function BananaGroveCarvedText({
       {lines.map((line, i) => {
         const baselineY = PAD_Y + (i + 1) * lineHeight - lineHeight * 0.28;
         const baseX = PAD_X;
-        const glyphTop = baselineY - effectiveFontSize * 0.85;
-        const glyphHeight = effectiveFontSize * 1.1;
-        const lineRect = rect(baseX - 4, glyphTop, maxWidth + 8, glyphHeight);
-
-        // Subtle PFP glow inside letter shapes — sender-identity color
-        // tint. Kept low-alpha so the inverted dark-rim/light-fill
-        // contrast still reads cleanly.
-        const glowCx = baseX + maxWidth * 0.45;
-        const glowCy = glyphTop + glyphHeight * 0.5;
 
         return (
           <Group key={i}>
-            {/* Behind-letter PFP-color glow (masked to letter shapes) */}
-            <Group>
-              <Rect rect={lineRect}>
-                <RadialGradient
-                  c={vec(glowCx, glowCy)}
-                  r={glyphHeight * 1.4}
-                  colors={[
-                    `${pfpColor}33`,
-                    `${pfpColor}15`,
-                    `${pfpColor}00`,
-                  ]}
-                />
-              </Rect>
-              <Group blendMode="dstIn">
-                <SkiaText
-                  text={line}
-                  x={baseX}
-                  y={baselineY}
-                  font={font}
-                  color="white"
-                />
-              </Group>
-            </Group>
+            {/* (v21 2026-05-08) PFP-color glow orbs REMOVED — user flagged
+                them as competing with the wood-on-wood contrast. Sender
+                identity is already conveyed by the wood species choice. */}
 
-            {/* Outer char-rim stroke — palette.deep at stroke width 2.5
-                renders a dark ring around each letter's path, half outside
-                the letter (visible char rim), half covered by fill on top. */}
+            {/* Outer burnt-black char rim — pure black at stroke 3.5 px,
+                centered on the letter path. Half extends outside the
+                letter (visible burnt border around the carve), half
+                covered by fill on top. */}
             <Group
               style="stroke"
               strokeWidth={CHAR_RIM_STROKE}
-              color={palette.deep}
+              color={CHAR_RIM_COLOR}
             >
               <SkiaText
                 text={line}
@@ -187,9 +157,11 @@ export const BananaGroveCarvedText = React.memo(function BananaGroveCarvedText({
               />
             </Group>
 
-            {/* Inner fresh-cut wood fill — palette.light covers the letter
-                interior (and the inner half of the stroke). Reads as
-                lighter freshly-exposed wood inside the char rim. */}
+            {/* Inner fresh-cut wood fill — palette.light is the brightest
+                stop of the species. Against the now-weathered surface
+                (palette.mid → palette.dark in BananaGroveSignBubble),
+                this gives clear contrast: weathered wood plaque with
+                fresh-cut wood freshly exposed inside each carved letter. */}
             <SkiaText
               text={line}
               x={baseX}
