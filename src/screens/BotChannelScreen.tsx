@@ -27,7 +27,7 @@ import { triggerProfileRebroadcast } from "@/hooks/useXmtp";
 import AutonoMonkeDisclaimerModal, { type AutonomyFeature } from "@/components/AutonoMonkeDisclaimerModal";
 import { getXmtpClient } from "@/hooks/useXmtp";
 import { sendDmMessage } from "@/lib/xmtp";
-import { THEME, FONTS, WORLD_BAR_BG } from "@/lib/constants";
+import { THEME, FONTS, getWorldBarTint } from "@/lib/constants";
 import { ErrorMessage } from "@/components/ErrorMessage";
 import { useThemeColor } from "@/lib/shopTheme";
 import { WorldLayer } from "@/components/worlds/WorldLayer";
@@ -118,7 +118,7 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
   // the same WORLD_BAR_BG translucent treatment as the main chat so the
   // world reads through them.
   const worldId = useAppStore((s) => s.shopStyles?.worldId) as string | undefined;
-  const chromeBg = worldId ? WORLD_BAR_BG : themeSurface;
+  const chromeBg = worldId ? getWorldBarTint(worldId) : themeSurface;
   const hasThemeOverride = useAppStore(s => !!s.themeOverrides);
 
   // PFP Full Theme: tint channel headers with NFT color
