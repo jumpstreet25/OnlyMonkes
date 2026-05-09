@@ -1063,14 +1063,17 @@ export const MessageBubble = memo(function MessageBubble({
                     // into Skia. The fontSize matches the RN Text fontSize
                     // exactly so the layout footprint stays equivalent.
                     const baseFontSize = 15 * (useAppStore.getState().textScale ?? 1);
-                    const hasRichTokens = displayContent.search(RICH_SPLIT) !== -1;
-                    // (v18 2026-05-08) Cosmetic guards dropped. The Banana
-                    // Grove wood plaque already overrides bubble cosmetics
-                    // visually, so the !hasBubbleCosmetic / !textGlow guards
-                    // were silently skipping the Skia carve path for any
-                    // user with a Shop cosmetic equipped — meaning v12-v17's
-                    // Skia work was never even rendered for them.
-                    const useSkiaCarve = useBananaGroveBubble && !hasRichTokens;
+                    // (v20 2026-05-08) Rich-token guard ALSO dropped. Bot
+                    // messages typically contain $TOKEN tags ($SOL, $BANANA)
+                    // which were routing them all to RN Text — making the
+                    // bot's bubbles look fundamentally different (system
+                    // font + flat styling) from user bubbles (Skia carve).
+                    // Now ALL Banana Grove messages use the Skia carve path.
+                    // Tradeoff: @mentions / $TOKEN lose their tappable color
+                    // highlighting in Banana Grove, but visual consistency
+                    // wins. Will bring tappable rich tokens into Skia in a
+                    // follow-up if user wants them back.
+                    const useSkiaCarve = useBananaGroveBubble;
                     if (useSkiaCarve) {
                       return (
                         <BananaGroveCarvedText
