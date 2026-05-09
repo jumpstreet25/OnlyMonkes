@@ -36,15 +36,16 @@ import { pickWoodPalette } from "@/lib/woodPalettes";
 interface BananaGroveCarvedTextProps {
   text: string;
   maxWidth: number;
-  /** Caller-supplied size; component bumps by FONT_BUMP for chat carve. */
+  /** Caller-supplied size; component multiplies by FONT_SCALE for carve. */
   fontSize?: number;
   pfpColor: string;
 }
 
-// Bump the caller's default 15px to 17px for Banana Grove carved text —
-// larger letterforms give the dark char rim + light fill more pixel
-// space to read, and feel more "premium plaque sign" than chat default.
-const FONT_BUMP = 2;
+// (v24 2026-05-08) Banana Grove text scale 3x per user — chunky carved
+// letters need significantly more pixel area than chat-default 15px for
+// the dark char rim + light fresh-cut fill to read as actual carving.
+// 15 * 3 = 45 px effective.
+const FONT_SCALE = 3;
 
 // Char-rim stroke width (px). v21: bumped 2.5 → 3.5 + switched to pure
 // black "#000000" so the rim reads as clearly burnt/charred against
@@ -84,7 +85,7 @@ export const BananaGroveCarvedText = React.memo(function BananaGroveCarvedText({
   fontSize = 15,
   pfpColor,
 }: BananaGroveCarvedTextProps) {
-  const effectiveFontSize = Math.round(fontSize + FONT_BUMP);
+  const effectiveFontSize = Math.round(fontSize * FONT_SCALE);
 
   const fredokaFont = useFont(
     require("../../assets/fonts/Fredoka-Bold.ttf"),
