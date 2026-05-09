@@ -1,23 +1,26 @@
 /**
- * BananaGroveCarvedText — v19 (2026-05-08), readability-first pivot.
+ * BananaGroveCarvedText — v20 (2026-05-08).
  *
- * The user reference image (cinematic 3D-rendered carved wood) is
- * unreachable at chat font size (15-16 px) — wood texture detail
- * inside letter shapes collides with the letter outlines and produces
- * blurry, unreadable imagery rather than carved text. v17/v18 with
- * photographic wood + heavy bevels confirmed this ceiling.
+ * Inverted carve coloring per user feedback:
+ *   - Outer char rim:  palette.deep (the "charred" cut edge in shadow)
+ *   - Inner fresh cut: palette.light (the lighter wood freshly exposed
+ *                      where the chisel removed material)
  *
- * v19 prioritizes READABILITY:
- *   - Fredoka-Bold font (chunky rounded sans-serif, premium feel)
- *   - Solid palette.deep letter fill (clearly readable on wood surface)
- *   - Subtle 1px cream stroke on upper-left edge (bevel highlight hint)
- *   - Subtle low-opacity PFP-color glow behind letters (identity color
- *     without obscuring letter shapes)
+ * Render technique: same text drawn TWICE per line:
+ *   1. Stroked with palette.deep at strokeWidth 2.5 — produces a dark
+ *      ring centered on each letter's path. Half the stroke extends
+ *      outside the letter (forming the visible "char rim"), half is
+ *      covered by the fill on top.
+ *   2. Filled with palette.light — the inner "fresh-cut wood" color
+ *      that fills the letter shape, covering the inner half of the
+ *      stroke. The visible result is letters with a dark indented
+ *      rim around a lighter interior — exactly the chisel-on-wood look.
  *
- * Cinematic carve effects (photographic wood inside letters, per-letter
- * resin pulses, beveled rim AO) are parked for larger UI elements where
- * pixel real estate allows them to read — chat bubbles get clean,
- * readable, premium-feeling text instead.
+ * Subtle PFP-color radial glow remains BEHIND letters (masked) for
+ * sender-identity color, kept low-alpha so it doesn't compete with
+ * the inverted-color readability.
+ *
+ * Font size bumped 15 → 17 px for chat readability + more carve surface.
  */
 import React, { useMemo } from "react";
 import { Platform } from "react-native";
@@ -37,13 +40,19 @@ import { pickWoodPalette } from "@/lib/woodPalettes";
 interface BananaGroveCarvedTextProps {
   text: string;
   maxWidth: number;
+  /** Caller-supplied size; component bumps by FONT_BUMP for chat carve. */
   fontSize?: number;
   pfpColor: string;
 }
 
-const HIGHLIGHT_COLOR = "rgba(255, 230, 175, 0.55)";
-const HIGHLIGHT_DX = -0.8;
-const HIGHLIGHT_DY = -0.8;
+// Bump the caller's default 15px to 17px for Banana Grove carved text —
+// larger letterforms give the dark char rim + light fill more pixel
+// space to read, and feel more "premium plaque sign" than chat default.
+const FONT_BUMP = 2;
+
+// Char-rim stroke width (px). 2.5 gives a clearly visible dark indented
+// border around each letter without crowding letter spacing.
+const CHAR_RIM_STROKE = 2.5;
 
 function wrapLines(text: string, font: ReturnType<typeof useFont> | null, maxWidth: number): string[] {
   if (!text || maxWidth <= 0 || !font) return [];
@@ -77,36 +86,39 @@ export const BananaGroveCarvedText = React.memo(function BananaGroveCarvedText({
   fontSize = 15,
   pfpColor,
 }: BananaGroveCarvedTextProps) {
-  // Try Fredoka-Bold (bundled), fall back to system bold if it can't load.
+  const effectiveFontSize = Math.round(fontSize + FONT_BUMP);
+
   const fredokaFont = useFont(
     require("../../assets/fonts/Fredoka-Bold.ttf"),
-    Math.round(fontSize),
+    effectiveFontSize,
   );
   const systemFont = useMemo(() => {
     try {
       return matchFont({
         fontFamily: Platform.select({ ios: "Helvetica", default: "sans-serif" }),
-        fontSize: Math.round(fontSize),
+        fontSize: effectiveFontSize,
         fontStyle: "normal",
         fontWeight: "700",
       });
     } catch { return null; }
-  }, [fontSize]);
+  }, [effectiveFontSize]);
   const font = fredokaFont ?? systemFont;
 
   const palette = useMemo(() => pickWoodPalette(pfpColor), [pfpColor]);
 
   const { lines, lineHeight, totalHeight } = useMemo(() => {
     if (!font) return { lines: [] as string[], lineHeight: 0, totalHeight: 0 };
-    const lh = fontSize * 1.35;
+    const lh = effectiveFontSize * 1.35;
     const ls = wrapLines(text, font, maxWidth);
     return { lines: ls, lineHeight: lh, totalHeight: lh * ls.length };
-  }, [text, font, maxWidth, fontSize]);
+  }, [text, font, maxWidth, effectiveFontSize]);
 
   if (!font || lines.length === 0 || maxWidth <= 0) return null;
 
-  const PAD_X = 4;
-  const PAD_Y = 4;
+  // Pad the canvas a bit more than the text bounds to contain the char-rim
+  // stroke that extends outside each letter shape.
+  const PAD_X = 6;
+  const PAD_Y = 6;
   const canvasWidth = maxWidth + PAD_X * 2;
   const canvasHeight = totalHeight + PAD_Y * 2;
 
@@ -123,27 +135,27 @@ export const BananaGroveCarvedText = React.memo(function BananaGroveCarvedText({
       {lines.map((line, i) => {
         const baselineY = PAD_Y + (i + 1) * lineHeight - lineHeight * 0.28;
         const baseX = PAD_X;
-        const glyphTop = baselineY - fontSize * 0.85;
-        const glyphHeight = fontSize * 1.1;
+        const glyphTop = baselineY - effectiveFontSize * 0.85;
+        const glyphHeight = effectiveFontSize * 1.1;
         const lineRect = rect(baseX - 4, glyphTop, maxWidth + 8, glyphHeight);
 
-        // Single PFP-color radial glow per line, masked to letter shapes.
-        // Low alpha so it tints letters with sender's identity color but
-        // doesn't obscure the letter outlines.
+        // Subtle PFP glow inside letter shapes — sender-identity color
+        // tint. Kept low-alpha so the inverted dark-rim/light-fill
+        // contrast still reads cleanly.
         const glowCx = baseX + maxWidth * 0.45;
         const glowCy = glyphTop + glyphHeight * 0.5;
 
         return (
           <Group key={i}>
-            {/* PFP-color glow inside letter shapes (subtle) */}
+            {/* Behind-letter PFP-color glow (masked to letter shapes) */}
             <Group>
               <Rect rect={lineRect}>
                 <RadialGradient
                   c={vec(glowCx, glowCy)}
                   r={glyphHeight * 1.4}
                   colors={[
-                    `${pfpColor}55`,
-                    `${pfpColor}22`,
+                    `${pfpColor}33`,
+                    `${pfpColor}15`,
                     `${pfpColor}00`,
                   ]}
                 />
@@ -159,22 +171,31 @@ export const BananaGroveCarvedText = React.memo(function BananaGroveCarvedText({
               </Group>
             </Group>
 
-            {/* Subtle cream highlight offset up-left (bevel hint) */}
-            <SkiaText
-              text={line}
-              x={baseX + HIGHLIGHT_DX}
-              y={baselineY + HIGHLIGHT_DY}
-              font={font}
-              color={HIGHLIGHT_COLOR}
-            />
+            {/* Outer char-rim stroke — palette.deep at stroke width 2.5
+                renders a dark ring around each letter's path, half outside
+                the letter (visible char rim), half covered by fill on top. */}
+            <Group
+              style="stroke"
+              strokeWidth={CHAR_RIM_STROKE}
+              color={palette.deep}
+            >
+              <SkiaText
+                text={line}
+                x={baseX}
+                y={baselineY}
+                font={font}
+              />
+            </Group>
 
-            {/* Main carve fill — solid palette.deep, readable letters */}
+            {/* Inner fresh-cut wood fill — palette.light covers the letter
+                interior (and the inner half of the stroke). Reads as
+                lighter freshly-exposed wood inside the char rim. */}
             <SkiaText
               text={line}
               x={baseX}
               y={baselineY}
               font={font}
-              color={palette.deep}
+              color={palette.light}
             />
           </Group>
         );
