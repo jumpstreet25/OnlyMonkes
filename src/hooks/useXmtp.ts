@@ -1632,6 +1632,33 @@ export function useXmtp() {
                 return;
               }
 
+              // PORTFOLIO_RESPONSE: single composite payload from /portfolio
+              // (header + positions[] + sparklines). Replaces the older
+              // PORTFOLIO_CARD: per-position flow as of 2026-05-08.
+              if (content.startsWith('PORTFOLIO_RESPONSE:')) {
+                const { BOT_INBOX_IDS } = await import('@/lib/constants');
+                if (!BOT_INBOX_IDS.includes(senderInboxId)) return;
+                const { parsePortfolioResponse } = await import('@/lib/xmtp');
+                const parsed = parsePortfolioResponse(content);
+                if (!parsed) return;
+                const { useTradesStore } = await import('@/store/tradesStore');
+                useTradesStore.getState().setPortfolioResponse(parsed);
+                return;
+              }
+
+              // PORTFOLIO_CARD: live snapshot of an open position, sent one
+              // per position when user DMs /portfolio. Same spoof guard.
+              if (content.startsWith('PORTFOLIO_CARD:')) {
+                const { BOT_INBOX_IDS } = await import('@/lib/constants');
+                if (!BOT_INBOX_IDS.includes(senderInboxId)) return;
+                const { parsePortfolioCard } = await import('@/lib/xmtp');
+                const parsed = parsePortfolioCard(content);
+                if (!parsed) return;
+                const { useTradesStore } = await import('@/store/tradesStore');
+                useTradesStore.getState().addPortfolioCard(parsed);
+                return;
+              }
+
               // TRADE_OPENED: AutonoMonke just opened a position with the user's
               // hot wallet. Spoof guard same as TRADE_CLOSED.
               if (content.startsWith('TRADE_OPENED:')) {

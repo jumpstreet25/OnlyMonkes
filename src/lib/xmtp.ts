@@ -370,6 +370,8 @@ function decodeStringMessage(raw: any, rawContent: string, myInboxId: string): C
   if (rawContent.startsWith("AUTOMONKE_STATUS:")) return null;
   if (rawContent.startsWith("TRADE_CLOSED:")) return null;
   if (rawContent.startsWith("TRADE_OPENED:")) return null;
+  if (rawContent.startsWith("PORTFOLIO_CARD:")) return null;
+  if (rawContent.startsWith("PORTFOLIO_RESPONSE:")) return null;
   if (rawContent.startsWith("RSVP:")) return null;
   if (rawContent.startsWith("READ:")) return null;
   if (rawContent.startsWith("BANANA_GRANT:")) return null;
@@ -762,6 +764,227 @@ export function parseTradeOpened(raw: string): ParsedTradeOpened | null {
     taComposite: numOrNull(data.taComposite) ?? undefined,
     openClawConfidence: numOrNull(data.openClawConfidence) ?? undefined,
     txHash: strOrNull(data.txHash) ?? undefined,
+    ts,
+  };
+}
+
+/**
+ * Parse and validate a PORTFOLIO_CARD: structured DM (live AutonoMonke
+ * position snapshot, sent one per open position when the user DMs /portfolio).
+ * Spoof guard at the call site: sender must be in BOT_INBOX_IDS.
+ */
+export interface ParsedPortfolioCard {
+  source: 'autonomonke';
+  kind: 'live';
+  positionId: string;
+  token: string;
+  mint: string;
+  entryPriceUsd: number;
+  currentPriceUsd: number;
+  entrySolAmount: number;
+  currentSolValue: number;
+  pnlPct: number;
+  pnlSol: number;
+  stopPrice: number;
+  target1?: number;
+  target2?: number;
+  t1Hit: boolean;
+  t2Hit: boolean;
+  highWaterMark: number;
+  openedAt: number;
+  durationMs: number;
+  taComposite?: number;
+  ts: number;
+}
+
+export function parsePortfolioCard(raw: string): ParsedPortfolioCard | null {
+  if (!raw.startsWith("PORTFOLIO_CARD:")) return null;
+  const jsonStr = raw.slice("PORTFOLIO_CARD:".length);
+  if (jsonStr.length > 4_000) return null;
+  let data: any;
+  try { data = JSON.parse(jsonStr); } catch { return null; }
+  if (!data || typeof data !== 'object') return null;
+
+  const numOrNull = (v: unknown): number | null =>
+    typeof v === 'number' && Number.isFinite(v) ? v : null;
+  const strOrNull = (v: unknown): string | null =>
+    typeof v === 'string' && v.length > 0 && v.length < 200 ? v : null;
+
+  const positionId = strOrNull(data.positionId);
+  const token = strOrNull(data.token);
+  const mint = strOrNull(data.mint);
+  const entryPriceUsd = numOrNull(data.entryPriceUsd);
+  const currentPriceUsd = numOrNull(data.currentPriceUsd);
+  const entrySolAmount = numOrNull(data.entrySolAmount);
+  const currentSolValue = numOrNull(data.currentSolValue);
+  const pnlPct = numOrNull(data.pnlPct);
+  const pnlSol = numOrNull(data.pnlSol);
+  const stopPrice = numOrNull(data.stopPrice);
+  const highWaterMark = numOrNull(data.highWaterMark);
+  const openedAt = numOrNull(data.openedAt);
+  const durationMs = numOrNull(data.durationMs);
+  const ts = numOrNull(data.ts);
+
+  if (!positionId || !token || !mint || entryPriceUsd === null
+      || currentPriceUsd === null || entrySolAmount === null
+      || currentSolValue === null || pnlPct === null || pnlSol === null
+      || stopPrice === null || highWaterMark === null
+      || openedAt === null || durationMs === null || ts === null) return null;
+
+  return {
+    source: 'autonomonke',
+    kind: 'live',
+    positionId: positionId.slice(0, 80),
+    token: token.slice(0, 32),
+    mint: mint.slice(0, 80),
+    entryPriceUsd,
+    currentPriceUsd,
+    entrySolAmount,
+    currentSolValue,
+    pnlPct,
+    pnlSol,
+    stopPrice,
+    target1: numOrNull(data.target1) ?? undefined,
+    target2: numOrNull(data.target2) ?? undefined,
+    t1Hit: data.t1Hit === true,
+    t2Hit: data.t2Hit === true,
+    highWaterMark,
+    openedAt,
+    durationMs: Math.max(0, durationMs),
+    taComposite: numOrNull(data.taComposite) ?? undefined,
+    ts,
+  };
+}
+
+/**
+ * Parse and validate a PORTFOLIO_RESPONSE: structured DM — single composite
+ * payload from the bot containing wallet header + open positions (each with
+ * a sparkline closes array) + recent closed summary. Replaces the older
+ * "header text + N PORTFOLIO_CARD: messages" flow as of 2026-05-08.
+ */
+export interface ParsedPortfolioPosition {
+  positionId: string;
+  token: string;
+  mint: string;
+  entryPriceUsd: number;
+  currentPriceUsd: number;
+  entrySolAmount: number;
+  currentSolValue: number;
+  pnlPct: number;
+  pnlSol: number;
+  stopPrice: number;
+  target1?: number;
+  target2?: number;
+  t1Hit: boolean;
+  t2Hit: boolean;
+  highWaterMark: number;
+  openedAt: number;
+  durationMs: number;
+  taComposite?: number;
+  sparkline: number[];
+}
+
+export interface ParsedPortfolioResponse {
+  source: 'autonomonke';
+  walletAddress: string;
+  walletBalanceSOL: number | null;
+  realizedPnlPct: number;
+  unrealizedPnlSol: number;
+  totalTrades: number;
+  closedCount: number;
+  wins: number;
+  losses: number;
+  winRate: number;
+  positions: ParsedPortfolioPosition[];
+  recentClosed: { token: string; pnlPct: number }[];
+  ts: number;
+}
+
+export function parsePortfolioResponse(raw: string): ParsedPortfolioResponse | null {
+  if (!raw.startsWith("PORTFOLIO_RESPONSE:")) return null;
+  const jsonStr = raw.slice("PORTFOLIO_RESPONSE:".length);
+  if (jsonStr.length > 64_000) return null;
+  let data: any;
+  try { data = JSON.parse(jsonStr); } catch { return null; }
+  if (!data || typeof data !== 'object') return null;
+
+  const numOrNull = (v: unknown): number | null =>
+    typeof v === 'number' && Number.isFinite(v) ? v : null;
+  const strOrNull = (v: unknown): string | null =>
+    typeof v === 'string' && v.length > 0 && v.length < 200 ? v : null;
+
+  const walletAddress = strOrNull(data.walletAddress);
+  const ts = numOrNull(data.ts);
+  if (!walletAddress || ts === null) return null;
+
+  const positions: ParsedPortfolioPosition[] = [];
+  if (Array.isArray(data.positions)) {
+    for (const p of data.positions) {
+      const positionId = strOrNull(p?.positionId);
+      const token = strOrNull(p?.token);
+      const mint = strOrNull(p?.mint);
+      const entryPriceUsd = numOrNull(p?.entryPriceUsd);
+      const currentPriceUsd = numOrNull(p?.currentPriceUsd);
+      const entrySolAmount = numOrNull(p?.entrySolAmount);
+      const currentSolValue = numOrNull(p?.currentSolValue);
+      const pnlPct = numOrNull(p?.pnlPct);
+      const pnlSol = numOrNull(p?.pnlSol);
+      const stopPrice = numOrNull(p?.stopPrice);
+      const highWaterMark = numOrNull(p?.highWaterMark);
+      const openedAt = numOrNull(p?.openedAt);
+      const durationMs = numOrNull(p?.durationMs);
+      if (!positionId || !token || !mint || entryPriceUsd === null
+          || currentPriceUsd === null || entrySolAmount === null
+          || currentSolValue === null || pnlPct === null || pnlSol === null
+          || stopPrice === null || highWaterMark === null
+          || openedAt === null || durationMs === null) continue;
+      const rawSpark = Array.isArray(p?.sparkline) ? p.sparkline : [];
+      const sparkline = rawSpark
+        .filter((n: unknown): n is number => typeof n === 'number' && Number.isFinite(n) && n > 0)
+        .slice(0, 60);
+      positions.push({
+        positionId: positionId.slice(0, 80),
+        token: token.slice(0, 32),
+        mint: mint.slice(0, 80),
+        entryPriceUsd, currentPriceUsd,
+        entrySolAmount, currentSolValue,
+        pnlPct, pnlSol,
+        stopPrice,
+        target1: numOrNull(p?.target1) ?? undefined,
+        target2: numOrNull(p?.target2) ?? undefined,
+        t1Hit: p?.t1Hit === true,
+        t2Hit: p?.t2Hit === true,
+        highWaterMark,
+        openedAt,
+        durationMs: Math.max(0, durationMs),
+        taComposite: numOrNull(p?.taComposite) ?? undefined,
+        sparkline,
+      });
+    }
+  }
+
+  const recentClosed: { token: string; pnlPct: number }[] = [];
+  if (Array.isArray(data.recentClosed)) {
+    for (const c of data.recentClosed) {
+      const tok = strOrNull(c?.token);
+      const pn = numOrNull(c?.pnlPct);
+      if (tok && pn !== null) recentClosed.push({ token: tok.slice(0, 32), pnlPct: pn });
+    }
+  }
+
+  return {
+    source: 'autonomonke',
+    walletAddress: walletAddress.slice(0, 80),
+    walletBalanceSOL: numOrNull(data.walletBalanceSOL),
+    realizedPnlPct: numOrNull(data.realizedPnlPct) ?? 0,
+    unrealizedPnlSol: numOrNull(data.unrealizedPnlSol) ?? 0,
+    totalTrades: numOrNull(data.totalTrades) ?? 0,
+    closedCount: numOrNull(data.closedCount) ?? 0,
+    wins: numOrNull(data.wins) ?? 0,
+    losses: numOrNull(data.losses) ?? 0,
+    winRate: numOrNull(data.winRate) ?? 0,
+    positions,
+    recentClosed,
     ts,
   };
 }
