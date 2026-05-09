@@ -291,12 +291,17 @@ export const BananaGroveSignBubble = React.memo(function BananaGroveSignBubble({
           10–11 below) which create directional 3D edge lighting without
           the shape-behind-a-shape that read as a box-shadow. */}
 
-      {/* 1. Wood gradient body (front face top) */}
+      {/* 1. Wood gradient body — WEATHERED (v21 2026-05-08). Was
+            light → mid which matched the carved-text fresh-cut fill
+            color, making letters unreadable against the surface. Now
+            mid → dark — older/weathered range of the same species so
+            the carve's palette.light fill stands out as fresh-cut wood
+            exposed by the chisel against weathered wood around it. */}
       <Path path={bubblePath}>
         <LinearGradient
           start={vec(0, y)}
           end={vec(0, y + height)}
-          colors={[palette.light, palette.mid]}
+          colors={[palette.mid, palette.dark]}
         />
       </Path>
 
