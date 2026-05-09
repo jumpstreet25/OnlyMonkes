@@ -38,7 +38,8 @@ import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
 import * as Clipboard from "expo-clipboard";
 import { toast } from "sonner-native";
-import { THEME, FONTS, SKR_MINT, JUP_API_KEY } from "@/lib/constants";
+import { THEME, FONTS, SKR_MINT, JUP_API_KEY, getWorldBarTint, getWorldAccent } from "@/lib/constants";
+import { MenuIcon, type MenuIconName } from "@/components/MenuIcon";
 import { useThemeColor } from "@/lib/shopTheme";
 import { useChatStore } from "@/store/chatStore";
 import { useAppStore, type CalendarEvent } from "@/store/appStore";
@@ -162,6 +163,14 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
   const themeSurface = useThemeColor('surface');
   const themeBorder = useThemeColor('border');
   const themeAccent = useThemeColor('accent');
+  // (v36 2026-05-09) Per-world chrome — drawer adopts the world's tint
+  // and accent so it feels like part of the same world layer instead
+  // of a separate dark slab. Falls back to themeSurface / themeAccent
+  // when no world is equipped.
+  const shopStyles = useAppStore(s => s.shopStyles);
+  const worldId = shopStyles?.worldId as string | undefined;
+  const drawerBg = worldId ? getWorldBarTint(worldId) : themeSurface;
+  const iconAccent = themeOverrides ? themeAccent : (worldId ? getWorldAccent(worldId) : '#6CB4EE');
   const [activeView, setActiveView] = useState<ActiveView>("list");
 
   useProfileVersion();
@@ -387,9 +396,9 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
   }
 
   function GridButton({
-    icon, label, badge, onPress,
+    iconName, label, badge, onPress,
   }: {
-    icon: string;
+    iconName: MenuIconName;
     label: string;
     badge?: number;
     onPress: () => void;
@@ -401,7 +410,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
         accessibilityLabel={label}
         accessibilityRole="button"
       >
-        <Text style={styles.gridIcon}>{icon}</Text>
+        <MenuIcon name={iconName} size={28} color={iconAccent} />
         <Text style={styles.gridLabel}>{label}</Text>
         {badge !== undefined && badge > 0 && (
           <View style={styles.gridBadge}>
@@ -440,7 +449,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
         <View style={styles.overlay} />
       </Pressable>
 
-      <View style={[styles.popup, { backgroundColor: themeSurface, borderColor: themeBorder }]}>
+      <View style={[styles.popup, { backgroundColor: drawerBg, borderColor: themeBorder }]}>
         {/* Glass gradient overlay */}
         <LinearGradient
           colors={["rgba(248,248,255,0.06)", "rgba(0,0,0,0.12)"]}
@@ -548,103 +557,66 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                 />
               </View>
 
-              {/* Community */}
-              <Text style={styles.navSectionLabel}>Community</Text>
+              {/* (v36 2026-05-09) Single combined "Menu" section. Bot
+                  channel grid removed — already accessible from the main
+                  chat bottom toolbar. Community + Tools merged. */}
+              <Text style={[styles.navSectionLabel, worldId ? { color: iconAccent } : null]}>Menu</Text>
               <View style={styles.gridContainer}>
                 <GridButton
-                  icon="✉️"
+                  iconName="messages"
                   label="Messages"
                   badge={communityBadges.dms || undefined}
                   onPress={() => { clearCommunityBadge('dms'); markChannelRead('dms').catch(() => {}); onClose(); setTimeout(() => router.push('/dms'), 300); }}
                 />
                 <GridButton
-                  icon="🏆"
+                  iconName="leaderboard"
                   label="Leaderboard"
                   onPress={() => setActiveView("leaderboard")}
                 />
                 <GridButton
-                  icon="📅"
+                  iconName="events"
                   label="Events"
                   badge={communityBadges.events || undefined}
                   onPress={() => { clearCommunityBadge('events'); setActiveView("events"); }}
                 />
                 <GridButton
-                  icon="🖼"
+                  iconName="images"
                   label="Images"
                   onPress={() => setActiveView("images")}
                 />
                 <GridButton
-                  icon="🔗"
+                  iconName="links"
                   label="Links"
                   badge={communityBadges.links || undefined}
                   onPress={() => { clearCommunityBadge('links'); setActiveView("links"); }}
                 />
-              </View>
-
-              {/* Bot */}
-              <Text style={[styles.navSectionLabel, { marginTop: 16 }]}>Bot</Text>
-              <View style={styles.gridContainer}>
                 <GridButton
-                  icon="🤖"
-                  label="Alerts"
-                  onPress={() => setActiveView("alerts")}
-                />
-                <GridButton
-                  icon="🎯"
-                  label="Bets"
-                  badge={botChannelCounts.bets || undefined}
-                  onPress={() => { clearBotChannelCount('bets'); markChannelRead('bets').catch(() => {}); onClose(); setTimeout(() => router.push('/bot-channel?channelId=bets' as any), 300); }}
-                />
-                <GridButton
-                  icon="📈"
-                  label="Trades"
-                  badge={botChannelCounts.trades || undefined}
-                  onPress={() => { clearBotChannelCount('trades'); markChannelRead('trades').catch(() => {}); onClose(); setTimeout(() => router.push('/bot-channel?channelId=trades' as any), 300); }}
-                />
-                <GridButton
-                  icon="💰"
-                  label="Sales"
-                  badge={botChannelCounts.sales || undefined}
-                  onPress={() => { clearBotChannelCount('sales'); markChannelRead('sales').catch(() => {}); onClose(); setTimeout(() => router.push('/bot-channel?channelId=sales' as any), 300); }}
-                />
-                <GridButton
-                  icon="🔮"
-                  label="Predictions"
-                  badge={botChannelCounts.predictions || undefined}
-                  onPress={() => { clearBotChannelCount('predictions'); markChannelRead('predictions').catch(() => {}); onClose(); setTimeout(() => router.push('/bot-channel?channelId=predictions' as any), 300); }}
-                />
-              </View>
-
-              {/* Tools */}
-              <Text style={[styles.navSectionLabel, { marginTop: 16 }]}>Tools</Text>
-              <View style={styles.gridContainer}>
-                <GridButton
-                  icon="🏪"
+                  iconName="monkemarkets"
                   label="MonkeMarkets"
                   onPress={() => { onClose(); setTimeout(() => router.push('/marketplace'), 300); }}
                 />
                 <GridButton
-                  icon="💼"
+                  iconName="portfolio"
                   label="Portfolio"
                   onPress={() => { onClose(); setTimeout(() => router.push('/portfolio' as any), 300); }}
                 />
                 <GridButton
-                  icon="👁"
+                  iconName="watchlist"
                   label="Watchlist"
                   onPress={() => { onClose(); setTimeout(() => router.push('/watchlist' as any), 300); }}
                 />
                 <GridButton
-                  icon="🌍"
+                  iconName="globe"
                   label="Globe"
                   onPress={() => { onClose(); setTimeout(() => router.push('/globe' as any), 300); }}
                 />
                 <GridButton
-                  icon="🔧"
+                  iconName="monketools"
                   label="Monke Tools"
                   onPress={() => setActiveView("tools")}
                 />
                 <GridButton
-                  icon="⚙️"
+                  iconName="settings"
                   label="Settings"
                   onPress={() => { onClose(); setTimeout(() => router.push('/settings' as any), 300); }}
                 />
