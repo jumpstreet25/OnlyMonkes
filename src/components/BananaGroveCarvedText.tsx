@@ -41,11 +41,11 @@ interface BananaGroveCarvedTextProps {
   pfpColor: string;
 }
 
-// (v24 2026-05-08) Banana Grove text scale 3x per user — chunky carved
-// letters need significantly more pixel area than chat-default 15px for
-// the dark char rim + light fresh-cut fill to read as actual carving.
-// 15 * 3 = 45 px effective.
-const FONT_SCALE = 3;
+// (v26 2026-05-08) Scale 3 → 1.95 per user — v24's 3x (45 px) was too
+// large; 35% reduction gives 15 * 1.95 = 29 px effective. Still meaningfully
+// larger than chat default for the carved bevel + char rim to read,
+// but no longer dominating the viewport.
+const FONT_SCALE = 1.95;
 
 // Char-rim stroke width (px). v21: bumped 2.5 → 3.5 + switched to pure
 // black "#000000" so the rim reads as clearly burnt/charred against
