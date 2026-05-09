@@ -1083,7 +1083,12 @@ export const MessageBubble = memo(function MessageBubble({
                     // follow-up if user wants them back.
                     const useSkiaCarve = useBananaGroveBubble;
                     if (useSkiaCarve) {
-                      return (
+                      // (v32 2026-05-09) Apply the same maxHeight collapse
+                      // constraint that the MarkdownContent path uses, so
+                      // bot alerts in Banana Grove can be expanded /
+                      // collapsed by tap. Was missing — Skia path rendered
+                      // the full text always, ignoring botExpanded state.
+                      const carve = (
                         <BananaGroveCarvedText
                           text={displayContent}
                           maxWidth={Math.round(SCREEN_W * 0.72 - 60)}
@@ -1091,6 +1096,17 @@ export const MessageBubble = memo(function MessageBubble({
                           pfpColor={glitchAccent}
                         />
                       );
+                      // Wrap with the same collapse constraint MarkdownContent
+                      // had — only when this is a bot message + showBotExpand
+                      // is true + user hasn't expanded. Same maxHeight value.
+                      if (isBot && showBotExpand && !botExpanded) {
+                        return (
+                          <View style={{ maxHeight: 9 * 22, overflow: "hidden" }}>
+                            {carve}
+                          </View>
+                        );
+                      }
+                      return carve;
                     }
                     return (
                       <Text

@@ -101,7 +101,8 @@ export const BananaGroveCarvedText = React.memo(function BananaGroveCarvedText({
   // for a sender-derived color).
   pfpColor: _pfpColor,
 }: BananaGroveCarvedTextProps) {
-  const effectiveFontSize = Math.round(fontSize * FONT_SCALE);
+  // (v32) -1 px nudge per user request after locking FONT_SCALE.
+  const effectiveFontSize = Math.max(10, Math.round(fontSize * FONT_SCALE) - 1);
 
   const fredokaFont = useFont(
     require("../../assets/fonts/Fredoka-Bold.ttf"),
