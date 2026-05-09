@@ -1100,7 +1100,15 @@ export const MessageBubble = memo(function MessageBubble({
                     // highlighting in Banana Grove, but visual consistency
                     // wins. Will bring tappable rich tokens into Skia in a
                     // follow-up if user wants them back.
-                    const useSkiaCarve = useBananaGroveBubble;
+                    // (v34 2026-05-09) Emoji detection — Fredoka-Bold has
+                    // no emoji glyphs, so 😎🤘 etc render as white-square
+                    // tofu in Skia. When the message contains any emoji,
+                    // fall through to the RN Text path which uses the
+                    // system font (full emoji coverage). v11 carved-shadow
+                    // styling keeps the wood feel on those messages even
+                    // without the Fredoka chunk + burnt rim.
+                    const hasEmoji = /\p{Extended_Pictographic}/u.test(displayContent);
+                    const useSkiaCarve = useBananaGroveBubble && !hasEmoji;
                     if (useSkiaCarve) {
                       // (v32 2026-05-09) Apply the same maxHeight collapse
                       // constraint that the MarkdownContent path uses, so
