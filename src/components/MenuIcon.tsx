@@ -44,7 +44,8 @@ export type MenuIconName =
   | "clipboard"    // 📋 copy wallet
   | "pin"          // 📍 location
   | "banana"      // 🍌 (caller passes #FFD24A or similar)
-  | "cart";       // 🛒 shopping cart (Banana Shop button)
+  | "cart"        // 🛒 shopping cart (Banana Shop button)
+  | "search";     // 🔍 search bar magnifier
 
 interface MenuIconProps {
   name: MenuIconName;
@@ -81,6 +82,7 @@ export const MenuIcon = React.memo(function MenuIcon({
       {name === "pin" && <PinIcon s={s} color={color} />}
       {name === "banana" && <BananaIcon s={s} color={color} />}
       {name === "cart" && <CartIcon s={s} color={color} />}
+      {name === "search" && <SearchIcon s={s} color={color} />}
     </Canvas>
   );
 });
@@ -533,6 +535,28 @@ function CartIcon({ s, color }: { s: number; color: string }) {
       <Path path={body} color={color} style="stroke" strokeWidth={stroke} strokeJoin="round" />
       <Circle cx={10 * s} cy={22.5 * s} r={1.6 * s} color={color} style="stroke" strokeWidth={stroke} />
       <Circle cx={18 * s} cy={22.5 * s} r={1.6 * s} color={color} style="stroke" strokeWidth={stroke} />
+    </Group>
+  );
+}
+
+// ── Search — magnifier for search bar ─────────────────────────────────────
+function SearchIcon({ s, color }: { s: number; color: string }) {
+  const stroke = STROKE * s * 1.15;
+  // Lens circle at upper-left, handle from lower-right of lens to bottom-right.
+  const cx = 12 * s;
+  const cy = 12 * s;
+  const r = 6 * s;
+  // Handle starts just outside the circle on the lower-right diagonal.
+  // Circle edge at 45°: cx + r*cos(45), cy + r*sin(45)
+  const hx1 = cx + r * 0.707;
+  const hy1 = cy + r * 0.707;
+  const hx2 = 22 * s;
+  const hy2 = 22 * s;
+  const handle = `M ${hx1} ${hy1} L ${hx2} ${hy2}`;
+  return (
+    <Group>
+      <Circle cx={cx} cy={cy} r={r} color={color} style="stroke" strokeWidth={stroke} />
+      <Path path={handle} color={color} style="stroke" strokeWidth={stroke} strokeCap="round" />
     </Group>
   );
 }
