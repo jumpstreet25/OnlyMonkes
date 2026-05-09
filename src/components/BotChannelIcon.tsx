@@ -55,8 +55,10 @@ function DiceIcon({ size, color }: { size: number; color: string }) {
   const inset = size * 0.18;
   const dieSize = size - inset * 2;
   const cornerR = size * 0.10;
-  const stroke = Math.max(2, size * 0.05);
-  const pipR = Math.max(1.4, size * 0.045);
+  // (v31) Stroke weights reduced ~30% across all icons — were too heavy
+  // against the rest of the app's lighter chrome. 0.05 → 0.035, 0.045 → 0.038.
+  const stroke = Math.max(1.4, size * 0.035);
+  const pipR = Math.max(1.2, size * 0.038);
 
   // Pip positions for 5-face: 4 corners + center, all relative to die body.
   const pipPositions: Array<[number, number]> = [
@@ -89,8 +91,9 @@ function DiceIcon({ size, color }: { size: number; color: string }) {
 // ── MonkeTrades — Trending chart ───────────────────────────────────────────
 function TrendChartIcon({ size, color }: { size: number; color: string }) {
   const pad = size * 0.18;
-  const stroke = Math.max(2, size * 0.06);
-  const dotR = Math.max(1.6, size * 0.05);
+  // (v31) 0.06 → 0.042, dots 0.05 → 0.038.
+  const stroke = Math.max(1.6, size * 0.042);
+  const dotR = Math.max(1.3, size * 0.038);
   const inner = size - pad * 2;
 
   // 5-point line: visually starts low-left, dips, valleys, peak, top-right.
@@ -132,7 +135,8 @@ function PriceTagIcon({ size, color }: { size: number; color: string }) {
   const tagH = tagW * 0.62;
   const tagX = inset;
   const tagY = (size - tagH) / 2;
-  const stroke = Math.max(2, size * 0.05);
+  // (v31) 0.05 → 0.035.
+  const stroke = Math.max(1.4, size * 0.035);
   const pointInset = tagW * 0.20;
   const cornerR = size * 0.04;
 
@@ -168,7 +172,7 @@ function PriceTagIcon({ size, color }: { size: number; color: string }) {
         r={holeR}
         color={color}
         style="stroke"
-        strokeWidth={Math.max(1.4, size * 0.04)}
+        strokeWidth={Math.max(1.0, size * 0.028)}
       />
     </Group>
   );
@@ -179,7 +183,8 @@ function CrystalBallIcon({ size, color }: { size: number; color: string }) {
   const orbR = size * 0.30;
   const orbCx = size / 2;
   const orbCy = size * 0.42;
-  const stroke = Math.max(2, size * 0.05);
+  // (v31) 0.05 → 0.035.
+  const stroke = Math.max(1.4, size * 0.035);
 
   // Base: trapezoid below the orb (wider at the bottom, like a stand).
   const baseTopY = orbCy + orbR * 0.88;
