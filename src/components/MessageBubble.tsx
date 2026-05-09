@@ -1154,7 +1154,7 @@ export const MessageBubble = memo(function MessageBubble({
                         {renderRichContent(displayContent, handlePressMention, onTokenPress)}
                       </Text>
                     );
-                  })();
+                    })();
                   })()}
                   {message.editedAt && (
                     <Text style={[styles.editedLabel, { color: textColor }]}>(edited)</Text>
