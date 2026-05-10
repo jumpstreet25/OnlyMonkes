@@ -63,11 +63,6 @@ export default function RootLayout() {
       SplashScreen.hideAsync();
     });
 
-    // 2026-05-09 BUNDLE-LIVE diag — confirms the newest OTA is the running bundle.
-    setTimeout(() => {
-      Alert.alert('BUNDLE-LIVE-B2', 'newest OTA is active');
-    }, 1500);
-
     logAppOpen().catch(() => {});
     const streak = useAppStore.getState().loginStreak;
     logDailySession(streak).catch(() => {});

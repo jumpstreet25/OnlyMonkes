@@ -150,7 +150,13 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
               return <PortfolioMiniCard card={item.card} onPress={setActiveLiveCard} />;
             }
             if (item.kind === 'portfolio_response') {
-              return <PortfolioResponseBubble response={item.response} />;
+              return (
+                <PortfolioResponseBubble
+                  response={item.response}
+                  onPressPosition={setActiveLiveCard}
+                  onPressClosedTrade={setActiveTradeCard}
+                />
+              );
             }
             const m = item.msg;
             return (

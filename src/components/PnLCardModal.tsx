@@ -6,7 +6,7 @@ import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { toast } from 'sonner-native';
 import { THEME, FONTS } from '@/lib/constants';
-import { PnLCard } from '@/components/PnLCard';
+import { ShareablePnLCard } from '@/components/ShareablePnLCard';
 import type { ClosedTrade } from '@/lib/positions';
 import { useXmtp } from '@/hooks/useXmtp';
 
@@ -41,7 +41,17 @@ export function PnLCardModal({ trade, visible, onClose }: PnLCardModalProps) {
 
   const captureCard = useCallback(async (): Promise<string> => {
     const { captureRef } = await getViewShot();
-    return await captureRef(cardRef as any, { format: 'jpg', quality: 0.95 });
+    // 2026-05-09: PnLCard's Skia <Canvas> needs two-frame settle + PNG +
+    // tmpfile + useRenderInContext on Android, otherwise capture returns a
+    // black image (GPU-surface readback fail).
+    await new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+    return await captureRef(cardRef as any, {
+      format: 'png',
+      quality: 1,
+      result: 'tmpfile',
+      // @ts-expect-error - Android-only knob, not in the TS types
+      useRenderInContext: true,
+    });
   }, []);
 
   const compressForShare = useCallback(async (uri: string): Promise<string> => {
@@ -57,7 +67,33 @@ export function PnLCardModal({ trade, visible, onClose }: PnLCardModalProps) {
     const compressed = await compressForShare(uri);
     const FS = await getFileSystem();
     const b64 = await FS.readAsStringAsync(compressed, { encoding: FS.EncodingType.Base64 });
-    await send(`IMAGE:data:image/jpeg;base64,${b64}`);
+    const payload = `IMAGE:data:image/jpeg;base64,${b64}`;
+
+    // Optimistic local insert so the user sees their share immediately —
+    // XMTP doesn't echo own sends back via stream. mergeMessage upgrades
+    // opt-* IDs in place when the real message arrives.
+    try {
+      const { useAppStore } = await import('@/store/appStore');
+      const { useChatStore } = await import('@/store/chatStore');
+      const { REACTIONS } = await import('@/lib/constants');
+      const myInboxId = useAppStore.getState().myInboxId;
+      if (myInboxId) {
+        const reactions = Object.fromEntries(
+          REACTIONS.map((emoji) => [emoji, { emoji, count: 0, reactedByMe: false, reactors: [] }])
+        ) as any;
+        useChatStore.getState().addMessage({
+          id: `opt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          senderAddress: myInboxId,
+          senderUsername: useAppStore.getState().username ?? undefined,
+          content: payload,
+          sentAt: new Date(),
+          reactions,
+          status: 'sending',
+        });
+      }
+    } catch { /* non-critical */ }
+
+    await send(payload);
   }, [compressForShare, send]);
 
   const handleSave = useCallback(async () => {
@@ -158,7 +194,7 @@ export function PnLCardModal({ trade, visible, onClose }: PnLCardModalProps) {
           </View>
 
           <View style={styles.cardWrap}>
-            <PnLCard ref={cardRef} trade={trade} width={cardWidth} />
+            <ShareablePnLCard ref={cardRef} trade={trade} width={cardWidth} />
           </View>
 
           <View style={styles.shareRow}>

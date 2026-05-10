@@ -11,16 +11,40 @@
  * on every PORTFOLIO_RESPONSE: DM from the bot.
  */
 
-import React, { useState } from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import React from 'react';
+import { View, Text, Pressable, StyleSheet, Image } from 'react-native';
 import { THEME, FONTS } from '@/lib/constants';
 import { Sparkline } from '@/components/Sparkline';
-import { LivePnLCardModal } from '@/components/LivePnLCardModal';
 import type { PortfolioResponse, PortfolioCard } from '@/store/tradesStore';
-import type { ParsedPortfolioPosition } from '@/lib/xmtp';
+import type { ParsedPortfolioPosition, ParsedRecentClosed } from '@/lib/xmtp';
+import type { ClosedTrade } from '@/lib/positions';
 
 interface PortfolioResponseBubbleProps {
   response: PortfolioResponse;
+  /** Tap a position row → opens LivePnLCardModal (rendered at parent screen).
+   *  Lifted up because FlatList recycles cells and a nested Modal portals
+   *  unreliably from inside a recycled cell. */
+  onPressPosition?: (card: PortfolioCard) => void;
+  /** Tap a closed-trade row → opens PnLCardModal with the closed trade.
+   *  Same lift-up rationale as onPressPosition. */
+  onPressClosedTrade?: (trade: ClosedTrade) => void;
+}
+
+function closedRowAsTrade(c: ParsedRecentClosed): ClosedTrade {
+  return {
+    id: `closed-${c.mint}-${c.closedAt}`,
+    source: 'autonomonke',
+    token: c.token,
+    mint: c.mint,
+    entrySolAmount: c.entrySolAmount,
+    exitSolAmount: c.exitSolAmount,
+    pnlSol: c.pnlSol,
+    pnlPct: c.pnlPct,
+    durationMs: c.durationMs,
+    openedAt: c.openedAt,
+    closedAt: c.closedAt,
+    reason: c.reason,
+  };
 }
 
 function formatDuration(ms: number): string {
@@ -61,60 +85,65 @@ function positionAsCard(pos: ParsedPortfolioPosition): PortfolioCard {
   };
 }
 
-export function PortfolioResponseBubble({ response }: PortfolioResponseBubbleProps) {
-  const [activeCard, setActiveCard] = useState<PortfolioCard | null>(null);
-
+export function PortfolioResponseBubble({ response, onPressPosition, onPressClosedTrade }: PortfolioResponseBubbleProps) {
   const realizedSign = response.realizedPnlPct >= 0 ? '+' : '';
   const unrealizedSign = response.unrealizedPnlSol >= 0 ? '+' : '';
   const realizedColor = response.realizedPnlPct >= 0 ? THEME.gold : THEME.error;
   const unrealizedColor = response.unrealizedPnlSol >= 0 ? THEME.gold : THEME.error;
 
   return (
-    <>
-      <View style={styles.row}>
-        <View style={styles.bubble}>
-          {/* Header */}
+    <View style={styles.row}>
+      <View style={styles.bubble}>
+          {/* Header — 📊 AutonoMonke + watermark left, wallet pill right */}
           <View style={styles.header}>
-            <Text style={styles.title}>📊 AutonoMonke Portfolio</Text>
+            <View style={styles.headerLeft}>
+              <Text style={styles.title}>📊 AutonoMonke</Text>
+              <Image
+                source={require('../../assets/watermark.png')}
+                style={styles.headerMark}
+                resizeMode="contain"
+              />
+            </View>
             <Text style={styles.wallet}>
-              {response.walletAddress.slice(0, 8)}…{response.walletAddress.slice(-4)}
+              {response.walletAddress.slice(0, 4)}…{response.walletAddress.slice(-4)}
             </Text>
           </View>
 
+          {/* Hairline-separated stats — three even columns */}
           <View style={styles.statRow}>
-            <View style={styles.statBlock}>
-              <Text style={styles.statLabel}>Realized</Text>
+            <View style={styles.statCol}>
+              <Text style={styles.statLabel}>REALIZED</Text>
               <Text style={[styles.statValue, { color: realizedColor }]}>
                 {realizedSign}{response.realizedPnlPct.toFixed(2)}%
               </Text>
             </View>
-            <View style={styles.statBlock}>
-              <Text style={styles.statLabel}>Unrealized</Text>
+            <View style={styles.statDivider} />
+            <View style={styles.statCol}>
+              <Text style={styles.statLabel}>UNREALIZED</Text>
               <Text style={[styles.statValue, { color: unrealizedColor }]}>
-                {unrealizedSign}{response.unrealizedPnlSol.toFixed(4)} SOL
+                {unrealizedSign}{response.unrealizedPnlSol.toFixed(3)} SOL
               </Text>
             </View>
-            <View style={styles.statBlock}>
-              <Text style={styles.statLabel}>Trades</Text>
-              <Text style={styles.statValue}>
-                {response.totalTrades}
-              </Text>
+            <View style={styles.statDivider} />
+            <View style={styles.statCol}>
+              <Text style={styles.statLabel}>TRADES</Text>
+              <Text style={styles.statValue}>{response.totalTrades}</Text>
               <Text style={styles.statSub}>
-                {response.wins}W / {response.losses}L · {response.winRate.toFixed(0)}%
+                {response.wins}W·{response.losses}L · {response.winRate.toFixed(0)}%
               </Text>
             </View>
           </View>
 
           {response.walletBalanceSOL != null && (
             <Text style={styles.balanceText}>
-              On-chain balance: {response.walletBalanceSOL.toFixed(4)} SOL
+              {response.walletBalanceSOL.toFixed(4)} SOL on-chain
             </Text>
           )}
 
-          {/* Open positions with sparklines */}
+          {/* Open positions */}
           {response.positions.length > 0 ? (
             <View style={styles.positionsSection}>
-              <Text style={styles.sectionLabel}>Open ({response.positions.length})</Text>
+              <Text style={styles.sectionLabel}>OPEN · {response.positions.length}</Text>
               {response.positions.map(pos => {
                 const isUp = pos.pnlPct >= 0;
                 const accent = isUp ? THEME.gold : THEME.error;
@@ -122,26 +151,27 @@ export function PortfolioResponseBubble({ response }: PortfolioResponseBubblePro
                 return (
                   <Pressable
                     key={pos.positionId}
-                    onPress={() => setActiveCard(positionAsCard(pos))}
+                    onPress={() => onPressPosition?.(positionAsCard(pos))}
                     style={({ pressed }) => [styles.posRow, pressed && { opacity: 0.7 }]}
                   >
                     <View style={styles.posTopRow}>
-                      <Text style={styles.posToken}>{pos.token.toUpperCase()}</Text>
-                      <Text style={[styles.posPnl, { color: accent }]}>
-                        {sign}{pos.pnlPct.toFixed(2)}%
-                      </Text>
+                      <Text style={styles.posToken}>${pos.token.toUpperCase()}</Text>
+                      <View style={[styles.pnlChip, { backgroundColor: accent + '22', borderColor: accent + '55' }]}>
+                        <Text style={[styles.pnlChipText, { color: accent }]}>
+                          {sign}{pos.pnlPct.toFixed(2)}%
+                        </Text>
+                      </View>
                     </View>
                     <View style={styles.posChart}>
                       <Sparkline closes={pos.sparkline} width={260} height={32} colorOverride={accent} />
                     </View>
                     <View style={styles.posMetaRow}>
-                      <Text style={styles.posMeta}>{pos.entrySolAmount.toFixed(4)} SOL</Text>
-                      <Text style={styles.posMeta}>·</Text>
-                      <Text style={styles.posMeta}>T1 {pos.t1Hit ? '✅' : '⏳'}</Text>
-                      <Text style={styles.posMeta}>T2 {pos.t2Hit ? '✅' : '⏳'}</Text>
-                      <Text style={styles.posMeta}>·</Text>
+                      <Text style={styles.posMeta}>{pos.entrySolAmount.toFixed(3)} SOL</Text>
+                      <Text style={styles.posMetaSep}>·</Text>
+                      <Text style={styles.posMeta}>T1 {pos.t1Hit ? '✓' : '○'}</Text>
+                      <Text style={styles.posMeta}>T2 {pos.t2Hit ? '✓' : '○'}</Text>
+                      <Text style={styles.posMetaSep}>·</Text>
                       <Text style={styles.posMeta}>{formatDuration(pos.durationMs)}</Text>
-                      <Text style={styles.posTap}>tap →</Text>
                     </View>
                   </Pressable>
                 );
@@ -154,30 +184,29 @@ export function PortfolioResponseBubble({ response }: PortfolioResponseBubblePro
           {/* Recent closed */}
           {response.recentClosed.length > 0 && (
             <View style={styles.closedSection}>
-              <Text style={styles.sectionLabel}>Recent closed</Text>
+              <Text style={styles.sectionLabel}>RECENT CLOSED · tap to share</Text>
               {response.recentClosed.map((c, i) => {
                 const won = c.pnlPct >= 0;
+                const accent = won ? THEME.gold : THEME.error;
                 return (
-                  <View key={`${c.token}-${i}`} style={styles.closedRow}>
+                  <Pressable
+                    key={`${c.token}-${c.closedAt}-${i}`}
+                    onPress={() => onPressClosedTrade?.(closedRowAsTrade(c))}
+                    style={({ pressed }) => [styles.closedRow, pressed && { opacity: 0.6 }]}
+                  >
                     <Text style={styles.closedEmoji}>{won ? '✅' : '🛑'}</Text>
-                    <Text style={styles.closedToken}>{c.token.toUpperCase()}</Text>
-                    <Text style={[styles.closedPnl, { color: won ? THEME.gold : THEME.error }]}>
+                    <Text style={styles.closedToken}>${c.token.toUpperCase()}</Text>
+                    <Text style={[styles.closedPnl, { color: accent }]}>
                       {won ? '+' : ''}{c.pnlPct.toFixed(2)}%
                     </Text>
-                  </View>
+                    <Text style={styles.closedShareIcon}>↗</Text>
+                  </Pressable>
                 );
               })}
             </View>
           )}
         </View>
-      </View>
-
-      <LivePnLCardModal
-        card={activeCard}
-        visible={!!activeCard}
-        onClose={() => setActiveCard(null)}
-      />
-    </>
+    </View>
   );
 }
 
@@ -190,41 +219,58 @@ const styles = StyleSheet.create({
     paddingVertical: 14, paddingHorizontal: 14,
     gap: 12,
   },
-  header: { gap: 2 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   title: { fontFamily: FONTS.display, fontSize: 14, color: THEME.text, letterSpacing: 0.4 },
-  wallet: { fontFamily: FONTS.mono, fontSize: 10, color: THEME.textMuted, letterSpacing: 0.6 },
-
-  statRow: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    paddingVertical: 8, paddingHorizontal: 10,
-    backgroundColor: THEME.surface, borderRadius: 12,
+  headerMark: { width: 38, height: 14, opacity: 0.7 },
+  wallet: {
+    fontFamily: FONTS.mono, fontSize: 10, color: THEME.textMuted, letterSpacing: 0.6,
+    paddingVertical: 3, paddingHorizontal: 8,
+    borderWidth: 1, borderColor: THEME.border, borderRadius: 8,
   },
-  statBlock: { gap: 2, flex: 1 },
+
+  // Hairline-style stats — dividers instead of card-in-card.
+  statRow: {
+    flexDirection: 'row', alignItems: 'stretch',
+    paddingVertical: 8,
+    borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: THEME.border,
+  },
+  statCol: { flex: 1, gap: 2, paddingHorizontal: 4 },
+  statDivider: { width: StyleSheet.hairlineWidth, backgroundColor: THEME.border },
   statLabel: { fontFamily: FONTS.mono, fontSize: 9, color: THEME.textMuted, letterSpacing: 0.8 },
   statValue: { fontFamily: FONTS.display, fontSize: 13, color: THEME.text, letterSpacing: -0.2 },
   statSub: { fontFamily: FONTS.mono, fontSize: 9, color: THEME.textMuted },
-  balanceText: { fontFamily: FONTS.mono, fontSize: 10, color: THEME.textMuted, marginTop: -4 },
+  balanceText: { fontFamily: FONTS.mono, fontSize: 10, color: THEME.textMuted, marginTop: -4, textAlign: 'right' },
 
   positionsSection: { gap: 8 },
-  sectionLabel: { fontFamily: FONTS.mono, fontSize: 10, color: THEME.textMuted, letterSpacing: 1 },
+  sectionLabel: { fontFamily: FONTS.mono, fontSize: 9, color: THEME.textMuted, letterSpacing: 1.2 },
   posRow: {
     paddingVertical: 8, paddingHorizontal: 10,
     backgroundColor: THEME.surface, borderRadius: 12,
     gap: 4,
   },
-  posTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
+  posTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   posToken: { fontFamily: FONTS.display, fontSize: 14, color: THEME.text, letterSpacing: 0.3 },
-  posPnl: { fontFamily: FONTS.display, fontSize: 14, letterSpacing: -0.2 },
+  pnlChip: {
+    paddingVertical: 2, paddingHorizontal: 8,
+    borderRadius: 999, borderWidth: 1,
+  },
+  pnlChipText: { fontFamily: FONTS.display, fontSize: 12, letterSpacing: -0.2 },
   posChart: { marginVertical: 2, alignItems: 'stretch' },
   posMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
   posMeta: { fontFamily: FONTS.mono, fontSize: 10, color: THEME.textMuted },
-  posTap: { fontFamily: FONTS.bodyMed, fontSize: 10, color: THEME.textMuted, marginLeft: 'auto' },
+  posMetaSep: { fontFamily: FONTS.mono, fontSize: 10, color: THEME.border },
 
   emptyText: { fontFamily: FONTS.body, fontSize: 12, color: THEME.textMuted, textAlign: 'center', paddingVertical: 8 },
 
   closedSection: { gap: 4, marginTop: 4 },
-  closedRow: { flexDirection: 'row', alignItems: 'baseline', gap: 8 },
+  closedRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingVertical: 6, paddingHorizontal: 4,
+  },
   closedEmoji: { fontSize: 12 },
   closedToken: { fontFamily: FONTS.mono, fontSize: 11, color: THEME.text, flex: 1 },
   closedPnl: { fontFamily: FONTS.mono, fontSize: 11 },
+  closedShareIcon: { fontFamily: FONTS.mono, fontSize: 12, color: THEME.textMuted, marginLeft: 4 },
 });

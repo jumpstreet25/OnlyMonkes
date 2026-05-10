@@ -342,39 +342,24 @@ function parseContent(raw: string): {
 }
 
 function decodeStringMessage(raw: any, rawContent: string, myInboxId: string): ChatMessage | null {
-  // System messages — handled separately, not displayed in chat
-  if (rawContent.startsWith("REACT:")) return null;
-  if (rawContent.startsWith("STICKER_REACT:")) return null;
-  if (rawContent.startsWith("TYPING:")) return null;
-  if (rawContent.startsWith("PROFILE_UPDATE:")) return null;
-  if (rawContent.startsWith("PROFILE_SNAPSHOT:")) return null;
-  if (rawContent.startsWith("LOCATION_SYNC:")) return null;
-  if (rawContent.startsWith("EVENT:")) return null;
-  if (rawContent.startsWith("EDIT:")) return null;
-  if (rawContent.startsWith("PRESENCE:")) return null;
-  if (rawContent.startsWith("LIVE_ROOM:")) return null;
-  if (rawContent.startsWith("VIDEO_ROOM:")) return null;
-  if (rawContent.startsWith("AVATAR_ROOM:")) return null;
-  if (rawContent.startsWith("SHOP_PURCHASE:")) return null;
-  if (rawContent.startsWith("GIFT_ITEM:")) return null;
-  if (rawContent.startsWith("THREAD:")) return null;
-  if (rawContent.startsWith("PIN:")) return null;
-  if (rawContent.startsWith("UNPIN:")) return null;
-  if (rawContent.startsWith("NFT_LIST:")) return null;
-  if (rawContent.startsWith("NFT_BID:")) return null;
-  if (rawContent.startsWith("NFT_ACCEPT:")) return null;
-  if (rawContent.startsWith("NFT_DELIST:")) return null;
-  if (rawContent.startsWith("NFT_OFFER:")) return null;
-  if (rawContent.startsWith("NFT_SWAP:")) return null;
-  if (rawContent.startsWith("NFT_COMPLETE:")) return null;
-  if (rawContent.startsWith("AUTOMONKE_STATUS:")) return null;
-  if (rawContent.startsWith("TRADE_CLOSED:")) return null;
-  if (rawContent.startsWith("TRADE_OPENED:")) return null;
-  if (rawContent.startsWith("PORTFOLIO_CARD:")) return null;
-  if (rawContent.startsWith("PORTFOLIO_RESPONSE:")) return null;
-  if (rawContent.startsWith("RSVP:")) return null;
-  if (rawContent.startsWith("READ:")) return null;
-  if (rawContent.startsWith("BANANA_GRANT:")) return null;
+  // System messages — handled separately, not displayed in chat.
+  // Check both bare (`PREFIX:...`) and wrapped (`MSG:<name>:PREFIX:...`)
+  // forms because the bot wraps every send with `MSG:AI Agent #9385:`.
+  const innerPreview = rawContent.startsWith("MSG:")
+    ? rawContent.slice(4).split(":").slice(1).join(":")
+    : rawContent;
+  const STRUCTURED_PREFIXES = [
+    "REACT:", "STICKER_REACT:", "TYPING:", "PROFILE_UPDATE:", "PROFILE_SNAPSHOT:",
+    "LOCATION_SYNC:", "EVENT:", "EDIT:", "PRESENCE:", "LIVE_ROOM:", "VIDEO_ROOM:",
+    "AVATAR_ROOM:", "SHOP_PURCHASE:", "GIFT_ITEM:", "THREAD:", "PIN:", "UNPIN:",
+    "NFT_LIST:", "NFT_BID:", "NFT_ACCEPT:", "NFT_DELIST:", "NFT_OFFER:",
+    "NFT_SWAP:", "NFT_COMPLETE:", "AUTOMONKE_STATUS:", "TRADE_CLOSED:",
+    "TRADE_OPENED:", "PORTFOLIO_CARD:", "PORTFOLIO_RESPONSE:", "RSVP:", "READ:",
+    "BANANA_GRANT:",
+  ];
+  for (const p of STRUCTURED_PREFIXES) {
+    if (rawContent.startsWith(p) || innerPreview.startsWith(p)) return null;
+  }
 
   const { username, inner } = parseContent(rawContent);
 
@@ -884,6 +869,21 @@ export interface ParsedPortfolioPosition {
   sparkline: number[];
 }
 
+/** Closed trade row in a /portfolio response — enriched with full ClosedTrade
+ *  fields so the app can render a tappable PnL card on row press. */
+export interface ParsedRecentClosed {
+  token: string;
+  mint: string;
+  pnlPct: number;
+  pnlSol: number;
+  entrySolAmount: number;
+  exitSolAmount: number;
+  durationMs: number;
+  openedAt: number;
+  closedAt: number;
+  reason: string;
+}
+
 export interface ParsedPortfolioResponse {
   source: 'autonomonke';
   walletAddress: string;
@@ -896,7 +896,7 @@ export interface ParsedPortfolioResponse {
   losses: number;
   winRate: number;
   positions: ParsedPortfolioPosition[];
-  recentClosed: { token: string; pnlPct: number }[];
+  recentClosed: ParsedRecentClosed[];
   ts: number;
 }
 
@@ -963,12 +963,27 @@ export function parsePortfolioResponse(raw: string): ParsedPortfolioResponse | n
     }
   }
 
-  const recentClosed: { token: string; pnlPct: number }[] = [];
+  const recentClosed: ParsedRecentClosed[] = [];
   if (Array.isArray(data.recentClosed)) {
     for (const c of data.recentClosed) {
       const tok = strOrNull(c?.token);
       const pn = numOrNull(c?.pnlPct);
-      if (tok && pn !== null) recentClosed.push({ token: tok.slice(0, 32), pnlPct: pn });
+      if (!tok || pn === null) continue;
+      const entrySol = numOrNull(c?.entrySolAmount) ?? 0;
+      const exitSol = numOrNull(c?.exitSolAmount) ?? entrySol * (1 + pn / 100);
+      const closedAt = numOrNull(c?.closedAt) ?? Date.now();
+      recentClosed.push({
+        token: tok.slice(0, 32),
+        mint: strOrNull(c?.mint)?.slice(0, 80) ?? "",
+        pnlPct: pn,
+        pnlSol: numOrNull(c?.pnlSol) ?? exitSol - entrySol,
+        entrySolAmount: entrySol,
+        exitSolAmount: exitSol,
+        durationMs: numOrNull(c?.durationMs) ?? 0,
+        openedAt: numOrNull(c?.openedAt) ?? closedAt,
+        closedAt,
+        reason: strOrNull(c?.reason)?.slice(0, 64) ?? "closed",
+      });
     }
   }
 
