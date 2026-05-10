@@ -125,8 +125,17 @@ export function useDm(peerInboxId: string) {
           async (raw: any) => {
             if (cancelled) return;
 
-            // Detect typing signals from peer
             const rawContent = typeof raw.content === 'function' ? raw.content() : raw.content;
+
+            // Strip the bot's `MSG:<name>:` envelope so prefix checks below
+            // match both wrapped and bare structured payloads.
+            const innerContent: string = typeof rawContent === 'string'
+              ? (rawContent.startsWith('MSG:')
+                  ? rawContent.slice(4).split(':').slice(1).join(':')
+                  : rawContent)
+              : '';
+
+            // Detect typing signals from peer
             if (typeof rawContent === 'string' && rawContent.startsWith('TYPING:')) {
               const typerId = rawContent.split(':')[1];
               if (typerId && typerId !== myInboxId) {
@@ -134,6 +143,83 @@ export function useDm(peerInboxId: string) {
                 if (typingTimeout.current) clearTimeout(typingTimeout.current);
                 typingTimeout.current = setTimeout(() => setPeerTyping(false), 4000);
               }
+              return;
+            }
+
+            // Structured AutonoMonke payloads from the bot. All caught here
+            // (not in useXmtp's global stream) because per-DM streamMessages
+            // owns the conversation while DM screen is mounted, and the
+            // messages are filtered by decodeMessage → would otherwise be
+            // silently dropped. innerContent strips the MSG:<name>: envelope.
+            if (innerContent.startsWith('PORTFOLIO_RESPONSE:')) {
+              try {
+                const { BOT_INBOX_IDS } = await import('@/lib/constants');
+                const sender = raw.senderInboxId ?? '';
+                if (!BOT_INBOX_IDS.includes(sender)) return;
+                const { parsePortfolioResponse } = await import('@/lib/xmtp');
+                const parsed = parsePortfolioResponse(innerContent);
+                if (!parsed) return;
+                const { useTradesStore } = await import('@/store/tradesStore');
+                useTradesStore.getState().setPortfolioResponse(parsed);
+              } catch { /* swallow */ }
+              return;
+            }
+
+            if (innerContent.startsWith('TRADE_CLOSED:')) {
+              try {
+                const { BOT_INBOX_IDS } = await import('@/lib/constants');
+                const sender = raw.senderInboxId ?? '';
+                if (!BOT_INBOX_IDS.includes(sender)) return;
+                const { parseTradeClosed } = await import('@/lib/xmtp');
+                const parsed = parseTradeClosed(innerContent);
+                if (!parsed) return;
+                const { useTradesStore } = await import('@/store/tradesStore');
+                useTradesStore.getState().addClosedTrade({
+                  id: `${parsed.mint}-${parsed.ts}`,
+                  source: parsed.source,
+                  token: parsed.token,
+                  mint: parsed.mint,
+                  entrySolAmount: parsed.entrySolAmount,
+                  exitSolAmount: parsed.exitSolAmount,
+                  pnlSol: parsed.pnlSol,
+                  pnlPct: parsed.pnlPct,
+                  durationMs: parsed.durationMs,
+                  openedAt: parsed.ts - parsed.durationMs,
+                  closedAt: parsed.ts,
+                  reason: parsed.reason,
+                  signature: parsed.signature,
+                });
+              } catch { /* swallow */ }
+              return;
+            }
+
+            if (innerContent.startsWith('TRADE_OPENED:')) {
+              try {
+                const { BOT_INBOX_IDS } = await import('@/lib/constants');
+                const sender = raw.senderInboxId ?? '';
+                if (!BOT_INBOX_IDS.includes(sender)) return;
+                const { parseTradeOpened } = await import('@/lib/xmtp');
+                const parsed = parseTradeOpened(innerContent);
+                if (!parsed) return;
+                const { useTradesStore } = await import('@/store/tradesStore');
+                useTradesStore.getState().addOpenTrade({
+                  id: parsed.positionId,
+                  source: parsed.source,
+                  token: parsed.token,
+                  mint: parsed.mint,
+                  entryPriceUsd: parsed.entryPriceUsd,
+                  entrySolAmount: parsed.entrySolAmount,
+                  tokenAmount: parsed.tokenAmount,
+                  stopPrice: parsed.stopPrice,
+                  stopPct: parsed.stopPct,
+                  target1: parsed.target1,
+                  target2: parsed.target2,
+                  taComposite: parsed.taComposite,
+                  openClawConfidence: parsed.openClawConfidence,
+                  txHash: parsed.txHash,
+                  openedAt: parsed.ts,
+                });
+              } catch { /* swallow */ }
               return;
             }
 

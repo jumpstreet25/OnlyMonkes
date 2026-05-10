@@ -18,7 +18,7 @@ import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { toast } from 'sonner-native';
 import { THEME, FONTS } from '@/lib/constants';
-import { PnLCard } from '@/components/PnLCard';
+import { ShareablePnLCard } from '@/components/ShareablePnLCard';
 import type { ClosedTrade } from '@/lib/positions';
 import type { PortfolioCard } from '@/store/tradesStore';
 import { useXmtp } from '@/hooks/useXmtp';
@@ -65,7 +65,7 @@ function liveCardAsClosedTrade(card: PortfolioCard): ClosedTrade {
 
 export function LivePnLCardModal({ card, visible, onClose }: LivePnLCardModalProps) {
   const cardRef = useRef<View>(null);
-  const [busy, setBusy] = useState<null | 'save' | 'copy' | 'x' | 'chat' | 'both'>(null);
+  const [busy, setBusy] = useState<null | 'save' | 'copy' | 'x' | 'chat' | 'both' | 'close'>(null);
   const { send } = useXmtp();
 
   const screenW = Dimensions.get('window').width;
@@ -75,7 +75,21 @@ export function LivePnLCardModal({ card, visible, onClose }: LivePnLCardModalPro
 
   const captureCard = useCallback(async (): Promise<string> => {
     const { captureRef } = await getViewShot();
-    return await captureRef(cardRef as any, { format: 'jpg', quality: 0.95 });
+    // 2026-05-09: PnLCard uses a Skia <Canvas> for the glassy background.
+    // captureRef on Android can't read GPU-backed Skia surfaces with the
+    // default settings — result is a black/brown frame. Two fixes here:
+    //   1. Wait two frames so Skia commits its first paint (was the
+    //      "doesn't load until app reopen" symptom)
+    //   2. Use PNG + tmpfile + useRenderInContext (the known workaround
+    //      that forces software rasterization for hardware layers)
+    await new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+    return await captureRef(cardRef as any, {
+      format: 'png',
+      quality: 1,
+      result: 'tmpfile',
+      // @ts-expect-error - Android-only knob, not in the TS types
+      useRenderInContext: true,
+    });
   }, []);
 
   const compressForShare = useCallback(async (uri: string): Promise<string> => {
@@ -91,7 +105,35 @@ export function LivePnLCardModal({ card, visible, onClose }: LivePnLCardModalPro
     const compressed = await compressForShare(uri);
     const FS = await getFileSystem();
     const b64 = await FS.readAsStringAsync(compressed, { encoding: FS.EncodingType.Base64 });
-    await send(`IMAGE:data:image/jpeg;base64,${b64}`);
+    const payload = `IMAGE:data:image/jpeg;base64,${b64}`;
+
+    // Optimistic local insert — XMTP doesn't echo own sends back via stream,
+    // so the user wouldn't see their share until the next foreground sync
+    // (which is why "needs app reopen" was the symptom). chatStore.mergeMessage
+    // upgrades opt-* IDs to the real ID within a 3s window, so duplicates
+    // collapse cleanly when the real message lands.
+    try {
+      const { useAppStore } = await import('@/store/appStore');
+      const { useChatStore } = await import('@/store/chatStore');
+      const { REACTIONS } = await import('@/lib/constants');
+      const myInboxId = useAppStore.getState().myInboxId;
+      if (myInboxId) {
+        const reactions = Object.fromEntries(
+          REACTIONS.map((emoji) => [emoji, { emoji, count: 0, reactedByMe: false, reactors: [] }])
+        ) as any;
+        useChatStore.getState().addMessage({
+          id: `opt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          senderAddress: myInboxId,
+          senderUsername: useAppStore.getState().username ?? undefined,
+          content: payload,
+          sentAt: new Date(),
+          reactions,
+          status: 'sending',
+        });
+      }
+    } catch { /* non-critical */ }
+
+    await send(payload);
   }, [compressForShare, send]);
 
   const handleSave = useCallback(async () => {
@@ -159,6 +201,46 @@ export function LivePnLCardModal({ card, visible, onClose }: LivePnLCardModalPro
     }
   }, [card, busy, captureCard, sendToMainChat]);
 
+  // Close-position confirmation state. First tap arms (3s window), second tap fires.
+  const [closeArmed, setCloseArmed] = useState(false);
+  const closeArmTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleClosePosition = useCallback(async () => {
+    if (!card || busy) return;
+    if (!closeArmed) {
+      setCloseArmed(true);
+      if (closeArmTimeoutRef.current) clearTimeout(closeArmTimeoutRef.current);
+      closeArmTimeoutRef.current = setTimeout(() => setCloseArmed(false), 3000);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      return;
+    }
+    if (closeArmTimeoutRef.current) clearTimeout(closeArmTimeoutRef.current);
+    setCloseArmed(false);
+    setBusy('close');
+    try {
+      // Send `/autonomonke close $TOKEN` directly to the bot DM. Engine looks
+      // up the open position by symbol, executes the on-chain sell, marks the
+      // position closed, and emits TRADE_CLOSED: which lands as a closed PnL
+      // card in the bot DM thread.
+      const { getXmtpClient } = await import('@/hooks/useXmtp');
+      const { openOrCreateDm, sendDmMessage } = await import('@/lib/xmtp');
+      const { BOT_INBOX_IDS } = await import('@/lib/constants');
+      const { useAppStore } = await import('@/store/appStore');
+      const client = getXmtpClient();
+      if (!client) throw new Error('Not connected');
+      const dm = await openOrCreateDm(client, BOT_INBOX_IDS[0]);
+      const username = useAppStore.getState().username ?? undefined;
+      await sendDmMessage(dm, `/autonomonke close $${card.token}`, username);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      toast.success(`Closing $${card.token}…`);
+      onClose();
+    } catch (e: any) {
+      toast.error(e?.message ?? 'Close failed');
+    } finally {
+      setBusy(null);
+    }
+  }, [card, busy, closeArmed, onClose]);
+
   const handleShareBoth = useCallback(async () => {
     if (!card || busy) return;
     setBusy('both');
@@ -198,7 +280,7 @@ export function LivePnLCardModal({ card, visible, onClose }: LivePnLCardModalPro
           </View>
 
           <View style={styles.cardWrap}>
-            <PnLCard ref={cardRef} trade={synthetic} width={cardWidth} />
+            <ShareablePnLCard ref={cardRef} trade={synthetic} width={cardWidth} isLive />
           </View>
 
           <View style={styles.shareRow}>
@@ -211,6 +293,24 @@ export function LivePnLCardModal({ card, visible, onClose }: LivePnLCardModalPro
             <ActionBtn label="💾" sub="Save" onPress={handleSave} loading={busy === 'save'} disabled={!!busy && busy !== 'save'} flat />
             <ActionBtn label="📋" sub="Copy" onPress={handleCopy} loading={busy === 'copy'} disabled={!!busy && busy !== 'copy'} flat />
           </View>
+
+          <Pressable
+            onPress={handleClosePosition}
+            disabled={!!busy && busy !== 'close'}
+            style={({ pressed }) => [
+              styles.closePosBtn,
+              closeArmed && styles.closePosBtnArmed,
+              pressed && !busy && { opacity: 0.7 },
+            ]}
+          >
+            <Text style={[styles.closePosText, closeArmed && styles.closePosTextArmed]}>
+              {busy === 'close'
+                ? 'Closing…'
+                : closeArmed
+                  ? `Tap again to confirm — close $${card.token}`
+                  : `🔻 Close Position`}
+            </Text>
+          </Pressable>
         </View>
       </View>
     </Modal>
@@ -277,4 +377,21 @@ const styles = StyleSheet.create({
   btnDisabled: { opacity: 0.5 },
   btnLabel: { fontSize: 18, color: THEME.text },
   btnSub: { fontFamily: FONTS.bodyMed, fontSize: 11, color: THEME.textMuted, letterSpacing: 0.4 },
+
+  closePosBtn: {
+    marginTop: 4,
+    paddingVertical: 12, borderRadius: 14, alignItems: 'center',
+    backgroundColor: 'transparent',
+    borderWidth: 1, borderColor: THEME.error + '55',
+  },
+  closePosBtnArmed: {
+    backgroundColor: THEME.error,
+    borderColor: THEME.error,
+  },
+  closePosText: {
+    fontFamily: FONTS.bodyMed, fontSize: 13, color: THEME.error, letterSpacing: 0.4,
+  },
+  closePosTextArmed: {
+    color: '#fff',
+  },
 });

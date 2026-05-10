@@ -1605,13 +1605,19 @@ export function useXmtp() {
               const senderInboxId: string = raw.senderInboxId ?? '';
               if (senderInboxId === client.inboxId) return;
 
+              // Strip the bot's `MSG:<name>:` envelope so prefix checks below
+              // match both wrapped and bare structured payloads.
+              const inner: string = content.startsWith('MSG:')
+                ? content.slice(4).split(':').slice(1).join(':')
+                : content;
+
               // TRADE_CLOSED: structured close payload from the bot.
               // Only honor messages from a known bot inbox to prevent spoofing.
-              if (content.startsWith('TRADE_CLOSED:')) {
+              if (inner.startsWith('TRADE_CLOSED:')) {
                 const { BOT_INBOX_IDS } = await import('@/lib/constants');
                 if (!BOT_INBOX_IDS.includes(senderInboxId)) return;
                 const { parseTradeClosed } = await import('@/lib/xmtp');
-                const parsed = parseTradeClosed(content);
+                const parsed = parseTradeClosed(inner);
                 if (!parsed) return;
                 const { useTradesStore } = await import('@/store/tradesStore');
                 useTradesStore.getState().addClosedTrade({
@@ -1632,27 +1638,30 @@ export function useXmtp() {
                 return;
               }
 
-              // PORTFOLIO_RESPONSE: single composite payload from /portfolio
-              // (header + positions[] + sparklines). Replaces the older
-              // PORTFOLIO_CARD: per-position flow as of 2026-05-08.
-              if (content.startsWith('PORTFOLIO_RESPONSE:')) {
-                const { BOT_INBOX_IDS } = await import('@/lib/constants');
-                if (!BOT_INBOX_IDS.includes(senderInboxId)) return;
-                const { parsePortfolioResponse } = await import('@/lib/xmtp');
-                const parsed = parsePortfolioResponse(content);
-                if (!parsed) return;
-                const { useTradesStore } = await import('@/store/tradesStore');
-                useTradesStore.getState().setPortfolioResponse(parsed);
+              // PORTFOLIO_RESPONSE: single composite payload from /portfolio.
+              // This branch handles the case where the user is NOT on the
+              // bot's DM screen when the response arrives (per-DM stream in
+              // useDm.ts owns the conversation when the screen is mounted).
+              if (inner.startsWith('PORTFOLIO_RESPONSE:')) {
+                try {
+                  const { BOT_INBOX_IDS } = await import('@/lib/constants');
+                  if (!BOT_INBOX_IDS.includes(senderInboxId)) return;
+                  const { parsePortfolioResponse } = await import('@/lib/xmtp');
+                  const parsed = parsePortfolioResponse(inner);
+                  if (!parsed) return;
+                  const { useTradesStore } = await import('@/store/tradesStore');
+                  useTradesStore.getState().setPortfolioResponse(parsed);
+                } catch { /* swallow */ }
                 return;
               }
 
               // PORTFOLIO_CARD: live snapshot of an open position, sent one
               // per position when user DMs /portfolio. Same spoof guard.
-              if (content.startsWith('PORTFOLIO_CARD:')) {
+              if (inner.startsWith('PORTFOLIO_CARD:')) {
                 const { BOT_INBOX_IDS } = await import('@/lib/constants');
                 if (!BOT_INBOX_IDS.includes(senderInboxId)) return;
                 const { parsePortfolioCard } = await import('@/lib/xmtp');
-                const parsed = parsePortfolioCard(content);
+                const parsed = parsePortfolioCard(inner);
                 if (!parsed) return;
                 const { useTradesStore } = await import('@/store/tradesStore');
                 useTradesStore.getState().addPortfolioCard(parsed);
@@ -1661,11 +1670,11 @@ export function useXmtp() {
 
               // TRADE_OPENED: AutonoMonke just opened a position with the user's
               // hot wallet. Spoof guard same as TRADE_CLOSED.
-              if (content.startsWith('TRADE_OPENED:')) {
+              if (inner.startsWith('TRADE_OPENED:')) {
                 const { BOT_INBOX_IDS } = await import('@/lib/constants');
                 if (!BOT_INBOX_IDS.includes(senderInboxId)) return;
                 const { parseTradeOpened } = await import('@/lib/xmtp');
-                const parsed = parseTradeOpened(content);
+                const parsed = parseTradeOpened(inner);
                 if (!parsed) return;
                 const { useTradesStore } = await import('@/store/tradesStore');
                 useTradesStore.getState().addOpenTrade({

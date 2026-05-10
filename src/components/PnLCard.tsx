@@ -1,8 +1,6 @@
 import React, { forwardRef, useState } from 'react';
 import { View, Text, StyleSheet, Image } from 'react-native';
-import {
-  Canvas, RoundedRect, BlurMask, LinearGradient, Group, Rect, Circle, vec,
-} from '@shopify/react-native-skia';
+import { LinearGradient } from 'expo-linear-gradient';
 import { THEME, FONTS } from '@/lib/constants';
 import { useAppStore } from '@/store/appStore';
 import { ConfettiView } from '@/components/ConfettiView';
@@ -12,6 +10,9 @@ interface PnLCardProps {
   trade: ClosedTrade;
   width?: number;
   showConfetti?: boolean;
+  /** When true, the trade is still open — relabel EXIT→CURRENT, DURATION→AGE,
+   *  and add a small LIVE pill so users don't misread "Exit" as a real close. */
+  isLive?: boolean;
 }
 
 const WIN_COLOR = THEME.gold;
@@ -40,68 +41,99 @@ function formatPct(pct: number): string {
   return `${sign}${pct.toFixed(2)}%`;
 }
 
-function SkiaGlassBg({ width, height, glowColor }: { width: number; height: number; glowColor: string }) {
+/**
+ * RN-only re-implementation of the original Skia glass background. The Skia
+ * version rendered to a GPU surface that react-native-view-shot couldn't
+ * read back on Android — every captured PnL card came out solid black/brown.
+ * This version uses expo-linear-gradient + plain Views and captures cleanly.
+ *
+ * Visual components, layered bottom→top:
+ *   1. Solid dark base                                 (rgba(6,6,14,0.96))
+ *   2. Diagonal glow→white→shadow gradient              (top-left→bot-right)
+ *   3. Soft glow blob in the top-right corner          (rounded view, blur via shadow)
+ *   4. Smaller white highlight inside the glow blob
+ *   5. Top-edge specular sweep                         (horizontal gradient strip)
+ *   6. Bottom darkening                                 (vertical gradient on lower 35%)
+ *   7. 1-px gradient border                            (color-shifting outline)
+ */
+function GlassBg({ width, height, glowColor }: { width: number; height: number; glowColor: string }) {
   if (width <= 0 || height <= 0) return null;
   const r = 24;
-  const x = 0;
-  const y = 0;
-  const w = width;
-  const h = height;
-  const minDim = Math.min(w, h);
+  const minDim = Math.min(width, height);
 
   return (
-    <Canvas style={{ width: w, height: h, position: 'absolute', top: 0, left: 0 }} pointerEvents="none">
-      <RoundedRect x={x} y={y} width={w} height={h} r={r} color={glowColor + '28'}>
-        <BlurMask blur={20} style="normal" />
-      </RoundedRect>
+    <View
+      pointerEvents="none"
+      style={[
+        StyleSheet.absoluteFillObject,
+        { borderRadius: r, overflow: 'hidden', backgroundColor: 'rgba(6,6,14,0.96)' },
+      ]}
+    >
+      {/* 2. Diagonal gradient overlay */}
+      <LinearGradient
+        colors={[glowColor + '12', 'rgba(255,255,255,0.02)', 'rgba(0,0,0,0.18)']}
+        locations={[0, 0.4, 1]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFillObject}
+      />
 
-      <RoundedRect x={x} y={y} width={w} height={h} r={r} color="rgba(6,6,14,0.96)" />
+      {/* 3 + 4. Top-right glow blob with inner highlight */}
+      <View
+        style={{
+          position: 'absolute',
+          top: height * 0.18 - minDim * 0.32,
+          left: width * 0.78 - minDim * 0.32,
+          width: minDim * 0.64,
+          height: minDim * 0.64,
+          borderRadius: minDim * 0.32,
+          backgroundColor: glowColor + '14',
+        }}
+      />
+      <View
+        style={{
+          position: 'absolute',
+          top: height * 0.14 - minDim * 0.08,
+          left: width * 0.82 - minDim * 0.08,
+          width: minDim * 0.16,
+          height: minDim * 0.16,
+          borderRadius: minDim * 0.08,
+          backgroundColor: 'rgba(255,255,255,0.06)',
+        }}
+      />
 
-      <Group clip={{ rect: { x, y, width: w, height: h }, rx: r, ry: r }}>
-        <Rect x={x} y={y} width={w} height={h}>
-          <LinearGradient
-            start={vec(x, y)}
-            end={vec(x + w, y + h)}
-            colors={[glowColor + '12', 'rgba(255,255,255,0.02)', 'rgba(0,0,0,0.18)']}
-            positions={[0, 0.4, 1]}
-          />
-        </Rect>
+      {/* 5. Top-edge specular sweep */}
+      <LinearGradient
+        colors={['transparent', glowColor + '24', 'rgba(255,255,255,0.20)', glowColor + '24', 'transparent']}
+        locations={[0.05, 0.25, 0.5, 0.75, 0.95]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={{ position: 'absolute', top: 0, left: 0, width, height: 2 }}
+      />
 
-        <Circle cx={x + w * 0.78} cy={y + h * 0.18} r={minDim * 0.32} color={glowColor + '14'}>
-          <BlurMask blur={minDim * 0.18} style="normal" />
-        </Circle>
-        <Circle cx={x + w * 0.82} cy={y + h * 0.14} r={minDim * 0.08} color="rgba(255,255,255,0.06)">
-          <BlurMask blur={minDim * 0.05} style="normal" />
-        </Circle>
+      {/* 6. Bottom darkening */}
+      <LinearGradient
+        colors={['transparent', 'rgba(0,0,0,0.28)']}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
+        style={{ position: 'absolute', bottom: 0, left: 0, width, height: height * 0.35 }}
+      />
 
-        <Rect x={x} y={y} width={w} height={2}>
-          <LinearGradient
-            start={vec(x, y)} end={vec(x + w, y)}
-            colors={['transparent', glowColor + '24', 'rgba(255,255,255,0.20)', glowColor + '24', 'transparent']}
-            positions={[0.05, 0.25, 0.5, 0.75, 0.95]}
-          />
-        </Rect>
-
-        <Rect x={x} y={y + h * 0.65} width={w} height={h * 0.35}>
-          <LinearGradient
-            start={vec(x + w / 2, y + h * 0.65)} end={vec(x + w / 2, y + h)}
-            colors={['transparent', 'rgba(0,0,0,0.28)']}
-          />
-        </Rect>
-      </Group>
-
-      <RoundedRect x={x} y={y} width={w} height={h} r={r} color="transparent" style="stroke" strokeWidth={1}>
-        <LinearGradient
-          start={vec(x, y)} end={vec(x + w, y + h)}
-          colors={[glowColor + '55', glowColor + '15', 'rgba(255,255,255,0.04)']}
-          positions={[0, 0.5, 1]}
-        />
-      </RoundedRect>
-    </Canvas>
+      {/* 7. Gradient border (drawn on top via 1-px overlay rings) */}
+      <View
+        style={{
+          position: 'absolute',
+          top: 0, left: 0, right: 0, bottom: 0,
+          borderRadius: r,
+          borderWidth: 1,
+          borderColor: glowColor + '40',
+        }}
+      />
+    </View>
   );
 }
 
-export const PnLCard = forwardRef<View, PnLCardProps>(({ trade, width = 320, showConfetti }: PnLCardProps, ref) => {
+export const PnLCard = forwardRef<View, PnLCardProps>(({ trade, width = 320, showConfetti, isLive }: PnLCardProps, ref) => {
   const verifiedNft = useAppStore(s => s.verifiedNft);
   const username = useAppStore(s => s.username);
   const [confettiKey, setConfettiKey] = useState(0);
@@ -114,8 +146,12 @@ export const PnLCard = forwardRef<View, PnLCardProps>(({ trade, width = 320, sho
   const height = Math.round(width * 1.0);
 
   return (
-    <View ref={ref} collapsable={false} style={[styles.outer, { width, height }]}>
-      <SkiaGlassBg width={width} height={height} glowColor={glow} />
+    <View
+      ref={ref}
+      collapsable={false}
+      style={[styles.outer, { width, height }]}
+    >
+      <GlassBg width={width} height={height} glowColor={glow} />
 
       <View style={styles.content}>
         <View style={styles.headerRow}>
@@ -151,11 +187,11 @@ export const PnLCard = forwardRef<View, PnLCardProps>(({ trade, width = 320, sho
             <Text style={styles.statValue}>{formatSol(trade.entrySolAmount)} SOL</Text>
           </View>
           <View style={styles.statCol}>
-            <Text style={styles.statLabel}>EXIT</Text>
+            <Text style={styles.statLabel}>{isLive ? 'CURRENT' : 'EXIT'}</Text>
             <Text style={styles.statValue}>{formatSol(trade.exitSolAmount)} SOL</Text>
           </View>
           <View style={styles.statCol}>
-            <Text style={styles.statLabel}>DURATION</Text>
+            <Text style={styles.statLabel}>{isLive ? 'AGE' : 'DURATION'}</Text>
             <Text style={styles.statValue}>{formatDuration(trade.durationMs)}</Text>
           </View>
         </View>
