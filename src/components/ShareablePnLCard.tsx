@@ -52,7 +52,13 @@ export const ShareablePnLCard = forwardRef<View, ShareablePnLCardProps>(
   ({ trade, width = 360, isLive }: ShareablePnLCardProps, ref) => {
     const username = useAppStore(s => s.username);
     const wallet = useAppStore(s => s.wallet);
-    const equippedWorld = useAppStore(s => s.shopStyles?.equipped?.world ?? null);
+    const verifiedNft = useAppStore(s => s.verifiedNft);
+    const shopStyles = useAppStore(s => s.shopStyles);
+    // (2026-05-10) Bug fix: previous version read shopStyles.equipped.world
+    // which never existed — every other consumer (ChatHeader, MenuDrawer,
+    // ProfileScorecard, ChatInput, BotChannelScreen, MessageBubble,
+    // WorldLayer) reads shopStyles.worldId. World tinting was silently dead.
+    const worldId = (shopStyles?.worldId as string | undefined) ?? null;
 
     const isWin = trade.pnlPct >= 0;
     const accent = isWin ? WIN_COLOR : LOSS_COLOR;
@@ -60,7 +66,7 @@ export const ShareablePnLCard = forwardRef<View, ShareablePnLCardProps>(
 
     const height = Math.round(width * 1.25); // 4:5 portrait
 
-    const worldAccent = getWorldAccent(equippedWorld);
+    const worldAccent = getWorldAccent(worldId);
     // Gradient: dark base + world tint (subtle) + accent glow (top-right)
     const gradColors: readonly [string, string, string] = [
       worldAccent + '14',
@@ -71,6 +77,18 @@ export const ShareablePnLCard = forwardRef<View, ShareablePnLCardProps>(
     const walletShort = wallet?.address
       ? `${wallet.address.slice(0, 4)}…${wallet.address.slice(-4)}`
       : null;
+
+    // (2026-05-10) User-identity color priority chain — same as MessageBubble
+    // sender-name styling. Lets the card name read in the user's world tint
+    // / glow color / custom name color, instead of plain white.
+    const usernameColor =
+      (shopStyles?.nameColor as string | undefined) ??
+      (shopStyles?.glowColor as string | undefined) ??
+      (worldId ? worldAccent : '#6CB4EE');
+
+    // PFP for footer. Card is always the user's own trade, so verifiedNft
+    // is the right source. Falls through to text-only footer if no NFT.
+    const pfpUri = verifiedNft?.image ?? null;
 
     return (
       <View
@@ -112,23 +130,33 @@ export const ShareablePnLCard = forwardRef<View, ShareablePnLCardProps>(
           ]}
         />
 
+        {/* State pill — absolute top-right corner so the doubled logo can
+            own the full width of the header row without crowding. */}
+        <View
+          style={[
+            styles.statePill,
+            { top: 14, right: 14, borderColor: accent + '80', backgroundColor: accent + '22' },
+          ]}
+        >
+          <Text style={[styles.statePillText, { color: accent }]}>
+            {isLive ? '● LIVE' : 'CLOSED'}
+          </Text>
+        </View>
+
         {/* Layer 5: content */}
         <View style={styles.content}>
-          {/* Header — OnlyMonkes logo + state pill */}
-          <View style={styles.headerRow}>
+          {/* Hero header — OnlyMonkes logo, doubled in size from the prior
+              version (was width*0.42 × width*0.12; now width*0.84 × width*0.24)
+              and centered as a full-width banner. */}
+          <View style={styles.headerWrap}>
             <Image
               source={require('../../assets/Header-transparent.png')}
-              style={[styles.brandLogo, { width: width * 0.42, height: width * 0.12 }]}
+              style={{ width: width * 0.84, height: width * 0.24 }}
               resizeMode="contain"
             />
-            <View style={[styles.statePill, { borderColor: accent + '80', backgroundColor: accent + '22' }]}>
-              <Text style={[styles.statePillText, { color: accent }]}>
-                {isLive ? '● LIVE' : 'CLOSED'}
-              </Text>
-            </View>
           </View>
 
-          {/* Source tag */}
+          {/* Source tag — centered now that the logo owns the header. */}
           <Text style={[styles.sourceTag, { color: accent + 'CC' }]}>
             {trade.source === 'autonomonke' ? 'AUTONOMONKE' : 'MONKE TRADE'}
           </Text>
@@ -172,17 +200,23 @@ export const ShareablePnLCard = forwardRef<View, ShareablePnLCardProps>(
 
           <View style={styles.spacer} />
 
-          {/* Footer — attribution + watermark */}
+          {/* Footer — PFP + username (in user's identity color) + wallet.
+              Watermark dropped: the doubled hero header now carries the
+              OnlyMonkes branding, so a second mark would be redundant. */}
           <View style={styles.footerRow}>
-            <View style={styles.footerLeft}>
-              {username && <Text style={styles.username}>@{username}</Text>}
+            {pfpUri ? (
+              <View style={[styles.pfpRing, { borderColor: usernameColor }]}>
+                <Image source={{ uri: pfpUri }} style={styles.pfpImg} />
+              </View>
+            ) : null}
+            <View style={styles.footerTextCol}>
+              {username && (
+                <Text style={[styles.username, { color: usernameColor }]} numberOfLines={1}>
+                  @{username}
+                </Text>
+              )}
               {walletShort && <Text style={styles.walletAddr}>{walletShort}</Text>}
             </View>
-            <Image
-              source={require('../../assets/watermark.png')}
-              style={styles.footerWatermark}
-              resizeMode="contain"
-            />
           </View>
         </View>
       </View>
@@ -205,17 +239,20 @@ const styles = StyleSheet.create({
     paddingBottom: 18,
     justifyContent: 'space-between',
   },
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  // Header is now a single centered logo banner (size doubled). State pill
+  // moved to an absolute corner overlay so it doesn't compete for width.
+  headerWrap: {
     alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 4,
   },
-  brandLogo: { width: 150, height: 42 },
   statePill: {
+    position: 'absolute',
     paddingVertical: 4,
     paddingHorizontal: 10,
     borderRadius: 999,
     borderWidth: 1,
+    zIndex: 2,
   },
   statePillText: {
     fontFamily: FONTS.display,
@@ -226,7 +263,8 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.mono,
     fontSize: 11,
     letterSpacing: 2,
-    marginTop: 4,
+    marginTop: 6,
+    textAlign: 'center',
   },
   hairline: {
     height: 1,
@@ -290,26 +328,41 @@ const styles = StyleSheet.create({
     color: THEME.textMuted,
   },
   spacer: { flex: 1 },
+  // Footer is now PFP + name/wallet column, left-aligned. The watermark on
+  // the right was dropped — the doubled header banner already carries the
+  // OnlyMonkes brand.
   footerRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
+    alignItems: 'center',
+    gap: 10,
   },
-  footerLeft: { gap: 2 },
+  pfpRing: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  pfpImg: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+  },
+  footerTextCol: {
+    flex: 1,
+    gap: 2,
+  },
   username: {
     fontFamily: FONTS.bodyMed,
-    fontSize: 12,
-    color: THEME.text,
+    fontSize: 14,
+    letterSpacing: 0.2,
   },
   walletAddr: {
     fontFamily: FONTS.mono,
     fontSize: 10,
     color: THEME.textMuted,
     letterSpacing: 0.5,
-  },
-  footerWatermark: {
-    width: 64,
-    height: 22,
-    opacity: 0.7,
   },
 });
