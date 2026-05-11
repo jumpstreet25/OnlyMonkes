@@ -173,10 +173,29 @@ export function PortfolioResponseBubble({ response, onPressPosition, onPressClos
                     <View style={styles.posMetaRow}>
                       <Text style={styles.posMeta}>{pos.entrySolAmount.toFixed(3)} SOL</Text>
                       <Text style={styles.posMetaSep}>·</Text>
-                      <Text style={styles.posMeta}>T1 {pos.t1Hit ? '✓' : '○'}</Text>
-                      <Text style={styles.posMeta}>T2 {pos.t2Hit ? '✓' : '○'}</Text>
-                      <Text style={styles.posMetaSep}>·</Text>
                       <Text style={styles.posMeta}>{formatDuration(pos.durationMs)}</Text>
+                    </View>
+                    {/* Targets relative to entry — "+12% T1 ✓ · +24% T2 · -8% SL".
+                        Shows the user where they are vs the planned exits.
+                        Hit targets stay green with a ✓; missed-stop tints red. */}
+                    <View style={styles.posMetaRow}>
+                      {pos.target1 != null && (
+                        <Text style={[styles.posMeta, pos.t1Hit && { color: THEME.gold }]}>
+                          T1 {pos.t1Hit ? '✓ ' : ''}{(((pos.target1 - pos.entryPriceUsd) / pos.entryPriceUsd) * 100).toFixed(1)}%
+                        </Text>
+                      )}
+                      {pos.target2 != null && (
+                        <>
+                          <Text style={styles.posMetaSep}>·</Text>
+                          <Text style={[styles.posMeta, pos.t2Hit && { color: THEME.gold }]}>
+                            T2 {pos.t2Hit ? '✓ ' : ''}{(((pos.target2 - pos.entryPriceUsd) / pos.entryPriceUsd) * 100).toFixed(1)}%
+                          </Text>
+                        </>
+                      )}
+                      <Text style={styles.posMetaSep}>·</Text>
+                      <Text style={[styles.posMeta, { color: THEME.error + 'CC' }]}>
+                        SL {(((pos.stopPrice - pos.entryPriceUsd) / pos.entryPriceUsd) * 100).toFixed(1)}%
+                      </Text>
                     </View>
                   </Pressable>
                 );
