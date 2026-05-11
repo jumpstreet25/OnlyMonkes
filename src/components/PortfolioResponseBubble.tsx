@@ -116,6 +116,11 @@ export function PortfolioResponseBubble({ response, onPressPosition, onPressClos
               <Text style={[styles.statValue, { color: realizedColor }]}>
                 {realizedSign}{response.realizedPnlPct.toFixed(2)}%
               </Text>
+              {response.realizedPnlSol != null && (
+                <Text style={styles.statSub}>
+                  {response.realizedPnlSol >= 0 ? '+' : ''}{response.realizedPnlSol.toFixed(4)} SOL
+                </Text>
+              )}
             </View>
             <View style={styles.statDivider} />
             <View style={styles.statCol}>

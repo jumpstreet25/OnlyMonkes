@@ -25,6 +25,7 @@ import { useGroupChat } from "@/hooks/useGroupChat";
 import { MessageBubble } from "@/components/MessageBubble";
 import { triggerProfileRebroadcast } from "@/hooks/useXmtp";
 import AutonoMonkeDisclaimerModal, { type AutonomyFeature } from "@/components/AutonoMonkeDisclaimerModal";
+import AutonoMonkeSetupWizard from "@/components/AutonoMonkeSetupWizard";
 import { getXmtpClient } from "@/hooks/useXmtp";
 import { sendDmMessage } from "@/lib/xmtp";
 import { THEME, FONTS, getWorldBarTint, getWorldAccent } from "@/lib/constants";
@@ -481,8 +482,15 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
 
       <View style={{ height: insets.bottom }} />
 
-      {/* Autonomy disclaimer modal (only for channels with autonomy features) */}
-      {hasAutonomy && (
+      {/* Autonomy entry — trades channel uses the new wizard, others still
+          use the legacy single-screen disclaimer + DM enrollment flow. */}
+      {hasAutonomy && channelId === "trades" && (
+        <AutonoMonkeSetupWizard
+          visible={showAutonoMonkeModal}
+          onClose={() => setShowAutonoMonkeModal(false)}
+        />
+      )}
+      {hasAutonomy && channelId !== "trades" && (
         <AutonoMonkeDisclaimerModal
           visible={showAutonoMonkeModal}
           onClose={() => setShowAutonoMonkeModal(false)}
