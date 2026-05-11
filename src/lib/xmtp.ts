@@ -889,6 +889,9 @@ export interface ParsedPortfolioResponse {
   walletAddress: string;
   walletBalanceSOL: number | null;
   realizedPnlPct: number;
+  /** Absolute SOL realized across closed positions. Older bot builds omit this
+   *  — render fallback to "" so display gracefully degrades. */
+  realizedPnlSol: number | null;
   unrealizedPnlSol: number;
   totalTrades: number;
   closedCount: number;
@@ -992,6 +995,7 @@ export function parsePortfolioResponse(raw: string): ParsedPortfolioResponse | n
     walletAddress: walletAddress.slice(0, 80),
     walletBalanceSOL: numOrNull(data.walletBalanceSOL),
     realizedPnlPct: numOrNull(data.realizedPnlPct) ?? 0,
+    realizedPnlSol: numOrNull(data.realizedPnlSol),
     unrealizedPnlSol: numOrNull(data.unrealizedPnlSol) ?? 0,
     totalTrades: numOrNull(data.totalTrades) ?? 0,
     closedCount: numOrNull(data.closedCount) ?? 0,
