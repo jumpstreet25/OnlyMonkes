@@ -153,6 +153,17 @@ export function PortfolioResponseBubble({ response, onPressPosition, onPressClos
                 const isUp = pos.pnlPct >= 0;
                 const accent = isUp ? THEME.gold : THEME.error;
                 const sign = isUp ? '+' : '';
+                // Partial-sell-aware breakdown. If the bot supplied
+                // realizedSolFromSells (post-2026-05-14 bot build), render
+                // a 3-line Holding / Realized / Net breakdown that reflects
+                // the position's actual remaining exposure. Older payloads
+                // fall back to the prior single-line "entry SOL · duration"
+                // display.
+                const realized = pos.realizedSolFromSells ?? 0;
+                const remainingCost = pos.remainingCostBasisSol ?? pos.entrySolAmount;
+                const netSol = realized + pos.currentSolValue - pos.entrySolAmount;
+                const netUp = netSol >= 0;
+                const hasPartialData = pos.realizedSolFromSells != null;
                 return (
                   <Pressable
                     key={pos.positionId}
@@ -160,7 +171,14 @@ export function PortfolioResponseBubble({ response, onPressPosition, onPressClos
                     style={({ pressed }) => [styles.posRow, pressed && { opacity: 0.7 }]}
                   >
                     <View style={styles.posTopRow}>
-                      <Text style={styles.posToken}>${pos.token.toUpperCase()}</Text>
+                      <View style={styles.posTokenRow}>
+                        <Text style={styles.posToken}>${pos.token.toUpperCase()}</Text>
+                        {pos.houseMoney && (
+                          <View style={styles.houseMoneyChip}>
+                            <Text style={styles.houseMoneyText}>🟢 HOUSE MONEY</Text>
+                          </View>
+                        )}
+                      </View>
                       <View style={[styles.pnlChip, { backgroundColor: accent + '22', borderColor: accent + '55' }]}>
                         <Text style={[styles.pnlChipText, { color: accent }]}>
                           {sign}{pos.pnlPct.toFixed(2)}%
@@ -170,11 +188,38 @@ export function PortfolioResponseBubble({ response, onPressPosition, onPressClos
                     <View style={styles.posChart}>
                       <Sparkline closes={pos.sparkline} width={260} height={32} colorOverride={accent} />
                     </View>
-                    <View style={styles.posMetaRow}>
-                      <Text style={styles.posMeta}>{pos.entrySolAmount.toFixed(3)} SOL</Text>
-                      <Text style={styles.posMetaSep}>·</Text>
-                      <Text style={styles.posMeta}>{formatDuration(pos.durationMs)}</Text>
-                    </View>
+                    {hasPartialData && (realized > 0 || (pos.fractionRemaining ?? 1) < 1) ? (
+                      <View style={styles.posBreakdown}>
+                        <View style={styles.posBreakdownRow}>
+                          <Text style={styles.posBreakdownLabel}>Holding</Text>
+                          <Text style={styles.posBreakdownValue}>
+                            {pos.currentSolValue.toFixed(4)} SOL
+                            {pos.fractionRemaining != null && (
+                              <Text style={styles.posBreakdownSub}>  ·  {(pos.fractionRemaining * 100).toFixed(0)}% of pos</Text>
+                            )}
+                          </Text>
+                        </View>
+                        <View style={styles.posBreakdownRow}>
+                          <Text style={styles.posBreakdownLabel}>Realized</Text>
+                          <Text style={[styles.posBreakdownValue, { color: THEME.gold }]}>
+                            +{realized.toFixed(4)} SOL
+                            <Text style={styles.posBreakdownSub}>  ·  {((realized / pos.entrySolAmount) * 100).toFixed(0)}% of cost</Text>
+                          </Text>
+                        </View>
+                        <View style={[styles.posBreakdownRow, styles.posBreakdownTotal]}>
+                          <Text style={styles.posBreakdownLabel}>Net</Text>
+                          <Text style={[styles.posBreakdownValue, { color: netUp ? THEME.gold : THEME.error }]}>
+                            {netUp ? '+' : ''}{netSol.toFixed(4)} SOL
+                          </Text>
+                        </View>
+                      </View>
+                    ) : (
+                      <View style={styles.posMetaRow}>
+                        <Text style={styles.posMeta}>{pos.entrySolAmount.toFixed(3)} SOL</Text>
+                        <Text style={styles.posMetaSep}>·</Text>
+                        <Text style={styles.posMeta}>{formatDuration(pos.durationMs)}</Text>
+                      </View>
+                    )}
                     {/* Targets relative to entry — "+12% T1 ✓ · +24% T2 · -8% SL".
                         Shows the user where they are vs the planned exits.
                         Hit targets stay green with a ✓; missed-stop tints red. */}
@@ -275,6 +320,23 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   posTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  posTokenRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  houseMoneyChip: {
+    paddingVertical: 2, paddingHorizontal: 6,
+    borderRadius: 6, borderWidth: 1,
+    backgroundColor: THEME.gold + '22', borderColor: THEME.gold + '66',
+  },
+  houseMoneyText: { fontFamily: FONTS.mono, fontSize: 8, color: THEME.gold, letterSpacing: 0.6 },
+  posBreakdown: {
+    paddingVertical: 6, paddingHorizontal: 4, gap: 2,
+    borderTopWidth: StyleSheet.hairlineWidth, borderColor: THEME.border,
+    marginTop: 2,
+  },
+  posBreakdownRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  posBreakdownTotal: { marginTop: 2, paddingTop: 4, borderTopWidth: StyleSheet.hairlineWidth, borderColor: THEME.border + '88' },
+  posBreakdownLabel: { fontFamily: FONTS.mono, fontSize: 10, color: THEME.textMuted, letterSpacing: 0.4 },
+  posBreakdownValue: { fontFamily: FONTS.mono, fontSize: 11, color: THEME.text },
+  posBreakdownSub: { fontFamily: FONTS.mono, fontSize: 9, color: THEME.textMuted },
   posToken: { fontFamily: FONTS.display, fontSize: 14, color: THEME.text, letterSpacing: 0.3 },
   pnlChip: {
     paddingVertical: 2, paddingHorizontal: 8,
