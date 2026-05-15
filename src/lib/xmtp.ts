@@ -355,7 +355,7 @@ function decodeStringMessage(raw: any, rawContent: string, myInboxId: string): C
     "NFT_LIST:", "NFT_BID:", "NFT_ACCEPT:", "NFT_DELIST:", "NFT_OFFER:",
     "NFT_SWAP:", "NFT_COMPLETE:", "AUTOMONKE_STATUS:", "TRADE_CLOSED:",
     "TRADE_OPENED:", "PORTFOLIO_CARD:", "PORTFOLIO_RESPONSE:", "RSVP:", "READ:",
-    "BANANA_GRANT:",
+    "BANANA_GRANT:", "HEALTH:",
   ];
   for (const p of STRUCTURED_PREFIXES) {
     if (rawContent.startsWith(p) || innerPreview.startsWith(p)) return null;
@@ -853,10 +853,23 @@ export interface ParsedPortfolioPosition {
   mint: string;
   entryPriceUsd: number;
   currentPriceUsd: number;
+  /** Original cost basis (full SOL spent at entry). */
   entrySolAmount: number;
+  /** Cost-basis of tokens still held after any partial sells. Sub-field of
+   *  the bot's position-aware /portfolio payload (2026-05-14). Older bot
+   *  builds omit this — app falls back to entrySolAmount when null. */
+  remainingCostBasisSol?: number | null;
+  /** Current SOL value of tokens still held. */
   currentSolValue: number;
   pnlPct: number;
+  /** Unrealized SOL P&L on remaining tokens only (not lifetime gain). */
   pnlSol: number;
+  /** Cumulative SOL realized from partial sales on this position. */
+  realizedSolFromSells?: number | null;
+  /** Fraction of original position still held (0-1). */
+  fractionRemaining?: number | null;
+  /** True when realized SOL has covered entry cost ("house money"). */
+  houseMoney?: boolean;
   stopPrice: number;
   target1?: number;
   target2?: number;
@@ -951,7 +964,11 @@ export function parsePortfolioResponse(raw: string): ParsedPortfolioResponse | n
         mint: mint.slice(0, 80),
         entryPriceUsd, currentPriceUsd,
         entrySolAmount, currentSolValue,
+        remainingCostBasisSol: numOrNull(p?.remainingCostBasisSol),
         pnlPct, pnlSol,
+        realizedSolFromSells: numOrNull(p?.realizedSolFromSells),
+        fractionRemaining: numOrNull(p?.fractionRemaining),
+        houseMoney: p?.houseMoney === true,
         stopPrice,
         target1: numOrNull(p?.target1) ?? undefined,
         target2: numOrNull(p?.target2) ?? undefined,
