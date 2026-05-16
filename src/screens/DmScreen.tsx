@@ -1,5 +1,6 @@
 import React, { useRef, useCallback, useState, useEffect, useMemo } from 'react';
-import { View, FlatList, StyleSheet, Text, Pressable, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, Text, Pressable, ActivityIndicator } from 'react-native';
+import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { THEME, FONTS, BOT_INBOX_IDS } from '@/lib/constants';
@@ -39,7 +40,7 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [activeTradeCard, setActiveTradeCard] = useState<ClosedTrade | null>(null);
   const [activeLiveCard, setActiveLiveCard] = useState<PortfolioCard | null>(null);
-  const flatListRef = useRef<FlatList<FeedItem>>(null);
+  const flatListRef = useRef<FlashListRef<FeedItem>>(null);
   useProfileVersion();
   const peerProfile = getCachedProfile(peerInboxId);
   const peerName = peerProfile?.username ?? 'Monke';
@@ -58,7 +59,9 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
     setInputText('');
     setReplyingTo(null);
     await send(text);
-    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 50);
+    // Inverted list — newest sits at the bottom of the screen, which is
+    // offset 0 in the scroll coordinate space.
+    setTimeout(() => flatListRef.current?.scrollToOffset({ offset: 0, animated: true }), 50);
   }, [inputText, send]);
 
   const noop = useCallback(async (_: ReactionEmoji, __: string) => {}, []);
@@ -103,6 +106,10 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
     return [...msgItems, ...closedItems, ...openItems, ...portfolioItems, ...portfolioResponseItems].sort((a, b) => a.ts - b.ts);
   }, [messages, closedTrades, openTrades, portfolioCards, portfolioResponse, isBotDm]);
 
+  // Inverted FlashList wants newest-first: index 0 renders at the bottom of
+  // the screen (where the user lands), older items scroll up off-screen.
+  const feedInverted = useMemo(() => feed.slice().reverse(), [feed]);
+
   return (
     <View style={[styles.container, { paddingTop: insets.top, backgroundColor: themeBg }]}>
       {/* Header */}
@@ -135,9 +142,9 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
           </Pressable>
         </View>
       ) : (
-        <FlatList
+        <FlashList
           ref={flatListRef}
-          data={feed}
+          data={feedInverted}
           keyExtractor={item => item.key}
           renderItem={({ item }) => {
             if (item.kind === 'trade') {
@@ -174,11 +181,8 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
               </>
             );
           }}
-          contentContainerStyle={{ paddingVertical: 8, flexGrow: 1, justifyContent: 'flex-end' }}
-          onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
-          removeClippedSubviews
-          maxToRenderPerBatch={15}
-          windowSize={7}
+          contentContainerStyle={{ paddingVertical: 8 }}
+          inverted
           ListEmptyComponent={
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 60 }}>
               <Text style={{ color: THEME.textDim, fontFamily: FONTS.body, fontSize: 14 }}>

@@ -126,6 +126,20 @@ let _botChannelUnsubs: (() => void)[] = [];
 let _myInboxId = "";
 let _streamAlive = false;
 let _lastStreamEvent = 0; // timestamp of last stream callback
+
+// ── Stream-health counters (read by HEALTH: beacon) ──────────────────────────
+export const _streamHealth = {
+  staleReconnects: 0,        // 90s watchdog tripped (Fix #2)
+  foregroundReconnects: 0,   // initialize() called from AppState/heartbeat
+  historyMergePreserved: 0,  // # of messages preserved across history merges
+  sessionStartedAt: Date.now(),
+  lastStaleAt: 0,
+};
+
+/** Read accessor for the most recent stream event timestamp (HEALTH: beacon). */
+export function _getLastStreamEvent(): number { return _lastStreamEvent; }
+/** Read accessor for the current stream-alive flag (HEALTH: beacon). */
+export function _getStreamAliveFlag(): boolean { return _streamAlive; }
 let _profileBroadcastDone = false;
 let _initRunning = false;
 // Badge minting removed — badges now award bananas via _layout.tsx callback.
@@ -912,19 +926,23 @@ export function useXmtp() {
       recentMessages.sort((a, b) => a.sentAt.getTime() - b.sentAt.getTime());
 
       if (recentMessages.length > 0) {
-        // Merge with existing messages (cached + stream) instead of replacing.
-        // This prevents older messages from disappearing when history only
-        // covers last 24h / 50 messages.
-        // Replace messages entirely with history (authoritative source)
-        // but preserve any optimistic messages that haven't been confirmed yet
+        // Union-merge with everything already in the store. The store on entry
+        // may contain (a) cached messages loaded at line 673 — including media/
+        // links older than the 24h history window, (b) messages that arrived
+        // via the live stream between cache-load and now, and (c) optimistic
+        // bubbles awaiting confirmation. All three were being silently dropped
+        // by the old replace-with-merge logic, which is the "messages lost on
+        // reopen" bug. Preserve everything not present in the history batch,
+        // then drop in the freshly-decoded history (which carries reactions /
+        // edits applied above) as the authoritative copy for that window.
         const existing = useChatStore.getState().messages;
         const historyIds = new Set(recentMessages.map(m => m.id));
-        // Keep optimistic messages (opt-*) that aren't in history yet
-        const pendingOptimistic = existing.filter(m =>
-          m.id.startsWith("opt-") && m.status !== "sent"
-        );
-        const merged = [...recentMessages, ...pendingOptimistic];
+        const preserved = existing.filter(m => !historyIds.has(m.id));
+        let merged = [...preserved, ...recentMessages];
         merged.sort((a, b) => a.sentAt.getTime() - b.sentAt.getTime());
+        // Cap at 300 to mirror chatStore.mergeMessage's cap and keep memory
+        // bounded on 8GB devices — newest 300 wins.
+        if (merged.length > 300) merged = merged.slice(merged.length - 300);
         setMessages(merged);
       }
       // If network returned 0 visible messages, keep the cached set already
@@ -1973,15 +1991,39 @@ export function useXmtp() {
     }
   }, []);
 
+  // ── Lightweight stream liveness check (call from in-foreground heartbeat) ──
+  // Cheap: just date math + a possible throw. Does NOT sync the main group or
+  // fetch any bot-channel history — that's `syncMessages` below. The heartbeat
+  // calls this every minute, so it MUST stay non-blocking to keep scroll smooth.
+  const checkStreamLiveness = useCallback(() => {
+    if (!_group) return;
+    const STREAM_STALE_MS = 90_000;
+    if (_lastStreamEvent > 0 && Date.now() - _lastStreamEvent > STREAM_STALE_MS) {
+      if (__DEV__) console.warn("[XMTP] Stream appears dead (no events in 90s) — forcing reconnect");
+      _streamAlive = false;
+      _streamHealth.staleReconnects++;
+      _streamHealth.lastStaleAt = Date.now();
+      throw new Error("Stream stale — reconnect needed");
+    }
+  }, []);
+
   // ── Sync recent messages (call when app returns to foreground) ────────────
   const syncMessages = useCallback(async () => {
     if (!_group) return;
 
-    // Stream liveness check: if no stream event in 90s, the stream is dead.
-    // Force a full re-initialize to restart it (throws to trigger reconnect).
+    // Stream liveness check: if no stream event in 90s, treat the stream as
+    // dead and force a full re-initialize. The `_streamAlive` flag is not a
+    // reliable signal on its own — on Android the SDK never fires our unsub
+    // when the OS suspends the WebSocket, so the flag stays `true` while
+    // messages silently stop arriving. The 90s no-events window is the actual
+    // liveness signal; the alive flag is only used as a fast-path bypass when
+    // we've already torn the stream down ourselves.
     const STREAM_STALE_MS = 90_000;
-    if (_lastStreamEvent > 0 && Date.now() - _lastStreamEvent > STREAM_STALE_MS && !_streamAlive) {
+    if (_lastStreamEvent > 0 && Date.now() - _lastStreamEvent > STREAM_STALE_MS) {
       if (__DEV__) console.warn("[XMTP] Stream appears dead (no events in 90s) — forcing reconnect");
+      _streamAlive = false;
+      _streamHealth.staleReconnects++;
+      _streamHealth.lastStaleAt = Date.now();
       throw new Error("Stream stale — reconnect needed");
     }
 
@@ -2214,6 +2256,7 @@ export function useXmtp() {
     broadcastVideoRoom,
     broadcastAvatarRoom,
     syncMessages,
+    checkStreamLiveness,
     loadOlderMessages,
   };
 }

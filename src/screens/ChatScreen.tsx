@@ -41,7 +41,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAppStore } from "@/store/appStore";
 import { useChatStore } from "@/store/chatStore";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useXmtp, triggerProfileRebroadcast } from "@/hooks/useXmtp";
+import { useXmtp, triggerProfileRebroadcast, _streamHealth, getXmtpClient } from "@/hooks/useXmtp";
+import { startHealthBeacon, stopHealthBeacon } from "@/lib/healthBeacon";
+import { BOT_INBOX_IDS } from "@/lib/constants";
 import { useAbortableFetch } from "@/hooks/useAbortableFetch";
 import { playSound } from "@/lib/sounds";
 import { useNetInfo } from "@react-native-community/netinfo";
@@ -174,7 +176,7 @@ export default function ChatScreen() {
   const isLoadingHistory = useChatStore(s => s.isLoadingHistory);
   const setReplyingTo    = useChatStore(s => s.setReplyingTo);
   const typingUsers      = useChatStore(s => s.typingUsers);
-  const { initialize, disconnect, logout, streamAlive, send, reply, react, edit, deleteMessage, stickerReact, sendFile, sendTyping, forceAdminInit, broadcastProfile, broadcastEvent, broadcastVideoRoom, broadcastAvatarRoom, syncMessages, loadOlderMessages } = useXmtp();
+  const { initialize, disconnect, logout, streamAlive, send, reply, react, edit, deleteMessage, stickerReact, sendFile, sendTyping, forceAdminInit, broadcastProfile, broadcastEvent, broadcastVideoRoom, broadcastAvatarRoom, syncMessages, checkStreamLiveness, loadOlderMessages } = useXmtp();
   const [inputText, setInputTextRaw] = useState("");
   // Draft auto-save — persist input text so it survives navigation/restart
   const _draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -226,6 +228,11 @@ export default function ChatScreen() {
   const flatListRef = useRef<FlashListRef<ChatMessage>>(null);
   const initialMsgIdsRef = useRef<Set<string>>(new Set());
   const isNearBottomRef = useRef(true);
+  // Synchronous double-tap guard for the send button. The React `isSending`
+  // state is async — a fast tap-tap on Seeker can fire two onPress events
+  // before the state commit, both passing the canSend gate. This ref blocks
+  // re-entry within the same JS task.
+  const sendingRef = useRef(false);
 
   const handleDownloadVideo = async (uri: string) => {
     const ML = await getMediaLibrary();
@@ -361,9 +368,14 @@ export default function ChatScreen() {
       const wasBgFor = backgroundedAt ? Date.now() - backgroundedAt : 0;
       backgroundedAt = 0;
       try {
-        if (wasBgFor > 30_000 || !streamAlive()) await initialize();
-        else await syncMessages();
+        if (wasBgFor > 30_000 || !streamAlive()) {
+          _streamHealth.foregroundReconnects++;
+          await initialize();
+        } else {
+          await syncMessages();
+        }
       } catch {
+        _streamHealth.foregroundReconnects++;
         initialize().catch(() => {});
       }
 
@@ -387,6 +399,50 @@ export default function ChatScreen() {
     const sub = AppState.addEventListener('change', handleAppState);
     return () => sub.remove();
   }, []);
+
+  // ─── In-foreground stream liveness heartbeat ────────────────────────────────
+  // The AppState handler above only fires on background/foreground transitions.
+  // While the screen is mounted and the app stays active, the XMTP WebSocket
+  // can still die silently (Android doze, WiFi blips, server-side disconnects)
+  // and the SDK doesn't notify us. We need to periodically verify liveness.
+  //
+  // IMPORTANT: this must be CHEAP — `syncMessages()` was too heavy (it also
+  // re-syncs all 4 bot channels and refetches 100 msgs each, blocking the JS
+  // thread and causing glitchy scroll). `checkStreamLiveness()` is just the
+  // 90s window check; throws iff the stream is actually dead. Full re-sync
+  // (`syncMessages`) only runs on AppState foreground transitions, where the
+  // user is already paused.
+  useEffect(() => {
+    if (!isGroupMember) return;
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const tick = () => {
+      if (AppState.currentState !== 'active') return;
+      try {
+        checkStreamLiveness();
+      } catch {
+        _streamHealth.foregroundReconnects++;
+        initialize().catch(() => {});
+      }
+    };
+    timer = setInterval(tick, 60_000);
+    return () => { if (timer) clearInterval(timer); };
+  }, [isGroupMember, checkStreamLiveness, initialize]);
+
+  // ─── HEALTH: beacon → bot/Hermes (Fix #4) ────────────────────────────────────
+  // Emits a structured DM to the bot every ~10min carrying stream-health
+  // counters. The bot persists these to ~/.hermes_memory/client_health.json
+  // so Hermes/Monke can flag patterns (high stale_reconnects, missing beacons,
+  // etc.) without us needing to ship Grafana/Prometheus. See healthBeacon.ts.
+  useEffect(() => {
+    if (!isGroupMember) return;
+    const botInboxId = BOT_INBOX_IDS[0];
+    startHealthBeacon({
+      getClient: () => getXmtpClient(),
+      botInboxId,
+      getMessageCount: () => useChatStore.getState().messages.length,
+    });
+    return () => stopHealthBeacon();
+  }, [isGroupMember]);
 
   // ─── Auto-retry until approved ───────────────────────────────────────────────
   useEffect(() => {
@@ -510,6 +566,17 @@ export default function ChatScreen() {
 
   // ─── Send ────────────────────────────────────────────────────────────────────
   const handleSend = useCallback(async () => {
+    // Synchronous re-entry guard — catches Seeker double-taps that race
+    // ahead of the `isSending` state commit and would otherwise send twice.
+    if (sendingRef.current) return;
+    sendingRef.current = true;
+    try {
+      await runSend();
+    } finally {
+      sendingRef.current = false;
+    }
+
+    async function runSend() {
     const text = inputText.trim();
     if (!text) return;
 
@@ -665,6 +732,7 @@ export default function ChatScreen() {
       }
     } finally {
       setIsSending(false);
+    }
     }
   }, [inputText, myAddress, username, verifiedNft, replyingTo, send, reply, setReplyingTo]);
 
