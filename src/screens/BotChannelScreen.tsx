@@ -11,13 +11,12 @@ import {
   View,
   Text,
   StyleSheet,
-  FlatList,
   Pressable,
   ActivityIndicator,
   Image,
   ImageBackground,
-  ListRenderItem,
 } from "react-native";
+import { FlashList, type FlashListRef, type ListRenderItem } from "@shopify/flash-list";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { useAppStore } from "@/store/appStore";
@@ -106,9 +105,16 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
   const config = CHANNEL_CONFIG[channelId];
   const [showAutonoMonkeModal, setShowAutonoMonkeModal] = useState(false);
   const [autonomyEnrolled, setAutonomyEnrolled] = useState(false);
+  // Per-user Limit Orders opt-in (T1/T2 as on-chain resting Jupiter orders).
+  // Only shown when channelId === "trades" AND user is already AutonoMonke-
+  // enrolled (Limit Orders are meaningless without it). Persisted to
+  // AsyncStorage so the pill reflects the right state on reopen without
+  // round-tripping the bot.
+  const [limitOrdersEnabled, setLimitOrdersEnabled] = useState(false);
   const [showAllOverride, setShowAllOverride] = useState(false);
   const [openDropdown, setOpenDropdown] = useState<"sports" | "sources" | null>(null);
   const hasAutonomy = channelId in AUTONOMY_CONFIG;
+  const LIMIT_ORDERS_STORAGE_KEY = "autonomonke_limit_orders_v1";
 
   const themeBg = useThemeColor('bg');
   const themeSurface = useThemeColor('surface');
@@ -137,6 +143,41 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
     }
   }, [channelId]);
 
+  // Limit Orders opt-in flag — only relevant on the trades channel.
+  useEffect(() => {
+    if (channelId !== "trades") return;
+    AsyncStorage.getItem(LIMIT_ORDERS_STORAGE_KEY).then(v => {
+      if (v === "1") setLimitOrdersEnabled(true);
+    }).catch(() => {});
+  }, [channelId]);
+
+  // Toggle handler — sends the DM command + optimistically flips the local
+  // state. Bot DMs back confirmation; if AutonoMonke isn't enrolled the bot
+  // rejects and the user sees the rejection DM. We don't roll back the
+  // local flag on rejection — the pill state matches what the user asked
+  // for, and the bot's reply is the authoritative source.
+  const handleLimitOrdersToggle = useCallback(async () => {
+    if (!autonomyEnrolled) {
+      // No point toggling Limits if AutonoMonke isn't on — open the
+      // enrollment modal instead.
+      setShowAutonoMonkeModal(true);
+      return;
+    }
+    const next = !limitOrdersEnabled;
+    setLimitOrdersEnabled(next);
+    AsyncStorage.setItem(LIMIT_ORDERS_STORAGE_KEY, next ? "1" : "0").catch(() => {});
+    try {
+      const client = getXmtpClient();
+      if (!client) return;
+      const dm = await (client.conversations as any).findOrCreateDm(BOT_INBOX_ID);
+      if (dm) {
+        await sendDmMessage(dm, `/autonomonke limits ${next ? "on" : "off"}`, username);
+      }
+    } catch (err) {
+      if (__DEV__) console.warn("[Autonomy:trades] limits toggle DM failed:", (err as Error).message);
+    }
+  }, [autonomyEnrolled, limitOrdersEnabled, username]);
+
   const {
     messages,
     isLoading,
@@ -163,7 +204,7 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
     }
   }, [channelId, messages.length]);
 
-  const flatListRef = useRef<FlatList>(null);
+  const flatListRef = useRef<FlashListRef<ChatMessage>>(null);
   const myAddress = myInboxId ?? "";
 
   // Autonomy enrollment handler — works for trades, bets, predictions
@@ -286,6 +327,25 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
         <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={8}>
           <Text style={styles.backIcon}>{"\u2039"}</Text>
         </Pressable>
+
+        {/* Left-side Limit Orders pill \u2014 mirrors the AutonoMonke pill on the
+            right. Only on the trades channel; AutonoMonke-specific feature.
+            Tap when not enrolled opens the AutonoMonke modal (handler
+            short-circuits via setShowAutonoMonkeModal). */}
+        {channelId === "trades" && hasAutonomy && (
+          <Pressable
+            onPress={handleLimitOrdersToggle}
+            style={[styles.limitOrdersBtn, limitOrdersEnabled && styles.limitOrdersBtnActive]}
+            hitSlop={8}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+              {limitOrdersEnabled && <View style={styles.blueCheck}><Text style={styles.blueCheckText}>{"\u2713"}</Text></View>}
+              <Text style={[styles.limitOrdersBtnText, limitOrdersEnabled && styles.limitOrdersBtnTextActive]}>
+                Limit Orders
+              </Text>
+            </View>
+          </Pressable>
+        )}
 
         {/* Center: banner image — matches Main Chat header layout */}
         <ImageBackground
@@ -465,17 +525,16 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
             </View>
           )}
 
-          {/* Messages */}
-          <FlatList
+          {/* Messages — FlashList for cell recycling (3-5x fewer frame drops
+              vs. FlatList on long bot-alert histories). Mirrors the migration
+              done in ChatScreen. `inverted` keeps newest at the bottom. */}
+          <FlashList
             ref={flatListRef}
             data={filteredMessages}
             renderItem={renderMessage}
             keyExtractor={keyExtractor}
             contentContainerStyle={styles.listContent}
             inverted
-            removeClippedSubviews
-            maxToRenderPerBatch={20}
-            windowSize={10}
           />
         </>
       )}
@@ -763,6 +822,29 @@ const styles = StyleSheet.create({
   },
   autonomyBtnTextActive: {
     color: "#C4B5FD",
+  },
+  // Limit Orders pill — left-side counterpart to autonomyBtn.
+  // Distinct tint (cyan/teal) so it's visually distinguishable from the
+  // AutonoMonke pill even though the layout/sizing is identical.
+  limitOrdersBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    backgroundColor: "rgba(20, 184, 166, 0.15)",
+    minWidth: 44,
+    alignItems: "center",
+    marginLeft: 4,
+  },
+  limitOrdersBtnActive: {
+    backgroundColor: "rgba(20, 184, 166, 0.3)",
+  },
+  limitOrdersBtnText: {
+    fontFamily: FONTS.bodyMed,
+    fontSize: 10,
+    color: "#5EEAD4",
+  },
+  limitOrdersBtnTextActive: {
+    color: "#99F6E4",
   },
   blueCheck: {
     width: 14,
