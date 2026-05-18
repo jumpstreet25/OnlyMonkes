@@ -935,15 +935,39 @@ export function useXmtp() {
         // reopen" bug. Preserve everything not present in the history batch,
         // then drop in the freshly-decoded history (which carries reactions /
         // edits applied above) as the authoritative copy for that window.
+        //
+        // BUT: optimistic (opt-*) bubbles created by THIS device for own
+        // messages will NOT match the real on-chain ID — different IDs, same
+        // content. The filter below explicitly drops opt-* bubbles when a
+        // matching real message exists in recentMessages (same sender +
+        // same content + sentAt within 30s, wider than mergeMessage's 3s
+        // because the cached opt-* can be reloaded much later than the
+        // network roundtrip). Fixes the "own message duplicated after
+        // reopen" bug — 2026-05-18.
         const existing = useChatStore.getState().messages;
         const historyIds = new Set(recentMessages.map(m => m.id));
-        const preserved = existing.filter(m => !historyIds.has(m.id));
+        const preserved = existing.filter(m => {
+          if (historyIds.has(m.id)) return false;
+          if (m.id.startsWith('opt-')) {
+            const realMatch = recentMessages.find(real =>
+              real.senderAddress === m.senderAddress &&
+              real.content === m.content &&
+              Math.abs(real.sentAt.getTime() - m.sentAt.getTime()) < 30_000
+            );
+            if (realMatch) return false;
+          }
+          return true;
+        });
         let merged = [...preserved, ...recentMessages];
         merged.sort((a, b) => a.sentAt.getTime() - b.sentAt.getTime());
         // Cap at 300 to mirror chatStore.mergeMessage's cap and keep memory
         // bounded on 8GB devices — newest 300 wins.
         if (merged.length > 300) merged = merged.slice(merged.length - 300);
         setMessages(merged);
+        // Persist the deduped set back to disk so future cold starts don't
+        // re-resurrect the opt-* that already merged with the real ID. Skips
+        // the optimistic ghost forever after the first reopen.
+        saveCachedMessages("main_chat", merged).catch(() => {});
       }
       // If network returned 0 visible messages, keep the cached set already
       // loaded at line 553 — don't overwrite with empty array.
