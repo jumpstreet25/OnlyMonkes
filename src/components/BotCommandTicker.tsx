@@ -22,66 +22,92 @@ interface Command {
   desc: string;
 }
 
+// Main chat commands — what the bot accepts in the OnlyMonkes group. DM-only
+// commands (portfolio, hermes, automonke, etc.) live in DM_COMMANDS below.
 const CHAT_COMMANDS: Command[] = [
+  // Market intel
   { cmd: "/price $TOKEN", desc: "Live price" },
   { cmd: "/ta $TOKEN", desc: "Technical analysis" },
   { cmd: "/hottest", desc: "Top 10 by score" },
   { cmd: "/coldest", desc: "Contrarian watch" },
-  { cmd: "/watchlist", desc: "Tracked tokens" },
-  { cmd: "/alerts", desc: "Recent signals" },
+  { cmd: "/alerts", desc: "Recent TA signals" },
   { cmd: "/sports", desc: "Betting edges" },
-  { cmd: "/tip @User", desc: "Tip $SKR" },
+  // Watchlist
+  { cmd: "/watchlist", desc: "Group watchlist" },
+  { cmd: "/watch $TOKEN", desc: "Add to your watchlist" },
+  { cmd: "/unwatch $TOKEN", desc: "Remove from watchlist" },
+  { cmd: "/mywatchlist", desc: "Your watchlist" },
+  // Trading (group emits Jupiter URL)
   { cmd: "/buy $TOKEN", desc: "Buy via Jupiter" },
   { cmd: "/sell $TOKEN", desc: "Sell via Jupiter" },
   { cmd: "/swap $A for $B", desc: "Swap tokens" },
-  { cmd: "@AI Agent #9385", desc: "Ask the bot anything" },
-  { cmd: "APPROVE", desc: "Confirm trade" },
-  { cmd: "REJECT", desc: "Cancel trade" },
-  { cmd: "CONFIRM $TOKEN", desc: "Track position" },
+  { cmd: "/tip @User", desc: "Tip $SKR" },
+  // Meta
+  { cmd: "/identity", desc: "Bot reputation" },
+  { cmd: "/globe", desc: "Open the Monke Globe" },
   { cmd: "/help", desc: "All commands" },
+  // Conversational
+  { cmd: "@AI Agent #9385", desc: "Ask the bot anything" },
+  { cmd: "APPROVE", desc: "Confirm pending trade" },
+  { cmd: "REJECT", desc: "Cancel pending trade" },
 ];
 
+// DM-only commands — bot DM thread. Includes trading-engine controls,
+// per-user risk settings, Hermes memory queries, and reports. /buy /sell
+// /swap execute via the user's hot wallet in DM (vs. emitting a URL in
+// the group).
 const DM_COMMANDS: Command[] = [
   // Quick intel
   { cmd: "/hottest", desc: "Top 10 by score" },
   { cmd: "/coldest", desc: "Contrarian watch" },
+  { cmd: "/price $TOKEN", desc: "Live price" },
+  { cmd: "/ta $TOKEN", desc: "Full TA analysis" },
   { cmd: "/whale $TOKEN", desc: "Whale activity" },
   { cmd: "/chart $TOKEN", desc: "TA chart image" },
   { cmd: "/compare $A $B", desc: "Side-by-side TA" },
-  // Trading
-  { cmd: "/price $TOKEN", desc: "Live price" },
-  { cmd: "/ta $TOKEN", desc: "Full TA analysis" },
-  { cmd: "/buy $TOKEN", desc: "Buy via Jupiter" },
-  { cmd: "/sell $TOKEN", desc: "Sell via Jupiter" },
+  { cmd: "/backtest $TOKEN", desc: "Historical signals" },
+  // Trading (DM executes via hot wallet, 3% on gains)
+  { cmd: "/buy $TOKEN", desc: "Buy (bot executes)" },
+  { cmd: "/sell $TOKEN", desc: "Sell (bot executes)" },
+  { cmd: "/swap $A for $B", desc: "Swap (bot executes)" },
+  { cmd: "/limit", desc: "Place a limit order" },
+  { cmd: "/dca", desc: "Jupiter DCA setup" },
+  // Portfolio & positions
   { cmd: "/portfolio", desc: "PNL + Hermes analysis" },
   { cmd: "/positions", desc: "Open trades" },
-  { cmd: "/backtest $TOKEN", desc: "Historical signals" },
-  // Hermes
-  { cmd: "/hermes stats", desc: "Your trading stats" },
-  { cmd: "/hermes best", desc: "Your best tokens" },
-  { cmd: "/hermes worst", desc: "Your worst tokens" },
-  { cmd: "/hermes achievements", desc: "Badges & streaks" },
+  // Reports (new 2026-05-20)
+  { cmd: "/ratchet-report", desc: "Closed-trade outcomes since ratchet" },
+  { cmd: "/smart-wallet-report", desc: "Per-wallet smart-money PnL" },
   // AutonoMonke
-  { cmd: "/automonke", desc: "Trading status" },
+  { cmd: "/automonke", desc: "Auto-trading status" },
   { cmd: "/automonke start", desc: "Enable auto-trading" },
   { cmd: "/automonke stop", desc: "Pause auto-trading" },
   { cmd: "/automonke positions", desc: "Auto positions" },
   { cmd: "/automonke fund", desc: "Deposit address" },
   { cmd: "/automonke withdraw", desc: "Close all & withdraw" },
+  { cmd: "/automonke limits", desc: "Toggle Limit Orders" },
   // Risk management
   { cmd: "/risk", desc: "View risk settings" },
   { cmd: "/risk size 5", desc: "Position size %" },
   { cmd: "/risk stop 8", desc: "Stop-loss %" },
   { cmd: "/risk conviction 60", desc: "Min score to alert" },
   { cmd: "/risk blacklist $TOKEN", desc: "Block token" },
+  // Hermes memory
+  { cmd: "/hermes stats", desc: "Your trading stats" },
+  { cmd: "/hermes best", desc: "Your best tokens" },
+  { cmd: "/hermes worst", desc: "Your worst tokens" },
+  { cmd: "/hermes achievements", desc: "Badges & streaks" },
   // Predictions & Bets
   { cmd: "/predictions", desc: "Drift predictions" },
   { cmd: "/bets", desc: "Sports betting" },
-  // General
+  // Recovery & meta
+  { cmd: "/reclaim", desc: "Restore profile on a new device" },
+  { cmd: "/myid", desc: "Your XMTP inbox ID" },
+  { cmd: "/help", desc: "All commands" },
+  // Conversational
   { cmd: "Ask anything", desc: "Chat with Monke" },
   { cmd: "APPROVE", desc: "Confirm pending trade" },
   { cmd: "REJECT", desc: "Cancel pending trade" },
-  { cmd: "/help", desc: "All commands" },
 ];
 
 function buildTickerNodes(commands: Command[], keyPrefix: string): React.ReactNode[] {
