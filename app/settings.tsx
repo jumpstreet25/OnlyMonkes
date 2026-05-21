@@ -4,6 +4,7 @@ import { router } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { THEME, FONTS } from "@/lib/constants";
 import { useAppStore } from "@/store/appStore";
+import { getActiveThreats, getThreatSeverity } from "@/lib/security";
 
 export default function SettingsScreen() {
   const {
@@ -88,6 +89,10 @@ export default function SettingsScreen() {
           <Text style={styles.actionDesc}>Clears profile and geocode caches</Text>
         </Pressable>
 
+        {/* Device Security */}
+        <Text style={[styles.sectionTitle, { marginTop: 24 }]}>Device Security</Text>
+        <SecurityPanel />
+
         {/* Links */}
         <Text style={[styles.sectionTitle, { marginTop: 24 }]}>Info</Text>
         <Pressable style={styles.actionRow} onPress={() => router.push("/about" as any)}>
@@ -95,6 +100,60 @@ export default function SettingsScreen() {
           <Text style={styles.actionDesc}>Version, links, credits, legal docs</Text>
         </Pressable>
       </ScrollView>
+    </View>
+  );
+}
+
+const THREAT_LABELS: Record<string, string> = {
+  privilegedAccess: "Root / jailbreak detected",
+  hooks: "Code-hooking framework detected (Frida / Xposed)",
+  appIntegrity: "App tampered or repackaged",
+  deviceBinding: "Device fingerprint changed",
+  raspNotConfigured: "Tamper detection not configured",
+  simulator: "Running on emulator",
+  debug: "Debugger attached",
+  unofficialStore: "Sideloaded from unknown source",
+  adbEnabled: "ADB debugging enabled",
+  passcode: "No screen lock set",
+  devMode: "Developer mode enabled",
+};
+
+function SecurityPanel() {
+  const threats = getActiveThreats();
+  if (threats.length === 0) {
+    return (
+      <View style={styles.actionRow}>
+        <Text style={[styles.actionText, { color: "#22c55e" }]}>✓ Device verified</Text>
+        <Text style={styles.actionDesc}>No security threats detected. Trading is enabled.</Text>
+      </View>
+    );
+  }
+  const hard = threats.filter((t) => getThreatSeverity(t) === "hard");
+  const soft = threats.filter((t) => getThreatSeverity(t) === "soft");
+  return (
+    <View style={styles.actionRow}>
+      <Text style={[styles.actionText, { color: hard.length > 0 ? "#ef4444" : "#f59e0b" }]}>
+        {hard.length > 0 ? "⚠ Trading blocked" : "ℹ Security notice"}
+      </Text>
+      <Text style={styles.actionDesc}>
+        {hard.length > 0
+          ? "Hard threats detected — transactions and identity signing are disabled until resolved."
+          : "Soft warnings detected — trading still allowed."}
+      </Text>
+      {threats.map((t) => (
+        <Text
+          key={t}
+          style={[
+            styles.actionDesc,
+            {
+              marginTop: 4,
+              color: getThreatSeverity(t) === "hard" ? "#ef4444" : THEME.textMuted,
+            },
+          ]}
+        >
+          • {THREAT_LABELS[t] ?? t}
+        </Text>
+      ))}
     </View>
   );
 }

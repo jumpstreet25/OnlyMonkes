@@ -21,6 +21,7 @@ import { Linking } from "react-native";
 import { useAppStore } from "@/store/appStore";
 import { bindXmtpToWallet } from "@/lib/xmtp";
 import { rehydrateForWallet } from "@/lib/walletIdentity";
+import { assertDeviceTrusted } from "@/lib/security";
 import type { WalletAccount } from "@/types";
 
 const APP_IDENTITY = {
@@ -110,6 +111,10 @@ export function useMobileWallet() {
       if (!wallet || !authToken) {
         throw new Error("Wallet not connected");
       }
+
+      // Blocks XMTP key derivation on rooted/hooked/repackaged/cloned devices —
+      // those would let an attacker derive the identity keys and read encrypted DMs.
+      assertDeviceTrusted("Identity sign");
 
       // Use the original base64 address for MWA signMessages (protocol requirement)
       const addressForMwa = rawAddress ?? wallet.address;
