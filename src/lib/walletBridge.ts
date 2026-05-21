@@ -28,6 +28,7 @@ import {
   Web3MobileWallet,
 } from "@solana-mobile/mobile-wallet-adapter-protocol-web3js";
 import { useAppStore } from "@/store/appStore";
+import { assertDeviceTrusted } from "@/lib/security";
 
 const APP_IDENTITY = {
   name: "OnlyMonkes",
@@ -405,6 +406,7 @@ function decodeTxBytes(txB64: string): Transaction | VersionedTransaction {
 }
 
 async function mwaSignTransaction(txB64: string): Promise<string> {
+  assertDeviceTrusted("dApp transaction sign");
   const tx = decodeTxBytes(txB64);
   return await transact(async (mobileWallet) => {
     await mwaAuthorize(mobileWallet);
@@ -423,6 +425,7 @@ async function mwaSignTransaction(txB64: string): Promise<string> {
 }
 
 async function mwaSignAndSend(txB64: string): Promise<string> {
+  assertDeviceTrusted("dApp transaction");
   const tx = decodeTxBytes(txB64);
   const sig = await transact(async (mobileWallet) => {
     await mwaAuthorize(mobileWallet);
@@ -436,6 +439,7 @@ async function mwaSignAndSend(txB64: string): Promise<string> {
 }
 
 async function mwaSignMessage(msgB64: string): Promise<string> {
+  assertDeviceTrusted("dApp message sign");
   const msgBytes = Uint8Array.from(Buffer.from(msgB64, "base64"));
   return await transact(async (mobileWallet) => {
     const auth = await mwaAuthorize(mobileWallet);
