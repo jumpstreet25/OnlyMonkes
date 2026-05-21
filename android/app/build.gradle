@@ -96,8 +96,24 @@ android {
         applicationId 'com.onlymonkes.app'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 37
-        versionName "2.37"
+        versionCode 38
+        versionName "2.38"
+        // English-only — strips non-English resources from native libs (livekit,
+        // xmtp, skia, vision-camera). ~2-5 MB savings depending on dep verbosity.
+        resConfigs "en"
+    }
+    // ABI splits → arm64-v8a only. Every Solana Mobile wallet device (Seeker,
+    // Saga, Phantom-on-Android, Solflare-on-Android) is arm64. The other ABIs
+    // (x86, x86_64, armeabi-v7a) are dead weight — drops APK from ~88MB to
+    // ~55MB. Combined with `reactNativeArchitectures=arm64-v8a` in
+    // gradle.properties (which restricts RN's own native compile).
+    splits {
+        abi {
+            enable true
+            reset()
+            include "arm64-v8a"
+            universalApk false
+        }
     }
     signingConfigs {
         debug {
