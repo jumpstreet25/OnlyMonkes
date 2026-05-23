@@ -216,6 +216,13 @@ const ChatMessageListInner = React.forwardRef<FlashListRef<ChatMessage>, ChatMes
         onRefresh={handleRefreshChat}
         onEndReached={loadOlderMessages}
         onEndReachedThreshold={0.3}
+        // 2026-05-23: explicit drawDistance + maintainVisibleContentPosition
+        // to stabilize FlashList v2 inverted scroll. User reported chat going
+        // 80% blank after ~5 scroll cycles (cells virtualized out but never
+        // remount). Higher drawDistance keeps off-screen cells warm. mVCP
+        // pins the visible item so scroll doesn't jump on insert/recycle.
+        drawDistance={1500}
+        maintainVisibleContentPosition={{ disabled: false, startRenderingFromBottom: true }}
         ListFooterComponent={isLoadingHistory ? (
           <View style={{ paddingVertical: 16, alignItems: 'center' }}>
             <ActivityIndicator color={THEME.accent} size="small" />
