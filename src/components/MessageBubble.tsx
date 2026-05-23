@@ -477,30 +477,24 @@ export const MessageBubble = memo(function MessageBubble({
   //     on a 3.5s loop after the entry settles. Stops + returns to 0
   //     when the bubble is no longer the latest.
   // floatOpacity pairs with the entry slide for a subtle fade-in.
-  const floatY = useSharedValue(isNew ? 12 : 0);
-  const floatOpacity = useSharedValue(isNew ? 0 : 1);
+  // 2026-05-23 DISABLED entry animation. Reanimated 3.19 (bumped from 3.17
+  // in v2.38 APK) appears to leave cells stuck with opacity=0 when FlashList
+  // v2 recycles them mid-animation — user reported chat going 80% blank
+  // permanently after a few scroll cycles, specifically on v2.38 and not
+  // v2.37. Cells start at full opacity, no entry animation. We lose the
+  // float-in visual polish; we gain stability. Restore as a single
+  // commented unit once Reanimated has a v3.20+ fix or we swap recycler.
+  const floatY = useSharedValue(0);
+  const floatOpacity = useSharedValue(1);
 
+  // Aggressively cancel any in-flight float animation on every render so a
+  // stuck-mid-animation shared value can never strand a recycled cell at
+  // opacity=0. Cheap no-op when there's no active animation.
   useEffect(() => {
-    if (isNew) {
-      if (useBananaGroveEntry) {
-        // Drop + bounce — message falls in from above and bounces on
-        // arrival, matching the falling-banana aesthetic of the world.
-        // Easing.bounce applies the bounce at the END of the animation,
-        // so the bubble drops fast then settles with 2-3 small bounces.
-        floatY.value = -22;
-        floatOpacity.value = 0;
-        floatY.value = withTiming(0, { duration: 700, easing: REasing.bounce });
-        floatOpacity.value = withTiming(1, { duration: 220, easing: REasing.out(REasing.quad) });
-      } else {
-        // Universal float-in — Cyberpunk + default chat. Drift up + fade.
-        floatY.value = 12;
-        floatOpacity.value = 0;
-        floatY.value = withTiming(0, { duration: 400, easing: REasing.out(REasing.quad) });
-        floatOpacity.value = withTiming(1, { duration: 400, easing: REasing.out(REasing.quad) });
-      }
-    } else {
-      floatOpacity.value = 1;
-    }
+    cancelAnimation(floatOpacity);
+    cancelAnimation(floatY);
+    floatOpacity.value = 1;
+    floatY.value = 0;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isNew]);
 
