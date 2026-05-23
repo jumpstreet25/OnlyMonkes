@@ -192,28 +192,39 @@ const ChatMessageListInner = React.forwardRef<FlashListRef<ChatMessage>, ChatMes
   );
 
   return (
-    <FlashList
-      ref={flatListRef as any}
-      data={messages}
-      extraData={reactionVersion}
-      renderItem={renderMessage as any}
-      keyExtractor={keyExtractor}
-      getItemType={getItemType as any}
-      contentContainerStyle={styles.listContent}
-      inverted
-      refreshing={refreshingChat}
-      onRefresh={handleRefreshChat}
-      onEndReached={loadOlderMessages}
-      onEndReachedThreshold={0.3}
-      ListFooterComponent={isLoadingHistory ? (
-        <View style={{ paddingVertical: 16, alignItems: 'center' }}>
-          <ActivityIndicator color={THEME.accent} size="small" />
-          <Text style={{ fontFamily: FONTS.mono, fontSize: 10, color: THEME.textFaint, marginTop: 4 }}>Loading older messages…</Text>
-        </View>
-      ) : null}
-      onScroll={handleScroll}
-      scrollEventThrottle={200}
-    />
+    // Wrap in a flex:1 View so FlashList v2 has a constrained parent height
+    // to virtualize against. Without this, FlashList collapses to ~0 height
+    // → chat area shows blank, only the world background visible behind. The
+    // user reported "bottom cut off + blank middle, scroll-up flashes content
+    // then re-blanks" on v2.38, which is the classic FlashList v2 unconstrained-
+    // parent symptom (virtualization briefly materializes recycled cells
+    // during gesture then re-clips to the collapsed window). FlashList v1
+    // (<= 1.x) was forgiving of missing flex; v2 (we're on 2.3.1) hard-
+    // requires a constrained parent.
+    <View style={{ flex: 1 }}>
+      <FlashList
+        ref={flatListRef as any}
+        data={messages}
+        extraData={reactionVersion}
+        renderItem={renderMessage as any}
+        keyExtractor={keyExtractor}
+        getItemType={getItemType as any}
+        contentContainerStyle={styles.listContent}
+        inverted
+        refreshing={refreshingChat}
+        onRefresh={handleRefreshChat}
+        onEndReached={loadOlderMessages}
+        onEndReachedThreshold={0.3}
+        ListFooterComponent={isLoadingHistory ? (
+          <View style={{ paddingVertical: 16, alignItems: 'center' }}>
+            <ActivityIndicator color={THEME.accent} size="small" />
+            <Text style={{ fontFamily: FONTS.mono, fontSize: 10, color: THEME.textFaint, marginTop: 4 }}>Loading older messages…</Text>
+          </View>
+        ) : null}
+        onScroll={handleScroll}
+        scrollEventThrottle={200}
+      />
+    </View>
   );
 });
 
