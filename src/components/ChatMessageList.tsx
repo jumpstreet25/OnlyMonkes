@@ -4,10 +4,19 @@ import {
   Text,
   StyleSheet,
   ActivityIndicator,
+  FlatList,
+  type FlatList as FlatListType,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from "react-native";
-import { FlashList, type FlashListRef } from "@shopify/flash-list";
+// 2026-05-23: temporarily swapped FlashList v2 → FlatList. v2.38 APK ships
+// Reanimated 3.19 + Skia 2.6.2 + new arch settings that interact poorly with
+// FlashList v2's aggressive cell recycling — multiple users report 80% blank
+// after a few scroll cycles, only on v2.38, never v2.37. FlatList loses some
+// scroll perf but gains rock-solid rendering. Restore once we have a known-
+// good FlashList config OR migrate to v1.7.x in the next APK.
+// Type alias kept so callers passing FlashListRef-typed refs don't break.
+type FlashListRef<T> = FlatListType<T>;
 import { Swipeable } from "react-native-gesture-handler";
 import * as Haptics from "expo-haptics";
 import { THEME, FONTS } from "@/lib/constants";
@@ -202,13 +211,12 @@ const ChatMessageListInner = React.forwardRef<FlashListRef<ChatMessage>, ChatMes
     // (<= 1.x) was forgiving of missing flex; v2 (we're on 2.3.1) hard-
     // requires a constrained parent.
     <View style={{ flex: 1, minHeight: 0 }}>
-      <FlashList
+      <FlatList
         ref={flatListRef as any}
         data={messages}
         extraData={reactionVersion}
         renderItem={renderMessage as any}
         keyExtractor={keyExtractor}
-        getItemType={getItemType as any}
         contentContainerStyle={styles.listContent}
         style={{ flex: 1 }}
         inverted
@@ -216,13 +224,15 @@ const ChatMessageListInner = React.forwardRef<FlashListRef<ChatMessage>, ChatMes
         onRefresh={handleRefreshChat}
         onEndReached={loadOlderMessages}
         onEndReachedThreshold={0.3}
-        // 2026-05-23: explicit drawDistance + maintainVisibleContentPosition
-        // to stabilize FlashList v2 inverted scroll. User reported chat going
-        // 80% blank after ~5 scroll cycles (cells virtualized out but never
-        // remount). Higher drawDistance keeps off-screen cells warm. mVCP
-        // pins the visible item so scroll doesn't jump on insert/recycle.
-        drawDistance={1500}
-        maintainVisibleContentPosition={{ disabled: false, startRenderingFromBottom: true }}
+        // Larger windowSize keeps more cells alive on either side of the
+        // visible window so reverse-scroll doesn't unmount cells we're
+        // about to need again. Default windowSize is 21 (about 10 screens);
+        // bumping to 31 (about 15 screens) is generous but stable.
+        windowSize={31}
+        // Keep clipped subviews mounted (rendered but display:none) so they
+        // don't have to re-mount when scrolled back into view. Worth the
+        // small memory cost for stability.
+        removeClippedSubviews={false}
         ListFooterComponent={isLoadingHistory ? (
           <View style={{ paddingVertical: 16, alignItems: 'center' }}>
             <ActivityIndicator color={THEME.accent} size="small" />

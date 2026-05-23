@@ -9,7 +9,8 @@ import {
   TextInput,
   ActivityIndicator,
 } from "react-native";
-import type { FlashListRef } from "@shopify/flash-list";
+// 2026-05-23: switched chat list to FlatList for stability — alias kept.
+import type { FlatList as FlashListRef } from "react-native";
 import { router } from "expo-router";
 import { THEME, FONTS } from "@/lib/constants";
 import { ConfettiView } from "@/components/ConfettiView";

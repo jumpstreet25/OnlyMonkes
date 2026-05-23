@@ -34,7 +34,11 @@ import {
   Share,
   type AppStateStatus,
 } from "react-native";
-import type { FlashListRef } from "@shopify/flash-list";
+// 2026-05-23: temporarily using FlatList instead of FlashList for stability
+// on v2.38. The FlashListRef alias above is now a FlatList instance — both
+// share scrollToOffset / scrollToIndex API surfaces. Same shape, different
+// underlying virtualization.
+import type { FlatList as FlashListRef } from "react-native";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { OnboardingChecklist, markOnboardingStep } from "@/components/OnboardingChecklist";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
