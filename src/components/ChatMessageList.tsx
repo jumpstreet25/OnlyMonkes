@@ -201,7 +201,7 @@ const ChatMessageListInner = React.forwardRef<FlashListRef<ChatMessage>, ChatMes
     // during gesture then re-clips to the collapsed window). FlashList v1
     // (<= 1.x) was forgiving of missing flex; v2 (we're on 2.3.1) hard-
     // requires a constrained parent.
-    <View style={{ flex: 1 }}>
+    <View style={{ flex: 1, minHeight: 0 }}>
       <FlashList
         ref={flatListRef as any}
         data={messages}
@@ -210,6 +210,7 @@ const ChatMessageListInner = React.forwardRef<FlashListRef<ChatMessage>, ChatMes
         keyExtractor={keyExtractor}
         getItemType={getItemType as any}
         contentContainerStyle={styles.listContent}
+        style={{ flex: 1 }}
         inverted
         refreshing={refreshingChat}
         onRefresh={handleRefreshChat}
