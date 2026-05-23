@@ -4,19 +4,19 @@ import {
   Text,
   StyleSheet,
   ActivityIndicator,
-  FlatList,
-  type FlatList as FlatListType,
+  ScrollView,
+  RefreshControl,
+  type ScrollView as ScrollViewType,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from "react-native";
-// 2026-05-23: temporarily swapped FlashList v2 → FlatList. v2.38 APK ships
-// Reanimated 3.19 + Skia 2.6.2 + new arch settings that interact poorly with
-// FlashList v2's aggressive cell recycling — multiple users report 80% blank
-// after a few scroll cycles, only on v2.38, never v2.37. FlatList loses some
-// scroll perf but gains rock-solid rendering. Restore once we have a known-
-// good FlashList config OR migrate to v1.7.x in the next APK.
-// Type alias kept so callers passing FlashListRef-typed refs don't break.
-type FlashListRef<T> = FlatListType<T>;
+// 2026-05-23 DIAGNOSTIC: swapped to plain ScrollView + .map(). Both FlashList
+// v2 and FlatList showed identical flash-on-swipe-toward-older-messages on
+// v2.38 APK. ScrollView has zero virtualization — every cell is mounted at
+// all times. If the flash persists with this, the list isn't the cause at
+// all and we look at Reanimated cell wrappers or Skia surfaces.
+// Type alias kept so callers passing list-typed refs don't break.
+type FlashListRef<T> = ScrollViewType;
 import { Swipeable } from "react-native-gesture-handler";
 import * as Haptics from "expo-haptics";
 import { THEME, FONTS } from "@/lib/constants";
@@ -125,6 +125,36 @@ const ChatMessageListInner = React.forwardRef<FlashListRef<ChatMessage>, ChatMes
 
   const swipeableRefs = useRef<Map<string, Swipeable>>(new Map());
 
+  // Shim: callers use FlashList/FlatList imperative API (scrollToOffset,
+  // scrollToIndex). ScrollView only has scrollTo. We expose the same methods
+  // on the passed-in ref so consumers (ChatScreen + others) keep working.
+  // offset=0 in inverted-FlatList meant "scroll to newest". In our oldest-
+  // first ScrollView, newest is at the bottom (content size), so map
+  // offset=0 → scroll to content end.
+  const scrollViewRef = useRef<ScrollViewType | null>(null);
+  const contentHeightRef = useRef(0);
+  React.useEffect(() => {
+    const ref = flatListRef as any;
+    if (!ref) return;
+    ref.current = {
+      scrollToOffset: ({ offset, animated }: { offset: number; animated?: boolean }) => {
+        if (offset === 0) {
+          scrollViewRef.current?.scrollTo({ y: contentHeightRef.current, animated: !!animated });
+        } else {
+          scrollViewRef.current?.scrollTo({ y: contentHeightRef.current - offset, animated: !!animated });
+        }
+      },
+      scrollToIndex: ({ index, animated }: { index: number; animated?: boolean }) => {
+        // Approximate: each row ~80px. Index counts from newest. Convert.
+        const fromBottom = index * 80;
+        scrollViewRef.current?.scrollTo({ y: contentHeightRef.current - fromBottom, animated: !!animated });
+      },
+      scrollToEnd: ({ animated }: { animated?: boolean } = {}) => {
+        scrollViewRef.current?.scrollTo({ y: contentHeightRef.current, animated: !!animated });
+      },
+    } as any;
+  }, [flatListRef]);
+
   const renderMessage = useCallback(
     ({ item, index }: { item: ChatMessage; index: number }) => {
       // A message is "new" only on its very first render in this session
@@ -190,9 +220,11 @@ const ChatMessageListInner = React.forwardRef<FlashListRef<ChatMessage>, ChatMes
 
   const handleScroll = useCallback(
     (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-      // Inverted: contentOffset.y === 0 means parked at the visual bottom
-      // (newest messages). Distance from bottom is just contentOffset.y.
-      const nearBottom = e.nativeEvent.contentOffset.y <= SCROLL_THRESHOLD;
+      // ScrollView (non-inverted): newest is at the visual BOTTOM. Distance
+      // from bottom = contentSize.height - contentOffset.y - layoutHeight.
+      const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+      const distFromBottom = Math.max(0, contentSize.height - contentOffset.y - layoutMeasurement.height);
+      const nearBottom = distFromBottom <= SCROLL_THRESHOLD;
       isNearBottomRef.current = nearBottom;
       setShowScrollFab(!nearBottom);
       if (nearBottom) setUnreadWhileScrolled(0);
@@ -200,48 +232,56 @@ const ChatMessageListInner = React.forwardRef<FlashListRef<ChatMessage>, ChatMes
     [isNearBottomRef, setShowScrollFab, setUnreadWhileScrolled]
   );
 
+  // 2026-05-23 DIAGNOSTIC: render every message as a plain mounted child of
+  // a ScrollView. No virtualization, no recycling, no FlashList/FlatList
+  // window. Data is sorted newest-first, so we render in reverse (oldest
+  // first → newest at the bottom of the scroll content) and SKIP `inverted`.
+  // That avoids the scaleY(-1) transform that Fabric has known issues with.
+  // If the flash persists with THIS, the list is not the cause at all.
+  const renderedRows = React.useMemo(() => {
+    const ordered = [...messages].reverse();
+    return ordered.map((item, idx) => {
+      // index 0 in the (newest-first) data array = newest. After reverse,
+      // newest is at last index. Recompute isLatest from original ordering.
+      const originalIndex = messages.length - 1 - idx;
+      return (
+        <View key={item.id}>
+          {renderMessage({ item, index: originalIndex } as any)}
+        </View>
+      );
+    });
+  }, [messages, reactionVersion, renderMessage]);
+
   return (
-    // Wrap in a flex:1 View so FlashList v2 has a constrained parent height
-    // to virtualize against. Without this, FlashList collapses to ~0 height
-    // → chat area shows blank, only the world background visible behind. The
-    // user reported "bottom cut off + blank middle, scroll-up flashes content
-    // then re-blanks" on v2.38, which is the classic FlashList v2 unconstrained-
-    // parent symptom (virtualization briefly materializes recycled cells
-    // during gesture then re-clips to the collapsed window). FlashList v1
-    // (<= 1.x) was forgiving of missing flex; v2 (we're on 2.3.1) hard-
-    // requires a constrained parent.
     <View style={{ flex: 1, minHeight: 0 }}>
-      <FlatList
-        ref={flatListRef as any}
-        data={messages}
-        extraData={reactionVersion}
-        renderItem={renderMessage as any}
-        keyExtractor={keyExtractor}
-        contentContainerStyle={styles.listContent}
+      <ScrollView
+        ref={scrollViewRef}
         style={{ flex: 1 }}
-        inverted
-        refreshing={refreshingChat}
-        onRefresh={handleRefreshChat}
-        onEndReached={loadOlderMessages}
-        onEndReachedThreshold={0.3}
-        // Larger windowSize keeps more cells alive on either side of the
-        // visible window so reverse-scroll doesn't unmount cells we're
-        // about to need again. Default windowSize is 21 (about 10 screens);
-        // bumping to 31 (about 15 screens) is generous but stable.
-        windowSize={31}
-        // Keep clipped subviews mounted (rendered but display:none) so they
-        // don't have to re-mount when scrolled back into view. Worth the
-        // small memory cost for stability.
+        contentContainerStyle={styles.listContent}
+        refreshControl={
+          <RefreshControl refreshing={refreshingChat} onRefresh={handleRefreshChat} />
+        }
+        onScroll={handleScroll}
+        scrollEventThrottle={200}
         removeClippedSubviews={false}
-        ListFooterComponent={isLoadingHistory ? (
+        onContentSizeChange={(_w, h) => {
+          contentHeightRef.current = h;
+          // Auto-scroll to bottom (newest) when content grows AND user is
+          // parked near the bottom (i.e. reading newest, not scrolled up
+          // into history). Skip if scrolled up so we don't yank them.
+          if (isNearBottomRef.current) {
+            scrollViewRef.current?.scrollTo({ y: h, animated: false });
+          }
+        }}
+      >
+        {isLoadingHistory ? (
           <View style={{ paddingVertical: 16, alignItems: 'center' }}>
             <ActivityIndicator color={THEME.accent} size="small" />
             <Text style={{ fontFamily: FONTS.mono, fontSize: 10, color: THEME.textFaint, marginTop: 4 }}>Loading older messages…</Text>
           </View>
         ) : null}
-        onScroll={handleScroll}
-        scrollEventThrottle={200}
-      />
+        {renderedRows}
+      </ScrollView>
     </View>
   );
 });
