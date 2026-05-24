@@ -646,6 +646,8 @@ export interface ParsedTradeOpened {
   openClawConfidence?: number;
   txHash?: string;
   ts: number;
+  /** Hot wallet pubkey that opened the position. Render on trade cards. */
+  hotWalletAddress?: string;
 }
 
 export interface ParsedTradeClosed {
@@ -660,6 +662,9 @@ export interface ParsedTradeClosed {
   ts: number;
   reason?: string;
   signature?: string;
+  /** Hot wallet pubkey that executed the trade (post-2026-05-24 bot builds).
+   *  Render on PnL cards instead of the login wallet — tokens live here. */
+  hotWalletAddress?: string;
 }
 
 export function parseTradeClosed(raw: string): ParsedTradeClosed | null {
@@ -701,6 +706,7 @@ export function parseTradeClosed(raw: string): ParsedTradeClosed | null {
     ts,
     reason: strOrNull(data.reason) ?? undefined,
     signature: strOrNull(data.signature) ?? undefined,
+    hotWalletAddress: strOrNull(data.hotWalletAddress)?.slice(0, 80) ?? undefined,
   };
 }
 
@@ -750,6 +756,7 @@ export function parseTradeOpened(raw: string): ParsedTradeOpened | null {
     openClawConfidence: numOrNull(data.openClawConfidence) ?? undefined,
     txHash: strOrNull(data.txHash) ?? undefined,
     ts,
+    hotWalletAddress: strOrNull(data.hotWalletAddress)?.slice(0, 80) ?? undefined,
   };
 }
 
@@ -899,7 +906,13 @@ export interface ParsedRecentClosed {
 
 export interface ParsedPortfolioResponse {
   source: 'autonomonke';
+  /** Login wallet — the user's identity key. NOT what holds tokens. */
   walletAddress: string;
+  /** Hot wallet — the bot-managed keypair pubkey that actually holds tokens
+   *  and executes trades. Render THIS on PnL/portfolio cards (the user cares
+   *  about where their assets live). Older bot builds omit it → falls back
+   *  to walletAddress so display gracefully degrades. */
+  hotWalletAddress: string | null;
   walletBalanceSOL: number | null;
   realizedPnlPct: number;
   /** Absolute SOL realized across closed positions. Older bot builds omit this
@@ -1010,6 +1023,7 @@ export function parsePortfolioResponse(raw: string): ParsedPortfolioResponse | n
   return {
     source: 'autonomonke',
     walletAddress: walletAddress.slice(0, 80),
+    hotWalletAddress: strOrNull(data.hotWalletAddress)?.slice(0, 80) ?? null,
     walletBalanceSOL: numOrNull(data.walletBalanceSOL),
     realizedPnlPct: numOrNull(data.realizedPnlPct) ?? 0,
     realizedPnlSol: numOrNull(data.realizedPnlSol),

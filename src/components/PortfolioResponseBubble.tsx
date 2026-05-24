@@ -104,9 +104,18 @@ export function PortfolioResponseBubble({ response, onPressPosition, onPressClos
                 resizeMode="contain"
               />
             </View>
-            <Text style={styles.wallet}>
-              {response.walletAddress.slice(0, 4)}…{response.walletAddress.slice(-4)}
-            </Text>
+            {(() => {
+              // Display the HOT wallet — that's what actually holds tokens
+              // and executes trades. Login wallet is just the identity key.
+              // Falls back to walletAddress for old bot builds that don't
+              // include hotWalletAddress yet.
+              const addr = response.hotWalletAddress ?? response.walletAddress;
+              return (
+                <Text style={styles.wallet}>
+                  🔥 {addr.slice(0, 4)}…{addr.slice(-4)}
+                </Text>
+              );
+            })()}
           </View>
 
           {/* Hairline-separated stats — three even columns */}
