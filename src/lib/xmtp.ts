@@ -665,6 +665,16 @@ export interface ParsedTradeClosed {
   /** Hot wallet pubkey that executed the trade (post-2026-05-24 bot builds).
    *  Render on PnL cards instead of the login wallet — tokens live here. */
   hotWalletAddress?: string;
+  // v2.38 multi-base trading — all optional, native-base PnL only.
+  // When baseSymbol === 'SOL' (or missing) the legacy SOL view is correct.
+  // For USDC/SKR positions, UI should prefer the *Base fields and label
+  // amounts with baseSymbol. Trades round-trip in the chosen base —
+  // there is no separate USD-normalized PnL.
+  baseMint?: string;
+  baseSymbol?: 'SOL' | 'USDC' | 'SKR';
+  entryBaseAmount?: number;
+  exitBaseAmount?: number;
+  pnlBase?: number;
 }
 
 export function parseTradeClosed(raw: string): ParsedTradeClosed | null {
@@ -694,6 +704,15 @@ export function parseTradeClosed(raw: string): ParsedTradeClosed | null {
   const pnlSol = numOrNull(data.pnlSol) ?? (exitSolAmount - entrySolAmount);
   const source = data.source === 'autonomonke' ? 'autonomonke' : 'manual';
 
+  // v2.38 multi-base fields. Whitelist baseSymbol so a malformed payload
+  // can't poison the UI rendering path. All fields optional — pre-v2.38
+  // bot builds omit them and the parser still produces a valid trade.
+  const baseSymRaw = typeof data.baseSymbol === 'string' ? data.baseSymbol.toUpperCase() : null;
+  const baseSymbol: 'SOL' | 'USDC' | 'SKR' | undefined =
+    baseSymRaw === 'SOL' || baseSymRaw === 'USDC' || baseSymRaw === 'SKR'
+      ? baseSymRaw
+      : undefined;
+
   return {
     source,
     token: token.slice(0, 32),
@@ -707,6 +726,11 @@ export function parseTradeClosed(raw: string): ParsedTradeClosed | null {
     reason: strOrNull(data.reason) ?? undefined,
     signature: strOrNull(data.signature) ?? undefined,
     hotWalletAddress: strOrNull(data.hotWalletAddress)?.slice(0, 80) ?? undefined,
+    baseMint: strOrNull(data.baseMint)?.slice(0, 80) ?? undefined,
+    baseSymbol,
+    entryBaseAmount: numOrNull(data.entryBaseAmount) ?? undefined,
+    exitBaseAmount: numOrNull(data.exitBaseAmount) ?? undefined,
+    pnlBase: numOrNull(data.pnlBase) ?? undefined,
   };
 }
 

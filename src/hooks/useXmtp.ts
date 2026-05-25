@@ -1676,6 +1676,12 @@ export function useXmtp() {
                   closedAt: parsed.ts,
                   reason: parsed.reason,
                   signature: parsed.signature,
+                  // v2.38 multi-base fields — undefined for pre-v2.38 bot builds.
+                  baseMint: parsed.baseMint,
+                  baseSymbol: parsed.baseSymbol,
+                  entryBaseAmount: parsed.entryBaseAmount,
+                  exitBaseAmount: parsed.exitBaseAmount,
+                  pnlBase: parsed.pnlBase,
                 });
                 return;
               }

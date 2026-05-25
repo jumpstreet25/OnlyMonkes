@@ -188,6 +188,13 @@ export function useDm(peerInboxId: string) {
                   closedAt: parsed.ts,
                   reason: parsed.reason,
                   signature: parsed.signature,
+                  // v2.38 multi-base fields — undefined for pre-v2.38 bot
+                  // builds; UI falls back to SOL view. Native-base PnL only.
+                  baseMint: parsed.baseMint,
+                  baseSymbol: parsed.baseSymbol,
+                  entryBaseAmount: parsed.entryBaseAmount,
+                  exitBaseAmount: parsed.exitBaseAmount,
+                  pnlBase: parsed.pnlBase,
                 });
               } catch { /* swallow */ }
               return;
