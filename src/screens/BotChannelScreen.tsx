@@ -27,6 +27,7 @@ import AutonoMonkeDisclaimerModal, { type AutonomyFeature } from "@/components/A
 import AutonoMonkeSetupWizard from "@/components/AutonoMonkeSetupWizard";
 import { getXmtpClient } from "@/hooks/useXmtp";
 import { sendDmMessage } from "@/lib/xmtp";
+import * as Haptics from "expo-haptics";
 import { THEME, FONTS, getWorldBarTint, getWorldAccent } from "@/lib/constants";
 import { BotChannelIcon } from "@/components/BotChannelIcon";
 import { ErrorMessage } from "@/components/ErrorMessage";
@@ -382,6 +383,17 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
                   setShowAutonoMonkeModal(true);
                 }
               }}
+              onLongPress={() => {
+                // v2.38: long-press re-opens the wizard so enrolled users can
+                // change funding currency / sliders without going through the
+                // DM. Setup is idempotent on the bot side — re-running updates
+                // state in place, never creates a second hot wallet.
+                if (autonomyEnrolled) {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+                  setShowAutonoMonkeModal(true);
+                }
+              }}
+              delayLongPress={400}
               style={[styles.autonomyBtn, autonomyEnrolled && styles.autonomyBtnActive]}
               hitSlop={8}
             >

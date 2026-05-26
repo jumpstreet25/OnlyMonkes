@@ -27,7 +27,10 @@ import * as Haptics from 'expo-haptics';
 const BOT_INBOX_ID = '998001a498174b8a194110ee792b10f97de4965665eaf0d088ed2c71bdf62363';
 const STORAGE_KEY = 'automonke_enrolled';
 
+type BaseCurrency = 'SOL' | 'USDC' | 'SKR';
+
 const DEFAULTS = {
+  baseCurrency: 'SOL' as BaseCurrency,
   perTradeSOL: 0.1,
   maxSOL: 2,
   minConfidence: 55,
@@ -38,7 +41,7 @@ interface Props {
   onClose: () => void;
 }
 
-type Step = 1 | 2 | 3 | 4;
+type Step = 1 | 2 | 3 | 4 | 5;
 
 export default function AutonoMonkeSetupWizard({ visible, onClose }: Props) {
   const username = useAppStore(s => s.username);
@@ -47,6 +50,7 @@ export default function AutonoMonkeSetupWizard({ visible, onClose }: Props) {
   const [step, setStep] = useState<Step>(1);
   const [riskAck, setRiskAck] = useState(false);
   const [responsibilityAck, setResponsibilityAck] = useState(false);
+  const [baseCurrency, setBaseCurrency] = useState<BaseCurrency>(DEFAULTS.baseCurrency);
   const [perTradeSOL, setPerTradeSOL] = useState(DEFAULTS.perTradeSOL);
   const [maxSOL, setMaxSOL] = useState(DEFAULTS.maxSOL);
   const [minConfidence, setMinConfidence] = useState(DEFAULTS.minConfidence);
@@ -56,6 +60,7 @@ export default function AutonoMonkeSetupWizard({ visible, onClose }: Props) {
     setStep(1);
     setRiskAck(false);
     setResponsibilityAck(false);
+    setBaseCurrency(DEFAULTS.baseCurrency);
     setPerTradeSOL(DEFAULTS.perTradeSOL);
     setMaxSOL(DEFAULTS.maxSOL);
     setMinConfidence(DEFAULTS.minConfidence);
@@ -69,10 +74,11 @@ export default function AutonoMonkeSetupWizard({ visible, onClose }: Props) {
 
   const handleUseDefaults = useCallback(() => {
     if (!riskAck || !responsibilityAck) return;
+    setBaseCurrency(DEFAULTS.baseCurrency);
     setPerTradeSOL(DEFAULTS.perTradeSOL);
     setMaxSOL(DEFAULTS.maxSOL);
     setMinConfidence(DEFAULTS.minConfidence);
-    setStep(4);
+    setStep(5);
   }, [riskAck, responsibilityAck]);
 
   const handleActivate = useCallback(async () => {
@@ -92,6 +98,7 @@ export default function AutonoMonkeSetupWizard({ visible, onClose }: Props) {
         maxSOL,
         perTradeSOL,
         minConfidence,
+        baseCurrency,
       };
       await sendDmMessage(dm, `/autonomonke setup ${JSON.stringify(payload)}`, username);
       await AsyncStorage.setItem(STORAGE_KEY, '1');
@@ -104,13 +111,13 @@ export default function AutonoMonkeSetupWizard({ visible, onClose }: Props) {
       toast.error(err?.message ?? 'Setup failed');
       setSubmitting(false);
     }
-  }, [wallet, perTradeSOL, maxSOL, minConfidence, username, handleClose]);
+  }, [wallet, perTradeSOL, maxSOL, minConfidence, baseCurrency, username, handleClose]);
 
   return (
     <GlassModal visible={visible} onClose={handleClose} cardStyle={s.container}>
       {/* Progress dots */}
       <View style={s.progress}>
-        {[1, 2, 3, 4].map(i => (
+        {[1, 2, 3, 4, 5].map(i => (
           <View
             key={i}
             style={[s.dot, i === step && s.dotActive, i < step && s.dotComplete]}
@@ -127,13 +134,16 @@ export default function AutonoMonkeSetupWizard({ visible, onClose }: Props) {
           riskAck={riskAck} setRiskAck={setRiskAck}
           responsibilityAck={responsibilityAck} setResponsibilityAck={setResponsibilityAck}
         />}
-        {step === 2 && <Step2PerTrade value={perTradeSOL} onChange={setPerTradeSOL} />}
-        {step === 3 && <Step3Risk
+        {step === 2 && <Step2Base value={baseCurrency} onChange={setBaseCurrency} />}
+        {step === 3 && <Step3PerTrade value={perTradeSOL} onChange={setPerTradeSOL} baseCurrency={baseCurrency} />}
+        {step === 4 && <Step4Risk
           maxSOL={maxSOL} setMaxSOL={setMaxSOL}
           minConfidence={minConfidence} setMinConfidence={setMinConfidence}
           perTradeSOL={perTradeSOL}
+          baseCurrency={baseCurrency}
         />}
-        {step === 4 && <Step4Review
+        {step === 5 && <Step5Review
+          baseCurrency={baseCurrency}
           perTradeSOL={perTradeSOL}
           maxSOL={maxSOL}
           minConfidence={minConfidence}
@@ -166,7 +176,7 @@ export default function AutonoMonkeSetupWizard({ visible, onClose }: Props) {
               <Text style={s.btnPrimaryText}>Customize</Text>
             </Pressable>
           </>
-        ) : step < 4 ? (
+        ) : step < 5 ? (
           <>
             <Pressable
               style={[s.btn, s.btnGhost]}
@@ -185,7 +195,7 @@ export default function AutonoMonkeSetupWizard({ visible, onClose }: Props) {
           <>
             <Pressable
               style={[s.btn, s.btnGhost]}
-              onPress={() => setStep(3)}
+              onPress={() => setStep(4)}
               disabled={submitting}
             >
               <Text style={s.btnGhostText}>Back</Text>
@@ -228,7 +238,8 @@ function Step1Disclaimer({
         opens trades automatically when its TA + AI signals align. Stops and
         profit targets are set on every entry.{"\n\n"}
         Profits above your max wallet balance auto-sweep back to your main
-        wallet. <Text style={s.bold}>5% fee on profits</Text>; no fee on losses.
+        wallet. <Text style={s.bold}>5% fee on profits</Text>; no fee on losses.{" "}
+        <Text style={s.bold}>Fund with SKR for 50% off</Text> (2.5% fee).
       </Text>
 
       <CheckboxRow
@@ -245,20 +256,88 @@ function Step1Disclaimer({
   );
 }
 
-// ── Step 2: Per-trade SOL ───────────────────────────────────────────────────
+// ── Step 2: Funding currency picker (v2.38) ─────────────────────────────────
+// Three-card picker. SKR card gets a "SAVE 50%" badge that mirrors the bot-
+// side feePctForBase('auto', SKR_MINT) discount — SKR-funded positions pay
+// 2.5% on profits instead of 5%. Operator-stated community incentive.
 
-function Step2PerTrade({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+function Step2Base({
+  value, onChange,
+}: { value: BaseCurrency; onChange: (v: BaseCurrency) => void }) {
+  const options: Array<{
+    sym: BaseCurrency;
+    title: string;
+    sub: string;
+    badge?: string;
+  }> = [
+    { sym: 'SOL',  title: 'SOL',  sub: "Solana's native token — most liquid base across memecoins." },
+    { sym: 'USDC', title: 'USDC', sub: 'Dollar-pegged. Removes SOL price exposure from your trade PnL.' },
+    { sym: 'SKR',  title: 'SKR',  sub: 'The Monke community token — pay 50% less in profit fees.', badge: 'SAVE 50%' },
+  ];
+
+  return (
+    <View style={s.step}>
+      <Text style={s.stepTitle}>Funding Currency</Text>
+      <Text style={s.stepHint}>
+        Pick the token you'll fund AutonoMonke with. Every trade round-trips
+        through this currency — fund with USDC, sell back to USDC. Fund with
+        SKR, sell back to SKR. Your PnL is denominated in this token.
+      </Text>
+
+      {options.map(opt => {
+        const selected = value === opt.sym;
+        return (
+          <Pressable
+            key={opt.sym}
+            style={[s.baseCard, selected && s.baseCardActive]}
+            onPress={() => onChange(opt.sym)}
+            hitSlop={4}
+          >
+            <View style={s.baseCardHeader}>
+              <Text style={[s.baseSym, selected && s.baseSymActive]}>{opt.title}</Text>
+              {opt.badge && (
+                <View style={s.baseBadge}>
+                  <Text style={s.baseBadgeText}>{opt.badge}</Text>
+                </View>
+              )}
+              <View style={[s.baseRadio, selected && s.baseRadioActive]}>
+                {selected && <View style={s.baseRadioDot} />}
+              </View>
+            </View>
+            <Text style={s.baseDesc}>{opt.sub}</Text>
+          </Pressable>
+        );
+      })}
+
+      <View style={s.helperBox}>
+        <Text style={s.helperLabel}>You can change this later</Text>
+        <Text style={s.helperText}>
+          Switch the funding token any time with{' '}
+          <Text style={s.mono}>/autonomonke base SOL|USDC|SKR</Text> in the bot
+          DM. Currently-open positions keep their original base until close.
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+// ── Step 3: Per-trade size ──────────────────────────────────────────────────
+
+function Step3PerTrade({
+  value, onChange, baseCurrency,
+}: { value: number; onChange: (v: number) => void; baseCurrency: BaseCurrency }) {
   return (
     <View style={s.step}>
       <Text style={s.stepTitle}>Per-Trade Size</Text>
       <Text style={s.stepHint}>
-        How much SOL the bot spends on every entry. Each trade is independent —
-        smaller = more diversification, bigger = bigger swings per trade.
+        How much {baseCurrency} the bot spends on every entry. Each trade is
+        independent — smaller = more diversification, bigger = bigger swings
+        per trade.
       </Text>
 
       <View style={s.heroBlock}>
         <Text style={s.heroValue}>{value.toFixed(2)}</Text>
-        <Text style={s.heroUnit}>SOL per trade</Text>
+        <Text style={s.heroUnit}>{baseCurrency} per trade</Text>
       </View>
 
       <Slider
@@ -275,28 +354,29 @@ function Step2PerTrade({ value, onChange }: { value: number; onChange: (v: numbe
 
       <View style={s.sliderRange}>
         <Text style={s.sliderRangeText}>0.05</Text>
-        <Text style={s.sliderRangeText}>1.0 SOL</Text>
+        <Text style={s.sliderRangeText}>1.0 {baseCurrency}</Text>
       </View>
 
       <View style={s.helperBox}>
         <Text style={s.helperLabel}>Recommended</Text>
         <Text style={s.helperText}>
-          0.10 SOL — enough room to take meaningful gains while keeping any
-          single trade well-bounded.
+          0.10 {baseCurrency} — enough room to take meaningful gains while
+          keeping any single trade well-bounded.
         </Text>
       </View>
     </View>
   );
 }
 
-// ── Step 3: Risk profile ────────────────────────────────────────────────────
+// ── Step 4: Risk profile ────────────────────────────────────────────────────
 
-function Step3Risk({
-  maxSOL, setMaxSOL, minConfidence, setMinConfidence, perTradeSOL,
+function Step4Risk({
+  maxSOL, setMaxSOL, minConfidence, setMinConfidence, perTradeSOL, baseCurrency,
 }: {
   maxSOL: number; setMaxSOL: (v: number) => void;
   minConfidence: number; setMinConfidence: (v: number) => void;
   perTradeSOL: number;
+  baseCurrency: BaseCurrency;
 }) {
   const exceedsCap = perTradeSOL > maxSOL;
 
@@ -311,7 +391,7 @@ function Step3Risk({
       {/* Max wallet */}
       <View style={s.field}>
         <Text style={s.fieldLabel}>Max hot wallet balance</Text>
-        <Text style={s.fieldValue}>{maxSOL.toFixed(1)} SOL</Text>
+        <Text style={s.fieldValue}>{maxSOL.toFixed(1)} {baseCurrency}</Text>
         <Slider
           style={s.slider}
           minimumValue={0.5}
@@ -325,7 +405,7 @@ function Step3Risk({
         />
         <View style={s.sliderRange}>
           <Text style={s.sliderRangeText}>0.5</Text>
-          <Text style={s.sliderRangeText}>10 SOL</Text>
+          <Text style={s.sliderRangeText}>10 {baseCurrency}</Text>
         </View>
         <Text style={s.fieldHelp}>
           Profits above this auto-sweep to your main wallet. The hot wallet
@@ -368,28 +448,36 @@ function Step3Risk({
   );
 }
 
-// ── Step 4: Review ──────────────────────────────────────────────────────────
+// ── Step 5: Review ──────────────────────────────────────────────────────────
 
-function Step4Review({
-  perTradeSOL, maxSOL, minConfidence, mainWallet, onEdit,
+function Step5Review({
+  baseCurrency, perTradeSOL, maxSOL, minConfidence, mainWallet, onEdit,
 }: {
+  baseCurrency: BaseCurrency;
   perTradeSOL: number;
   maxSOL: number;
   minConfidence: number;
   mainWallet: string;
   onEdit: (target: Step) => void;
 }) {
+  const isSkr = baseCurrency === 'SKR';
   return (
     <View style={s.step}>
       <Text style={s.stepTitle}>Review & Activate</Text>
       <Text style={s.stepHint}>
-        After activation, the bot DMs you a hot wallet address. Fund it with SOL —
-        the bot starts trading once balance crosses the per-trade threshold.
+        After activation, the bot DMs you a hot wallet address. Fund it with{' '}
+        {baseCurrency} — the bot starts trading once balance crosses the
+        per-trade threshold.
       </Text>
 
-      <ReviewRow label="Per-trade size" value={`${perTradeSOL.toFixed(2)} SOL`} onEdit={() => onEdit(2)} />
-      <ReviewRow label="Max wallet" value={`${maxSOL.toFixed(1)} SOL`} onEdit={() => onEdit(3)} />
-      <ReviewRow label="Min confidence" value={`${minConfidence}%`} onEdit={() => onEdit(3)} />
+      <ReviewRow
+        label="Funding currency"
+        value={isSkr ? `${baseCurrency} 🍌 (50% off fees)` : baseCurrency}
+        onEdit={() => onEdit(2)}
+      />
+      <ReviewRow label="Per-trade size" value={`${perTradeSOL.toFixed(2)} ${baseCurrency}`} onEdit={() => onEdit(3)} />
+      <ReviewRow label="Max wallet" value={`${maxSOL.toFixed(1)} ${baseCurrency}`} onEdit={() => onEdit(4)} />
+      <ReviewRow label="Min confidence" value={`${minConfidence}%`} onEdit={() => onEdit(4)} />
       <ReviewRow
         label="Main wallet"
         value={mainWallet ? `${mainWallet.slice(0, 6)}…${mainWallet.slice(-4)}` : '—'}
@@ -546,6 +634,51 @@ const s = StyleSheet.create({
   },
   helperText: {
     fontFamily: FONTS.body, fontSize: 12, color: THEME.text, lineHeight: 17,
+  },
+  mono: { fontFamily: FONTS.mono, fontSize: 11 },
+
+  // Base-currency picker (v2.38)
+  baseCard: {
+    backgroundColor: THEME.surface,
+    borderRadius: 12,
+    borderWidth: 1.5, borderColor: THEME.border,
+    paddingVertical: 12, paddingHorizontal: 14,
+    gap: 6,
+  },
+  baseCardActive: {
+    borderColor: THEME.gold,
+    backgroundColor: THEME.gold + '0F',
+  },
+  baseCardHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+  },
+  baseSym: {
+    fontFamily: FONTS.display, fontSize: 18, color: THEME.text,
+    letterSpacing: 0.4, flex: 1,
+  },
+  baseSymActive: { color: THEME.gold },
+  baseBadge: {
+    paddingVertical: 3, paddingHorizontal: 8,
+    backgroundColor: THEME.gold,
+    borderRadius: 999,
+  },
+  baseBadgeText: {
+    fontFamily: FONTS.display, fontSize: 9, color: THEME.bg,
+    letterSpacing: 1.2,
+  },
+  baseRadio: {
+    width: 20, height: 20, borderRadius: 10,
+    borderWidth: 1.5, borderColor: THEME.border,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  baseRadioActive: { borderColor: THEME.gold },
+  baseRadioDot: {
+    width: 10, height: 10, borderRadius: 5,
+    backgroundColor: THEME.gold,
+  },
+  baseDesc: {
+    fontFamily: FONTS.body, fontSize: 12, color: THEME.textMuted,
+    lineHeight: 17,
   },
 
   field: { gap: 4 },
