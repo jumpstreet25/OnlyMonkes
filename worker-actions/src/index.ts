@@ -45,10 +45,21 @@ import {
 import bs58 from "bs58";
 
 // Cloudflare Workers KV namespace binding (declared locally to avoid @cloudflare/workers-types dependency)
+interface KVListOptions {
+  prefix?: string;
+  limit?: number;
+  cursor?: string;
+}
+interface KVListResult {
+  keys: Array<{ name: string; expiration?: number; metadata?: unknown }>;
+  list_complete?: boolean;
+  cursor?: string;
+}
 interface KVNamespace {
   get(key: string, options?: { type?: string }): Promise<string | null>;
   put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>;
   delete(key: string): Promise<void>;
+  list(options?: KVListOptions): Promise<KVListResult>;
 }
 
 interface Env {
@@ -59,6 +70,11 @@ interface Env {
   // Optional in dev — DFlow's dev quote endpoint requires no key. Set in
   // production via `wrangler secret put DFLOW_API_KEY` once we cut over.
   DFLOW_API_KEY?: string;
+  // v2.38 (2026-05-26): Helius webhook auth. User configures this string
+  // as the `Authorization` header in the Helius webhook dashboard so the
+  // worker can verify inbound POSTs are actually from Helius and not a
+  // public flooder.
+  HELIUS_WEBHOOK_SECRET?: string;
   TIP_ESCROW: KVNamespace;
   FRAME_ALERTS: KVNamespace;
 }
@@ -1210,6 +1226,120 @@ async function handleClaim(url: URL, request: Request, env: Env): Promise<Respon
   }
 }
 
+// ─── Helius webhook relay (v2.38, 2026-05-26) ───────────────────────────────
+//
+// Architecture:
+//   Helius webhook delivers parsed tx batches → POST /helius-webhook (this).
+//   We write each tx to FRAME_ALERTS KV under a lex-sortable key:
+//
+//     helius:<13-digit-padded-epoch-ms>:<signature>
+//
+//   With TTL 10 min. Bot polls GET /helius-events?since=<epoch-ms> to drain
+//   the queue (cursor-style — bot remembers the highest ts it's seen).
+//
+// Auth:
+//   Helius → us: validate `Authorization` header matches HELIUS_WEBHOOK_SECRET.
+//   Bot → us: standard Bearer BOT_HTTP_SECRET (same gate as /escrow).
+//
+// Reuses FRAME_ALERTS KV namespace to avoid asking the operator to provision
+// a new binding. The `helius:` key prefix isolates this traffic from frames.
+
+const HELIUS_EVENT_TTL = 10 * 60; // 10 minutes
+const HELIUS_KEY_PREFIX = "helius:";
+
+function padTs(ms: number): string {
+  // 13-digit epoch-ms — gives lex-sortable keys up through Sat Nov 20 2286.
+  return ms.toString().padStart(13, "0");
+}
+
+async function handleHeliusWebhook(request: Request, env: Env): Promise<Response> {
+  // Validate Helius's outbound auth header. If HELIUS_WEBHOOK_SECRET isn't
+  // configured we refuse the write rather than accept anonymous input —
+  // makes misconfiguration loud instead of silent.
+  const secret = env.HELIUS_WEBHOOK_SECRET || "";
+  if (!secret) {
+    return errorResponse("Webhook secret not configured", 503);
+  }
+  const auth = request.headers.get("Authorization") || "";
+  if (auth !== secret) {
+    return errorResponse("Unauthorized", 401);
+  }
+
+  let body: unknown;
+  try { body = await request.json(); } catch {
+    return errorResponse("Invalid JSON body");
+  }
+  // Helius sends an array of parsed transactions. Defensive: accept either
+  // a single object or an array, then normalize.
+  const events: Array<Record<string, unknown>> = Array.isArray(body)
+    ? body as Array<Record<string, unknown>>
+    : [body as Record<string, unknown>];
+
+  let written = 0;
+  for (const event of events) {
+    const sig = typeof event.signature === "string" ? event.signature : null;
+    if (!sig) continue;
+    // Use the webhook's `timestamp` field when present (seconds), else now.
+    const tsSec = typeof event.timestamp === "number" ? event.timestamp : Math.floor(Date.now() / 1000);
+    const tsMs = tsSec * 1000;
+    const key = `${HELIUS_KEY_PREFIX}${padTs(tsMs)}:${sig}`;
+    try {
+      await env.FRAME_ALERTS.put(key, JSON.stringify(event), { expirationTtl: HELIUS_EVENT_TTL });
+      written++;
+    } catch { /* per-event write failure — skip but don't fail the whole batch */ }
+  }
+  return jsonResponse({ ok: true, written, received: events.length });
+}
+
+async function handleHeliusEvents(url: URL, request: Request, env: Env): Promise<Response> {
+  if (!checkBotAuth(request, env)) {
+    return errorResponse("Unauthorized", 401);
+  }
+  const sinceParam = url.searchParams.get("since") ?? "0";
+  const since = parseInt(sinceParam, 10) || 0;
+  const limitParam = url.searchParams.get("limit") ?? "100";
+  const limit = Math.max(1, Math.min(parseInt(limitParam, 10) || 100, 500));
+
+  // KV list returns keys sorted lexically — same as chronological because
+  // we 0-padded the epoch-ms. Use a start prefix that includes the `since`
+  // cursor; KV doesn't natively support startKey, so we list with the
+  // base prefix and filter.
+  let cursor: string | undefined = undefined;
+  const collected: Array<{ key: string; ts: number; event: unknown }> = [];
+  // Cap list iterations so a runaway scan can't blow the request time budget.
+  for (let i = 0; i < 5; i++) {
+    const result = await env.FRAME_ALERTS.list({
+      prefix: HELIUS_KEY_PREFIX,
+      cursor,
+      limit: 1000,
+    });
+    for (const k of result.keys) {
+      // key shape: helius:<13-digit ts>:<sig>
+      const tsStr = k.name.slice(HELIUS_KEY_PREFIX.length, HELIUS_KEY_PREFIX.length + 13);
+      const ts = parseInt(tsStr, 10);
+      if (!Number.isFinite(ts) || ts <= since) continue;
+      const raw = await env.FRAME_ALERTS.get(k.name);
+      if (!raw) continue;
+      try {
+        collected.push({ key: k.name, ts, event: JSON.parse(raw) });
+      } catch { /* malformed entry — skip */ }
+      if (collected.length >= limit) break;
+    }
+    if (collected.length >= limit) break;
+    if (result.list_complete) break;
+    cursor = result.cursor;
+    if (!cursor) break;
+  }
+  // Sort ascending by ts so the bot processes in chronological order.
+  collected.sort((a, b) => a.ts - b.ts);
+  const nextCursor = collected.length > 0 ? collected[collected.length - 1].ts : since;
+  return jsonResponse({
+    events: collected.map(c => c.event),
+    count: collected.length,
+    nextCursor,
+  });
+}
+
 // ─── Farcaster Frames — Trade Alert Frames ──────────────────────────────────
 
 const FRAME_ALERT_TTL = 30 * 24 * 60 * 60; // 30 days
@@ -2047,6 +2177,23 @@ export default {
     if (path === "/claim") {
       if (request.method === "GET") return handleClaim(url, request, env);
       return errorResponse("Method not allowed", 405);
+    }
+
+    // v2.38 (2026-05-26) — Helius webhook ingress.
+    // Helius POSTs an array of parsed transactions when watched accounts
+    // see activity. We auth via `Authorization: <HELIUS_WEBHOOK_SECRET>`,
+    // write each event to KV under a lex-sortable key, and return 200.
+    // Bot polls /helius-events to drain the queue.
+    if (path === "/helius-webhook") {
+      if (request.method !== "POST") return errorResponse("Method not allowed", 405);
+      return handleHeliusWebhook(request, env);
+    }
+
+    // Bot-side drain of the Helius event queue. Authenticated via the same
+    // BOT_HTTP_SECRET that gates /escrow.
+    if (path === "/helius-events") {
+      if (request.method !== "GET") return errorResponse("Method not allowed", 405);
+      return handleHeliusEvents(url, request, env);
     }
 
     return errorResponse("Not found", 404);
