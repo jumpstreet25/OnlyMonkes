@@ -8,8 +8,10 @@ compatibility_flags = ["nodejs_compat"]
 #   JUP_API_KEY     — Jupiter Swap v2 API key (portal.jup.ag)
 
 # KV Namespaces
-# Create with: wrangler kv:namespace create FRAME_ALERTS
-# Then paste the binding below with the real id.
-# [[kv_namespaces]]
-# binding = "FRAME_ALERTS"
-# id = "<paste-id-from-wrangler-output>"
+# FRAME_ALERTS (v2.38): doubles as the Helius webhook event queue (key prefix
+# "helius:") plus the original Farcaster Frames alert store (key prefix
+# "frame:"). Wired 2026-05-27 — the binding was previously commented out;
+# any /frames/alert or /helius-events traffic before this deploy returned 500.
+[[kv_namespaces]]
+binding = "FRAME_ALERTS"
+id = "ca7310b8736a44f4bb2fe8576e482ce7"

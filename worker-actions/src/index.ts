@@ -1308,11 +1308,9 @@ async function handleHeliusEvents(url: URL, request: Request, env: Env): Promise
   const collected: Array<{ key: string; ts: number; event: unknown }> = [];
   // Cap list iterations so a runaway scan can't blow the request time budget.
   for (let i = 0; i < 5; i++) {
-    const result = await env.FRAME_ALERTS.list({
-      prefix: HELIUS_KEY_PREFIX,
-      cursor,
-      limit: 1000,
-    });
+    const listOpts: KVListOptions = { prefix: HELIUS_KEY_PREFIX, limit: 1000 };
+    if (cursor) listOpts.cursor = cursor;
+    const result = await env.FRAME_ALERTS.list(listOpts);
     for (const k of result.keys) {
       // key shape: helius:<13-digit ts>:<sig>
       const tsStr = k.name.slice(HELIUS_KEY_PREFIX.length, HELIUS_KEY_PREFIX.length + 13);
