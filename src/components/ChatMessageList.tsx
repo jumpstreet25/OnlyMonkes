@@ -7,6 +7,7 @@ import {
   ScrollView,
   RefreshControl,
   type ScrollView as ScrollViewType,
+  type FlatList,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from "react-native";
@@ -15,8 +16,11 @@ import {
 // v2.38 APK. ScrollView has zero virtualization — every cell is mounted at
 // all times. If the flash persists with this, the list isn't the cause at
 // all and we look at Reanimated cell wrappers or Skia surfaces.
-// Type alias kept so callers passing list-typed refs don't break.
-type FlashListRef<T> = ScrollViewType;
+// Type alias kept so callers passing list-typed refs don't break. Callers
+// (ChatScreen et al.) hold the ref typed as FlatList and call scrollToOffset/
+// scrollToIndex on it; those land on the shim object installed below, so the
+// prop must accept a FlatList-typed ref to match the call sites.
+type FlashListRef<T> = FlatList<T>;
 import { Swipeable } from "react-native-gesture-handler";
 import * as Haptics from "expo-haptics";
 import { THEME, FONTS } from "@/lib/constants";
