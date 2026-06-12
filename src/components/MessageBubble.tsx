@@ -611,7 +611,6 @@ export const MessageBubble = memo(function MessageBubble({
   }, []);
 
   const handleCopy = useCallback(() => {
-    setPickerVisible(false);
     const text = message.editedContent ?? message.content;
     // Strip media prefixes for copy
     const cleaned = text.startsWith("IMAGE:") ? "[Image]"
@@ -619,9 +618,16 @@ export const MessageBubble = memo(function MessageBubble({
       : text.startsWith("VIDEO:") ? "[Video]"
       : text.startsWith("STICKER:") ? "[Sticker]"
       : text;
+    // Copy + haptic immediately (no overlay), then dismiss the picker.
     Clipboard.setStringAsync(cleaned);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    toast.success("Copied to clipboard");
+    setPickerVisible(false);
+    // 2026-06-12: DEFER the toast until AFTER the Modal's fade-out completes.
+    // Firing sonner-native's overlay while the BlurView Modal was mid-dismiss
+    // left a stuck grey screen on Android (RN 0.79 / Fabric) that required a
+    // force-close — two native overlays manipulated at once. Only Copy toasted,
+    // which is why Reply/React/Edit never triggered it. 350ms > the fade.
+    setTimeout(() => toast.success("Copied to clipboard"), 350);
   }, [message]);
 
   const handleEdit = useCallback(() => {
