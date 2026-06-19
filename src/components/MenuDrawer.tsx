@@ -54,7 +54,6 @@ import { loadBananaState, type BananaState } from "@/lib/bananaRewards";
 import { BananaShopModal } from "@/components/BananaShopModal";
 import { ReclaimModal } from "@/components/ReclaimModal";
 import type { ProfileTarget } from "@/components/UserProfileModal";
-import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
 import { LeaderboardView } from "@/components/LeaderboardView";
 import { EventRsvpModal } from "@/components/EventRsvpModal";
@@ -456,7 +455,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
       statusBarTranslucent
     >
       <Pressable style={StyleSheet.absoluteFill} onPress={onClose}>
-        <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.55)' }]} />
         <View style={styles.overlay} />
       </Pressable>
 

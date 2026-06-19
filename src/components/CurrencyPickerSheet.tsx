@@ -23,7 +23,6 @@ import {
   Dimensions,
 } from "react-native";
 import * as Haptics from "expo-haptics";
-import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { getAssociatedTokenAddressSync } from "@solana/spl-token";
@@ -202,7 +201,7 @@ export function CurrencyPickerSheet({
       <View style={{ flex: 1 }} collapsable={false}>
         {/* Backdrop — tap to close */}
         <Pressable style={styles.backdrop} onPress={onClose}>
-          <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.55)' }]} />
           <View style={styles.dimLayer} />
         </Pressable>
 

@@ -34,7 +34,6 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { BlurView } from "expo-blur";
 import { SkiaGlowBubble, SkiaGlassFront, SkiaGlowPfp } from "@/components/SkiaGlowBubble";
 import { CyberpunkGlitchBubble } from "@/components/CyberpunkGlitchBubble";
 import { BananaGroveSignBubble } from "@/components/BananaGroveSignBubble";
@@ -1358,7 +1357,7 @@ export const MessageBubble = memo(function MessageBubble({
       onRequestClose={() => setPickerVisible(false)}
     >
       <Pressable style={styles.pickerOverlay} onPress={() => setPickerVisible(false)}>
-        <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.55)' }]} />
         <Pressable style={styles.pickerSheet} onPress={(e) => e.stopPropagation()}>
           {/* Animated emoji reaction pill */}
           <ReactionPicker onPick={handlePickReaction} activeEmojis={myActiveEmojis} />

@@ -21,7 +21,6 @@ import {
 } from "react-native";
 import * as Haptics from "expo-haptics";
 import { toast } from "sonner-native";
-import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
 import { playSound } from "@/lib/sounds";
 import { THEME, FONTS, DEV_WALLET } from "@/lib/constants";
@@ -296,7 +295,7 @@ function PreviewPopup({ item, owned, equipped, canAfford, onClose, onAction, pur
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
       <View style={previewStyles.backdrop}>
-        <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} />
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.55)' }]} />
         <View style={previewStyles.dimLayer} />
 
         <View style={previewStyles.card}>
