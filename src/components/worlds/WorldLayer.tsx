@@ -24,6 +24,8 @@ import { useAppStore } from "@/store/appStore";
 import { BananaGroveWorld } from "./BananaGroveWorld";
 import { SolanaCyberpunkWorld } from "./SolanaCyberpunkWorld";
 import { TradingFloorWorld } from "./TradingFloorWorld";
+import { TechNoirWorld } from "./TechNoirWorld";
+import { DeepSpaceWorld } from "./DeepSpaceWorld";
 
 interface WorldLayerProps {
   active?: boolean;
@@ -33,9 +35,11 @@ export function WorldLayer({ active = true }: WorldLayerProps) {
   const worldId = useAppStore((s) => s.shopStyles?.worldId) as string | undefined;
 
   switch (worldId) {
-    case "world_banana_grove":   return <BananaGroveWorld active={active} />;
+    case "world_banana_grove":     return <BananaGroveWorld active={active} />;
     case "world_solana_cyberpunk": return <SolanaCyberpunkWorld active={active} />;
-    case "world_trading_floor":  return <TradingFloorWorld active={active} />;
+    case "world_trading_floor":    return <TradingFloorWorld active={active} />;
+    case "world_tech_noir":        return <TechNoirWorld active={active} />;
+    case "world_deep_space":       return <DeepSpaceWorld active={active} />;
     default: return null;
   }
 }
@@ -170,6 +174,86 @@ export function WorldMiniPreview({ worldId, width, height }: WorldMiniPreviewPro
               );
             })}
           </Group>
+        </Canvas>
+      </View>
+    );
+  }
+  if (worldId === "world_tech_noir") {
+    // Mini skyline silhouette + rain streaks over a noir gradient
+    const buildings = [
+      { xPct: 0.05, wPct: 0.08, hPct: 0.35 },
+      { xPct: 0.13, wPct: 0.06, hPct: 0.50 },
+      { xPct: 0.19, wPct: 0.09, hPct: 0.32 },
+      { xPct: 0.28, wPct: 0.06, hPct: 0.44 },
+      { xPct: 0.34, wPct: 0.04, hPct: 0.62 }, // tallest
+      { xPct: 0.38, wPct: 0.08, hPct: 0.40 },
+      { xPct: 0.46, wPct: 0.06, hPct: 0.28 },
+      { xPct: 0.52, wPct: 0.09, hPct: 0.50 },
+      { xPct: 0.61, wPct: 0.06, hPct: 0.36 },
+      { xPct: 0.67, wPct: 0.08, hPct: 0.42 },
+      { xPct: 0.75, wPct: 0.06, hPct: 0.30 },
+      { xPct: 0.81, wPct: 0.09, hPct: 0.46 },
+      { xPct: 0.90, wPct: 0.08, hPct: 0.33 },
+    ];
+    const skylineParts: string[] = [`M0 ${height}`];
+    for (const b of buildings) {
+      const bx = b.xPct * width;
+      const bw = b.wPct * width;
+      const top = height - b.hPct * height;
+      skylineParts.push(`L${bx} ${height} L${bx} ${top} L${bx + bw} ${top} L${bx + bw} ${height}`);
+    }
+    skylineParts.push(`L${width} ${height} Z`);
+    const skyline = skylineParts.join(" ");
+    // Static rain streaks
+    const rain: Array<{ x: number; y1: number; y2: number; a: number }> = [];
+    const rainSeeds = [7, 23, 41, 67, 89, 113, 137, 157, 181, 211, 233, 257, 281, 307, 331];
+    for (let i = 0; i < rainSeeds.length; i++) {
+      const s = rainSeeds[i];
+      const fx = ((s * 1103515245 + i * 12345) & 0x7fffffff) / 0x7fffffff;
+      const fy = ((s * 6764231 + i * 22695477) & 0x7fffffff) / 0x7fffffff;
+      const fa = ((s * 214013 + i * 2531011) & 0x7fffffff) / 0x7fffffff;
+      rain.push({ x: fx * width, y1: fy * (height * 0.7), y2: fy * (height * 0.7) + 10 + fa * 8, a: 0.12 + fa * 0.2 });
+    }
+    return (
+      <View style={[miniStyles.root, { width, height }]}>
+        <Canvas style={{ width, height }}>
+          <Rect x={0} y={0} width={width} height={height}>
+            <LinearGradient start={vec(0, 0)} end={vec(0, height)} colors={["#010308", "#02060F", "#040C1C"]} />
+          </Rect>
+          {rain.map((r, i) => (
+            <Line key={i} p1={vec(r.x, r.y1)} p2={vec(r.x, r.y2)} color={`rgba(160,192,220,${r.a})`} strokeWidth={0.8} />
+          ))}
+          <Path path={skyline} color="#000A14" />
+          <Path path={skyline} color="#1A3A5C" style="stroke" strokeWidth={0.8} />
+        </Canvas>
+      </View>
+    );
+  }
+  if (worldId === "world_deep_space") {
+    // Star field + nebula glow over a near-black gradient
+    const stars: Array<{ cx: number; cy: number; r: number; a: number }> = [];
+    const starSeeds = [11,29,53,79,101,127,149,173,197,223,241,269,293,311,337,359,383,409,421,449];
+    for (let i = 0; i < starSeeds.length; i++) {
+      const s = starSeeds[i];
+      const fx = ((s * 1103515245 + i * 12345) & 0x7fffffff) / 0x7fffffff;
+      const fy = ((s * 6764231 + i * 22695477) & 0x7fffffff) / 0x7fffffff;
+      const fa = ((s * 214013 + i * 2531011) & 0x7fffffff) / 0x7fffffff;
+      stars.push({ cx: fx * width, cy: fy * height, r: 0.5 + fa * 1.1, a: 0.35 + fa * 0.5 });
+    }
+    return (
+      <View style={[miniStyles.root, { width, height }]}>
+        <Canvas style={{ width, height }}>
+          <Rect x={0} y={0} width={width} height={height}>
+            <LinearGradient start={vec(0, 0)} end={vec(width, height)} colors={["#010108", "#03020F", "#050218"]} />
+          </Rect>
+          {/* Nebula hint */}
+          <Rect x={-width * 0.1} y={0} width={width * 0.7} height={height}>
+            <LinearGradient start={vec(0, height * 0.2)} end={vec(width * 0.4, height * 0.6)}
+              colors={["rgba(80,30,160,0.10)", "rgba(0,0,0,0)"]} />
+          </Rect>
+          {stars.map((s, i) => (
+            <Rect key={i} x={s.cx} y={s.cy} width={s.r * 2} height={s.r * 2} color={`rgba(220,230,255,${s.a})`} />
+          ))}
         </Canvas>
       </View>
     );

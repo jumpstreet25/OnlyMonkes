@@ -37,6 +37,8 @@ import { LinearGradient } from "expo-linear-gradient";
 import { SkiaGlowBubble, SkiaGlassFront, SkiaGlowPfp } from "@/components/SkiaGlowBubble";
 import { CyberpunkGlitchBubble } from "@/components/CyberpunkGlitchBubble";
 import { BananaGroveSignBubble } from "@/components/BananaGroveSignBubble";
+import { TechNoirBubble } from "@/components/TechNoirBubble";
+import { DeepSpaceBubble } from "@/components/DeepSpaceBubble";
 import { BotAlertCard, parseTopSalesAlert } from "@/components/BotAlertCard";
 import Reanimated, {
   useSharedValue,
@@ -455,15 +457,11 @@ export const MessageBubble = memo(function MessageBubble({
   // purchase, so it falls through to viewer's world automatically.
   const effectiveWorld = (myShopStyles?.worldId as string | undefined)
     ?? (shopStyles.worldId as string | undefined);
-  const useGlitchBubble = effectiveWorld === "world_solana_cyberpunk";
-  const useBananaGroveEntry = effectiveWorld === "world_banana_grove";
-  // ── Banana Grove bubble chrome — A/B preview, 2026-05-08 ──
-  // While the user evaluates Sign vs Vine, render Sign for own messages and
-  // Vine for received so both styles appear simultaneously in chat. Single
-  // OTA, side-by-side empirical comparison. After user picks the winner,
-  // collapse this to a single component and rip out the loser.
-  const useBananaGroveBubble = useBananaGroveEntry;
-  const hasWorldChrome = useGlitchBubble || useBananaGroveBubble;
+  const useGlitchBubble      = effectiveWorld === "world_solana_cyberpunk";
+  const useBananaGroveBubble = effectiveWorld === "world_banana_grove";
+  const useTechNoirBubble    = effectiveWorld === "world_tech_noir";
+  const useDeepSpaceBubble   = effectiveWorld === "world_deep_space";
+  const hasWorldChrome = useGlitchBubble || useBananaGroveBubble || useTechNoirBubble || useDeepSpaceBubble;
   const hasSkiaGlow =
     !!(shopStyles.hasBubbleCosmetic && shopStyles.glowColor) && !hasWorldChrome;
 
@@ -925,11 +923,29 @@ export const MessageBubble = memo(function MessageBubble({
                   tailSide={centerBubble ? "none" : isOwn ? "right" : "left"}
                 />
               ) : null}
-              {/* ── Banana Grove world chrome — wooden Sign for ALL messages
-                  (v4 2026-05-08, A/B winner). Tail side flips own vs received
-                  so the wooden peg points at the sender's PFP. */}
+              {/* ── Banana Grove world chrome — wooden Sign */}
               {useBananaGroveBubble && bubbleSize ? (
                 <BananaGroveSignBubble
+                  width={bubbleSize.w}
+                  height={bubbleSize.h}
+                  color={glitchAccent}
+                  radius={14}
+                  tailSide={centerBubble ? "none" : isOwn ? "right" : "left"}
+                />
+              ) : null}
+              {/* ── Tech Noir world chrome — steel case-file frame */}
+              {useTechNoirBubble && bubbleSize ? (
+                <TechNoirBubble
+                  width={bubbleSize.w}
+                  height={bubbleSize.h}
+                  color={glitchAccent}
+                  radius={5}
+                  tailSide={centerBubble ? "none" : isOwn ? "right" : "left"}
+                />
+              ) : null}
+              {/* ── Deep Space world chrome — comm-panel HUD frame */}
+              {useDeepSpaceBubble && bubbleSize ? (
+                <DeepSpaceBubble
                   width={bubbleSize.w}
                   height={bubbleSize.h}
                   color={glitchAccent}

@@ -310,6 +310,22 @@ export const SHOP_ITEMS: ShopItem[] = [
     preview: "📈",
     style: { worldId: "world_trading_floor" },
   },
+  {
+    id: "world_tech_noir",
+    name: "Tech Noir",
+    description: "Noir city skyline in the rain. Cold chrome bubbles. Steel-blue night.",
+    category: "world", tier: 5, bananaCost: 750, usdCost: 4.99,
+    preview: "🌧️",
+    style: { worldId: "world_tech_noir" },
+  },
+  {
+    id: "world_deep_space",
+    name: "Deep Space",
+    description: "Infinite star field, drifting nebulae, and shooting stars across your chat",
+    category: "world", tier: 5, bananaCost: 750, usdCost: 4.99,
+    preview: "🌌",
+    style: { worldId: "world_deep_space" },
+  },
 ];
 
 // ─── Seasonal / Limited Items ────────────────────────────────────────────────

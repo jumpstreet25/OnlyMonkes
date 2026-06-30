@@ -140,6 +140,12 @@ export function getWorldAccent(worldId: string | undefined | null): string {
     // Trading Floor — bright gold (financial/ticker feel)
     case 'world_trading_floor':
       return '#FFD24A';
+    // Tech Noir — cold steel silver-blue
+    case 'world_tech_noir':
+      return '#8BAFC8';
+    // Deep Space — nebula purple
+    case 'world_deep_space':
+      return '#9B70FF';
     default:
       return '#6CB4EE';
   }
@@ -166,6 +172,12 @@ export function getWorldBarTint(worldId: string | undefined | null): string {
     // Trading Floor — financial dark. Dark navy tint.
     case 'world_trading_floor':
       return 'rgba(10, 18, 32, 0.30)';
+    // Tech Noir — cold noir black, very dark with blue cast.
+    case 'world_tech_noir':
+      return 'rgba(4, 8, 18, 0.38)';
+    // Deep Space — deep purple-black void.
+    case 'world_deep_space':
+      return 'rgba(6, 3, 18, 0.36)';
     default:
       return WORLD_BAR_BG;
   }
