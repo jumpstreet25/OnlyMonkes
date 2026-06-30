@@ -242,6 +242,12 @@ function Step1Disclaimer({
         <Text style={s.bold}>Fund with SKR for 50% off</Text> (2.5% fee).
       </Text>
 
+      <View style={s.seekerNote}>
+        <Text style={s.seekerNoteText}>
+          📱 <Text style={s.bold}>Seeker users:</Text> every AutonoMonke trade counts toward your SKR Activity Tracker points.
+        </Text>
+      </View>
+
       <CheckboxRow
         checked={riskAck}
         onToggle={() => setRiskAck(!riskAck)}
@@ -578,6 +584,16 @@ const s = StyleSheet.create({
     lineHeight: 20,
   },
   bold: { fontFamily: FONTS.bodyMed },
+  seekerNote: {
+    marginTop: 12,
+    paddingVertical: 8, paddingHorizontal: 12,
+    backgroundColor: '#1a2a1a',
+    borderWidth: 1, borderColor: '#2d5a2d',
+    borderRadius: 10,
+  },
+  seekerNoteText: {
+    fontFamily: FONTS.body, fontSize: 12, color: '#7ecf7e', lineHeight: 18,
+  },
 
   checkRow: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 10,
