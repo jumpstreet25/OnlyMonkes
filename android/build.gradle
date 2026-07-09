@@ -34,5 +34,16 @@ allprojects {
   }
 }
 
+// Pin NDK version explicitly. expo-modules-autolinking's ExpoRootProjectPlugin
+// only sets rootProject.ext.ndkVersion via setIfNotExist(), silently falling
+// back to its own hardcoded internal default (currently 27.1.12297006,
+// coincidentally matching) if nothing set it first — app.config.ts's
+// expo-build-properties `ndkVersion` field is a no-op for Android (no Android
+// writer support for that key), so without this line the NDK version isn't
+// actually pinned anywhere in this repo. Nitro Modules
+// (react-native-nitro-modules, added for vision-camera 5) documents NDK 27+
+// as a floor — this must not silently drift on an autolinking bump.
+rootProject.ext.ndkVersion = "27.1.12297006"
+
 apply plugin: "expo-root-project"
 apply plugin: "com.facebook.react.rootproject"
