@@ -9,6 +9,7 @@ import { BotCommandTicker } from '@/components/BotCommandTicker';
 import { getCachedProfile, useProfileVersion } from '@/lib/userProfile';
 import { useDm } from '@/hooks/useDm';
 import { MessageBubble } from '@/components/MessageBubble';
+import { MessageActionSheet } from '@/components/MessageActionSheet';
 import { ChatInput } from '@/components/ChatInput';
 import ImageLightbox from '@/components/ImageLightbox';
 import { useAppStore } from '@/store/appStore';
@@ -40,6 +41,7 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [activeTradeCard, setActiveTradeCard] = useState<ClosedTrade | null>(null);
   const [activeLiveCard, setActiveLiveCard] = useState<PortfolioCard | null>(null);
+  const [actionSheetTarget, setActionSheetTarget] = useState<ChatMessage | null>(null);
   const flatListRef = useRef<FlashListRef<FeedItem>>(null);
   useProfileVersion();
   const peerProfile = getCachedProfile(peerInboxId);
@@ -173,6 +175,7 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
                   isOwn={m.senderAddress === myInboxId}
                   onReact={noop}
                   onReply={handleReply}
+                  onOpenActions={setActionSheetTarget}
                   onPressImage={setLightboxUrl}
                 />
                 {m.id === lastReadOwnId && (
@@ -215,6 +218,14 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
         card={activeLiveCard}
         visible={!!activeLiveCard}
         onClose={() => setActiveLiveCard(null)}
+      />
+      <MessageActionSheet
+        target={actionSheetTarget}
+        onClose={() => setActionSheetTarget(null)}
+        myAddress={myInboxId ?? ''}
+        isGroupAdmin={false}
+        onReact={noop}
+        onReply={handleReply}
       />
     </View>
   );

@@ -67,6 +67,7 @@ export interface ChatMessageListProps {
   handleDelete: (msg: ChatMessage) => void;
   handlePin: ((msg: ChatMessage) => void) | undefined;
   handleThread: (msg: ChatMessage) => void;
+  onOpenActions: (msg: ChatMessage) => void;
   handleRefreshChat: () => void;
   loadOlderMessages: () => void;
 
@@ -120,6 +121,7 @@ const ChatMessageListInner = React.forwardRef<FlashListRef<ChatMessage>, ChatMes
     handleDelete,
     handlePin,
     handleThread,
+    onOpenActions,
     handleRefreshChat,
     loadOlderMessages,
     setShowScrollFab,
@@ -200,6 +202,7 @@ const ChatMessageListInner = React.forwardRef<FlashListRef<ChatMessage>, ChatMes
               isNew={isNew}
               onReact={handleReact}
               onReply={setReplyingTo}
+              onOpenActions={onOpenActions}
               onPressUser={handlePressUser}
               onTip={handleTip}
               onStickerReact={handleStickerReact}
@@ -216,7 +219,7 @@ const ChatMessageListInner = React.forwardRef<FlashListRef<ChatMessage>, ChatMes
         </Swipeable>
       );
     },
-    [myAddress, isGroupAdmin, handleReact, setReplyingTo, handlePressUser, handleTip, handleStickerReact, setVideoLightboxUrl, handleEditMessage, handleDelete, handlePin, handleThread, initialMsgIdsRef, setLightboxUrl, setChartSymbol]
+    [myAddress, isGroupAdmin, handleReact, setReplyingTo, onOpenActions, handlePressUser, handleTip, handleStickerReact, setVideoLightboxUrl, handleEditMessage, handleDelete, handlePin, handleThread, initialMsgIdsRef, setLightboxUrl, setChartSymbol]
   );
 
   const keyExtractor = useCallback((item: ChatMessage) => item.id, []);

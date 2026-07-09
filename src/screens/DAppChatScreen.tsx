@@ -23,6 +23,7 @@ import { router } from "expo-router";
 import { useAppStore } from "@/store/appStore";
 import { useGroupChat } from "@/hooks/useGroupChat";
 import { MessageBubble } from "@/components/MessageBubble";
+import { MessageActionSheet } from "@/components/MessageActionSheet";
 import { ChatInput } from "@/components/ChatInput";
 import { THEME, FONTS, DAPPS } from "@/lib/constants";
 import type { ChatMessage, ReactionEmoji } from "@/types";
@@ -54,6 +55,7 @@ export default function DAppChatScreen({ dappId }: DAppChatScreenProps) {
   const [inputText, setInputText] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
+  const [actionSheetTarget, setActionSheetTarget] = useState<ChatMessage | null>(null);
   const flatListRef = useRef<FlatList>(null);
 
   const myAddress = myInboxId ?? "";
@@ -143,6 +145,7 @@ export default function DAppChatScreen({ dappId }: DAppChatScreenProps) {
         isOwn={item.senderAddress === myAddress}
         onReact={handleReact}
         onReply={setReplyingTo}
+        onOpenActions={setActionSheetTarget}
       />
     ),
     [myAddress, handleReact]
@@ -264,6 +267,15 @@ export default function DAppChatScreen({ dappId }: DAppChatScreenProps) {
       )}
 
       <View style={{ height: insets.bottom }} />
+
+      <MessageActionSheet
+        target={actionSheetTarget}
+        onClose={() => setActionSheetTarget(null)}
+        myAddress={myAddress}
+        isGroupAdmin={false}
+        onReact={handleReact}
+        onReply={setReplyingTo}
+      />
     </KeyboardAvoidingView>
   );
 }

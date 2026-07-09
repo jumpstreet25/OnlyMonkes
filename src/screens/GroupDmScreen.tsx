@@ -7,6 +7,7 @@ import { useThemeColor } from '@/lib/shopTheme';
 import { getCachedProfile, useProfileVersion } from '@/lib/userProfile';
 import { useGroupDm } from '@/hooks/useGroupDm';
 import { MessageBubble } from '@/components/MessageBubble';
+import { MessageActionSheet } from '@/components/MessageActionSheet';
 import { ChatInput } from '@/components/ChatInput';
 import ImageLightbox from '@/components/ImageLightbox';
 import { useAppStore } from '@/store/appStore';
@@ -20,6 +21,7 @@ export default function GroupDmScreen({ groupId }: { groupId: string }) {
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
+  const [actionSheetTarget, setActionSheetTarget] = useState<ChatMessage | null>(null);
   const flatListRef = useRef<FlatList>(null);
   useProfileVersion();
   const themeBg = useThemeColor('bg');
@@ -92,6 +94,7 @@ export default function GroupDmScreen({ groupId }: { groupId: string }) {
               isOwn={item.senderAddress === myInboxId}
               onReact={noop}
               onReply={handleReply}
+              onOpenActions={setActionSheetTarget}
               onPressImage={setLightboxUrl}
             />
           )}
@@ -122,6 +125,14 @@ export default function GroupDmScreen({ groupId }: { groupId: string }) {
       />
       <View style={{ height: insets.bottom }} />
       <ImageLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
+      <MessageActionSheet
+        target={actionSheetTarget}
+        onClose={() => setActionSheetTarget(null)}
+        myAddress={myInboxId ?? ''}
+        isGroupAdmin={false}
+        onReact={noop}
+        onReply={handleReply}
+      />
     </View>
   );
 }

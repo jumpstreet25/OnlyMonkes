@@ -31,10 +31,11 @@ import { ChartModal } from "@/components/ChartModal";
 import { UserProfileModal, type ProfileTarget } from "@/components/UserProfileModal";
 import { VideoCameraModal } from "@/components/VideoCameraModal";
 import { GlassBottomSheet } from "@/components/GlassBottomSheet";
+import { MessageActionSheet } from "@/components/MessageActionSheet";
 import { useAppStore } from "@/store/appStore";
 import { addBananas } from "@/lib/bananaRewards";
 import { saveSelectedNftMint } from "@/lib/userProfile";
-import type { ChatMessage } from "@/types";
+import type { ChatMessage, ReactionEmoji } from "@/types";
 import type { ClaimResult } from "@/lib/bananaRewards";
 import type { SwapQuote } from "@/lib/jupiterSwap";
 import type { Badge } from "@/lib/activityBadges";
@@ -172,6 +173,17 @@ export interface ChatModalsProps {
   xShareImageUri: string | null;
   setXShareImageUri: (v: string | null) => void;
   handleShareToX: () => void;
+
+  // Message action sheet (react/reply/copy/edit/delete/pin/thread/sticker)
+  actionSheetTarget: ChatMessage | null;
+  setActionSheetTarget: (v: ChatMessage | null) => void;
+  handleReact: (emoji: ReactionEmoji, messageId: string) => void;
+  setReplyingTo: (msg: ChatMessage | null) => void;
+  handleEditMessage: (msg: ChatMessage) => void;
+  handleDelete: (msg: ChatMessage) => void;
+  handlePin: ((msg: ChatMessage) => void) | undefined;
+  handleThread: (msg: ChatMessage) => void;
+  handleStickerReact: (url: string, messageId: string) => void;
 }
 
 export function ChatModals(props: ChatModalsProps) {
@@ -198,7 +210,11 @@ export function ChatModals(props: ChatModalsProps) {
     videoLightboxUrl, setVideoLightboxUrl, handleDownloadVideo,
     editTarget, setEditTarget, editText, setEditText, handleEditSubmit,
     xShareImageUri, setXShareImageUri, handleShareToX,
+    actionSheetTarget, setActionSheetTarget, handleReact, setReplyingTo,
+    handleEditMessage, handleDelete, handlePin, handleThread, handleStickerReact,
   } = props;
+
+  const isGroupAdmin = useAppStore(s => s.isGroupAdmin);
 
   return (
     <>
@@ -473,6 +489,20 @@ export function ChatModals(props: ChatModalsProps) {
           </Pressable>
         </View>
       </GlassBottomSheet>
+
+      <MessageActionSheet
+        target={actionSheetTarget}
+        onClose={() => setActionSheetTarget(null)}
+        myAddress={myAddress}
+        isGroupAdmin={isGroupAdmin}
+        onReact={handleReact}
+        onReply={setReplyingTo}
+        onEdit={handleEditMessage}
+        onDelete={handleDelete}
+        onPin={isGroupAdmin ? handlePin : undefined}
+        onThread={handleThread}
+        onStickerReact={handleStickerReact}
+      />
     </>
   );
 }

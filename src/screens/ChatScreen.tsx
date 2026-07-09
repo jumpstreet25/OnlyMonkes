@@ -212,6 +212,7 @@ export default function ChatScreen() {
   const [gifPickerOpen, setGifPickerOpen] = useState(false);
   const [pfpGifPickerOpen, setPfpGifPickerOpen] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [actionSheetTarget, setActionSheetTarget] = useState<ChatMessage | null>(null);
   const [videoModalOpen, setVideoModalOpen] = useState(false);
   const [videoLightboxUrl, setVideoLightboxUrl] = useState<string | null>(null);
   const [chartSymbol, setChartSymbol] = useState<string | null>(null);
@@ -1369,6 +1370,7 @@ export default function ChatScreen() {
             handleDelete={handleDelete}
             handlePin={isGroupAdmin ? handlePin : undefined}
             handleThread={handleThread}
+            onOpenActions={setActionSheetTarget}
             handleRefreshChat={handleRefreshChat}
             loadOlderMessages={loadOlderMessages}
             setShowScrollFab={setShowScrollFab}
@@ -1546,6 +1548,15 @@ export default function ChatScreen() {
         xShareImageUri={xShareImageUri}
         setXShareImageUri={setXShareImageUri}
         handleShareToX={handleShareToX}
+        actionSheetTarget={actionSheetTarget}
+        setActionSheetTarget={setActionSheetTarget}
+        handleReact={handleReact}
+        setReplyingTo={setReplyingTo}
+        handleEditMessage={handleEditMessage}
+        handleDelete={handleDelete}
+        handlePin={handlePin}
+        handleThread={handleThread}
+        handleStickerReact={handleStickerReact}
       />
     </ErrorBoundary>
   );

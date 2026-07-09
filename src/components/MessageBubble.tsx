@@ -49,10 +49,8 @@ import Reanimated, {
 } from "react-native-reanimated";
 import { getOrExtractNftColor } from "@/lib/nftColor";
 import { setLatestBubbleHeight } from "@/lib/chatViewport";
-import * as Clipboard from "expo-clipboard";
 import { Image as ExpoImage } from "expo-image";
 import * as Haptics from "expo-haptics";
-import { toast } from "sonner-native";
 import { format } from "date-fns";
 import { THEME, FONTS } from "@/lib/constants";
 import { shortenAddress } from "@/lib/nftVerification";
@@ -62,7 +60,6 @@ import { getEarnedBadges, getBadgeDef } from "@/lib/badges";
 import { BadgeGlyph } from "./BadgeGlyph";
 import { getFlairSync } from "@/lib/monkeClout";
 // nftColor no longer needed — glass bubbles use fixed semi-transparent backgrounds
-import { searchStickers, getGiphyLastStatus, type GiphyItem } from "@/lib/giphy";
 import type { ChatMessage, ReactionEmoji } from "@/types";
 import type { ProfileTarget } from "@/components/UserProfileModal";
 import { LinkPreviewCard } from "@/components/LinkPreviewCard";
@@ -70,8 +67,6 @@ import { BlinkCard } from "@/components/BlinkCard";
 import { extractBlinkUrl } from "@/lib/blinkActions";
 import { OnlineDot } from "@/components/OnlineDot";
 import { isUserOnline } from "@/lib/presence";
-import { ReactionPicker } from "@/components/ReactionPicker";
-import { GlassBottomSheet } from "@/components/GlassBottomSheet";
 import MarkdownContent from "@/components/MarkdownContent";
 
 // ─── Pulse Frame — animated ring for Tier 3 PFP shop item ─────────────────
@@ -380,6 +375,10 @@ interface MessageBubbleProps {
   isOwn: boolean;
   onReact: (emoji: ReactionEmoji, messageId: string) => void;
   onReply: (message: ChatMessage) => void;
+  /** Opens the lifted MessageActionSheet (react/reply/copy/edit/delete/pin/
+   * thread) for this message — rendered once at the screen level, not per
+   * bubble. See MessageActionSheet.tsx for why. */
+  onOpenActions: (message: ChatMessage) => void;
   onPressUser?: (target: ProfileTarget) => void;
   onTip?: (message: ChatMessage) => void;
   onStickerReact?: (url: string, messageId: string) => void;
@@ -421,6 +420,7 @@ export const MessageBubble = memo(function MessageBubble({
   isOwn,
   onReact,
   onReply,
+  onOpenActions,
   onPressUser,
   onTip,
   onStickerReact,
@@ -544,25 +544,6 @@ export const MessageBubble = memo(function MessageBubble({
   const [imgAspect, setImgAspect] = useState<number>(3 / 4); // sensible portrait default
 
   const [botExpanded, setBotExpanded] = useState(false);
-  const [pickerVisible, setPickerVisible] = useState(false);
-  const [stickerItems, setStickerItems] = useState<GiphyItem[]>([]);
-  const [stickersLoading, setStickersLoading] = useState(false);
-
-  // Fetch SagaMonkes stickers when picker opens
-  useEffect(() => {
-    if (!pickerVisible) return;
-    let cancelled = false;
-    setStickersLoading(true);
-    searchStickers("SagaMonkes", 30).then((items) => {
-      if (!cancelled) {
-        setStickerItems(items);
-        setStickersLoading(false);
-      }
-    }).catch(() => {
-      if (!cancelled) setStickersLoading(false);
-    });
-    return () => { cancelled = true; };
-  }, [pickerVisible]);
 
   // Look up @mentioned username → open their profile
   const handlePressMention = useCallback((mentionedUsername: string) => {
@@ -591,57 +572,11 @@ export const MessageBubble = memo(function MessageBubble({
   // Determine displayed content (edited or original)
   const displayContent = message.editedContent ?? message.content;
 
-  // Can edit own text messages within 1 minute of sending
-  const isMediaContent =
-    message.content.startsWith("GIF:") ||
-    message.content.startsWith("IMAGE:") ||
-    message.content.startsWith("VIDEO:") ||
-    message.content.startsWith("STICKER:");
-  const canEdit = isOwn && !isMediaContent
-    && (Date.now() - message.sentAt.getTime()) < 60_000;
-
   const handleLongPress = useCallback(() => {
     Keyboard.dismiss();
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setPickerVisible(true);
-  }, []);
-
-  const handleCopy = useCallback(() => {
-    const text = message.editedContent ?? message.content;
-    // Strip media prefixes for copy
-    const cleaned = text.startsWith("IMAGE:") ? "[Image]"
-      : text.startsWith("GIF:") ? "[GIF]"
-      : text.startsWith("VIDEO:") ? "[Video]"
-      : text.startsWith("STICKER:") ? "[Sticker]"
-      : text;
-    // Copy + haptic immediately (no overlay), then dismiss the picker.
-    Clipboard.setStringAsync(cleaned);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    setPickerVisible(false);
-    // 2026-06-12: DEFER the toast until AFTER the Modal's fade-out completes.
-    // Firing sonner-native's overlay while the BlurView Modal was mid-dismiss
-    // left a stuck grey screen on Android (RN 0.79 / Fabric) that required a
-    // force-close — two native overlays manipulated at once. Only Copy toasted,
-    // which is why Reply/React/Edit never triggered it. 350ms > the fade.
-    setTimeout(() => toast.success("Copied to clipboard"), 350);
-  }, [message]);
-
-  const handleEdit = useCallback(() => {
-    setPickerVisible(false);
-    onEdit?.(message);
-  }, [onEdit, message]);
-
-  const handlePickReaction = useCallback((emoji: ReactionEmoji) => {
-    setPickerVisible(false);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    onReact(emoji, message.id);
-  }, [onReact, message.id]);
-
-  const handlePickReply = useCallback(() => {
-    setPickerVisible(false);
-    onReply(message);
-  }, [onReply, message]);
-
+    onOpenActions(message);
+  }, [onOpenActions, message]);
 
   const handlePressAvatar = useCallback(() => {
     if (!onPressUser) return;
@@ -738,15 +673,6 @@ export const MessageBubble = memo(function MessageBubble({
   const activeReactions = useMemo(() => {
     return Object.values(message.reactions).filter(r => r && r.count > 0);
   }, [message.reactions]);
-
-  // Set of emojis I've already reacted with (for picker highlight)
-  const myActiveEmojis = useMemo(() => {
-    const s = new Set<string>();
-    for (const r of activeReactions) {
-      if (r.reactedByMe) s.add(r.emoji);
-    }
-    return s;
-  }, [activeReactions]);
 
   // ── Avatar ────────────────────────────────────────────────────────────────
   // Own: use live verifiedNft. Others: always prefer fresh profile cache.
@@ -1363,127 +1289,8 @@ export const MessageBubble = memo(function MessageBubble({
     )}
 
     {/* Sticker reactions now rendered inline with emoji reactions above */}
-
-    {/* ── Reaction picker ──────────────────────────────────────────────
-        2026-07-09: was a native <Modal> — on Android it creates a separate
-        window on top of the main Activity, and this component's dismiss
-        (setPickerVisible(false)) fires ~120ms after tap (ReactionPicker's
-        own pop animation delay), right as the reaction is optimistically
-        applied to chatStore. The main window's repaint of that change was
-        getting suppressed until the Dialog window fully tore down, so the
-        new reaction only became visible after something else forced a
-        repaint (backgrounding/reopening the app). GlassBottomSheet renders
-        inline in the main Activity's own tree (same fix as the gray-screen
-        Modals this session) — no second window, so nothing can block the
-        repaint. */}
-    <GlassBottomSheet visible={pickerVisible} onClose={() => setPickerVisible(false)} snapPoints={['45%', '85%']}>
-      <View style={styles.pickerContent}>
-          {/* Animated emoji reaction pill */}
-          <ReactionPicker onPick={handlePickReaction} activeEmojis={myActiveEmojis} />
-
-          <View style={styles.pickerActionRow}>
-            <Pressable
-              onPress={handlePickReply}
-              style={({ pressed }) => [
-                styles.pickerReplyBtn,
-                pressed && styles.pickerReplyBtnPressed,
-              ]}
-            >
-              <Text style={styles.pickerReplyText}>↩  Reply</Text>
-            </Pressable>
-
-            <Pressable
-              onPress={handleCopy}
-              style={({ pressed }) => [
-                styles.pickerReplyBtn,
-                pressed && styles.pickerReplyBtnPressed,
-              ]}
-            >
-              <Text style={styles.pickerReplyText}>📋  Copy</Text>
-            </Pressable>
-
-            {canEdit && onEdit && (
-              <Pressable
-                onPress={handleEdit}
-                style={({ pressed }) => [
-                  styles.pickerReplyBtn,
-                  pressed && styles.pickerReplyBtnPressed,
-                ]}
-              >
-                <Text style={styles.pickerReplyText}>✏️  Edit</Text>
-              </Pressable>
-            )}
-
-            {(isOwn || isGroupAdmin) && onDelete && (
-              <Pressable
-                onPress={() => { setPickerVisible(false); onDelete(message); }}
-                style={({ pressed }) => [
-                  styles.pickerReplyBtn,
-                  pressed && styles.pickerReplyBtnPressed,
-                ]}
-              >
-                <Text style={[styles.pickerReplyText, { color: THEME.error }]}>🗑  Delete</Text>
-              </Pressable>
-            )}
-
-            {onPin && (
-              <Pressable
-                onPress={() => { setPickerVisible(false); onPin(message); }}
-                style={({ pressed }) => [
-                  styles.pickerReplyBtn,
-                  pressed && styles.pickerReplyBtnPressed,
-                ]}
-              >
-                <Text style={styles.pickerReplyText}>📌  Pin</Text>
-              </Pressable>
-            )}
-
-            {onThread && (
-              <Pressable
-                onPress={() => { setPickerVisible(false); onThread(message); }}
-                style={({ pressed }) => [
-                  styles.pickerReplyBtn,
-                  pressed && styles.pickerReplyBtnPressed,
-                ]}
-              >
-                <Text style={styles.pickerReplyText}>🧵  Thread</Text>
-              </Pressable>
-            )}
-          </View>
-
-          {/* SagaMonkes sticker grid */}
-          {onStickerReact && (
-            <View style={styles.stickerSection}>
-              {stickersLoading ? (
-                <ActivityIndicator size="small" color={THEME.accent} style={{ marginVertical: 8 }} />
-              ) : stickerItems.length === 0 ? (
-                // Diagnostic surface for the empty-pack bug. Removable once fixed.
-                <Text style={{ fontFamily: FONTS.mono, fontSize: 10, color: THEME.textFaint, textAlign: "center", paddingVertical: 12 }}>
-                  No SagaMonkes stickers loaded.{"\n"}
-                  status: {getGiphyLastStatus()}
-                </Text>
-              ) : (
-                <View style={styles.stickerGrid}>
-                  {stickerItems.map((item) => (
-                    <Pressable
-                      key={item.id}
-                      onPress={() => {
-                        setPickerVisible(false);
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                        onStickerReact(item.displayUrl, message.id);
-                      }}
-                      style={({ pressed }) => [styles.stickerGridCell, pressed && { opacity: 0.7 }]}
-                    >
-                      <Image source={{ uri: item.previewUrl }} style={styles.stickerGridImg} />
-                    </Pressable>
-                  ))}
-                </View>
-              )}
-            </View>
-          )}
-      </View>
-    </GlassBottomSheet>
-
+    {/* Long-press action sheet (react/reply/copy/edit/delete/pin/thread) is
+        rendered once at the screen level — see MessageActionSheet.tsx. */}
 </>
   );
 }, arePropsEqual);
@@ -1845,63 +1652,6 @@ const styles = StyleSheet.create({
   },
   pillCountActive: { color: "#FFD54F" },
 
-  // ── Reaction picker Modal ──────────────────────────────────────────────────
-  pickerContent: {
-    alignItems: "center",
-    gap: 12,
-  },
-  pickerEmojiRow: {
-    flexDirection: "row",
-    gap: 8,
-  },
-  pickerEmojiBtn: {
-    width: 52,
-    height: 58,
-    borderRadius: 16,
-    backgroundColor: "rgba(255,255,255,0.06)",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 2,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.05)",
-  },
-  pickerEmojiBtnPressed: {
-    backgroundColor: "rgba(108, 180, 238, 0.15)",
-    transform: [{ scale: 1.15 }],
-  },
-  pickerEmojiBtnActive: {
-    backgroundColor: "rgba(255,213,79,0.18)",
-    borderColor: "rgba(255,213,79,0.2)",
-  },
-  pickerEmoji: { fontSize: 26 },
-  pickerEmojiCount: {
-    fontFamily: FONTS.mono,
-    fontSize: 9,
-    color: THEME.textFaint,
-  },
-  pickerActionRow: {
-    flexDirection: "row",
-    gap: 8,
-    flexWrap: "wrap",
-    justifyContent: "center",
-  },
-  pickerReplyBtn: {
-    paddingVertical: 8,
-    paddingHorizontal: 20,
-    borderRadius: 16,
-    backgroundColor: "rgba(255,255,255,0.06)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.05)",
-  },
-  pickerReplyBtnPressed: {
-    backgroundColor: "rgba(108, 180, 238, 0.15)",
-    borderColor: "rgba(108, 180, 238, 0.3)",
-  },
-  pickerReplyText: {
-    fontFamily: FONTS.bodySemi,
-    fontSize: 14,
-    color: THEME.text,
-  },
 
   // ── GIF & Sticker in bubble ─────────────────────────────────────────────────
   gifImage: {
@@ -2086,33 +1836,4 @@ const styles = StyleSheet.create({
     color: GLASS_BLUE,
   },
 
-  // ── Sticker picker inside long-press sheet ─────────────────────────────────
-  stickerSection: {
-    alignSelf: "stretch",
-    marginTop: 4,
-    gap: 8,
-  },
-  stickerSectionLabel: {
-    fontFamily: FONTS.mono,
-    fontSize: 10,
-    color: THEME.textFaint,
-    letterSpacing: 1.5,
-    textTransform: "uppercase",
-    textAlign: "center",
-  },
-  stickerGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-    justifyContent: "center",
-    paddingBottom: 8,
-  },
-  stickerGridCell: {
-    borderRadius: 12,
-    overflow: "hidden",
-  },
-  stickerGridImg: {
-    width: 72,
-    height: 72,
-  },
 });

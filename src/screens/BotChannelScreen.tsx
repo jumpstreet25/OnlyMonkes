@@ -287,6 +287,7 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
             isOwn={item.senderAddress === myAddress}
             onReact={noop}
             onReply={noop}
+            onOpenActions={noop}
             isBotChannel
           />
         );
