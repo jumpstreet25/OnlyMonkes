@@ -20,7 +20,7 @@ Rules are added over time as issues arise.
 - The project debug keystore lives at `android/app/debug.keystore` — if it changes between builds, signature mismatch occurs.
 - AAPT2 rejects JPEG files with `.png` extensions — always verify image format with `file` command before adding assets.
 - Bare workflow: `runtimeVersion` must be a static string (e.g., `'2.22'`), NOT `{ policy: 'appVersion' }`.
-- **Expo SDK 53 + RN 0.79.6** requires: Gradle 8.11.1, Kotlin 2.0.21, compileSdk 35, NDK 26.1.10909125.
+- **Expo SDK 53 + RN 0.79.6** requires: Gradle 8.11.1, Kotlin 2.0.21, compileSdk 35, NDK 26.1.10909125 — **bumped to NDK 27.1.12297006 on 2026-07-09** for Nitro Modules (vision-camera 5 / react-native-nitro-modules / react-native-nitro-image, which require NDK 27+). Untested combo as of this note; if a native build breaks in a new way, check here first.
 - **SoLoader must use merged SO mapping**: `SoLoader.init(this, OpenSourceMergedSoMapping)` — NOT `SoLoader.init(this, false)`. RN 0.79 merges native libs into `libreactnative.so`; without the mapping, `libreact_featureflagsjni.so` crash on startup.
 - **R8/ProGuard disabled** for release builds — R8 strips JNI loaders needed by RN 0.79 new arch. APK is ~88MB without minification.
 - **Face tracking uses Google ML Kit** via `react-native-vision-camera-face-detector`, NOT MediaPipe. `FaceTracker.tsx` runs a 1×1px invisible camera + frame processor and derives blendshape-shaped values (jawOpen from lipGap/faceH, head rotation, smile/blink) for the Avatar Room data channel. MediaPipe was retired — no patch file needed.

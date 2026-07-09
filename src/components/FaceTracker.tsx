@@ -13,27 +13,28 @@
 import React, { useCallback, useRef, useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import {
-  Camera,
   useCameraDevice,
   useCameraPermission,
-  useFrameProcessor,
 } from 'react-native-vision-camera';
 import {
-  useFaceDetector,
-  FaceDetectionOptions,
+  Camera as FaceDetectorCamera,
+  type Face,
 } from 'react-native-vision-camera-face-detector';
-import { Worklets } from 'react-native-worklets-core';
 import {
   type BlendshapeParams,
   BLENDSHAPE_IDLE,
 } from '@/lib/faceTracking';
 
-// ML Kit detection config: performance mode, all features enabled
-const DETECTION_OPTIONS: FaceDetectionOptions = {
-  performanceMode: 'fast',
-  classificationMode: 'all',    // smile + eyes open probability
-  contourMode: 'all',           // lip/eye/brow contours
-  landmarkMode: 'all',          // nose, eyes, ears, mouth landmarks
+// ML Kit detection config: performance mode, all features enabled.
+// vision-camera-face-detector v2 (vision-camera v5 + Nitro Modules) dropped
+// the old `useFaceDetector` + manual frame-processor/worklet wiring in favor
+// of this declarative Camera wrapper with `onFacesDetected` — the JS bridge
+// is handled internally now, no runOnJS needed in app code.
+const DETECTION_PROPS = {
+  performanceMode: 'fast' as const,
+  runClassifications: true,   // smile + eyes open probability
+  runContours: true,          // lip/eye/brow contours
+  runLandmarks: true,         // nose, eyes, ears, mouth landmarks
   minFaceSize: 0.15,
 };
 
@@ -47,7 +48,6 @@ export function FaceTracker({ enabled, onBlendshapes }: FaceTrackerProps) {
   const device = useCameraDevice('front');
   const lastFrameRef = useRef(0);
   const [ready, setReady] = useState(false);
-  const { detectFaces } = useFaceDetector(DETECTION_OPTIONS);
 
   // Request permission on mount if needed
   useEffect(() => {
@@ -63,7 +63,7 @@ export function FaceTracker({ enabled, onBlendshapes }: FaceTrackerProps) {
     setReady(false);
   }, [enabled, hasPermission, device]);
 
-  const handleFaceResults = useCallback((faces: any[]) => {
+  const handleFaceResults = useCallback((faces: Face[]) => {
     if (!faces || faces.length === 0) return;
 
     // Throttle to ~20fps
@@ -123,10 +123,13 @@ export function FaceTracker({ enabled, onBlendshapes }: FaceTrackerProps) {
     values.eyeSquintRight = rightEyeOpen < 0.7 && rightEyeOpen > 0.2 ? (0.7 - rightEyeOpen) / 0.5 : 0;
 
     // ── Brows ────────────────────────────────────────────────────────────
-    // Estimate from eye/brow contour Y distance
-    if (face.contours?.LEFT_EYEBROW_TOP && face.contours?.LEFT_EYE_TOP) {
+    // Estimate from eye/brow contour Y distance. ML Kit's contour set has no
+    // LEFT_EYE_TOP/RIGHT_EYE_TOP — only the full LEFT_EYE/RIGHT_EYE loop —
+    // so this previously always read undefined and the brow animation was
+    // silently dead code. Use the topmost point (min y) of the eye loop.
+    if (face.contours?.LEFT_EYEBROW_TOP && face.contours?.LEFT_EYE) {
       const browY = face.contours.LEFT_EYEBROW_TOP[Math.floor(face.contours.LEFT_EYEBROW_TOP.length / 2)]?.y ?? 0;
-      const eyeY = face.contours.LEFT_EYE_TOP[Math.floor(face.contours.LEFT_EYE_TOP.length / 2)]?.y ?? 0;
+      const eyeY = Math.min(...face.contours.LEFT_EYE.map(p => p.y));
       const gap = eyeY - browY;
       const faceH = face.bounds?.height ?? 200;
       const normalGapPct = 0.06;
@@ -138,9 +141,9 @@ export function FaceTracker({ enabled, onBlendshapes }: FaceTrackerProps) {
         values.browDownLeft = Math.min(1, (normalGapPct - currentGapPct) / normalGapPct);
       }
     }
-    if (face.contours?.RIGHT_EYEBROW_TOP && face.contours?.RIGHT_EYE_TOP) {
+    if (face.contours?.RIGHT_EYEBROW_TOP && face.contours?.RIGHT_EYE) {
       const browY = face.contours.RIGHT_EYEBROW_TOP[Math.floor(face.contours.RIGHT_EYEBROW_TOP.length / 2)]?.y ?? 0;
-      const eyeY = face.contours.RIGHT_EYE_TOP[Math.floor(face.contours.RIGHT_EYE_TOP.length / 2)]?.y ?? 0;
+      const eyeY = Math.min(...face.contours.RIGHT_EYE.map(p => p.y));
       const gap = eyeY - browY;
       const faceH = face.bounds?.height ?? 200;
       const normalGapPct = 0.06;
@@ -162,31 +165,21 @@ export function FaceTracker({ enabled, onBlendshapes }: FaceTrackerProps) {
     onBlendshapes({ values, headRotation });
   }, [onBlendshapes]);
 
-  // JS callback bridge from worklet
-  const handleFacesJS = Worklets.createRunOnJS(handleFaceResults);
-
-  const frameProcessor = useFrameProcessor((frame) => {
-    'worklet';
-    try {
-      const faces = detectFaces(frame);
-      if (faces && faces.length > 0) {
-        handleFacesJS(faces);
-      }
-    } catch {
-      // Silently ignore frame processor errors
-    }
-  }, [detectFaces, handleFacesJS]);
+  const handleFaceDetectionError = useCallback((error: Error) => {
+    if (__DEV__) console.warn('[FaceTracker] detection error:', error.message);
+  }, []);
 
   if (!enabled || !hasPermission || !device || !ready) return null;
 
   return (
     <View style={styles.hidden} pointerEvents="none">
-      <Camera
+      <FaceDetectorCamera
         style={styles.camera}
         device={device}
         isActive={true}
-        frameProcessor={frameProcessor}
-        pixelFormat="yuv"
+        onFacesDetected={handleFaceResults}
+        onError={handleFaceDetectionError}
+        {...DETECTION_PROPS}
       />
     </View>
   );

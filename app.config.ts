@@ -45,6 +45,11 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
           targetSdkVersion: 35,
           buildToolsVersion: '35.0.0',
           kotlinVersion: '2.0.21',
+          // 2026-07-09: bumped from 26.1.10909125 — Nitro Modules (vision-camera
+          // 5 / nitro-modules / nitro-image) requires NDK 27+. Untested against
+          // this project's other native deps; first thing to check if the
+          // native build fails.
+          ndkVersion: '27.1.12297006',
         },
       },
     ],
