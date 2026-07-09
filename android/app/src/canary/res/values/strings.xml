@@ -1,0 +1,7 @@
+<resources>
+  <!-- Overrides app_name only for the canary flavor — everything else
+       (splash config, runtime version) inherits from src/main. Distinct
+       label so the test app is visually distinguishable from the real one
+       on the home screen even though the icon is currently the same. -->
+  <string name="app_name">OnlyMonkes Canary</string>
+</resources>

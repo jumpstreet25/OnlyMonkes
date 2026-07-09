@@ -5,19 +5,29 @@
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "android": {
+        "gradleCommand": ":app:assembleProductionDebug"
+      }
     },
     "preview": {
       "distribution": "internal",
       "channel": "preview",
       "android": {
-        "buildType": "apk"
+        "gradleCommand": ":app:assembleProductionRelease"
       }
     },
     "production": {
       "channel": "production",
       "android": {
-        "buildType": "apk"
+        "gradleCommand": ":app:assembleProductionRelease"
+      }
+    },
+    "canary": {
+      "distribution": "internal",
+      "channel": "preview",
+      "android": {
+        "gradleCommand": ":app:assembleCanaryRelease"
       }
     }
   },
