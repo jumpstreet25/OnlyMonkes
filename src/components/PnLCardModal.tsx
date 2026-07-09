@@ -1,11 +1,12 @@
 import React, { useCallback, useRef, useState } from 'react';
 import {
-  Modal, View, Text, Pressable, StyleSheet, Alert, Share, Dimensions,
+  View, Text, Pressable, StyleSheet, Alert, Share, Dimensions,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { toast } from 'sonner-native';
 import { THEME, FONTS } from '@/lib/constants';
+import { GlassBottomSheet } from '@/components/GlassBottomSheet';
 import { ShareablePnLCard } from '@/components/ShareablePnLCard';
 import type { ClosedTrade } from '@/lib/positions';
 import { useXmtp } from '@/hooks/useXmtp';
@@ -184,35 +185,31 @@ export function PnLCardModal({ trade, visible, onClose }: PnLCardModalProps) {
   if (!trade) return null;
 
   return (
-    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
-      <View style={styles.backdrop}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+    <GlassBottomSheet visible={visible} onClose={onClose} snapPoints={['65%', '95%']}>
+      <View style={styles.contentGap}>
+        <View style={styles.headerRow}>
+          <Text style={styles.title}>Trade Closed</Text>
+          <Pressable onPress={onClose} hitSlop={12} style={styles.closeBtn}>
+            <Text style={styles.closeIcon}>✕</Text>
+          </Pressable>
+        </View>
 
-        <View style={styles.sheet}>
-          <View style={styles.headerRow}>
-            <Text style={styles.title}>Trade Closed</Text>
-            <Pressable onPress={onClose} hitSlop={12} style={styles.closeBtn}>
-              <Text style={styles.closeIcon}>✕</Text>
-            </Pressable>
-          </View>
+        <View style={styles.cardWrap}>
+          <ShareablePnLCard ref={cardRef} trade={trade} width={cardWidth} />
+        </View>
 
-          <View style={styles.cardWrap}>
-            <ShareablePnLCard ref={cardRef} trade={trade} width={cardWidth} />
-          </View>
+        <View style={styles.shareRow}>
+          <ActionBtn label="𝕏" sub="Tweet" onPress={handleShareX} loading={busy === 'x'} disabled={!!busy && busy !== 'x'} />
+          <ActionBtn label="💬" sub="Main Chat" onPress={handleShareMainChat} loading={busy === 'chat'} disabled={!!busy && busy !== 'chat'} />
+          <ActionBtn label="🚀" sub="Both" onPress={handleShareBoth} loading={busy === 'both'} disabled={!!busy && busy !== 'both'} primary />
+        </View>
 
-          <View style={styles.shareRow}>
-            <ActionBtn label="𝕏" sub="Tweet" onPress={handleShareX} loading={busy === 'x'} disabled={!!busy && busy !== 'x'} />
-            <ActionBtn label="💬" sub="Main Chat" onPress={handleShareMainChat} loading={busy === 'chat'} disabled={!!busy && busy !== 'chat'} />
-            <ActionBtn label="🚀" sub="Both" onPress={handleShareBoth} loading={busy === 'both'} disabled={!!busy && busy !== 'both'} primary />
-          </View>
-
-          <View style={styles.utilRow}>
-            <ActionBtn label="💾" sub="Save" onPress={handleSave} loading={busy === 'save'} disabled={!!busy && busy !== 'save'} flat />
-            <ActionBtn label="📋" sub="Copy" onPress={handleCopy} loading={busy === 'copy'} disabled={!!busy && busy !== 'copy'} flat />
-          </View>
+        <View style={styles.utilRow}>
+          <ActionBtn label="💾" sub="Save" onPress={handleSave} loading={busy === 'save'} disabled={!!busy && busy !== 'save'} flat />
+          <ActionBtn label="📋" sub="Copy" onPress={handleCopy} loading={busy === 'copy'} disabled={!!busy && busy !== 'copy'} flat />
         </View>
       </View>
-    </Modal>
+    </GlassBottomSheet>
   );
 }
 
@@ -246,12 +243,7 @@ function ActionBtn({ label, sub, onPress, loading, disabled, primary, flat }: Ac
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center' },
-  sheet: {
-    width: '92%', maxWidth: 420, borderRadius: 24, padding: 16,
-    backgroundColor: THEME.surface, borderWidth: 1, borderColor: THEME.border,
-    gap: 14,
-  },
+  contentGap: { gap: 14 },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   title: { fontFamily: FONTS.display, fontSize: 16, color: THEME.text, letterSpacing: 0.5 },
   closeBtn: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },

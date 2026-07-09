@@ -12,12 +12,13 @@
 
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
-  Modal, View, Text, Pressable, StyleSheet, Alert, Share, Dimensions,
+  View, Text, Pressable, StyleSheet, Alert, Share, Dimensions,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { toast } from 'sonner-native';
 import { THEME, FONTS } from '@/lib/constants';
+import { GlassBottomSheet } from '@/components/GlassBottomSheet';
 import { ShareablePnLCard } from '@/components/ShareablePnLCard';
 import type { ClosedTrade } from '@/lib/positions';
 import type { PortfolioCard } from '@/store/tradesStore';
@@ -264,59 +265,55 @@ export function LivePnLCardModal({ card, visible, onClose }: LivePnLCardModalPro
   if (!card || !synthetic) return null;
 
   return (
-    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
-      <View style={styles.backdrop}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-
-        <View style={styles.sheet}>
-          <View style={styles.headerRow}>
-            <View style={styles.titleGroup}>
-              <Text style={styles.title}>Live Position</Text>
-              <View style={styles.liveBadge}>
-                <Text style={styles.liveDot}>●</Text>
-                <Text style={styles.liveText}>LIVE</Text>
-              </View>
+    <GlassBottomSheet visible={visible} onClose={onClose} snapPoints={['75%', '95%']}>
+      <View style={styles.contentGap}>
+        <View style={styles.headerRow}>
+          <View style={styles.titleGroup}>
+            <Text style={styles.title}>Live Position</Text>
+            <View style={styles.liveBadge}>
+              <Text style={styles.liveDot}>●</Text>
+              <Text style={styles.liveText}>LIVE</Text>
             </View>
-            <Pressable onPress={onClose} hitSlop={12} style={styles.closeBtn}>
-              <Text style={styles.closeIcon}>✕</Text>
-            </Pressable>
           </View>
-
-          <View style={styles.cardWrap}>
-            <ShareablePnLCard ref={cardRef} trade={synthetic} width={cardWidth} isLive />
-          </View>
-
-          <View style={styles.shareRow}>
-            <ActionBtn label="𝕏" sub="Tweet" onPress={handleShareX} loading={busy === 'x'} disabled={!!busy && busy !== 'x'} />
-            <ActionBtn label="💬" sub="Main Chat" onPress={handleShareMainChat} loading={busy === 'chat'} disabled={!!busy && busy !== 'chat'} />
-            <ActionBtn label="🚀" sub="Both" onPress={handleShareBoth} loading={busy === 'both'} disabled={!!busy && busy !== 'both'} primary />
-          </View>
-
-          <View style={styles.utilRow}>
-            <ActionBtn label="💾" sub="Save" onPress={handleSave} loading={busy === 'save'} disabled={!!busy && busy !== 'save'} flat />
-            <ActionBtn label="📋" sub="Copy" onPress={handleCopy} loading={busy === 'copy'} disabled={!!busy && busy !== 'copy'} flat />
-          </View>
-
-          <Pressable
-            onPress={handleClosePosition}
-            disabled={!!busy && busy !== 'close'}
-            style={({ pressed }) => [
-              styles.closePosBtn,
-              closeArmed && styles.closePosBtnArmed,
-              pressed && !busy && { opacity: 0.7 },
-            ]}
-          >
-            <Text style={[styles.closePosText, closeArmed && styles.closePosTextArmed]}>
-              {busy === 'close'
-                ? 'Closing…'
-                : closeArmed
-                  ? `Tap again to confirm — close $${card.token}`
-                  : `🔻 Close Position`}
-            </Text>
+          <Pressable onPress={onClose} hitSlop={12} style={styles.closeBtn}>
+            <Text style={styles.closeIcon}>✕</Text>
           </Pressable>
         </View>
+
+        <View style={styles.cardWrap}>
+          <ShareablePnLCard ref={cardRef} trade={synthetic} width={cardWidth} isLive />
+        </View>
+
+        <View style={styles.shareRow}>
+          <ActionBtn label="𝕏" sub="Tweet" onPress={handleShareX} loading={busy === 'x'} disabled={!!busy && busy !== 'x'} />
+          <ActionBtn label="💬" sub="Main Chat" onPress={handleShareMainChat} loading={busy === 'chat'} disabled={!!busy && busy !== 'chat'} />
+          <ActionBtn label="🚀" sub="Both" onPress={handleShareBoth} loading={busy === 'both'} disabled={!!busy && busy !== 'both'} primary />
+        </View>
+
+        <View style={styles.utilRow}>
+          <ActionBtn label="💾" sub="Save" onPress={handleSave} loading={busy === 'save'} disabled={!!busy && busy !== 'save'} flat />
+          <ActionBtn label="📋" sub="Copy" onPress={handleCopy} loading={busy === 'copy'} disabled={!!busy && busy !== 'copy'} flat />
+        </View>
+
+        <Pressable
+          onPress={handleClosePosition}
+          disabled={!!busy && busy !== 'close'}
+          style={({ pressed }) => [
+            styles.closePosBtn,
+            closeArmed && styles.closePosBtnArmed,
+            pressed && !busy && { opacity: 0.7 },
+          ]}
+        >
+          <Text style={[styles.closePosText, closeArmed && styles.closePosTextArmed]}>
+            {busy === 'close'
+              ? 'Closing…'
+              : closeArmed
+                ? `Tap again to confirm — close $${card.token}`
+                : `🔻 Close Position`}
+          </Text>
+        </Pressable>
       </View>
-    </Modal>
+    </GlassBottomSheet>
   );
 }
 
@@ -350,12 +347,7 @@ function ActionBtn({ label, sub, onPress, loading, disabled, primary, flat }: Ac
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center' },
-  sheet: {
-    width: '92%', maxWidth: 420, borderRadius: 24, padding: 16,
-    backgroundColor: THEME.surface, borderWidth: 1, borderColor: THEME.border,
-    gap: 14,
-  },
+  contentGap: { gap: 14 },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   titleGroup: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   title: { fontFamily: FONTS.display, fontSize: 16, color: THEME.text, letterSpacing: 0.5 },

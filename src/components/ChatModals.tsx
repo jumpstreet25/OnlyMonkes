@@ -30,6 +30,7 @@ import ImageLightbox from "@/components/ImageLightbox";
 import { ChartModal } from "@/components/ChartModal";
 import { UserProfileModal, type ProfileTarget } from "@/components/UserProfileModal";
 import { VideoCameraModal } from "@/components/VideoCameraModal";
+import { GlassBottomSheet } from "@/components/GlassBottomSheet";
 import { useAppStore } from "@/store/appStore";
 import { addBananas } from "@/lib/bananaRewards";
 import { saveSelectedNftMint } from "@/lib/userProfile";
@@ -434,46 +435,44 @@ export function ChatModals(props: ChatModalsProps) {
       </Modal>
 
       {/* Share on X Popup */}
-      <Modal
+      <GlassBottomSheet
         visible={!!xShareImageUri}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setXShareImageUri(null)}
+        onClose={() => setXShareImageUri(null)}
+        snapPoints={['55%']}
       >
-        <Pressable style={modalStyles.overlay} onPress={() => setXShareImageUri(null)}>
-          <Pressable style={modalStyles.sheet} onPress={(e) => e.stopPropagation()}>
-            {/* Close X button */}
+        <View style={modalStyles.xShareContent}>
+          <View style={modalStyles.xShareHeader}>
+            <Text style={[modalStyles.title, { flex: 1 }]}>Share this Image on X?</Text>
             <Pressable
               onPress={() => setXShareImageUri(null)}
-              style={modalStyles.closeX}
+              style={modalStyles.xShareCloseBtn}
               hitSlop={10}
             >
               <Text style={modalStyles.closeXText}>✕</Text>
             </Pressable>
+          </View>
 
-            <Text style={modalStyles.title}>Share this Image on X?</Text>
-            {xShareImageUri && (
-              <View style={modalStyles.previewWrap}>
-                <Image
-                  source={{ uri: xShareImageUri }}
-                  style={modalStyles.previewImg}
-                  resizeMode="cover"
-                />
-                <Image
-                  source={require("../../assets/watermark.png")}
-                  style={modalStyles.previewWatermark}
-                  resizeMode="contain"
-                />
-              </View>
-            )}
-            <Text style={modalStyles.caption}>Shot Using @xOnlyMonkes</Text>
+          {xShareImageUri && (
+            <View style={modalStyles.previewWrap}>
+              <Image
+                source={{ uri: xShareImageUri }}
+                style={modalStyles.previewImg}
+                resizeMode="cover"
+              />
+              <Image
+                source={require("../../assets/watermark.png")}
+                style={modalStyles.previewWatermark}
+                resizeMode="contain"
+              />
+            </View>
+          )}
+          <Text style={modalStyles.caption}>Shot Using @xOnlyMonkes</Text>
 
-            <Pressable onPress={handleShareToX} style={modalStyles.xBtn}>
-              <Text style={modalStyles.xBtnText}>Share this Image on X</Text>
-            </Pressable>
+          <Pressable onPress={handleShareToX} style={modalStyles.xBtn}>
+            <Text style={modalStyles.xBtnText}>Share this Image on X</Text>
           </Pressable>
-        </Pressable>
-      </Modal>
+        </View>
+      </GlassBottomSheet>
     </>
   );
 }
@@ -564,6 +563,24 @@ const modalStyles = StyleSheet.create({
     color: "#fff",
     fontSize: 14,
     fontWeight: "bold",
+  },
+  xShareContent: {
+    gap: 12,
+    alignItems: "center",
+  },
+  xShareHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    alignSelf: "stretch",
+  },
+  xShareCloseBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: "#6CB4EE",
+    alignItems: "center",
+    justifyContent: "center",
   },
   previewWrap: {
     width: 220,
