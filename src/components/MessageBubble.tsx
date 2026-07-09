@@ -24,12 +24,10 @@ import {
   StyleSheet,
   Image,
   Pressable,
-  Modal,
   PanResponder,
   Animated,
   ActivityIndicator,
   Keyboard,
-  ScrollView,
   Linking,
   useWindowDimensions,
 } from "react-native";
@@ -73,6 +71,7 @@ import { extractBlinkUrl } from "@/lib/blinkActions";
 import { OnlineDot } from "@/components/OnlineDot";
 import { isUserOnline } from "@/lib/presence";
 import { ReactionPicker } from "@/components/ReactionPicker";
+import { GlassBottomSheet } from "@/components/GlassBottomSheet";
 import MarkdownContent from "@/components/MarkdownContent";
 
 // ─── Pulse Frame — animated ring for Tier 3 PFP shop item ─────────────────
@@ -1365,16 +1364,20 @@ export const MessageBubble = memo(function MessageBubble({
 
     {/* Sticker reactions now rendered inline with emoji reactions above */}
 
-    {/* ── Reaction picker Modal ──────────────────────────────────────── */}
-    <Modal
-      visible={pickerVisible}
-      transparent
-      animationType="fade"
-      onRequestClose={() => setPickerVisible(false)}
-    >
-      <Pressable style={styles.pickerOverlay} onPress={() => setPickerVisible(false)}>
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.55)' }]} />
-        <Pressable style={styles.pickerSheet} onPress={(e) => e.stopPropagation()}>
+    {/* ── Reaction picker ──────────────────────────────────────────────
+        2026-07-09: was a native <Modal> — on Android it creates a separate
+        window on top of the main Activity, and this component's dismiss
+        (setPickerVisible(false)) fires ~120ms after tap (ReactionPicker's
+        own pop animation delay), right as the reaction is optimistically
+        applied to chatStore. The main window's repaint of that change was
+        getting suppressed until the Dialog window fully tore down, so the
+        new reaction only became visible after something else forced a
+        repaint (backgrounding/reopening the app). GlassBottomSheet renders
+        inline in the main Activity's own tree (same fix as the gray-screen
+        Modals this session) — no second window, so nothing can block the
+        repaint. */}
+    <GlassBottomSheet visible={pickerVisible} onClose={() => setPickerVisible(false)} snapPoints={['45%', '85%']}>
+      <View style={styles.pickerContent}>
           {/* Animated emoji reaction pill */}
           <ReactionPicker onPick={handlePickReaction} activeEmojis={myActiveEmojis} />
 
@@ -1460,29 +1463,26 @@ export const MessageBubble = memo(function MessageBubble({
                   status: {getGiphyLastStatus()}
                 </Text>
               ) : (
-                <ScrollView style={styles.stickerScroll} showsVerticalScrollIndicator={false}>
-                  <View style={styles.stickerGrid}>
-                    {stickerItems.map((item) => (
-                      <Pressable
-                        key={item.id}
-                        onPress={() => {
-                          setPickerVisible(false);
-                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                          onStickerReact(item.displayUrl, message.id);
-                        }}
-                        style={({ pressed }) => [styles.stickerGridCell, pressed && { opacity: 0.7 }]}
-                      >
-                        <Image source={{ uri: item.previewUrl }} style={styles.stickerGridImg} />
-                      </Pressable>
-                    ))}
-                  </View>
-                </ScrollView>
+                <View style={styles.stickerGrid}>
+                  {stickerItems.map((item) => (
+                    <Pressable
+                      key={item.id}
+                      onPress={() => {
+                        setPickerVisible(false);
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        onStickerReact(item.displayUrl, message.id);
+                      }}
+                      style={({ pressed }) => [styles.stickerGridCell, pressed && { opacity: 0.7 }]}
+                    >
+                      <Image source={{ uri: item.previewUrl }} style={styles.stickerGridImg} />
+                    </Pressable>
+                  ))}
+                </View>
               )}
             </View>
           )}
-        </Pressable>
-      </Pressable>
-    </Modal>
+      </View>
+    </GlassBottomSheet>
 
 </>
   );
@@ -1846,30 +1846,9 @@ const styles = StyleSheet.create({
   pillCountActive: { color: "#FFD54F" },
 
   // ── Reaction picker Modal ──────────────────────────────────────────────────
-  pickerOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.35)",
-    justifyContent: "flex-end",
-    paddingBottom: 40,
-    alignItems: "center",
-  },
-  pickerSheet: {
-    backgroundColor: "rgba(18, 18, 32, 0.82)",
-    borderRadius: 24,
-    paddingVertical: 16,
-    paddingHorizontal: 20,
+  pickerContent: {
     alignItems: "center",
     gap: 12,
-    borderWidth: 1,
-    borderColor: "rgba(248, 248, 255, 0.10)",
-    minWidth: 280,
-    maxHeight: "75%",
-    // Glass glow on picker sheet
-    shadowColor: GLASS_BLUE,
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 20,
-    elevation: 8,
   },
   pickerEmojiRow: {
     flexDirection: "row",
@@ -2120,10 +2099,6 @@ const styles = StyleSheet.create({
     letterSpacing: 1.5,
     textTransform: "uppercase",
     textAlign: "center",
-  },
-  stickerScroll: {
-    maxHeight: 320,
-    alignSelf: "stretch",
   },
   stickerGrid: {
     flexDirection: "row",
