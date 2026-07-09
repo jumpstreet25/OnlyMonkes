@@ -1124,12 +1124,13 @@ export default function ChatScreen() {
       {
         text: "Delete", style: "destructive",
         onPress: async () => {
-          // Optimistic removal
-          useChatStore.getState().removeMessage(msg.id);
+          // deleteMessage() removes it locally (persisted so resyncs can't
+          // resurrect it) and broadcasts the removal to everyone else.
           try {
-            await deleteMessage(msg.id);
+            await deleteMessage(msg.id, msg.senderAddress);
           } catch (e: any) {
             if (__DEV__) console.warn("[XMTP] deleteMessage failed:", e);
+            Alert.alert("Couldn't delete", e?.message ?? "Please try again.");
           }
         },
       },
@@ -1324,8 +1325,13 @@ export default function ChatScreen() {
           />
         )}
 
-        {/* Loading history */}
-        {isGroupMember && isLoadingHistory && (
+        {/* Loading history — only for the true first load. isLoadingHistory
+            also flips true on background reconnects/resyncs (watchdog,
+            loadOlderMessages); once real messages are on screen, showing
+            this 6-row skeleton again pushes them down and back, reading as
+            a full-screen flash. Guard on an empty list like the Empty State
+            below already does. */}
+        {isGroupMember && isLoadingHistory && messages.length === 0 && (
           <ChatSkeleton count={6} />
         )}
 

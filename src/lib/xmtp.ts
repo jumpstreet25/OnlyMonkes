@@ -355,7 +355,7 @@ function decodeStringMessage(raw: any, rawContent: string, myInboxId: string): C
     "NFT_LIST:", "NFT_BID:", "NFT_ACCEPT:", "NFT_DELIST:", "NFT_OFFER:",
     "NFT_SWAP:", "NFT_COMPLETE:", "AUTOMONKE_STATUS:", "TRADE_CLOSED:",
     "TRADE_OPENED:", "PORTFOLIO_CARD:", "PORTFOLIO_RESPONSE:", "RSVP:", "READ:",
-    "BANANA_GRANT:", "HEALTH:",
+    "BANANA_GRANT:", "HEALTH:", "DELETE:",
   ];
   for (const p of STRUCTURED_PREFIXES) {
     if (rawContent.startsWith(p) || innerPreview.startsWith(p)) return null;

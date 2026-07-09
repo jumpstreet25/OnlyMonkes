@@ -45,6 +45,7 @@ import {
 } from "@/lib/xmtp";
 import { parseLiveRoomMessage, buildLiveRoomMessage, type LiveRoomData } from "@/lib/livekit";
 import { parsePinMessage, pinMessage, unpinMessage, getPinnedMessages } from "@/lib/pinnedMessages";
+import { parseDeleteMessage, buildDeleteMessage, markMessageDeleted, isMessageDeleted, filterDeleted, loadDeletedMessageIds } from "@/lib/deletedMessages";
 import { parsePresenceMessage, updatePresence, buildPresenceMessage } from "@/lib/presence";
 import { parseThreadMessage, trackThreadReply } from "@/lib/threads";
 import { parseMarketplaceMessage, addListing, addBid, markPendingSwap, markSold, delistNft, getListingById, getBidsForListing, getHistory as getMarketplaceHistory, type NftSwapMessage } from "@/lib/marketplace";
@@ -124,6 +125,10 @@ export async function sendGiftItem(recipientInboxId: string, itemId: string): Pr
 let _unsubscribeStream: (() => void) | null = null;
 let _botChannelUnsubs: (() => void)[] = [];
 let _myInboxId = "";
+// The app owner's inboxId (from published remote config) — the only identity
+// allowed to delete messages it didn't author (e.g. the bot's). Set during
+// initialize(); used to authorize incoming DELETE: requests from other devices.
+let _adminInboxId: string | null = null;
 let _streamAlive = false;
 let _lastStreamEvent = 0; // timestamp of last stream callback
 
@@ -353,6 +358,7 @@ export function useXmtp() {
       // ── 2. Fetch remote config (group ID + admin inboxId) ──────────────────
       const config = await fetchAppConfig();
       setRemoteGroupId(config.globalGroupId);
+      if (config.adminInboxId) _adminInboxId = config.adminInboxId;
       if (config.botChannels) {
         useAppStore.getState().setBotChannelIds({
           bets: config.botChannels.bets ?? '',
@@ -697,6 +703,30 @@ export function useXmtp() {
       const afterNs = (Date.now() * 1_000_000) - ONE_DAY_NS;
       const rawHistory: any[] = await (activeGroup as any).messages({ afterNs });
 
+      // ── Reconstruct deletions from history ───────────────────────────────
+      // A device that was offline/fresh-installed when a DELETE: broadcast
+      // went out never persisted it locally — without this, the deleted
+      // message would resurface once on this device's first sync. Authorize
+      // the same way the live stream handler does: requester must be the
+      // target's original sender, or the app admin.
+      await loadDeletedMessageIds();
+      try {
+        const senderById = new Map<string, string>(rawHistory.map((raw: any) => [raw.id, raw.senderInboxId as string]));
+        for (const raw of rawHistory) {
+          try {
+            const content = raw.content();
+            if (typeof content !== "string" || !content.startsWith("DELETE:")) continue;
+            const targetId = parseDeleteMessage(content);
+            if (!targetId || isMessageDeleted(targetId)) continue;
+            const requester = raw.senderInboxId as string;
+            const targetSender = senderById.get(targetId);
+            if (requester === config.adminInboxId || targetSender === requester) {
+              await markMessageDeleted(targetId);
+            }
+          } catch { /* skip */ }
+        }
+      } catch { /* non-critical */ }
+
       // ── Helper: seed profile cache + events from raw messages ────────────
       const seedProfilesAndEvents = async (raws: any[]) => {
         // Iterate oldest-first so later (newer) PROFILE_UPDATEs win.
@@ -921,7 +951,7 @@ export function useXmtp() {
 
       // ── Seed profiles + decode all 50 messages ──────────────────────────
       await seedProfilesAndEvents(rawHistory);
-      const recentMessages = decodeAndEnrich(rawHistory);
+      const recentMessages = filterDeleted(decodeAndEnrich(rawHistory));
       // Ensure oldest-first order for inverted FlatList (index 0 = top, last = bottom)
       recentMessages.sort((a, b) => a.sentAt.getTime() - b.sentAt.getTime());
 
@@ -1215,6 +1245,26 @@ export function useXmtp() {
               useAppStore.getState().incrementCommunityBadge('events');
             }
           } catch { /* ignore */ }
+          return;
+        }
+
+        // ── Deleted messages ──────────────────────────────────────────────────
+        // Authorize on the RECEIVING end too — the sending client's UI only
+        // shows the Delete button for own/admin messages, but that's not
+        // enforceable on a decentralized log, so a raw DELETE: request must
+        // still prove the requester is either the app admin or the target's
+        // original sender before we honor it.
+        if (typeof content === "string" && content.startsWith("DELETE:")) {
+          const targetId = parseDeleteMessage(content);
+          if (targetId && !isMessageDeleted(targetId)) {
+            const requester = raw.senderInboxId as string;
+            const target = useChatStore.getState().messages.find(m => m.id === targetId);
+            const authorized = requester === _adminInboxId || (!!target && target.senderAddress === requester);
+            if (authorized) {
+              await markMessageDeleted(targetId);
+              useChatStore.getState().removeMessage(targetId);
+            }
+          }
           return;
         }
 
@@ -1923,11 +1973,22 @@ export function useXmtp() {
     [initialize],
   );
 
+  // 2026-07-09: was a bare call to the native SDK's deleteMessage(), which
+  // only tombstones the message in THIS device's local XMTP store — other
+  // devices never learn about it, and this device's own next history resync
+  // (background reconnect, loadOlderMessages) re-fetches the untouched
+  // network copy and resurrects it. Broadcasting DELETE: (same pattern as
+  // PIN:/EDIT:) makes the removal durable and propagates it to everyone.
   const deleteMessage = useCallback(
-    async (messageId: string) => {
+    async (messageId: string, originalSenderAddress: string) => {
+      const authorized = _myInboxId === originalSenderAddress || _myInboxId === _adminInboxId;
+      if (!authorized) throw new Error("You can only delete your own messages.");
       if (!_group) await initialize();
       if (!_group) throw new Error("Not connected to chat");
-      await (_group as any).deleteMessage(messageId);
+      await markMessageDeleted(messageId);
+      useChatStore.getState().removeMessage(messageId);
+      const { username } = useAppStore.getState();
+      await sendMessage(_group, buildDeleteMessage(messageId), username);
     },
     [initialize],
   );
@@ -2032,9 +2093,15 @@ export function useXmtp() {
   // calls this every minute, so it MUST stay non-blocking to keep scroll smooth.
   const checkStreamLiveness = useCallback(() => {
     if (!_group) return;
-    const STREAM_STALE_MS = 90_000;
+    // 2026-07-09: was 90s, calibrated assuming another member's 60s PRESENCE
+    // heartbeat always arrives to refresh this — but a client's own presence
+    // sends never echo back through its own stream, so a quiet room (or just
+    // this device online) legitimately goes minutes without any stream event.
+    // That was tripping a false "stream dead" reconnect every ~90-150s,
+    // forcing a full history re-sync (isLoadingHistory flash) for no reason.
+    const STREAM_STALE_MS = 10 * 60_000;
     if (_lastStreamEvent > 0 && Date.now() - _lastStreamEvent > STREAM_STALE_MS) {
-      if (__DEV__) console.warn("[XMTP] Stream appears dead (no events in 90s) — forcing reconnect");
+      if (__DEV__) console.warn("[XMTP] Stream appears dead (no events in 10min) — forcing reconnect");
       _streamAlive = false;
       _streamHealth.staleReconnects++;
       _streamHealth.lastStaleAt = Date.now();
@@ -2046,16 +2113,17 @@ export function useXmtp() {
   const syncMessages = useCallback(async () => {
     if (!_group) return;
 
-    // Stream liveness check: if no stream event in 90s, treat the stream as
+    // Stream liveness check: if no stream event in 10min, treat the stream as
     // dead and force a full re-initialize. The `_streamAlive` flag is not a
     // reliable signal on its own — on Android the SDK never fires our unsub
     // when the OS suspends the WebSocket, so the flag stays `true` while
-    // messages silently stop arriving. The 90s no-events window is the actual
+    // messages silently stop arriving. The no-events window is the actual
     // liveness signal; the alive flag is only used as a fast-path bypass when
-    // we've already torn the stream down ourselves.
-    const STREAM_STALE_MS = 90_000;
+    // we've already torn the stream down ourselves. See checkStreamLiveness
+    // above for why this was bumped from 90s (false positives in quiet rooms).
+    const STREAM_STALE_MS = 10 * 60_000;
     if (_lastStreamEvent > 0 && Date.now() - _lastStreamEvent > STREAM_STALE_MS) {
-      if (__DEV__) console.warn("[XMTP] Stream appears dead (no events in 90s) — forcing reconnect");
+      if (__DEV__) console.warn("[XMTP] Stream appears dead (no events in 10min) — forcing reconnect");
       _streamAlive = false;
       _streamHealth.staleReconnects++;
       _streamHealth.lastStaleAt = Date.now();
@@ -2071,14 +2139,39 @@ export function useXmtp() {
       const afterNs = (Date.now() * 1_000_000) - TWO_HOURS_NS;
       const rawHistory: any[] = await (_group as any).messages({ afterNs });
 
+      // Replay any DELETE: requests this device missed while offline/backgrounded
+      // (e.g. the live stream event fired while the app wasn't running) so the
+      // deletion still lands instead of silently re-showing the message.
+      // senderById covers targets that arrived in this same resync batch (not
+      // yet in the store) so a delete landing right after its target isn't
+      // wrongly treated as unauthorized.
+      const senderById = new Map<string, string>(rawHistory.map((raw: any) => [raw.id, raw.senderInboxId as string]));
+      for (const raw of rawHistory) {
+        try {
+          const content = raw.content();
+          if (typeof content !== "string" || !content.startsWith("DELETE:")) continue;
+          const targetId = parseDeleteMessage(content);
+          if (!targetId || isMessageDeleted(targetId)) continue;
+          const requester = raw.senderInboxId as string;
+          const targetSender =
+            useChatStore.getState().messages.find(m => m.id === targetId)?.senderAddress
+            ?? senderById.get(targetId);
+          const authorized = requester === _adminInboxId || targetSender === requester;
+          if (authorized) {
+            await markMessageDeleted(targetId);
+            useChatStore.getState().removeMessage(targetId);
+          }
+        } catch { /* skip */ }
+      }
+
       const { messages: existing } = useChatStore.getState();
       const existingIds = new Set(existing.map((m) => m.id));
 
-      const newMsgs: ChatMessage[] = resolveReplyTargets(
+      const newMsgs: ChatMessage[] = filterDeleted(resolveReplyTargets(
         rawHistory
           .map((m) => decodeMessage(m, _myInboxId))
           .filter((m): m is ChatMessage => !!m && !existingIds.has(m.id))
-      ).reverse(); // oldest-first within the batch
+      )).reverse(); // oldest-first within the batch
 
       for (const msg of newMsgs) {
         if (msg.senderAddress === _myInboxId) {
@@ -2244,11 +2337,11 @@ export function useXmtp() {
       }
 
       const existingIds = new Set(existing.map(m => m.id));
-      const decoded = resolveReplyTargets(
+      const decoded = filterDeleted(resolveReplyTargets(
         rawHistory
           .map(m => decodeMessage(m, _myInboxId))
           .filter((m): m is ChatMessage => !!m && !existingIds.has(m.id))
-      );
+      ));
 
       if (decoded.length === 0) {
         useChatStore.getState().setLoadingHistory(false);
