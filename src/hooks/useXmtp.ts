@@ -1879,7 +1879,12 @@ export function useXmtp() {
       applyReactionUpdate(applyReaction(messages, fakeRaw, _myInboxId));
 
       await sendReaction(_group, emoji, targetMessageId);
-      toast.success("Reaction sent");
+      // 2026-07-09: defer the toast until after the ReactionPicker Modal's
+      // fade-out completes — sendReaction() often resolves before that
+      // ~300ms animation finishes, so firing the toast overlay immediately
+      // raced the Modal dismiss and left a stuck grey screen on Android
+      // (same class of bug fixed for Copy in MessageBubble on 2026-06-12).
+      setTimeout(() => toast.success("Reaction sent"), 350);
       incrementProgress('reactions_given');
       tryMintBadge();
     },

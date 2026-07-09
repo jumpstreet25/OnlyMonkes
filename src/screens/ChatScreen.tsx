@@ -914,16 +914,22 @@ export default function ChatScreen() {
     const caption = "I snapped this using @xOnlyMonkes via Solana Mobile, The Future is Monke! 🐒";
     const imageUri = xShareImageUri;
     setXShareImageUri(null);
-    if (!imageUri) {
-      // Fallback: text-only intent if somehow no image is available.
-      Linking.openURL(`https://x.com/intent/tweet?text=${encodeURIComponent(caption)}`).catch(() => {});
-      return;
-    }
-    try {
-      await Share.share({ url: imageUri, message: caption });
-    } catch {
-      /* user dismissed share sheet — non-fatal */
-    }
+    // 2026-07-09: defer launching the native share/intent until after this
+    // Modal's fade-out finishes — starting another native Activity while the
+    // Modal's Android Dialog window is mid-teardown left a stuck grey screen
+    // (same class of race fixed for the reaction toast above).
+    setTimeout(async () => {
+      if (!imageUri) {
+        // Fallback: text-only intent if somehow no image is available.
+        Linking.openURL(`https://x.com/intent/tweet?text=${encodeURIComponent(caption)}`).catch(() => {});
+        return;
+      }
+      try {
+        await Share.share({ url: imageUri, message: caption });
+      } catch {
+        /* user dismissed share sheet — non-fatal */
+      }
+    }, 350);
   }, [xShareImageUri, setXShareImageUri]);
 
   // ─── Profile popup ────────────────────────────────────────────────────────────

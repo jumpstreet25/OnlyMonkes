@@ -152,7 +152,11 @@ export function PnLCardModal({ trade, visible, onClose }: PnLCardModalProps) {
       const uri = await captureCard();
       await sendToMainChat(uri);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      toast.success('Posted to Main Chat');
+      // 2026-07-09: defer — sendToMainChat() pushes a large base64 IMAGE
+      // message into chatStore, which can still be laying out behind this
+      // Modal when the toast overlay mounts; firing both at once left a
+      // stuck grey screen on Android (same race as the reaction toast fix).
+      setTimeout(() => toast.success('Posted to Main Chat'), 350);
     } catch (e: any) {
       toast.error(e?.message ?? 'Post failed');
     } finally {
@@ -169,7 +173,7 @@ export function PnLCardModal({ trade, visible, onClose }: PnLCardModalProps) {
       const compressed = await compressForShare(uri);
       await Share.share({ url: compressed, message: formatTradeSummary(trade) });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      toast.success('Posted to Main Chat');
+      setTimeout(() => toast.success('Posted to Main Chat'), 350);
     } catch (e: any) {
       if (e?.message && !/dismiss/i.test(e.message)) toast.error(e.message);
     } finally {

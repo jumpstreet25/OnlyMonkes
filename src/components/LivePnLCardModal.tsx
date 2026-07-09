@@ -192,7 +192,8 @@ export function LivePnLCardModal({ card, visible, onClose }: LivePnLCardModalPro
       const uri = await captureCard();
       await sendToMainChat(uri);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      toast.success('Posted to Main Chat');
+      // 2026-07-09: defer — see matching comment in PnLCardModal.handleShareMainChat.
+      setTimeout(() => toast.success('Posted to Main Chat'), 350);
     } catch (e: any) {
       toast.error(e?.message ?? 'Post failed');
     } finally {
@@ -232,7 +233,10 @@ export function LivePnLCardModal({ card, visible, onClose }: LivePnLCardModalPro
       await sendDmMessage(dm, `/autonomonke close $${card.token}`, username);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       toast.success(`Closing $${card.token}…`);
-      onClose();
+      // 2026-07-09: defer the Modal close so it doesn't tear down its Android
+      // Dialog window in the same tick as the toast overlay mounting — see
+      // matching comment in PnLCardModal.handleShareMainChat.
+      setTimeout(() => onClose(), 350);
     } catch (e: any) {
       toast.error(e?.message ?? 'Close failed');
     } finally {
@@ -249,7 +253,7 @@ export function LivePnLCardModal({ card, visible, onClose }: LivePnLCardModalPro
       const compressed = await compressForShare(uri);
       await Share.share({ url: compressed, message: formatLiveSummary(card) });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      toast.success('Posted to Main Chat');
+      setTimeout(() => toast.success('Posted to Main Chat'), 350);
     } catch (e: any) {
       if (e?.message && !/dismiss/i.test(e.message)) toast.error(e.message);
     } finally {
