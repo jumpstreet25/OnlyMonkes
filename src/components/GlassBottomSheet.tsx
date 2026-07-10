@@ -31,6 +31,8 @@ interface GlassBottomSheetProps {
   snapPoints?: string[];
   /** Override background color */
   glassBg?: string;
+  /** Index into snapPoints to open at — default 0 (the smallest point) */
+  initialIndex?: number;
 }
 
 export function GlassBottomSheet({
@@ -39,6 +41,7 @@ export function GlassBottomSheet({
   children,
   snapPoints: snapPointsProp,
   glassBg,
+  initialIndex = 0,
 }: GlassBottomSheetProps) {
   const sheetRef = useRef<BottomSheet>(null);
   const snapPoints = useMemo(() => snapPointsProp ?? ['50%', '90%'], [snapPointsProp]);
@@ -57,14 +60,15 @@ export function GlassBottomSheet({
   useEffect(() => {
     if (visible) {
       setHasOpenedOnce(true);
-      sheetRef.current?.snapToIndex(0);
+      sheetRef.current?.snapToIndex(initialIndex);
     } else {
       sheetRef.current?.close();
     }
-  }, [visible]);
+  }, [visible, initialIndex]);
 
-  if (!hasOpenedOnce) return null;
-
+  // Hooks below must stay ABOVE the early return (Rules of Hooks — this
+  // component must call the same hooks on every render, whether or not
+  // hasOpenedOnce is true yet).
   const handleSheetChange = useCallback(
     (index: number) => {
       if (index === -1) onClose();
@@ -85,10 +89,12 @@ export function GlassBottomSheet({
     [],
   );
 
+  if (!hasOpenedOnce) return null;
+
   return (
     <BottomSheet
       ref={sheetRef}
-      index={visible ? 0 : -1}
+      index={visible ? initialIndex : -1}
       snapPoints={snapPoints}
       onChange={handleSheetChange}
       enablePanDownToClose

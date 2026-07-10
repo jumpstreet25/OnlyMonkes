@@ -130,8 +130,12 @@ export function MessageActionSheet({
     onReply(target);
   }, [target, onClose, onReply]);
 
+  // Opens at the larger snap point (index 1) by default — at 45% the
+  // reaction row + action buttons alone nearly filled the sheet, pushing
+  // the SagaMonkes sticker grid below the fold with no visible affordance
+  // to scroll for it, which read as "stickers don't show" entirely.
   return (
-    <GlassBottomSheet visible={!!target} onClose={onClose} snapPoints={['45%', '85%']}>
+    <GlassBottomSheet visible={!!target} onClose={onClose} snapPoints={['45%', '85%']} initialIndex={1}>
       <View style={styles.pickerContent}>
         {target && (
           <>
