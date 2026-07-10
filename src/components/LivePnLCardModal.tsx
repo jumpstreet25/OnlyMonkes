@@ -102,9 +102,19 @@ export function LivePnLCardModal({ card, visible, onClose }: LivePnLCardModalPro
   }, []);
 
   const sendToMainChat = useCallback(async (uri: string) => {
-    const compressed = await compressForShare(uri);
+    // Chat bubbles render this at a fraction of the 1080px compressForShare()
+    // targets for external sharing — that width produced an unnecessarily
+    // large base64 string embedded directly in message content, adding real
+    // weight to every re-render this message appears in AND to the local
+    // message cache (see messageCache.ts MAX_PRESERVABLE — these never
+    // expired, so every share made every future cold start slower).
+    const IM = await getImageManipulator();
+    const resized = await IM.manipulateAsync(uri, [{ resize: { width: 540 } }], {
+      compress: 0.7,
+      format: IM.SaveFormat.JPEG,
+    });
     const FS = await getFileSystem();
-    const b64 = await FS.readAsStringAsync(compressed, { encoding: FS.EncodingType.Base64 });
+    const b64 = await FS.readAsStringAsync(resized.uri, { encoding: FS.EncodingType.Base64 });
     const payload = `IMAGE:data:image/jpeg;base64,${b64}`;
 
     // Optimistic local insert — XMTP doesn't echo own sends back via stream,
