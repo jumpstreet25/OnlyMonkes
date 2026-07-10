@@ -10,7 +10,7 @@
  *   </GlassBottomSheet>
  */
 
-import React, { useCallback, useEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import BottomSheet, {
   BottomSheetScrollView,
@@ -42,14 +42,28 @@ export function GlassBottomSheet({
 }: GlassBottomSheetProps) {
   const sheetRef = useRef<BottomSheet>(null);
   const snapPoints = useMemo(() => snapPointsProp ?? ['50%', '90%'], [snapPointsProp]);
+  // 2026-07-09: raw <BottomSheet> (what this wraps — deliberately, not
+  // <BottomSheetModal>, to stay in the same Android window and avoid the
+  // grey-screen race) stays fully mounted — gesture detector + Reanimated
+  // shared values live — even at index=-1. Every screen now renders several
+  // of these unconditionally (ChartModal, UserProfileModal, share sheet,
+  // MessageActionSheet, ...), so they were all paying that cost from the
+  // moment the screen opened, before the user ever touched one — general
+  // touch/scroll jank, not a specific broken feature. Defer actually
+  // mounting the sheet until it's opened for the first time; once opened,
+  // keep it mounted (same behavior as before for the rest of the session).
+  const [hasOpenedOnce, setHasOpenedOnce] = useState(visible);
 
   useEffect(() => {
     if (visible) {
+      setHasOpenedOnce(true);
       sheetRef.current?.snapToIndex(0);
     } else {
       sheetRef.current?.close();
     }
   }, [visible]);
+
+  if (!hasOpenedOnce) return null;
 
   const handleSheetChange = useCallback(
     (index: number) => {
