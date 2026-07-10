@@ -709,23 +709,18 @@ export function useXmtp() {
       // message would resurface once on this device's first sync. Authorize
       // the same way the live stream handler does: requester must be the
       // target's original sender, or the app admin.
+      //
+      // 2026-07-10: folded into the seedProfilesAndEvents loop below instead
+      // of its own separate pass — that loop already calls raw.content() on
+      // every message for PROFILE_UPDATE/EVENT/etc. detection, so scanning
+      // for DELETE: here too is free. A standalone pass over the full 24h
+      // history (re-decoding every message a second time) was adding a full
+      // blocking scan to the startup critical path before any messages could
+      // render. markMessageDeleted() writes are now batched with Promise.all
+      // after the loop instead of sequentially awaited inside it.
       await loadDeletedMessageIds();
-      try {
-        const senderById = new Map<string, string>(rawHistory.map((raw: any) => [raw.id, raw.senderInboxId as string]));
-        for (const raw of rawHistory) {
-          try {
-            const content = raw.content();
-            if (typeof content !== "string" || !content.startsWith("DELETE:")) continue;
-            const targetId = parseDeleteMessage(content);
-            if (!targetId || isMessageDeleted(targetId)) continue;
-            const requester = raw.senderInboxId as string;
-            const targetSender = senderById.get(targetId);
-            if (requester === config.adminInboxId || targetSender === requester) {
-              await markMessageDeleted(targetId);
-            }
-          } catch { /* skip */ }
-        }
-      } catch { /* non-critical */ }
+      const senderById = new Map<string, string>(rawHistory.map((raw: any) => [raw.id, raw.senderInboxId as string]));
+      const pendingDeletes: string[] = [];
 
       // ── Helper: seed profile cache + events from raw messages ────────────
       const seedProfilesAndEvents = async (raws: any[]) => {
@@ -737,7 +732,16 @@ export function useXmtp() {
             if (content && typeof content === "object" && typeof (content as any).text === "string") {
               content = (content as any).text;
             }
-            if (typeof content === "string" && content.startsWith("PROFILE_UPDATE:")) {
+            if (typeof content === "string" && content.startsWith("DELETE:")) {
+              const targetId = parseDeleteMessage(content);
+              if (targetId && !isMessageDeleted(targetId)) {
+                const requester = raw.senderInboxId as string;
+                const targetSender = senderById.get(targetId);
+                if (requester === config.adminInboxId || targetSender === requester) {
+                  pendingDeletes.push(targetId);
+                }
+              }
+            } else if (typeof content === "string" && content.startsWith("PROFILE_UPDATE:")) {
               const profile = parseProfileUpdate(content);
               if (profile) {
                 const nftImage = isValidNftImage(profile.nftImage) ? profile.nftImage : null;
@@ -951,6 +955,9 @@ export function useXmtp() {
 
       // ── Seed profiles + decode all 50 messages ──────────────────────────
       await seedProfilesAndEvents(rawHistory);
+      if (pendingDeletes.length > 0) {
+        await Promise.all(pendingDeletes.map(id => markMessageDeleted(id))).catch(() => {});
+      }
       const recentMessages = filterDeleted(decodeAndEnrich(rawHistory));
       // Ensure oldest-first order for inverted FlatList (index 0 = top, last = bottom)
       recentMessages.sort((a, b) => a.sentAt.getTime() - b.sentAt.getTime());
