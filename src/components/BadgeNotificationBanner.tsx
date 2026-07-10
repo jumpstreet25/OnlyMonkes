@@ -7,6 +7,7 @@
 
 import React, { useEffect, useRef, useCallback } from "react";
 import { View, Text, StyleSheet, Pressable, Animated } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import { THEME, FONTS } from "@/lib/constants";
 import { shareBadgeEarned } from "@/lib/shareToX";
@@ -19,7 +20,11 @@ interface BadgeNotificationBannerProps {
 }
 
 export function BadgeNotificationBanner({ badge, onDismiss }: BadgeNotificationBannerProps) {
-  const slideAnim = useRef(new Animated.Value(-120)).current;
+  const insets = useSafeAreaInsets();
+  // Fully offscreen regardless of device notch/status-bar height — banner's
+  // own height grows with insets.top, so the hidden offset must too.
+  const hiddenY = -(140 + insets.top);
+  const slideAnim = useRef(new Animated.Value(hiddenY)).current;
 
   useEffect(() => {
     if (badge) {
@@ -35,7 +40,7 @@ export function BadgeNotificationBanner({ badge, onDismiss }: BadgeNotificationB
       // Auto-dismiss after 4 seconds
       const timer = setTimeout(() => {
         Animated.timing(slideAnim, {
-          toValue: -120,
+          toValue: hiddenY,
           duration: 300,
           useNativeDriver: true,
         }).start(() => onDismiss());
@@ -43,14 +48,14 @@ export function BadgeNotificationBanner({ badge, onDismiss }: BadgeNotificationB
 
       return () => clearTimeout(timer);
     } else {
-      slideAnim.setValue(-120);
+      slideAnim.setValue(hiddenY);
     }
   }, [badge]);
 
   const handleTap = useCallback(() => {
     if (!badge) return;
     Animated.timing(slideAnim, {
-      toValue: -120,
+      toValue: hiddenY,
       duration: 200,
       useNativeDriver: true,
     }).start(() => {
@@ -62,7 +67,7 @@ export function BadgeNotificationBanner({ badge, onDismiss }: BadgeNotificationB
   if (!badge) return null;
 
   return (
-    <Animated.View style={[styles.banner, { transform: [{ translateY: slideAnim }] }]}>
+    <Animated.View style={[styles.banner, { paddingTop: insets.top + 12, transform: [{ translateY: slideAnim }] }]}>
       <Pressable style={styles.content} onPress={handleTap}>
         {/* (v41) Skia glyph at toast scale; falls back to text emoji if unmapped */}
         <BadgeGlyph emoji={badge.emoji} size={36} />
@@ -83,7 +88,6 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     zIndex: 999,
-    paddingTop: 48,
     paddingHorizontal: 12,
     paddingBottom: 12,
     backgroundColor: "rgba(18, 18, 26, 0.95)",

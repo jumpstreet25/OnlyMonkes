@@ -23,6 +23,7 @@ import {
   StatusBar,
   Linking,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
 import { router } from "expo-router";
 // date-fns format removed — event formatting moved to EventRsvpModal
@@ -431,12 +432,14 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
     return { userMarkers: um, lumaMarkers: lm, irlMarkers: im, eventMarkers: [...lm, ...im] };
   }, [markers]);
 
+  const insets = useSafeAreaInsets();
+
   return (
     <View style={styles.root}>
       <StatusBar barStyle="light-content" />
 
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
         <Pressable onPress={() => router.back()} hitSlop={8} style={styles.backBtn}>
           <Text style={styles.backText}>← Back</Text>
         </Pressable>
@@ -607,7 +610,7 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: THEME.bg },
   header: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    paddingTop: 52, paddingHorizontal: 16, paddingBottom: 8,
+    paddingHorizontal: 16, paddingBottom: 8,
   },
   backBtn: { paddingVertical: 4, paddingRight: 12 },
   backText: { fontFamily: FONTS.bodyMed, fontSize: 14, color: "#6CB4EE" },

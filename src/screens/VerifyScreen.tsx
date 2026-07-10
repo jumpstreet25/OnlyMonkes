@@ -20,6 +20,7 @@ import {
   Linking,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { useNFTVerification } from "@/hooks/useNFTVerification";
 import { useMobileWallet } from "@/hooks/useMobileWallet";
@@ -136,6 +137,7 @@ export default function VerifyScreen() {
   };
 
   const shimmerOpacity = shimmer.interpolate({ inputRange: [0, 1], outputRange: [0.25, 0.55] });
+  const insets = useSafeAreaInsets();
 
   return (
     <View style={styles.container}>
@@ -152,7 +154,7 @@ export default function VerifyScreen() {
         style={StyleSheet.absoluteFill}
       />
 
-      <View style={styles.content}>
+      <View style={[styles.content, { paddingTop: insets.top + 40, paddingBottom: insets.bottom + 24 }]}>
         {/* Wallet pill */}
         <View style={styles.walletPill}>
           <View style={styles.walletDot} />
@@ -307,8 +309,6 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: 24,
-    paddingTop: 80,
-    paddingBottom: 48,
     gap: 20,
     alignItems: "center",
     justifyContent: "center",

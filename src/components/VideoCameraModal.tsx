@@ -9,6 +9,7 @@ import {
   Image,
 } from 'react-native';
 import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Video, ResizeMode } from 'expo-av';
 import { uploadVideo } from '@/lib/videoUpload';
 import { THEME, FONTS } from '@/lib/constants';
@@ -22,6 +23,7 @@ interface Props {
 }
 
 export function VideoCameraModal({ visible, onClose, onSend }: Props) {
+  const insets = useSafeAreaInsets();
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [micPermission, requestMicPermission] = useMicrophonePermissions();
   const cameraRef = useRef<CameraView>(null);
@@ -128,7 +130,7 @@ export function VideoCameraModal({ visible, onClose, onSend }: Props) {
             <Pressable style={styles.permBtn} onPress={requestPermissions}>
               <Text style={styles.permBtnText}>Grant Permissions</Text>
             </Pressable>
-            <Pressable style={styles.closeBtn} onPress={onClose}>
+            <Pressable style={[styles.closeBtn, { top: insets.top + 12 }]} onPress={onClose}>
               <Text style={styles.closeBtnText}>✕</Text>
             </Pressable>
           </View>
@@ -143,11 +145,11 @@ export function VideoCameraModal({ visible, onClose, onSend }: Props) {
               resizeMode={ResizeMode.CONTAIN}
             />
             {/* Close button */}
-            <Pressable style={styles.closeBtn} onPress={onClose} hitSlop={10}>
+            <Pressable style={[styles.closeBtn, { top: insets.top + 12 }]} onPress={onClose} hitSlop={10}>
               <Text style={styles.closeBtnText}>✕</Text>
             </Pressable>
             {/* Watermark */}
-            <View style={styles.watermarkShadow}>
+            <View style={[styles.watermarkShadow, { bottom: 90 + insets.bottom }]}>
               <Image
                 // eslint-disable-next-line @typescript-eslint/no-require-imports
                 source={require('../../assets/watermark.png')}
@@ -156,7 +158,7 @@ export function VideoCameraModal({ visible, onClose, onSend }: Props) {
               />
             </View>
             {/* Bottom bar */}
-            <View style={styles.previewBar}>
+            <View style={[styles.previewBar, { height: 80 + insets.bottom, paddingBottom: insets.bottom }]}>
               <Pressable style={styles.retakeBtn} onPress={handleRetake}>
                 <Text style={styles.retakeBtnText}>↩ Retake</Text>
               </Pressable>
@@ -184,12 +186,12 @@ export function VideoCameraModal({ visible, onClose, onSend }: Props) {
               facing="back"
             />
             {/* Close button */}
-            <Pressable style={styles.closeBtn} onPress={onClose} hitSlop={10}>
+            <Pressable style={[styles.closeBtn, { top: insets.top + 12 }]} onPress={onClose} hitSlop={10}>
               <Text style={styles.closeBtnText}>✕</Text>
             </Pressable>
             {/* REC label + timer */}
             {isRecording && (
-              <View style={styles.recLabel}>
+              <View style={[styles.recLabel, { top: insets.top + 16 }]}>
                 <View style={styles.recDot} />
                 <Text style={styles.recText}>REC  {formatTime(elapsed)}</Text>
               </View>
@@ -201,7 +203,7 @@ export function VideoCameraModal({ visible, onClose, onSend }: Props) {
               </View>
             )}
             {/* Record button */}
-            <View style={styles.recordBtnContainer}>
+            <View style={[styles.recordBtnContainer, { bottom: 60 + insets.bottom }]}>
               <View style={[styles.recordRing, isRecording && styles.recordRingActive]}>
                 <Pressable
                   style={[styles.recordBtn, isRecording && styles.recordBtnActive]}
@@ -253,7 +255,6 @@ const styles = StyleSheet.create({
   },
   closeBtn: {
     position: 'absolute',
-    top: 56,
     left: 20,
     width: 40,
     height: 40,
@@ -269,7 +270,6 @@ const styles = StyleSheet.create({
   },
   recLabel: {
     position: 'absolute',
-    top: 60,
     alignSelf: 'center',
     flexDirection: 'row',
     alignItems: 'center',
@@ -305,7 +305,6 @@ const styles = StyleSheet.create({
   },
   recordBtnContainer: {
     position: 'absolute',
-    bottom: 60,
     alignSelf: 'center',
     alignItems: 'center',
     justifyContent: 'center',
@@ -337,7 +336,6 @@ const styles = StyleSheet.create({
   // Preview
   watermarkShadow: {
     position: 'absolute',
-    bottom: 90,
     right: 16,
     width: 128,
     height: 64,
@@ -357,7 +355,6 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    height: 80,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
