@@ -15,11 +15,9 @@ module.exports = function (api) {
           '@': './src',
         },
       }],
-      // Must be listed last — Reanimated 4 + vision-camera 5 now share the
-      // same worklets runtime (react-native-worklets). The old pairing was
-      // react-native-worklets-core/plugin + react-native-reanimated/plugin;
-      // both are superseded by this single plugin.
-      'react-native-worklets/plugin',
+      'react-native-worklets-core/plugin',
+      // Must be listed last
+      'react-native-reanimated/plugin',
     ],
   };
 };
