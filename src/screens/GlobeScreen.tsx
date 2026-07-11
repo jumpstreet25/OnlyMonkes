@@ -59,6 +59,17 @@ import * as FileSystem from "expo-file-system";
 
 let _cachedGlobeHtml: string | null = null;
 
+// globe.html's TextureLoader fetches the earth surface from a third-party
+// CDN (unpkg.com) — a 1.46MB, 4096x2048 image, over the network, inside the
+// WebView, before the sphere can render, on every single globe open. That's
+// the single biggest contributor to "MonkeGlobe is slow" — worse, it's a
+// live dependency on an external host with no fallback. Bundled a resized
+// (2048x1024, ~390KB) local copy instead; loadGlobeHtml() swaps the CDN URL
+// for a local base64 data URI so the texture loads instantly from disk with
+// zero network round-trip, same as every other texture in this file (PFP/
+// Solana-logo textures already use CanvasTexture from data URIs).
+const EARTH_TEXTURE_CDN_URL = "https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg";
+
 async function loadGlobeHtml(): Promise<string> {
   if (_cachedGlobeHtml) return _cachedGlobeHtml;
   try {
@@ -66,7 +77,22 @@ async function loadGlobeHtml(): Promise<string> {
     const asset = Asset.fromModule(require("../../assets/globe.html"));
     await asset.downloadAsync();
     const uri = asset.localUri ?? asset.uri;
-    const html = await FileSystem.readAsStringAsync(uri);
+    let html = await FileSystem.readAsStringAsync(uri);
+
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const textureAsset = Asset.fromModule(require("../../assets/earth-texture.jpg"));
+      await textureAsset.downloadAsync();
+      const textureUri = textureAsset.localUri ?? textureAsset.uri;
+      const textureB64 = await FileSystem.readAsStringAsync(textureUri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      html = html.replace(EARTH_TEXTURE_CDN_URL, `data:image/jpeg;base64,${textureB64}`);
+    } catch {
+      // Fall back to the CDN URL (still works, just slower/network-dependent)
+      // if the local asset fails to resolve for any reason.
+    }
+
     _cachedGlobeHtml = html;
     return html;
   } catch {
@@ -341,9 +367,25 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
     }));
   }, []);
 
-  // Push markers when they change
+  // Push markers when they change — debounced. Phase 2 (background geocoding
+  // of uncached user locations, below) calls setMarkers() once per user as
+  // each one resolves, respecting Nominatim's 1 req/s rate limit. Without
+  // debouncing, every single one of those trickle-in updates re-serialized
+  // and re-sent the ENTIRE marker list — including every other user's base64
+  // NFT avatar (up to 150KB each) — across the WebView bridge again, even
+  // though only one marker actually changed. The marker STATE still updates
+  // instantly (feeds the below-globe list UI); only the expensive WebView
+  // postMessage is coalesced.
+  const sendMarkersTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    if (markers.length > 0) sendMarkersToWebView(markers);
+    if (markers.length === 0) return;
+    if (sendMarkersTimer.current) clearTimeout(sendMarkersTimer.current);
+    sendMarkersTimer.current = setTimeout(() => {
+      sendMarkersToWebView(markers);
+    }, 400);
+    return () => {
+      if (sendMarkersTimer.current) clearTimeout(sendMarkersTimer.current);
+    };
   }, [markers, sendMarkersToWebView]);
 
   // FIX #1: when globeHtml swaps from the synchronous fallback to the real
