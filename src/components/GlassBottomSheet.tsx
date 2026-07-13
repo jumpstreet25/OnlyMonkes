@@ -11,7 +11,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { AppState, StyleSheet, View, type AppStateStatus } from 'react-native';
 import BottomSheet, {
   BottomSheetScrollView,
   BottomSheetBackdrop,
@@ -65,6 +65,21 @@ export function GlassBottomSheet({
       sheetRef.current?.close();
     }
   }, [visible, initialIndex]);
+
+  // 2026-07-14: backgrounding the app (e.g. switching to another app right
+  // after tapping Copy, before the sheet's ~300ms Reanimated close animation
+  // finishes) can leave that animation suspended mid-flight on Android —
+  // resuming into a half-closed sheet/backdrop has manifested as the same
+  // stuck-grey-screen class of bug documented throughout this codebase, just
+  // triggered by OS-level backgrounding instead of an in-app Modal race.
+  // Force the sheet fully closed the instant the app leaves 'active' so
+  // there's never an animated transition left in flight to resume into.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (next: AppStateStatus) => {
+      if (next !== 'active') sheetRef.current?.close();
+    });
+    return () => sub.remove();
+  }, []);
 
   // Hooks below must stay ABOVE the early return (Rules of Hooks — this
   // component must call the same hooks on every render, whether or not
