@@ -205,3 +205,30 @@ export function getRankDisplay(rank: number): string {
   if (rank === 3) return "🥉";
   return `#${rank}`;
 }
+
+// ─── Clout tiers ───────────────────────────────────────────────────────────────
+// Thresholds are rough placeholders, not data-derived — updateCloutProfile()
+// currently has exactly one call site in the whole app, so realistic scores
+// are well below the theoretical 1200 max. Calibrate once real usage data exists.
+export const CLOUT_TIERS: { min: number; name: string }[] = [
+  { min: 0, name: "Newcomer" },
+  { min: 50, name: "Regular" },
+  { min: 120, name: "Trusted Monke" },
+  { min: 220, name: "Respected Monke" },
+  { min: 350, name: "Elite Monke" },
+  { min: 500, name: "Alpha Monke" },
+];
+
+/** Index into CLOUT_TIERS for a given score — higher index = higher tier. */
+export function cloutTierIndex(score: number): number {
+  let idx = 0;
+  for (let i = 0; i < CLOUT_TIERS.length; i++) {
+    if (score >= CLOUT_TIERS[i].min) idx = i;
+  }
+  return idx;
+}
+
+/** Tier name for a given score. */
+export function getCloutTier(score: number): string {
+  return CLOUT_TIERS[cloutTierIndex(score)].name;
+}

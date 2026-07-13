@@ -1,15 +1,13 @@
 import React, { useCallback, useRef, useState } from 'react';
-import {
-  View, Text, Pressable, StyleSheet, Alert, Dimensions,
-} from 'react-native';
+import { View, Text, Pressable, StyleSheet, Dimensions } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { toast } from 'sonner-native';
 import { THEME, FONTS } from '@/lib/constants';
 import { GlassBottomSheet } from '@/components/GlassBottomSheet';
-import { ShareablePnLCard } from '@/components/ShareablePnLCard';
+import { MonkeCloutCard } from '@/components/MonkeCloutCard';
 import { shareImageToX } from '@/lib/shareToX';
-import type { ClosedTrade } from '@/lib/positions';
+import type { CloutProfile } from '@/lib/monkeClout';
 import { useXmtp } from '@/hooks/useXmtp';
 
 const getViewShot = () => import('react-native-view-shot');
@@ -17,23 +15,39 @@ const getMediaLibrary = () => import('expo-media-library');
 const getFileSystem = () => import('expo-file-system');
 const getImageManipulator = () => import('expo-image-manipulator');
 
-interface PnLCardModalProps {
-  trade: ClosedTrade | null;
+interface MonkeCloutCardModalProps {
+  profile: CloutProfile | null;
   visible: boolean;
   onClose: () => void;
 }
 
-function formatTradeSummary(trade: ClosedTrade): string {
-  const sign = trade.pnlPct >= 0 ? '+' : '';
-  const sec = Math.floor(trade.durationMs / 1000);
-  const days = Math.floor(sec / 86400);
-  const hours = Math.floor((sec % 86400) / 3600);
-  const mins = Math.floor((sec % 3600) / 60);
-  const dur = days > 0 ? `${days}d ${hours}h` : hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
-  return `${sign}${trade.pnlPct.toFixed(2)}% on $${trade.token.toUpperCase()} · ${dur} · entry ${trade.entrySolAmount.toFixed(4)} SOL → exit ${trade.exitSolAmount.toFixed(4)} SOL`;
+const HANDLE = '@xOnlyMonkes';
+const HASHTAGS = '#OnlyMonkes #SagaMonkes #SolanaMobile';
+
+// Varied by standing — top-3 (flair) gets the cockiest lines, everyone else
+// gets grind/come-up energy instead of a flat repeated caption.
+const TOP3_LINES = [
+  `Top 3 on the MonkeClout leaderboard. Come dethrone me if you can 🐒👑`,
+  `Alpha Ape status confirmed. The jungle knows who's real 🐒🔥`,
+  `Living at the top of MonkeClout. Rent-free 🐒👑`,
+];
+const MID_LINES = [
+  `Grinding up the MonkeClout leaderboard, one banana at a time 🍌📈`,
+  `Clout don't lie. Watch me climb 🐒📈`,
+  `Building my Monke Clout — the come-up is real 🍌🐒`,
+];
+const NEW_LINES = [
+  `Just started my MonkeClout journey. Watch this space 🐒🌱`,
+  `New Monke, new grind. Clout incoming 🍌`,
+];
+
+function pickCaption(profile: CloutProfile): string {
+  const pool = profile.flair ? TOP3_LINES : profile.rank <= 20 ? MID_LINES : NEW_LINES;
+  const line = pool[Math.floor(Math.random() * pool.length)];
+  return `${line}\n\nClout Score: ${profile.cloutScore} on ${HANDLE}\n\n${HASHTAGS}`;
 }
 
-export function PnLCardModal({ trade, visible, onClose }: PnLCardModalProps) {
+export function MonkeCloutCardModal({ profile, visible, onClose }: MonkeCloutCardModalProps) {
   const cardRef = useRef<View>(null);
   const [busy, setBusy] = useState<null | 'save' | 'copy' | 'x' | 'chat' | 'both'>(null);
   const { send } = useXmtp();
@@ -43,9 +57,6 @@ export function PnLCardModal({ trade, visible, onClose }: PnLCardModalProps) {
 
   const captureCard = useCallback(async (): Promise<string> => {
     const { captureRef } = await getViewShot();
-    // 2026-05-09: PnLCard's Skia <Canvas> needs two-frame settle + PNG +
-    // tmpfile + useRenderInContext on Android, otherwise capture returns a
-    // black image (GPU-surface readback fail).
     await new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(() => r())));
     return await captureRef(cardRef as any, {
       format: 'png',
@@ -65,13 +76,6 @@ export function PnLCardModal({ trade, visible, onClose }: PnLCardModalProps) {
   }, []);
 
   const sendToMainChat = useCallback(async (uri: string) => {
-    // Chat bubbles render this at a fraction of the 1080px compressForShare()
-    // targets for external sharing (X/system share sheet) — that width was
-    // producing an unnecessarily large base64 string embedded directly in
-    // the message content, adding real weight to every chat re-render this
-    // message appears in AND to the local message cache (see messageCache.ts
-    // MAX_PRESERVABLE — these never expired, so every share made every
-    // future cold start slower).
     const IM = await getImageManipulator();
     const resized = await IM.manipulateAsync(uri, [{ resize: { width: 540 } }], {
       compress: 0.7,
@@ -81,9 +85,6 @@ export function PnLCardModal({ trade, visible, onClose }: PnLCardModalProps) {
     const b64 = await FS.readAsStringAsync(resized.uri, { encoding: FS.EncodingType.Base64 });
     const payload = `IMAGE:data:image/jpeg;base64,${b64}`;
 
-    // Optimistic local insert so the user sees their share immediately —
-    // XMTP doesn't echo own sends back via stream. mergeMessage upgrades
-    // opt-* IDs in place when the real message arrives.
     try {
       const { useAppStore } = await import('@/store/appStore');
       const { useChatStore } = await import('@/store/chatStore');
@@ -106,16 +107,16 @@ export function PnLCardModal({ trade, visible, onClose }: PnLCardModalProps) {
     } catch { /* non-critical */ }
 
     await send(payload);
-  }, [compressForShare, send]);
+  }, [send]);
 
   const handleSave = useCallback(async () => {
-    if (!trade || busy) return;
+    if (!profile || busy) return;
     setBusy('save');
     try {
       const ML = await getMediaLibrary();
       const { status } = await ML.requestPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission needed', 'Allow gallery access to save the card.');
+        toast.error('Allow gallery access to save the card.');
         return;
       }
       const uri = await captureCard();
@@ -127,67 +128,61 @@ export function PnLCardModal({ trade, visible, onClose }: PnLCardModalProps) {
     } finally {
       setBusy(null);
     }
-  }, [trade, busy, captureCard]);
+  }, [profile, busy, captureCard]);
 
   const handleCopy = useCallback(async () => {
-    if (!trade || busy) return;
+    if (!profile || busy) return;
     setBusy('copy');
     try {
-      await Clipboard.setStringAsync(formatTradeSummary(trade));
+      await Clipboard.setStringAsync(pickCaption(profile));
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      toast.success('Summary copied');
+      toast.success('Caption copied');
     } catch (e: any) {
       toast.error(e?.message ?? 'Copy failed');
     } finally {
       setBusy(null);
     }
-  }, [trade, busy]);
+  }, [profile, busy]);
 
   const handleShareX = useCallback(async () => {
-    if (!trade || busy) return;
+    if (!profile || busy) return;
     setBusy('x');
     try {
       const uri = await captureCard();
       const compressed = await compressForShare(uri);
-      const { saved } = await shareImageToX(compressed, formatTradeSummary(trade));
+      const { saved } = await shareImageToX(compressed, pickCaption(profile));
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      if (saved) {
-        toast.success('Image saved — tap the image icon in X to attach it 📸');
-      }
+      if (saved) toast.success('Image saved — tap the image icon in X to attach it 📸');
     } catch (e: any) {
       if (e?.message && !/dismiss/i.test(e.message)) toast.error(e.message);
     } finally {
       setBusy(null);
     }
-  }, [trade, busy, captureCard, compressForShare]);
+  }, [profile, busy, captureCard, compressForShare]);
 
   const handleShareMainChat = useCallback(async () => {
-    if (!trade || busy) return;
+    if (!profile || busy) return;
     setBusy('chat');
     try {
       const uri = await captureCard();
       await sendToMainChat(uri);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      // 2026-07-09: defer — sendToMainChat() pushes a large base64 IMAGE
-      // message into chatStore, which can still be laying out behind this
-      // Modal when the toast overlay mounts; firing both at once left a
-      // stuck grey screen on Android (same race as the reaction toast fix).
       setTimeout(() => toast.success('Posted to Main Chat'), 350);
     } catch (e: any) {
       toast.error(e?.message ?? 'Post failed');
     } finally {
       setBusy(null);
     }
-  }, [trade, busy, captureCard, sendToMainChat]);
+  }, [profile, busy, captureCard, sendToMainChat]);
 
   const handleShareBoth = useCallback(async () => {
-    if (!trade || busy) return;
+    if (!profile || busy) return;
     setBusy('both');
     try {
       const uri = await captureCard();
       await sendToMainChat(uri);
       const compressed = await compressForShare(uri);
-      const { saved } = await shareImageToX(compressed, formatTradeSummary(trade));
+      const { saved } = await shareImageToX(compressed, pickCaption(profile));
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setTimeout(() => toast.success(saved ? 'Posted to Main Chat — image saved for X too 📸' : 'Posted to Main Chat'), 350);
     } catch (e: any) {
@@ -195,22 +190,22 @@ export function PnLCardModal({ trade, visible, onClose }: PnLCardModalProps) {
     } finally {
       setBusy(null);
     }
-  }, [trade, busy, captureCard, compressForShare, sendToMainChat]);
+  }, [profile, busy, captureCard, compressForShare, sendToMainChat]);
 
-  if (!trade) return null;
+  if (!profile) return null;
 
   return (
     <GlassBottomSheet visible={visible} onClose={onClose} snapPoints={['65%', '95%']}>
       <View style={styles.contentGap}>
         <View style={styles.headerRow}>
-          <Text style={styles.title}>Trade Closed</Text>
+          <Text style={styles.title}>Share Your Clout</Text>
           <Pressable onPress={onClose} hitSlop={12} style={styles.closeBtn}>
             <Text style={styles.closeIcon}>✕</Text>
           </Pressable>
         </View>
 
         <View style={styles.cardWrap}>
-          <ShareablePnLCard ref={cardRef} trade={trade} width={cardWidth} />
+          <MonkeCloutCard ref={cardRef} profile={profile} width={cardWidth} />
         </View>
 
         <View style={styles.shareRow}>

@@ -26,12 +26,14 @@ import { useMobileWallet } from "@/hooks/useMobileWallet";
 import { useAppStore } from "@/store/appStore";
 import { saveVerifiedNft, stampNftCheck } from "@/lib/session";
 import { NftPickerModal } from "@/components/NftPickerModal";
+import { SetMonkeImageModal } from "@/components/SetMonkeImageModal";
 import { THEME, FONTS } from "@/lib/constants";
-import { shortenAddress } from "@/lib/nftVerification";
+import { shortenAddress, setUserChosenNftImage } from "@/lib/nftVerification";
 import { loadListings, getActiveListings } from "@/lib/marketplace";
+import { grantFirstLoginBonusIfEligible } from "@/lib/firstLoginBonus";
 import type { OwnedNFT } from "@/types";
 
-type VerifyState = "idle" | "checking-nft" | "nft-fail" | "nft-ok" | "pick-nft" | "ready";
+type VerifyState = "idle" | "checking-nft" | "nft-fail" | "verify-error" | "nft-ok" | "pick-nft" | "set-pfp" | "ready";
 
 // Fun Monke-themed loading texts — rotate every 1.8 s
 const LOADING_TEXTS = [
@@ -99,15 +101,30 @@ export default function VerifyScreen() {
       await saveVerifiedNft(nftToSave);
       await stampNftCheck();
     }
+    if (wallet?.address) {
+      // Fire-and-forget — wallet-scoped one-time flag makes this safe against
+      // re-verification (e.g. 7-day session expiry re-running this screen).
+      grantFirstLoginBonusIfEligible(wallet.address).catch(() => {});
+    }
     await new Promise((r) => setTimeout(r, 500));
     router.replace("/chat");
   };
 
   const runVerification = async () => {
     setPhase("checking-nft");
-    const verified = await verify();
-    if (!verified) {
-      // No Saga Monke — check if MonkeMarkets has any listed for sale
+    const result = await verify();
+    if (!result.verified) {
+      // 2026-07-13: a provider error (Helius maxed, on-chain check
+      // inconclusive, etc.) is NOT the same as a confirmed non-holder — a
+      // real Saga Monke holder who hit this during login used to get
+      // silently dropped into guest/marketplace-only mode with zero
+      // indication anything went wrong, and no way back to actually retry
+      // verification. Show a distinct, retryable error state instead.
+      if (result.providerError) {
+        setPhase("verify-error");
+        return;
+      }
+      // Confirmed not a holder — check if MonkeMarkets has any listed for sale
       await loadListings();
       const active = getActiveListings();
       if (active.length > 0) {
@@ -121,13 +138,31 @@ export default function VerifyScreen() {
       return;
     }
     setPhase("nft-ok");
-    if (allNfts.length > 1) { setPhase("pick-nft"); return; }
+    // Read fresh from the store rather than this render's closed-over
+    // `allNfts`/`verifiedNft` — verify() just updated them synchronously via
+    // Zustand's setters, but this component hasn't re-rendered yet so the
+    // destructured locals above are still stale.
+    const fresh = useAppStore.getState();
+    if (fresh.allNfts.length > 1) { setPhase("pick-nft"); return; }
+    if (fresh.verifiedNft && !fresh.verifiedNft.image) { setPhase("set-pfp"); return; }
     await goToChat();
   };
 
   const handleNftPicked = async (nft: OwnedNFT) => {
     setVerified(true, nft);
+    if (!nft.image) { setPhase("set-pfp"); return; }
     await goToChat(nft);
+  };
+
+  const handleImagePicked = async (imageUrl: string) => {
+    if (!wallet?.address) return;
+    const nft = await setUserChosenNftImage(wallet.address, imageUrl, verifiedNft);
+    setVerified(true, nft);
+    await goToChat(nft);
+  };
+
+  const handleImageSkipped = async () => {
+    await goToChat();
   };
 
   const handleDisconnect = () => {
@@ -143,6 +178,12 @@ export default function VerifyScreen() {
         visible={phase === "pick-nft"}
         nfts={allNfts}
         onSelect={handleNftPicked}
+      />
+
+      <SetMonkeImageModal
+        visible={phase === "set-pfp"}
+        onPicked={handleImagePicked}
+        onSkip={handleImageSkipped}
       />
 
       <LinearGradient
@@ -201,6 +242,26 @@ export default function VerifyScreen() {
               <Text style={styles.nftFoundLabel}>NFT Verified ✓</Text>
               <Text style={styles.nftName}>{verifiedNft.name}</Text>
             </View>
+          </View>
+        )}
+
+        {/* ── VERIFICATION COULDN'T BE CONFIRMED (not "you're not a holder") ── */}
+        {phase === "verify-error" && (
+          <View style={styles.notHolderBlock}>
+            <Text style={styles.notHolderEmoji}>🐒🔧</Text>
+            <Text style={styles.notHolderTitle}>Verification's Having Trouble</Text>
+            <Text style={styles.notHolderBody}>
+              {error ?? "We couldn't confirm your Saga Monke ownership right now — this is on our end, not yours. Give it another try."}
+            </Text>
+            <Pressable
+              style={({ pressed }) => [styles.retryNowButton, pressed && { opacity: 0.7 }]}
+              onPress={runVerification}
+            >
+              <Text style={styles.retryNowButtonText}>Retry Verification</Text>
+            </Pressable>
+            <Pressable style={styles.retryButton} onPress={handleDisconnect}>
+              <Text style={styles.retryButtonText}>← Try a Different Wallet</Text>
+            </Pressable>
           </View>
         )}
 
@@ -267,7 +328,7 @@ export default function VerifyScreen() {
         )}
 
         {/* Step indicator (checking-nft / ok states) */}
-        {phase !== "nft-fail" && (
+        {phase !== "nft-fail" && phase !== "verify-error" && (
           <View style={styles.steps}>
             <StepRow
               done={["nft-ok", "pick-nft", "ready"].includes(phase)}

@@ -16,6 +16,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAppStore } from '@/store/appStore';
 import { loadBananaState, setBananaWalletContext, addBananas } from '@/lib/bananaRewards';
+import { setRaidsWalletContext } from '@/lib/bananaRaids';
 import { loadShopState, getEquippedStyles, setShopWalletContext, mergeOwnedItems } from '@/lib/bananaShop';
 import { loadHistory, setMarketplaceWalletContext } from '@/lib/marketplace';
 import { applyThemeFromShop } from '@/lib/shopTheme';
@@ -64,6 +65,7 @@ export async function rehydrateForWallet(walletAddress: string): Promise<void> {
   _activeWallet = addr;
 
   setBananaWalletContext(addr);
+  setRaidsWalletContext(addr);
   setShopWalletContext(addr);
   setMarketplaceWalletContext(addr);
 
@@ -152,6 +154,7 @@ async function migrateLegacyIfNeeded(walletAddress: string): Promise<void> {
 export function clearActiveWallet(): void {
   _activeWallet = null;
   setBananaWalletContext(null);
+  setRaidsWalletContext(null);
   setShopWalletContext(null);
   setMarketplaceWalletContext(null);
 }

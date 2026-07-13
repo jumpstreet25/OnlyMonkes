@@ -19,6 +19,51 @@ function openTweet(text: string): void {
   Linking.openURL(`https://x.com/intent/tweet?text=${encoded}`).catch(() => {});
 }
 
+/**
+ * Share a locally-generated image (e.g. a captured share card) to X.
+ *
+ * React Native's core `Share.share({ url, message })` — used by the older
+ * PnLCardModal flow — only reliably attaches `url` as content on iOS; on
+ * Android it's inconsistent and frequently drops the image entirely,
+ * leaving users to manually save + re-attach (the exact complaint this
+ * exists to fix). A real fix needs expo-sharing or react-native-share, both
+ * of which require a native rebuild + fresh dApp Store release — deferred.
+ *
+ * This is the OTA-safe stopgap: save the image to the gallery, copy the
+ * caption to clipboard as a defensive backup, and open X's compose screen
+ * with the caption already prefilled via the tweet-intent URL (this part
+ * already works reliably — it's what every text-only share above uses).
+ * The user's only remaining manual step is tapping X's own image-picker
+ * icon and selecting the photo just saved (always the newest gallery item).
+ */
+export async function shareImageToX(
+  imageUri: string,
+  message: string,
+): Promise<{ saved: boolean }> {
+  let saved = false;
+  try {
+    const MediaLibrary = await import("expo-media-library");
+    const { status } = await MediaLibrary.requestPermissionsAsync();
+    if (status === "granted") {
+      await MediaLibrary.saveToLibraryAsync(imageUri);
+      saved = true;
+    }
+  } catch {
+    // non-fatal — still proceed to open the compose screen with prefilled
+    // text; worst case the user has no image to attach this one time.
+  }
+
+  try {
+    const Clipboard = await import("expo-clipboard");
+    await Clipboard.setStringAsync(message);
+  } catch {
+    // non-fatal — the tweet-intent URL below still prefills the text.
+  }
+
+  openTweet(message);
+  return { saved };
+}
+
 /** Share a badge earned. */
 export function shareBadgeEarned(badgeName: string, badgeEmoji: string): void {
   openTweet(

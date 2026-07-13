@@ -18,6 +18,7 @@ import { useChatStore } from "@/store/chatStore";
 import { MiniChart } from "@/components/MiniChart";
 import { getTopProfiles, getRankDisplay, type CloutProfile } from "@/lib/monkeClout";
 import { pickMonkeOfTheWeek, type MonkeOfTheWeek } from "@/lib/monkeOfTheWeek";
+import { MonkeCloutCardModal } from "@/components/MonkeCloutCardModal";
 
 const MEDALS = ["🥇", "🥈", "🥉"];
 
@@ -30,6 +31,7 @@ export function LeaderboardView() {
   const [entries, setEntries] = useState<(LeaderboardEntry & { username: string; nftImage?: string | null })[]>([]);
   const [cloutProfiles, setCloutProfiles] = useState<(CloutProfile & { nftImage?: string | null })[]>([]);
   const [motw, setMotw] = useState<MonkeOfTheWeek | null>(null);
+  const [shareModalOpen, setShareModalOpen] = useState(false);
 
   // Load activity leaderboard
   useEffect(() => {
@@ -197,6 +199,17 @@ export function LeaderboardView() {
                       </Text>
                     </View>
                     <Text style={styles.score}>{p.cloutScore}</Text>
+                    {isMe && (
+                      <Pressable
+                        style={styles.shareBtn}
+                        onPress={() => setShareModalOpen(true)}
+                        accessibilityLabel="Share your Monke Clout"
+                        accessibilityRole="button"
+                        hitSlop={8}
+                      >
+                        <Text style={styles.shareBtnText}>Share</Text>
+                      </Pressable>
+                    )}
                   </View>
                 );
               })}
@@ -207,6 +220,12 @@ export function LeaderboardView() {
           )}
         </>
       )}
+
+      <MonkeCloutCardModal
+        profile={cloutProfiles.find(p => p.inboxId === myInboxId) ?? null}
+        visible={shareModalOpen}
+        onClose={() => setShareModalOpen(false)}
+      />
     </View>
   );
 }
@@ -291,6 +310,22 @@ const styles = StyleSheet.create({
   stats: { fontFamily: FONTS.mono, fontSize: 10, color: THEME.textMuted, marginTop: 1 },
   score: { fontFamily: FONTS.display, fontSize: 16, color: "#FFD54F", minWidth: 36, textAlign: "right" },
   formula: { fontFamily: FONTS.mono, fontSize: 9, color: THEME.textFaint, textAlign: "center", marginTop: 6 },
+
+  shareBtn: {
+    marginLeft: 6,
+    paddingVertical: 5,
+    paddingHorizontal: 9,
+    borderRadius: 8,
+    backgroundColor: "rgba(255,213,79,0.14)",
+    borderWidth: 0.75,
+    borderColor: "rgba(255,213,79,0.3)",
+  },
+  shareBtnText: {
+    fontFamily: FONTS.bodyMed,
+    fontSize: 10,
+    color: "#FFD54F",
+    letterSpacing: 0.3,
+  },
 
   // Flair badge
   flairBadge: {

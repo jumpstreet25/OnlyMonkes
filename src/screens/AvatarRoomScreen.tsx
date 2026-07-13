@@ -28,6 +28,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
 import { router } from 'expo-router';
 import { ConnectionState } from 'livekit-client';
+import { toast } from 'sonner-native';
 import { THEME, FONTS } from '@/lib/constants';
 import { LK_URL } from '@/lib/livekit';
 import { getCachedProfile } from '@/lib/userProfile';
@@ -40,6 +41,7 @@ import {
   addAvatarStateListener,
   toggleMute,
   getAvatarRoom,
+  getLastAvatarSessionStats,
   sendReaction,
   sendFaceTrackingData,
   sendBlendshapes,
@@ -47,11 +49,21 @@ import {
   type AvatarRoomState,
   type AvatarParticipant,
 } from '@/lib/avatarRoom';
+import { settleAvatarRoomSession, type RaidResult } from '@/lib/bananaRaids';
 import { FaceTracker } from '@/components/FaceTracker';
 import { type FaceParams, type BlendshapeParams } from '@/lib/faceTracking';
 
 import { VideoStickerTray } from '@/components/VideoStickerTray';
 import { VideoReactionOverlay } from '@/components/VideoReactionOverlay';
+
+function showRaidToast(raid: RaidResult | null): void {
+  if (!raid?.granted) return;
+  toast.success(
+    raid.reason === 'host'
+      ? `🐒 Banana Raid! +${raid.amount} 🍌 for hosting a packed room`
+      : `🐒 Banana Raid! +${raid.amount} 🍌 for showing up`,
+  );
+}
 
 // ── Grid layout ──────────────────────────────────────────────────────────────
 
@@ -147,7 +159,12 @@ export default function AvatarRoomScreen() {
       return;
     }
 
-    connectToAvatarRoom(LK_URL, token, localMouthTrait, () => {
+    connectToAvatarRoom(LK_URL, token, localMouthTrait, isHost, () => {
+      // Involuntary disconnect (network drop) — connectToAvatarRoom() never
+      // got an explicit disconnectFromAvatarRoom() call, so settle from the
+      // RoomEvent.Disconnected listener's snapshot instead.
+      const stats = getLastAvatarSessionStats();
+      if (stats) settleAvatarRoomSession(stats).then(showRaidToast).catch(() => {});
       useAppStore.getState().setIsInAvatarRoom(false);
       router.back();
     })
@@ -168,7 +185,8 @@ export default function AvatarRoomScreen() {
   }, []);
 
   const handleLeave = useCallback(async () => {
-    await disconnectFromAvatarRoom();
+    const stats = await disconnectFromAvatarRoom();
+    if (stats) settleAvatarRoomSession(stats).then(showRaidToast).catch(() => {});
     useAppStore.getState().setIsInAvatarRoom(false);
     useAppStore.getState().setAvatarRoomToken(null);
     router.back();
@@ -176,7 +194,8 @@ export default function AvatarRoomScreen() {
 
   const handleEnd = useCallback(async () => {
     // Host ends room — broadcast end via XMTP (handled by ChatScreen)
-    await disconnectFromAvatarRoom();
+    const stats = await disconnectFromAvatarRoom();
+    if (stats) settleAvatarRoomSession(stats).then(showRaidToast).catch(() => {});
     useAppStore.getState().setIsInAvatarRoom(false);
     useAppStore.getState().setActiveAvatarRoom(null);
     useAppStore.getState().setAvatarRoomToken(null);

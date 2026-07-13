@@ -31,7 +31,6 @@ import {
   Alert,
   Linking,
   AppState,
-  Share,
   type AppStateStatus,
 } from "react-native";
 // 2026-05-23: temporarily using FlatList instead of FlashList for stability
@@ -59,10 +58,11 @@ import { THEME, FONTS, SKR_MINT, getWorldBarTint, getWorldAccent } from "@/lib/c
 import { loadUserProfile, getCachedProfile, getDeduplicatedUsers, cacheProfile } from "@/lib/userProfile";
 import { checkAndUpdateStreak } from "@/lib/streaks";
 import { claimDailyBananas, type ClaimResult } from "@/lib/bananaRewards";
+import { shareImageToX } from "@/lib/shareToX";
 import { getEquippedStyles } from "@/lib/bananaShop";
 import { getOrExtractNftColor } from "@/lib/nftColor";
 import { useThemeColor } from "@/lib/shopTheme";
-import { checkBananaNotifications } from "@/lib/bananaNotifications";
+import { checkBananaNotifications, scheduleStreakExpiryWarning, notifyCloutTierUp } from "@/lib/bananaNotifications";
 import { hasCompletedOnboarding } from "@/components/OnboardingOverlay";
 import { txError, networkError } from "@/lib/monkeCopy";
 import { toast } from "sonner-native";
@@ -83,6 +83,7 @@ import { VideoCallPip } from "@/components/VideoCallPip";
 import { AvatarRoomPill } from "@/components/AvatarRoomPill";
 import { VideoReactionOverlay } from "@/components/VideoReactionOverlay";
 import { addReactionListener as addAvatarReactionListener, disconnectFromAvatarRoom, type AvatarRoomData } from "@/lib/avatarRoom";
+import { settleAvatarRoomSession } from "@/lib/bananaRaids";
 import type { VideoRoomData } from "@/lib/liveVideo";
 import { showLocalNotification, CH_LIVE } from "@/lib/notifications";
 import { registerNetworkSync, unregisterNetworkSync, setOfflineQueueFlusher, isOnline } from "@/lib/backgroundSync";
@@ -200,6 +201,7 @@ export default function ChatScreen() {
   const [tipSending, setTipSending] = useState(false);
   const [devTipOpen, setDevTipOpen] = useState(false);
   const [pfpPickerOpen, setPfpPickerOpen] = useState(false);
+  const [pfpImagePickerOpen, setPfpImagePickerOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [profileTarget, setProfileTarget] = useState<ProfileTarget | null>(null);
   const [refreshingChat, setRefreshingChat] = useState(false);
@@ -284,7 +286,10 @@ export default function ChatScreen() {
       }
       const claim = await claimDailyBananas();
       useAppStore.getState().setBananaBalance(claim.balance);
-      if (claim.claimed) setBananaClaim(claim);
+      if (claim.claimed) {
+        setBananaClaim(claim);
+        scheduleStreakExpiryWarning(claim.state.lastClaimTs).catch(() => {});
+      }
       getEquippedStyles().then(s => {
         if (s.pfpAuraEnabled) {
           s.pfpAuraColor = (s.glowColor as string) ?? useAppStore.getState().nftDominantColor ?? undefined;
@@ -308,6 +313,9 @@ export default function ChatScreen() {
           streakDays: loginStreak,
           totalCycles: Math.floor(bestStreak / 7),
           bananaBalance: claim.balance,
+        }).then((lb) => {
+          const profile = lb.profiles.find(p => p.inboxId === myId);
+          if (profile) notifyCloutTierUp(myId, profile.cloutScore).catch(() => {});
         }).catch(() => {});
       }
       checkBananaNotifications().catch(() => {});
@@ -398,7 +406,10 @@ export default function ChatScreen() {
         }
         const claim = await claimDailyBananas();
         useAppStore.getState().setBananaBalance(claim.balance);
-        if (claim.claimed) setBananaClaim(claim);
+        if (claim.claimed) {
+          setBananaClaim(claim);
+          scheduleStreakExpiryWarning(claim.state.lastClaimTs).catch(() => {});
+        }
       } catch { /* non-critical */ }
     };
     const sub = AppState.addEventListener('change', handleAppState);
@@ -907,10 +918,13 @@ export default function ChatScreen() {
 
   // ─── X / Twitter share for own images ─────────────────────────────────────────
   // Twitter's web intent (https://x.com/intent/tweet?text=…) is text-only by
-  // design — there's no image param. To carry both image and text we use the
-  // OS share sheet via Share.share({url, message}); the user picks X (or any
-  // other app) from the sheet and the image attaches naturally.
-  // 2026-05-08: replaced openURL flow that lost the image.
+  // design — there's no image param. RN core's Share.share({url, message})
+  // was tried as a workaround but only reliably attaches `url` on iOS — on
+  // Android it's dropped, leaving users to manually save + re-attach (the
+  // exact complaint this was rewritten to fix, 2026-07-13). shareImageToX()
+  // saves the image to the gallery + copies the caption + opens X's compose
+  // screen with the caption prefilled (that part already works via the web
+  // intent) — user's only remaining step is tapping X's image-picker icon.
   const handleShareToX = useCallback(async () => {
     const caption = "I snapped this using @xOnlyMonkes via Solana Mobile, The Future is Monke! 🐒";
     const imageUri = xShareImageUri;
@@ -926,9 +940,10 @@ export default function ChatScreen() {
         return;
       }
       try {
-        await Share.share({ url: imageUri, message: caption });
+        const { saved } = await shareImageToX(imageUri, caption);
+        if (saved) toast.success('Image saved — tap the image icon in X to attach it 📸');
       } catch {
-        /* user dismissed share sheet — non-fatal */
+        /* non-fatal */
       }
     }, 350);
   }, [xShareImageUri, setXShareImageUri]);
@@ -1055,7 +1070,17 @@ export default function ChatScreen() {
   }, [myInboxId, username, activeAvatarRoom, setAvatarRoomToken, setIsInAvatarRoom]);
 
   const handleLeaveAvatarRoom = useCallback(async () => {
-    await disconnectFromAvatarRoom();
+    const stats = await disconnectFromAvatarRoom();
+    if (stats) {
+      settleAvatarRoomSession(stats).then((raid) => {
+        if (!raid?.granted) return;
+        toast.success(
+          raid.reason === "host"
+            ? `🐒 Banana Raid! +${raid.amount} 🍌 for hosting a packed room`
+            : `🐒 Banana Raid! +${raid.amount} 🍌 for showing up`,
+        );
+      }).catch(() => {});
+    }
     setIsInAvatarRoom(false);
     setAvatarRoomToken(null);
   }, [setIsInAvatarRoom, setAvatarRoomToken]);
@@ -1066,7 +1091,17 @@ export default function ChatScreen() {
     setActiveAvatarRoom(null);
     setIsInAvatarRoom(false);
     setAvatarRoomToken(null);
-    await disconnectFromAvatarRoom();
+    const stats = await disconnectFromAvatarRoom();
+    if (stats) {
+      settleAvatarRoomSession(stats).then((raid) => {
+        if (!raid?.granted) return;
+        toast.success(
+          raid.reason === "host"
+            ? `🐒 Banana Raid! +${raid.amount} 🍌 for hosting a packed room`
+            : `🐒 Banana Raid! +${raid.amount} 🍌 for showing up`,
+        );
+      }).catch(() => {});
+    }
     await broadcastAvatarRoom(data).catch(() => {});
   }, [activeAvatarRoom, broadcastAvatarRoom, setActiveAvatarRoom, setIsInAvatarRoom, setAvatarRoomToken]);
 
@@ -1524,6 +1559,8 @@ export default function ChatScreen() {
         handleSendGif={handleSendGif}
         pfpPickerOpen={pfpPickerOpen}
         setPfpPickerOpen={setPfpPickerOpen}
+        pfpImagePickerOpen={pfpImagePickerOpen}
+        setPfpImagePickerOpen={setPfpImagePickerOpen}
         allNfts={allNfts}
         setVerified={setVerified}
         lightboxUrl={lightboxUrl}

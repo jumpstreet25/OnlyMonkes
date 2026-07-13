@@ -318,6 +318,46 @@ export async function showLocalNotification(
   }
 }
 
+/**
+ * Schedule a local notification for a specific future timestamp via
+ * expo-notifications' OS-level scheduler (AlarmManager on Android,
+ * UNNotificationRequest on iOS) — NOT the DirectNotif native module used by
+ * showLocalNotification()/scheduleTestNotification() above. DirectNotif's
+ * showDelayed() is an in-process Handler.postDelayed that does not survive
+ * app/process death, so it can't be used for anything hours out.
+ *
+ * Returns the notification's identifier (for cancelLocalNotification), or
+ * null if scheduling failed/unavailable.
+ */
+export async function scheduleLocalNotificationAt(
+  title: string,
+  body: string,
+  fireAt: number,
+  channelId: string = CH_SOCIAL,
+): Promise<string | null> {
+  try {
+    if (!Notifications || fireAt <= Date.now()) return null;
+    return await Notifications.scheduleNotificationAsync({
+      content: { title, body, sound: "default" },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DATE,
+        date: fireAt,
+        channelId,
+      },
+    });
+  } catch {
+    return null;
+  }
+}
+
+export async function cancelLocalNotification(id: string): Promise<void> {
+  try {
+    await Notifications?.cancelScheduledNotificationAsync(id);
+  } catch {
+    /* ignore */
+  }
+}
+
 // ─── @mention Detection ───────────────────────────────────────────────────────
 
 export function detectMention(content: string, username: string): boolean {

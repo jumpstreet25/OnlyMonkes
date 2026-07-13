@@ -106,7 +106,12 @@ export default function ConnectScreen() {
   return (
     <View style={styles.container}>
       {/* ── First-launch onboarding carousel ── */}
-      {showCarousel && <OnboardingCarousel onDone={() => setShowCarousel(false)} />}
+      {showCarousel && (
+        <OnboardingCarousel
+          onDone={() => setShowCarousel(false)}
+          onLoginNow={() => { setShowCarousel(false); setWalletSheetOpen(true); }}
+        />
+      )}
 
       {/* ── Header image — bleeds behind status bar ── */}
       <Image

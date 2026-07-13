@@ -12,7 +12,7 @@
 
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
-  View, Text, Pressable, StyleSheet, Alert, Share, Dimensions,
+  View, Text, Pressable, StyleSheet, Alert, Dimensions,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
@@ -20,6 +20,7 @@ import { toast } from 'sonner-native';
 import { THEME, FONTS } from '@/lib/constants';
 import { GlassBottomSheet } from '@/components/GlassBottomSheet';
 import { ShareablePnLCard } from '@/components/ShareablePnLCard';
+import { shareImageToX } from '@/lib/shareToX';
 import type { ClosedTrade } from '@/lib/positions';
 import type { PortfolioCard } from '@/store/tradesStore';
 import { useXmtp } from '@/hooks/useXmtp';
@@ -187,8 +188,11 @@ export function LivePnLCardModal({ card, visible, onClose }: LivePnLCardModalPro
     try {
       const uri = await captureCard();
       const compressed = await compressForShare(uri);
-      await Share.share({ url: compressed, message: formatLiveSummary(card) });
+      const { saved } = await shareImageToX(compressed, formatLiveSummary(card));
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      if (saved) {
+        toast.success('Image saved — tap the image icon in X to attach it 📸');
+      }
     } catch (e: any) {
       if (e?.message && !/dismiss/i.test(e.message)) toast.error(e.message);
     } finally {
@@ -262,9 +266,9 @@ export function LivePnLCardModal({ card, visible, onClose }: LivePnLCardModalPro
       const uri = await captureCard();
       await sendToMainChat(uri);
       const compressed = await compressForShare(uri);
-      await Share.share({ url: compressed, message: formatLiveSummary(card) });
+      const { saved } = await shareImageToX(compressed, formatLiveSummary(card));
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setTimeout(() => toast.success('Posted to Main Chat'), 350);
+      setTimeout(() => toast.success(saved ? 'Posted to Main Chat — image saved for X too 📸' : 'Posted to Main Chat'), 350);
     } catch (e: any) {
       if (e?.message && !/dismiss/i.test(e.message)) toast.error(e.message);
     } finally {
