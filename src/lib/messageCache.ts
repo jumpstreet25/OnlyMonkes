@@ -26,8 +26,12 @@ const MAX_CACHED_BOT = 200;
 // aged out. That's unbounded AsyncStorage growth: the cached JSON blob only
 // gets bigger with every image/GIF/video/link shared, for the life of the
 // install, and JSON.parse-ing an ever-growing multi-MB blob on every cold
-// start is the direct cause of load times climbing over time. Cap it too.
-const MAX_PRESERVABLE = 40;
+// start is the direct cause of load times climbing over time.
+// 2026-07-12: the original cap (40) bounded item COUNT but not byte size —
+// 40 embedded images at up to ~400KB each is still a multi-MB blob to parse
+// on every load. Tightened further since "old messages loading slowly" was
+// still being reported after the count-only cap shipped.
+const MAX_PRESERVABLE = 15;
 
 const URL_REGEX = /https?:\/\/[^\s"'<>)]+/;
 
