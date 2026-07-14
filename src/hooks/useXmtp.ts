@@ -743,7 +743,17 @@ export function useXmtp() {
               }
             } else if (typeof content === "string" && content.startsWith("PROFILE_UPDATE:")) {
               const profile = parseProfileUpdate(content);
-              if (profile) {
+              // profile.id is attacker-controlled message content, not a
+              // cryptographic identity — a client can only ever legitimately
+              // broadcast an update for its OWN sender identity. Without this
+              // check, anyone can spoof a PROFILE_UPDATE with id set to
+              // another user's inboxId (e.g. the admin's) and have it cached
+              // as that user's real profile — including a bogus nftImage —
+              // since the isRemote-gated verification below only runs when
+              // the (forgeable) id differs from the reader's own inboxId.
+              if (profile && profile.id !== (raw.senderInboxId as string)) {
+                if (__DEV__) console.warn("[XMTP] Dropped spoofed PROFILE_UPDATE — id != senderInboxId", profile.id, raw.senderInboxId);
+              } else if (profile) {
                 const nftImage = isValidNftImage(profile.nftImage) ? profile.nftImage : null;
                 cacheProfile(profile.id, { username: profile.username, bio: profile.bio, xAccount: profile.xAccount, walletAddress: profile.walletAddress, tipWallet: profile.tipWallet, location: profile.location, nftImage, legendary: profile.legendary, pushToken: profile.pushToken, expoPushToken: profile.expoPushToken, badges: profile.badges, shopStyles: profile.shopStyles, statusMessage: profile.statusMessage });
                 trackUser(profile.id, profile.username);
@@ -1171,6 +1181,13 @@ export function useXmtp() {
 
         if (typeof content === "string" && content.startsWith("PROFILE_UPDATE:")) {
           const profile = parseProfileUpdate(content);
+          // profile.id is attacker-controlled message content, not a
+          // cryptographic identity — see matching guard in seedProfilesAndEvents
+          // above for the full spoofing scenario this closes.
+          if (profile && profile.id !== (raw.senderInboxId as string)) {
+            if (__DEV__) console.warn("[XMTP] Dropped spoofed PROFILE_UPDATE — id != senderInboxId", profile.id, raw.senderInboxId);
+            return;
+          }
           if (profile) {
             // Remote users must provide nftMint for PFP verification
             const isRemote = profile.id !== _myInboxId;
