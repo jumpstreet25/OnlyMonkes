@@ -10,7 +10,9 @@ config.resolver.extraNodeModules = {
   process: require.resolve('process'),
 };
 
-// Register .html as an asset extension so require('assets/globe.html') works
-config.resolver.assetExts = [...(config.resolver.assetExts ?? []), 'html'];
+// Register .html/.txt as asset extensions so require('assets/globe.html') and the
+// bundled three.js/OrbitControls.js.txt (renamed to dodge Metro's JS source-file
+// transform) work as opaque asset files instead of being parsed as app code.
+config.resolver.assetExts = [...(config.resolver.assetExts ?? []), 'html', 'txt'];
 
 module.exports = config;

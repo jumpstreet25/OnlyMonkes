@@ -70,6 +70,15 @@ let _cachedGlobeHtml: string | null = null;
 // Solana-logo textures already use CanvasTexture from data URIs).
 const EARTH_TEXTURE_CDN_URL = "https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg";
 
+// globe.html also loaded the three.js engine itself (r128, ~600KB) and
+// OrbitControls (~26KB) as render-blocking <script src> tags from two
+// separate third-party CDNs (cdnjs, jsdelivr) on every open — nothing in
+// the WebView can render, not even the loading placeholder's globe shape,
+// until both round trips complete. Same class of bug as the texture above,
+// and comparable in size. Bundled locally (renamed .js.txt so Metro treats
+// them as opaque assets instead of trying to parse them as app source) and
+// inlined as plain <script> bodies in place of the CDN tags.
+
 async function loadGlobeHtml(): Promise<string> {
   if (_cachedGlobeHtml) return _cachedGlobeHtml;
   try {
@@ -91,6 +100,32 @@ async function loadGlobeHtml(): Promise<string> {
     } catch {
       // Fall back to the CDN URL (still works, just slower/network-dependent)
       // if the local asset fails to resolve for any reason.
+    }
+
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const threeAsset = Asset.fromModule(require("../../assets/three.min.js.txt"));
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const orbitAsset = Asset.fromModule(require("../../assets/OrbitControls.js.txt"));
+      await Promise.all([threeAsset.downloadAsync(), orbitAsset.downloadAsync()]);
+      const [threeJs, orbitJs] = await Promise.all([
+        FileSystem.readAsStringAsync(threeAsset.localUri ?? threeAsset.uri),
+        FileSystem.readAsStringAsync(orbitAsset.localUri ?? orbitAsset.uri),
+      ]);
+      html = html
+        .replace("/*__THREE_JS__*/", threeJs)
+        .replace("/*__ORBIT_CONTROLS_JS__*/", orbitJs);
+    } catch {
+      // Fall back to CDN script tags if the local assets fail to resolve.
+      html = html
+        .replace(
+          "<script>/*__THREE_JS__*/</script>",
+          '<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>',
+        )
+        .replace(
+          "<script>/*__ORBIT_CONTROLS_JS__*/</script>",
+          '<script src="https://cdn.jsdelivr.net/npm/three@0.128/examples/js/controls/OrbitControls.js"></script>',
+        );
     }
 
     _cachedGlobeHtml = html;
