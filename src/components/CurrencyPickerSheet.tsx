@@ -26,7 +26,7 @@ import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { getAssociatedTokenAddressSync } from "@solana/spl-token";
-import { THEME, FONTS, SKR_MINT, USDC_MINT, HELIUS_RPC_URL, DEV_WALLET } from "@/lib/constants";
+import { THEME, FONTS, SKR_MINT, USDC_MINT, SOLANA_RPC_URL, DEV_WALLET } from "@/lib/constants";
 import { useAppStore } from "@/store/appStore";
 import {
   fetchSkrPriceUsd,
@@ -101,7 +101,9 @@ export function CurrencyPickerSheet({
     let cancelled = false;
     (async () => {
       try {
-        const connection = new Connection(HELIUS_RPC_URL, "confirmed");
+        // Plain balance reads don't need Helius specifically — free public
+        // RPC keeps this off the shared, often-maxed account (2026-07-12).
+        const connection = new Connection(SOLANA_RPC_URL, "confirmed");
         const userPub = wallet?.address ? new PublicKey(wallet.address) : null;
 
         // Balance fetches return `null` on failure (RPC error, missing ATA)

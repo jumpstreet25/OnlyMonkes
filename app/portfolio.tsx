@@ -5,7 +5,7 @@ import {
 } from "react-native";
 import { router } from "expo-router";
 import { Connection, PublicKey, LAMPORTS_PER_SOL } from "@solana/web3.js";
-import { THEME, FONTS, HELIUS_RPC_URL, SKR_MINT } from "@/lib/constants";
+import { THEME, FONTS, SOLANA_RPC_URL, SKR_MINT } from "@/lib/constants";
 import { useAppStore } from "@/store/appStore";
 import { MiniChart } from "@/components/MiniChart";
 import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
@@ -102,12 +102,15 @@ export default function PortfolioScreen() {
   const loadPortfolio = useCallback(async () => {
     if (!wallet?.address) return;
     try {
-      const connection = new Connection(HELIUS_RPC_URL, "confirmed");
+      // Plain SOL/token-account balance reads don't need Helius's indexing —
+      // route through the free public RPC to keep this off the shared,
+      // often-maxed Helius account (2026-07-12).
+      const connection = new Connection(SOLANA_RPC_URL, "confirmed");
 
       // Fetch SOL balance, token accounts, token map in parallel
       const [lamports, tokenRes, jupMap] = await Promise.all([
         connection.getBalance(new PublicKey(wallet.address)),
-        fetchWithTimeout(HELIUS_RPC_URL, {
+        fetchWithTimeout(SOLANA_RPC_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
