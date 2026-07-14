@@ -1,7 +1,16 @@
+import React, { Suspense, useEffect } from 'react';
+import { View, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect } from 'react';
 import { useAppStore } from '@/store/appStore';
-import DmScreen from '@/screens/DmScreen';
+import { THEME } from '@/lib/constants';
+
+const DmScreen = React.lazy(() => import('@/screens/DmScreen'));
+
+const Loading = () => (
+  <View style={{ flex: 1, backgroundColor: THEME.bg, alignItems: 'center', justifyContent: 'center' }}>
+    <ActivityIndicator size="large" color={THEME.accent} />
+  </View>
+);
 
 export default function DmRoute() {
   const { inboxId } = useLocalSearchParams<{ inboxId: string }>();
@@ -11,5 +20,9 @@ export default function DmRoute() {
     if (!wallet || !verified) router.replace('/');
   }, [wallet, verified]);
   if (!wallet || !verified || !inboxId) return null;
-  return <DmScreen peerInboxId={inboxId} />;
+  return (
+    <Suspense fallback={<Loading />}>
+      <DmScreen peerInboxId={inboxId} />
+    </Suspense>
+  );
 }
