@@ -1,6 +1,5 @@
 import '../global';
 import 'react-native-get-random-values';
-import { registerGlobals as registerLiveKitGlobals } from '@livekit/react-native';
 import '../src/lib/backgroundSync'; // registers the TaskManager task definition at module level
 import { useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -29,9 +28,6 @@ import { router } from 'expo-router';
 import { useFreeRasp } from 'freerasp-react-native';
 import { useFonts } from 'expo-font';
 import { RASP_CONFIG, THREAT_ACTIONS } from '../src/lib/security';
-
-// Register LiveKit WebRTC globals (must be called before any LiveKit usage)
-registerLiveKitGlobals();
 
 // Initialize Sentry crash reporting (no-op if SENTRY_DSN not set)
 initSentry();
