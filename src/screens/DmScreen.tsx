@@ -35,7 +35,7 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
   const insets = useSafeAreaInsets();
   const { myInboxId } = useAppStore();
   const [retryKey, setRetryKey] = useState(0);
-  const { messages, loading, error, sending, send, sendTyping, typingUsers } = useDm(peerInboxId);
+  const { messages, loading, error, sending, send, react, sendTyping, typingUsers } = useDm(peerInboxId);
   const [inputText, setInputText] = useState('');
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
@@ -66,7 +66,13 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
     setTimeout(() => flatListRef.current?.scrollToOffset({ offset: 0, animated: true }), 50);
   }, [inputText, send]);
 
-  const noop = useCallback(async (_: ReactionEmoji, __: string) => {}, []);
+  const handleReact = useCallback(async (emoji: ReactionEmoji, messageId: string) => {
+    try {
+      await react(emoji, messageId);
+    } catch (err) {
+      if (__DEV__) console.warn('[DmScreen] Reaction failed:', err);
+    }
+  }, [react]);
 
   const handleReply = useCallback((msg: ChatMessage) => {
     setReplyingTo(msg);
@@ -173,7 +179,7 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
                 <MessageBubble
                   message={m}
                   isOwn={m.senderAddress === myInboxId}
-                  onReact={noop}
+                  onReact={handleReact}
                   onReply={handleReply}
                   onOpenActions={setActionSheetTarget}
                   onPressImage={setLightboxUrl}
@@ -224,7 +230,7 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
         onClose={() => setActionSheetTarget(null)}
         myAddress={myInboxId ?? ''}
         isGroupAdmin={false}
-        onReact={noop}
+        onReact={handleReact}
         onReply={handleReply}
       />
     </View>

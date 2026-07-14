@@ -2,10 +2,10 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { AppState } from 'react-native';
 import { useAppStore } from '@/store/appStore';
 import { getXmtpClient } from '@/hooks/useXmtp';
-import { openOrCreateDm, loadDmMessages, sendDmMessage, sendTypingIndicator, sendReadReceipt, getLastPeerReadReceipt, decodeMessage } from '@/lib/xmtp';
+import { openOrCreateDm, loadDmMessages, sendDmMessage, sendReaction, applyReaction, sendTypingIndicator, sendReadReceipt, getLastPeerReadReceipt, decodeMessage } from '@/lib/xmtp';
 import { getCachedProfile } from '@/lib/userProfile';
 import { markChannelRead } from '@/lib/messageCache';
-import type { ChatMessage } from '@/types';
+import type { ChatMessage, ReactionEmoji } from '@/types';
 
 // Throttle own typing broadcasts in DMs (one signal per 2.5 s max)
 let _lastDmTypingSent = 0;
@@ -31,6 +31,17 @@ async function relayDmPush(
       body: JSON.stringify(body),
     });
   } catch { /* non-critical */ }
+}
+
+// Reactions (native ReactionCodec/V2 or legacy REACT: string) never decode
+// to a displayable ChatMessage — decodeMessage() returns null for them by
+// design, so they must be intercepted before that call and folded into the
+// target message via applyReaction() instead (same pattern as useXmtp.ts /
+// useGroupChat.ts).
+function isReactionContent(content: unknown): boolean {
+  if (typeof content === 'string') return content.startsWith('REACT:');
+  if (content && typeof content === 'object') return !!((content as any).reaction || (content as any).reactionV2);
+  return false;
 }
 
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
@@ -252,6 +263,14 @@ export function useDm(peerInboxId: string) {
               return;
             }
 
+            // Reaction from the peer (own reactions are applied optimistically
+            // in react() below — XMTP does not echo own messages back in the
+            // stream, so this branch only ever fires for the other party).
+            if (isReactionContent(rawContent)) {
+              setMessages(prev => applyReaction(prev, raw, myInboxId));
+              return;
+            }
+
             const msg = decodeMessage(raw, myInboxId);
             if (!msg) return;
 
@@ -382,6 +401,28 @@ export function useDm(peerInboxId: string) {
     }
   }, [myInboxId, peerInboxId]);
 
+  const react = useCallback(async (emoji: ReactionEmoji, targetMessageId: string) => {
+    if (!dmRef.current || !myInboxId) return;
+
+    // Apply optimistically — XMTP does not echo own messages back in the
+    // stream, so without this the reaction never appeared in a DM at all
+    // (react() previously didn't exist here — DM reactions were a no-op).
+    const fakeRaw = {
+      content: () => ({
+        reaction: {
+          reference: targetMessageId,
+          action: 'added',
+          schema: 'unicode',
+          content: emoji,
+        },
+      }),
+      senderInboxId: myInboxId,
+    };
+    setMessages(prev => applyReaction(prev, fakeRaw, myInboxId));
+
+    await sendReaction(dmRef.current, emoji, targetMessageId);
+  }, [myInboxId]);
+
   const retry = useCallback(async (messageId: string) => {
     const msg = messages.find(m => m.id === messageId && m.status === 'failed');
     if (!msg || !dmRef.current) return;
@@ -407,5 +448,5 @@ export function useDm(peerInboxId: string) {
     ? [{ inboxId: peerInboxId, username: peerProfile?.username }]
     : [];
 
-  return { messages, loading, error, sending, sendError, send, retry, sendTyping, typingUsers };
+  return { messages, loading, error, sending, sendError, send, retry, react, sendTyping, typingUsers };
 }
