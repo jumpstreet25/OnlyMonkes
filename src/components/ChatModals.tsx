@@ -26,6 +26,7 @@ import { TipModal } from "@/components/TipModal";
 import { SwapConfirmModal } from "@/components/SwapConfirmModal";
 import { GifPickerModal } from "@/components/GifPickerModal";
 import { NftPickerModal } from "@/components/NftPickerModal";
+import { SetMonkeImageModal } from "@/components/SetMonkeImageModal";
 import ImageLightbox from "@/components/ImageLightbox";
 import { ChartModal } from "@/components/ChartModal";
 import { UserProfileModal, type ProfileTarget } from "@/components/UserProfileModal";
@@ -105,6 +106,8 @@ export interface ChatModalsProps {
   setCalendarOpen: (v: boolean) => void;
   setProfileTarget: (v: ProfileTarget | null) => void;
   setPfpPickerOpen: (v: boolean) => void;
+  pfpImagePickerOpen: boolean;
+  setPfpImagePickerOpen: (v: boolean) => void;
 
   // Search
   searchOpen: boolean;
@@ -197,6 +200,7 @@ export function ChatModals(props: ChatModalsProps) {
     username, bio, xAccount, tipWallet, userLocation, broadcastProfile,
     drawerOpen, setDrawerOpen, handleStartAvatarRoom, handleStartVideoCall,
     handleConfirmDevTip, setSearchOpen, setCalendarOpen, setProfileTarget, setPfpPickerOpen,
+    pfpImagePickerOpen, setPfpImagePickerOpen,
     searchOpen, calendarOpen, broadcastEvent,
     tipTarget, setTipTarget, handleConfirmTip,
     devTipOpen, setDevTipOpen,
@@ -215,6 +219,8 @@ export function ChatModals(props: ChatModalsProps) {
   } = props;
 
   const isGroupAdmin = useAppStore(s => s.isGroupAdmin);
+  const wallet = useAppStore(s => s.wallet);
+  const verifiedNft = useAppStore(s => s.verifiedNft);
 
   return (
     <>
@@ -357,12 +363,29 @@ export function ChatModals(props: ChatModalsProps) {
         onClose={() => setChartSymbol(null)}
       />
 
+      <SetMonkeImageModal
+        visible={pfpImagePickerOpen}
+        onSkip={() => setPfpImagePickerOpen(false)}
+        onPicked={async (imageUrl) => {
+          if (!wallet?.address) { setPfpImagePickerOpen(false); return; }
+          const { setUserChosenNftImage } = await import("@/lib/nftVerification");
+          const nft = await setUserChosenNftImage(wallet.address, imageUrl, verifiedNft);
+          setVerified(true, nft);
+          setPfpImagePickerOpen(false);
+          await broadcastProfile();
+        }}
+      />
+
       <UserProfileModal
         visible={!!profileTarget}
         target={profileTarget}
         onClose={() => setProfileTarget(null)}
         onEditProfile={() => setEditingProfile(true)}
-        onChangePfp={allNfts.length > 0 ? () => setPfpPickerOpen(true) : undefined}
+        onChangePfp={
+          allNfts.length > 0
+            ? () => (verifiedNft?.image ? setPfpPickerOpen(true) : setPfpImagePickerOpen(true))
+            : undefined
+        }
         onLogout={async () => { await logout(); router.replace("/"); }}
         onSwitchWallet={async () => { await logout(); router.replace("/"); }}
         onMessage={profileTarget && profileTarget.senderAddress !== myAddress
