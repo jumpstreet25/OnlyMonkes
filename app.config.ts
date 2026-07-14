@@ -88,6 +88,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   scheme: 'onlymonkes',
   extra: {
     heliusApiKey: process.env.HELIUS_API_KEY ?? '',
+    heliusNftApiKey: process.env.HELIUS_NFT_API_KEY ?? '',
     giphyApiKey: process.env.GIPHY_API_KEY ?? '',
     nftCollectionAddress:
       process.env.NFT_COLLECTION_ADDRESS ?? 'GokAiStXz2Kqbxwz2oqzfEXuUhE7aXySmBGEP7uejKXF',
