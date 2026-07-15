@@ -11,6 +11,5 @@ declare module '@env' {
   export const DEV_WALLET: string;
   export const SENTRY_DSN: string;
   export const SHARPAPI_KEY: string;
-  export const SHYFT_API_KEY: string;
   export const QUICKNODE_DAS_URL: string;
 }

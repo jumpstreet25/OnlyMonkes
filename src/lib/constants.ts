@@ -10,7 +10,6 @@ import {
   SKR_MINT as ENV_SKR,
   DEV_WALLET as ENV_DEV,
   SENTRY_DSN as ENV_SENTRY,
-  SHYFT_API_KEY as ENV_SHYFT,
   QUICKNODE_DAS_URL as ENV_QUICKNODE_DAS,
 } from '@env';
 import Constants from 'expo-constants';
@@ -69,7 +68,6 @@ export const LIVEKIT_URL_ENV: string = ENV_LK_URL || _str(_extra.livekitUrl);
 export const LIVEKIT_TOKEN_URL_ENV: string = ENV_LK_TOKEN || _str(_extra.livekitTokenUrl);
 export const JUP_API_KEY: string = ENV_JUP || _str(_extra.jupApiKey);
 export const SENTRY_DSN_ENV: string = ENV_SENTRY || _str(_extra.sentryDsn);
-export const SHYFT_API_KEY: string = ENV_SHYFT || '';
 // QuickNode DAS endpoint — auth token is embedded in the URL path itself
 // (QuickNode's convention), so this is used as a full URL, not a bare key.
 // Added 2026-07-13 as a 30-day trial; see project memory for the expiry
