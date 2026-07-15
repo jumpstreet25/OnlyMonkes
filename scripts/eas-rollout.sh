@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
-# eas-rollout.sh — publish an OTA at a staged rollout percentage.
+# eas-rollout.sh — publish an OTA, full rollout by default.
 #
-# Default: 10% rollout to the production branch. Bumps blast-radius from
-# "everyone immediately" to "1 in 10 users for the first 24h, then ramp."
+# Default: 100% (immediate, everyone) to the production branch. Staged
+# rollout is opt-in — pass a percentage explicitly ONLY when asked for it
+# specifically; per user feedback 2026-07-15, do not self-select into
+# staged rollout by default, even for changes that look risky.
 #
 # Usage:
-#   ./scripts/eas-rollout.sh "v2.38 chat-flash hotfix"           # 10% default
-#   ./scripts/eas-rollout.sh "v2.38 chat-flash hotfix" 25         # 25%
-#   ./scripts/eas-rollout.sh "v2.38 chat-flash hotfix" 25 preview # 25% to preview branch
+#   ./scripts/eas-rollout.sh "v2.38 chat-flash hotfix"           # 100% default
+#   ./scripts/eas-rollout.sh "v2.38 chat-flash hotfix" 25         # staged at 25% (opt-in only)
+#   ./scripts/eas-rollout.sh "v2.38 chat-flash hotfix" 25 preview # staged 25% to preview branch
 #
-# After publishing, watch Sentry + crash reports for ~24h, then ramp with:
+# If staged, watch Sentry + crash reports, then ramp with:
 #   ./scripts/eas-promote.sh [percentage]
 #
 # Per CLAUDE.md / feedback memory: ALWAYS pre-export android before
@@ -18,8 +20,8 @@
 
 set -euo pipefail
 
-MESSAGE="${1:?Usage: eas-rollout.sh \"changelog message\" [percentage=10] [branch=production]}"
-PERCENT="${2:-10}"
+MESSAGE="${1:?Usage: eas-rollout.sh \"changelog message\" [percentage=100] [branch=production]}"
+PERCENT="${2:-100}"
 BRANCH="${3:-production}"
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -35,7 +37,9 @@ step() { echo -e "\n${GREEN}▸ $1${NC}"; }
 warn() { echo -e "${YELLOW}⚠ $1${NC}"; }
 fail() { echo -e "${RED}✘ $1${NC}"; exit 1; }
 
-# Sanity-check rollout percentage
+# Sanity-check rollout percentage. EAS's --rollout-percentage flag only
+# accepts 0-99 — "100%" (full/immediate) means omitting the flag entirely,
+# not passing 100.
 if ! [[ "$PERCENT" =~ ^[0-9]+$ ]] || (( PERCENT < 1 || PERCENT > 100 )); then
   fail "Rollout percentage must be 1-100 (got: $PERCENT)"
 fi
@@ -53,25 +57,39 @@ fi
 step "Exporting Android bundle"
 npx expo export --platform android || fail "Bundle export failed — aborting"
 
-# ── Publish OTA at staged rollout percentage ───────────────────────────────
-step "Publishing OTA → branch '$BRANCH' at ${PERCENT}% rollout"
-echo "  Message: $MESSAGE"
-echo ""
-
-npx eas update \
-  --platform android \
-  --branch "$BRANCH" \
-  --message "$MESSAGE" \
-  --rollout-percentage "$PERCENT" \
-  --non-interactive
+# ── Publish OTA ─────────────────────────────────────────────────────────────
+if [[ "$PERCENT" -eq 100 ]]; then
+  step "Publishing OTA → branch '$BRANCH' at full (100%) rollout"
+  echo "  Message: $MESSAGE"
+  echo ""
+  npx eas update \
+    --platform android \
+    --branch "$BRANCH" \
+    --message "$MESSAGE" \
+    --non-interactive
+else
+  step "Publishing OTA → branch '$BRANCH' at ${PERCENT}% rollout (staged — explicitly requested)"
+  echo "  Message: $MESSAGE"
+  echo ""
+  npx eas update \
+    --platform android \
+    --branch "$BRANCH" \
+    --message "$MESSAGE" \
+    --rollout-percentage "$PERCENT" \
+    --non-interactive
+fi
 
 # ── Done — show next steps ─────────────────────────────────────────────────
 echo ""
-echo -e "${GREEN}✔ OTA published at ${PERCENT}% rollout on '$BRANCH'${NC}"
-echo ""
-echo "Next steps:"
-echo "  1. Watch Sentry, crash reports, and user feedback for the next ~24h"
-echo "     https://expo.dev/accounts/jumpstreet25/projects/OnlyMonkes/updates"
-echo "  2. Ramp to 100% with: ./scripts/eas-promote.sh"
-echo "  3. Or roll back: ./scripts/eas-rollout.sh \"revert: <reason>\" 0  (sets new update to 0%)"
+if [[ "$PERCENT" -eq 100 ]]; then
+  echo -e "${GREEN}✔ OTA published at full rollout on '$BRANCH'${NC}"
+else
+  echo -e "${GREEN}✔ OTA published at ${PERCENT}% rollout on '$BRANCH'${NC}"
+  echo ""
+  echo "Next steps:"
+  echo "  1. Watch Sentry, crash reports, and user feedback"
+  echo "     https://expo.dev/accounts/jumpstreet25/projects/OnlyMonkes/updates"
+  echo "  2. Ramp to 100% with: ./scripts/eas-promote.sh"
+  echo "  3. Or roll back: ./scripts/eas-rollout.sh \"revert: <reason>\" 0  (sets new update to 0%)"
+fi
 echo ""
