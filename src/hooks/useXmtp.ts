@@ -832,6 +832,27 @@ export function useXmtp() {
                   }
                 }
               } catch { /* ignore */ }
+            } else if (typeof content === "string" && content.startsWith("BANANA_BET_OPEN:")) {
+              try {
+                const { parseBananaBetOpen } = await import("@/lib/bananaBet");
+                const data = parseBananaBetOpen(content);
+                if (data) {
+                  // Inline pill only on history replay — deliberately does NOT
+                  // set activeBananaBet (no pop-up), so reopening the app
+                  // hours later doesn't surface a bet the user already missed
+                  // or already saw. The pill still lets them bet from scrollback.
+                  const pillMsg: ChatMessage = {
+                    id: `bananabetpill-${data.id}`,
+                    senderAddress: raw.senderInboxId as string,
+                    senderUsername: "AI Agent #9385",
+                    content: `BANANA_BET_PILL:${JSON.stringify(data)}`,
+                    sentAt: new Date(raw.sentNs / 1_000_000),
+                    reactions: {},
+                    status: "sent",
+                  };
+                  mergeMessage(pillMsg);
+                }
+              } catch { /* ignore */ }
             }
           } catch { /* skip */ }
         }
@@ -1462,6 +1483,31 @@ export function useXmtp() {
                 const current = useAppStore.getState().activeAvatarRoom;
                 if (current?.id === data.id) useAppStore.getState().setActiveAvatarRoom(null);
               }
+            }
+          } catch { /* ignore */ }
+          return;
+        }
+
+        if (typeof content === "string" && content.startsWith("BANANA_BET_OPEN:")) {
+          try {
+            const { parseBananaBetOpen } = await import("@/lib/bananaBet");
+            const data = parseBananaBetOpen(content);
+            if (data) {
+              // Inline pill in Main Chat feed.
+              const pillMsg: ChatMessage = {
+                id: `bananabetpill-${data.id}`,
+                senderAddress: raw.senderInboxId as string,
+                senderUsername: "AI Agent #9385",
+                content: `BANANA_BET_PILL:${JSON.stringify(data)}`,
+                sentAt: new Date(raw.sentNs / 1_000_000),
+                reactions: {},
+                status: "sent",
+              };
+              mergeMessage(pillMsg);
+              // App-wide pop-up — only fires from the live stream (a fresh
+              // signal), never on history replay, so re-opening the app
+              // hours later doesn't pop up a stale/already-seen bet.
+              useAppStore.getState().setActiveBananaBet(data);
             }
           } catch { /* ignore */ }
           return;

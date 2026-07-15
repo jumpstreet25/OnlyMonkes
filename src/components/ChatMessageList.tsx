@@ -89,6 +89,7 @@ const SCROLL_THRESHOLD = 270; // ~3 message heights
 function getMessageType(item: ChatMessage): string {
   const c = item.content;
   if (c.startsWith("LIVE_PILL:")) return "pill";
+  if (c.startsWith("BANANA_BET_PILL:")) return "bananabet";
   if (c.startsWith("VIDEO:")) return "video";
   if (c.startsWith("IMAGE:")) return "image";
   if (c.startsWith("GIF:")) return "gif";

@@ -229,6 +229,126 @@ const livePillStyles = StyleSheet.create({
   },
 });
 
+// ─── BananaBet Pill ───────────────────────────────────────────────────────────
+// Content format: BANANA_BET_PILL:<json {id,category,question,resolvesAt}>
+
+function parseBananaBetPill(content: string): { id: string; category: string; question: string; resolvesAt: number } | null {
+  if (!content.startsWith("BANANA_BET_PILL:")) return null;
+  try {
+    return JSON.parse(content.slice("BANANA_BET_PILL:".length));
+  } catch {
+    return null;
+  }
+}
+
+const BET_AMOUNT_CHIPS = [10, 25, 50, 100];
+const BET_CATEGORY_EMOJI: Record<string, string> = { crypto: "📈", nft: "🖼️", sports: "🏆", news: "📰" };
+
+function BananaBetPillBubble({ id, category, question, resolvesAt }: { id: string; category: string; question: string; resolvesAt: number }) {
+  const [amount, setAmount] = useState(25);
+  const [submitting, setSubmitting] = useState(false);
+  const [placedSide, setPlacedSide] = useState<"yes" | "no" | null>(null);
+  const expired = Date.now() > resolvesAt;
+
+  const handlePlace = useCallback(async (side: "yes" | "no") => {
+    if (submitting || placedSide || expired) return;
+    setSubmitting(true);
+    try {
+      const { placeBananaBet } = await import("@/lib/bananaBet");
+      const { toast } = await import("sonner-native");
+      await placeBananaBet(id, side, amount);
+      setPlacedSide(side);
+      toast.success(`🍌 Bet placed: ${amount} on ${side.toUpperCase()}`);
+    } catch (err: any) {
+      const { toast } = await import("sonner-native");
+      toast.error(err?.message ?? "Bet failed — try again");
+    } finally {
+      setSubmitting(false);
+    }
+  }, [id, amount, submitting, placedSide, expired]);
+
+  return (
+    <View style={bananaBetStyles.container}>
+      <View style={bananaBetStyles.card}>
+        <Text style={bananaBetStyles.question}>
+          {BET_CATEGORY_EMOJI[category] ?? "🍌"} {question}
+        </Text>
+
+        {placedSide ? (
+          <Text style={bananaBetStyles.placedText}>
+            ✅ You bet {amount} on {placedSide.toUpperCase()}
+          </Text>
+        ) : expired ? (
+          <Text style={bananaBetStyles.placedText}>⏳ Betting closed</Text>
+        ) : (
+          <>
+            <View style={bananaBetStyles.chipRow}>
+              {BET_AMOUNT_CHIPS.map((c) => (
+                <Pressable
+                  key={c}
+                  onPress={() => setAmount(c)}
+                  style={[bananaBetStyles.chip, amount === c && bananaBetStyles.chipActive]}
+                >
+                  <Text style={[bananaBetStyles.chipText, amount === c && bananaBetStyles.chipTextActive]}>{c}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <View style={bananaBetStyles.sideRow}>
+              <Pressable
+                disabled={submitting}
+                onPress={() => handlePlace("yes")}
+                style={[bananaBetStyles.sideBtn, bananaBetStyles.yesBtn, submitting && { opacity: 0.6 }]}
+              >
+                {submitting ? <ActivityIndicator size="small" color="#fff" /> : <Text style={bananaBetStyles.sideText}>YES</Text>}
+              </Pressable>
+              <Pressable
+                disabled={submitting}
+                onPress={() => handlePlace("no")}
+                style={[bananaBetStyles.sideBtn, bananaBetStyles.noBtn, submitting && { opacity: 0.6 }]}
+              >
+                {submitting ? <ActivityIndicator size="small" color="#fff" /> : <Text style={bananaBetStyles.sideText}>NO</Text>}
+              </Pressable>
+            </View>
+          </>
+        )}
+      </View>
+    </View>
+  );
+}
+
+const bananaBetStyles = StyleSheet.create({
+  container: { alignItems: "center", paddingVertical: 6, paddingHorizontal: 16 },
+  card: {
+    backgroundColor: "rgba(255, 204, 0, 0.10)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 204, 0, 0.28)",
+    borderRadius: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    width: "100%",
+    gap: 10,
+  },
+  question: { fontFamily: FONTS.bodyMed, fontSize: 14, color: THEME.text, lineHeight: 19 },
+  placedText: { fontFamily: FONTS.bodyMed, fontSize: 13, color: THEME.textMuted },
+  chipRow: { flexDirection: "row", gap: 8 },
+  chip: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
+  },
+  chipActive: { backgroundColor: "rgba(255, 204, 0, 0.25)", borderColor: "rgba(255, 204, 0, 0.6)" },
+  chipText: { fontFamily: FONTS.bodyMed, fontSize: 12, color: THEME.textMuted },
+  chipTextActive: { color: "#FFCC00", fontWeight: "700" },
+  sideRow: { flexDirection: "row", gap: 10 },
+  sideBtn: { flex: 1, borderRadius: 10, paddingVertical: 10, alignItems: "center" },
+  yesBtn: { backgroundColor: "#2E9E5B" },
+  noBtn: { backgroundColor: "#C0392B" },
+  sideText: { fontFamily: FONTS.displayMed, fontSize: 14, color: "#fff", fontWeight: "700" },
+});
+
 function VideoBubble({ raw, mediaWidth, onPress, onLongPress }: {
   raw: string;
   mediaWidth: number;
@@ -731,6 +851,18 @@ export const MessageBubble = memo(function MessageBubble({
   const livePill = parseLivePill(message.content);
   if (livePill) {
     return <LivePillBubble type={livePill.type} host={livePill.host} sentAt={message.sentAt} />;
+  }
+
+  const bananaBetPill = parseBananaBetPill(message.content);
+  if (bananaBetPill) {
+    return (
+      <BananaBetPillBubble
+        id={bananaBetPill.id}
+        category={bananaBetPill.category}
+        question={bananaBetPill.question}
+        resolvesAt={bananaBetPill.resolvesAt}
+      />
+    );
   }
 
   // Center bot messages in bot channels
