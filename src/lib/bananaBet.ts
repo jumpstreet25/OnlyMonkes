@@ -3,16 +3,30 @@
  *
  * Placement reuses the bot's existing `/bet <id> yes|no <amount>` DM path
  * (already live and tested) — a tap here just sends the equivalent
- * structured DM automatically instead of the user typing it. No local
- * banana-balance deduction yet (test-phase design, matches the bot's
- * trust-based placement — see bananaBetting.ts on the bot side).
+ * structured DM automatically instead of the user typing it.
+ *
+ * 2026-07-16: real balance deduction wired up (was trust-based test-phase
+ * only) — placeBananaBet() now spends from the SAME banana balance used by
+ * the Banana Store (bananaRewards.ts), same spend/sync pattern as
+ * BananaShopModal's purchases. Users can never bet more than they've
+ * actually earned.
  */
+
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export interface BananaBetOpenData {
   id: string;
   category: "crypto" | "nft" | "sports" | "news";
   question: string;
   resolvesAt: number;
+}
+
+export interface BananaBetSettledData {
+  betId: string;
+  question: string;
+  outcome: "yes" | "no";
+  totalBets: number;
+  totalBananasWon: number;
 }
 
 export function parseBananaBetOpen(content: string): BananaBetOpenData | null {
@@ -26,12 +40,78 @@ export function parseBananaBetOpen(content: string): BananaBetOpenData | null {
   }
 }
 
+export function parseBananaBetSettled(content: string): BananaBetSettledData | null {
+  if (!content.startsWith("BANANA_BET_SETTLED:")) return null;
+  try {
+    const data = JSON.parse(content.slice("BANANA_BET_SETTLED:".length));
+    if (!data.betId || !data.question || !data.outcome) return null;
+    return data as BananaBetSettledData;
+  } catch {
+    return null;
+  }
+}
+
 export async function placeBananaBet(betId: string, side: "yes" | "no", amount: number): Promise<void> {
-  const { getXmtpClient } = await import("@/hooks/useXmtp");
-  const { openOrCreateDm } = await import("@/lib/xmtp");
-  const { BOT_INBOX_IDS } = await import("@/lib/constants");
-  const client = getXmtpClient();
-  if (!client) throw new Error("Not connected");
-  const dm = await openOrCreateDm(client, BOT_INBOX_IDS[0]);
-  await dm.send(`/bet ${betId} ${side} ${amount}`);
+  if (!amount || amount <= 0) throw new Error("Invalid amount");
+  const { getBananaBalance, spendBananas, addBananas } = await import("@/lib/bananaRewards");
+  const { useAppStore } = await import("@/store/appStore");
+
+  const balance = await getBananaBalance();
+  if (amount > balance) throw new Error(`Not enough bananas — you have ${balance} 🍌`);
+
+  const spent = await spendBananas(amount);
+  if (!spent) throw new Error(`Not enough bananas — you have ${balance} 🍌`);
+  useAppStore.getState().setBananaBalance(useAppStore.getState().bananaBalance - amount);
+
+  try {
+    const { getXmtpClient } = await import("@/hooks/useXmtp");
+    const { openOrCreateDm } = await import("@/lib/xmtp");
+    const { BOT_INBOX_IDS } = await import("@/lib/constants");
+    const client = getXmtpClient();
+    if (!client) throw new Error("Not connected");
+    const dm = await openOrCreateDm(client, BOT_INBOX_IDS[0]);
+    await dm.send(`/bet ${betId} ${side} ${amount}`);
+  } catch (err) {
+    // Refund — the stake was never recorded bot-side if the DM send failed.
+    await addBananas(amount);
+    useAppStore.getState().setBananaBalance(useAppStore.getState().bananaBalance + amount);
+    throw err;
+  }
+}
+
+// ─── Seen-bet tracking — pop-up shows once per bet, ever ──────────────────
+// A BANANA_BET_OPEN: broadcast can be reprocessed (XMTP stream reconnect
+// replaying recent messages is the most likely cause, per the 2026-07-16
+// report of the pop-up "returning a few times") — track which bet ids have
+// already triggered a pop-up so a replay is a safe no-op regardless of
+// mechanism. Persisted so it survives app restarts too.
+const SEEN_KEY = "banana_bet_seen_ids_v1";
+const MAX_SEEN = 200;
+let _seenCache: Set<string> | null = null;
+
+async function loadSeen(): Promise<Set<string>> {
+  if (_seenCache) return _seenCache;
+  try {
+    const raw = await AsyncStorage.getItem(SEEN_KEY);
+    _seenCache = new Set(raw ? JSON.parse(raw) : []);
+  } catch {
+    _seenCache = new Set();
+  }
+  return _seenCache;
+}
+
+async function saveSeen(seen: Set<string>): Promise<void> {
+  try {
+    const trimmed = Array.from(seen).slice(-MAX_SEEN);
+    await AsyncStorage.setItem(SEEN_KEY, JSON.stringify(trimmed));
+  } catch { /* non-critical */ }
+}
+
+/** Returns true and marks the bet as seen if this is the FIRST time — false if already seen. */
+export async function markBetSeenIfFirstTime(betId: string): Promise<boolean> {
+  const seen = await loadSeen();
+  if (seen.has(betId)) return false;
+  seen.add(betId);
+  await saveSeen(seen);
+  return true;
 }

@@ -865,6 +865,23 @@ export function useXmtp() {
                   mergeMessage(pillMsg);
                 }
               } catch { /* ignore */ }
+            } else if (typeof content === "string" && content.startsWith("BANANA_BET_SETTLED:")) {
+              try {
+                const { parseBananaBetSettled } = await import("@/lib/bananaBet");
+                const data = parseBananaBetSettled(content);
+                if (data) {
+                  const pillMsg: ChatMessage = {
+                    id: `bananabetsettled-${data.betId}`,
+                    senderAddress: raw.senderInboxId as string,
+                    senderUsername: "AI Agent #9385",
+                    content: `BANANA_BET_SETTLED_PILL:${JSON.stringify(data)}`,
+                    sentAt: new Date(raw.sentNs / 1_000_000),
+                    reactions: {},
+                    status: "sent",
+                  };
+                  mergeMessage(pillMsg);
+                }
+              } catch { /* ignore */ }
             }
           } catch { /* skip */ }
         }
@@ -1499,10 +1516,11 @@ export function useXmtp() {
 
         if (typeof content === "string" && content.startsWith("BANANA_BET_OPEN:")) {
           try {
-            const { parseBananaBetOpen } = await import("@/lib/bananaBet");
+            const { parseBananaBetOpen, markBetSeenIfFirstTime } = await import("@/lib/bananaBet");
             const data = parseBananaBetOpen(content);
             if (data) {
-              // Inline pill in Main Chat feed.
+              // Inline pill in Main Chat feed. mergeMessage dedupes by fixed
+              // id, so a reprocessed broadcast is a safe no-op here already.
               const pillMsg: ChatMessage = {
                 id: `bananabetpill-${data.id}`,
                 senderAddress: raw.senderInboxId as string,
@@ -1515,8 +1533,37 @@ export function useXmtp() {
               mergeMessage(pillMsg);
               // App-wide pop-up — only fires from the live stream (a fresh
               // signal), never on history replay, so re-opening the app
-              // hours later doesn't pop up a stale/already-seen bet.
-              useAppStore.getState().setActiveBananaBet(data);
+              // hours later doesn't pop up a stale/already-seen bet. Also
+              // gated on markBetSeenIfFirstTime: 2026-07-16 report — the
+              // pop-up was "returning a few times" for the same bet, most
+              // likely an XMTP stream reconnect replaying recent messages.
+              // This makes a replay a no-op regardless of the exact cause.
+              if (await markBetSeenIfFirstTime(data.id)) {
+                useAppStore.getState().setActiveBananaBet(data);
+              }
+            }
+          } catch { /* ignore */ }
+          return;
+        }
+
+        if (typeof content === "string" && content.startsWith("BANANA_BET_SETTLED:")) {
+          try {
+            const { parseBananaBetSettled, markBetSeenIfFirstTime } = await import("@/lib/bananaBet");
+            const data = parseBananaBetSettled(content);
+            if (data) {
+              const pillMsg: ChatMessage = {
+                id: `bananabetsettled-${data.betId}`,
+                senderAddress: raw.senderInboxId as string,
+                senderUsername: "AI Agent #9385",
+                content: `BANANA_BET_SETTLED_PILL:${JSON.stringify(data)}`,
+                sentAt: new Date(raw.sentNs / 1_000_000),
+                reactions: {},
+                status: "sent",
+              };
+              mergeMessage(pillMsg);
+              if (await markBetSeenIfFirstTime(`settled-${data.betId}`)) {
+                useAppStore.getState().setActiveBananaBetResult(data);
+              }
             }
           } catch { /* ignore */ }
           return;

@@ -242,16 +242,27 @@ function parseBananaBetPill(content: string): { id: string; category: string; qu
   }
 }
 
+function parseBananaBetSettledPill(content: string): { betId: string; question: string; outcome: string; totalBets: number; totalBananasWon: number } | null {
+  if (!content.startsWith("BANANA_BET_SETTLED_PILL:")) return null;
+  try {
+    return JSON.parse(content.slice("BANANA_BET_SETTLED_PILL:".length));
+  } catch {
+    return null;
+  }
+}
+
 const BET_AMOUNT_CHIPS = [10, 25, 50, 100];
 const BET_CATEGORY_EMOJI: Record<string, string> = { crypto: "📈", nft: "🖼️", sports: "🏆", news: "📰" };
 
 function BananaBetPillBubble({ id, category, question, resolvesAt }: { id: string; category: string; question: string; resolvesAt: number }) {
+  const bananaBalance = useAppStore(s => s.bananaBalance);
   const [amount, setAmount] = useState(25);
   const [customMode, setCustomMode] = useState(false);
   const [customText, setCustomText] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [placedSide, setPlacedSide] = useState<"yes" | "no" | null>(null);
   const expired = Date.now() > resolvesAt;
+  const insufficientFunds = amount > bananaBalance;
 
   const handleCustomChange = useCallback((text: string) => {
     const digits = text.replace(/[^0-9]/g, "");
@@ -261,7 +272,7 @@ function BananaBetPillBubble({ id, category, question, resolvesAt }: { id: strin
   }, []);
 
   const handlePlace = useCallback(async (side: "yes" | "no") => {
-    if (submitting || placedSide || expired || amount <= 0) return;
+    if (submitting || placedSide || expired || amount <= 0 || amount > bananaBalance) return;
     setSubmitting(true);
     try {
       const { placeBananaBet } = await import("@/lib/bananaBet");
@@ -275,13 +286,13 @@ function BananaBetPillBubble({ id, category, question, resolvesAt }: { id: strin
     } finally {
       setSubmitting(false);
     }
-  }, [id, amount, submitting, placedSide, expired]);
+  }, [id, amount, submitting, placedSide, expired, bananaBalance]);
 
   return (
     <View style={bananaBetStyles.container}>
       <View style={bananaBetStyles.card}>
         <Text style={bananaBetStyles.badge}>🍌 BANANABETS</Text>
-        <Text style={bananaBetStyles.tagline}>Fake bananas only — zero real money, ever. Bragging rights on the line.</Text>
+        <Text style={bananaBetStyles.tagline}>Real bananas from your stash — no real-world money, ever.</Text>
         <Text style={bananaBetStyles.question}>
           {BET_CATEGORY_EMOJI[category] ?? "🍌"} {question}
         </Text>
@@ -294,20 +305,25 @@ function BananaBetPillBubble({ id, category, question, resolvesAt }: { id: strin
           <Text style={bananaBetStyles.placedText}>⏳ Betting closed</Text>
         ) : (
           <>
-            <Text style={bananaBetStyles.wagerLabel}>Wager (🍌 bananas)</Text>
+            <Text style={bananaBetStyles.wagerLabel}>Wager (🍌 bananas) — you have {bananaBalance} 🍌</Text>
             <View style={bananaBetStyles.chipRow}>
-              {BET_AMOUNT_CHIPS.map((c) => (
-                <Pressable
-                  key={c}
-                  onPress={() => { setCustomMode(false); setAmount(c); }}
-                  style={[bananaBetStyles.chip, !customMode && amount === c && bananaBetStyles.chipActive]}
-                >
-                  <Text style={[bananaBetStyles.chipText, !customMode && amount === c && bananaBetStyles.chipTextActive]}>🍌 {c}</Text>
-                </Pressable>
-              ))}
+              {BET_AMOUNT_CHIPS.map((c) => {
+                const affordable = c <= bananaBalance;
+                return (
+                  <Pressable
+                    key={c}
+                    disabled={!affordable}
+                    onPress={() => { setCustomMode(false); setAmount(c); }}
+                    style={[bananaBetStyles.chip, !customMode && amount === c && bananaBetStyles.chipActive, !affordable && { opacity: 0.35 }]}
+                  >
+                    <Text style={[bananaBetStyles.chipText, !customMode && amount === c && bananaBetStyles.chipTextActive]}>🍌 {c}</Text>
+                  </Pressable>
+                );
+              })}
               <Pressable
+                disabled={bananaBalance <= 0}
                 onPress={() => setCustomMode(true)}
-                style={[bananaBetStyles.chip, customMode && bananaBetStyles.chipActive]}
+                style={[bananaBetStyles.chip, customMode && bananaBetStyles.chipActive, bananaBalance <= 0 && { opacity: 0.35 }]}
               >
                 <Text style={[bananaBetStyles.chipText, customMode && bananaBetStyles.chipTextActive]}>Custom</Text>
               </Pressable>
@@ -323,24 +339,41 @@ function BananaBetPillBubble({ id, category, question, resolvesAt }: { id: strin
                 autoFocus
               />
             )}
+            {insufficientFunds && (
+              <Text style={bananaBetStyles.insufficientText}>Not enough bananas for that wager</Text>
+            )}
             <View style={bananaBetStyles.sideRow}>
               <Pressable
-                disabled={submitting || amount <= 0}
+                disabled={submitting || amount <= 0 || insufficientFunds}
                 onPress={() => handlePlace("yes")}
-                style={[bananaBetStyles.sideBtn, bananaBetStyles.yesBtn, (submitting || amount <= 0) && { opacity: 0.6 }]}
+                style={[bananaBetStyles.sideBtn, bananaBetStyles.yesBtn, (submitting || amount <= 0 || insufficientFunds) && { opacity: 0.6 }]}
               >
                 {submitting ? <ActivityIndicator size="small" color="#fff" /> : <Text style={bananaBetStyles.sideText}>YES</Text>}
               </Pressable>
               <Pressable
-                disabled={submitting || amount <= 0}
+                disabled={submitting || amount <= 0 || insufficientFunds}
                 onPress={() => handlePlace("no")}
-                style={[bananaBetStyles.sideBtn, bananaBetStyles.noBtn, (submitting || amount <= 0) && { opacity: 0.6 }]}
+                style={[bananaBetStyles.sideBtn, bananaBetStyles.noBtn, (submitting || amount <= 0 || insufficientFunds) && { opacity: 0.6 }]}
               >
                 {submitting ? <ActivityIndicator size="small" color="#fff" /> : <Text style={bananaBetStyles.sideText}>NO</Text>}
               </Pressable>
             </View>
           </>
         )}
+      </View>
+    </View>
+  );
+}
+
+function BananaBetSettledPillBubble({ question, outcome, totalBets, totalBananasWon }: { question: string; outcome: string; totalBets: number; totalBananasWon: number }) {
+  return (
+    <View style={bananaBetStyles.container}>
+      <View style={bananaBetStyles.card}>
+        <Text style={bananaBetStyles.badge}>🍌 BANANABETS — SETTLED</Text>
+        <Text style={bananaBetStyles.question}>{question}</Text>
+        <Text style={bananaBetStyles.placedText}>
+          Outcome: {outcome.toUpperCase()} · {totalBets} bet{totalBets === 1 ? "" : "s"} placed · {totalBananasWon} 🍌 won total
+        </Text>
       </View>
     </View>
   );
@@ -362,6 +395,7 @@ const bananaBetStyles = StyleSheet.create({
   tagline: { fontFamily: FONTS.body, fontSize: 11, color: THEME.textFaint, lineHeight: 15 },
   question: { fontFamily: FONTS.bodyMed, fontSize: 14, color: THEME.text, lineHeight: 19 },
   placedText: { fontFamily: FONTS.bodyMed, fontSize: 13, color: THEME.textMuted },
+  insufficientText: { fontFamily: FONTS.bodyMed, fontSize: 12, color: "#E67E22" },
   wagerLabel: { fontFamily: FONTS.bodyMed, fontSize: 11, color: THEME.textFaint },
   customInput: {
     fontFamily: FONTS.bodyMed,
@@ -905,6 +939,18 @@ export const MessageBubble = memo(function MessageBubble({
         category={bananaBetPill.category}
         question={bananaBetPill.question}
         resolvesAt={bananaBetPill.resolvesAt}
+      />
+    );
+  }
+
+  const bananaBetSettledPill = parseBananaBetSettledPill(message.content);
+  if (bananaBetSettledPill) {
+    return (
+      <BananaBetSettledPillBubble
+        question={bananaBetSettledPill.question}
+        outcome={bananaBetSettledPill.outcome}
+        totalBets={bananaBetSettledPill.totalBets}
+        totalBananasWon={bananaBetSettledPill.totalBananasWon}
       />
     );
   }

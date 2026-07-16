@@ -22,7 +22,7 @@ import type { WalletAccount, OwnedNFT } from '../types';
 import type { LiveRoomData } from '../lib/livekit';
 import type { VideoRoomData } from '../lib/liveVideo';
 import type { AvatarRoomData } from '../lib/avatarRoom';
-import type { BananaBetOpenData } from '../lib/bananaBet';
+import type { BananaBetOpenData, BananaBetSettledData } from '../lib/bananaBet';
 import type { NftSwapMessage } from '../lib/marketplace';
 
 const AK_MUTED_SPORTS = 'om_muted_sports';
@@ -204,6 +204,7 @@ interface LiveFeaturesState {
   avatarRoomToken: string | null;
   pendingNftSwap: NftSwapMessage | null;
   activeBananaBet: BananaBetOpenData | null;
+  activeBananaBetResult: BananaBetSettledData | null;
 }
 
 interface LiveFeaturesActions {
@@ -219,6 +220,7 @@ interface LiveFeaturesActions {
   setAvatarRoomToken: (token: string | null) => void;
   setPendingNftSwap: (swap: NftSwapMessage | null) => void;
   setActiveBananaBet: (bet: BananaBetOpenData | null) => void;
+  setActiveBananaBetResult: (result: BananaBetSettledData | null) => void;
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -299,6 +301,7 @@ const initialState: AppState = {
   avatarRoomToken: null,
   pendingNftSwap: null,
   activeBananaBet: null,
+  activeBananaBetResult: null,
 };
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -467,6 +470,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   setAvatarRoomToken: (avatarRoomToken) => set({ avatarRoomToken }),
   setPendingNftSwap: (pendingNftSwap) => set({ pendingNftSwap }),
   setActiveBananaBet: (activeBananaBet) => set({ activeBananaBet }),
+  setActiveBananaBetResult: (activeBananaBetResult) => set({ activeBananaBetResult }),
 
   // ── Reset (all slices) ─────────────────────────────────────────────────────
 
