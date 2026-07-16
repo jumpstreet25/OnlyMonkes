@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { AppState } from 'react-native';
 import { useAppStore } from '@/store/appStore';
 import { getXmtpClient } from '@/hooks/useXmtp';
-import { openOrCreateDm, loadDmMessages, sendDmMessage, sendReaction, applyReaction, sendTypingIndicator, sendReadReceipt, getLastPeerReadReceipt, decodeMessage } from '@/lib/xmtp';
+import { openOrCreateDm, loadDmMessages, sendDmMessage, sendReaction, applyReaction, applyWithRetry, sendTypingIndicator, sendReadReceipt, getLastPeerReadReceipt, decodeMessage } from '@/lib/xmtp';
 import { getCachedProfile } from '@/lib/userProfile';
 import { markChannelRead } from '@/lib/messageCache';
 import type { ChatMessage, ReactionEmoji } from '@/types';
@@ -267,7 +267,7 @@ export function useDm(peerInboxId: string) {
             // in react() below — XMTP does not echo own messages back in the
             // stream, so this branch only ever fires for the other party).
             if (isReactionContent(rawContent)) {
-              setMessages(prev => applyReaction(prev, raw, myInboxId));
+              applyWithRetry(m => applyReaction(m, raw, myInboxId), setMessages);
               return;
             }
 

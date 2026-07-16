@@ -26,6 +26,7 @@ import {
   applyReaction,
   applyEdit,
   applyStickerReaction,
+  applyWithRetry,
   resolveReplyTargets,
   sendMessage,
   sendReply,
@@ -311,6 +312,17 @@ export function useXmtp() {
   } = useAppStore();
   const { setMessages, addMessage, mergeMessage, upgradeOwnMessage, applyReactionUpdate, setLoadingHistory } =
     useChatStore();
+
+  // Adapts the Zustand `applyReactionUpdate(messages: ChatMessage[])` setter
+  // to the updater-function shape applyWithRetry() expects (same shape
+  // React's useState setter takes) — lets the retry helper be shared
+  // verbatim with useDm.ts/useGroupChat.ts's plain useState-based setters.
+  const applyReactionUpdateFn = useCallback(
+    (updater: (prev: ChatMessage[]) => ChatMessage[]) => {
+      applyReactionUpdate(updater(useChatStore.getState().messages));
+    },
+    [applyReactionUpdate],
+  );
 
   const initialize = useCallback(async () => {
     if (_initRunning) return;
@@ -1146,8 +1158,7 @@ export function useXmtp() {
             const targetMsg = messages.find(m => m.id === targetId);
             if (targetMsg) trackActivity(targetMsg.senderAddress, 'received');
           }
-          const updated = applyReaction(messages, raw, _myInboxId);
-          applyReactionUpdate(updated);
+          applyWithRetry(m => applyReaction(m, raw, _myInboxId), applyReactionUpdateFn);
           // Pull the emoji from the raw content for the notification body.
           let emoji = "";
           if (typeof content === "string" && content.startsWith("REACT:")) {
@@ -1161,9 +1172,7 @@ export function useXmtp() {
         }
 
         if (typeof content === "string" && content.startsWith("STICKER_REACT:")) {
-          const { messages } = useChatStore.getState();
-          const updated = applyStickerReaction(messages, raw, _myInboxId);
-          applyReactionUpdate(updated);
+          applyWithRetry(m => applyStickerReaction(m, raw, _myInboxId), applyReactionUpdateFn);
           // STICKER_REACT format: STICKER_REACT:<url>:<targetId>. URL contains
           // colons (https://) so split on LAST colon to get targetId.
           const withoutPrefix = content.slice("STICKER_REACT:".length);

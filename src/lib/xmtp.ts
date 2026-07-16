@@ -571,6 +571,40 @@ export function applyReaction(
   return updated;
 }
 
+const REACTION_RETRY_MS = 400;
+const REACTION_MAX_RETRIES = 5;
+
+/**
+ * Retries applyReaction()/applyStickerReaction() a few times if the target
+ * message isn't in the list YET. Both of those are pure functions that
+ * silently return the SAME array reference when the target id isn't found
+ * (a deliberate perf optimization for reactions on old/evicted messages,
+ * see applyReaction's comment) — but that also means a reaction arriving in
+ * a race against its OWN target message still being asynchronously
+ * processed (profile enrichment, etc.) gets dropped forever with no retry,
+ * reported 2026-07-16 as "reactions don't show at all, or not until the app
+ * reopens" (reopening re-runs history load, where all messages are already
+ * materialized before reactions apply, so the race can't happen there).
+ * Detects a no-op via reference equality and retries briefly before giving
+ * up — a genuinely out-of-window old message still fails, just a couple
+ * seconds later instead of immediately.
+ */
+export function applyWithRetry(
+  applyFn: (messages: ChatMessage[]) => ChatMessage[],
+  setMessages: (updater: (prev: ChatMessage[]) => ChatMessage[]) => void,
+  attempt = 0,
+): void {
+  let matched = false;
+  setMessages(prev => {
+    const next = applyFn(prev);
+    matched = next !== prev;
+    return next;
+  });
+  if (!matched && attempt < REACTION_MAX_RETRIES) {
+    setTimeout(() => applyWithRetry(applyFn, setMessages, attempt + 1), REACTION_RETRY_MS);
+  }
+}
+
 /**
  * Apply an EDIT message to the message list.
  * Format: EDIT:<originalMessageId>:<senderUsername>:<newContent>
