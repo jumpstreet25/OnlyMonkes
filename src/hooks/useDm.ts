@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { AppState } from 'react-native';
 import { useAppStore } from '@/store/appStore';
 import { getXmtpClient } from '@/hooks/useXmtp';
-import { openOrCreateDm, loadDmMessages, sendDmMessage, sendTypingIndicator, sendReadReceipt, getLastPeerReadReceipt, decodeMessage } from '@/lib/xmtp';
+import { openOrCreateDm, loadDmMessages, sendDmMessage, sendReaction, applyReaction, applyWithRetry, sendTypingIndicator, sendReadReceipt, getLastPeerReadReceipt, decodeMessage } from '@/lib/xmtp';
 import { getCachedProfile } from '@/lib/userProfile';
 import { markChannelRead } from '@/lib/messageCache';
 import type { ChatMessage } from '@/types';
@@ -31,6 +31,17 @@ async function relayDmPush(
       body: JSON.stringify(body),
     });
   } catch { /* non-critical */ }
+}
+
+// Reactions (native ReactionCodec/V2 or legacy REACT: string) never decode
+// to a displayable ChatMessage — decodeMessage() returns null for them by
+// design, so they must be intercepted before that call and folded into the
+// target message via applyReaction() instead (same pattern as useXmtp.ts /
+// useGroupChat.ts).
+function isReactionContent(content: unknown): boolean {
+  if (typeof content === 'string') return content.startsWith('REACT:');
+  if (content && typeof content === 'object') return !!((content as any).reaction || (content as any).reactionV2);
+  return false;
 }
 
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
@@ -274,6 +285,14 @@ export function useDm(peerInboxId: string) {
                   });
                 });
               }
+              return;
+            }
+
+            // Reaction from the peer (own reactions are applied optimistically
+            // in react() below — XMTP does not echo own messages back in the
+            // stream, so this branch only ever fires for the other party).
+            if (isReactionContent(rawContent)) {
+              applyWithRetry(m => applyReaction(m, raw, myInboxId), setMessages);
               return;
             }
 

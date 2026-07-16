@@ -21,6 +21,7 @@ import {
   decodeMessage,
   resolveReplyTargets,
   applyReaction,
+  applyWithRetry,
   sendMessage,
   sendReply,
   sendReaction,
@@ -145,7 +146,7 @@ export function useGroupChat(groupId: string, groupName: string) {
 
               // Native or legacy reaction
               if (isReactionContent(content)) {
-                setMessages(prev => applyReaction(prev, raw, myInboxIdRef.current));
+                applyWithRetry(m => applyReaction(m, raw, myInboxIdRef.current), setMessages);
                 return;
               }
 
@@ -255,7 +256,7 @@ export function useGroupChat(groupId: string, groupName: string) {
 
         // Native or legacy reaction
         if (isReactionContent(content)) {
-          setMessages((prev) => applyReaction(prev, raw, myInboxIdRef.current));
+          applyWithRetry(m => applyReaction(m, raw, myInboxIdRef.current), setMessages);
           return;
         }
 
@@ -343,7 +344,7 @@ export function useGroupChat(groupId: string, groupName: string) {
             let content: unknown;
             try { content = raw.content(); } catch { return; }
             if (isReactionContent(content)) {
-              setMessages((prev) => applyReaction(prev, raw, myInboxIdRef.current));
+              applyWithRetry(m => applyReaction(m, raw, myInboxIdRef.current), setMessages);
               return;
             }
             const msg = decodeMessage(raw, myInboxIdRef.current);
