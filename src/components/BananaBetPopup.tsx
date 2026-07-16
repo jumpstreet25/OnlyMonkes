@@ -7,7 +7,7 @@
  */
 
 import React, { useState, useCallback } from "react";
-import { View, Text, Pressable, StyleSheet, ActivityIndicator } from "react-native";
+import { View, Text, Pressable, StyleSheet, ActivityIndicator, TextInput } from "react-native";
 import { usePathname } from "expo-router";
 import { GlassModal } from "@/components/GlassModal";
 import { useAppStore } from "@/store/appStore";
@@ -21,18 +21,32 @@ export function BananaBetPopup() {
   const activeBananaBet = useAppStore((s) => s.activeBananaBet);
   const setActiveBananaBet = useAppStore((s) => s.setActiveBananaBet);
   const [amount, setAmount] = useState(25);
+  const [customMode, setCustomMode] = useState(false);
+  const [customText, setCustomText] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  const dismiss = useCallback(() => setActiveBananaBet(null), [setActiveBananaBet]);
+  const dismiss = useCallback(() => {
+    setActiveBananaBet(null);
+    setCustomMode(false);
+    setCustomText("");
+    setAmount(25);
+  }, [setActiveBananaBet]);
+
+  const handleCustomChange = useCallback((text: string) => {
+    const digits = text.replace(/[^0-9]/g, "");
+    setCustomText(digits);
+    const n = parseInt(digits, 10);
+    if (n > 0) setAmount(n);
+  }, []);
 
   const handlePlace = useCallback(async (side: "yes" | "no") => {
-    if (!activeBananaBet || submitting) return;
+    if (!activeBananaBet || submitting || amount <= 0) return;
     setSubmitting(true);
     try {
       const { placeBananaBet } = await import("@/lib/bananaBet");
       const { toast } = await import("sonner-native");
       await placeBananaBet(activeBananaBet.id, side, amount);
-      toast.success(`🍌 Bet placed: ${amount} on ${side.toUpperCase()}`);
+      toast.success(`🍌 Bet placed: ${amount} bananas on ${side.toUpperCase()}`);
       dismiss();
     } catch (err: any) {
       const { toast } = await import("sonner-native");
@@ -49,35 +63,54 @@ export function BananaBetPopup() {
   return (
     <GlassModal visible={visible} onClose={dismiss} cardStyle={styles.card}>
       <View style={styles.content}>
-        <Text style={styles.badge}>🍌 NEW BANANA BET</Text>
+        <Text style={styles.badge}>🍌 BANANABETS</Text>
+        <Text style={styles.tagline}>Fake bananas only — zero real money, ever. Bragging rights on the line.</Text>
         <Text style={styles.question}>
           {BET_CATEGORY_EMOJI[activeBananaBet.category] ?? "🍌"} {activeBananaBet.question}
         </Text>
 
+        <Text style={styles.wagerLabel}>Wager (🍌 bananas)</Text>
         <View style={styles.chipRow}>
           {BET_AMOUNT_CHIPS.map((c) => (
             <Pressable
               key={c}
-              onPress={() => setAmount(c)}
-              style={[styles.chip, amount === c && styles.chipActive]}
+              onPress={() => { setCustomMode(false); setAmount(c); }}
+              style={[styles.chip, !customMode && amount === c && styles.chipActive]}
             >
-              <Text style={[styles.chipText, amount === c && styles.chipTextActive]}>{c}</Text>
+              <Text style={[styles.chipText, !customMode && amount === c && styles.chipTextActive]}>🍌 {c}</Text>
             </Pressable>
           ))}
+          <Pressable
+            onPress={() => setCustomMode(true)}
+            style={[styles.chip, customMode && styles.chipActive]}
+          >
+            <Text style={[styles.chipText, customMode && styles.chipTextActive]}>Custom</Text>
+          </Pressable>
         </View>
+        {customMode && (
+          <TextInput
+            value={customText}
+            onChangeText={handleCustomChange}
+            placeholder="Enter amount"
+            placeholderTextColor={THEME.textFaint}
+            keyboardType="number-pad"
+            style={styles.customInput}
+            autoFocus
+          />
+        )}
 
         <View style={styles.sideRow}>
           <Pressable
-            disabled={submitting}
+            disabled={submitting || amount <= 0}
             onPress={() => handlePlace("yes")}
-            style={[styles.sideBtn, styles.yesBtn, submitting && { opacity: 0.6 }]}
+            style={[styles.sideBtn, styles.yesBtn, (submitting || amount <= 0) && { opacity: 0.6 }]}
           >
             {submitting ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.sideText}>YES</Text>}
           </Pressable>
           <Pressable
-            disabled={submitting}
+            disabled={submitting || amount <= 0}
             onPress={() => handlePlace("no")}
-            style={[styles.sideBtn, styles.noBtn, submitting && { opacity: 0.6 }]}
+            style={[styles.sideBtn, styles.noBtn, (submitting || amount <= 0) && { opacity: 0.6 }]}
           >
             {submitting ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.sideText}>NO</Text>}
           </Pressable>
@@ -101,6 +134,14 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     textAlign: "center",
   },
+  tagline: {
+    fontFamily: FONTS.body,
+    fontSize: 12,
+    color: THEME.textFaint,
+    textAlign: "center",
+    lineHeight: 16,
+    marginTop: -6,
+  },
   question: {
     fontFamily: FONTS.bodyMed,
     fontSize: 16,
@@ -108,7 +149,8 @@ const styles = StyleSheet.create({
     textAlign: "center",
     lineHeight: 22,
   },
-  chipRow: { flexDirection: "row", gap: 8, justifyContent: "center" },
+  wagerLabel: { fontFamily: FONTS.bodyMed, fontSize: 11, color: THEME.textFaint, textAlign: "center" },
+  chipRow: { flexDirection: "row", gap: 8, justifyContent: "center", flexWrap: "wrap" },
   chip: {
     paddingVertical: 8,
     paddingHorizontal: 16,
@@ -120,6 +162,18 @@ const styles = StyleSheet.create({
   chipActive: { backgroundColor: "rgba(255, 204, 0, 0.25)", borderColor: "rgba(255, 204, 0, 0.6)" },
   chipText: { fontFamily: FONTS.bodyMed, fontSize: 13, color: THEME.textMuted },
   chipTextActive: { color: "#FFCC00", fontWeight: "700" },
+  customInput: {
+    fontFamily: FONTS.bodyMed,
+    fontSize: 14,
+    color: THEME.text,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 204, 0, 0.4)",
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    textAlign: "center",
+  },
   sideRow: { flexDirection: "row", gap: 10 },
   sideBtn: { flex: 1, borderRadius: 12, paddingVertical: 14, alignItems: "center" },
   yesBtn: { backgroundColor: "#2E9E5B" },

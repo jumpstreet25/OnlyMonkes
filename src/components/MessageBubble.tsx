@@ -29,6 +29,7 @@ import {
   ActivityIndicator,
   Keyboard,
   Linking,
+  TextInput,
   useWindowDimensions,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -246,19 +247,28 @@ const BET_CATEGORY_EMOJI: Record<string, string> = { crypto: "📈", nft: "🖼�
 
 function BananaBetPillBubble({ id, category, question, resolvesAt }: { id: string; category: string; question: string; resolvesAt: number }) {
   const [amount, setAmount] = useState(25);
+  const [customMode, setCustomMode] = useState(false);
+  const [customText, setCustomText] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [placedSide, setPlacedSide] = useState<"yes" | "no" | null>(null);
   const expired = Date.now() > resolvesAt;
 
+  const handleCustomChange = useCallback((text: string) => {
+    const digits = text.replace(/[^0-9]/g, "");
+    setCustomText(digits);
+    const n = parseInt(digits, 10);
+    if (n > 0) setAmount(n);
+  }, []);
+
   const handlePlace = useCallback(async (side: "yes" | "no") => {
-    if (submitting || placedSide || expired) return;
+    if (submitting || placedSide || expired || amount <= 0) return;
     setSubmitting(true);
     try {
       const { placeBananaBet } = await import("@/lib/bananaBet");
       const { toast } = await import("sonner-native");
       await placeBananaBet(id, side, amount);
       setPlacedSide(side);
-      toast.success(`🍌 Bet placed: ${amount} on ${side.toUpperCase()}`);
+      toast.success(`🍌 Bet placed: ${amount} bananas on ${side.toUpperCase()}`);
     } catch (err: any) {
       const { toast } = await import("sonner-native");
       toast.error(err?.message ?? "Bet failed — try again");
@@ -270,41 +280,61 @@ function BananaBetPillBubble({ id, category, question, resolvesAt }: { id: strin
   return (
     <View style={bananaBetStyles.container}>
       <View style={bananaBetStyles.card}>
+        <Text style={bananaBetStyles.badge}>🍌 BANANABETS</Text>
+        <Text style={bananaBetStyles.tagline}>Fake bananas only — zero real money, ever. Bragging rights on the line.</Text>
         <Text style={bananaBetStyles.question}>
           {BET_CATEGORY_EMOJI[category] ?? "🍌"} {question}
         </Text>
 
         {placedSide ? (
           <Text style={bananaBetStyles.placedText}>
-            ✅ You bet {amount} on {placedSide.toUpperCase()}
+            ✅ You bet {amount} bananas on {placedSide.toUpperCase()}
           </Text>
         ) : expired ? (
           <Text style={bananaBetStyles.placedText}>⏳ Betting closed</Text>
         ) : (
           <>
+            <Text style={bananaBetStyles.wagerLabel}>Wager (🍌 bananas)</Text>
             <View style={bananaBetStyles.chipRow}>
               {BET_AMOUNT_CHIPS.map((c) => (
                 <Pressable
                   key={c}
-                  onPress={() => setAmount(c)}
-                  style={[bananaBetStyles.chip, amount === c && bananaBetStyles.chipActive]}
+                  onPress={() => { setCustomMode(false); setAmount(c); }}
+                  style={[bananaBetStyles.chip, !customMode && amount === c && bananaBetStyles.chipActive]}
                 >
-                  <Text style={[bananaBetStyles.chipText, amount === c && bananaBetStyles.chipTextActive]}>{c}</Text>
+                  <Text style={[bananaBetStyles.chipText, !customMode && amount === c && bananaBetStyles.chipTextActive]}>🍌 {c}</Text>
                 </Pressable>
               ))}
+              <Pressable
+                onPress={() => setCustomMode(true)}
+                style={[bananaBetStyles.chip, customMode && bananaBetStyles.chipActive]}
+              >
+                <Text style={[bananaBetStyles.chipText, customMode && bananaBetStyles.chipTextActive]}>Custom</Text>
+              </Pressable>
             </View>
+            {customMode && (
+              <TextInput
+                value={customText}
+                onChangeText={handleCustomChange}
+                placeholder="Enter amount"
+                placeholderTextColor={THEME.textFaint}
+                keyboardType="number-pad"
+                style={bananaBetStyles.customInput}
+                autoFocus
+              />
+            )}
             <View style={bananaBetStyles.sideRow}>
               <Pressable
-                disabled={submitting}
+                disabled={submitting || amount <= 0}
                 onPress={() => handlePlace("yes")}
-                style={[bananaBetStyles.sideBtn, bananaBetStyles.yesBtn, submitting && { opacity: 0.6 }]}
+                style={[bananaBetStyles.sideBtn, bananaBetStyles.yesBtn, (submitting || amount <= 0) && { opacity: 0.6 }]}
               >
                 {submitting ? <ActivityIndicator size="small" color="#fff" /> : <Text style={bananaBetStyles.sideText}>YES</Text>}
               </Pressable>
               <Pressable
-                disabled={submitting}
+                disabled={submitting || amount <= 0}
                 onPress={() => handlePlace("no")}
-                style={[bananaBetStyles.sideBtn, bananaBetStyles.noBtn, submitting && { opacity: 0.6 }]}
+                style={[bananaBetStyles.sideBtn, bananaBetStyles.noBtn, (submitting || amount <= 0) && { opacity: 0.6 }]}
               >
                 {submitting ? <ActivityIndicator size="small" color="#fff" /> : <Text style={bananaBetStyles.sideText}>NO</Text>}
               </Pressable>
@@ -328,8 +358,22 @@ const bananaBetStyles = StyleSheet.create({
     width: "100%",
     gap: 10,
   },
+  badge: { fontFamily: FONTS.displayMed, fontSize: 11, color: "#FFCC00", letterSpacing: 0.5 },
+  tagline: { fontFamily: FONTS.body, fontSize: 11, color: THEME.textFaint, lineHeight: 15 },
   question: { fontFamily: FONTS.bodyMed, fontSize: 14, color: THEME.text, lineHeight: 19 },
   placedText: { fontFamily: FONTS.bodyMed, fontSize: 13, color: THEME.textMuted },
+  wagerLabel: { fontFamily: FONTS.bodyMed, fontSize: 11, color: THEME.textFaint },
+  customInput: {
+    fontFamily: FONTS.bodyMed,
+    fontSize: 14,
+    color: THEME.text,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 204, 0, 0.4)",
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
   chipRow: { flexDirection: "row", gap: 8 },
   chip: {
     paddingVertical: 6,
