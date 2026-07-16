@@ -102,13 +102,20 @@ export function MessageActionSheet({
       : text.startsWith("VIDEO:") ? "[Video]"
       : text.startsWith("STICKER:") ? "[Sticker]"
       : text;
-    // Copy + haptic immediately (no overlay), then dismiss the sheet.
+    // Copy + haptic immediately (no overlay).
     Clipboard.setStringAsync(cleaned);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    onClose();
+    // 2026-07-16: still freezing grey-screen on copy despite the toast
+    // already being deferred below — Android 13+'s own system "Copied"
+    // overlay fires the instant setStringAsync() resolves, and closing the
+    // sheet's Reanimated animation in that same window was the actual
+    // remaining race (a second, OS-level surface we don't control the
+    // timing of, not just our own toast). Give it a beat before starting
+    // our own close transition.
+    setTimeout(() => onClose(), 120);
     // Defer the toast until after the sheet's own close animation clears —
     // see the class of gray-screen bug this file's header comment explains.
-    setTimeout(() => toast.success("Copied to clipboard"), 350);
+    setTimeout(() => toast.success("Copied to clipboard"), 470);
   }, [target, onClose]);
 
   const handleEdit = useCallback(() => {

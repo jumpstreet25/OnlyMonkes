@@ -46,8 +46,12 @@ export function BananaBetPopup() {
       const { placeBananaBet } = await import("@/lib/bananaBet");
       const { toast } = await import("sonner-native");
       await placeBananaBet(activeBananaBet.id, side, amount);
-      toast.success(`🍌 Bet placed: ${amount} bananas on ${side.toUpperCase()}`);
+      // 2026-07-16: closing the Modal in the same tick as the toast
+      // mounting raced the Android Dialog window teardown — grey-screen
+      // freeze, same bug class as PnLCardModal.handleShareMainChat. Close
+      // first, let the Modal's own dismissal clear, then toast.
       dismiss();
+      setTimeout(() => toast.success(`🍌 Bet placed: ${amount} bananas on ${side.toUpperCase()}`), 350);
     } catch (err: any) {
       const { toast } = await import("sonner-native");
       toast.error(err?.message ?? "Bet failed — try again");
