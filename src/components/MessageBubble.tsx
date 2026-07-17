@@ -256,6 +256,8 @@ const BET_CATEGORY_EMOJI: Record<string, string> = { crypto: "📈", nft: "🖼�
 
 function BananaBetPillBubble({ id, category, question, resolvesAt }: { id: string; category: string; question: string; resolvesAt: number }) {
   const bananaBalance = useAppStore(s => s.bananaBalance);
+  const hiddenBananaBetIds = useAppStore(s => s.hiddenBananaBetIds);
+  const hideBananaBet = useAppStore(s => s.hideBananaBet);
   const [amount, setAmount] = useState(25);
   const [customMode, setCustomMode] = useState(false);
   const [customText, setCustomText] = useState("");
@@ -263,6 +265,9 @@ function BananaBetPillBubble({ id, category, question, resolvesAt }: { id: strin
   const [placedSide, setPlacedSide] = useState<"yes" | "no" | null>(null);
   const expired = Date.now() > resolvesAt;
   const insufficientFunds = amount > bananaBalance;
+  const hidden = hiddenBananaBetIds.includes(id);
+
+  if (hidden) return null;
 
   const handleCustomChange = useCallback((text: string) => {
     const digits = text.replace(/[^0-9]/g, "");
@@ -278,8 +283,13 @@ function BananaBetPillBubble({ id, category, question, resolvesAt }: { id: strin
       const { placeBananaBet } = await import("@/lib/bananaBet");
       const { toast } = await import("sonner-native");
       await placeBananaBet(id, side, amount);
+      // 2026-07-16: setPlacedSide shrinks the bubble (wager UI → one-line
+      // "you bet" text), which on the LAST card triggers ChatMessageList's
+      // near-bottom auto-scrollTo in the same tick as the toast mounting —
+      // same grey-screen bug class as BananaBetPopup.handlePlace. Let the
+      // layout/scroll settle first, then toast.
       setPlacedSide(side);
-      toast.success(`🍌 Bet placed: ${amount} bananas on ${side.toUpperCase()}`);
+      setTimeout(() => toast.success(`🍌 Bet placed: ${amount} bananas on ${side.toUpperCase()}`), 350);
     } catch (err: any) {
       const { toast } = await import("sonner-native");
       toast.error(err?.message ?? "Bet failed — try again");
@@ -291,7 +301,17 @@ function BananaBetPillBubble({ id, category, question, resolvesAt }: { id: strin
   return (
     <View style={bananaBetStyles.container}>
       <View style={bananaBetStyles.card}>
-        <Text style={bananaBetStyles.badge}>🍌 BANANABETS</Text>
+        <View style={bananaBetStyles.headerRow}>
+          <Text style={bananaBetStyles.badge}>🍌 BANANABETS</Text>
+          <Pressable
+            hitSlop={8}
+            onPress={() => hideBananaBet(id)}
+            style={bananaBetStyles.dismissBtn}
+            accessibilityLabel="Not interested — clear this bet"
+          >
+            <Text style={bananaBetStyles.dismissText}>✕</Text>
+          </Pressable>
+        </View>
         <Text style={bananaBetStyles.tagline}>Real bananas from your stash — no real-world money, ever.</Text>
         <Text style={bananaBetStyles.question}>
           {BET_CATEGORY_EMOJI[category] ?? "🍌"} {question}
@@ -391,7 +411,10 @@ const bananaBetStyles = StyleSheet.create({
     width: "100%",
     gap: 10,
   },
+  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   badge: { fontFamily: FONTS.displayMed, fontSize: 11, color: "#FFCC00", letterSpacing: 0.5 },
+  dismissBtn: { paddingHorizontal: 6, paddingVertical: 2 },
+  dismissText: { fontFamily: FONTS.bodyMed, fontSize: 13, color: THEME.textFaint },
   tagline: { fontFamily: FONTS.body, fontSize: 11, color: THEME.textFaint, lineHeight: 15 },
   question: { fontFamily: FONTS.bodyMed, fontSize: 14, color: THEME.text, lineHeight: 19 },
   placedText: { fontFamily: FONTS.bodyMed, fontSize: 13, color: THEME.textMuted },

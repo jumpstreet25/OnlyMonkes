@@ -26,6 +26,7 @@ import type { BananaBetOpenData, BananaBetSettledData } from '../lib/bananaBet';
 import type { NftSwapMessage } from '../lib/marketplace';
 
 const AK_MUTED_SPORTS = 'om_muted_sports';
+const AK_HIDDEN_BANANA_BETS = 'om_hidden_banana_bets';
 const AK_MUTED_CHANNELS = 'om_muted_channels';
 const AK_MUTED_ALERT_SOURCES = 'om_muted_alert_sources';
 const AK_NOTIF_PREFS = 'om_notif_prefs';
@@ -144,6 +145,10 @@ interface AppSettingsState {
   mutedSports: string[];
   /** Alert sources hidden from MonkeBets/MonkePredictions. Values: 'polymarket' | 'drift'. */
   mutedAlertSources: string[];
+  /** BananaBet ids the user dismissed — local-only, per-device. Dismissing
+   *  never places a wager (distinct from betting NO) and never affects
+   *  other users' view of the same card. */
+  hiddenBananaBetIds: string[];
   isGroupMember: boolean;
   isGroupAdmin: boolean;
   joinRequests: JoinRequest[];
@@ -167,6 +172,7 @@ interface AppSettingsActions {
   toggleBotChannelMute: (channel: 'bets' | 'trades' | 'sales' | 'predictions') => void;
   toggleSportMute: (sport: string) => void;
   toggleAlertSourceMute: (source: string) => void;
+  hideBananaBet: (id: string) => void;
   setIsGroupMember: (isMember: boolean) => void;
   setIsGroupAdmin: (isAdmin: boolean) => void;
   setJoinRequests: (requests: JoinRequest[]) => void;
@@ -272,6 +278,7 @@ const initialState: AppState = {
   liveRoomNotificationsEnabled: true,
   mutedBotChannels: { bets: false, trades: false, sales: false, predictions: false },
   mutedSports: [],
+  hiddenBananaBetIds: [],
   // Drift Prediction Markets UI (bet.drift.trade) is currently under
   // construction. Alerts still fire from the on-chain program but the link
   // would land users on a stay-tuned page, so we mute by default. Users can
@@ -385,6 +392,15 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
         : [...s.mutedSports, sport];
       AsyncStorage.setItem(AK_MUTED_SPORTS, JSON.stringify(next)).catch(() => {});
       return { mutedSports: next };
+    });
+  },
+  // One-way (no un-hide) — "clear the message," not a togglable mute.
+  hideBananaBet: (id) => {
+    set((s) => {
+      if (s.hiddenBananaBetIds.includes(id)) return s;
+      const next = [...s.hiddenBananaBetIds, id];
+      AsyncStorage.setItem(AK_HIDDEN_BANANA_BETS, JSON.stringify(next)).catch(() => {});
+      return { hiddenBananaBetIds: next };
     });
   },
   toggleAlertSourceMute: (source) => {
@@ -519,16 +535,21 @@ function _persistNotifPrefs() {
  */
 export async function loadPersistedPrefs(): Promise<void> {
   try {
-    const [sportsRaw, channelsRaw, notifRaw, sourcesRaw] = await Promise.all([
+    const [sportsRaw, channelsRaw, notifRaw, sourcesRaw, hiddenBetsRaw] = await Promise.all([
       AsyncStorage.getItem(AK_MUTED_SPORTS),
       AsyncStorage.getItem(AK_MUTED_CHANNELS),
       AsyncStorage.getItem(AK_NOTIF_PREFS),
       AsyncStorage.getItem(AK_MUTED_ALERT_SOURCES),
+      AsyncStorage.getItem(AK_HIDDEN_BANANA_BETS),
     ]);
     const state: Record<string, unknown> = {};
     if (sportsRaw) {
       const parsed = JSON.parse(sportsRaw);
       if (Array.isArray(parsed)) state.mutedSports = parsed;
+    }
+    if (hiddenBetsRaw) {
+      const parsed = JSON.parse(hiddenBetsRaw);
+      if (Array.isArray(parsed)) state.hiddenBananaBetIds = parsed;
     }
     if (channelsRaw) {
       const parsed = JSON.parse(channelsRaw);
