@@ -100,7 +100,7 @@ import { updateCloutProfile, loadFlairCache } from "@/lib/monkeClout";
 import type { SwapQuote } from "@/lib/jupiterSwap";
 
 const getMediaLibrary = () => import("expo-media-library");
-const getFileSystem = () => import("expo-file-system");
+const getFileSystem = () => import("expo-file-system/legacy");
 const getImagePicker = () => import("expo-image-picker");
 const getVideoUpload = () => import("@/lib/videoUpload");
 const getJupiterSwap = () => import("@/lib/jupiterSwap");

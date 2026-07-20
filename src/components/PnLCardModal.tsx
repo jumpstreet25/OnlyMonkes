@@ -14,7 +14,7 @@ import { useXmtp } from '@/hooks/useXmtp';
 
 const getViewShot = () => import('react-native-view-shot');
 const getMediaLibrary = () => import('expo-media-library');
-const getFileSystem = () => import('expo-file-system');
+const getFileSystem = () => import('expo-file-system/legacy');
 const getImageManipulator = () => import('expo-image-manipulator');
 
 interface PnLCardModalProps {

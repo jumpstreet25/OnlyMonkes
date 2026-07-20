@@ -33,6 +33,7 @@ import {
   Platform,
   ActivityIndicator,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Slider from "@react-native-community/slider";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
@@ -443,6 +444,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
   const [webView, setWebView] = useState<{ url: string; title: string } | null>(null);
   const [bananaState, setBananaState] = useState<BananaState | null>(null);
   const bananaBalance = useAppStore(s => s.bananaBalance);
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     if (visible) loadBananaState().then(setBananaState);
@@ -462,7 +464,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
         <View style={styles.overlay} />
       </Pressable>
 
-      <View style={[styles.popup, { borderColor: themeBorder }, worldId ? null : { backgroundColor: drawerBg }]}>
+      <View style={[styles.popup, { paddingTop: insets.top + 12, borderColor: themeBorder }, worldId ? null : { backgroundColor: drawerBg }]}>
         {/* (v37 2026-05-09) When a world is equipped, render the WorldLayer
             (paused) inside the drawer so its background — gradient,
             silhouette skyline, dappled-light orbs — shows through behind
@@ -1426,7 +1428,6 @@ const styles = StyleSheet.create({
     borderWidth: 0,
     borderColor: "rgba(255, 255, 255, 0.06)",
     overflow: "hidden",
-    paddingTop: 52,
   },
   glassHighlight: {
     position: "absolute",

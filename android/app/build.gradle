@@ -233,3 +233,37 @@ dependencies {
         implementation jscFlavor
     }
 }
+
+// 2026-07-10: NECESSARY BUT NOT SUFFICIENT fix for a still-unresolved native
+// build bug on this branch. RN 0.81's gradle plugin wires
+// generateAutolinkingNewArchitectureFiles (writes
+// build/generated/autolinking/src/main/jni/autolinking.h, which OnLoad.cpp
+// #includes) as a dependency of the generic `preBuild` task only. With the
+// `canary`/`production` productFlavors split added this session, AGP's CMake
+// configure/build tasks for the app module don't route through `preBuild` at
+// all, so without this block the header generation task never even runs
+// before the C++ compile. This line below IS confirmed necessary (verified
+// via debug instrumentation: generateAutolinkingNewArchitectureFiles now
+// reliably runs/is-UP-TO-DATE before :app:configureCMakeRelWithDebInfo in
+// every build) - use tasks.named() (lazy), not tasks.findByName() (eager;
+// forces the task to realize before react-native-gradle-plugin finishes
+// configuring it, causing it to silently write nothing).
+//
+// BUT: even with this fix, `generated/autolinking/src/main/jni/` is
+// mysteriously EMPTY again by the time :app:buildCMakeRelWithDebInfo runs,
+// every single time, on a full `assembleCanaryRelease` - even when the
+// generate task shows UP-TO-DATE. Confirmed via isolated single-task Gradle
+// invocations that neither generateAutolinkingNewArchitectureFiles nor
+// configureCMakeRelWithDebInfo deletes the directory on their own; something
+// specific to the FULL build graph does. Root cause NOT found as of this
+// commit - see project memory for the full investigation and next-step
+// options. Do not remove this block; it's confirmed necessary, just not
+// sufficient on its own.
+afterEvaluate {
+    if (tasks.names.contains("generateAutolinkingNewArchitectureFiles")) {
+        def autolinkingTask = tasks.named("generateAutolinkingNewArchitectureFiles")
+        tasks.matching { it.name.startsWith("configureCMake") || it.name.startsWith("buildCMake") }.configureEach {
+            dependsOn(autolinkingTask)
+        }
+    }
+}
