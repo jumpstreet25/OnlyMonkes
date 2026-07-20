@@ -182,6 +182,14 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
     let cancelled = false;
 
     async function load() {
+      // Catch up on any PROFILE_UPDATE broadcasts older than the Main Chat's
+      // 24h history window before building markers — see backfillProfileHistory's
+      // doc comment for why this exists (2026-07-20: this was the actual
+      // cause of most "missing" Monkes on the globe, not users never having
+      // set a location).
+      const { backfillProfileHistory } = await import("@/hooks/useXmtp");
+      await backfillProfileHistory();
+
       const allMarkers: GlobeMarker[] = [];
       const uncachedUserLocs: { inboxId: string; username: string; profile: any; location: string }[] = [];
       const seenInboxIds = new Set<string>();
@@ -255,13 +263,19 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
       const { getDeduplicatedUsers } = await import("@/lib/userProfile");
       const allUsers = getDeduplicatedUsers();
 
+      // Diagnostic: classify every known user by why they do/don't get a
+      // marker. Logged at the end of load() once geocoding (phase 2, below)
+      // has had a chance to resolve or fail. See backfillProfileHistory's
+      // doc comment in useXmtp.ts for the bug this traces back to.
+      const skipReasons = new Map<string, "no-location" | "pending-geocode" | "geocode-failed">();
+
       for (const [inboxId, username] of allUsers.entries()) {
         if (seenInboxIds.has(inboxId)) continue; // skip self (already added)
         seenInboxIds.add(inboxId);
         const profile = getCachedProfile(inboxId);
         // Check profile cache first, then persistent location map (survives eviction + restart)
         const location = profile?.location || getPersistedLocation(inboxId);
-        if (!location) continue;
+        if (!location) { skipReasons.set(inboxId, "no-location"); continue; }
         const key = location.trim().toLowerCase();
         const cached = cachedGeo[key];
 
@@ -271,6 +285,7 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
             type: "user", label: username, inboxId, username, nftImage: profile?.nftImage ?? null,
           });
         } else {
+          skipReasons.set(inboxId, "pending-geocode");
           uncachedUserLocs.push({ inboxId, username, profile: profile ?? {}, location });
         }
       }
@@ -344,7 +359,11 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
         if (!cancelled) setLoadingStatus(`Geocoding ${i + 1}/${uncachedUserLocs.length}...`);
         if (cancelled) return;
         const coords = await geocodeLocation(location);
-        if (!coords || cancelled) continue;
+        if (!coords || cancelled) {
+          if (!coords) skipReasons.set(inboxId, "geocode-failed");
+          continue;
+        }
+        skipReasons.delete(inboxId);
         allMarkers.push({
           id: `user-${inboxId}`, lat: coords.lat, lng: coords.lng,
           type: "user", label: username, inboxId, username, nftImage: profile.nftImage,
@@ -352,6 +371,27 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
         setMarkers([...allMarkers]);
       }
       if (!cancelled) setLoadingStatus("");
+
+      // Diagnostic: log why the marker count doesn't match the group roster.
+      // Requested 2026-07-20 after a user reported 6 markers vs 11 known
+      // Monkes — root cause was mostly stale profile cache (fixed by
+      // backfillProfileHistory above), not users never setting a location.
+      if (!cancelled && __DEV__) {
+        try {
+          const { getGroupMembers } = await import("@/hooks/useXmtp");
+          const members = await getGroupMembers();
+          const neverCached = members.filter(id => id !== myInboxId && !allUsers.has(id) && !BOT_INBOX_IDS.includes(id));
+          const noLocation = [...skipReasons.entries()].filter(([, r]) => r === "no-location").map(([id]) => id);
+          const geocodeFailed = [...skipReasons.entries()].filter(([, r]) => r === "geocode-failed").map(([id]) => id);
+          console.log(
+            `[Globe] roster=${members.length} markers(users)=${allMarkers.filter(m => m.type === "user").length} ` +
+            `| never-cached=${neverCached.length} no-location=${noLocation.length} geocode-failed=${geocodeFailed.length}`,
+          );
+          if (neverCached.length > 0) console.log("[Globe] never-cached inboxIds (profile broadcast never received, even after 30d backfill):", neverCached);
+          if (noLocation.length > 0) console.log("[Globe] no-location inboxIds (profile cached, location field empty):", noLocation);
+          if (geocodeFailed.length > 0) console.log("[Globe] geocode-failed inboxIds (location set but Nominatim couldn't resolve it):", geocodeFailed);
+        } catch { /* diagnostic only, never block the globe on this */ }
+      }
     }
 
     load();

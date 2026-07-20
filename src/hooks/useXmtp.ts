@@ -207,6 +207,72 @@ async function _doProfileRebroadcast(pushToken: string): Promise<void> {
   } catch { /* non-critical */ }
 }
 
+let _profileBackfillDone = false;
+
+/**
+ * Wider one-time-per-session scan for PROFILE_UPDATE broadcasts the regular
+ * 24h history window (initialize()'s main history load, ~line 712) misses —
+ * anyone who set their profile more than 24h before this device's last sync,
+ * and hasn't touched it since (no re-edit, no legendary streak, no shop
+ * style equip — see broadcastProfile/triggerProfileRebroadcast call sites,
+ * none of which fire unconditionally on every app open), never gets
+ * ingested by the normal path. Confirmed real 2026-07-20: MonkeGlobe showing
+ * 6/11 known Monkes traced back to exactly this gap, not (primarily) users
+ * never having set a location.
+ *
+ * 30-day window, filtering ONLY for PROFILE_UPDATE (skips DELETE/EVENT/etc.
+ * the main history load also handles) to keep decode cost down. Triggered
+ * lazily from GlobeScreen on mount — NOT part of the Main Chat startup
+ * critical path, since it only matters for the Globe/roster use case.
+ */
+export async function backfillProfileHistory(): Promise<{ scanned: number; newProfiles: number }> {
+  if (_profileBackfillDone) return { scanned: 0, newProfiles: 0 };
+  if (!_group || !_myInboxId) return { scanned: 0, newProfiles: 0 };
+  _profileBackfillDone = true;
+  try {
+    const THIRTY_DAYS_NS = 30 * 24 * 60 * 60 * 1_000_000_000;
+    const afterNs = (Date.now() * 1_000_000) - THIRTY_DAYS_NS;
+    const rawHistory: any[] = await (_group as any).messages({ afterNs });
+    let newProfiles = 0;
+    // Oldest-first so later (newer) PROFILE_UPDATEs win, same as the main
+    // history load's seedProfilesAndEvents loop.
+    for (const raw of [...rawHistory].reverse()) {
+      try {
+        let content = raw.content();
+        if (content && typeof content === "object" && typeof (content as any).text === "string") {
+          content = (content as any).text;
+        }
+        if (typeof content !== "string" || !content.startsWith("PROFILE_UPDATE:")) continue;
+        const profile = parseProfileUpdate(content);
+        // Same spoofing guard as the main history load — a client can only
+        // legitimately broadcast an update for its own sender identity.
+        if (!profile || profile.id !== (raw.senderInboxId as string)) continue;
+        const hadProfile = !!getCachedProfile(profile.id);
+        const nftImage = isValidNftImage(profile.nftImage) ? profile.nftImage : null;
+        cacheProfile(profile.id, { username: profile.username, bio: profile.bio, xAccount: profile.xAccount, walletAddress: profile.walletAddress, tipWallet: profile.tipWallet, location: profile.location, nftImage, legendary: profile.legendary, pushToken: profile.pushToken, expoPushToken: profile.expoPushToken, badges: profile.badges, shopStyles: profile.shopStyles, statusMessage: profile.statusMessage });
+        trackUser(profile.id, profile.username);
+        if (!hadProfile) newProfiles++;
+      } catch { /* skip malformed message */ }
+    }
+    if (__DEV__) console.log(`[XMTP] backfillProfileHistory: scanned ${rawHistory.length} messages (30d), found ${newProfiles} new profiles`);
+    return { scanned: rawHistory.length, newProfiles };
+  } catch (err) {
+    if (__DEV__) console.warn("[XMTP] backfillProfileHistory failed:", err);
+    return { scanned: 0, newProfiles: 0 };
+  }
+}
+
+/** Authoritative group roster (inboxIds), for diagnostics comparing "who's actually a member" against "whose profile we've cached." */
+export async function getGroupMembers(): Promise<string[]> {
+  if (!_group) return [];
+  try {
+    const members = await (_group as any).members();
+    return (members as { inboxId: string }[]).map(m => m.inboxId);
+  } catch {
+    return [];
+  }
+}
+
 const AK_JOIN_REQUEST_SENT = "xmtp_join_request_sent";
 const AK_IS_ADMIN         = "xmtp_is_group_admin";
 const AK_APPROVED_IDS     = "xmtp_approved_inbox_ids";
