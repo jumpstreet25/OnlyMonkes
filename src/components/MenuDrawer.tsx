@@ -55,6 +55,8 @@ import { BananaShopModal } from "@/components/BananaShopModal";
 import { ReclaimModal } from "@/components/ReclaimModal";
 import type { ProfileTarget } from "@/components/UserProfileModal";
 import { LinearGradient } from "expo-linear-gradient";
+import { BlurView } from "expo-blur";
+import { GLASS_GRADIENT_COLORS, HIGHLIGHT, getBlurProps } from "@/lib/glassTheme";
 import { LeaderboardView } from "@/components/LeaderboardView";
 import { EventRsvpModal } from "@/components/EventRsvpModal";
 import { getAttendeeCount } from "@/lib/eventRsvp";
@@ -455,6 +457,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
       statusBarTranslucent
     >
       <Pressable style={StyleSheet.absoluteFill} onPress={onClose}>
+        <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.55)' }]} />
         <View style={styles.overlay} />
       </Pressable>
@@ -474,7 +477,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
         ) : null}
         {/* Glass gradient overlay */}
         <LinearGradient
-          colors={["rgba(248,248,255,0.06)", "rgba(0,0,0,0.12)"]}
+          colors={GLASS_GRADIENT_COLORS}
           start={{ x: 0.5, y: 0 }}
           end={{ x: 0.5, y: 1 }}
           style={[StyleSheet.absoluteFill, { borderRadius: 20 }]}
@@ -1431,7 +1434,7 @@ const styles = StyleSheet.create({
     left: 16,
     right: 16,
     height: 1.5,
-    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    backgroundColor: HIGHLIGHT,
     borderRadius: 1,
     zIndex: 1,
   },

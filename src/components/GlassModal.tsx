@@ -26,10 +26,7 @@ import {
 } from "react-native";
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
-
-const GLASS_BG = "rgba(12, 12, 22, 0.92)";
-const GLASS_BORDER = "rgba(248, 248, 255, 0.10)";
-const HIGHLIGHT = "rgba(255, 255, 255, 0.12)";
+import { GLASS_BG, GLASS_BORDER, HIGHLIGHT, GLASS_GRADIENT_COLORS, getBlurProps } from "@/lib/glassTheme";
 
 interface GlassModalProps {
   visible: boolean;
@@ -72,8 +69,7 @@ export function GlassModal({
           onPress={persistent ? undefined : onClose}
         >
           <BlurView
-            intensity={40}
-            tint="dark"
+            {...getBlurProps()}
             style={StyleSheet.absoluteFill}
           />
           <View style={styles.dimOverlay} />
@@ -90,7 +86,7 @@ export function GlassModal({
         >
           {/* Inner gradient — top lighter, bottom darker */}
           <LinearGradient
-            colors={["rgba(248, 248, 255, 0.06)", "rgba(0, 0, 0, 0.12)"]}
+            colors={GLASS_GRADIENT_COLORS}
             start={{ x: 0.5, y: 0 }}
             end={{ x: 0.5, y: 1 }}
             style={[StyleSheet.absoluteFill, { borderRadius: 24 }]}
@@ -141,7 +137,7 @@ const styles = StyleSheet.create({
   },
   dimOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0, 0, 0, 0.45)",
+    backgroundColor: "rgba(0, 0, 0, 0.38)",
   },
   card: {
     backgroundColor: GLASS_BG,
@@ -149,6 +145,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: GLASS_BORDER,
     overflow: "hidden",
+    elevation: 16,
+    shadowColor: "#000",
+    shadowOpacity: 0.4,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
   },
   cardCenter: {
     width: "88%",

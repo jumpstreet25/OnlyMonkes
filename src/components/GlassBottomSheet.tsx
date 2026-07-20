@@ -18,10 +18,8 @@ import BottomSheet, {
   type BottomSheetBackdropProps,
 } from '@gorhom/bottom-sheet';
 import { LinearGradient } from 'expo-linear-gradient';
-
-const GLASS_BG = 'rgba(12, 12, 22, 0.95)';
-const GLASS_BORDER = 'rgba(248, 248, 255, 0.10)';
-const HIGHLIGHT = 'rgba(255, 255, 255, 0.12)';
+import { BlurView } from 'expo-blur';
+import { GLASS_BG, GLASS_BORDER, HIGHLIGHT, GLASS_GRADIENT_COLORS, GLASS_RADIUS, getBlurProps } from '@/lib/glassTheme';
 
 interface GlassBottomSheetProps {
   visible: boolean;
@@ -99,7 +97,9 @@ export function GlassBottomSheet({
         appearsOnIndex={0}
         opacity={0.6}
         pressBehavior="close"
-      />
+      >
+        <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />
+      </BottomSheetBackdrop>
     ),
     [],
   );
@@ -123,10 +123,10 @@ export function GlassBottomSheet({
     >
       {/* Inner gradient — matches GlassModal */}
       <LinearGradient
-        colors={['rgba(248, 248, 255, 0.06)', 'rgba(0, 0, 0, 0.12)']}
+        colors={GLASS_GRADIENT_COLORS}
         start={{ x: 0.5, y: 0 }}
         end={{ x: 0.5, y: 1 }}
-        style={[StyleSheet.absoluteFill, { borderTopLeftRadius: 16, borderTopRightRadius: 16 }]}
+        style={[StyleSheet.absoluteFill, { borderTopLeftRadius: GLASS_RADIUS, borderTopRightRadius: GLASS_RADIUS }]}
         pointerEvents="none"
       />
       {/* Top-edge highlight */}
@@ -141,8 +141,8 @@ export function GlassBottomSheet({
 
 const styles = StyleSheet.create({
   sheet: {
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
+    borderTopLeftRadius: GLASS_RADIUS,
+    borderTopRightRadius: GLASS_RADIUS,
     borderWidth: 1,
     borderBottomWidth: 0,
     borderColor: GLASS_BORDER,
@@ -152,8 +152,8 @@ const styles = StyleSheet.create({
   },
   background: {
     backgroundColor: GLASS_BG,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
+    borderTopLeftRadius: GLASS_RADIUS,
+    borderTopRightRadius: GLASS_RADIUS,
   },
   handle: {
     width: 40,

@@ -35,6 +35,7 @@ import {
   type ShopItem, type ShopCategory, type ShopState,
 } from "@/lib/bananaShop";
 import { applyThemeFromShop } from "@/lib/shopTheme";
+import { GlassModal } from "@/components/GlassModal";
 import { openCrate, getCrateCost, getRarityColor, type LootResult } from "@/lib/lootCrate";
 import { triggerProfileRebroadcast } from "@/hooks/useXmtp";
 import { isReceiptMintingAvailable, mintPurchaseReceipt } from "@/lib/cnftReceipts";
@@ -293,27 +294,13 @@ function PreviewPopup({ item, owned, equipped, canAfford, onClose, onAction, pur
           : `Need ${item.bananaCost} 🍌`;
 
   return (
-    <Modal visible transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
-      <View style={previewStyles.backdrop}>
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.55)' }]} />
-        <View style={previewStyles.dimLayer} />
+    <GlassModal visible onClose={onClose} position="center">
+      {/* Close */}
+      <Pressable onPress={onClose} style={previewStyles.closeBtn} hitSlop={12}>
+        <Text style={previewStyles.closeText}>✕</Text>
+      </Pressable>
 
-        <View style={previewStyles.card}>
-          <LinearGradient
-            colors={["rgba(248,248,255,0.06)", "rgba(0,0,0,0.15)"]}
-            start={{ x: 0.5, y: 0 }}
-            end={{ x: 0.5, y: 1 }}
-            style={[StyleSheet.absoluteFill, { borderRadius: 24 }]}
-          />
-          {/* Top highlight */}
-          <View style={previewStyles.highlight} />
-
-          {/* Close */}
-          <Pressable onPress={onClose} style={previewStyles.closeBtn} hitSlop={12}>
-            <Text style={previewStyles.closeText}>✕</Text>
-          </Pressable>
-
-          {/* Header */}
+      {/* Header */}
           <Text style={previewStyles.itemName}>{item.name}</Text>
           <View style={previewStyles.metaRow}>
             <View style={[previewStyles.tierPill, { backgroundColor: tierColor + "18", borderColor: tierColor + "40" }]}>
@@ -411,34 +398,16 @@ function PreviewPopup({ item, owned, equipped, canAfford, onClose, onAction, pur
           </Pressable>
 
           {/* Price breakdown for unowned */}
-          {!owned && (
-            <Text style={previewStyles.priceBreakdown}>
-              {item.bananaCost} 🍌 (engagement) + ${item.usdCost.toFixed(2)} (SOL · USDC · SKR — 10% off in SKR)
-            </Text>
-          )}
-        </View>
-      </View>
-    </Modal>
+      {!owned && (
+        <Text style={previewStyles.priceBreakdown}>
+          {item.bananaCost} 🍌 (engagement) + ${item.usdCost.toFixed(2)} (SOL · USDC · SKR — 10% off in SKR)
+        </Text>
+      )}
+    </GlassModal>
   );
 }
 
 const previewStyles = StyleSheet.create({
-  backdrop: { flex: 1, justifyContent: "center", alignItems: "center" },
-  dimLayer: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.5)" },
-  card: {
-    width: SCREEN_W * 0.88,
-    maxWidth: 380,
-    backgroundColor: "rgba(12,12,22,0.94)",
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: "rgba(248,248,255,0.10)",
-    padding: 24,
-    overflow: "hidden",
-  },
-  highlight: {
-    position: "absolute", top: 0, left: 20, right: 20, height: 1.5,
-    backgroundColor: "rgba(255,255,255,0.12)", borderRadius: 1,
-  },
   closeBtn: { position: "absolute", top: 16, right: 16, zIndex: 10 },
   closeText: { fontSize: 18, color: THEME.textMuted },
   itemName: { fontFamily: FONTS.display, fontSize: 22, color: THEME.text, marginBottom: 8 },
