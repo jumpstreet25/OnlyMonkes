@@ -12,7 +12,7 @@
 
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
-  View, Text, Pressable, StyleSheet, Alert, Dimensions,
+  View, Text, Pressable, StyleSheet, Alert, Dimensions, Image,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
@@ -289,9 +289,16 @@ export function LivePnLCardModal({ card, visible, onClose }: LivePnLCardModalPro
               <Text style={styles.liveText}>LIVE</Text>
             </View>
           </View>
-          <Pressable onPress={onClose} hitSlop={12} style={styles.closeBtn}>
-            <Text style={styles.closeIcon}>✕</Text>
-          </Pressable>
+          <View style={styles.headerRight}>
+            <Image
+              source={require('../../assets/watermark.png')}
+              style={styles.watermark}
+              resizeMode="contain"
+            />
+            <Pressable onPress={onClose} hitSlop={12} style={styles.closeBtn}>
+              <Text style={styles.closeIcon}>✕</Text>
+            </Pressable>
+          </View>
         </View>
 
         <View style={styles.cardWrap}>
@@ -363,6 +370,8 @@ function ActionBtn({ label, sub, onPress, loading, disabled, primary, flat }: Ac
 const styles = StyleSheet.create({
   contentGap: { gap: 14 },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  watermark: { width: 38, height: 14, opacity: 0.7 },
   titleGroup: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   title: { fontFamily: FONTS.display, fontSize: 16, color: THEME.text, letterSpacing: 0.5 },
   liveBadge: {

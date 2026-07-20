@@ -22,19 +22,21 @@ function openTweet(text: string): void {
 /**
  * Share a locally-generated image (e.g. a captured share card) to X.
  *
- * React Native's core `Share.share({ url, message })` — used by the older
- * PnLCardModal flow — only reliably attaches `url` as content on iOS; on
- * Android it's inconsistent and frequently drops the image entirely,
- * leaving users to manually save + re-attach (the exact complaint this
- * exists to fix). A real fix needs expo-sharing or react-native-share, both
- * of which require a native rebuild + fresh dApp Store release — deferred.
+ * 2026-07-18: primary path is now react-native-share's shareSingle(),
+ * targeting the X app directly with BOTH the image and the caption in one
+ * native share-sheet call — no more manual save-and-reattach. This needed
+ * a native rebuild (new autolinked module + an AndroidManifest <queries>
+ * entry for X's package, com.twitter.android), which is why it was
+ * deferred when this file was first written. RN core `Share.share()` was
+ * tried before that and rejected — reliably attaches `url` on iOS but
+ * inconsistent on Android, frequently dropping the image entirely.
  *
- * This is the OTA-safe stopgap: save the image to the gallery, copy the
- * caption to clipboard as a defensive backup, and open X's compose screen
- * with the caption already prefilled via the tweet-intent URL (this part
- * already works reliably — it's what every text-only share above uses).
- * The user's only remaining manual step is tapping X's own image-picker
- * icon and selecting the photo just saved (always the newest gallery item).
+ * Falls back to the ORIGINAL stopgap (gallery save + clipboard copy +
+ * text-only tweet-intent URL) if shareSingle throws — most commonly
+ * because the X app isn't installed on the device, which shareSingle
+ * can't work around (unlike the web-intent fallback, which always works
+ * via browser). Still saves to gallery first either way as a defensive
+ * backup regardless of which path succeeds.
  */
 export async function shareImageToX(
   imageUri: string,
@@ -49,8 +51,21 @@ export async function shareImageToX(
       saved = true;
     }
   } catch {
-    // non-fatal — still proceed to open the compose screen with prefilled
-    // text; worst case the user has no image to attach this one time.
+    // non-fatal — still proceed; worst case the user has no gallery backup.
+  }
+
+  try {
+    const { default: Share, Social } = await import("react-native-share");
+    await Share.shareSingle({
+      message,
+      url: imageUri,
+      social: Social.Twitter,
+      type: "image/*",
+    });
+    return { saved };
+  } catch {
+    // X app not installed, or any other native-share failure — fall back
+    // to the text-only intent URL so the caption at least still prefills.
   }
 
   try {
@@ -113,4 +128,79 @@ export function shareMonkeOfTheWeek(username: string): void {
 /** Generic milestone share. */
 export function shareMilestone(text: string): void {
   openTweet(`${text}\n\n${HANDLE} — Saga Monkes holders only 🐒\n${HASHTAGS}`);
+}
+
+// ─── BananaBet share captions — cheeky, cycling, always tags @xOnlyMonkes ──
+// 2026-07-18: static templates, picked at random each share so it "changes
+// every time" without needing a persisted rotation index. Kept in Monke's
+// established ball-busting/banana-obsessed persona (see ~/.hermes/SOUL.md /
+// buildSystemPrompt() on the bot side) rather than generic marketing copy.
+
+const BANANA_BET_OPEN_CAPTIONS = [
+  (q: string) => `🍌 Just threw bananas at "${q}" on ${HANDLE}. Diamond hooves, baby.`,
+  (q: string) => `Putting my bananas where my mouth is on "${q}" 🐒 ${HANDLE}`,
+  (q: string) => `New BananaBet just dropped: "${q}" — I'm in. Are you? ${HANDLE}`,
+  (q: string) => `🍌 Betting bananas, not rent money, on "${q}". Priorities. ${HANDLE}`,
+  (q: string) => `The Monke has spoken on "${q}" 🐒🍌 ${HANDLE}`,
+  (q: string) => `Wagering my entire banana stash on "${q}" like a responsible primate. ${HANDLE}`,
+  (q: string) => `"${q}" — locked in my bananas, no take-backs. ${HANDLE}`,
+  (q: string) => `🍌 This bet on "${q}" better hit or I'm rioting the treehouse. ${HANDLE}`,
+  (q: string) => `Bananas on the line for "${q}" — send it. ${HANDLE}`,
+  (q: string) => `🐒 Just went full ape on "${q}" over on ${HANDLE}. No regrets.`,
+];
+
+const BANANA_BET_WIN_CAPTIONS = [
+  (q: string) => `🍌 WON on "${q}"! The Monke always eats. ${HANDLE}`,
+  (q: string) => `Called it on "${q}" — bananas secured 🐒🍌 ${HANDLE}`,
+  (q: string) => `🏆 Another BananaBet, another W on "${q}". ${HANDLE}`,
+  (q: string) => `They doubted the Monke on "${q}". The Monke was right. ${HANDLE}`,
+  (q: string) => `🍌 Stacking bananas after winning "${q}" on ${HANDLE}. Easy game.`,
+  (q: string) => `WON. "${q}" paid out. Off to spend it on more bananas. ${HANDLE}`,
+  (q: string) => `🐒 Diamond hooves paid off — "${q}" was a W. ${HANDLE}`,
+  (q: string) => `Just banked a win on "${q}" — the treehouse eats good tonight 🍌 ${HANDLE}`,
+  (q: string) => `🏆 "${q}" resolved exactly how I said it would. ${HANDLE}`,
+  (q: string) => `Won my bananas back and then some on "${q}" 🍌🍌 ${HANDLE}`,
+];
+
+const BANANA_BET_LOSE_CAPTIONS = [
+  (q: string) => `🍌 Lost the bananas on "${q}". The Monke will rise again. ${HANDLE}`,
+  (q: string) => `"${q}" didn't go my way — back to grinding bananas. ${HANDLE}`,
+  (q: string) => `L taken on "${q}" 🐒 still love the game though. ${HANDLE}`,
+  (q: string) => `🍌 Donated my bananas to the winners on "${q}". Respect. ${HANDLE}`,
+  (q: string) => `Lost "${q}" — humbled, not deterred. Next BananaBet incoming. ${HANDLE}`,
+  (q: string) => `🐒 The Monke swung and missed on "${q}". It happens.`,
+  (q: string) => `Bananas gone on "${q}" — but the vibes remain immaculate. ${HANDLE}`,
+  (q: string) => `🍌 "${q}" said no. Rude, but I'll survive. ${HANDLE}`,
+  (q: string) => `Took an L on "${q}" — already eyeing the next bet 🐒 ${HANDLE}`,
+  (q: string) => `Lost this round of "${q}", still up on vibes 🍌 ${HANDLE}`,
+];
+
+const BANANA_BET_NEUTRAL_CAPTIONS = [
+  (q: string) => `🍌 "${q}" just settled on ${HANDLE} — BananaBets never sleep.`,
+  (q: string) => `Watched "${q}" resolve on ${HANDLE} 🐒 the bananas were flying.`,
+  (q: string) => `Another BananaBet in the books: "${q}" 🍌 ${HANDLE}`,
+];
+
+function pick<T>(arr: T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+/** Cheeky caption for sharing a fresh (not-yet-resolved) BananaBet. */
+export function pickBananaBetOpenCaption(question: string): string {
+  return `${pick(BANANA_BET_OPEN_CAPTIONS)(question)}\n${HASHTAGS}`;
+}
+
+/** Cheeky, outcome-aware caption for sharing a settled BananaBet. `myBet`
+ *  is this device's own bet (if any) — win/lose framing only applies when
+ *  present; falls back to a neutral spectator caption otherwise, since the
+ *  result popup is shown to every user, not just participants. */
+export function pickBananaBetResultCaption(
+  question: string,
+  outcome: "yes" | "no",
+  myBet: { side: "yes" | "no"; amount: number } | null,
+): string {
+  if (!myBet) return `${pick(BANANA_BET_NEUTRAL_CAPTIONS)(question)}\n${HASHTAGS}`;
+  const won = myBet.side === outcome;
+  const pool = won ? BANANA_BET_WIN_CAPTIONS : BANANA_BET_LOSE_CAPTIONS;
+  return `${pick(pool)(question)}\n${HASHTAGS}`;
 }

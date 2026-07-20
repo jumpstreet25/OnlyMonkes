@@ -229,6 +229,7 @@ export default function ChatScreen() {
   const [editTarget, setEditTarget] = useState<ChatMessage | null>(null);
   const [editText, setEditText] = useState("");
   const [xShareImageUri, setXShareImageUri] = useState<string | null>(null);
+  const [xShareMessageId, setXShareMessageId] = useState<string | null>(null);
   const [skrPrice, setSkrPrice] = useState<string | null>(null);
   const [floorPrice, setFloorPrice] = useState<string | null>(null);
   const [pinnedMessages, setPinnedMessages] = useState<PinnedMessage[]>([]);
@@ -832,6 +833,14 @@ export default function ChatScreen() {
         useChatStore.getState().updateMessageStatus(optimistic.id, "sent");
         appendCachedMessage("main_chat", { ...optimistic, status: "sent" }).catch(() => {});
         setXShareImageUri(dataUri);
+        setXShareMessageId(optimistic.id);
+        // Fire-and-forget: ask the bot to caption this for X, in the
+        // background — NOT awaited, and NOT on the critical path for
+        // sending the photo. See imageCaption.ts for why this fires now
+        // rather than waiting until the user taps Share to X.
+        import("@/lib/imageCaption").then(({ requestImageCaption }) => {
+          requestImageCaption(optimistic.id, b64).catch(() => {});
+        });
       } catch (err: any) {
         Alert.alert("Camera error", err?.message ?? "Could not send photo.");
         useChatStore.getState().updateMessageStatus(optimistic.id, "failed");
@@ -926,9 +935,22 @@ export default function ChatScreen() {
   // screen with the caption prefilled (that part already works via the web
   // intent) — user's only remaining step is tapping X's image-picker icon.
   const handleShareToX = useCallback(async () => {
-    const caption = "I snapped this using @xOnlyMonkes via Solana Mobile, The Future is Monke! 🐒";
+    const fallbackCaption = "I snapped this using @xOnlyMonkes via Solana Mobile, The Future is Monke! 🐒";
     const imageUri = xShareImageUri;
+    const messageId = xShareMessageId;
     setXShareImageUri(null);
+    setXShareMessageId(null);
+    // Bot-generated (Ollama vision) caption, if it arrived in time — fired
+    // when the photo was sent, not blocking this tap. Falls back to the
+    // generic caption if it's not ready yet (or generation failed).
+    let caption = fallbackCaption;
+    if (messageId) {
+      try {
+        const { getCachedCaption } = await import("@/lib/imageCaption");
+        const cached = await getCachedCaption(messageId);
+        if (cached) caption = cached;
+      } catch { /* fall back to generic */ }
+    }
     // 2026-07-09: defer launching the native share/intent until after this
     // Modal's fade-out finishes — starting another native Activity while the
     // Modal's Android Dialog window is mid-teardown left a stuck grey screen
@@ -946,7 +968,7 @@ export default function ChatScreen() {
         /* non-fatal */
       }
     }, 350);
-  }, [xShareImageUri, setXShareImageUri]);
+  }, [xShareImageUri, xShareMessageId, setXShareImageUri]);
 
   // ─── Profile popup ────────────────────────────────────────────────────────────
   const handlePressUser = useCallback((target: ProfileTarget) => {

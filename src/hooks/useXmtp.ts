@@ -844,45 +844,14 @@ export function useXmtp() {
                   }
                 }
               } catch { /* ignore */ }
-            } else if (typeof content === "string" && content.startsWith("BANANA_BET_OPEN:")) {
-              try {
-                const { parseBananaBetOpen } = await import("@/lib/bananaBet");
-                const data = parseBananaBetOpen(content);
-                if (data) {
-                  // Inline pill only on history replay — deliberately does NOT
-                  // set activeBananaBet (no pop-up), so reopening the app
-                  // hours later doesn't surface a bet the user already missed
-                  // or already saw. The pill still lets them bet from scrollback.
-                  const pillMsg: ChatMessage = {
-                    id: `bananabetpill-${data.id}`,
-                    senderAddress: raw.senderInboxId as string,
-                    senderUsername: "AI Agent #9385",
-                    content: `BANANA_BET_PILL:${JSON.stringify(data)}`,
-                    sentAt: new Date(raw.sentNs / 1_000_000),
-                    reactions: {},
-                    status: "sent",
-                  };
-                  mergeMessage(pillMsg);
-                }
-              } catch { /* ignore */ }
-            } else if (typeof content === "string" && content.startsWith("BANANA_BET_SETTLED:")) {
-              try {
-                const { parseBananaBetSettled } = await import("@/lib/bananaBet");
-                const data = parseBananaBetSettled(content);
-                if (data) {
-                  const pillMsg: ChatMessage = {
-                    id: `bananabetsettled-${data.betId}`,
-                    senderAddress: raw.senderInboxId as string,
-                    senderUsername: "AI Agent #9385",
-                    content: `BANANA_BET_SETTLED_PILL:${JSON.stringify(data)}`,
-                    sentAt: new Date(raw.sentNs / 1_000_000),
-                    reactions: {},
-                    status: "sent",
-                  };
-                  mergeMessage(pillMsg);
-                }
-              } catch { /* ignore */ }
             }
+            // 2026-07-18: BANANA_BET_OPEN:/BANANA_BET_SETTLED: no longer render
+            // an inline pill on history replay (or anywhere in Main Chat) —
+            // BananaBetPopup/BananaBetResultPopup are the only surface now.
+            // Falling through here without a match is intentional: these
+            // message types are already in the system-prefix filter list, so
+            // simply not handling them means they're silently dropped, same
+            // as any other filtered system message.
           } catch { /* skip */ }
         }
       };
@@ -1519,18 +1488,10 @@ export function useXmtp() {
             const { parseBananaBetOpen, markBetSeenIfFirstTime } = await import("@/lib/bananaBet");
             const data = parseBananaBetOpen(content);
             if (data) {
-              // Inline pill in Main Chat feed. mergeMessage dedupes by fixed
-              // id, so a reprocessed broadcast is a safe no-op here already.
-              const pillMsg: ChatMessage = {
-                id: `bananabetpill-${data.id}`,
-                senderAddress: raw.senderInboxId as string,
-                senderUsername: "AI Agent #9385",
-                content: `BANANA_BET_PILL:${JSON.stringify(data)}`,
-                sentAt: new Date(raw.sentNs / 1_000_000),
-                reactions: {},
-                status: "sent",
-              };
-              mergeMessage(pillMsg);
+              // 2026-07-18: no longer merged into chatStore as a pill —
+              // BananaBetPopup is the only surface now, Main Chat never
+              // shows bet content. markBetSeenIfFirstTime below already
+              // dedupes a reprocessed broadcast safely on its own.
               // App-wide pop-up — only fires from the live stream (a fresh
               // signal), never on history replay, so re-opening the app
               // hours later doesn't pop up a stale/already-seen bet. Also
@@ -1548,21 +1509,15 @@ export function useXmtp() {
 
         if (typeof content === "string" && content.startsWith("BANANA_BET_SETTLED:")) {
           try {
-            const { parseBananaBetSettled, markBetSeenIfFirstTime } = await import("@/lib/bananaBet");
+            const { parseBananaBetSettled, markBetSeenIfFirstTime, getMyBet } = await import("@/lib/bananaBet");
             const data = parseBananaBetSettled(content);
             if (data) {
-              const pillMsg: ChatMessage = {
-                id: `bananabetsettled-${data.betId}`,
-                senderAddress: raw.senderInboxId as string,
-                senderUsername: "AI Agent #9385",
-                content: `BANANA_BET_SETTLED_PILL:${JSON.stringify(data)}`,
-                sentAt: new Date(raw.sentNs / 1_000_000),
-                reactions: {},
-                status: "sent",
-              };
-              mergeMessage(pillMsg);
+              // 2026-07-18: no longer merged into chatStore as a pill — the
+              // group broadcast now only drives BananaBetResultPopup, never
+              // Main Chat content.
               if (await markBetSeenIfFirstTime(`settled-${data.betId}`)) {
-                useAppStore.getState().setActiveBananaBetResult(data);
+                const myBet = await getMyBet(data.betId);
+                useAppStore.getState().setActiveBananaBetResult({ ...data, myBet });
               }
             }
           } catch { /* ignore */ }
@@ -1859,6 +1814,28 @@ export function useXmtp() {
                   exitBaseAmount: parsed.exitBaseAmount,
                   pnlBase: parsed.pnlBase,
                 });
+                return;
+              }
+
+              // IMAGE_CAPTION_RESPONSE: bot-generated (Ollama vision) photo
+              // caption, fired async when the photo was SENT — may well
+              // arrive minutes later while the user isn't on the bot's DM
+              // screen, so this global-stream branch is the common case for
+              // this one, not just the "just in case" fallback it is for
+              // TRADE_CLOSED/PORTFOLIO_RESPONSE above.
+              if (inner.startsWith('IMAGE_CAPTION_RESPONSE:')) {
+                try {
+                  const { BOT_INBOX_IDS } = await import('@/lib/constants');
+                  if (!BOT_INBOX_IDS.includes(senderInboxId)) return;
+                  const rest = inner.slice('IMAGE_CAPTION_RESPONSE:'.length);
+                  const sepIdx = rest.indexOf(':');
+                  if (sepIdx <= 0) return;
+                  const messageId = rest.slice(0, sepIdx);
+                  const caption = rest.slice(sepIdx + 1);
+                  if (!caption) return;
+                  const { storeCaptionResponse } = await import('@/lib/imageCaption');
+                  await storeCaptionResponse(messageId, caption);
+                } catch { /* swallow */ }
                 return;
               }
 

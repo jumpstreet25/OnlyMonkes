@@ -1,5 +1,5 @@
 import React, { useCallback, useRef, useState } from 'react';
-import { View, Text, Pressable, StyleSheet, Dimensions } from 'react-native';
+import { View, Text, Pressable, StyleSheet, Dimensions, Image } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { toast } from 'sonner-native';
@@ -199,9 +199,16 @@ export function MonkeCloutCardModal({ profile, visible, onClose }: MonkeCloutCar
       <View style={styles.contentGap}>
         <View style={styles.headerRow}>
           <Text style={styles.title}>Share Your Clout</Text>
-          <Pressable onPress={onClose} hitSlop={12} style={styles.closeBtn}>
-            <Text style={styles.closeIcon}>✕</Text>
-          </Pressable>
+          <View style={styles.headerRight}>
+            <Image
+              source={require('../../assets/watermark.png')}
+              style={styles.watermark}
+              resizeMode="contain"
+            />
+            <Pressable onPress={onClose} hitSlop={12} style={styles.closeBtn}>
+              <Text style={styles.closeIcon}>✕</Text>
+            </Pressable>
+          </View>
         </View>
 
         <View style={styles.cardWrap}>
@@ -255,6 +262,8 @@ function ActionBtn({ label, sub, onPress, loading, disabled, primary, flat }: Ac
 const styles = StyleSheet.create({
   contentGap: { gap: 14 },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  watermark: { width: 38, height: 14, opacity: 0.7 },
   title: { fontFamily: FONTS.display, fontSize: 16, color: THEME.text, letterSpacing: 0.5 },
   closeBtn: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   closeIcon: { color: THEME.textMuted, fontSize: 16 },

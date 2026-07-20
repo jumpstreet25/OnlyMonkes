@@ -44,6 +44,38 @@ export function setNotificationReplyHandler(fn: (text: string) => void): void {
   _replyHandler = fn;
 }
 
+// ── BananaBet push → popup deep-link ────────────────────────────────────────
+// 2026-07-18: tapping a BananaBet push previously just opened the app to its
+// default screen — the data payload arrived (fcmRelay already sends it) but
+// nothing read it. On a killed-app cold start, XMTP's initial sync
+// deliberately does NOT trigger the popup (see useXmtp.ts — "only fires from
+// the live stream, never on history replay"), so the push's own data payload
+// is the ONLY way to reconstruct the popup on a cold tap; that's why the bot
+// embeds the full bet fields in the push data rather than just a bare betId.
+// FCM data values arrive as strings regardless of original type.
+async function handleBananaBetNotificationData(data: Record<string, unknown> | undefined): Promise<void> {
+  if (!data || typeof data.type !== "string") return;
+  const { useAppStore } = await import("@/store/appStore");
+  if (data.type === "banana_bet_open") {
+    const { betId, category, question, resolvesAt, shareCaption } = data as Record<string, string>;
+    if (!betId || !question || !resolvesAt) return;
+    useAppStore.getState().setActiveBananaBet({
+      id: betId, category: category as any, question, resolvesAt: Number(resolvesAt),
+      ...(shareCaption ? { shareCaption } : {}),
+    });
+  } else if (data.type === "banana_bet_settled") {
+    const { betId, question, outcome, totalBets, totalBananasWon, myBetSide, myBetAmount, shareCaption } = data as Record<string, string>;
+    if (!betId || !question || !outcome) return;
+    useAppStore.getState().setActiveBananaBetResult({
+      betId, question, outcome: outcome as "yes" | "no",
+      totalBets: Number(totalBets ?? 0),
+      totalBananasWon: Number(totalBananasWon ?? 0),
+      myBet: myBetSide ? { side: myBetSide as "yes" | "no", amount: Number(myBetAmount ?? 0) } : null,
+      ...(shareCaption ? { shareCaption } : {}),
+    });
+  }
+}
+
 // ── Lazy-load native module ───────────────────────────────────────────────────
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let Notifications: any = null;
@@ -161,8 +193,20 @@ try {
         response.userText.trim()
       ) {
         _replyHandler?.(response.userText.trim());
+        return;
       }
+      void handleBananaBetNotificationData(response?.notification?.request?.content?.data);
     });
+
+    // Cold start: the app was fully killed and the user tapped a notification
+    // to launch it — the live listener above won't have fired in time (or at
+    // all, depending on timing), so check once for the response that actually
+    // launched this session.
+    Notifications.getLastNotificationResponseAsync?.()
+      .then((response: any) => {
+        void handleBananaBetNotificationData(response?.notification?.request?.content?.data);
+      })
+      .catch(() => {});
   }
 } catch {
   // Native module not available — rebuild with: npx expo run:android

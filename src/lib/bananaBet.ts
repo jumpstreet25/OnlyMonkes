@@ -19,6 +19,10 @@ export interface BananaBetOpenData {
   category: "crypto" | "nft" | "sports" | "news";
   question: string;
   resolvesAt: number;
+  /** Bot-generated (Ollama-first, see fallbackChain.ts) cheeky X caption,
+   *  computed once at broadcast time. Absent on older/replayed messages or
+   *  if generation failed — callers fall back to a local static pool. */
+  shareCaption?: string;
 }
 
 export interface BananaBetSettledData {
@@ -27,6 +31,10 @@ export interface BananaBetSettledData {
   outcome: "yes" | "no";
   totalBets: number;
   totalBananasWon: number;
+  /** Only present via the push-notification path (per-user win/lose caption
+   *  needs to know the recipient, which the anonymous group broadcast this
+   *  type is also parsed from doesn't carry) — see notifications.ts. */
+  shareCaption?: string;
 }
 
 export function parseBananaBetOpen(content: string): BananaBetOpenData | null {
@@ -71,12 +79,52 @@ export async function placeBananaBet(betId: string, side: "yes" | "no", amount: 
     if (!client) throw new Error("Not connected");
     const dm = await openOrCreateDm(client, BOT_INBOX_IDS[0]);
     await dm.send(`/bet ${betId} ${side} ${amount}`);
+    await recordMyBet(betId, side, amount);
   } catch (err) {
     // Refund — the stake was never recorded bot-side if the DM send failed.
     await addBananas(amount);
     useAppStore.getState().setBananaBalance(useAppStore.getState().bananaBalance + amount);
     throw err;
   }
+}
+
+// ─── My-bet tracking — lets the settlement popup know if THIS device's
+// user personally won or lost, for a personalized display + share caption.
+// The group BANANA_BET_SETTLED: broadcast is intentionally aggregate/
+// anonymous (goes to everyone regardless of participation), so per-user
+// outcome has to be derived client-side by cross-referencing this local
+// record against the broadcast's outcome — never sent over the wire. ────
+const MY_BETS_KEY = "banana_my_bets_v1";
+const MAX_MY_BETS = 200;
+export interface MyBetRecord { side: "yes" | "no"; amount: number }
+let _myBetsCache: Record<string, MyBetRecord> | null = null;
+
+async function loadMyBets(): Promise<Record<string, MyBetRecord>> {
+  if (_myBetsCache) return _myBetsCache;
+  try {
+    const raw = await AsyncStorage.getItem(MY_BETS_KEY);
+    _myBetsCache = raw ? JSON.parse(raw) : {};
+  } catch {
+    _myBetsCache = {};
+  }
+  return _myBetsCache!;
+}
+
+async function recordMyBet(betId: string, side: "yes" | "no", amount: number): Promise<void> {
+  const bets = await loadMyBets();
+  bets[betId] = { side, amount };
+  const entries = Object.entries(bets);
+  const trimmed = entries.length > MAX_MY_BETS ? Object.fromEntries(entries.slice(-MAX_MY_BETS)) : bets;
+  _myBetsCache = trimmed;
+  try {
+    await AsyncStorage.setItem(MY_BETS_KEY, JSON.stringify(trimmed));
+  } catch { /* non-critical */ }
+}
+
+/** Returns this device's own bet on betId, if any — null if never placed one. */
+export async function getMyBet(betId: string): Promise<MyBetRecord | null> {
+  const bets = await loadMyBets();
+  return bets[betId] ?? null;
 }
 
 // ─── Seen-bet tracking — pop-up shows once per bet, ever ──────────────────

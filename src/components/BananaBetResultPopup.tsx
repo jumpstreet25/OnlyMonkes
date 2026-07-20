@@ -5,43 +5,92 @@
  * root layout, same pattern as BananaBetPopup.
  */
 
-import React, { useCallback } from "react";
-import { View, Text, Pressable, StyleSheet, Image } from "react-native";
+import React, { useCallback, useRef, useState } from "react";
+import { View, Text, Pressable, StyleSheet, Image, ActivityIndicator } from "react-native";
 import { GlassModal } from "@/components/GlassModal";
 import { useAppStore } from "@/store/appStore";
 import { THEME, FONTS } from "@/lib/constants";
 
+const getViewShot = () => import("react-native-view-shot");
+const getImageManipulator = () => import("expo-image-manipulator");
+
 export function BananaBetResultPopup() {
+  const cardRef = useRef<View>(null);
+  const [sharing, setSharing] = useState(false);
   const activeBananaBetResult = useAppStore((s) => s.activeBananaBetResult);
   const setActiveBananaBetResult = useAppStore((s) => s.setActiveBananaBetResult);
 
   const dismiss = useCallback(() => setActiveBananaBetResult(null), [setActiveBananaBetResult]);
 
+  const handleShareX = useCallback(async () => {
+    if (!activeBananaBetResult || sharing) return;
+    setSharing(true);
+    try {
+      const { captureRef } = await getViewShot();
+      await new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+      const uri = await captureRef(cardRef as any, { format: "png", quality: 1, result: "tmpfile" });
+      const IM = await getImageManipulator();
+      const compressed = await IM.manipulateAsync(uri, [{ resize: { width: 1080 } }], {
+        compress: 0.85,
+        format: IM.SaveFormat.JPEG,
+      });
+      const { shareImageToX, pickBananaBetResultCaption } = await import("@/lib/shareToX");
+      const { toast } = await import("sonner-native");
+      // Prefer the bot-generated (Ollama-first) caption when present —
+      // only available via the push-tap path (per-user win/lose needs a
+      // recipient, which the anonymous group broadcast doesn't carry).
+      const { saved } = await shareImageToX(
+        compressed.uri,
+        activeBananaBetResult.shareCaption ?? pickBananaBetResultCaption(activeBananaBetResult.question, activeBananaBetResult.outcome, activeBananaBetResult.myBet),
+      );
+      if (saved) toast.success("Image saved — tap the image icon in X to attach it 📸");
+    } catch (err: any) {
+      const { toast } = await import("sonner-native");
+      if (err?.message && !/dismiss/i.test(err.message)) toast.error(err.message);
+    } finally {
+      setSharing(false);
+    }
+  }, [activeBananaBetResult, sharing]);
+
   if (!activeBananaBetResult) return null;
-  const { question, outcome, totalBets, totalBananasWon } = activeBananaBetResult;
+  const { question, outcome, totalBets, totalBananasWon, myBet } = activeBananaBetResult;
+  const won = myBet ? myBet.side === outcome : null;
 
   return (
     <GlassModal visible={!!activeBananaBetResult} onClose={dismiss} cardStyle={styles.card}>
       <View style={styles.content}>
-        <View style={styles.headerRow}>
-          <Text style={styles.badge}>🍌 BANANABETS — SETTLED</Text>
-          <Image
-            source={require('../../assets/watermark.png')}
-            style={styles.watermark}
-            resizeMode="contain"
-          />
-        </View>
-        <Text style={styles.question}>{question}</Text>
-        <Text style={styles.outcome}>Outcome: {outcome.toUpperCase()}</Text>
-
-        <View style={styles.statsRow}>
-          <View style={styles.statBox}>
-            <Text style={styles.statValue}>{totalBets}</Text>
-            <Text style={styles.statLabel}>bet{totalBets === 1 ? "" : "s"} placed</Text>
+        <View ref={cardRef} collapsable={false} style={styles.shareableArea}>
+          <View style={styles.headerRow}>
+            <Text style={styles.badge}>🍌 BANANABETS — SETTLED</Text>
+            <View style={styles.headerRight}>
+              <Image
+                source={require('../../assets/watermark.png')}
+                style={styles.watermark}
+                resizeMode="contain"
+              />
+              <Pressable onPress={handleShareX} disabled={sharing} hitSlop={8}>
+                {sharing ? <ActivityIndicator size="small" color={THEME.textFaint} /> : <Text style={styles.shareIcon}>𝕏</Text>}
+              </Pressable>
+            </View>
           </View>
-          <View style={styles.statBox}>
-            <Text style={styles.statValue}>{totalBananasWon} 🍌</Text>
-            <Text style={styles.statLabel}>won total</Text>
+          <Text style={styles.question}>{question}</Text>
+          <Text style={styles.outcome}>Outcome: {outcome.toUpperCase()}</Text>
+
+          {myBet && (
+            <Text style={won ? styles.myBetWon : styles.myBetLost}>
+              {won ? `✅ You bet ${myBet.amount} on ${myBet.side.toUpperCase()} — WON!` : `You bet ${myBet.amount} on ${myBet.side.toUpperCase()} — no win this time`}
+            </Text>
+          )}
+
+          <View style={styles.statsRow}>
+            <View style={styles.statBox}>
+              <Text style={styles.statValue}>{totalBets}</Text>
+              <Text style={styles.statLabel}>bet{totalBets === 1 ? "" : "s"} placed</Text>
+            </View>
+            <View style={styles.statBox}>
+              <Text style={styles.statValue}>{totalBananasWon} 🍌</Text>
+              <Text style={styles.statLabel}>won total</Text>
+            </View>
           </View>
         </View>
 
@@ -56,8 +105,13 @@ export function BananaBetResultPopup() {
 const styles = StyleSheet.create({
   card: { padding: 0, overflow: "hidden" },
   content: { paddingHorizontal: 22, paddingVertical: 24, gap: 14, alignItems: "center" },
-  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
+  shareableArea: { gap: 14, alignItems: "center", width: "100%" },
+  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", width: "100%", gap: 8 },
+  headerRight: { flexDirection: "row", alignItems: "center", gap: 12 },
   watermark: { width: 38, height: 14, opacity: 0.7 },
+  shareIcon: { fontFamily: FONTS.displayMed, fontSize: 15, color: THEME.textFaint },
+  myBetWon: { fontFamily: FONTS.bodyMed, fontSize: 13, color: "#2E9E5B", textAlign: "center" },
+  myBetLost: { fontFamily: FONTS.bodyMed, fontSize: 13, color: THEME.textMuted, textAlign: "center" },
   badge: {
     fontFamily: FONTS.displayMed,
     fontSize: 12,

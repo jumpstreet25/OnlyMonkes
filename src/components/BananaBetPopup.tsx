@@ -1,14 +1,13 @@
 /**
  * BananaBetPopup — app-wide pop-up shown when a fresh BANANA_BET_OPEN:
  * signal arrives while the user has the app open, mounted at the root
- * layout so it can appear over any screen. Suppressed on the Main Chat
- * route itself (/chat) since that screen already shows the same bet as an
- * inline pill — showing both at once would be redundant.
+ * layout so it can appear over any screen, including Main Chat — this is
+ * now the ONLY surface for BananaBet (2026-07-18: the inline Main-Chat
+ * pill was removed; bets never appear as chat messages anymore).
  */
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useRef } from "react";
 import { View, Text, Pressable, StyleSheet, ActivityIndicator, TextInput, Image } from "react-native";
-import { usePathname } from "expo-router";
 import { GlassModal } from "@/components/GlassModal";
 import { useAppStore } from "@/store/appStore";
 import { THEME, FONTS } from "@/lib/constants";
@@ -16,8 +15,11 @@ import { THEME, FONTS } from "@/lib/constants";
 const BET_AMOUNT_CHIPS = [10, 25, 50, 100];
 const BET_CATEGORY_EMOJI: Record<string, string> = { crypto: "📈", nft: "🖼️", sports: "🏆", news: "📰" };
 
+const getViewShot = () => import("react-native-view-shot");
+const getImageManipulator = () => import("expo-image-manipulator");
+
 export function BananaBetPopup() {
-  const pathname = usePathname();
+  const cardRef = useRef<View>(null);
   const activeBananaBet = useAppStore((s) => s.activeBananaBet);
   const setActiveBananaBet = useAppStore((s) => s.setActiveBananaBet);
   const bananaBalance = useAppStore((s) => s.bananaBalance);
@@ -25,6 +27,7 @@ export function BananaBetPopup() {
   const [customMode, setCustomMode] = useState(false);
   const [customText, setCustomText] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const insufficientFunds = amount > bananaBalance;
 
   const dismiss = useCallback(() => {
@@ -62,25 +65,60 @@ export function BananaBetPopup() {
     }
   }, [activeBananaBet, amount, submitting, bananaBalance, dismiss]);
 
-  // Suppress on Main Chat — the bet already shows there as an inline pill.
-  const visible = !!activeBananaBet && pathname !== "/chat";
+  const handleShareX = useCallback(async () => {
+    if (!activeBananaBet || sharing) return;
+    setSharing(true);
+    try {
+      const { captureRef } = await getViewShot();
+      await new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+      const uri = await captureRef(cardRef as any, { format: "png", quality: 1, result: "tmpfile" });
+      const IM = await getImageManipulator();
+      const compressed = await IM.manipulateAsync(uri, [{ resize: { width: 1080 } }], {
+        compress: 0.85,
+        format: IM.SaveFormat.JPEG,
+      });
+      const { shareImageToX, pickBananaBetOpenCaption } = await import("@/lib/shareToX");
+      const { toast } = await import("sonner-native");
+      // Prefer the bot-generated (Ollama-first) caption when present —
+      // static pool is the fallback for older messages / generation failure.
+      const { saved } = await shareImageToX(
+        compressed.uri,
+        activeBananaBet.shareCaption ?? pickBananaBetOpenCaption(activeBananaBet.question),
+      );
+      if (saved) toast.success("Image saved — tap the image icon in X to attach it 📸");
+    } catch (err: any) {
+      const { toast } = await import("sonner-native");
+      if (err?.message && !/dismiss/i.test(err.message)) toast.error(err.message);
+    } finally {
+      setSharing(false);
+    }
+  }, [activeBananaBet, sharing]);
+
+  const visible = !!activeBananaBet;
   if (!activeBananaBet) return null;
 
   return (
     <GlassModal visible={visible} onClose={dismiss} cardStyle={styles.card}>
       <View style={styles.content}>
-        <View style={styles.headerRow}>
-          <Text style={styles.badge}>🍌 BANANABETS</Text>
-          <Image
-            source={require('../../assets/watermark.png')}
-            style={styles.watermark}
-            resizeMode="contain"
-          />
+        <View ref={cardRef} collapsable={false} style={styles.shareableArea}>
+          <View style={styles.headerRow}>
+            <Text style={styles.badge}>🍌 BANANABETS</Text>
+            <View style={styles.headerRight}>
+              <Image
+                source={require('../../assets/watermark.png')}
+                style={styles.watermark}
+                resizeMode="contain"
+              />
+              <Pressable onPress={handleShareX} disabled={sharing} hitSlop={8}>
+                {sharing ? <ActivityIndicator size="small" color={THEME.textFaint} /> : <Text style={styles.shareIcon}>𝕏</Text>}
+              </Pressable>
+            </View>
+          </View>
+          <Text style={styles.tagline}>Real bananas from your stash — no real-world money, ever.</Text>
+          <Text style={styles.question}>
+            {BET_CATEGORY_EMOJI[activeBananaBet.category] ?? "🍌"} {activeBananaBet.question}
+          </Text>
         </View>
-        <Text style={styles.tagline}>Real bananas from your stash — no real-world money, ever.</Text>
-        <Text style={styles.question}>
-          {BET_CATEGORY_EMOJI[activeBananaBet.category] ?? "🍌"} {activeBananaBet.question}
-        </Text>
 
         <Text style={styles.wagerLabel}>Wager (🍌 bananas) — you have {bananaBalance} 🍌</Text>
         <View style={styles.chipRow}>
@@ -148,8 +186,11 @@ export function BananaBetPopup() {
 const styles = StyleSheet.create({
   card: { padding: 0, overflow: "hidden" },
   content: { paddingHorizontal: 22, paddingVertical: 24, gap: 14 },
-  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
+  shareableArea: { gap: 14 },
+  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  headerRight: { flexDirection: "row", alignItems: "center", gap: 12 },
   watermark: { width: 38, height: 14, opacity: 0.7 },
+  shareIcon: { fontFamily: FONTS.displayMed, fontSize: 15, color: THEME.textFaint },
   badge: {
     fontFamily: FONTS.displayMed,
     fontSize: 12,
