@@ -612,7 +612,7 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
 
       {/* Tappable marker pills */}
       <View style={styles.markerList}>
-        {userMarkers.slice(0, 6).map((m: GlobeMarker) => (
+        {userMarkers.map((m: GlobeMarker) => (
           <Pressable
             key={m.id}
             style={styles.markerPill}
