@@ -73,6 +73,22 @@ async function handleBananaBetNotificationData(data: Record<string, unknown> | u
       myBet: myBetSide ? { side: myBetSide as "yes" | "no", amount: Number(myBetAmount ?? 0) } : null,
       ...(shareCaption ? { shareCaption } : {}),
     });
+  } else if (data.type === "poll_result") {
+    // 2026-07-20: same cold-start reconstruction pattern as banana_bet_settled
+    // above. winningOption/tally arrive as JSON strings, not objects — FCM
+    // data values are String()-coerced bot-side (see communityPoll push in
+    // xmtpOnlyMonkes.ts), so a raw object would've arrived as "[object
+    // Object]". Parse them back out here.
+    const { pollId, question, winningOption, tally, myOptionId } = data as Record<string, string>;
+    if (!pollId || !question || !winningOption || !tally) return;
+    try {
+      useAppStore.getState().setActivePollResult({
+        pollId, question,
+        winningOption: JSON.parse(winningOption),
+        tally: JSON.parse(tally),
+        myVote: myOptionId || null,
+      });
+    } catch { /* malformed payload — non-fatal */ }
   }
 }
 

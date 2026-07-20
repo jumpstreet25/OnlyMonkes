@@ -917,7 +917,8 @@ export function useXmtp() {
             // Falling through here without a match is intentional: these
             // message types are already in the system-prefix filter list, so
             // simply not handling them means they're silently dropped, same
-            // as any other filtered system message.
+            // as any other filtered system message. POLL_OPEN:/POLL_RESULT:
+            // (2026-07-20) follow the exact same pattern — live-stream only.
           } catch { /* skip */ }
         }
       };
@@ -1585,6 +1586,32 @@ export function useXmtp() {
                 const myBet = await getMyBet(data.betId);
                 useAppStore.getState().setActiveBananaBetResult({ ...data, myBet });
               }
+            }
+          } catch { /* ignore */ }
+          return;
+        }
+
+        if (typeof content === "string" && content.startsWith("POLL_OPEN:")) {
+          try {
+            const { parsePollOpen, markPollSeenIfFirstTime } = await import("@/lib/poll");
+            const data = parsePollOpen(content);
+            // Same reasoning as BANANA_BET_OPEN: only fires from the live
+            // stream (never history replay), gated on markPollSeenIfFirstTime
+            // so a reconnect-replay of this broadcast is a no-op.
+            if (data && await markPollSeenIfFirstTime(`open-${data.id}`)) {
+              useAppStore.getState().setActivePoll(data);
+            }
+          } catch { /* ignore */ }
+          return;
+        }
+
+        if (typeof content === "string" && content.startsWith("POLL_RESULT:")) {
+          try {
+            const { parsePollResult, markPollSeenIfFirstTime, getMyVote } = await import("@/lib/poll");
+            const data = parsePollResult(content);
+            if (data && await markPollSeenIfFirstTime(`result-${data.pollId}`)) {
+              const myVote = await getMyVote(data.pollId);
+              useAppStore.getState().setActivePollResult({ ...data, myVote });
             }
           } catch { /* ignore */ }
           return;

@@ -12,6 +12,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'sonner-native';
 import { BananaBetPopup } from '../src/components/BananaBetPopup';
 import { BananaBetResultPopup } from '../src/components/BananaBetResultPopup';
+import { PollPopup } from '../src/components/PollPopup';
+import { PollResultPopup } from '../src/components/PollResultPopup';
 import { THEME } from '../src/lib/constants';
 import { useThemeColor } from '../src/lib/shopTheme';
 import { registerForPushNotifications } from '../src/lib/notifications';
@@ -205,6 +207,8 @@ export default function RootLayout() {
           />
           <BananaBetPopup />
           <BananaBetResultPopup />
+          <PollPopup />
+          <PollResultPopup />
         </GestureHandlerRootView>
       </SafeAreaProvider>
     </QueryClientProvider>

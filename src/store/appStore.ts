@@ -23,12 +23,15 @@ import type { LiveRoomData } from '../lib/livekit';
 import type { VideoRoomData } from '../lib/liveVideo';
 import type { AvatarRoomData } from '../lib/avatarRoom';
 import type { BananaBetOpenData, BananaBetSettledData, MyBetRecord } from '../lib/bananaBet';
+import type { PollOpenData, PollResultData } from '../lib/poll';
 
 /** Settlement popup state, enriched client-side with this device's own bet
  *  (if any) so the popup + its Share-to-X caption can be personalized —
  *  see getMyBet() in bananaBet.ts for why this is derived locally rather
  *  than sent over the wire (the group broadcast is intentionally anonymous). */
 export type BananaBetResultDisplay = BananaBetSettledData & { myBet: MyBetRecord | null };
+/** Same reasoning as BananaBetResultDisplay — enriched client-side with this device's own vote. */
+export type PollResultDisplay = PollResultData & { myVote: string | null };
 import type { NftSwapMessage } from '../lib/marketplace';
 
 const AK_MUTED_SPORTS = 'om_muted_sports';
@@ -217,6 +220,8 @@ interface LiveFeaturesState {
   pendingNftSwap: NftSwapMessage | null;
   activeBananaBet: BananaBetOpenData | null;
   activeBananaBetResult: BananaBetResultDisplay | null;
+  activePoll: PollOpenData | null;
+  activePollResult: PollResultDisplay | null;
 }
 
 interface LiveFeaturesActions {
@@ -233,6 +238,8 @@ interface LiveFeaturesActions {
   setPendingNftSwap: (swap: NftSwapMessage | null) => void;
   setActiveBananaBet: (bet: BananaBetOpenData | null) => void;
   setActiveBananaBetResult: (result: BananaBetResultDisplay | null) => void;
+  setActivePoll: (poll: PollOpenData | null) => void;
+  setActivePollResult: (result: PollResultDisplay | null) => void;
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -315,6 +322,8 @@ const initialState: AppState = {
   pendingNftSwap: null,
   activeBananaBet: null,
   activeBananaBetResult: null,
+  activePoll: null,
+  activePollResult: null,
 };
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -493,6 +502,8 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   setPendingNftSwap: (pendingNftSwap) => set({ pendingNftSwap }),
   setActiveBananaBet: (activeBananaBet) => set({ activeBananaBet }),
   setActiveBananaBetResult: (activeBananaBetResult) => set({ activeBananaBetResult }),
+  setActivePoll: (activePoll) => set({ activePoll }),
+  setActivePollResult: (activePollResult) => set({ activePollResult }),
 
   // ── Reset (all slices) ─────────────────────────────────────────────────────
 
