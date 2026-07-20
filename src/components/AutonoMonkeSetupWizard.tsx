@@ -104,9 +104,16 @@ export default function AutonoMonkeSetupWizard({ visible, onClose }: Props) {
       await AsyncStorage.setItem(STORAGE_KEY, '1');
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      toast.success('Activating AutonoMonke…');
+      // 2026-07-20: closing the Modal in the same tick as the toast mounting
+      // (plus a navigation on top here) races the Android Dialog window
+      // teardown — grey-screen freeze, same bug class as
+      // BananaBetPopup.handlePlaceBet / UsernameModal.handleSave. Close
+      // first, let the Modal's own dismissal clear, then toast + navigate.
       handleClose();
-      router.push(`/dm/${BOT_INBOX_ID}` as any);
+      setTimeout(() => {
+        toast.success('Activating AutonoMonke…');
+        router.push(`/dm/${BOT_INBOX_ID}` as any);
+      }, 350);
     } catch (err: any) {
       toast.error(err?.message ?? 'Setup failed');
       setSubmitting(false);

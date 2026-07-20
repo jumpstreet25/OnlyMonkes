@@ -125,8 +125,12 @@ export function UsernameModal({
       setXAccount(cleanX);
       setTipWallet(cleanTip);
       setLocation(cleanLoc);
-      toast.success("Profile updated");
+      // 2026-07-20: closing the Modal in the same tick as the toast mounting
+      // races the Android Dialog window teardown — grey-screen freeze, same
+      // bug class as BananaBetPopup.handlePlaceBet. Close first, let the
+      // Modal's own dismissal clear, then toast.
       onDone();
+      setTimeout(() => toast.success("Profile updated"), 350);
     } catch {
       setError("Failed to save — please try again.");
     } finally {
