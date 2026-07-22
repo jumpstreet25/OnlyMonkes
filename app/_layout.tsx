@@ -23,7 +23,8 @@ import { getEquippedStyles } from '../src/lib/bananaShop';
 import { applyThemeFromShop } from '../src/lib/shopTheme';
 import { clearLegacyKeys, startNftOwnershipGuard } from '../src/lib/session';
 import { initSentry } from '../src/lib/sentry';
-import { checkForOtaUpdate } from '../src/lib/otaUpdates';
+import { clearStaleOtaCacheIfNeeded } from '../src/lib/otaUpdates';
+import { OtaUpdateIndicator } from '../src/components/OtaUpdateIndicator';
 import { logAppOpen, logDailySession } from '../src/lib/analytics';
 import { loadBadgeData, setOnBadgeEarned, getBadgeBananaReward, type BadgeDef } from '../src/lib/badges';
 import { addBananas } from '../src/lib/bananaRewards';
@@ -66,7 +67,7 @@ export default function RootLayout() {
     logAppOpen().catch(() => {});
     const streak = useAppStore.getState().loginStreak;
     logDailySession(streak).catch(() => {});
-    checkForOtaUpdate();
+    clearStaleOtaCacheIfNeeded();
     clearLegacyKeys();
     loadPersistedPrefs();
 
@@ -209,6 +210,7 @@ export default function RootLayout() {
           <BananaBetResultPopup />
           <PollPopup />
           <PollResultPopup />
+          <OtaUpdateIndicator />
         </GestureHandlerRootView>
       </SafeAreaProvider>
     </QueryClientProvider>
