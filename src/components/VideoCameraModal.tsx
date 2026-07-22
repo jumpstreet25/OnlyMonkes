@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Video, ResizeMode } from 'expo-av';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import { uploadVideo } from '@/lib/videoUpload';
 import { THEME, FONTS } from '@/lib/constants';
 
@@ -32,6 +32,14 @@ export function VideoCameraModal({ visible, onClose, onSend }: Props) {
   const [uploading, setUploading] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // expo-video: player is recreated automatically whenever videoUri changes
+  // (useReleasingSharedObject keys on the source) — mirrors the old
+  // <Video source={{uri}} shouldPlay isLooping /> behavior.
+  const previewPlayer = useVideoPlayer(videoUri, (player) => {
+    player.loop = true;
+    player.play();
+  });
 
   // Reset state when modal opens
   useEffect(() => {
@@ -137,12 +145,11 @@ export function VideoCameraModal({ visible, onClose, onSend }: Props) {
         ) : videoUri ? (
           // ── Preview mode ──
           <View style={styles.container}>
-            <Video
-              source={{ uri: videoUri }}
+            <VideoView
+              player={previewPlayer}
               style={styles.preview}
-              shouldPlay
-              isLooping
-              resizeMode={ResizeMode.CONTAIN}
+              contentFit="contain"
+              nativeControls={false}
             />
             {/* Close button */}
             <Pressable style={[styles.closeBtn, { top: insets.top + 12 }]} onPress={onClose} hitSlop={10}>

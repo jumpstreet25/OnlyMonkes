@@ -12,6 +12,7 @@ import {
 // 2026-05-23: switched chat list to FlatList for stability — alias kept.
 import type { FlatList as FlashListRef } from "react-native";
 import { router } from "expo-router";
+import { useVideoPlayer, VideoView } from "expo-video";
 import { THEME, FONTS } from "@/lib/constants";
 import { ConfettiView } from "@/components/ConfettiView";
 import { BananaClaimModal } from "@/components/BananaClaimModal";
@@ -43,19 +44,19 @@ import type { Badge } from "@/lib/activityBadges";
 import type { TipAmount } from "@/lib/constants";
 import type { FlatList } from "react-native";
 
-/** Lazy-loaded Video player — avoids importing expo-av at startup */
-const getExpoAv = () => import("expo-av");
+// 2026-07-22: was dynamically importing expo-av to defer its startup cost —
+// no longer meaningful now that VideoCameraModal (imported statically just
+// above) already pulls expo-video into this same file's module graph
+// unconditionally. A dynamic import here would also make useVideoPlayer a
+// conditionally-called hook, which Rules of Hooks disallows.
 function LazyVideo({ uri }: { uri: string }) {
-  const [Mod, setMod] = React.useState<{ Video: any; ResizeMode: any } | null>(null);
-  React.useEffect(() => { getExpoAv().then(m => setMod(m)); }, []);
-  if (!Mod) return <ActivityIndicator style={{ flex: 1 }} color="#fff" />;
+  const player = useVideoPlayer(uri, (p) => { p.play(); });
   return (
-    <Mod.Video
-      source={{ uri }}
+    <VideoView
+      player={player}
       style={{ flex: 1 }}
-      useNativeControls
-      shouldPlay
-      resizeMode={Mod.ResizeMode.CONTAIN}
+      nativeControls
+      contentFit="contain"
     />
   );
 }
@@ -400,7 +401,7 @@ export function ChatModals(props: ChatModalsProps) {
         onSend={handleVideoSend}
       />
 
-      {/* Video Lightbox (expo-av loaded on demand) */}
+      {/* Video Lightbox */}
       <Modal
         visible={!!videoLightboxUrl}
         transparent

@@ -1,8 +1,9 @@
 /**
  * sounds.ts — Premium audio feedback for OnlyMonkes.
  *
- * Uses expo-av Audio.Sound with bundled assets.
- * Sounds are lazy-loaded on first play, then cached.
+ * Uses expo-audio (expo-av is removed in SDK 55 — migrated 2026-07-22, see
+ * OnlyMonkes 3.0 native stack plan) with bundled assets. Sounds are
+ * lazy-loaded on first play, then cached.
  *
  * To add custom sounds: place .mp3 files in assets/sounds/
  * and update the SOUND_FILES map below.
@@ -11,7 +12,7 @@
  * until .mp3 assets are added). The infrastructure is ready.
  */
 
-import { Audio } from "expo-av";
+import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from "expo-audio";
 import * as Haptics from "expo-haptics";
 
 // Sound file mapping — uncomment and add paths when .mp3 files are available
@@ -25,17 +26,17 @@ import * as Haptics from "expo-haptics";
 
 type SoundName = "send" | "receive" | "reaction" | "purchase" | "banana" | "error";
 
-const _cache = new Map<SoundName, Audio.Sound>();
+const _cache = new Map<SoundName, AudioPlayer>();
 let _enabled = true;
 let _audioConfigured = false;
 
 async function ensureAudioConfigured() {
   if (_audioConfigured) return;
   try {
-    await Audio.setAudioModeAsync({
-      playsInSilentModeIOS: false,
-      shouldDuckAndroid: true,
-      staysActiveInBackground: false,
+    await setAudioModeAsync({
+      playsInSilentMode: false,
+      interruptionMode: "duckOthers",
+      shouldPlayInBackground: false,
     });
     _audioConfigured = true;
   } catch { /* non-critical */ }
@@ -78,15 +79,14 @@ export async function playSound(name: SoundName): Promise<void> {
   //   const file = SOUND_FILES[name as keyof typeof SOUND_FILES];
   //   if (!file) return;
   //
-  //   let sound = _cache.get(name);
-  //   if (!sound) {
-  //     const { sound: s } = await Audio.Sound.createAsync(file, { shouldPlay: false });
-  //     sound = s;
-  //     _cache.set(name, sound);
+  //   let player = _cache.get(name);
+  //   if (!player) {
+  //     player = createAudioPlayer(file);
+  //     _cache.set(name, player);
   //   }
   //
-  //   await sound.setPositionAsync(0);
-  //   await sound.playAsync();
+  //   await player.seekTo(0);
+  //   player.play();
   // } catch { /* non-critical */ }
 }
 
@@ -97,8 +97,8 @@ export function setSoundsEnabled(enabled: boolean) {
 
 /** Cleanup — call on app unmount. */
 export async function unloadSounds() {
-  for (const sound of _cache.values()) {
-    await sound.unloadAsync().catch(() => {});
+  for (const player of _cache.values()) {
+    try { player.remove(); } catch { /* non-critical */ }
   }
   _cache.clear();
 }

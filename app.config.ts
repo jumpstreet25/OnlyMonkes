@@ -87,6 +87,15 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         recordAudioAndroid: true,
       },
     ],
+    'expo-video',
+    [
+      // expo-av replacement (SDK 55 removes expo-av entirely) — sounds.ts is
+      // playback-only (no recording), so recordAudioAndroid: false avoids
+      // requesting RECORD_AUDIO a second time (expo-camera above already
+      // declares it for actual video recording).
+      'expo-audio',
+      { recordAudioAndroid: false },
+    ],
   ],
   scheme: 'onlymonkes',
   extra: {
