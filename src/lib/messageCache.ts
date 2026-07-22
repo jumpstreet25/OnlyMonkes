@@ -5,10 +5,17 @@
  * - Main chat: caches last 50 messages (7-day TTL)
  * - Bot channels (bets/trades/sales/predictions): 24-hour TTL, max 200
  * - Media (IMAGE/GIF/VIDEO) and URL messages are kept indefinitely for Shared tabs
+ *
+ * 2026-07-22: IMAGE: messages' embedded base64 payloads are rewritten to
+ * real cache files (mediaCache.ts) before being persisted here — see
+ * serialize(). GIF:/VIDEO: content is already just a remote URL string
+ * (Giphy CDN / Cloudinary upload respectively), not an embedded blob, so
+ * they were never part of this problem and don't need the same treatment.
  */
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { debouncedSetItem } from "@/lib/debouncedStorage";
+import { cacheImageContent, deleteCachedImage } from "@/lib/mediaCache";
 import type { ChatMessage } from "@/types";
 
 const AK_PREFIX = "msg_cache_v1_";
@@ -50,7 +57,12 @@ interface SerializedMessage {
 }
 
 function serialize(msg: ChatMessage): SerializedMessage {
-  return { ...msg, sentAt: msg.sentAt.toISOString() };
+  // Rewrite embedded base64 IMAGE: payloads to a real cache file reference
+  // before persisting — keeps the AsyncStorage JSON blob small. Only
+  // touches the copy being written to disk, never the live in-memory
+  // message (this returns a new object; msg.content itself is untouched).
+  const content = cacheImageContent(msg.id, msg.content);
+  return { ...msg, content, sentAt: msg.sentAt.toISOString() };
 }
 
 function deserialize(s: SerializedMessage): ChatMessage {
@@ -121,6 +133,18 @@ export async function saveCachedMessages(
       // Newest MAX_PRESERVABLE win — older ones age out of the cache (they're
       // still recoverable from XMTP network history, just not kept locally).
       const preservable = preservableAll.slice(-MAX_PRESERVABLE);
+      // Delete the cache file (if any) for images that just aged out —
+      // otherwise the on-disk cache grows unbounded in parallel with the
+      // exact problem this rework was meant to fix, just moved from
+      // AsyncStorage to disk instead of eliminated.
+      if (preservableAll.length > preservable.length) {
+        const survivingIds = new Set(preservable.map((m) => m.id));
+        for (const m of preservableAll) {
+          if (!survivingIds.has(m.id) && m.content.startsWith("IMAGE:")) {
+            deleteCachedImage(m.id);
+          }
+        }
+      }
       const regular = trimmed.filter((m) => !isPreservable(m.content));
       const regularKeep = regular.slice(-Math.max(0, maxCached - preservable.length));
       trimmed = [...preservable, ...regularKeep].sort(
