@@ -128,7 +128,10 @@ android {
         canary {
             dimension "env"
             applicationId "com.onlymonkes.app.canary"
-            versionNameSuffix "-canary"
+            // Explicit versionName (not a suffix off defaultConfig's "2.38") —
+            // this flavor is currently carrying the OnlyMonkes 3.0 native-stack
+            // work (expo-av removal, vision-camera 5, freerasp 5), not 2.38.
+            versionName "3.0.0-test"
         }
     }
     // ABI splits → arm64-v8a only. Every Solana Mobile wallet device (Seeker,
