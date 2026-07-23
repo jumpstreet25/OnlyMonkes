@@ -1,6 +1,9 @@
 /**
  * onchainCnftVerify.ts — Direct on-chain compressed-NFT ownership check for
- * Saga Monkes, with zero dependency on any third-party indexer (Helius/Shyft).
+ * Saga Monkes, with zero dependency on any third-party DAS indexer
+ * (Helius/QuickNode/Shyft) for the *lookup logic* — this reconstructs
+ * ownership from raw transaction history rather than trusting an indexer's
+ * "does wallet X hold a leaf" answer.
  *
  * Why this exists: Saga Monkes are compressed NFTs (cNFTs). A Merkle tree
  * account only stores a root hash + a small recent-changes buffer — it does
@@ -18,8 +21,22 @@
  * this does the equivalent lookup on demand: scan the wallet's own recent
  * transaction history for Bubblegum instructions touching a known Saga
  * Monkes tree, and read the most recent one to determine current ownership.
- * Slower per check than an indexed lookup, but needs no infrastructure and
- * is immune to the Helius account being maxed out.
+ * Slower per check than an indexed lookup, but needs no indexer
+ * infrastructure.
+ *
+ * 2026-07-23: the RPC transport underneath this (getConnection() below) was
+ * switched from the free public RPC to HELIUS_RPC_URL after the public
+ * endpoint's aggressive rate-limiting (documented on withRetry() below)
+ * stalled real device testing. Trade-off, explicitly accepted at the time:
+ * this path is reached specifically when Helius's DAS API has ALREADY
+ * failed/errored on the same request (see verifyNFTOwnership() in
+ * nftVerification.ts — on-chain only runs when Helius didn't cleanly
+ * answer), so during an actual account-wide Helius outage like 2026-07-11's,
+ * this fallback would now likely fail in lockstep with it rather than
+ * surviving independently, which was the original point of building it this
+ * way. If Helius has another outage and this stops being a working
+ * fallback, that's why — revisit RPC choice then (QuickNode's general RPC,
+ * if it has one, would restore true independence).
  *
  * Instruction account layouts below were confirmed against real on-chain
  * transactions for this collection's genesis tree, not assumed from docs:
@@ -29,6 +46,7 @@
  */
 
 import { Connection, PublicKey, type ParsedTransactionWithMeta } from "@solana/web3.js";
+import { HELIUS_RPC_URL } from "./constants";
 
 const BUBBLEGUM_PROGRAM = "BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY";
 
@@ -104,7 +122,9 @@ function decodeTransferNonce(dataBase58: string): string | null {
  */
 const SAGA_MONKES_TREES = new Set(["2uH9TkmYkAKGrK7EPnd4Y7JVYswpQ2aED9deMn8QoYVy"]);
 
-const RPC_URL = "https://api.mainnet-beta.solana.com";
+// 2026-07-23: was the free public RPC (api.mainnet-beta.solana.com) — see
+// the module doc above for why that changed and the trade-off it accepts.
+const RPC_URL = HELIUS_RPC_URL;
 const MAX_SIGNATURE_PAGES = 20; // 20 * 100 = 2000 signatures deep, bounds worst-case latency
 const PAGE_SIZE = 100;
 
@@ -114,13 +134,15 @@ function getConnection(): Connection {
   return _connection;
 }
 
-// The free public RPC has been observed rate-limiting in bursts of 20-40+
-// consecutive 429s before responding — it recovers, it's just genuinely
-// this aggressive under load. A short retry budget (originally 4 attempts,
-// ~3s total) bails out and reports "inconclusive" almost every time under
-// real conditions, which reads as "verification keeps failing/retrying" to
-// the user even though the check itself is correct. Pushing through with
-// more patience actually works — confirmed empirically during testing.
+// Originally tuned for the free public RPC, which was observed rate-limiting
+// in bursts of 20-40+ consecutive 429s before responding — a short retry
+// budget (originally 4 attempts, ~3s total) bailed out and reported
+// "inconclusive" almost every time under real conditions, which read as
+// "verification keeps failing/retrying" to the user even though the check
+// itself was correct. Pushing through with more patience worked — confirmed
+// empirically during testing. Left at 12 attempts after the RPC_URL swap to
+// Helius above — general resilience against transient errors is still
+// worth keeping even though Helius rate-limits far less aggressively.
 async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 12): Promise<T> {
   let lastErr: unknown;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {

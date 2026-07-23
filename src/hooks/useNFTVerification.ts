@@ -21,9 +21,20 @@ export function useNFTVerification() {
   const { wallet, setVerified, setAllNfts, setError } = useAppStore();
 
   const verify = useCallback(async (): Promise<VerifyResult> => {
+    // TEMP DIAGNOSTIC (2026-07-23): confirming whether the wallet connection
+    // is actually dropping between login and a later retry. Remove once
+    // root-caused.
+    console.log(`[NFTVerify][DIAG] wallet at verify() call: ${wallet?.address ? wallet.address.slice(0, 8) + '…' : 'MISSING'}`);
     if (!wallet?.address) {
       setError('No wallet connected');
-      return { verified: false, providerError: false };
+      // 2026-07-23: was providerError: false, which VerifyScreen's caller
+      // treats identically to a confirmed non-holder — routes straight to
+      // the "not a holder" screen with buy links, exactly the misleading
+      // outcome the providerError flag exists to prevent (see its doc
+      // above). A dropped wallet connection is not evidence of non-
+      // ownership; treat it the same as any other ambiguous provider
+      // failure so the user gets the retryable error state instead.
+      return { verified: false, providerError: true };
     }
 
     try {
