@@ -1477,7 +1477,7 @@ export default function ChatScreen() {
           return (
           <View style={[
             styles.supportBanner,
-            { borderTopColor: themeBorder, paddingBottom: 9 + insets.bottom },
+            { borderTopColor: themeBorder, paddingBottom: 6 + insets.bottom },
             worldId ? { backgroundColor: getWorldBarTint(worldId) } : null,
           ]}>
             <View style={{ minWidth: 70, alignItems: 'flex-start' }}>
@@ -1767,7 +1767,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 9,
+    // 2026-07-23: 9 -> 6, part of a bottom-bar compaction pass. paddingBottom
+    // is overridden separately below (9 + insets.bottom -> 6 + insets.bottom)
+    // where this banner is actually rendered.
+    paddingVertical: 6,
     paddingHorizontal: 12,
     // No borderTop — separator removed per design pass 2026-05-06.
   },
