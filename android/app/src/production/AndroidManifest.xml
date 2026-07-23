@@ -1,0 +1,9 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- 2026-07-23: see android/app/src/canary/AndroidManifest.xml for why
+         this exists. Production's channel is "production" per eas.json,
+         distinct from canary/preview's "preview". -->
+    <application>
+        <meta-data android:name="expo.modules.updates.EXPO_UPDATE_REQUEST_HEADERS" android:value="{&quot;expo-channel-name&quot;:&quot;production&quot;}"/>
+    </application>
+</manifest>

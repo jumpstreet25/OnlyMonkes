@@ -5,6 +5,8 @@ import android.os.Build
 import android.os.Bundle
 
 import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate
@@ -30,6 +32,22 @@ class MainActivity : ReactActivity() {
     // all, so without this explicit call the window still reserves its own
     // space for the system bars on any pre-Android-15 device.
     WindowCompat.setDecorFitsSystemWindows(window, false)
+    // 2026-07-23: full immersive mode — hide status + gesture-nav bars
+    // entirely (swipe-revealed, auto-rehides) to reclaim the space
+    // edge-to-edge alone still left reserved for them.
+    WindowInsetsControllerCompat(window, window.decorView).let { controller ->
+      controller.hide(WindowInsetsCompat.Type.systemBars())
+      controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+    }
+  }
+
+  override fun onWindowFocusChanged(hasFocus: Boolean) {
+    super.onWindowFocusChanged(hasFocus)
+    // Re-hide after focus regain (e.g. a dialog or the keyboard closing) —
+    // transient swipe-reveal only lasts until focus changes again otherwise.
+    if (hasFocus) {
+      WindowInsetsControllerCompat(window, window.decorView).hide(WindowInsetsCompat.Type.systemBars())
+    }
   }
 
   /**

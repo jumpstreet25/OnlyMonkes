@@ -541,10 +541,10 @@ const styles = StyleSheet.create({
   container: {
     backgroundColor: THEME.surface,
     // No borderTop — separator removed per design pass 2026-05-06.
-    // 2026-07-23: 8 -> 4, part of a bar-wide compaction pass to reclaim
+    // 2026-07-23: 8 -> 4 -> 2, a bar-wide compaction pass to reclaim
     // chat viewport height post-edge-to-edge. Tap targets (toolbarBtn
     // height, inputWrap minHeight) deliberately untouched.
-    paddingBottom: 4,
+    paddingBottom: 2,
   },
   replyBanner: {
     flexDirection: "row",
@@ -688,7 +688,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-evenly",
     paddingHorizontal: 8,
-    paddingTop: 4,
+    paddingTop: 2,
   },
   toolbarBtn: {
     height: 31,
