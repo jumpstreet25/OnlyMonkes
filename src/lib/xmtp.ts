@@ -195,7 +195,9 @@ export async function getOrCreateGlobalChat(
           return { group: g as unknown as XmtpGroup, isNewAdmin: false };
         }
       }
-    } catch { /* ignore */ }
+    } catch (e) {
+      console.log(`[XMTP] listGroups threw: ${(e as Error).message}`);
+    }
 
     // Second pass: sync again in case the welcome message arrived during first pass
     try {
