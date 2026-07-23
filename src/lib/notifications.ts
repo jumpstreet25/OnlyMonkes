@@ -16,11 +16,16 @@
 
 import * as SecureStore from "expo-secure-store";
 import Constants from "expo-constants";
-import { Platform, NativeModules } from "react-native";
+import { Platform, NativeModules, AppState } from "react-native";
 
 // Native module that bypasses expo-notifications' groupKey=silent pipeline
 // and posts directly to the specified Android notification channel.
-const DirectNotif: { show: (t: string, b: string, ch: string) => void; showDelayed: (t: string, b: string, ch: string, ms: number) => void } | null =
+const DirectNotif: {
+  show: (t: string, b: string, ch: string) => void;
+  showDelayed: (t: string, b: string, ch: string, ms: number) => void;
+  showWithReactions: (t: string, b: string, ch: string, messageId: string, conversationId: string) => void;
+  showWithJoinAction: (t: string, b: string, ch: string, roomType: string, roomId: string) => void;
+} | null =
   Platform.OS === "android" ? (NativeModules.DirectNotif ?? null) : null;
 
 const SK_PUSH_TOKEN = "push_token";
@@ -53,6 +58,18 @@ export function setNotificationReplyHandler(fn: (text: string) => void): void {
 // is the ONLY way to reconstruct the popup on a cold tap; that's why the bot
 // embeds the full bet fields in the push data rather than just a bare betId.
 // FCM data values arrive as strings regardless of original type.
+// 2026-07-23: types that already show their own in-app popup via the live
+// XMTP stream (see useXmtp.ts) independent of this push. A user with the
+// app open sees that popup directly — the push notification for the same
+// event is redundant and gets dismissed on arrival if the app is
+// foregrounded, in the receipt listener below.
+const POPUP_BACKED_NOTIFICATION_TYPES = new Set([
+  "banana_bet_open",
+  "banana_bet_settled",
+  "poll_result",
+  "live_room_invite",
+]);
+
 async function handleBananaBetNotificationData(data: Record<string, unknown> | undefined): Promise<void> {
   if (!data || typeof data.type !== "string") return;
   const { useAppStore } = await import("@/store/appStore");
@@ -200,6 +217,29 @@ try {
         options: { opensAppToForeground: true },
       },
     ]).catch((e: unknown) => console.warn('[Notifications] category error:', e));
+
+    // ── Receipt listener — foreground suppression for popup-backed pushes ────
+    // Fires on arrival (unlike the response listener below, which only fires
+    // on tap). Deliberately NOT using setNotificationHandler on Android (see
+    // comment above — it breaks the DirectNotif local-notification pipeline);
+    // this dismisses the just-shown notification immediately after the OS
+    // displays it instead, which is a separate API and doesn't touch that
+    // pipeline. A brief flash before dismissal is possible but not
+    // noticeable in practice, and strictly better than a persistent
+    // redundant notification sitting alongside a popup the user is already
+    // looking at.
+    Notifications.addNotificationReceivedListener((notification: any) => {
+      const data = notification?.request?.content?.data;
+      const id = notification?.request?.identifier;
+      if (
+        AppState.currentState === "active" &&
+        data?.type &&
+        POPUP_BACKED_NOTIFICATION_TYPES.has(data.type) &&
+        id
+      ) {
+        Notifications.dismissNotificationAsync(id).catch(() => { /* non-fatal */ });
+      }
+    });
 
     // ── Response listener (module-level, registered once) ─────────────────────
     Notifications.addNotificationResponseReceivedListener((response: any) => {
@@ -376,6 +416,48 @@ export async function showLocalNotification(
   } catch {
     // Silently ignore — permission denied or module not ready
   }
+}
+
+/**
+ * Chat-message local notification with quick-reaction action buttons that
+ * send a real reaction WITHOUT opening the app — see ReactionActionReceiver
+ * + ReactionHeadlessTaskService (native) and src/lib/headlessReaction.ts
+ * (the actual send). Android only; falls back to a plain notification
+ * (no reaction buttons) on iOS/if the native module isn't available, same
+ * as showLocalNotification.
+ */
+export async function showLocalNotificationWithReactions(
+  title: string,
+  body: string,
+  channelId: string,
+  messageId: string,
+  conversationId: string,
+): Promise<void> {
+  const truncated = body.length > 100 ? `${body.slice(0, 97)}…` : body;
+  if (DirectNotif) {
+    DirectNotif.showWithReactions(title, truncated, channelId, messageId, conversationId);
+    return;
+  }
+  await showLocalNotification(title, body, channelId);
+}
+
+/**
+ * Live/Avatar room invite notification with a "Join" action button.
+ * Android only; falls back to a plain notification on iOS.
+ */
+export async function showLocalNotificationWithJoinAction(
+  title: string,
+  body: string,
+  channelId: string,
+  roomType: string,
+  roomId: string,
+): Promise<void> {
+  const truncated = body.length > 100 ? `${body.slice(0, 97)}…` : body;
+  if (DirectNotif) {
+    DirectNotif.showWithJoinAction(title, truncated, channelId, roomType, roomId);
+    return;
+  }
+  await showLocalNotification(title, body, channelId);
 }
 
 /**

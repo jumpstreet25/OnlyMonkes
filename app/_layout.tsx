@@ -1,6 +1,7 @@
 import '../global';
 import 'react-native-get-random-values';
 import '../src/lib/backgroundSync'; // registers the TaskManager task definition at module level
+import '../src/lib/headlessReaction'; // registers the Headless JS reaction task at module level — must run on every JS context creation, including headless ones with no UI
 import { useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Stack } from 'expo-router';

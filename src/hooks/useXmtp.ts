@@ -86,7 +86,7 @@ function setTypingTimeout(key: string, timer: ReturnType<typeof setTimeout>) {
 }
 // Throttle own typing broadcasts (one signal per 2.5 s max)
 let _lastTypingSent = 0;
-import { showLocalNotification, detectMention, getCachedPushToken, registerForExpoPushToken, CH_ALL, CH_MENTIONS, CH_BOT, CH_LIVE, CH_MARKET, CH_SOCIAL } from "@/lib/notifications";
+import { showLocalNotification, showLocalNotificationWithJoinAction, showLocalNotificationWithReactions, detectMention, getCachedPushToken, registerForExpoPushToken, CH_ALL, CH_MENTIONS, CH_BOT, CH_LIVE, CH_MARKET, CH_SOCIAL } from "@/lib/notifications";
 
 const BOT_USERNAME = "AI Agent #9385";
 import { loadCachedMessages, saveCachedMessages, appendCachedMessage, getLastReadTimestamp } from "@/lib/messageCache";
@@ -1541,6 +1541,19 @@ export function useXmtp() {
                   status: "sent",
                 };
                 mergeMessage(enrichWithNft(pillMsg));
+                // 2026-07-23: recipients previously got nothing but the pill
+                // above (invisible unless Main Chat was already open) — a
+                // real notification with a Join action for everyone except
+                // the host, who already knows they started it.
+                if (raw.senderInboxId !== _myInboxId) {
+                  showLocalNotificationWithJoinAction(
+                    "🐒 Avatar Room started",
+                    `${data.host} is live — tap to join`,
+                    CH_LIVE,
+                    "avatar",
+                    data.id,
+                  ).catch(() => { /* non-fatal */ });
+                }
               } else {
                 const current = useAppStore.getState().activeAvatarRoom;
                 if (current?.id === data.id) useAppStore.getState().setActiveAvatarRoom(null);
@@ -1703,7 +1716,14 @@ export function useXmtp() {
           ? `${senderLabel} mentioned you 🍌`
           : `${senderLabel} in OnlyMonkes`;
 
-        await showLocalNotification(title, msg.content, channelId);
+        const mainGroupId = (_group as any)?.id;
+        if (mainGroupId && msg.id) {
+          await showLocalNotificationWithReactions(title, msg.content, channelId, msg.id, mainGroupId);
+        } else {
+          // Fallback — shouldn't happen once connected, but never block the
+          // notification itself on missing reaction metadata.
+          await showLocalNotification(title, msg.content, channelId);
+        }
         } catch (streamErr) {
           if (__DEV__) console.warn("[XMTP] Stream handler error:", (streamErr as Error).message);
         }
