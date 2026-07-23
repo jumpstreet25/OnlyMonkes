@@ -2,8 +2,23 @@
   <style name="AppTheme" parent="Theme.AppCompat.DayNight.NoActionBar">
     <item name="android:editTextBackground">@drawable/rn_edit_text_material</item>
     <item name="colorPrimary">@color/colorPrimary</item>
-    <item name="android:statusBarColor">#0A0A0F</item>
-    <item name="android:windowOptOutEdgeToEdgeEnforcement" tools:targetApi="35">true</item>
+    <!-- 2026-07-23: was a solid #0A0A0F statusBarColor + windowOptOutEdgeToEdgeEnforcement=true.
+         That opt-out flag (added 2026-04-20, unrelated to and predating the SDK54 edge-to-edge
+         migration) was silently forcing Android back to pre-edge-to-edge letterboxed system bars
+         on API 35+, fighting every insets-aware screen written for true edge-to-edge (Phase 4,
+         SDK54_UPGRADE_PLAN.md) and causing the double-counted gap above the gesture nav bar.
+         Transparent bars + no opt-out = content genuinely draws behind both bars; insets.top/
+         insets.bottom (react-native-safe-area-context) become the single source of safe-area
+         compensation instead of stacking on top of OS-reserved space. -->
+    <item name="android:statusBarColor">@android:color/transparent</item>
+    <item name="android:navigationBarColor">@android:color/transparent</item>
+    <!-- 2026-07-23: was unset (defaults to LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT), which
+         reserves conservative extra space around the front-camera cutout even with
+         edge-to-edge otherwise fully enabled — the residual gap between content and the
+         camera. ALWAYS lets content draw as close to the physical cutout as the device
+         permits, in both portrait and landscape (this app is portrait-locked, but ALWAYS
+         is also the correct choice generally, not just for the SHORT_EDGES portrait case). -->
+    <item name="android:windowLayoutInDisplayCutoutMode" tools:targetApi="28">always</item>
   </style>
   <style name="Theme.App.SplashScreen" parent="Theme.SplashScreen">
     <item name="windowSplashScreenBackground">@color/splashscreen_background</item>

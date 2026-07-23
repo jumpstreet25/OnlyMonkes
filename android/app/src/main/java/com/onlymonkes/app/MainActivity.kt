@@ -4,6 +4,8 @@ import expo.modules.splashscreen.SplashScreenManager
 import android.os.Build
 import android.os.Bundle
 
+import androidx.core.view.WindowCompat
+
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate
 import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint.fabricEnabled
@@ -21,6 +23,13 @@ class MainActivity : ReactActivity() {
     SplashScreenManager.registerOnActivity(this)
     // @generated end expo-splashscreen
     super.onCreate(null)
+    // 2026-07-23: explicit, version-independent edge-to-edge enforcement.
+    // android:windowOptOutEdgeToEdgeEnforcement=false (styles.xml) only gets
+    // Android to STOP blocking edge-to-edge on API 35+ — below that (down to
+    // this app's minSdkVersion 26) there is no automatic OS enforcement at
+    // all, so without this explicit call the window still reserves its own
+    // space for the system bars on any pre-Android-15 device.
+    WindowCompat.setDecorFitsSystemWindows(window, false)
   }
 
   /**
