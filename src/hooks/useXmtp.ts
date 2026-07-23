@@ -1641,8 +1641,17 @@ export function useXmtp() {
           // version (@xmtp/react-native-sdk 5.7) — it silently threw
           // "is not a function" every launch, meaning DM badge counting and
           // the "DM'd you" notification below were completely dead. Correct
-          // current API: streamAllMessages(callback, filterType).
-          const unsub = await (client.conversations as any).streamAllMessages(async (raw: any) => {
+          // current API: streamAllMessages(callback, filterType) — but
+          // unlike streamMessages()/stream(), this one resolves to void, not
+          // an unsubscribe function (confirmed against the SDK's own type
+          // signature). Pushing its return value into _botChannelUnsubs like
+          // the other streams below caused a real regression: undefined
+          // landed in that array, and the NEXT initialize() call's cleanup
+          // pass (_botChannelUnsubs.forEach(u => u())) threw trying to
+          // invoke it, killing the client and forcing an endless reconnect
+          // loop. Nothing to push here — this stream has no handle to clean
+          // up the same way.
+          await (client.conversations as any).streamAllMessages(async (raw: any) => {
             try {
               let content: unknown;
               try { content = raw.content(); } catch { return; }
@@ -1813,7 +1822,6 @@ export function useXmtp() {
               }
             } catch { /* ignore per-message errors */ }
           }, 'dms');
-          _botChannelUnsubs.push(unsub);
           if (__DEV__) console.log('[XMTP] Streaming DMs for badge count');
         } catch (err) {
           if (__DEV__) console.warn('[XMTP] DM badge stream failed:', err);
