@@ -21,8 +21,8 @@ import {
   Text,
   StyleSheet,
   Pressable,
-  Modal,
   Animated,
+  BackHandler,
   useWindowDimensions,
   Image,
   ScrollView,
@@ -450,13 +450,44 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
     if (visible) loadBananaState().then(setBananaState);
   }, [visible]);
 
+  // 2026-07-23: replaces RN's <Modal> — Android implements Modal as a
+  // SEPARATE native Dialog window from the Activity, which BlurView (below)
+  // can't see across to actually blur the real content behind it (confirmed
+  // on-device: no visible blur, just a flat tint). Rendering directly in the
+  // component tree instead keeps this in the same window as everything
+  // else, matching how GlassBottomSheet already avoids this exact problem.
+  // shouldRender stays true through the fade-out so the close animation
+  // still plays instead of popping off instantly.
+  const [shouldRender, setShouldRender] = useState(visible);
+  const fadeAnim = useRef(new Animated.Value(visible ? 1 : 0)).current;
+
+  useEffect(() => {
+    if (visible) {
+      setShouldRender(true);
+      Animated.timing(fadeAnim, { toValue: 1, duration: 200, useNativeDriver: true }).start();
+    } else {
+      Animated.timing(fadeAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
+        setShouldRender(false);
+      });
+    }
+  }, [visible]);
+
+  // Replaces Modal's onRequestClose — Android hardware/gesture back button.
+  useEffect(() => {
+    if (!visible) return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (activeView !== "list") { setActiveView("list"); } else { onClose(); }
+      return true;
+    });
+    return () => sub.remove();
+  }, [visible, activeView, onClose]);
+
+  if (!shouldRender) return null;
+
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={() => { if (activeView !== "list") { setActiveView("list"); } else { onClose(); } }}
-      statusBarTranslucent
+    <Animated.View
+      style={[StyleSheet.absoluteFill, { opacity: fadeAnim, zIndex: 1000, elevation: 1000 }]}
+      pointerEvents={visible ? "auto" : "none"}
     >
       <Pressable style={StyleSheet.absoluteFill} onPress={onClose}>
         <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />
@@ -1259,7 +1290,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
         title={webView?.title}
         onClose={() => setWebView(null)}
       />
-    </Modal>
+    </Animated.View>
   );
 }
 

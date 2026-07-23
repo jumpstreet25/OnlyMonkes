@@ -16,12 +16,14 @@
  *   </GlassModal>
  */
 
-import React from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
-  Modal,
   View,
   Pressable,
   StyleSheet,
+  Animated,
+  BackHandler,
+  Dimensions,
   type ViewStyle,
 } from "react-native";
 import { BlurView } from "expo-blur";
@@ -54,13 +56,52 @@ export function GlassModal({
   animationType = "fade",
   glassBg,
 }: GlassModalProps) {
+  // 2026-07-23: replaces RN's <Modal> — Android implements Modal as a
+  // SEPARATE native Dialog window from the Activity, which BlurView (below)
+  // can't see across to actually blur the real content behind it (confirmed
+  // on-device: no visible blur, just a flat tint). Rendering directly in the
+  // component tree instead keeps this in the same window as everything
+  // else, matching how GlassBottomSheet already avoids this exact problem.
+  // This is the shared wrapper for most of the app's modals, so this one
+  // fix covers all of them at once.
+  const [shouldRender, setShouldRender] = useState(visible);
+  const progress = useRef(new Animated.Value(visible ? 1 : 0)).current;
+  const duration = animationType === "none" ? 0 : 220;
+
+  useEffect(() => {
+    if (visible) {
+      setShouldRender(true);
+      Animated.timing(progress, { toValue: 1, duration, useNativeDriver: true }).start();
+    } else {
+      Animated.timing(progress, { toValue: 0, duration, useNativeDriver: true }).start(() => {
+        setShouldRender(false);
+      });
+    }
+  }, [visible]);
+
+  useEffect(() => {
+    if (!visible) return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      onClose();
+      return true;
+    });
+    return () => sub.remove();
+  }, [visible, onClose]);
+
+  if (!shouldRender) return null;
+
+  const screenHeight = Dimensions.get("window").height;
+  const animatedStyle =
+    animationType === "slide"
+      ? { transform: [{ translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [screenHeight, 0] }) }] }
+      : animationType === "fade"
+        ? { opacity: progress }
+        : null; // "none" — no animated style at all
+
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType={animationType}
-      onRequestClose={onClose}
-      statusBarTranslucent
+    <Animated.View
+      style={[StyleSheet.absoluteFill, { zIndex: 1000, elevation: 1000 }, animatedStyle]}
+      pointerEvents={visible ? "auto" : "none"}
     >
       <View style={styles.root}>
         {/* Blurred backdrop */}
@@ -100,7 +141,7 @@ export function GlassModal({
           {children}
         </View>
       </View>
-    </Modal>
+    </Animated.View>
   );
 }
 
