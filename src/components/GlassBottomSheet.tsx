@@ -121,6 +121,12 @@ export function GlassBottomSheet({
       handleIndicatorStyle={styles.handle}
       style={styles.sheet}
     >
+      {/* 2026-07-24: the sheet's own BlurView — the backdrop one (above, in
+          renderBackdrop) only ever blurred the area behind the WHOLE sheet,
+          never the sheet's own (previously opaque, via backgroundStyle's
+          GLASS_BG) fill. GLASS_BG is now translucent enough for this to
+          actually show through. */}
+      <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />
       {/* Inner gradient — matches GlassModal */}
       <LinearGradient
         colors={GLASS_GRADIENT_COLORS}

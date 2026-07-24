@@ -173,7 +173,9 @@ export default function DAppChatScreen({ dappId }: DAppChatScreenProps) {
   return (
     <KeyboardAvoidingView
       style={[styles.container, { paddingTop: insets.top }]}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      // 2026-07-24: see ChatScreen.tsx for why "height" is wrong on Android
+      // here — double-compensates with windowSoftInputMode="adjustResize".
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
       keyboardVerticalOffset={0}
     >
       {/* Header */}

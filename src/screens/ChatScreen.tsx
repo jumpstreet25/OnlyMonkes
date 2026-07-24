@@ -26,6 +26,7 @@ import {
   Pressable,
   ActivityIndicator,
   KeyboardAvoidingView,
+  Keyboard,
   Platform,
   TextInput,
   Alert,
@@ -41,6 +42,8 @@ import type { FlatList as FlashListRef } from "react-native";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { OnboardingChecklist, markOnboardingStep } from "@/components/OnboardingChecklist";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { BlurView } from "expo-blur";
+import { getBlurProps } from "@/lib/glassTheme";
 import { useAppStore } from "@/store/appStore";
 import { useChatStore } from "@/store/chatStore";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -112,7 +115,7 @@ import type { ChatMessage, ReactionEmoji } from "@/types";
 import type { TipAmount } from "@/lib/constants";
 
 // ── Extracted sub-components ────────────────────────────────────────────────
-import { ChatHeader } from "@/components/ChatHeader";
+import { ChatHeader, CHAT_HEADER_HEIGHT } from "@/components/ChatHeader";
 import { ChatModals } from "@/components/ChatModals";
 import { ChatMessageList } from "@/components/ChatMessageList";
 
@@ -203,6 +206,33 @@ export default function ChatScreen() {
   const [pfpPickerOpen, setPfpPickerOpen] = useState(false);
   const [pfpImagePickerOpen, setPfpImagePickerOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  // 2026-07-24: measured height of the absolute-positioned bottom toolbar
+  // (ChatInput + support banner combined) — varies with keyboard state,
+  // reply banner, slash/mention suggestions. Fed to ChatMessageList as
+  // scroll-content bottom padding so messages can scroll fully clear of
+  // it while the list itself stays full-bleed behind the glass overlay.
+  const [bottomBarHeight, setBottomBarHeight] = useState(0);
+  // 2026-07-24: explicit keyboard height, since the bottom toolbar is now
+  // position:absolute (bottom:0 no longer reflows with it the way a normal
+  // flex child would). Neither KeyboardAvoidingView's "height" behavior nor
+  // windowSoftInputMode="adjustResize" alone reliably repositions an
+  // absolutely-positioned child under edge-to-edge/immersive mode — found
+  // live: the toolbar was rendering fully hidden behind the keyboard,
+  // typed text invisible. Tracking real IME height directly and offsetting
+  // `bottom` by it is the robust fix regardless of what adjustResize does.
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  useEffect(() => {
+    const showSub = Keyboard.addListener("keyboardDidShow", (e) => {
+      setKeyboardHeight(e.endCoordinates?.height ?? 0);
+    });
+    const hideSub = Keyboard.addListener("keyboardDidHide", () => {
+      setKeyboardHeight(0);
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
   const [profileTarget, setProfileTarget] = useState<ProfileTarget | null>(null);
   const [refreshingChat, setRefreshingChat] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
@@ -1201,27 +1231,46 @@ export default function ChatScreen() {
     <ErrorBoundary fallbackMessage="Chat hit an error. Tap below to reload.">
       <KeyboardAvoidingView
         style={[styles.container, { backgroundColor: themeBg }]}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        // 2026-07-24: "height" on Android double-compensates with the
+        // Activity's own windowSoftInputMode="adjustResize" (AndroidManifest)
+        // — both resize the container for the keyboard independently, and
+        // when the keyboard closes the two resizes don't always revert in
+        // sync, leaving phantom reserved space at the bottom (looked like
+        // the bottom bar "riding up" after any keyboard interaction).
+        // adjustResize alone is sufficient; matches ThreadScreen's already-
+        // correct pattern.
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
         keyboardVerticalOffset={0}
       >
         {/* Chat World background (renders behind everything when equipped) */}
         <WorldLayer active={!drawerOpen} />
 
-        {/* Header */}
-        <ChatHeader
-          themeSurface={themeSurface}
-          themeBorder={themeBorder}
-          bananaBalance={bananaBalance}
-          totalDmUnread={totalDmUnread}
-          communityBadges={communityBadges}
-          isGroupMember={isGroupMember}
-          onOpenDrawer={() => setDrawerOpen(true)}
-          onDmNavigation={() => {
-            useAppStore.getState().clearCommunityBadge('dms');
-            router.push("/dms" as any);
-          }}
-        />
+        {/* Header — 2026-07-24: absolute overlay (was a normal flex sibling
+            taking its own row of layout space) so the message list below
+            can extend full-bleed behind it, letting the glass/blur actually
+            show real scrolled content instead of blurring nothing. */}
+        <View style={{ position: "absolute", top: 0, left: 0, right: 0, zIndex: 100, elevation: 100 }}>
+          <ChatHeader
+            themeSurface={themeSurface}
+            themeBorder={themeBorder}
+            bananaBalance={bananaBalance}
+            totalDmUnread={totalDmUnread}
+            communityBadges={communityBadges}
+            isGroupMember={isGroupMember}
+            onOpenDrawer={() => setDrawerOpen(true)}
+            onDmNavigation={() => {
+              useAppStore.getState().clearCommunityBadge('dms');
+              router.push("/dms" as any);
+            }}
+          />
+        </View>
 
+        {/* 2026-07-24: everything below is normal flex flow again, just
+            pushed down by CHAT_HEADER_HEIGHT since the header itself no
+            longer takes flex space (it's the absolute overlay above).
+            box-none so empty space here (e.g. no banners active) doesn't
+            block scroll/taps on the full-bleed message list underneath. */}
+        <View style={{ flex: 1, marginTop: CHAT_HEADER_HEIGHT, zIndex: 50 }} pointerEvents="box-none">
         {/* Offline indicator */}
         {isOffline && (
           <View style={{ backgroundColor: '#EF4444', paddingVertical: 6, alignItems: 'center' }}>
@@ -1403,41 +1452,62 @@ export default function ChatScreen() {
             </Text>
           </View>
         )}
+        </View>
 
-        {/* Messages */}
+        {/* Messages — 2026-07-24: full-bleed absolute layer, BEHIND the
+            header/footer overlays in z-order (default zIndex, both of
+            those are 100) so scrolled content can actually pass behind
+            their glass/blur instead of the blur having nothing real to
+            sample. topInset/bottomInset pad the scroll content so messages
+            still rest visually clear of the header/toolbar at wherever the
+            list is currently scrolled to. */}
         {isGroupMember && (
-          <ChatMessageList
-            messages={messages}
-            reactionVersion={reactionVersion}
-            myAddress={myAddress}
-            isGroupAdmin={isGroupAdmin}
-            isLoadingHistory={isLoadingHistory}
-            refreshingChat={refreshingChat}
-            initialMsgIdsRef={initialMsgIdsRef}
-            flatListRef={flatListRef}
-            handleReact={handleReact}
-            setReplyingTo={setReplyingTo}
-            handlePressUser={handlePressUser}
-            handleTip={handleTip}
-            handleStickerReact={handleStickerReact}
-            setLightboxUrl={setLightboxUrl}
-            setVideoLightboxUrl={setVideoLightboxUrl}
-            setChartSymbol={setChartSymbol}
-            handleEditMessage={handleEditMessage}
-            handleDelete={handleDelete}
-            handlePin={isGroupAdmin ? handlePin : undefined}
-            handleThread={handleThread}
-            onOpenActions={setActionSheetTarget}
-            handleRefreshChat={handleRefreshChat}
-            loadOlderMessages={loadOlderMessages}
-            setShowScrollFab={setShowScrollFab}
-            setUnreadWhileScrolled={setUnreadWhileScrolled}
-            isNearBottomRef={isNearBottomRef}
-          />
+          <View style={StyleSheet.absoluteFill}>
+            <ChatMessageList
+              messages={messages}
+              reactionVersion={reactionVersion}
+              myAddress={myAddress}
+              isGroupAdmin={isGroupAdmin}
+              isLoadingHistory={isLoadingHistory}
+              refreshingChat={refreshingChat}
+              initialMsgIdsRef={initialMsgIdsRef}
+              flatListRef={flatListRef}
+              handleReact={handleReact}
+              setReplyingTo={setReplyingTo}
+              handlePressUser={handlePressUser}
+              handleTip={handleTip}
+              handleStickerReact={handleStickerReact}
+              setLightboxUrl={setLightboxUrl}
+              setVideoLightboxUrl={setVideoLightboxUrl}
+              setChartSymbol={setChartSymbol}
+              handleEditMessage={handleEditMessage}
+              handleDelete={handleDelete}
+              handlePin={isGroupAdmin ? handlePin : undefined}
+              handleThread={handleThread}
+              onOpenActions={setActionSheetTarget}
+              handleRefreshChat={handleRefreshChat}
+              loadOlderMessages={loadOlderMessages}
+              setShowScrollFab={setShowScrollFab}
+              setUnreadWhileScrolled={setUnreadWhileScrolled}
+              isNearBottomRef={isNearBottomRef}
+              topInset={CHAT_HEADER_HEIGHT}
+              bottomInset={bottomBarHeight + keyboardHeight}
+            />
+          </View>
         )}
 
-        {/* Input */}
-        {isGroupMember && <ChatInput
+        {/* Bottom toolbar — 2026-07-24: absolute overlay (was normal flex
+            siblings taking their own space at the bottom of the column) so
+            the message list above can extend full-bleed behind it. Height
+            is dynamic (reply banner, slash suggestions, keyboard), so it's
+            measured via onLayout and fed back to ChatMessageList as scroll
+            bottom padding. */}
+        {isGroupMember && (
+        <View
+          style={{ position: "absolute", bottom: keyboardHeight, left: 0, right: 0, zIndex: 100, elevation: 100 }}
+          onLayout={(e) => setBottomBarHeight(e.nativeEvent.layout.height)}
+        >
+        <ChatInput
           value={inputText}
           onChangeText={setInputText}
           onSend={handleSend}
@@ -1452,7 +1522,7 @@ export default function ChatScreen() {
           typingUsers={typingUsers}
           onLiveVideo={!activeVideoRoom ? handleStartVideoCall : undefined}
           onAvatarRoom={!activeAvatarRoom ? handleStartAvatarRoom : undefined}
-        />}
+        />
 
         {/* Support banner — 3-column: [SKR] [Support] [Floor] */}
         {/* Match the chat header / input bar bg when a Chat World is equipped
@@ -1460,7 +1530,7 @@ export default function ChatScreen() {
             Bottom safe-area padding lives INSIDE the bar so its bg extends
             edge-to-edge behind the Android nav bar / iOS home indicator —
             no black themeBg gap below. */}
-        {isGroupMember && (() => {
+        {(() => {
           // Per-world tappable accent (v29). When no PFP theme override,
           // tappable chrome (SKR price btn, Floor btn, Help Support text)
           // adopts the world's accent — warm honey gold for Banana Grove,
@@ -1478,8 +1548,16 @@ export default function ChatScreen() {
           <View style={[
             styles.supportBanner,
             { borderTopColor: themeBorder, paddingBottom: 4 + insets.bottom },
-            worldId ? { backgroundColor: getWorldBarTint(worldId) } : null,
           ]}>
+            {/* 2026-07-24: always-on glass — blurs the message list
+                scrolling behind this bar, world-equipped or not. Was
+                fully transparent (no world) or an opaque world tint with
+                no blur behind it at all. */}
+            <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} pointerEvents="none" />
+            <View
+              style={[StyleSheet.absoluteFill, { backgroundColor: worldId ? getWorldBarTint(worldId) : "rgba(18, 18, 26, 0.19)" }]}
+              pointerEvents="none"
+            />
             <View style={{ minWidth: 70, alignItems: 'flex-start' }}>
               {skrPrice && (
                 <Pressable
@@ -1513,12 +1591,14 @@ export default function ChatScreen() {
           </View>
           );
         })()}
+        </View>
+        )}
 
         {/* Non-members don't render the support banner (which carries the
             bottom safe-area padding for group members), so add a transparent
             fallback spacer here. World layer still shows through. */}
         {!isGroupMember && insets.bottom > 0 && (
-          <View pointerEvents="none" style={{ height: insets.bottom }} />
+          <View pointerEvents="none" style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: insets.bottom }} />
         )}
         <EdgePullDetector
           onTrigger={() => setDrawerOpen(true)}

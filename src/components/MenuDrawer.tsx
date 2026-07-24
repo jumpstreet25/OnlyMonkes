@@ -496,6 +496,12 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
       </Pressable>
 
       <View style={[styles.popup, { paddingTop: insets.top + 12, borderColor: themeBorder }, worldId ? null : { backgroundColor: drawerBg }]}>
+        {/* 2026-07-24: card's own BlurView, matching GlassModal/GlassCard —
+            the backdrop BlurView (above, in the Pressable) only ever blurred
+            the dismiss-tap area, never this popup's own (previously 0.96-
+            opaque) fill. No-op when a world is equipped — WorldLayer below
+            renders opaque on top of it by design (see the comment there). */}
+        <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />
         {/* (v37 2026-05-09) When a world is equipped, render the WorldLayer
             (paused) inside the drawer so its background — gradient,
             silhouette skyline, dappled-light orbs — shows through behind
@@ -1453,7 +1459,9 @@ const styles = StyleSheet.create({
     right: 0,
     top: 0,
     bottom: 0,
-    backgroundColor: "rgba(8, 8, 16, 0.96)",
+    // 2026-07-24: 0.96 -> 0.55, matching GLASS_BG — was opaque enough to
+    // fully hide the BlurView now rendered as this popup's first child.
+    backgroundColor: "rgba(8, 8, 16, 0.55)",
     borderRadius: 0,
     marginHorizontal: 0,
     borderWidth: 0,

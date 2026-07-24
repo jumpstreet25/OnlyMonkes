@@ -227,10 +227,22 @@ export async function getOrCreateGlobalChat(
   return { group: group as unknown as XmtpGroup, isNewAdmin: true };
 }
 
+/**
+ * Add (or re-add) an inbox to a group, refreshing its installation set.
+ * Inbox IDs are wallet-derived, so a reinstall or Cross-Device Recovery
+ * regenerates the SAME inbox ID with a brand-new local installation.
+ * addMembers() on an already-member inbox silently no-ops instead of
+ * granting the new installation access — removing first forces a fresh
+ * add-commit that picks up the current installation set. Mirrors the
+ * bot-side fix in Monke_Eliza's xmtpOnlyMonkes.ts (addOrRefreshMember).
+ */
 export async function addMemberToGroup(
   group: XmtpGroup,
   inboxId: string
 ): Promise<void> {
+  try {
+    await (group as any).removeMembers?.([inboxId]);
+  } catch { /* not a member yet — expected for genuinely new users */ }
   await (group as any).addMembers([inboxId]);
 }
 

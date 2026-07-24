@@ -125,6 +125,11 @@ export function GlassModal({
             glassBg ? { backgroundColor: glassBg } : null,
           ]}
         >
+          {/* 2026-07-24: the card's own BlurView — the backdrop one above
+              only ever blurred the dismiss-tap area around this card, never
+              the card's own (previously opaque) fill. This is what actually
+              makes the visible card read as glass. */}
+          <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />
           {/* Inner gradient — top lighter, bottom darker */}
           <LinearGradient
             colors={GLASS_GRADIENT_COLORS}
@@ -158,6 +163,7 @@ export function GlassCard({
 }) {
   return (
     <View style={[styles.card, styles.cardCenter, style]}>
+      <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />
       <LinearGradient
         colors={["rgba(248, 248, 255, 0.06)", "rgba(0, 0, 0, 0.12)"]}
         start={{ x: 0.5, y: 0 }}

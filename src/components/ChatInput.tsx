@@ -22,9 +22,11 @@ import {
   Modal,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import { BlurView } from "expo-blur";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
 import { THEME, FONTS, MAX_MESSAGE_LENGTH, getWorldBarTint, getWorldAccent } from "@/lib/constants";
+import { getBlurProps } from "@/lib/glassTheme";
 import { useThemeColor } from "@/lib/shopTheme";
 import { shortenAddress } from "@/lib/nftVerification";
 import { getCachedProfile, searchUsersByPrefix } from "@/lib/userProfile";
@@ -211,7 +213,6 @@ export const ChatInput = memo(function ChatInput({
   const [livePickerOpen, setLivePickerOpen] = useState(false);
 
   // Theme overrides for Banana Shop Tier 4 themes
-  const themeSurface = useThemeColor('surface');
   const themeBorder = useThemeColor('border');
 
   // Toolbar label accent (CAM / LIVE / GIF). Priority:
@@ -226,9 +227,10 @@ export const ChatInput = memo(function ChatInput({
     : getWorldAccent(shopStyles?.worldId as string | undefined);
   // World-aware transparency: when a Chat World is equipped, drop the input
   // bar background so falling bananas / candles can be seen piling up behind
-  // it. Returns to opaque theme surface when no world is set.
+  // it. 2026-07-24: always-on glass — was opaque themeSurface when no world
+  // is set, which fully hid the BlurView now rendered behind this bar.
   const worldId = shopStyles?.worldId as string | undefined;
-  const inputBarBg = worldId ? getWorldBarTint(worldId) : themeSurface;
+  const inputBarBg = worldId ? getWorldBarTint(worldId) : "rgba(18, 18, 26, 0.19)";
 
   const slashSuggestions = useMemo(() => getSlashSuggestions(value, isDmWithBot), [value, isDmWithBot]);
 
@@ -302,7 +304,11 @@ export const ChatInput = memo(function ChatInput({
   const isNearLimit = charsLeft <= 50;
 
   return (
-    <View style={[styles.container, { backgroundColor: inputBarBg, borderTopColor: themeBorder }]}>
+    <View style={[styles.container, { borderTopColor: themeBorder }]}>
+      {/* 2026-07-24: always-on glass — blurs the message list scrolling
+          behind the bottom toolbar, world-equipped or not. */}
+      <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} pointerEvents="none" />
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: inputBarBg }]} pointerEvents="none" />
       {/* Slash command suggestions */}
       {slashSuggestions.length > 0 && (
         <View style={styles.mentionList}>
@@ -539,7 +545,10 @@ export const ChatInput = memo(function ChatInput({
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: THEME.surface,
+    // 2026-07-24: transparent — was THEME.surface (opaque), which sat
+    // behind the BlurView and blocked it from sampling real content. The
+    // actual visible tint is the separate inputBarBg View rendered on top
+    // of the blur.
     // No borderTop — separator removed per design pass 2026-05-06.
     // 2026-07-23: 8 -> 4 -> 2, a bar-wide compaction pass to reclaim
     // chat viewport height post-edge-to-edge. Tap targets (toolbarBtn
