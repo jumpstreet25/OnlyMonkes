@@ -151,6 +151,38 @@ export function useDm(peerInboxId: string) {
             // owns the conversation while DM screen is mounted, and the
             // messages are filtered by decodeMessage → would otherwise be
             // silently dropped. innerContent strips the MSG:<name>: envelope.
+            if (innerContent.startsWith('IMAGE_CAPTION_RESPONSE:')) {
+              try {
+                const { BOT_INBOX_IDS } = await import('@/lib/constants');
+                const sender = raw.senderInboxId ?? '';
+                if (!BOT_INBOX_IDS.includes(sender)) return;
+                const rest = innerContent.slice('IMAGE_CAPTION_RESPONSE:'.length);
+                const sepIdx = rest.indexOf(':');
+                if (sepIdx <= 0) return;
+                const messageId = rest.slice(0, sepIdx);
+                const caption = rest.slice(sepIdx + 1);
+                if (!caption) return;
+                const { storeCaptionResponse } = await import('@/lib/imageCaption');
+                await storeCaptionResponse(messageId, caption);
+                const { usePhotoReviewStore } = await import('@/store/photoReviewStore');
+                usePhotoReviewStore.getState().setCaption(messageId, caption);
+              } catch { /* swallow */ }
+              return;
+            }
+
+            if (innerContent.startsWith('STREAK_CAPTION_RESPONSE:')) {
+              try {
+                const { BOT_INBOX_IDS } = await import('@/lib/constants');
+                const sender = raw.senderInboxId ?? '';
+                if (!BOT_INBOX_IDS.includes(sender)) return;
+                const caption = innerContent.slice('STREAK_CAPTION_RESPONSE:'.length);
+                if (!caption) return;
+                const { storeStreakCaptionResponse } = await import('@/lib/imageCaption');
+                await storeStreakCaptionResponse(caption);
+              } catch { /* swallow */ }
+              return;
+            }
+
             if (innerContent.startsWith('PORTFOLIO_RESPONSE:')) {
               try {
                 const { BOT_INBOX_IDS } = await import('@/lib/constants');

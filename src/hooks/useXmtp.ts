@@ -1680,6 +1680,45 @@ export function useXmtp() {
                 return;
               }
 
+              // IMAGE_CAPTION_RESPONSE: bot-generated (Ollama vision) photo
+              // caption, fired async when the photo was SENT — may well
+              // arrive minutes later while the user isn't on the bot's DM
+              // screen, so this global-stream branch is the common case for
+              // this one, not just the "just in case" fallback it is for
+              // TRADE_CLOSED/PORTFOLIO_RESPONSE above.
+              if (inner.startsWith('IMAGE_CAPTION_RESPONSE:')) {
+                try {
+                  const { BOT_INBOX_IDS } = await import('@/lib/constants');
+                  if (!BOT_INBOX_IDS.includes(senderInboxId)) return;
+                  const rest = inner.slice('IMAGE_CAPTION_RESPONSE:'.length);
+                  const sepIdx = rest.indexOf(':');
+                  if (sepIdx <= 0) return;
+                  const messageId = rest.slice(0, sepIdx);
+                  const caption = rest.slice(sepIdx + 1);
+                  if (!caption) return;
+                  const { storeCaptionResponse } = await import('@/lib/imageCaption');
+                  await storeCaptionResponse(messageId, caption);
+                  const { usePhotoReviewStore } = await import('@/store/photoReviewStore');
+                  usePhotoReviewStore.getState().setCaption(messageId, caption);
+                } catch { /* swallow */ }
+                return;
+              }
+
+              // STREAK_CAPTION_RESPONSE: bot-generated (Ollama) Banana
+              // Streak Day-7 tweet caption — same "may arrive while off the
+              // bot's DM screen" reasoning as IMAGE_CAPTION_RESPONSE above.
+              if (inner.startsWith('STREAK_CAPTION_RESPONSE:')) {
+                try {
+                  const { BOT_INBOX_IDS } = await import('@/lib/constants');
+                  if (!BOT_INBOX_IDS.includes(senderInboxId)) return;
+                  const caption = inner.slice('STREAK_CAPTION_RESPONSE:'.length);
+                  if (!caption) return;
+                  const { storeStreakCaptionResponse } = await import('@/lib/imageCaption');
+                  await storeStreakCaptionResponse(caption);
+                } catch { /* swallow */ }
+                return;
+              }
+
               // PORTFOLIO_RESPONSE: single composite payload from /portfolio.
               // This branch handles the case where the user is NOT on the
               // bot's DM screen when the response arrives (per-DM stream in

@@ -222,12 +222,32 @@ export default function ChatScreen() {
   const [editTarget, setEditTarget] = useState<ChatMessage | null>(null);
   const [editText, setEditText] = useState("");
   const [xShareImageUri, setXShareImageUri] = useState<string | null>(null);
+  const [xShareMessageId, setXShareMessageId] = useState<string | null>(null);
   const [skrPrice, setSkrPrice] = useState<string | null>(null);
   const [floorPrice, setFloorPrice] = useState<string | null>(null);
   const [pinnedMessages, setPinnedMessages] = useState<PinnedMessage[]>([]);
   const flatListRef = useRef<FlashListRef<ChatMessage>>(null);
   const initialMsgIdsRef = useRef<Set<string>>(new Set());
   const isNearBottomRef = useRef(true);
+  // Photo review — shown after capture, before send. Holds the pending
+  // photo's data until the user picks a caption (AI, their own, or none)
+  // and taps Send; see handleCamera/handlePhotoReviewSend below.
+  const [photoReviewVisible, setPhotoReviewVisible] = useState(false);
+  const [photoReviewRequestId, setPhotoReviewRequestId] = useState<string | null>(null);
+  const pendingPhotoRef = useRef<{ compressedUri: string; b64: string; dataUri: string } | null>(null);
+  // 2026-07-26: grey/frozen-screen bug on return from X-share. Launching
+  // the native share intent backgrounds the app; shareImageToX()'s promise
+  // resolves (dispatching the intent) almost immediately, well before the
+  // user actually returns, so the "Image saved" toast used to fire right
+  // then. RN JS timers pause while backgrounded, so that toast's own
+  // mount/dismiss animation can still be mid-flight exactly when the
+  // AppState 'active' handler below kicks off its heavy XMTP resync on
+  // resume — same "toast mounts while a heavy operation tears down/redraws"
+  // race as prior grey-screen fixes, just triggered by the OS AppState
+  // transition instead of an in-app Modal close. Fix: queue the toast text
+  // here instead of calling toast.success directly; the AppState handler
+  // fires it only after its own resync work has fully settled.
+  const pendingResumeToastRef = useRef<string | null>(null);
   // Synchronous double-tap guard for the send button. The React `isSending`
   // state is async — a fast tap-tap on Seeker can fire two onPress events
   // before the state commit, both passing the canSend gate. This ref blocks
@@ -377,6 +397,15 @@ export default function ChatScreen() {
       } catch {
         _streamHealth.foregroundReconnects++;
         initialize().catch(() => {});
+      }
+
+      // Flush any toast queued while backgrounded (e.g. X-share "Image
+      // saved") now that the resync above has settled — see
+      // pendingResumeToastRef's comment for why this can't just fire
+      // immediately from the code that queues it.
+      if (pendingResumeToastRef.current) {
+        toast.success(pendingResumeToastRef.current);
+        pendingResumeToastRef.current = null;
       }
 
       const now = Date.now();
@@ -776,6 +805,10 @@ export default function ChatScreen() {
   }, [send, myAddress, username, verifiedNft]);
 
   // ─── Camera capture ────────────────────────────────────────────────────────
+  // 2026-07-26: capture no longer auto-sends. Photo is held in
+  // pendingPhotoRef until PhotoReviewModal resolves with a caption
+  // decision (AI-generated, user-written, or none) — see
+  // handlePhotoReviewSend/Cancel below.
   const handleCamera = useCallback(async () => {
     try {
       const IP = await getImagePicker();
@@ -797,32 +830,89 @@ export default function ChatScreen() {
       const FS = await getFileSystem();
       const b64 = await FS.readAsStringAsync(compressedUri, { encoding: FS.EncodingType.Base64 });
       const dataUri = `data:image/jpeg;base64,${b64}`;
-      const content = `IMAGE:${dataUri}`;
-      const optimistic: ChatMessage = {
-        id: `opt-${Date.now()}`,
-        senderAddress: myAddress,
-        senderUsername: username ?? undefined,
-        senderNft: verifiedNft ?? undefined,
-        content,
-        sentAt: new Date(),
-        reactions: {} as ChatMessage["reactions"],
-        status: "sending",
-      };
-      useChatStore.getState().addMessage(optimistic);
-      setTimeout(() => flatListRef.current?.scrollToOffset({ offset: 0, animated: true }), 50);
-      try {
-        await send(content);
-        useChatStore.getState().updateMessageStatus(optimistic.id, "sent");
-        appendCachedMessage("main_chat", { ...optimistic, status: "sent" }).catch(() => {});
-        setXShareImageUri(dataUri);
-      } catch (err: any) {
-        Alert.alert("Camera error", err?.message ?? "Could not send photo.");
-        useChatStore.getState().updateMessageStatus(optimistic.id, "failed");
-      }
+      pendingPhotoRef.current = { compressedUri, b64, dataUri };
+      const requestId = `review-${Date.now()}`;
+      setPhotoReviewRequestId(requestId);
+      setPhotoReviewVisible(true);
+      // Fire the caption request as early as possible — same "fire early,
+      // ready by the time it's needed" pattern as before, just now feeding
+      // the review modal live (via photoReviewStore) instead of a silent
+      // background cache the user never sees until Share to X.
+      import("@/lib/imageCaption").then(({ requestImageCaption }) => {
+        requestImageCaption(requestId, b64).catch(() => {});
+      });
     } catch (err: any) {
       Alert.alert("Camera error", err?.message ?? "Could not open camera.");
     }
+  }, []);
+
+  // ─── Photo send (after review modal resolves) ──────────────────────────────
+  const sendPhotoWithCaption = useCallback(async (dataUri: string, b64: string, caption: string) => {
+    const content = `IMAGE:${dataUri}`;
+    const optimistic: ChatMessage = {
+      id: `opt-${Date.now()}`,
+      senderAddress: myAddress,
+      senderUsername: username ?? undefined,
+      senderNft: verifiedNft ?? undefined,
+      content,
+      sentAt: new Date(),
+      reactions: {} as ChatMessage["reactions"],
+      status: "sending",
+    };
+    useChatStore.getState().addMessage(optimistic);
+    setTimeout(() => flatListRef.current?.scrollToOffset({ offset: 0, animated: true }), 50);
+    try {
+      await send(content);
+      useChatStore.getState().updateMessageStatus(optimistic.id, "sent");
+      appendCachedMessage("main_chat", { ...optimistic, status: "sent" }).catch(() => {});
+      setXShareImageUri(dataUri);
+      setXShareMessageId(optimistic.id);
+      if (caption) {
+        // Cache under the REAL sent message's id — handleShareToX looks
+        // caption up by xShareMessageId, regardless of whether it came
+        // from the bot or was hand-typed in the review modal.
+        const { storeCaptionResponse } = await import("@/lib/imageCaption");
+        await storeCaptionResponse(optimistic.id, caption);
+        // Same Monke-voiced caption shown in-chat as a follow-up message —
+        // Share to X appends @xOnlyMonkes on top of this, never the other
+        // way around (see handleShareToX).
+        const capMsg: ChatMessage = {
+          id: `opt-${Date.now()}-cap`,
+          senderAddress: myAddress,
+          senderUsername: username ?? undefined,
+          senderNft: verifiedNft ?? undefined,
+          content: caption,
+          sentAt: new Date(),
+          reactions: {} as ChatMessage["reactions"],
+          status: "sending",
+        };
+        useChatStore.getState().addMessage(capMsg);
+        try {
+          await send(caption);
+          useChatStore.getState().updateMessageStatus(capMsg.id, "sent");
+          appendCachedMessage("main_chat", { ...capMsg, status: "sent" }).catch(() => {});
+        } catch {
+          useChatStore.getState().updateMessageStatus(capMsg.id, "failed");
+        }
+      }
+    } catch (err: any) {
+      Alert.alert("Camera error", err?.message ?? "Could not send photo.");
+      useChatStore.getState().updateMessageStatus(optimistic.id, "failed");
+    }
   }, [send, myAddress, username, verifiedNft]);
+
+  const handlePhotoReviewSend = useCallback(async (caption: string) => {
+    const pending = pendingPhotoRef.current;
+    setPhotoReviewVisible(false);
+    pendingPhotoRef.current = null;
+    if (!pending) return;
+    await sendPhotoWithCaption(pending.dataUri, pending.b64, caption);
+  }, [sendPhotoWithCaption]);
+
+  const handlePhotoReviewCancel = useCallback(() => {
+    setPhotoReviewVisible(false);
+    pendingPhotoRef.current = null;
+  }, []);
 
   // ─── File picker (RemoteAttachment) ──────────────────────────────────────────
   const handleFilePicker = useCallback(async () => {
@@ -901,25 +991,60 @@ export default function ChatScreen() {
 
   // ─── X / Twitter share for own images ─────────────────────────────────────────
   // Twitter's web intent (https://x.com/intent/tweet?text=…) is text-only by
-  // design — there's no image param. To carry both image and text we use the
-  // OS share sheet via Share.share({url, message}); the user picks X (or any
-  // other app) from the sheet and the image attaches naturally.
-  // 2026-05-08: replaced openURL flow that lost the image.
+  // design — there's no image param. shareImageToX() (shareToX.ts) saves the
+  // image to the gallery + attaches it via react-native-share's shareSingle()
+  // targeting the X app directly, falling back to clipboard + web-intent if
+  // that's not available. User's only remaining step is tapping X's
+  // image-picker icon on the fallback path.
   const handleShareToX = useCallback(async () => {
-    const caption = "I snapped this using @xOnlyMonkes via Solana Mobile, The Future is Monke! 🐒";
+    const fallbackCaption = "I snapped this using @xOnlyMonkes via Solana Mobile, The Future is Monke! 🐒";
     const imageUri = xShareImageUri;
+    const messageId = xShareMessageId;
     setXShareImageUri(null);
-    if (!imageUri) {
-      // Fallback: text-only intent if somehow no image is available.
-      Linking.openURL(`https://x.com/intent/tweet?text=${encodeURIComponent(caption)}`).catch(() => {});
-      return;
+    setXShareMessageId(null);
+    // Bot-generated (Ollama vision) caption, if it arrived in time — the
+    // SAME Monke-voiced text already shown in-chat as a follow-up message
+    // (see sendPhotoWithCaption). @xOnlyMonkes is appended HERE, for the X
+    // post specifically — never stored back into the chat message itself.
+    // Falls back to the generic (already-tagged) caption if nothing was
+    // cached (not ready yet, or generation failed).
+    let caption = fallbackCaption;
+    if (messageId) {
+      try {
+        const { getCachedCaption } = await import("@/lib/imageCaption");
+        const cached = await getCachedCaption(messageId);
+        if (cached) caption = `${cached} @xOnlyMonkes`;
+      } catch { /* fall back to generic */ }
     }
-    try {
-      await Share.share({ url: imageUri, message: caption });
-    } catch {
-      /* user dismissed share sheet — non-fatal */
-    }
-  }, [xShareImageUri, setXShareImageUri]);
+    // Defer launching the native share/intent until after this Modal's
+    // fade-out finishes — starting another native Activity while the
+    // Modal's Android Dialog window is mid-teardown left a stuck grey
+    // screen in the past (same class of race fixed for reaction toasts).
+    setTimeout(async () => {
+      if (!imageUri) {
+        Linking.openURL(`https://x.com/intent/tweet?text=${encodeURIComponent(caption)}`).catch(() => {});
+        return;
+      }
+      try {
+        const { shareImageToX } = await import("@/lib/shareToX");
+        const { saved } = await shareImageToX(imageUri, caption);
+        // Queued, not shown directly — see pendingResumeToastRef's comment.
+        // Fallback timer covers the (unlikely) case AppState 'active' never
+        // fires to flush it, so the toast still shows eventually either way.
+        if (saved) {
+          pendingResumeToastRef.current = 'Image saved — tap the image icon in X to attach it 📸';
+          setTimeout(() => {
+            if (pendingResumeToastRef.current) {
+              toast.success(pendingResumeToastRef.current);
+              pendingResumeToastRef.current = null;
+            }
+          }, 4000);
+        }
+      } catch {
+        /* non-fatal */
+      }
+    }, 350);
+  }, [xShareImageUri, xShareMessageId, setXShareImageUri]);
 
   // ─── Profile popup ────────────────────────────────────────────────────────────
   const handlePressUser = useCallback((target: ProfileTarget) => {
@@ -1529,6 +1654,11 @@ export default function ChatScreen() {
         xShareImageUri={xShareImageUri}
         setXShareImageUri={setXShareImageUri}
         handleShareToX={handleShareToX}
+        photoReviewVisible={photoReviewVisible}
+        photoReviewImageUri={pendingPhotoRef.current?.compressedUri ?? null}
+        photoReviewRequestId={photoReviewRequestId}
+        handlePhotoReviewSend={handlePhotoReviewSend}
+        handlePhotoReviewCancel={handlePhotoReviewCancel}
       />
     </ErrorBoundary>
   );

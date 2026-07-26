@@ -29,6 +29,7 @@ import ImageLightbox from "@/components/ImageLightbox";
 import { ChartModal } from "@/components/ChartModal";
 import { UserProfileModal, type ProfileTarget } from "@/components/UserProfileModal";
 import { VideoCameraModal } from "@/components/VideoCameraModal";
+import { PhotoReviewModal } from "@/components/PhotoReviewModal";
 import { useAppStore } from "@/store/appStore";
 import { addBananas } from "@/lib/bananaRewards";
 import { saveSelectedNftMint } from "@/lib/userProfile";
@@ -170,6 +171,13 @@ export interface ChatModalsProps {
   xShareImageUri: string | null;
   setXShareImageUri: (v: string | null) => void;
   handleShareToX: () => void;
+
+  // Photo review (caption picker before send)
+  photoReviewVisible: boolean;
+  photoReviewImageUri: string | null;
+  photoReviewRequestId: string | null;
+  handlePhotoReviewSend: (caption: string) => void;
+  handlePhotoReviewCancel: () => void;
 }
 
 export function ChatModals(props: ChatModalsProps) {
@@ -196,6 +204,8 @@ export function ChatModals(props: ChatModalsProps) {
     videoLightboxUrl, setVideoLightboxUrl, handleDownloadVideo,
     editTarget, setEditTarget, editText, setEditText, handleEditSubmit,
     xShareImageUri, setXShareImageUri, handleShareToX,
+    photoReviewVisible, photoReviewImageUri, photoReviewRequestId,
+    handlePhotoReviewSend, handlePhotoReviewCancel,
   } = props;
 
   return (
@@ -473,6 +483,14 @@ export function ChatModals(props: ChatModalsProps) {
           </Pressable>
         </Pressable>
       </Modal>
+
+      <PhotoReviewModal
+        visible={photoReviewVisible}
+        imageUri={photoReviewImageUri}
+        requestId={photoReviewRequestId}
+        onSend={handlePhotoReviewSend}
+        onCancel={handlePhotoReviewCancel}
+      />
     </>
   );
 }
