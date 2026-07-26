@@ -32,6 +32,7 @@ import ImageLightbox from "@/components/ImageLightbox";
 import { ChartModal } from "@/components/ChartModal";
 import { UserProfileModal, type ProfileTarget } from "@/components/UserProfileModal";
 import { VideoCameraModal } from "@/components/VideoCameraModal";
+import { PhotoReviewModal } from "@/components/PhotoReviewModal";
 import { GlassBottomSheet } from "@/components/GlassBottomSheet";
 import { MessageActionSheet } from "@/components/MessageActionSheet";
 import { useAppStore } from "@/store/appStore";
@@ -178,6 +179,13 @@ export interface ChatModalsProps {
   setXShareImageUri: (v: string | null) => void;
   handleShareToX: () => void;
 
+  // Photo review (caption picker before send)
+  photoReviewVisible: boolean;
+  photoReviewImageUri: string | null;
+  photoReviewRequestId: string | null;
+  handlePhotoReviewSend: (caption: string) => void;
+  handlePhotoReviewCancel: () => void;
+
   // Message action sheet (react/reply/copy/edit/delete/pin/thread/sticker)
   actionSheetTarget: ChatMessage | null;
   setActionSheetTarget: (v: ChatMessage | null) => void;
@@ -215,6 +223,8 @@ export function ChatModals(props: ChatModalsProps) {
     videoLightboxUrl, setVideoLightboxUrl, handleDownloadVideo,
     editTarget, setEditTarget, editText, setEditText, handleEditSubmit,
     xShareImageUri, setXShareImageUri, handleShareToX,
+    photoReviewVisible, photoReviewImageUri, photoReviewRequestId,
+    handlePhotoReviewSend, handlePhotoReviewCancel,
     actionSheetTarget, setActionSheetTarget, handleReact, setReplyingTo,
     handleEditMessage, handleDelete, handlePin, handleThread, handleStickerReact,
   } = props;
@@ -513,6 +523,14 @@ export function ChatModals(props: ChatModalsProps) {
           </Pressable>
         </View>
       </GlassBottomSheet>
+
+      <PhotoReviewModal
+        visible={photoReviewVisible}
+        imageUri={photoReviewImageUri}
+        requestId={photoReviewRequestId}
+        onSend={handlePhotoReviewSend}
+        onCancel={handlePhotoReviewCancel}
+      />
 
       <MessageActionSheet
         target={actionSheetTarget}

@@ -189,6 +189,8 @@ export function useDm(peerInboxId: string) {
                 if (!caption) return;
                 const { storeCaptionResponse } = await import('@/lib/imageCaption');
                 await storeCaptionResponse(messageId, caption);
+                const { usePhotoReviewStore } = await import('@/store/photoReviewStore');
+                usePhotoReviewStore.getState().setCaption(messageId, caption);
               } catch { /* swallow */ }
               return;
             }
