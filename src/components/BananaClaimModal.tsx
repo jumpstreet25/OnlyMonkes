@@ -20,6 +20,7 @@ import { GlassModal } from "@/components/GlassModal";
 import { THEME, FONTS } from "@/lib/constants";
 import { ConfettiView } from "@/components/ConfettiView";
 import { shareDay7Bonus } from "@/lib/shareToX";
+import { requestStreakCaption, getAndClearStreakCaption } from "@/lib/imageCaption";
 import type { ClaimResult } from "@/lib/bananaRewards";
 
 interface BananaClaimModalProps {
@@ -39,6 +40,13 @@ export function BananaClaimModal({ visible, claim, onDismiss }: BananaClaimModal
       scaleAnim.setValue(0);
       bananaAnim.setValue(0);
       countAnim.setValue(0);
+
+      // Fire the AI-caption request as early as possible (as soon as the
+      // bonus is shown, not when the user later taps Share to X) so the
+      // bot's local Ollama generation has time to land before it's needed.
+      if (claim.isBonus) {
+        void requestStreakCaption(claim.balance, claim.state.totalCycles);
+      }
 
       // Sequence: popup scales in → banana bounces → count fades in
       Animated.sequence([
@@ -76,8 +84,9 @@ export function BananaClaimModal({ visible, claim, onDismiss }: BananaClaimModal
           { text: "Not now", style: "cancel", onPress: onDismiss },
           {
             text: "Share to X",
-            onPress: () => {
-              shareDay7Bonus(claim.balance, claim.state.totalCycles);
+            onPress: async () => {
+              const aiCaption = await getAndClearStreakCaption();
+              shareDay7Bonus(claim.balance, claim.state.totalCycles, aiCaption);
               onDismiss();
             },
           },

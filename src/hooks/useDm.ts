@@ -193,6 +193,19 @@ export function useDm(peerInboxId: string) {
               return;
             }
 
+            if (innerContent.startsWith('STREAK_CAPTION_RESPONSE:')) {
+              try {
+                const { BOT_INBOX_IDS } = await import('@/lib/constants');
+                const sender = raw.senderInboxId ?? '';
+                if (!BOT_INBOX_IDS.includes(sender)) return;
+                const caption = innerContent.slice('STREAK_CAPTION_RESPONSE:'.length);
+                if (!caption) return;
+                const { storeStreakCaptionResponse } = await import('@/lib/imageCaption');
+                await storeStreakCaptionResponse(caption);
+              } catch { /* swallow */ }
+              return;
+            }
+
             if (innerContent.startsWith('TRADE_CLOSED:')) {
               try {
                 const { BOT_INBOX_IDS } = await import('@/lib/constants');

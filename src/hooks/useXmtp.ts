@@ -1966,6 +1966,21 @@ export function useXmtp() {
                 return;
               }
 
+              // STREAK_CAPTION_RESPONSE: bot-generated (Ollama) Banana
+              // Streak Day-7 tweet caption — same "may arrive while off the
+              // bot's DM screen" reasoning as IMAGE_CAPTION_RESPONSE above.
+              if (inner.startsWith('STREAK_CAPTION_RESPONSE:')) {
+                try {
+                  const { BOT_INBOX_IDS } = await import('@/lib/constants');
+                  if (!BOT_INBOX_IDS.includes(senderInboxId)) return;
+                  const caption = inner.slice('STREAK_CAPTION_RESPONSE:'.length);
+                  if (!caption) return;
+                  const { storeStreakCaptionResponse } = await import('@/lib/imageCaption');
+                  await storeStreakCaptionResponse(caption);
+                } catch { /* swallow */ }
+                return;
+              }
+
               // PORTFOLIO_RESPONSE: single composite payload from /portfolio.
               // This branch handles the case where the user is NOT on the
               // bot's DM screen when the response arrives (per-DM stream in
