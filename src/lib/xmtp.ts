@@ -357,7 +357,7 @@ function decodeStringMessage(raw: any, rawContent: string, myInboxId: string): C
     "TRADE_OPENED:", "PORTFOLIO_CARD:", "PORTFOLIO_RESPONSE:", "RSVP:", "READ:",
     "BANANA_GRANT:", "HEALTH:",
     "IMAGE_CAPTION_REQUEST:", "IMAGE_CAPTION_RESPONSE:",
-    "STREAK_CAPTION_REQUEST:", "STREAK_CAPTION_RESPONSE:",
+    "STREAK_CAPTION_REQUEST:", "STREAK_CAPTION_RESPONSE:", "JOIN_REQUEST:",
   ];
   for (const p of STRUCTURED_PREFIXES) {
     if (rawContent.startsWith(p) || innerPreview.startsWith(p)) return null;
