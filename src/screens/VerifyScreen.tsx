@@ -116,6 +116,12 @@ export default function VerifyScreen() {
       await saveVerifiedNft(nftToSave);
       await stampNftCheck();
     }
+    // Re-apply shop theme now that verifiedNft is populated — covers
+    // PFP Full Theme, whose NFT-color extraction can only run once the
+    // NFT is actually known (see the same fix in ConnectScreen.tsx's
+    // session-restore path).
+    const { applyThemeFromShop } = await import("@/lib/shopTheme");
+    applyThemeFromShop(useAppStore.getState().shopStyles);
     if (wallet?.address) {
       // Fire-and-forget — wallet-scoped one-time flag makes this safe against
       // re-verification (e.g. 7-day session expiry re-running this screen).

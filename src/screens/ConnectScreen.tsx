@@ -67,6 +67,14 @@ export default function ConnectScreen() {
         if (nft) {
           setVerified(true, nft);
           setAllNfts([nft]); // seed with verified NFT; Marketplace re-fetches full list
+          // Re-apply shop theme now that verifiedNft is actually available —
+          // _layout.tsx already ran applyThemeFromShop() at boot, but
+          // verifiedNft was still null then (this session-restore hadn't
+          // resolved yet), so a PFP Full Theme's NFT-color extraction
+          // silently no-op'd. This is the fast path taken on nearly every
+          // ordinary app relaunch, so without this the theme never lands.
+          const { applyThemeFromShop } = await import("@/lib/shopTheme");
+          applyThemeFromShop(useAppStore.getState().shopStyles);
           prefetchXmtpClient(); // start XMTP boot while navigating — saves 2-5s
           router.replace("/chat");
         } else {

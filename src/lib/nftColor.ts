@@ -30,6 +30,12 @@ async function persistCache() {
   } catch { /* ignore */ }
 }
 
+function hashString(s: string): string {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+  return Math.abs(h).toString(36);
+}
+
 /**
  * Returns a hex string of the dominant color for the given image URL.
  * Falls back to `fallback` if extraction fails or image has no URL.
@@ -58,7 +64,13 @@ export async function getOrExtractNftColor(
 
   await ensureCacheLoaded();
 
-  const memKey = prefer === "vibrant" ? `${cacheKey}::vibrant` : cacheKey;
+  // Cache key must track the image itself, not just the caller's identity
+  // key (NFT mint / inboxId) — a custom-picked PFP image keeps the same
+  // mint as whatever NFT was verified before it (setUserChosenNftImage()
+  // carries `base?.mint` forward), so keying on mint/inboxId alone served
+  // up the PREVIOUS image's color after switching to a new custom image.
+  // Folding in a hash of the URL means a changed image always misses.
+  const memKey = `${cacheKey}:${hashString(imageUrl)}${prefer === "vibrant" ? "::vibrant" : ""}`;
   if (_mem[memKey]) return _mem[memKey];
 
   try {
