@@ -109,6 +109,7 @@ import type { TipAmount } from "@/lib/constants";
 // ── Extracted sub-components ────────────────────────────────────────────────
 import { ChatHeader } from "@/components/ChatHeader";
 import { ChatModals } from "@/components/ChatModals";
+import { MonkeGlass, MonkeGlassActionButton } from "@/components/MonkeGlass";
 import { ChatMessageList } from "@/components/ChatMessageList";
 
 export default function ChatScreen() {
@@ -929,15 +930,16 @@ export default function ChatScreen() {
     }
   }, [sendFile]);
 
-  // ─── Camera button — alert for Photo vs Video vs File ──────────────────────
+  // ─── Camera button — MonkeGlass sheet for Photo vs Video vs File ───────────
+  // 2026-07-27: was Alert.alert — a native OS dialog that renders as a flat
+  // grey system rectangle and can't be styled at all in React Native (no
+  // custom background/blur/font, full stop). Replaced with a real
+  // MonkeGlass sheet so this picker actually reads as glass like the rest
+  // of the app.
+  const [shareMediaSheetOpen, setShareMediaSheetOpen] = useState(false);
   const handleCameraButtonPress = useCallback(() => {
-    Alert.alert('Share media', 'Choose an option', [
-      { text: '📷 Photo', onPress: handleCamera },
-      { text: '🎥 Video', onPress: () => setVideoModalOpen(true) },
-      { text: '📎 File', onPress: handleFilePicker },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
-  }, [handleCamera, handleFilePicker]);
+    setShareMediaSheetOpen(true);
+  }, []);
 
   // ─── Video send (from VideoCameraModal) ──────────────────────────────────────
   const handleVideoSend = useCallback(async (content: string) => {
@@ -1579,6 +1581,33 @@ export default function ChatScreen() {
             mower isn't active. */}
         <BananaMowerOverlay />
       </KeyboardAvoidingView>
+      <MonkeGlass
+        visible={shareMediaSheetOpen}
+        onClose={() => setShareMediaSheetOpen(false)}
+        position="bottom"
+        animationType="slide"
+      >
+        <Text style={{ fontFamily: FONTS.display, fontSize: 18, color: THEME.text, textAlign: "center", marginBottom: 8 }}>
+          Share media
+        </Text>
+        <MonkeGlassActionButton
+          label="📷 Photo"
+          onPress={() => { setShareMediaSheetOpen(false); handleCamera(); }}
+        />
+        <MonkeGlassActionButton
+          label="🎥 Video"
+          onPress={() => { setShareMediaSheetOpen(false); setVideoModalOpen(true); }}
+        />
+        <MonkeGlassActionButton
+          label="📎 File"
+          onPress={() => { setShareMediaSheetOpen(false); handleFilePicker(); }}
+        />
+        <MonkeGlassActionButton
+          label="Cancel"
+          variant="cancel"
+          onPress={() => setShareMediaSheetOpen(false)}
+        />
+      </MonkeGlass>
       <ChatModals
         showConfetti={showConfetti}
         setShowConfetti={setShowConfetti}
