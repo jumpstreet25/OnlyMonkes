@@ -1,5 +1,5 @@
 import React, { useRef, useCallback, useState, useEffect, useMemo } from 'react';
-import { View, StyleSheet, Text, Pressable, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, Text, Pressable, ActivityIndicator, Keyboard } from 'react-native';
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -42,6 +42,25 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
   const [activeTradeCard, setActiveTradeCard] = useState<ClosedTrade | null>(null);
   const [activeLiveCard, setActiveLiveCard] = useState<PortfolioCard | null>(null);
   const [actionSheetTarget, setActionSheetTarget] = useState<ChatMessage | null>(null);
+  // windowSoftInputMode="adjustResize" doesn't reliably reposition content
+  // under this app's edge-to-edge/immersive mode — same root cause already
+  // found and fixed on Main Chat (ChatScreen.tsx), where the input bar
+  // rendered fully hidden behind the IME. Tracking real keyboard height
+  // directly and using it to push the input row up is the robust fix
+  // regardless of what adjustResize does.
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', (e) => {
+      setKeyboardHeight(e.endCoordinates?.height ?? 0);
+    });
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardHeight(0);
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
   const flatListRef = useRef<FlashListRef<FeedItem>>(null);
   useProfileVersion();
   const peerProfile = getCachedProfile(peerInboxId);
@@ -202,18 +221,20 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
         />
       )}
 
-      <ChatInput
-        value={inputText}
-        onChangeText={setInputText}
-        onSend={handleSend}
-        replyingTo={replyingTo}
-        onCancelReply={() => setReplyingTo(null)}
-        isSending={sending}
-        isDmWithBot={isBotDm}
-        onTyping={sendTyping}
-        typingUsers={typingUsers}
-      />
-      <View style={{ height: insets.bottom }} />
+      <View style={{ marginBottom: keyboardHeight }}>
+        <ChatInput
+          value={inputText}
+          onChangeText={setInputText}
+          onSend={handleSend}
+          replyingTo={replyingTo}
+          onCancelReply={() => setReplyingTo(null)}
+          isSending={sending}
+          isDmWithBot={isBotDm}
+          onTyping={sendTyping}
+          typingUsers={typingUsers}
+        />
+        <View style={{ height: keyboardHeight > 0 ? 0 : insets.bottom }} />
+      </View>
       <ImageLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
       <PnLCardModal
         trade={activeTradeCard}
