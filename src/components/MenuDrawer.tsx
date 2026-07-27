@@ -1418,7 +1418,14 @@ const styles = StyleSheet.create({
     right: 0,
     top: 0,
     bottom: 0,
-    backgroundColor: "rgba(8, 8, 16, 0.96)",
+    // 2026-07-24: 0.96 -> 0.55 (fixed opacity hiding the new BlurView).
+    // 2026-07-27: 0.55 -> 0.19, finally matching GLASS_BG/bubble tint/
+    // header/toolbar — this was the one glass surface never brought in
+    // line with the rest of the app's settled shade value. Known
+    // remaining gap, unchanged by this: blur is still not visible when a
+    // World theme is equipped (WorldLayer renders opaque on top by
+    // design) — flagged in the 2026-07-24 session, not revisited here.
+    backgroundColor: "rgba(8, 8, 16, 0.19)",
     borderRadius: 0,
     marginHorizontal: 0,
     borderWidth: 0,

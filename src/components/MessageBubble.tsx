@@ -112,14 +112,21 @@ function PulseRing({ color }: { color: string }) {
 }
 import { hasThread, getThreadMeta } from "@/lib/threads";
 import { router } from "expo-router";
+import { BlurView } from "expo-blur";
+import { getBlurProps } from "@/lib/glassTheme";
 
 // ─── Glassmorphism constants ─────────────────────────────────────────────────
 const GLASS_BLUE = "#6CB4EE";                    // OnlyMonkes blue
 const SOLANA_PURPLE = "#9945FF";                  // Solana brand purple for PFP glow
 // Unified bubble style — all bubbles use the same dark glass tint (rugdoctor 12:37 style)
-const GLASS_OWN_BG = "rgba(26, 26, 40, 0.65)";    // Same as other — unified look
-const GLASS_OTHER_BG = "rgba(26, 26, 40, 0.65)";   // Dark glass tint
-const GLASS_BOT_BG = "rgba(26, 26, 40, 0.65)";     // Same for bot channels
+// 2026-07-26: 0.65 → 0.19 — same fix as every other glass surface this
+// session (GlassModal, ChatHeader, ChatInput): a real BlurView was just
+// added below, but at 0.65 opacity the tint alone fully hides it, same
+// "blur is there but you can't see it" bug already found and fixed
+// elsewhere. Matches glassTheme.ts's GLASS_BG for consistency.
+const GLASS_OWN_BG = "rgba(26, 26, 40, 0.19)";    // Same as other — unified look
+const GLASS_OTHER_BG = "rgba(26, 26, 40, 0.19)";   // Dark glass tint
+const GLASS_BOT_BG = "rgba(26, 26, 40, 0.19)";     // Same for bot channels
 const GLASS_BORDER_OWN = "rgba(248, 248, 255, 0.08)";
 const GLASS_BORDER_OTHER = "rgba(248, 248, 255, 0.08)";
 
@@ -990,6 +997,14 @@ export const MessageBubble = memo(function MessageBubble({
                   ? { backgroundColor: "rgba(26, 26, 40, 0.32)" }
                   : null,
               ]}>
+                {/* Real optical blur, text bubbles only — GIF/IMAGE/VIDEO render
+                    in a separate branch below that bypasses glassBubble
+                    entirely, so this can never blur shared media. Skipped for
+                    Skia-glow/world-chrome bubbles, same guard as the gradient/
+                    highlight below — those own their own bubble surface. */}
+                {!hasSkiaGlow && !hasWorldChrome ? (
+                  <BlurView {...getBlurProps()} style={[StyleSheet.absoluteFill, { borderRadius: 22 }]} pointerEvents="none" />
+                ) : null}
                 {/* Glass gradient — only for non-Skia, non-world-chrome bubbles */}
                 {!hasSkiaGlow && !hasWorldChrome ? (
                   <LinearGradient
