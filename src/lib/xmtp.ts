@@ -587,8 +587,8 @@ export function applyReaction(
   return updated;
 }
 
-const REACTION_RETRY_MS = 400;
-const REACTION_MAX_RETRIES = 5;
+const REACTION_RETRY_MS = 500;
+const REACTION_MAX_RETRIES = 30;
 
 /**
  * Retries applyReaction()/applyStickerReaction() a few times if the target
@@ -604,6 +604,14 @@ const REACTION_MAX_RETRIES = 5;
  * Detects a no-op via reference equality and retries briefly before giving
  * up — a genuinely out-of-window old message still fails, just a couple
  * seconds later instead of immediately.
+ *
+ * 2026-07-27: reported AGAIN, same shape, on both the published app and the
+ * 3.0 dev branch — the original 2s window (5 * 400ms) wasn't actually long
+ * enough for real-world conditions (slow network, message backlog on
+ * reconnect, profile enrichment queued behind other work). Retrying is
+ * cheap (a no-op array-reference check) so there's little cost to a much
+ * more generous window — 30 * 500ms = 15s — before finally giving up on a
+ * genuinely evicted/out-of-window target.
  */
 export function applyWithRetry(
   applyFn: (messages: ChatMessage[]) => ChatMessage[],
