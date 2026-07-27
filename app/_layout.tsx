@@ -16,7 +16,7 @@ import { useThemeColor } from '../src/lib/shopTheme';
 import { registerForPushNotifications } from '../src/lib/notifications';
 import { triggerProfileRebroadcast } from '../src/hooks/useXmtp';
 import { useAppStore, loadPersistedPrefs } from '../src/store/appStore';
-import { getEquippedStyles } from '../src/lib/bananaShop';
+import { getEquippedStyles, type ShopState } from '../src/lib/bananaShop';
 import { applyThemeFromShop } from '../src/lib/shopTheme';
 import { clearLegacyKeys, startNftOwnershipGuard } from '../src/lib/session';
 import { initSentry } from '../src/lib/sentry';
@@ -118,7 +118,7 @@ export default function RootLayout() {
           bs.totalEarned = Math.max(bs.totalEarned, 600);
           await saveBananaState(bs);
           useAppStore.getState().setBananaBalance(600);
-          const ss = await loadShopState();
+          const ss: ShopState = await loadShopState();
           ss.owned = ['theme_pfp_full', 'theme_matrix', 'bubble_neon_green'];
           ss.equipped = { bubble: 'bubble_neon_green', text: null, pfp: null, theme: 'theme_matrix' };
           await saveShopState(ss);
