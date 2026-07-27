@@ -93,7 +93,21 @@ export default function VerifyScreen() {
     return () => clearInterval(timer);
   }, [phase]);
 
-  useEffect(() => { runVerification(); }, []);
+  // 2026-07-26: root-caused the "lands on retry screen" bug the 2026-07-23
+  // diagnostic log below was added to chase. This effect used to fire once
+  // on mount with `[]` deps regardless of wallet state — if the wallet-
+  // connect promise resolved even slightly after this screen mounted, the
+  // ONE AND ONLY verification attempt ran with a stale null wallet, hit
+  // "No wallet connected", and never automatically retried once wallet
+  // actually became available (empty deps array never re-fires). The user
+  // had to manually tap Retry, by which point wallet was set and it just
+  // worked — exactly the confusing "retry screen, but retry works" shape
+  // reported by real holders. Now gated on wallet.address itself: never
+  // fires on a null wallet, and automatically re-fires the moment it
+  // becomes available, closing the race instead of requiring manual retry.
+  useEffect(() => {
+    if (wallet?.address) runVerification();
+  }, [wallet?.address]);
 
   const goToChat = async (nftOverride?: OwnedNFT) => {
     setPhase("ready");

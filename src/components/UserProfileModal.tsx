@@ -223,34 +223,40 @@ export function UserProfileModal({ visible, target, onClose, onEditProfile, onCh
             </Pressable>
           )}
 
-          {/* Admin: Gift Shop Item (DEV_WALLET only, other profiles only) */}
+          {/* Admin: Gift Shop Item (DEV_WALLET only, other profiles only).
+              2026-07-26: was silently restricted to 7 hardcoded item IDs —
+              a full "all items" list (`items`) was already being built but
+              never actually used, the Alert below re-filtered from it
+              instead. Now genuinely lists every catalog item, category
+              first (Alert can't comfortably show 30+ buttons flat). */}
           {!isOwnProfile && isDevAdmin && (
             <Pressable
               onPress={() => {
-                const { getAvailableItems } = require("@/lib/bananaShop");
-                const items = getAvailableItems() as { id: string; name: string; category: string; tier: number }[];
-                const buttons = items.map(item => ({
-                  text: `${item.name} (T${item.tier})`,
-                  onPress: () => {
-                    const { sendGiftItem } = require("@/hooks/useXmtp");
-                    sendGiftItem(target.senderAddress, item.id)
-                      .then(() => Alert.alert("Gift Sent", `${item.name} gifted to ${displayName}`))
-                      .catch((e: any) => Alert.alert("Gift Failed", e?.message ?? "Error"));
-                  },
-                }));
-                // Show category selection first, then items
-                Alert.alert("Gift Shop Item", `Choose an item to gift to ${displayName}`, [
-                  ...items
-                    .filter(i => ["pfp_theme", "pfp_aura", "pfp_frame_pulse", "pfp_glow_ring", "bubble_neon_blue", "bubble_gold_glow", "theme_pfp_full"].includes(i.id))
-                    .map(item => ({
-                      text: `${item.name} (T${item.tier})`,
-                      onPress: () => {
-                        const { sendGiftItem } = require("@/hooks/useXmtp");
-                        sendGiftItem(target.senderAddress, item.id)
-                          .then(() => Alert.alert("Gift Sent", `${item.name} gifted to ${displayName}`))
-                          .catch((e: any) => Alert.alert("Gift Failed", e?.message ?? "Error"));
-                      },
-                    })),
+                const { getAvailableItems, getCategoryName } = require("@/lib/bananaShop");
+                const items = getAvailableItems() as { id: string; name: string; category: import("@/lib/bananaShop").ShopCategory; tier: number }[];
+                const { sendGiftItem } = require("@/hooks/useXmtp");
+
+                const giftItem = (item: { id: string; name: string }) => {
+                  sendGiftItem(target.senderAddress, item.id)
+                    .then(() => Alert.alert("Gift Sent", `${item.name} gifted to ${displayName}`))
+                    .catch((e: any) => Alert.alert("Gift Failed", e?.message ?? "Error"));
+                };
+
+                const categories = Array.from(new Set(items.map(i => i.category)));
+                Alert.alert("Gift Shop Item", `Choose a category to gift to ${displayName}`, [
+                  ...categories.map(cat => ({
+                    text: getCategoryName(cat),
+                    onPress: () => {
+                      const inCategory = items.filter(i => i.category === cat);
+                      Alert.alert(getCategoryName(cat), `Choose an item to gift to ${displayName}`, [
+                        ...inCategory.map(item => ({
+                          text: `${item.name} (T${item.tier})`,
+                          onPress: () => giftItem(item),
+                        })),
+                        { text: "Cancel", style: "cancel" as const },
+                      ]);
+                    },
+                  })),
                   { text: "Cancel", style: "cancel" },
                 ]);
               }}

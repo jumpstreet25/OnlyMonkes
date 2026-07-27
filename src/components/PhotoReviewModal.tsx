@@ -44,6 +44,17 @@ export function PhotoReviewModal({ visible, imageUri, requestId, onSend, onCance
       setCaptionText("");
       setIsGenerating(true);
       userEditedRef.current = false;
+      // 2026-07-26: real-world repro — bot-side vision generation can time
+      // out (confirmed live: moondream cold-loading past its own 90s
+      // server-side timeout), and with no client-side limit of our own
+      // this modal was left showing "Monke is thinking..." forever with no
+      // signal that it may never resolve — Send/Send-without-caption were
+      // always technically tappable, but nothing told the user that. Give
+      // up waiting after 20s and fall back to the plain "write your own"
+      // state; the user can still send blank or type at any point before
+      // that too.
+      const giveUpTimer = setTimeout(() => setIsGenerating(false), 20_000);
+      return () => clearTimeout(giveUpTimer);
     }
   }, [visible, requestId]);
 
