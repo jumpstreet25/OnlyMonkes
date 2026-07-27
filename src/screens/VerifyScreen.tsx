@@ -119,6 +119,15 @@ export default function VerifyScreen() {
       await saveVerifiedNft(nftToSave);
       await stampNftCheck();
     }
+    // Re-apply shop theme now that verifiedNft is populated — covers
+    // PFP Full Theme, whose NFT-color extraction can only run once the
+    // NFT is actually known (see the same fix in ConnectScreen.tsx's
+    // session-restore path). NOTE: this OTA branch predates the
+    // first-login-bonus feature (src/lib/firstLoginBonus.ts doesn't exist
+    // here) — deliberately not porting that unrelated call, only the
+    // theme re-apply this commit is actually about.
+    const { applyThemeFromShop } = await import("@/lib/shopTheme");
+    applyThemeFromShop(useAppStore.getState().shopStyles);
     await new Promise((r) => setTimeout(r, 500));
     router.replace("/chat");
   };

@@ -333,10 +333,19 @@ export function ChatModals(props: ChatModalsProps) {
           await saveSelectedNftMint(nft.mint);
           const { syncPfpBindings, getEquippedStyles: getStyles } = await import("@/lib/bananaShop");
           const { applyThemeFromShop: applyTheme } = await import("@/lib/shopTheme");
+          const { getOrExtractNftColor } = await import("@/lib/nftColor");
           await syncPfpBindings(nft.mint);
           const s = await getStyles();
           useAppStore.getState().setShopStyles(s);
           applyTheme(s);
+          // applyTheme() only recomputes nftDominantColor when PFP Full
+          // Theme is equipped — refresh it unconditionally too, so PFP
+          // Aura / border-tint items pick up the newly-selected NFT's
+          // color right away instead of showing the old one until the
+          // next ChatScreen mount.
+          getOrExtractNftColor(nft.image, nft.mint ?? "nft").then(c => {
+            useAppStore.getState().setNftDominantColor(c);
+          }).catch(() => {});
           setPfpPickerOpen(false);
           await broadcastProfile();
         }}
@@ -351,6 +360,16 @@ export function ChatModals(props: ChatModalsProps) {
         symbol={chartSymbol ?? ''}
         onClose={() => setChartSymbol(null)}
       />
+
+      {/* NOTE 2026-07-28 OTA hand-port: the incoming commit also fixed a
+          theme-reapply gap inside SetMonkeImageModal.onPicked (the custom-
+          PFP-image-upload flow) — that whole modal/feature doesn't exist
+          on this OTA branch (no SetMonkeImageModal import, no
+          pfpImagePickerOpen state anywhere else in this file), so there's
+          nothing here for that specific fix to apply to. Deliberately not
+          porting it — the NftPickerModal.onSelect fix above (pick an
+          owned NFT, not a custom image) is the part of this commit that's
+          actually relevant to this branch. */}
 
       <UserProfileModal
         visible={!!profileTarget}
