@@ -34,6 +34,7 @@ import { UserProfileModal, type ProfileTarget } from "@/components/UserProfileMo
 import { VideoCameraModal } from "@/components/VideoCameraModal";
 import { PhotoReviewModal } from "@/components/PhotoReviewModal";
 import { GlassBottomSheet } from "@/components/GlassBottomSheet";
+import { MonkeGlass } from "@/components/MonkeGlass";
 import { MessageActionSheet } from "@/components/MessageActionSheet";
 import { useAppStore } from "@/store/appStore";
 import { addBananas } from "@/lib/bananaRewards";
@@ -453,36 +454,30 @@ export function ChatModals(props: ChatModalsProps) {
         </View>
       </Modal>
 
-      {/* Edit Message Modal */}
-      <Modal
-        visible={!!editTarget}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setEditTarget(null)}
-      >
-        <Pressable style={modalStyles.overlay} onPress={() => setEditTarget(null)}>
-          <Pressable style={modalStyles.sheet} onPress={(e) => e.stopPropagation()}>
-            <Text style={modalStyles.title}>Edit Message</Text>
-            <TextInput
-              style={modalStyles.input}
-              value={editText}
-              onChangeText={setEditText}
-              autoFocus
-              multiline
-              maxLength={2000}
-              placeholderTextColor={THEME.textFaint}
-            />
-            <View style={modalStyles.btnRow}>
-              <Pressable onPress={() => setEditTarget(null)} style={modalStyles.cancelBtn}>
-                <Text style={modalStyles.cancelText}>Cancel</Text>
-              </Pressable>
-              <Pressable onPress={handleEditSubmit} style={modalStyles.confirmBtn}>
-                <Text style={modalStyles.confirmText}>Save</Text>
-              </Pressable>
-            </View>
+      {/* Edit Message — was a raw <Modal> with an opaque #000 sheet (the
+          same cross-window blur-blocking issue GlassModal/MonkeGlass exist
+          to fix — Android's Modal is a separate native Dialog window that
+          BlurView can't see across). */}
+      <MonkeGlass visible={!!editTarget} onClose={() => setEditTarget(null)}>
+        <Text style={modalStyles.title}>Edit Message</Text>
+        <TextInput
+          style={modalStyles.input}
+          value={editText}
+          onChangeText={setEditText}
+          autoFocus
+          multiline
+          maxLength={2000}
+          placeholderTextColor={THEME.textFaint}
+        />
+        <View style={modalStyles.btnRow}>
+          <Pressable onPress={() => setEditTarget(null)} style={modalStyles.cancelBtn}>
+            <Text style={modalStyles.cancelText}>Cancel</Text>
           </Pressable>
-        </Pressable>
-      </Modal>
+          <Pressable onPress={handleEditSubmit} style={modalStyles.confirmBtn}>
+            <Text style={modalStyles.confirmText}>Save</Text>
+          </Pressable>
+        </View>
+      </MonkeGlass>
 
       {/* Share on X Popup */}
       <GlassBottomSheet
