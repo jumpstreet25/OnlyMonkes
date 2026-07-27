@@ -19,12 +19,13 @@ import {
   Image,
   Alert,
   Animated,
-  Modal,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
 import { THEME, FONTS, MAX_MESSAGE_LENGTH, getWorldBarTint, getWorldAccent } from "@/lib/constants";
+import { getBlurProps } from "@/lib/glassTheme";
+import { MonkeGlass } from "@/components/MonkeGlass";
 import { useThemeColor } from "@/lib/shopTheme";
 import { shortenAddress } from "@/lib/nftVerification";
 import { getCachedProfile, searchUsersByPrefix } from "@/lib/userProfile";
@@ -479,59 +480,54 @@ export const ChatInput = memo(function ChatInput({
       </View>
 
       {/* Live picker popup — choose Audio or Video */}
-      <Modal
+      <MonkeGlass
         visible={livePickerOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setLivePickerOpen(false)}
+        onClose={() => setLivePickerOpen(false)}
+        cardStyle={styles.livePickerCard}
       >
-        <Pressable style={styles.livePickerOverlay} onPress={() => setLivePickerOpen(false)}>
-          <View style={styles.livePickerCard}>
-            <Text style={styles.livePickerTitle}>Go Live</Text>
+        <Text style={styles.livePickerTitle}>Go Live</Text>
 
-            {onLiveVideo && (
-              <Pressable
-                style={({ pressed }) => [styles.livePickerBtn, pressed && { opacity: 0.7 }]}
-                onPress={() => {
-                  setLivePickerOpen(false);
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                  onLiveVideo();
-                }}
-              >
-                <Text style={styles.livePickerEmoji}>📹</Text>
-                <View>
-                  <Text style={styles.livePickerBtnText}>Live Video</Text>
-                  <Text style={styles.livePickerBtnSub}>Video call with sticker reactions</Text>
-                </View>
-              </Pressable>
-            )}
+        {onLiveVideo && (
+          <Pressable
+            style={({ pressed }) => [styles.livePickerBtn, pressed && { opacity: 0.7 }]}
+            onPress={() => {
+              setLivePickerOpen(false);
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              onLiveVideo();
+            }}
+          >
+            <Text style={styles.livePickerEmoji}>📹</Text>
+            <View>
+              <Text style={styles.livePickerBtnText}>Live Video</Text>
+              <Text style={styles.livePickerBtnSub}>Video call with sticker reactions</Text>
+            </View>
+          </Pressable>
+        )}
 
-            {onAvatarRoom && (
-              <Pressable
-                style={({ pressed }) => [styles.livePickerBtn, pressed && { opacity: 0.7 }]}
-                onPress={() => {
-                  setLivePickerOpen(false);
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                  onAvatarRoom();
-                }}
-              >
-                <Text style={styles.livePickerEmoji}>🐵</Text>
-                <View>
-                  <Text style={styles.livePickerBtnText}>Avatar Room</Text>
-                  <Text style={styles.livePickerBtnSub}>Animated Monke avatar chat</Text>
-                </View>
-              </Pressable>
-            )}
+        {onAvatarRoom && (
+          <Pressable
+            style={({ pressed }) => [styles.livePickerBtn, pressed && { opacity: 0.7 }]}
+            onPress={() => {
+              setLivePickerOpen(false);
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              onAvatarRoom();
+            }}
+          >
+            <Text style={styles.livePickerEmoji}>🐵</Text>
+            <View>
+              <Text style={styles.livePickerBtnText}>Avatar Room</Text>
+              <Text style={styles.livePickerBtnSub}>Animated Monke avatar chat</Text>
+            </View>
+          </Pressable>
+        )}
 
-            <Pressable
-              style={({ pressed }) => [styles.livePickerCancel, pressed && { opacity: 0.7 }]}
-              onPress={() => setLivePickerOpen(false)}
-            >
-              <Text style={styles.livePickerCancelText}>Cancel</Text>
-            </Pressable>
-          </View>
+        <Pressable
+          style={({ pressed }) => [styles.livePickerCancel, pressed && { opacity: 0.7 }]}
+          onPress={() => setLivePickerOpen(false)}
+        >
+          <Text style={styles.livePickerCancelText}>Cancel</Text>
         </Pressable>
-      </Modal>
+      </MonkeGlass>
 
     </View>
   );
@@ -823,18 +819,9 @@ const styles = StyleSheet.create({
   mentionUsername: { fontFamily: FONTS.bodyMed, fontSize: 14, color: THEME.text },
 
   // ── Live picker popup ───────────────────────────────────────────────────────
-  livePickerOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.6)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
   livePickerCard: {
     width: 260,
-    backgroundColor: "#000",
-    borderRadius: 18,
-    borderWidth: 1.5,
-    borderColor: "#0096C7",
+    borderColor: "rgba(0,150,199,0.4)",
     paddingVertical: 20,
     paddingHorizontal: 16,
     alignItems: "center",

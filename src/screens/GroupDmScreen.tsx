@@ -1,5 +1,5 @@
 import React, { useRef, useCallback, useState, useEffect, useMemo } from 'react';
-import { View, FlatList, StyleSheet, Text, Pressable, ActivityIndicator } from 'react-native';
+import { View, FlatList, StyleSheet, Text, Pressable, ActivityIndicator, Keyboard } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { THEME, FONTS } from '@/lib/constants';
@@ -20,6 +20,23 @@ export default function GroupDmScreen({ groupId }: { groupId: string }) {
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
+  // Same fix as DmScreen/ChatScreen — windowSoftInputMode="adjustResize"
+  // doesn't reliably reposition content under this app's edge-to-edge
+  // mode, leaving the input bar hidden behind the IME. Track real keyboard
+  // height and push the input row up by it directly.
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', (e) => {
+      setKeyboardHeight(e.endCoordinates?.height ?? 0);
+    });
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardHeight(0);
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
   const flatListRef = useRef<FlatList>(null);
   useProfileVersion();
   const themeBg = useThemeColor('bg');
@@ -110,17 +127,19 @@ export default function GroupDmScreen({ groupId }: { groupId: string }) {
         />
       )}
 
-      <ChatInput
-        value={inputText}
-        onChangeText={setInputText}
-        onSend={handleSend}
-        replyingTo={replyingTo}
-        onCancelReply={() => setReplyingTo(null)}
-        isSending={sending}
-        onTyping={sendTyping}
-        typingUsers={typingUsers}
-      />
-      <View style={{ height: insets.bottom }} />
+      <View style={{ marginBottom: keyboardHeight }}>
+        <ChatInput
+          value={inputText}
+          onChangeText={setInputText}
+          onSend={handleSend}
+          replyingTo={replyingTo}
+          onCancelReply={() => setReplyingTo(null)}
+          isSending={sending}
+          onTyping={sendTyping}
+          typingUsers={typingUsers}
+        />
+        <View style={{ height: keyboardHeight > 0 ? 0 : insets.bottom }} />
+      </View>
       <ImageLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
     </View>
   );

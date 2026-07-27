@@ -24,7 +24,6 @@ import {
   Pressable,
   ActivityIndicator,
   Image,
-  Modal,
   Linking,
   useWindowDimensions,
 } from "react-native";
@@ -41,6 +40,7 @@ import {
 import { prefetchXmtpClient, bindXmtpToWallet } from "@/lib/xmtp";
 import { rehydrateForWallet } from "@/lib/walletIdentity";
 import { THEME, FONTS } from "@/lib/constants";
+import { MonkeGlass } from "@/components/MonkeGlass";
 import { OnboardingCarousel, ONBOARDING_KEY } from "@/components/OnboardingCarousel";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -191,41 +191,37 @@ export default function ConnectScreen() {
       </View>
 
       {/* Wallet picker bottom sheet */}
-      <Modal
+      <MonkeGlass
         visible={walletSheetOpen}
-        transparent
+        onClose={() => setWalletSheetOpen(false)}
+        position="bottom"
         animationType="slide"
-        onRequestClose={() => setWalletSheetOpen(false)}
-        statusBarTranslucent
+        cardStyle={styles.sheet}
       >
-        <Pressable style={styles.sheetOverlay} onPress={() => setWalletSheetOpen(false)} />
-        <View style={styles.sheet}>
-          <View style={styles.sheetHandle} />
-          <Text style={styles.sheetTitle}>Choose Wallet</Text>
+        <Text style={styles.sheetTitle}>Choose Wallet</Text>
 
-          {[
-            { icon: "🟣", label: "Phantom", onPress: async () => { setWalletSheetOpen(false); await handleConnectWith("phantom://"); } },
-            { icon: "🔥", label: "Solflare", onPress: async () => { setWalletSheetOpen(false); await handleConnectWith("solflare://"); } },
-            { icon: "📱", label: "Mobile Wallet Adapter", onPress: async () => { setWalletSheetOpen(false); await handleConnectWith(); } },
-          ].map(({ icon, label, onPress }) => (
-            <Pressable
-              key={label}
-              style={({ pressed }) => [styles.walletRow, pressed && styles.walletRowPressed]}
-              onPress={onPress}
-              accessibilityLabel={`Connect with ${label}`}
-              accessibilityRole="button"
-            >
-              <Text style={styles.walletIcon}>{icon}</Text>
-              <Text style={styles.walletLabel}>{label}</Text>
-              <Text style={styles.walletChevron}>›</Text>
-            </Pressable>
-          ))}
-
-          <Pressable style={styles.sheetCancelBtn} onPress={() => setWalletSheetOpen(false)} accessibilityLabel="Cancel" accessibilityRole="button">
-            <Text style={styles.sheetCancelText}>Cancel</Text>
+        {[
+          { icon: "🟣", label: "Phantom", onPress: async () => { setWalletSheetOpen(false); await handleConnectWith("phantom://"); } },
+          { icon: "🔥", label: "Solflare", onPress: async () => { setWalletSheetOpen(false); await handleConnectWith("solflare://"); } },
+          { icon: "📱", label: "Mobile Wallet Adapter", onPress: async () => { setWalletSheetOpen(false); await handleConnectWith(); } },
+        ].map(({ icon, label, onPress }) => (
+          <Pressable
+            key={label}
+            style={({ pressed }) => [styles.walletRow, pressed && styles.walletRowPressed]}
+            onPress={onPress}
+            accessibilityLabel={`Connect with ${label}`}
+            accessibilityRole="button"
+          >
+            <Text style={styles.walletIcon}>{icon}</Text>
+            <Text style={styles.walletLabel}>{label}</Text>
+            <Text style={styles.walletChevron}>›</Text>
           </Pressable>
-        </View>
-      </Modal>
+        ))}
+
+        <Pressable style={styles.sheetCancelBtn} onPress={() => setWalletSheetOpen(false)} accessibilityLabel="Cancel" accessibilityRole="button">
+          <Text style={styles.sheetCancelText}>Cancel</Text>
+        </Pressable>
+      </MonkeGlass>
     </View>
   );
 }
@@ -312,31 +308,8 @@ const styles = StyleSheet.create({
   },
 
   // ── Wallet Picker Sheet ───────────────────────────────────────────────────
-  sheetOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.6)",
-  },
   sheet: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: THEME.surfaceHigh,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    borderTopWidth: 1,
-    borderColor: THEME.border,
-    padding: 24,
-    paddingBottom: 36,
     gap: 4,
-  },
-  sheetHandle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: THEME.border,
-    alignSelf: "center",
-    marginBottom: 12,
   },
   sheetTitle: {
     fontFamily: FONTS.display,
