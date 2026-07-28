@@ -133,15 +133,43 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
   const nftDominantColor = useAppStore(s => s.nftDominantColor);
   const pfpFullThemeActive = !!(shopStyles?.pfpFullTheme && nftDominantColor);
 
-  // Check enrollment on mount
+  // Ground truth from the bot's AUTOMONKE_STATUS: DM (useXmtp.ts stream
+  // handler), sent after every /autonomonke command. The AsyncStorage flag
+  // below is only ever set locally by THIS install completing enrollment,
+  // so it silently reads OFF on a fresh app install/build even when the
+  // bot never stopped trading — this corrects it the moment a status DM
+  // lands.
+  const automonkeStatus = useAppStore(s => s.automonkeStatus);
+
+  // Check enrollment on mount — AsyncStorage first (fast, no round-trip),
+  // then actively ask the bot for real status so a stale/missing local flag
+  // self-corrects without the user having to run a command manually.
   useEffect(() => {
-    if (hasAutonomy) {
-      const key = AUTONOMY_CONFIG[channelId].storageKey;
-      AsyncStorage.getItem(key).then(v => {
-        if (v === "1") setAutonomyEnrolled(true);
-      }).catch(() => {});
-    }
+    if (!hasAutonomy) return;
+    const key = AUTONOMY_CONFIG[channelId].storageKey;
+    AsyncStorage.getItem(key).then(v => {
+      if (v === "1") setAutonomyEnrolled(true);
+    }).catch(() => {});
+
+    if (channelId !== "trades") return;
+    (async () => {
+      try {
+        const client = getXmtpClient();
+        if (!client) return;
+        const dm = await (client.conversations as any).findOrCreateDm(BOT_INBOX_ID);
+        if (dm) await sendDmMessage(dm, "/autonomonke status", username);
+      } catch (err) {
+        if (__DEV__) console.warn("[Autonomy:trades] status refresh DM failed:", (err as Error).message);
+      }
+    })();
   }, [channelId]);
+
+  // React to the bot's answer whenever it arrives this session.
+  useEffect(() => {
+    if (!automonkeStatus || channelId !== "trades") return;
+    setAutonomyEnrolled(automonkeStatus.enrolled);
+    setLimitOrdersEnabled(automonkeStatus.limitOrdersEnabled);
+  }, [automonkeStatus, channelId]);
 
   // Limit Orders opt-in flag — only relevant on the trades channel.
   useEffect(() => {
