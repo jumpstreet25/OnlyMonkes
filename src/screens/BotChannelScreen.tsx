@@ -618,7 +618,7 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
 // channel, scaled to fit the header/toolbar space rather than to an
 // arbitrary constant.
 const WIDEST_BANNER_ASPECT = 533 / 260; // Sales.png — widest of the four
-const HEADER_SIDE_RESERVED = 58 /* backBtn */ + 94 /* headerLeftExtra incl. its 4px marginLeft */ + 90 /* headerRight */;
+const HEADER_SIDE_RESERVED = 58 /* backBtn */ + 112 /* headerLeftExtra incl. its 4px marginLeft */ + 132 /* headerRight */;
 const BANNER_AVAIL_W = Dimensions.get("window").width - HEADER_SIDE_RESERVED;
 const BANNER_HEIGHT = Math.min(96, Math.floor(BANNER_AVAIL_W / WIDEST_BANNER_ASPECT) - 4);
 
@@ -680,13 +680,19 @@ const styles = StyleSheet.create({
     color: "#fff",
     lineHeight: 38,
   },
+  // Reserved-slot widths, NOT pill widths — the pills themselves stay
+  // content-hugging (minWidth) below so their text never wraps. Measured
+  // directly off-device: "AutonoMonke" needs ~107dp of content (checkmark +
+  // text), "Limit Orders" only ~82dp — sizing both slots the same (as a
+  // first pass did) either wrapped the wider one or wasted space on the
+  // narrower one. 108/132 give each its own safety margin.
   headerLeftExtra: {
-    width: 90,
+    width: 108,
     marginLeft: 4,
     alignItems: "center",
   },
   headerRight: {
-    width: 90,
+    width: 132,
     alignItems: "center",
     gap: 6,
     zIndex: 1,
@@ -696,7 +702,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 8,
     backgroundColor: "rgba(108, 180, 238, 0.15)",
-    width: 90,
+    minWidth: 44,
     alignItems: "center",
   },
   muteBtnMuted: {
@@ -884,7 +890,7 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     borderRadius: 8,
     backgroundColor: "rgba(124, 58, 237, 0.15)",
-    width: 90,
+    minWidth: 44,
     alignItems: "center",
   },
   autonomyBtnActive: {
@@ -906,7 +912,7 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     borderRadius: 8,
     backgroundColor: "rgba(20, 184, 166, 0.15)",
-    width: 90,
+    minWidth: 44,
     alignItems: "center",
   },
   limitOrdersBtnActive: {
