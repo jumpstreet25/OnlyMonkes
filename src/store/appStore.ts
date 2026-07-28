@@ -168,6 +168,12 @@ interface AppSettingsState {
   expoPushToken: string | null;
   communityBadges: { dms: number; events: number; links: number };
   dmUnreadCounts: Record<string, number>;
+  /** Ground truth from the bot's AUTOMONKE_STATUS: DM, sent after every
+   *  /autonomonke command. Corrects BotChannelScreen's AsyncStorage-only
+   *  enrollment flag, which has no link back to real bot state and can
+   *  read as OFF on a fresh app install/build even when the bot never
+   *  stopped trading. Null until the first status DM arrives this session. */
+  automonkeStatus: { enrolled: boolean; active: boolean; limitOrdersEnabled: boolean } | null;
 }
 
 interface AppSettingsActions {
@@ -201,6 +207,7 @@ interface AppSettingsActions {
   setDmUnreadCounts: (counts: Record<string, number>) => void;
   incrementDmUnread: (peerInboxId: string) => void;
   clearDmUnread: (peerInboxId: string) => void;
+  setAutomonkeStatus: (status: { enrolled: boolean; active: boolean; limitOrdersEnabled: boolean }) => void;
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -308,6 +315,7 @@ const initialState: AppState = {
   expoPushToken: null,
   communityBadges: { dms: 0, events: 0, links: 0 },
   dmUnreadCounts: {},
+  automonkeStatus: null,
 
   // Slice 4: Live Features
   activeLiveRoom: null,
@@ -485,6 +493,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
     delete next[peerInboxId];
     return { dmUnreadCounts: next };
   }),
+  setAutomonkeStatus: (automonkeStatus) => set({ automonkeStatus }),
 
   // ── Slice 4: Live Features actions ─────────────────────────────────────────
 

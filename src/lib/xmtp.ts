@@ -792,6 +792,34 @@ export function parseTradeClosed(raw: string): ParsedTradeClosed | null {
   };
 }
 
+export interface ParsedAutomonkeStatus {
+  enrolled: boolean;
+  active: boolean;
+  limitOrdersEnabled: boolean;
+}
+
+/**
+ * Parse an AUTOMONKE_STATUS: structured DM — the bot's ground truth for
+ * AutonoMonke enrollment, sent as a follow-up after every /autonomonke
+ * reply. Fixes the app's local AsyncStorage flag (BotChannelScreen.tsx)
+ * silently drifting to "OFF" on a fresh install/build even though bot-side
+ * enrollment never changed (sender must be in BOT_INBOX_IDS at the call
+ * site — same spoof guard as parseTradeClosed).
+ */
+export function parseAutomonkeStatus(raw: string): ParsedAutomonkeStatus | null {
+  if (!raw.startsWith("AUTOMONKE_STATUS:")) return null;
+  const jsonStr = raw.slice("AUTOMONKE_STATUS:".length);
+  if (jsonStr.length > 500) return null;
+  let data: any;
+  try { data = JSON.parse(jsonStr); } catch { return null; }
+  if (!data || typeof data !== "object") return null;
+  return {
+    enrolled: data.enrolled === true,
+    active: data.active === true,
+    limitOrdersEnabled: data.limitOrdersEnabled === true,
+  };
+}
+
 /**
  * Parse and validate a TRADE_OPENED: structured DM. Mirrors parseTradeClosed —
  * signed-style (sender must be in BOT_INBOX_IDS at the call site).
