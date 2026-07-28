@@ -120,7 +120,7 @@ export default function RootLayout() {
           useAppStore.getState().setBananaBalance(600);
           const ss: ShopState = await loadShopState();
           ss.owned = ['theme_pfp_full', 'theme_matrix', 'bubble_neon_green'];
-          ss.equipped = { bubble: 'bubble_neon_green', text: null, pfp: null, theme: 'theme_matrix' };
+          ss.equipped = { bubble: 'bubble_neon_green', text: null, pfp: null, theme: 'theme_matrix', world: null };
           await saveShopState(ss);
           const styles = await getEquippedStyles();
           useAppStore.getState().setShopStyles(styles);

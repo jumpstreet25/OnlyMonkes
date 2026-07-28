@@ -87,7 +87,6 @@ export function LivePnLCardModal({ card, visible, onClose }: LivePnLCardModalPro
       format: 'png',
       quality: 1,
       result: 'tmpfile',
-      // @ts-expect-error - Android-only knob, not in the TS types
       useRenderInContext: true,
     });
   }, []);

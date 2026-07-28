@@ -32,7 +32,6 @@ import { VideoCameraModal } from "@/components/VideoCameraModal";
 import { PhotoReviewModal } from "@/components/PhotoReviewModal";
 import { GlassBottomSheet } from "@/components/GlassBottomSheet";
 import { MonkeGlass } from "@/components/MonkeGlass";
-import { MessageActionSheet } from "@/components/MessageActionSheet";
 import { useAppStore } from "@/store/appStore";
 import { addBananas } from "@/lib/bananaRewards";
 import { saveSelectedNftMint } from "@/lib/userProfile";
