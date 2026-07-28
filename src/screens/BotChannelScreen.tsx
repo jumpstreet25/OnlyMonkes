@@ -353,7 +353,7 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
       {/* Header — matches Main Chat header layout exactly. Status-bar safe-
           area lives inside so the bg extends edge-to-edge behind the
           status bar (no themeBg gap above the chrome). */}
-      <View style={[styles.header, { backgroundColor: chromeBg, borderBottomColor: themeBorder, paddingTop: insets.top }]}>
+      <View style={[styles.header, { backgroundColor: chromeBg, borderBottomColor: themeBorder, paddingTop: insets.top, height: 100 + insets.top }]}>
         <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={8}>
           <Text style={styles.backIcon}>{"\u2039"}</Text>
         </Pressable>
