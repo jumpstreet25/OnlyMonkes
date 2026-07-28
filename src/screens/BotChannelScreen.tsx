@@ -15,6 +15,7 @@ import {
   ActivityIndicator,
   Image,
   ImageBackground,
+  Dimensions,
 } from "react-native";
 import { FlashList, type FlashListRef, type ListRenderItem } from "@shopify/flash-list";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -356,24 +357,26 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
           <Text style={styles.backIcon}>{"\u2039"}</Text>
         </Pressable>
 
-        {/* Left-side Limit Orders pill \u2014 mirrors the AutonoMonke pill on the
-            right. Only on the trades channel; AutonoMonke-specific feature.
-            Tap when not enrolled opens the AutonoMonke modal (handler
-            short-circuits via setShowAutonoMonkeModal). */}
-        {channelId === "trades" && hasAutonomy && (
-          <Pressable
-            onPress={handleLimitOrdersToggle}
-            style={[styles.limitOrdersBtn, limitOrdersEnabled && styles.limitOrdersBtnActive]}
-            hitSlop={8}
-          >
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-              {limitOrdersEnabled && <View style={styles.blueCheck}><Text style={styles.blueCheckText}>{"\u2713"}</Text></View>}
-              <Text style={[styles.limitOrdersBtnText, limitOrdersEnabled && styles.limitOrdersBtnTextActive]}>
-                Limit Orders
-              </Text>
-            </View>
-          </Pressable>
-        )}
+        {/* Fixed-width slot \u2014 always reserved so the center banner gets the
+            same available width on every channel, whether or not this
+            channel actually shows the Limit Orders pill (trades only).
+            Mirrors the AutonoMonke pill slot on the right. */}
+        <View style={styles.headerLeftExtra}>
+          {channelId === "trades" && hasAutonomy && (
+            <Pressable
+              onPress={handleLimitOrdersToggle}
+              style={[styles.limitOrdersBtn, limitOrdersEnabled && styles.limitOrdersBtnActive]}
+              hitSlop={8}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                {limitOrdersEnabled && <View style={styles.blueCheck}><Text style={styles.blueCheckText}>{"\u2713"}</Text></View>}
+                <Text style={[styles.limitOrdersBtnText, limitOrdersEnabled && styles.limitOrdersBtnTextActive]}>
+                  Limit Orders
+                </Text>
+              </View>
+            </Pressable>
+          )}
+        </View>
 
         {/* Center: banner image — matches Main Chat header layout */}
         <ImageBackground
@@ -589,6 +592,23 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
   );
 }
 
+// The four banner PNGs (Bets/Trade/Sales/Predictions) are hand-authored
+// wordmarks, not a consistent font-size-on-fixed-canvas render — their
+// native aspect ratios range ~1.68-2.05 and don't track letter count
+// linearly (Sales, a short name, is actually the WIDEST aspect of the
+// four). A plain `resizeMode="contain"` + fixed height doesn't give equal
+// legibility: whichever banner is closest to the available width's own
+// aspect ratio ends up width-bound and renders shorter than the others.
+// Deriving the render height from the worst-case (widest) aspect ratio and
+// the header's actual available width means every banner is guaranteed to
+// be height-bound at the SAME height — same legible text size on every
+// channel, scaled to fit the header/toolbar space rather than to an
+// arbitrary constant.
+const WIDEST_BANNER_ASPECT = 533 / 260; // Sales.png — widest of the four
+const HEADER_SIDE_RESERVED = 58 /* backBtn */ + 94 /* headerLeftExtra incl. its 4px marginLeft */ + 90 /* headerRight */;
+const BANNER_AVAIL_W = Dimensions.get("window").width - HEADER_SIDE_RESERVED;
+const BANNER_HEIGHT = Math.min(96, Math.floor(BANNER_AVAIL_W / WIDEST_BANNER_ASPECT) - 4);
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -600,6 +620,13 @@ const styles = StyleSheet.create({
   // vertically) than Main Chat's banana pill, so the centered banner has
   // slightly less horizontal room — but the height + scale + margin all
   // match, which is what the community feedback was about.
+  //
+  // headerLeftExtra / headerRight both have a fixed width (not
+  // minWidth/content-hugging) and are ALWAYS present in the layout, whether
+  // or not this channel actually renders a pill inside them. That's what
+  // keeps headerCenter's flex:1 share — and therefore the banner's
+  // rendered size/position — identical across bets/trades/sales/predictions
+  // instead of shifting based on which optional pills a channel has.
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -610,17 +637,18 @@ const styles = StyleSheet.create({
   },
   headerCenter: {
     flex: 1,
-    height: 96,
+    height: BANNER_HEIGHT,
     alignSelf: "center",
     justifyContent: "center",
     alignItems: "center",
     marginHorizontal: -8,
-    // No 1.35 scale here — main chat (ChatHeader) uses scale(1.35) because
-    // its source asset is 1:1 square (header.png 2084×2084). Bot channel
-    // banners are wide rectangles (~1.7-2.05 aspect), so the same scale
-    // makes them extend 230-266px wide vs main's 130×130, which read as
-    // "way too big" in user testing 2026-05-07. At scale 1.0 they cap at
-    // ~96 height x (aspect × 96) wide, comparable visual weight to main.
+    // BANNER_HEIGHT (see above) replaces the old fixed height:96 — at 96,
+    // every banner was actually WIDTH-bound (not height-bound) against the
+    // available flex space, so their differing native aspect ratios leaked
+    // straight into differing rendered heights (Sales rendered notably
+    // smaller than Predictions despite the fixed-width zones fix above).
+    // Deriving height from the widest aspect + real available width fixes
+    // that: all four now render at the same height.
     overflow: "hidden",
   },
   bannerTintOverlay: {
@@ -639,7 +667,13 @@ const styles = StyleSheet.create({
     color: "#fff",
     lineHeight: 38,
   },
+  headerLeftExtra: {
+    width: 90,
+    marginLeft: 4,
+    alignItems: "center",
+  },
   headerRight: {
+    width: 90,
     alignItems: "center",
     gap: 6,
     zIndex: 1,
@@ -649,7 +683,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 8,
     backgroundColor: "rgba(108, 180, 238, 0.15)",
-    minWidth: 44,
+    width: 90,
     alignItems: "center",
   },
   muteBtnMuted: {
@@ -837,7 +871,7 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     borderRadius: 8,
     backgroundColor: "rgba(124, 58, 237, 0.15)",
-    minWidth: 44,
+    width: 90,
     alignItems: "center",
   },
   autonomyBtnActive: {
@@ -859,9 +893,8 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     borderRadius: 8,
     backgroundColor: "rgba(20, 184, 166, 0.15)",
-    minWidth: 44,
+    width: 90,
     alignItems: "center",
-    marginLeft: 4,
   },
   limitOrdersBtnActive: {
     backgroundColor: "rgba(20, 184, 166, 0.3)",
