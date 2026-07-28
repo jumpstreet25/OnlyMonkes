@@ -358,24 +358,26 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
           <Text style={styles.backIcon}>{"\u2039"}</Text>
         </Pressable>
 
-        {/* Left-side Limit Orders pill \u2014 mirrors the AutonoMonke pill on the
-            right. Only on the trades channel; AutonoMonke-specific feature.
-            Tap when not enrolled opens the AutonoMonke modal (handler
-            short-circuits via setShowAutonoMonkeModal). */}
-        {channelId === "trades" && hasAutonomy && (
-          <Pressable
-            onPress={handleLimitOrdersToggle}
-            style={[styles.limitOrdersBtn, limitOrdersEnabled && styles.limitOrdersBtnActive]}
-            hitSlop={8}
-          >
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-              {limitOrdersEnabled && <View style={styles.blueCheck}><Text style={styles.blueCheckText}>{"\u2713"}</Text></View>}
-              <Text style={[styles.limitOrdersBtnText, limitOrdersEnabled && styles.limitOrdersBtnTextActive]}>
-                Limit Orders
-              </Text>
-            </View>
-          </Pressable>
-        )}
+        {/* Fixed-width slot \u2014 always reserved so the center banner gets the
+            same available width on every channel, whether or not this
+            channel actually shows the Limit Orders pill (trades only).
+            Mirrors the AutonoMonke pill slot on the right. */}
+        <View style={styles.headerLeftExtra}>
+          {channelId === "trades" && hasAutonomy && (
+            <Pressable
+              onPress={handleLimitOrdersToggle}
+              style={[styles.limitOrdersBtn, limitOrdersEnabled && styles.limitOrdersBtnActive]}
+              hitSlop={8}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                {limitOrdersEnabled && <View style={styles.blueCheck}><Text style={styles.blueCheckText}>{"\u2713"}</Text></View>}
+                <Text style={[styles.limitOrdersBtnText, limitOrdersEnabled && styles.limitOrdersBtnTextActive]}>
+                  Limit Orders
+                </Text>
+              </View>
+            </Pressable>
+          )}
+        </View>
 
         {/* Center: banner image — matches Main Chat header layout */}
         <ImageBackground
@@ -613,6 +615,13 @@ const styles = StyleSheet.create({
   // vertically) than Main Chat's banana pill, so the centered banner has
   // slightly less horizontal room — but the height + scale + margin all
   // match, which is what the community feedback was about.
+  //
+  // headerLeftExtra / headerRight both have a fixed width (not
+  // minWidth/content-hugging) and are ALWAYS present in the layout, whether
+  // or not this channel actually renders a pill inside them. That's what
+  // keeps headerCenter's flex:1 share — and therefore the banner's
+  // rendered size/position — identical across bets/trades/sales/predictions
+  // instead of shifting based on which optional pills a channel has.
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -652,7 +661,13 @@ const styles = StyleSheet.create({
     color: "#fff",
     lineHeight: 38,
   },
+  headerLeftExtra: {
+    width: 90,
+    marginLeft: 4,
+    alignItems: "center",
+  },
   headerRight: {
+    width: 90,
     alignItems: "center",
     gap: 6,
     zIndex: 1,
@@ -662,7 +677,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 8,
     backgroundColor: "rgba(108, 180, 238, 0.15)",
-    minWidth: 44,
+    width: 90,
     alignItems: "center",
   },
   muteBtnMuted: {
@@ -850,7 +865,7 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     borderRadius: 8,
     backgroundColor: "rgba(124, 58, 237, 0.15)",
-    minWidth: 44,
+    width: 90,
     alignItems: "center",
   },
   autonomyBtnActive: {
@@ -872,9 +887,8 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     borderRadius: 8,
     backgroundColor: "rgba(20, 184, 166, 0.15)",
-    minWidth: 44,
+    width: 90,
     alignItems: "center",
-    marginLeft: 4,
   },
   limitOrdersBtnActive: {
     backgroundColor: "rgba(20, 184, 166, 0.3)",
