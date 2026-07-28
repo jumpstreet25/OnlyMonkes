@@ -15,7 +15,6 @@ import {
   ActivityIndicator,
   Image,
   ImageBackground,
-  Dimensions,
 } from "react-native";
 import { FlashList, type FlashListRef, type ListRenderItem } from "@shopify/flash-list";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -359,28 +358,12 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
           <Text style={styles.backIcon}>{"\u2039"}</Text>
         </Pressable>
 
-        {/* Fixed-width slot \u2014 always reserved so the center banner gets the
-            same available width on every channel, whether or not this
-            channel actually shows the Limit Orders pill (trades only).
-            Mirrors the AutonoMonke pill slot on the right. */}
-        <View style={styles.headerLeftExtra}>
-          {channelId === "trades" && hasAutonomy && (
-            <Pressable
-              onPress={handleLimitOrdersToggle}
-              style={[styles.limitOrdersBtn, limitOrdersEnabled && styles.limitOrdersBtnActive]}
-              hitSlop={8}
-            >
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                {limitOrdersEnabled && <View style={styles.blueCheck}><Text style={styles.blueCheckText}>{"\u2713"}</Text></View>}
-                <Text style={[styles.limitOrdersBtnText, limitOrdersEnabled && styles.limitOrdersBtnTextActive]}>
-                  Limit Orders
-                </Text>
-              </View>
-            </Pressable>
-          )}
-        </View>
-
-        {/* Center: banner image — matches Main Chat header layout */}
+        {/* Center: banner image — matches Main Chat header layout. Only the
+            back button and mute pill share the row with it now (both
+            content-hugging and present on every channel), so the banner
+            gets the same, generous available width everywhere — no more
+            reserving space for the Limit Orders / AutonoMonke pills, which
+            moved to their own row below. */}
         <ImageBackground
           source={config.banner}
           style={styles.headerCenter}
@@ -391,7 +374,7 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
           )}
         </ImageBackground>
 
-        {/* Right column: Alert bell + Autonomy button */}
+        {/* Right: Alert bell only */}
         <View style={styles.headerRight}>
           <Pressable
             onPress={() => {
@@ -405,43 +388,60 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
               {isMuted ? "🔇 Muted" : "🔔 On"}
             </Text>
           </Pressable>
+        </View>
+      </View>
 
-          {hasAutonomy && (
+      {/* Pill band — Limit Orders (trades only) + AutonoMonke (trades/bets/
+          predictions), relocated out of the header so they stop competing
+          with the banner for width. Solid chromeBg backing + each pill's
+          own opaque fill/border keeps them readable over the busy World
+          background instead of blending in; the active/enrolled state gets
+          a visibly heavier fill + border so "on" reads at a glance. Only
+          rendered when this channel actually has a pill to show. */}
+      {hasAutonomy && (
+        <View style={[styles.pillBand, { backgroundColor: chromeBg, borderBottomColor: themeBorder }]}>
+          {channelId === "trades" && (
             <Pressable
-              onPress={() => {
-                if (autonomyEnrolled) {
-                  router.push(`/dm/${BOT_INBOX_ID}` as any);
-                } else {
-                  setShowAutonoMonkeModal(true);
-                }
-              }}
-              onLongPress={() => {
-                // v2.38: long-press re-opens the wizard so enrolled users can
-                // change funding currency / sliders without going through the
-                // DM. Setup is idempotent on the bot side — re-running updates
-                // state in place, never creates a second hot wallet.
-                if (autonomyEnrolled) {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-                  setShowAutonoMonkeModal(true);
-                }
-              }}
-              delayLongPress={400}
-              style={[styles.autonomyBtn, autonomyEnrolled && styles.autonomyBtnActive]}
+              onPress={handleLimitOrdersToggle}
+              style={[styles.limitOrdersBtn, limitOrdersEnabled && styles.limitOrdersBtnActive]}
               hitSlop={8}
             >
               <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                {autonomyEnrolled && <View style={styles.blueCheck}><Text style={styles.blueCheckText}>✓</Text></View>}
-                <Text style={[styles.autonomyBtnText, autonomyEnrolled && styles.autonomyBtnTextActive]}>
-                  AutonoMonke
+                {limitOrdersEnabled && <View style={styles.blueCheck}><Text style={styles.blueCheckText}>{"\u2713"}</Text></View>}
+                <Text style={[styles.limitOrdersBtnText, limitOrdersEnabled && styles.limitOrdersBtnTextActive]}>
+                  Limit Orders
                 </Text>
               </View>
             </Pressable>
           )}
-        </View>
-      </View>
 
-      {/* Bot Alerts · Live status bar removed 2026-05-07 — redundant chrome.
-          Filter band sits directly below the header now. */}
+          <Pressable
+            onPress={() => {
+              if (autonomyEnrolled) {
+                router.push(`/dm/${BOT_INBOX_ID}` as any);
+              } else {
+                setShowAutonoMonkeModal(true);
+              }
+            }}
+            onLongPress={() => {
+              if (autonomyEnrolled) {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+                setShowAutonoMonkeModal(true);
+              }
+            }}
+            delayLongPress={400}
+            style={[styles.autonomyBtn, autonomyEnrolled && styles.autonomyBtnActive]}
+            hitSlop={8}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+              {autonomyEnrolled && <View style={styles.blueCheck}><Text style={styles.blueCheckText}>{"\u2713"}</Text></View>}
+              <Text style={[styles.autonomyBtnText, autonomyEnrolled && styles.autonomyBtnTextActive]}>
+                AutonoMonke
+              </Text>
+            </View>
+          </Pressable>
+        </View>
+      )}
 
       {/* Loading / connecting state */}
       {isLoading && (
@@ -605,23 +605,6 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
   );
 }
 
-// The four banner PNGs (Bets/Trade/Sales/Predictions) are hand-authored
-// wordmarks, not a consistent font-size-on-fixed-canvas render — their
-// native aspect ratios range ~1.68-2.05 and don't track letter count
-// linearly (Sales, a short name, is actually the WIDEST aspect of the
-// four). A plain `resizeMode="contain"` + fixed height doesn't give equal
-// legibility: whichever banner is closest to the available width's own
-// aspect ratio ends up width-bound and renders shorter than the others.
-// Deriving the render height from the worst-case (widest) aspect ratio and
-// the header's actual available width means every banner is guaranteed to
-// be height-bound at the SAME height — same legible text size on every
-// channel, scaled to fit the header/toolbar space rather than to an
-// arbitrary constant.
-const WIDEST_BANNER_ASPECT = 533 / 260; // Sales.png — widest of the four
-const HEADER_SIDE_RESERVED = 58 /* backBtn */ + 112 /* headerLeftExtra incl. its 4px marginLeft */ + 132 /* headerRight */;
-const BANNER_AVAIL_W = Dimensions.get("window").width - HEADER_SIDE_RESERVED;
-const BANNER_HEIGHT = Math.min(96, Math.floor(BANNER_AVAIL_W / WIDEST_BANNER_ASPECT) - 4);
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -629,17 +612,12 @@ const styles = StyleSheet.create({
   },
   // Header geometry matched to ChatHeader.tsx (Main Chat) so the banner
   // image renders at the same visible size and is centered the same way.
-  // Bot channels' headerRight is wider (mute pill + AutonoMonke pill stacked
-  // vertically) than Main Chat's banana pill, so the centered banner has
-  // slightly less horizontal room — but the height + scale + margin all
-  // match, which is what the community feedback was about.
-  //
-  // headerLeftExtra / headerRight both have a fixed width (not
-  // minWidth/content-hugging) and are ALWAYS present in the layout, whether
-  // or not this channel actually renders a pill inside them. That's what
-  // keeps headerCenter's flex:1 share — and therefore the banner's
-  // rendered size/position — identical across bets/trades/sales/predictions
-  // instead of shifting based on which optional pills a channel has.
+  // Only backBtn + the mute pill share the row with the banner now (both
+  // content-hugging, present on every channel) — the Limit Orders /
+  // AutonoMonke pills live in their own row below (pillBand) so they don't
+  // compete with the banner for width. That's what keeps headerCenter's
+  // flex:1 share, and the banner's rendered size, identical across every
+  // channel regardless of which pills that channel has.
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -650,18 +628,17 @@ const styles = StyleSheet.create({
   },
   headerCenter: {
     flex: 1,
-    height: BANNER_HEIGHT,
+    height: 96,
     alignSelf: "center",
     justifyContent: "center",
     alignItems: "center",
     marginHorizontal: -8,
-    // BANNER_HEIGHT (see above) replaces the old fixed height:96 — at 96,
-    // every banner was actually WIDTH-bound (not height-bound) against the
-    // available flex space, so their differing native aspect ratios leaked
-    // straight into differing rendered heights (Sales rendered notably
-    // smaller than Predictions despite the fixed-width zones fix above).
-    // Deriving height from the widest aspect + real available width fixes
-    // that: all four now render at the same height.
+    // No 1.35 scale here — main chat (ChatHeader) uses scale(1.35) because
+    // its source asset is 1:1 square (header.png 2084×2084). Bot channel
+    // banners are wide rectangles (~1.7-2.05 aspect), so the same scale
+    // makes them extend 230-266px wide vs main's 130×130, which read as
+    // "way too big" in user testing 2026-05-07. At scale 1.0 they cap at
+    // ~96 height x (aspect × 96) wide, comparable visual weight to main.
     overflow: "hidden",
   },
   bannerTintOverlay: {
@@ -680,23 +657,13 @@ const styles = StyleSheet.create({
     color: "#fff",
     lineHeight: 38,
   },
-  // Reserved-slot widths, NOT pill widths — the pills themselves stay
-  // content-hugging (minWidth) below so their text never wraps. Measured
-  // directly off-device: "AutonoMonke" needs ~107dp of content (checkmark +
-  // text), "Limit Orders" only ~82dp — sizing both slots the same (as a
-  // first pass did) either wrapped the wider one or wasted space on the
-  // narrower one. 108/132 give each its own safety margin.
-  headerLeftExtra: {
-    width: 108,
-    marginLeft: 4,
-    alignItems: "center",
-  },
   headerRight: {
-    width: 132,
     alignItems: "center",
-    gap: 6,
     zIndex: 1,
   },
+  // Pill band — sits below the header (see pillBand style further down)
+  // with its own solid backing so the Limit Orders / AutonoMonke pills
+  // read clearly over the busy World background instead of blending in.
   muteBtn: {
     paddingHorizontal: 10,
     paddingVertical: 6,
@@ -885,16 +852,37 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
 
+  // Pill band — Limit Orders + AutonoMonke live here now, below the
+  // header, instead of squeezed in beside the banner. Solid chromeBg
+  // backing (same pattern as filterBand above) so the row itself reads
+  // as a distinct toolbar strip over the World background.
+  pillBand: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+  },
+  // Base fill bumped from 0.15→0.22 and a matching border added — at 0.15
+  // with no border, the pills nearly disappeared against the busy World
+  // background (grid lines, gradients). Active/enrolled state jumps to a
+  // visibly heavier fill + brighter border ("shaded") so enrollment status
+  // reads at a glance instead of only via the small checkmark badge.
   autonomyBtn: {
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 8,
-    backgroundColor: "rgba(124, 58, 237, 0.15)",
+    backgroundColor: "rgba(124, 58, 237, 0.22)",
+    borderWidth: 1,
+    borderColor: "rgba(124, 58, 237, 0.45)",
     minWidth: 44,
     alignItems: "center",
+    elevation: 2,
   },
   autonomyBtnActive: {
-    backgroundColor: "rgba(124, 58, 237, 0.3)",
+    backgroundColor: "rgba(124, 58, 237, 0.4)",
+    borderColor: "rgba(124, 58, 237, 0.8)",
   },
   autonomyBtnText: {
     fontFamily: FONTS.bodyMed,
@@ -911,12 +899,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 8,
-    backgroundColor: "rgba(20, 184, 166, 0.15)",
+    backgroundColor: "rgba(20, 184, 166, 0.22)",
+    borderWidth: 1,
+    borderColor: "rgba(20, 184, 166, 0.45)",
     minWidth: 44,
     alignItems: "center",
+    elevation: 2,
   },
   limitOrdersBtnActive: {
-    backgroundColor: "rgba(20, 184, 166, 0.3)",
+    backgroundColor: "rgba(20, 184, 166, 0.4)",
+    borderColor: "rgba(20, 184, 166, 0.8)",
   },
   limitOrdersBtnText: {
     fontFamily: FONTS.bodyMed,
