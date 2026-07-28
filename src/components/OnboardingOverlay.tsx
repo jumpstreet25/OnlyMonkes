@@ -10,7 +10,6 @@ import {
   View,
   Text,
   StyleSheet,
-  Modal,
   Pressable,
   Animated,
   Dimensions,
@@ -19,6 +18,7 @@ import * as Haptics from "expo-haptics";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { THEME, FONTS } from "@/lib/constants";
 import { ONBOARDING_SCREENS } from "@/lib/monkeCopy";
+import { MonkeGlass } from "@/components/MonkeGlass";
 
 const AK_ONBOARDED = "onboarding_complete_v1";
 const { width: SCREEN_W } = Dimensions.get("window");
@@ -52,35 +52,33 @@ export function OnboardingOverlay({ visible, onComplete }: OnboardingOverlayProp
   const screen = ONBOARDING_SCREENS[page];
 
   return (
-    <Modal visible transparent animationType="fade" statusBarTranslucent>
-      <View style={styles.overlay}>
-        <Animated.View style={[styles.card, { opacity: fadeAnim }]}>
-          <Text style={styles.emoji}>{screen.emoji}</Text>
-          <Text style={styles.title}>{screen.title}</Text>
-          <Text style={styles.body}>{screen.body}</Text>
+    <MonkeGlass visible onClose={() => {}} persistent cardStyle={styles.card}>
+      <Animated.View style={{ opacity: fadeAnim, alignItems: "center", gap: 16 }}>
+        <Text style={styles.emoji}>{screen.emoji}</Text>
+        <Text style={styles.title}>{screen.title}</Text>
+        <Text style={styles.body}>{screen.body}</Text>
 
-          {/* Page dots */}
-          <View style={styles.dots}>
-            {ONBOARDING_SCREENS.map((_, i) => (
-              <View key={i} style={[styles.dot, i === page && styles.dotActive]} />
-            ))}
-          </View>
+        {/* Page dots */}
+        <View style={styles.dots}>
+          {ONBOARDING_SCREENS.map((_, i) => (
+            <View key={i} style={[styles.dot, i === page && styles.dotActive]} />
+          ))}
+        </View>
 
-          <Pressable
-            style={({ pressed }) => [styles.btn, pressed && styles.btnPressed]}
-            onPress={goNext}
-          >
-            <Text style={styles.btnText}>
-              {page === ONBOARDING_SCREENS.length - 1 ? "Let's Go! 🍌" : "Next"}
-            </Text>
-          </Pressable>
+        <Pressable
+          style={({ pressed }) => [styles.btn, pressed && styles.btnPressed]}
+          onPress={goNext}
+        >
+          <Text style={styles.btnText}>
+            {page === ONBOARDING_SCREENS.length - 1 ? "Let's Go! 🍌" : "Next"}
+          </Text>
+        </Pressable>
 
-          {page === ONBOARDING_SCREENS.length - 1 && (
-            <Text style={styles.bonusHint}>+25 🍌 welcome bonus</Text>
-          )}
-        </Animated.View>
-      </View>
-    </Modal>
+        {page === ONBOARDING_SCREENS.length - 1 && (
+          <Text style={styles.bonusHint}>+25 🍌 welcome bonus</Text>
+        )}
+      </Animated.View>
+    </MonkeGlass>
   );
 }
 
@@ -91,27 +89,14 @@ export async function hasCompletedOnboarding(): Promise<boolean> {
 }
 
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.8)",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 24,
-  },
   card: {
-    backgroundColor: THEME.surface,
-    borderRadius: 24,
     padding: 32,
-    alignItems: "center",
-    gap: 16,
-    borderWidth: 1,
-    borderColor: "rgba(108, 180, 238, 0.15)",
+    borderColor: "rgba(108, 180, 238, 0.25)",
     shadowColor: "#6CB4EE",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 20,
     elevation: 10,
-    width: "100%",
     maxWidth: 340,
   },
   emoji: { fontSize: 56 },
