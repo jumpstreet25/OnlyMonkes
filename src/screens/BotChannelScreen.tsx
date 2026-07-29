@@ -153,12 +153,26 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
     }).catch(() => {});
 
     if (channelId !== "trades") return;
+    // 2026-07-29: this used to fire unconditionally on every mount — since
+    // the trades screen remounts basically every time the app opens (or the
+    // user navigates back to it), that meant a fresh "/autonomonke status"
+    // DM (and the bot's reply, which shows up as a notification) every
+    // single time. Throttle to once per cooldown window instead — still
+    // self-corrects a stale local flag, just not on a hair trigger.
+    const STATUS_CHECK_COOLDOWN_MS = 30 * 60 * 1000; // 30 min
+    const STATUS_CHECK_STORAGE_KEY = "automonke_last_status_check_v1";
     (async () => {
       try {
+        const lastCheckRaw = await AsyncStorage.getItem(STATUS_CHECK_STORAGE_KEY);
+        const lastCheck = lastCheckRaw ? parseInt(lastCheckRaw, 10) : 0;
+        if (Date.now() - lastCheck < STATUS_CHECK_COOLDOWN_MS) return;
         const client = getXmtpClient();
         if (!client) return;
         const dm = await (client.conversations as any).findOrCreateDm(BOT_INBOX_ID);
-        if (dm) await sendDmMessage(dm, "/autonomonke status", username);
+        if (dm) {
+          await sendDmMessage(dm, "/autonomonke status", username);
+          await AsyncStorage.setItem(STATUS_CHECK_STORAGE_KEY, String(Date.now()));
+        }
       } catch (err) {
         if (__DEV__) console.warn("[Autonomy:trades] status refresh DM failed:", (err as Error).message);
       }
