@@ -21,6 +21,7 @@ import {
   Dimensions,
   StyleSheet,
 } from "react-native";
+import { toast } from "sonner-native";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -207,9 +208,14 @@ export default function ImageLightbox({ url, onClose }: Props) {
       const { captureRef: capture } = await getViewShot();
       const uri = await capture(captureRef, { format: "jpg", quality: 0.95 });
       await ML.saveToLibraryAsync(uri);
-      Alert.alert("Saved", "Image saved to your gallery.");
+      // 2026-07-29: was Alert.alert — a native OS dialog that can't be
+      // themed at all (shows as a plain grey box against the app's glass
+      // UI). Matches the same save-to-gallery toast pattern already used
+      // in PnLCardModal.tsx. "Permission needed" stays a native Alert —
+      // same established precedent, rare one-time prompt.
+      toast.success("Saved to gallery");
     } catch {
-      Alert.alert("Error", "Could not save image.");
+      toast.error("Could not save image.");
     }
   }, []);
 
