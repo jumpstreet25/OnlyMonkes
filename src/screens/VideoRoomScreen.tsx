@@ -33,6 +33,7 @@ import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { THEME, FONTS } from '@/lib/constants';
+import { IS_IMMERSIVE_SHELL } from '@/lib/immersiveStatusBar';
 import { useAppStore } from '@/store/appStore';
 import { getCachedProfile } from '@/lib/userProfile';
 import { LK_URL } from '@/lib/livekit';
@@ -198,7 +199,7 @@ export default function VideoRoomScreen() {
   if (connecting) {
     return (
       <View style={[styles.container, styles.center]}>
-        <StatusBar barStyle="light-content" />
+        <StatusBar barStyle="light-content" hidden={IS_IMMERSIVE_SHELL} />
         <ActivityIndicator size="large" color="#0096C7" />
         <Text style={styles.connectingText}>Connecting to video room…</Text>
       </View>
@@ -208,7 +209,7 @@ export default function VideoRoomScreen() {
   if (error) {
     return (
       <View style={[styles.container, styles.center]}>
-        <StatusBar barStyle="light-content" />
+        <StatusBar barStyle="light-content" hidden={IS_IMMERSIVE_SHELL} />
         <Text style={styles.errorText}>{error}</Text>
         <Pressable style={styles.errorBtn} onPress={() => router.back()}>
           <Text style={styles.errorBtnText}>Go Back</Text>
@@ -232,7 +233,7 @@ export default function VideoRoomScreen() {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle="light-content" hidden={IS_IMMERSIVE_SHELL} />
 
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 4 }]}>

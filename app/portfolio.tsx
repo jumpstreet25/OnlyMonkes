@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Connection, PublicKey, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { THEME, FONTS, SOLANA_RPC_URL, SKR_MINT } from "@/lib/constants";
+import { IS_IMMERSIVE_SHELL } from "@/lib/immersiveStatusBar";
 import { useAppStore } from "@/store/appStore";
 import { MiniChart } from "@/components/MiniChart";
 import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
@@ -204,7 +205,7 @@ export default function PortfolioScreen() {
 
   return (
     <View style={styles.root}>
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle="light-content" hidden={IS_IMMERSIVE_SHELL} />
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <Pressable onPress={() => router.back()} hitSlop={8}>
           <Text style={styles.backText}>← Back</Text>

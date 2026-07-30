@@ -7,6 +7,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
+import { IS_IMMERSIVE_SHELL } from '../src/lib/immersiveStatusBar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -191,7 +192,7 @@ export default function RootLayout() {
     <QueryClientProvider client={queryClient}>
       <SafeAreaProvider>
         <GestureHandlerRootView style={{ flex: 1, backgroundColor: useThemeColor('bg') }}>
-          <StatusBar style="light" />
+          <StatusBar style="light" hidden={IS_IMMERSIVE_SHELL} />
           <Stack
             screenOptions={{
               headerShown: false,

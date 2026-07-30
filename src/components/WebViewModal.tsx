@@ -33,6 +33,7 @@ interface NavRequest {
   isTopFrame?: boolean;
 }
 import { THEME, FONTS } from "@/lib/constants";
+import { IS_IMMERSIVE_SHELL } from "@/lib/immersiveStatusBar";
 import { useAppStore } from "@/store/appStore";
 import { buildWalletBridgeJs, handleBridgeMessage } from "@/lib/walletBridge";
 
@@ -211,7 +212,7 @@ export function WebViewModal({ visible, url, title, onClose }: WebViewModalProps
       onRequestClose={onClose}
       statusBarTranslucent
     >
-      <StatusBar barStyle="light-content" backgroundColor="#0A0A0F" translucent />
+      <StatusBar barStyle="light-content" backgroundColor="#0A0A0F" translucent hidden={IS_IMMERSIVE_SHELL} />
       <WebViewErrorBoundary onClose={onClose}>
       <View style={styles.root}>
         {/* Top bar */}

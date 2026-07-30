@@ -27,6 +27,7 @@ import { WebView } from "react-native-webview";
 import { router } from "expo-router";
 // date-fns format removed — event formatting moved to EventRsvpModal
 import { THEME, FONTS, BOT_INBOX_IDS, BOT_DISPLAY_NAME, BOT_PFP_URL } from "@/lib/constants";
+import { IS_IMMERSIVE_SHELL } from "@/lib/immersiveStatusBar";
 import { MonkeGlass } from "@/components/MonkeGlass";
 import { useAppStore } from "@/store/appStore";
 import { getCachedProfile, getPersistedLocation, useProfileVersion } from "@/lib/userProfile";
@@ -553,7 +554,7 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
 
   return (
     <View style={styles.root}>
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle="light-content" hidden={IS_IMMERSIVE_SHELL} />
 
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>

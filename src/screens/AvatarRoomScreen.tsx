@@ -30,6 +30,7 @@ import { router } from 'expo-router';
 import { ConnectionState } from 'livekit-client';
 import { toast } from 'sonner-native';
 import { THEME, FONTS } from '@/lib/constants';
+import { IS_IMMERSIVE_SHELL } from '@/lib/immersiveStatusBar';
 import { LK_URL } from '@/lib/livekit';
 import { getCachedProfile } from '@/lib/userProfile';
 import { useAppStore } from '@/store/appStore';
@@ -230,7 +231,7 @@ export default function AvatarRoomScreen() {
   if (connecting) {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
-        <StatusBar barStyle="light-content" />
+        <StatusBar barStyle="light-content" hidden={IS_IMMERSIVE_SHELL} />
         <ActivityIndicator size="large" color={THEME.accent} />
         <Text style={styles.loadingText}>Joining room...</Text>
       </View>
@@ -243,7 +244,7 @@ export default function AvatarRoomScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle="light-content" hidden={IS_IMMERSIVE_SHELL} />
 
       {/* Hidden face tracker (camera input for local user) */}
       <FaceTracker

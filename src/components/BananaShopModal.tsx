@@ -24,6 +24,7 @@ import { toast } from "sonner-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { playSound } from "@/lib/sounds";
 import { THEME, FONTS, DEV_WALLET } from "@/lib/constants";
+import { IS_IMMERSIVE_SHELL } from "@/lib/immersiveStatusBar";
 import { useAppStore } from "@/store/appStore";
 import { spendBananas, addBananas } from "@/lib/bananaRewards";
 import { sendShopPaymentMulti, type ShopCurrency } from "@/lib/solana";
@@ -593,7 +594,7 @@ export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
       onRequestClose={onClose}
       statusBarTranslucent
     >
-      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
+      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent hidden={IS_IMMERSIVE_SHELL} />
       <View style={styles.fullRoot}>
         {/* Glass background */}
         <LinearGradient
