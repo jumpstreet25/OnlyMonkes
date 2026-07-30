@@ -26,6 +26,7 @@ import { SolanaCyberpunkWorld } from "./SolanaCyberpunkWorld";
 import { TradingFloorWorld } from "./TradingFloorWorld";
 import { TechNoirWorld } from "./TechNoirWorld";
 import { DeepSpaceWorld } from "./DeepSpaceWorld";
+import { FrostGroveWorld } from "./FrostGroveWorld";
 
 interface WorldLayerProps {
   active?: boolean;
@@ -40,6 +41,7 @@ export function WorldLayer({ active = true }: WorldLayerProps) {
     case "world_trading_floor":    return <TradingFloorWorld active={active} />;
     case "world_tech_noir":        return <TechNoirWorld active={active} />;
     case "world_deep_space":       return <DeepSpaceWorld active={active} />;
+    case "world_frost_grove":      return <FrostGroveWorld active={active} />;
     default: return null;
   }
 }
@@ -100,6 +102,54 @@ export function WorldMiniPreview({ worldId, width, height }: WorldMiniPreviewPro
             ]}
           >
             🍌
+          </Text>
+        ))}
+      </View>
+    );
+  }
+  if (worldId === "world_frost_grove") {
+    // Mini-pile mirrors Banana Grove's preview structure: snowflakes pile at
+    // the bottom, with a couple drifting in above. Scaled down for the card.
+    const miniPile = [
+      { xPct: 0.20, yOffset: 0,  size: 16, rot: -20 },
+      { xPct: 0.42, yOffset: 2,  size: 18, rot: 12  },
+      { xPct: 0.62, yOffset: 0,  size: 17, rot: -8  },
+      { xPct: 0.82, yOffset: 4,  size: 15, rot: 22  },
+      { xPct: 0.32, yOffset: 11, size: 14, rot: 28  },
+      { xPct: 0.52, yOffset: 14, size: 15, rot: -16 },
+      { xPct: 0.72, yOffset: 10, size: 13, rot: 6   },
+    ];
+    return (
+      <View style={[miniStyles.root, { width, height }]}>
+        <Canvas style={{ width, height }}>
+          <Rect x={0} y={0} width={width} height={height}>
+            <LinearGradient
+              start={vec(0, 0)}
+              end={vec(0, height)}
+              colors={["#0B1A2E", "#1C3A5C", "#0A1420"]}
+            />
+          </Rect>
+        </Canvas>
+        {/* Drifting snowflakes (static positions for preview) */}
+        <Text style={[miniStyles.banana, { left: width * 0.30 - 9, top: height * 0.18, fontSize: 18, transform: [{ rotate: "-12deg" }], opacity: 0.85 }]}>❄️</Text>
+        <Text style={[miniStyles.banana, { left: width * 0.70 - 8, top: height * 0.32, fontSize: 16, transform: [{ rotate: "18deg" }], opacity: 0.8 }]}>❄️</Text>
+        {/* Pile at the bottom */}
+        {miniPile.map((f, i) => (
+          <Text
+            key={i}
+            style={[
+              miniStyles.banana,
+              {
+                left: width * f.xPct - f.size / 2,
+                bottom: 6 + f.yOffset,
+                top: undefined,
+                fontSize: f.size,
+                opacity: 0.92,
+                transform: [{ rotate: `${f.rot}deg` }],
+              },
+            ]}
+          >
+            ❄️
           </Text>
         ))}
       </View>
