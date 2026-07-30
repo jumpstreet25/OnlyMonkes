@@ -1852,8 +1852,13 @@ async function handleMonkeImage(mint: string, env: Env): Promise<Response> {
   let wmResized: PhotonImage | undefined;
   try {
     const [baseRes, wmRes] = await Promise.all([
-      fetchWithTimeout(monke.image, {}, 10_000),
-      fetchWithTimeout(WATERMARK_URL, {}, 10_000),
+      // 2026-07-30: some Arweave gateway files 302 to a shard subdomain
+      // (e.g. arweave.net -> <hash>.arweave.net) — explicit redirect:"follow"
+      // rather than relying on fetch()'s implicit default, which silently
+      // returned the 302 itself (res.ok === false) for some NFTs and not
+      // others, sending them down the raw-image fallback path unnecessarily.
+      fetchWithTimeout(monke.image, { redirect: "follow" }, 10_000),
+      fetchWithTimeout(WATERMARK_URL, { redirect: "follow" }, 10_000),
     ]);
     if (!baseRes.ok || !wmRes.ok) throw new Error("upstream image fetch failed");
 
