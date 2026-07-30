@@ -43,6 +43,7 @@ import {
   sendAndConfirmRawTransaction,
 } from "@solana/web3.js";
 import bs58 from "bs58";
+import { PhotonImage, SamplingFilter, resize, watermark } from "@cf-wasm/photon/workerd";
 
 // Cloudflare Workers KV namespace binding (declared locally to avoid @cloudflare/workers-types dependency)
 interface KVListOptions {
@@ -1383,6 +1384,10 @@ const SAGA_COLLECTION_MINT = "GokAiStXz2Kqbxwz2oqzfEXuUhE7aXySmBGEP7uejKXF";
 const SAGA_CREATOR_WALLET = "8McVhmNjsYSkwQ34QXJb2ADgLWERcHcpqxSzRZUCRZfQ";
 const SKR_MINT = "SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3";
 const STATS_KV_KEY = "stats:latest";
+// Same asset + bottom-right placement convention as ShareablePnLCard.tsx —
+// "Shot using OnlyMonkes" watermark, ~28% of the base image's width.
+const WATERMARK_URL = "https://raw.githubusercontent.com/jumpstreet25/OnlyMonkes/master/assets/watermark.png";
+const WATERMARK_ASPECT = 1024 / 1536; // native watermark.png dimensions (h/w)
 
 // Known marketplace escrow programs — excluded from the holder count so it
 // matches what the bot's own daily digest shows (same set as holderSnapshot.ts).
@@ -1772,7 +1777,9 @@ async function handleMonkePage(mint: string, env: Env): Promise<Response> {
   const floorLine = stats?.floorSol != null ? `Floor: ${stats.floorSol.toFixed(2)} SOL` : "";
   const description = [traitsLine, floorLine].filter(Boolean).join(" — ") || "Saga Monkes holder on OnlyMonkes";
   const pageUrl = `${WORKER_BASE}/monke/${encodeURIComponent(mint)}`;
-  const imageUrl = monke.image ?? `${WORKER_BASE}/assets/watermark.png`;
+  // Watermarked composite (see handleMonkeImage) so the OnlyMonkes brand
+  // shows up wherever this card gets shared, not just the raw NFT art.
+  const imageUrl = monke.image ? `${WORKER_BASE}/monke/${encodeURIComponent(mint)}/image` : WATERMARK_URL;
 
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -1812,7 +1819,7 @@ async function handleMonkePage(mint: string, env: Env): Promise<Response> {
   </style>
 </head>
 <body>
-  ${monke.image ? `<img src="${escapeHtml(monke.image)}" alt="${escapeHtml(monke.name)}" />` : ""}
+  ${monke.image ? `<img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(monke.name)}" />` : ""}
   <h1>${escapeHtml(monke.name)}</h1>
   <p>${escapeHtml(description)}</p>
   <a class="cta" href="${DAPP_STORE_LINK}">Get OnlyMonkes</a>
@@ -1827,6 +1834,61 @@ async function handleMonkePage(mint: string, env: Env): Promise<Response> {
       ...CORS_HEADERS,
     },
   });
+}
+
+/** GET /monke/:mint/image — composites the NFT art + OnlyMonkes watermark
+ *  bottom-right (same asset/proportion convention as ShareablePnLCard.tsx),
+ *  baked into real JPEG pixels via @cf-wasm/photon (Workers has no native
+ *  canvas). Deliberately raster, not SVG — social-preview crawlers (X,
+ *  Discord) don't reliably rasterize SVG og:image/twitter:image. */
+async function handleMonkeImage(mint: string, env: Env): Promise<Response> {
+  const monke = await fetchMonkeByMint(mint, env);
+  if (!monke?.image) {
+    return new Response("Image not found", { status: 404, headers: { "Content-Type": "text/plain", ...CORS_HEADERS } });
+  }
+
+  let baseImage: PhotonImage | undefined;
+  let wmRaw: PhotonImage | undefined;
+  let wmResized: PhotonImage | undefined;
+  try {
+    const [baseRes, wmRes] = await Promise.all([
+      fetchWithTimeout(monke.image, {}, 10_000),
+      fetchWithTimeout(WATERMARK_URL, {}, 10_000),
+    ]);
+    if (!baseRes.ok || !wmRes.ok) throw new Error("upstream image fetch failed");
+
+    baseImage = PhotonImage.new_from_byteslice(new Uint8Array(await baseRes.arrayBuffer()));
+    wmRaw = PhotonImage.new_from_byteslice(new Uint8Array(await wmRes.arrayBuffer()));
+
+    const wmWidth = Math.round(baseImage.get_width() * 0.28);
+    const wmHeight = Math.round(wmWidth * WATERMARK_ASPECT);
+    wmResized = resize(wmRaw, wmWidth, wmHeight, SamplingFilter.Lanczos3);
+
+    const margin = Math.round(baseImage.get_width() * 0.03);
+    const xOffset = BigInt(Math.max(0, baseImage.get_width() - wmWidth - margin));
+    const yOffset = BigInt(Math.max(0, baseImage.get_height() - wmHeight - margin));
+    watermark(baseImage, wmResized, xOffset, yOffset);
+
+    const outBytes = baseImage.get_bytes_jpeg(90);
+
+    return new Response(outBytes, {
+      status: 200,
+      headers: {
+        "Content-Type": "image/jpeg",
+        "Cache-Control": "public, max-age=86400",
+        ...CORS_HEADERS,
+      },
+    });
+  } catch (err) {
+    // Compositing failed for any reason — fall back to the raw NFT image
+    // rather than a broken preview card.
+    console.error("[monke-image] compositing failed:", err instanceof Error ? err.stack ?? err.message : err);
+    return Response.redirect(monke.image, 302);
+  } finally {
+    baseImage?.free();
+    wmRaw?.free();
+    wmResized?.free();
+  }
 }
 
 /** POST /frames/alert — bot stores alert data (authenticated). */
@@ -2543,6 +2605,11 @@ export default {
     }
     if (path === "/api/verify") {
       if (request.method === "GET") return handleVerifyApi(url, env);
+      return errorResponse("Method not allowed", 405);
+    }
+    const monkeImageMatch = path.match(/^\/monke\/([^/]+)\/image$/);
+    if (monkeImageMatch) {
+      if (request.method === "GET") return handleMonkeImage(decodeURIComponent(monkeImageMatch[1]), env);
       return errorResponse("Method not allowed", 405);
     }
     const monkeMatch = path.match(/^\/monke\/([^/]+)$/);
