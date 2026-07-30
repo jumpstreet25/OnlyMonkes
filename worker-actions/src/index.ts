@@ -1371,6 +1371,14 @@ interface FrameAlertData {
 const WORKER_BASE = "https://onlymonkes-actions.jumpstreet25.workers.dev";
 const APP_DEEP_LINK = "https://onlymonkes.app";
 const DAPP_STORE_LINK = "https://dappstore.app/onlymonkes";
+// 2026-07-30: not everyone sharing/receiving a /monke/:mint link is on a
+// Solana Mobile device with the dApp Store available — a direct APK link
+// is the fallback for regular Android phones. Resolved dynamically (see
+// getLatestApkUrl) rather than hardcoding a version, so it never goes stale.
+const GITHUB_RELEASES_API = "https://api.github.com/repos/jumpstreet25/OnlyMonkes/releases/latest";
+const GITHUB_RELEASES_PAGE = "https://github.com/jumpstreet25/OnlyMonkes/releases/latest";
+const APK_URL_KV_KEY = "apk:latest-url";
+const APK_URL_CACHE_TTL_MS = 60 * 60 * 1000; // 1h — avoid hammering GitHub's API on every click
 
 // ─── Public stats / "Check Your Monke" preview page ──────────────────────────
 // 2026-07-30: zero-install growth funnel. Independently fetches the same
@@ -1541,6 +1549,42 @@ async function getCachedStats(env: Env): Promise<StatsSnapshot | null> {
   const raw = await env.FRAME_ALERTS.get(STATS_KV_KEY);
   if (!raw) return null;
   try { return JSON.parse(raw) as StatsSnapshot; } catch { return null; }
+}
+
+/** Resolves the current latest GitHub release's signed APK asset URL,
+ *  cached in KV for an hour so a burst of downloads doesn't hammer GitHub's
+ *  API. Falls back to the plain releases page (still functional, just one
+ *  more click) if resolution fails for any reason. */
+async function getLatestApkUrl(env: Env): Promise<string> {
+  const cached = await env.FRAME_ALERTS.get(APK_URL_KV_KEY);
+  if (cached) {
+    try {
+      const { url, ts } = JSON.parse(cached) as { url: string; ts: number };
+      if (Date.now() - ts < APK_URL_CACHE_TTL_MS) return url;
+    } catch { /* fall through to re-resolve */ }
+  }
+
+  try {
+    const res = await fetchWithTimeout(GITHUB_RELEASES_API, {
+      headers: { "User-Agent": "OnlyMonkes-Web/1.0", "Accept": "application/vnd.github+json" },
+    }, 8_000);
+    if (!res.ok) throw new Error(`GitHub API ${res.status}`);
+    const data = await res.json() as any;
+    const asset = (data?.assets ?? []).find((a: any) => typeof a?.name === "string" && a.name.endsWith(".apk"));
+    const url = asset?.browser_download_url ?? GITHUB_RELEASES_PAGE;
+    await env.FRAME_ALERTS.put(APK_URL_KV_KEY, JSON.stringify({ url, ts: Date.now() }), { expirationTtl: 24 * 60 * 60 });
+    return url;
+  } catch {
+    return GITHUB_RELEASES_PAGE;
+  }
+}
+
+/** GET /download/apk — redirects to whichever APK is attached to the
+ *  current latest GitHub release, resolved dynamically so this link never
+ *  needs updating as new versions ship. */
+async function handleDownloadApk(env: Env): Promise<Response> {
+  const url = await getLatestApkUrl(env);
+  return Response.redirect(url, 302);
 }
 
 /** Fetch a single Saga Monke's metadata by mint/asset id — Helius DAS
@@ -1815,14 +1859,21 @@ async function handleMonkePage(mint: string, env: Env): Promise<Response> {
     img { width: 280px; height: 280px; border-radius: 20px; object-fit: cover; margin-bottom: 20px; }
     h1 { font-size: 24px; color: #6CB4EE; margin-bottom: 8px; }
     p { color: #8B8B9E; margin-bottom: 24px; }
-    a.cta { display: inline-block; background: #6CB4EE; color: #0A0A0F; font-weight: 600; padding: 14px 28px; border-radius: 14px; text-decoration: none; }
+    .cta-group { max-width: 320px; margin: 0 auto; }
+    a.cta { display: block; background: #6CB4EE; color: #0A0A0F; font-weight: 600; padding: 14px 28px; border-radius: 14px; text-decoration: none; margin-bottom: 10px; }
+    a.cta-secondary { display: block; background: transparent; border: 1px solid #6CB4EE; color: #6CB4EE; font-weight: 600; padding: 13px 28px; border-radius: 14px; text-decoration: none; }
+    .cta-caption { font-size: 12px; color: #8B8B9E; margin-top: 12px; }
   </style>
 </head>
 <body>
   ${monke.image ? `<img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(monke.name)}" />` : ""}
   <h1>${escapeHtml(monke.name)}</h1>
   <p>${escapeHtml(description)}</p>
-  <a class="cta" href="${DAPP_STORE_LINK}">Get OnlyMonkes</a>
+  <div class="cta-group">
+    <a class="cta" href="${DAPP_STORE_LINK}">Get OnlyMonkes — Solana dApp Store</a>
+    <a class="cta-secondary" href="${WORKER_BASE}/download/apk">Download APK Directly</a>
+    <p class="cta-caption">On a Solana Mobile device? Use the dApp Store. Any other Android phone — download the APK directly.</p>
+  </div>
 </body>
 </html>`;
 
@@ -2610,6 +2661,10 @@ export default {
     }
     if (path === "/api/verify") {
       if (request.method === "GET") return handleVerifyApi(url, env);
+      return errorResponse("Method not allowed", 405);
+    }
+    if (path === "/download/apk") {
+      if (request.method === "GET") return handleDownloadApk(env);
       return errorResponse("Method not allowed", 405);
     }
     const monkeImageMatch = path.match(/^\/monke\/([^/]+)\/image$/);
