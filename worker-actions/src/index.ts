@@ -1503,19 +1503,19 @@ async function fetchRecentSales(env: Env): Promise<StatsSnapshot["recentSales"]>
     if (!res.ok) return [];
     const body = await res.json();
     const txs = Array.isArray(body) ? body : [];
-    return txs
-      .map((tx: any) => {
-        const nft = tx?.events?.nft;
-        if (!nft?.amount) return null;
-        return {
-          signature: tx.signature as string,
-          priceSol: nft.amount / 1e9,
-          source: nft.source as string | undefined,
-          ts: typeof tx.timestamp === "number" ? tx.timestamp * 1000 : Date.now(),
-        };
-      })
-      .filter((s: unknown): s is StatsSnapshot["recentSales"][number] => s !== null)
-      .slice(0, 6);
+    const sales: StatsSnapshot["recentSales"] = [];
+    for (const tx of txs) {
+      const nft = tx?.events?.nft;
+      if (!nft?.amount) continue;
+      sales.push({
+        signature: tx.signature as string,
+        priceSol: nft.amount / 1e9,
+        source: nft.source as string | undefined,
+        ts: typeof tx.timestamp === "number" ? tx.timestamp * 1000 : Date.now(),
+      });
+      if (sales.length >= 6) break;
+    }
+    return sales;
   } catch {
     return [];
   }
