@@ -39,6 +39,9 @@ export default function GroupDmScreen({ groupId }: { groupId: string }) {
       hideSub.remove();
     };
   }, []);
+  // 2026-07-30: measured height of the absolute-positioned input bar below,
+  // fed into the list's bottom content padding — same pattern as ChatScreen.
+  const [bottomBarHeight, setBottomBarHeight] = useState(0);
   const flatListRef = useRef<FlatList>(null);
   useProfileVersion();
   const themeBg = useThemeColor('bg');
@@ -81,6 +84,13 @@ export default function GroupDmScreen({ groupId }: { groupId: string }) {
         <Text style={styles.peerName} numberOfLines={1}>{groupName}</Text>
       </View>
 
+      {/* 2026-07-30: flex:1 region wrapping the list — the input bar below
+          is now an absolute overlay (was a normal flex sibling using
+          marginBottom to dodge the keyboard), which on Android left the
+          layout engine unable to reflow this list, snapping the whole
+          input row — camera button included — up near the header the
+          instant the keyboard opened. Mirrors ChatScreen's fix. */}
+      <View style={{ flex: 1 }}>
       {loading ? (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
           <ActivityIndicator color={THEME.accent} size="large" />
@@ -101,8 +111,10 @@ export default function GroupDmScreen({ groupId }: { groupId: string }) {
           </Pressable>
         </View>
       ) : (
+        <View style={StyleSheet.absoluteFill}>
         <FlatList
           ref={flatListRef}
+          style={{ flex: 1 }}
           data={messages}
           keyExtractor={m => m.id}
           renderItem={({ item }) => (
@@ -115,7 +127,7 @@ export default function GroupDmScreen({ groupId }: { groupId: string }) {
               onPressImage={setLightboxUrl}
             />
           )}
-          contentContainerStyle={{ paddingVertical: 8, flexGrow: 1, justifyContent: 'flex-end' }}
+          contentContainerStyle={{ paddingTop: 8, paddingBottom: 8 + bottomBarHeight + keyboardHeight, flexGrow: 1, justifyContent: 'flex-end' }}
           onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
           removeClippedSubviews
           maxToRenderPerBatch={15}
@@ -128,9 +140,14 @@ export default function GroupDmScreen({ groupId }: { groupId: string }) {
             </View>
           }
         />
+        </View>
       )}
+      </View>
 
-      <View style={{ marginBottom: keyboardHeight }}>
+      <View
+        style={{ position: 'absolute', left: 0, right: 0, bottom: keyboardHeight, zIndex: 100, elevation: 100 }}
+        onLayout={(e) => setBottomBarHeight(e.nativeEvent.layout.height)}
+      >
         <ChatInput
           value={inputText}
           onChangeText={setInputText}

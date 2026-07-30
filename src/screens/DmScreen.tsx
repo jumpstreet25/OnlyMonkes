@@ -49,6 +49,10 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
   // directly and using it to push the input row up is the robust fix
   // regardless of what adjustResize does.
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+  // 2026-07-30: measured height of the absolute-positioned input bar below,
+  // fed back into the list's content padding — same pattern as ChatScreen's
+  // bottomBarHeight/bottomInset.
+  const [bottomBarHeight, setBottomBarHeight] = useState(0);
   useEffect(() => {
     const showSub = Keyboard.addListener('keyboardDidShow', (e) => {
       setKeyboardHeight(e.endCoordinates?.height ?? 0);
@@ -149,6 +153,13 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
 
       {isBotDm && <BotCommandTicker variant="dm" />}
 
+      {/* 2026-07-30: flex:1 region wrapping the list — the input bar below
+          is now an absolute overlay (was a normal flex sibling using
+          marginBottom to dodge the keyboard), which on Android left the
+          layout engine unable to reflow this list, snapping the whole
+          input row — camera button included — up near the header the
+          instant the keyboard opened. Mirrors ChatScreen's fix. */}
+      <View style={{ flex: 1 }}>
       {loading ? (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
           <ActivityIndicator color={THEME.accent} size="large" />
@@ -169,8 +180,10 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
           </Pressable>
         </View>
       ) : (
+        <View style={StyleSheet.absoluteFill}>
         <FlashList
           ref={flatListRef}
+          style={{ flex: 1 }}
           data={feedInverted}
           keyExtractor={item => item.key}
           renderItem={({ item }) => {
@@ -209,7 +222,10 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
               </>
             );
           }}
-          contentContainerStyle={{ paddingVertical: 8 }}
+          // Inverted FlashList rotates the whole content 180° — declared
+          // paddingTop renders at the visual BOTTOM (nearest the input bar
+          // overlay), paddingBottom at the visual top (nearest the header).
+          contentContainerStyle={{ paddingTop: 8 + bottomBarHeight + keyboardHeight, paddingBottom: 8 }}
           inverted
           ListEmptyComponent={
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 60 }}>
@@ -219,9 +235,14 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
             </View>
           }
         />
+        </View>
       )}
+      </View>
 
-      <View style={{ marginBottom: keyboardHeight }}>
+      <View
+        style={{ position: 'absolute', left: 0, right: 0, bottom: keyboardHeight, zIndex: 100, elevation: 100 }}
+        onLayout={(e) => setBottomBarHeight(e.nativeEvent.layout.height)}
+      >
         <ChatInput
           value={inputText}
           onChangeText={setInputText}

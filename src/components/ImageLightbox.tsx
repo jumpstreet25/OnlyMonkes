@@ -12,7 +12,7 @@
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import {
-  Modal,
+  BackHandler,
   View,
   Text,
   Pressable,
@@ -97,6 +97,17 @@ export default function ImageLightbox({ url, onClose }: Props) {
   const dismissLightbox = useCallback(() => {
     onClose();
   }, [onClose]);
+
+  // Hardware back button — RN's <Modal> used to give us onRequestClose for
+  // free; rendering in-tree (see below) needs this wired manually.
+  useEffect(() => {
+    if (!url) return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      onClose();
+      return true;
+    });
+    return () => sub.remove();
+  }, [url, onClose]);
 
   // ── Pinch gesture ──────────────────────────────────────────────────────────
   const pinch = Gesture.Pinch()
@@ -208,12 +219,13 @@ export default function ImageLightbox({ url, onClose }: Props) {
       const { captureRef: capture } = await getViewShot();
       const uri = await capture(captureRef, { format: "jpg", quality: 0.95 });
       await ML.saveToLibraryAsync(uri);
-      // 2026-07-29: was Alert.alert — a native OS dialog that can't be
-      // themed at all (shows as a plain grey box against the app's glass
-      // UI). Matches the same save-to-gallery toast pattern already used
-      // in PnLCardModal.tsx. "Permission needed" stays a native Alert —
-      // same established precedent, rare one-time prompt.
-      toast.success("Saved to gallery");
+      // 2026-07-30: defer — matches the same save-to-gallery toast defer
+      // already used in PnLCardModal.tsx/LivePnLCardModal.tsx. Firing the
+      // toast in the same tick as this component's own teardown (see the
+      // in-tree rendering note below) left a stuck grey screen on Android.
+      // "Permission needed" stays a native Alert — same established
+      // precedent, rare one-time prompt.
+      setTimeout(() => toast.success("Saved to gallery"), 350);
     } catch {
       toast.error("Could not save image.");
     }
@@ -222,13 +234,13 @@ export default function ImageLightbox({ url, onClose }: Props) {
   if (!url) return null;
 
   return (
-    <Modal
-      visible={!!url}
-      transparent
-      animationType="fade"
-      statusBarTranslucent
-      onRequestClose={onClose}
-    >
+    // 2026-07-30: was RN's <Modal> — Android implements Modal as a SEPARATE
+    // native Dialog window from the Activity, which is the same class of
+    // grey/freeze-screen race already fixed for every other popup in the
+    // app by rendering in-tree instead (see GlassModal.tsx/GlassBottomSheet.tsx).
+    // This one was never migrated. Rendering directly here keeps it in the
+    // same window as the rest of the screen.
+    <View style={[StyleSheet.absoluteFill, s.overlay]}>
       <GestureHandlerRootView style={s.root}>
         <GestureDetector gesture={allGestures}>
           <Animated.View style={[s.gestureContainer, animatedStyle]}>
@@ -265,11 +277,15 @@ export default function ImageLightbox({ url, onClose }: Props) {
           <Text style={s.saveTxt}>⬇</Text>
         </Pressable>
       </GestureHandlerRootView>
-    </Modal>
+    </View>
   );
 }
 
 const s = StyleSheet.create({
+  overlay: {
+    zIndex: 1000,
+    elevation: 1000,
+  },
   root: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.95)",
