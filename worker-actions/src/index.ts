@@ -79,9 +79,21 @@ interface Env {
   FRAME_ALERTS: KVNamespace;
 }
 
+// Cron Trigger types (declared locally, same reasoning as KVNamespace above —
+// avoid pulling in @cloudflare/workers-types just for two interfaces).
+interface ScheduledEvent {
+  cron: string;
+  scheduledTime: number;
+}
+interface ExecutionContext {
+  waitUntil(promise: Promise<any>): void;
+  passThroughOnException(): void;
+}
+
 // Cloudflare Worker handler type (declared locally to avoid @cloudflare/workers-types dependency in app tsconfig)
 type ExportedHandler<E = unknown> = {
   fetch: (request: Request, env: E) => Promise<Response>;
+  scheduled?: (event: ScheduledEvent, env: E, ctx: ExecutionContext) => Promise<void>;
 };
 
 const CORS_HEADERS: Record<string, string> = {
@@ -1359,6 +1371,464 @@ const WORKER_BASE = "https://onlymonkes-actions.jumpstreet25.workers.dev";
 const APP_DEEP_LINK = "https://onlymonkes.app";
 const DAPP_STORE_LINK = "https://dappstore.app/onlymonkes";
 
+// ─── Public stats / "Check Your Monke" preview page ──────────────────────────
+// 2026-07-30: zero-install growth funnel. Independently fetches the same
+// public data the bot's chat digests already show (holder count, floor
+// price, recent sales) so this page never depends on the bot process, the
+// cloudflared tunnel (rotates URL on every restart — confirmed unstable),
+// or the Mac being awake. Same collection/creator addresses the bot uses
+// (src/lib/alerts/holderSnapshot.ts, src/lib/nft/sagaMonkesSales.ts).
+
+const SAGA_COLLECTION_MINT = "GokAiStXz2Kqbxwz2oqzfEXuUhE7aXySmBGEP7uejKXF";
+const SAGA_CREATOR_WALLET = "8McVhmNjsYSkwQ34QXJb2ADgLWERcHcpqxSzRZUCRZfQ";
+const SKR_MINT = "SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3";
+const STATS_KV_KEY = "stats:latest";
+
+// Known marketplace escrow programs — excluded from the holder count so it
+// matches what the bot's own daily digest shows (same set as holderSnapshot.ts).
+const MARKETPLACE_ESCROWS: Set<string> = new Set([
+  "M2mx93ekt1fmXSVkTrUL9xVFHkmME8HTUi5Cyc5aF7K", // Magic Eden v2
+  "MEisE1HzehtrDpAAT8PnLHjpSSkRYakotTuJRPjTpo8", // Magic Eden v1
+  "TSWAPaqyCSx2KABk68Shruf4rp7CxcNi8hAsbdwmHbN", // Tensor TSWAP
+  "TCMPhJdwDryooaGtiocG1u3xcYbRpiJzb283XfCZsDp", // Tensor TCOMP (compressed)
+  "hadeK9DLv9eA7ya5KCTqSvSvRZeJC3JgD5a9Y3CNbvu", // Hadeswap
+]);
+
+interface StatsSnapshot {
+  holders: number;
+  holdersDelta: number | null; // vs previous snapshot
+  floorSol: number | null;
+  floorChg24h: number | null;
+  volume24hSol: number | null;
+  skrPriceUsd: number | null;
+  recentSales: Array<{ signature: string; priceSol: number; source?: string; ts: number }>;
+  updatedAt: number;
+}
+
+interface MonkeAsset {
+  mint: string;
+  name: string;
+  image: string | null;
+  traits: Array<{ trait_type: string; value: string }>;
+}
+
+/** Holder count via Helius DAS getAssetsByGroup, cursor-paginated — same
+ *  shape as the bot's fetchHolderData(), trimmed to just the count. */
+async function fetchMonkeHolderCount(env: Env): Promise<number> {
+  const url = rpcUrl(env);
+  const ownerCounts = new Map<string, number>();
+  let cursor: string | undefined;
+  let pages = 0;
+  while (pages < 20) {
+    const params: Record<string, any> = { groupKey: "collection", groupValue: SAGA_COLLECTION_MINT, limit: 1000 };
+    if (cursor) params.cursor = cursor;
+    const res = await fetchWithTimeout(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: `holders-${pages}`, method: "getAssetsByGroup", params }),
+    }, 20_000);
+    if (!res.ok) throw new Error(`Helius DAS error ${res.status}`);
+    const data = await res.json() as any;
+    const items = data?.result?.items ?? [];
+    for (const item of items) {
+      const owner = item?.ownership?.owner;
+      if (owner) ownerCounts.set(owner, (ownerCounts.get(owner) ?? 0) + 1);
+    }
+    pages++;
+    const nextCursor = data?.result?.cursor;
+    if (!nextCursor || items.length === 0) break;
+    cursor = nextCursor;
+  }
+  let uniqueHolders = 0;
+  for (const owner of ownerCounts.keys()) {
+    if (!MARKETPLACE_ESCROWS.has(owner)) uniqueHolders++;
+  }
+  return uniqueHolders;
+}
+
+/** Floor price + 24h volume (CoinGecko) and $SKR price (DexScreener) —
+ *  same endpoints/field mapping as the bot's fetchSagaMonkes() in
+ *  overnightSnapshot.ts and ChatScreen.tsx's support-banner fetch. */
+async function fetchFloorAndMarket(env: Env): Promise<{ floorSol: number | null; floorChg24h: number | null; volume24hSol: number | null; skrPriceUsd: number | null }> {
+  let floorSol: number | null = null;
+  let floorChg24h: number | null = null;
+  let volume24hSol: number | null = null;
+  let skrPriceUsd: number | null = null;
+
+  try {
+    const res = await fetchWithTimeout("https://api.coingecko.com/api/v3/nfts/saga-monkes", {
+      headers: { "User-Agent": "OnlyMonkes-Web/1.0" },
+    }, 8_000);
+    if (res.ok) {
+      const d = await res.json() as any;
+      floorSol = d?.floor_price?.native_currency ?? null;
+      floorChg24h = d?.floor_price_24h_percentage_change?.native_currency ?? null;
+      volume24hSol = d?.volume_24h?.native_currency ?? null;
+    }
+  } catch { /* best-effort, page still works without market data */ }
+
+  try {
+    const res = await fetchWithTimeout(`https://api.dexscreener.com/latest/dex/tokens/${SKR_MINT}`, {}, 8_000);
+    if (res.ok) {
+      const d = await res.json() as any;
+      const price = d?.pairs?.[0]?.priceUsd;
+      skrPriceUsd = price ? parseFloat(price) : null;
+    }
+  } catch { /* best-effort */ }
+
+  return { floorSol, floorChg24h, volume24hSol, skrPriceUsd };
+}
+
+/** Recent Saga Monkes sales via Helius Enhanced Transaction API against the
+ *  known creator/royalty wallet — same source as SagaMonkesSalesMonitor,
+ *  trimmed to a short public-safe feed (no buyer/seller wallets, no name
+ *  lookup per sale to avoid N extra DAS calls on every cron run). */
+async function fetchRecentSales(env: Env): Promise<StatsSnapshot["recentSales"]> {
+  try {
+    const url = `https://api.helius.xyz/v0/addresses/${SAGA_CREATOR_WALLET}/transactions?api-key=${env.HELIUS_API_KEY}&type=NFT_SALE&limit=10`;
+    const res = await fetchWithTimeout(url, { headers: { "User-Agent": "OnlyMonkes-Web/1.0" } }, 10_000);
+    if (!res.ok) return [];
+    const body = await res.json();
+    const txs = Array.isArray(body) ? body : [];
+    return txs
+      .map((tx: any) => {
+        const nft = tx?.events?.nft;
+        if (!nft?.amount) return null;
+        return {
+          signature: tx.signature as string,
+          priceSol: nft.amount / 1e9,
+          source: nft.source as string | undefined,
+          ts: typeof tx.timestamp === "number" ? tx.timestamp * 1000 : Date.now(),
+        };
+      })
+      .filter((s: unknown): s is StatsSnapshot["recentSales"][number] => s !== null)
+      .slice(0, 6);
+  } catch {
+    return [];
+  }
+}
+
+/** Assemble a fresh stats snapshot, diffing holder count against whatever's
+ *  currently cached in KV for the day-over-day delta shown on the page. */
+async function computeStatsSnapshot(env: Env): Promise<StatsSnapshot> {
+  const previousRaw = await env.FRAME_ALERTS.get(STATS_KV_KEY);
+  const previous: StatsSnapshot | null = previousRaw ? JSON.parse(previousRaw) : null;
+
+  const [holders, market, recentSales] = await Promise.all([
+    fetchMonkeHolderCount(env).catch(() => previous?.holders ?? 0),
+    fetchFloorAndMarket(env),
+    fetchRecentSales(env),
+  ]);
+
+  return {
+    holders,
+    holdersDelta: previous ? holders - previous.holders : null,
+    floorSol: market.floorSol,
+    floorChg24h: market.floorChg24h,
+    volume24hSol: market.volume24hSol,
+    skrPriceUsd: market.skrPriceUsd,
+    recentSales,
+    updatedAt: Date.now(),
+  };
+}
+
+async function getCachedStats(env: Env): Promise<StatsSnapshot | null> {
+  const raw = await env.FRAME_ALERTS.get(STATS_KV_KEY);
+  if (!raw) return null;
+  try { return JSON.parse(raw) as StatsSnapshot; } catch { return null; }
+}
+
+/** Fetch a single Saga Monke's metadata by mint/asset id — Helius DAS
+ *  getAsset, same call shape as sagaMonkesSales.ts's fetchNftImage/fetchNftName. */
+async function fetchMonkeByMint(mint: string, env: Env): Promise<MonkeAsset | null> {
+  try {
+    const res = await fetchWithTimeout(rpcUrl(env), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: "monke-asset", method: "getAsset", params: { id: mint } }),
+    }, 10_000);
+    if (!res.ok) return null;
+    const data = await res.json() as any;
+    const asset = data?.result;
+    if (!asset) return null;
+    return {
+      mint,
+      name: asset?.content?.metadata?.name ?? "Saga Monke",
+      image: asset?.content?.links?.image ?? asset?.content?.files?.[0]?.uri ?? null,
+      traits: asset?.content?.metadata?.attributes ?? [],
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Look up the first Saga Monke owned by a wallet — Helius DAS
+ *  getAssetsByOwner filtered to the collection, same pattern as the app's
+ *  nftVerification.ts fetchAssetsViaHelius (ported here without the
+ *  AsyncStorage caching layer, which doesn't apply to a Worker). */
+async function fetchOwnedMonke(wallet: string, env: Env): Promise<MonkeAsset | null> {
+  try {
+    const res = await fetchWithTimeout(rpcUrl(env), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "owned-monkes",
+        method: "getAssetsByOwner",
+        params: { ownerAddress: wallet, page: 1, limit: 1000 },
+      }),
+    }, 15_000);
+    if (!res.ok) return null;
+    const data = await res.json() as any;
+    const items = data?.result?.items ?? [];
+    const owned = items.find((item: any) =>
+      Array.isArray(item?.grouping) &&
+      item.grouping.some((g: any) => g?.group_key === "collection" && g?.group_value === SAGA_COLLECTION_MINT),
+    );
+    if (!owned) return null;
+    return {
+      mint: owned.id,
+      name: owned?.content?.metadata?.name ?? "Saga Monke",
+      image: owned?.content?.links?.image ?? owned?.content?.files?.[0]?.uri ?? null,
+      traits: owned?.content?.metadata?.attributes ?? [],
+    };
+  } catch {
+    return null;
+  }
+}
+
+function timeAgo(ts: number): string {
+  const diffMin = Math.max(0, Math.round((Date.now() - ts) / 60_000));
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffH = Math.round(diffMin / 60);
+  if (diffH < 24) return `${diffH}h ago`;
+  return `${Math.round(diffH / 24)}d ago`;
+}
+
+/** GET / — public landing page. Live "proof of life" stats + wallet connect
+ *  entry point into /monke/:mint + a Get OnlyMonkes CTA. Reads the cron-
+ *  refreshed stats:latest KV cache (see scheduled() below) rather than
+ *  fetching anything live, so the page loads fast regardless of API health. */
+async function handleLandingPage(env: Env): Promise<Response> {
+  const stats = await getCachedStats(env);
+
+  const holdersLine = stats
+    ? `${stats.holders.toLocaleString()} holders` + (stats.holdersDelta ? ` (${stats.holdersDelta > 0 ? "+" : ""}${stats.holdersDelta} since last check)` : "")
+    : "Loading holder count…";
+  const floorLine = stats?.floorSol != null ? `${stats.floorSol.toFixed(2)} SOL floor` : "Floor price unavailable";
+  const skrLine = stats?.skrPriceUsd != null ? `$SKR $${stats.skrPriceUsd.toFixed(6)}` : "";
+  const volLine = stats?.volume24hSol != null ? `${stats.volume24hSol.toFixed(1)} SOL volume (24h)` : "";
+
+  const salesRows = (stats?.recentSales ?? []).map(s => `
+    <div class="sale-row">
+      <span class="sale-price">${s.priceSol.toFixed(2)} SOL</span>
+      <span class="sale-source">${escapeHtml(s.source ?? "")}</span>
+      <span class="sale-time">${timeAgo(s.ts)}</span>
+      <a class="sale-link" href="https://solscan.io/tx/${encodeURIComponent(s.signature)}" target="_blank" rel="noopener">view</a>
+    </div>`).join("") || `<p class="muted">No recent sales in the feed yet.</p>`;
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="index, follow">
+  <title>OnlyMonkes — Check Your Monke</title>
+  <meta property="og:title" content="OnlyMonkes — Check Your Monke" />
+  <meta property="og:description" content="Live Saga Monkes community stats. Connect your wallet to find your Monke." />
+  <meta property="og:type" content="website" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0A0A0F; color: #F8F8FF; line-height: 1.6; padding: 40px 20px; }
+    .container { max-width: 560px; margin: 0 auto; }
+    h1 { font-size: 30px; color: #6CB4EE; margin-bottom: 6px; }
+    .tagline { color: #8B8B9E; font-size: 15px; margin-bottom: 32px; }
+    .stat-card { background: #12121A; border: 1px solid #1E1E2E; border-radius: 16px; padding: 22px; margin-bottom: 20px; }
+    .stat-row { display: flex; justify-content: space-between; align-items: baseline; font-size: 16px; padding: 6px 0; }
+    .stat-row strong { color: #F8F8FF; font-size: 18px; }
+    .muted { color: #8B8B9E; font-size: 13px; }
+    h2 { font-size: 15px; color: #8B8B9E; text-transform: uppercase; letter-spacing: 0.5px; margin: 24px 0 10px; }
+    .sale-row { display: flex; gap: 10px; align-items: center; font-size: 14px; padding: 8px 0; border-bottom: 1px solid #1E1E2E; }
+    .sale-price { color: #14F195; font-weight: 600; min-width: 80px; }
+    .sale-source { color: #8B8B9E; flex: 1; }
+    .sale-time { color: #8B8B9E; }
+    .sale-link { color: #6CB4EE; text-decoration: none; }
+    button, .cta { display: block; width: 100%; text-align: center; border: none; border-radius: 14px; padding: 16px; font-size: 16px; font-weight: 600; margin-top: 12px; cursor: pointer; text-decoration: none; }
+    .btn-primary { background: #6CB4EE; color: #0A0A0F; }
+    .btn-secondary { background: transparent; border: 1px solid #6CB4EE; color: #6CB4EE; }
+    #wallet-status { text-align: center; font-size: 13px; color: #8B8B9E; margin-top: 10px; min-height: 18px; }
+    .footer { margin-top: 40px; text-align: center; font-size: 12px; color: #8B8B9E; }
+    .footer a { color: #6CB4EE; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🐒 OnlyMonkes</h1>
+    <p class="tagline">The Saga Monkes chat, trading bot, and community — live right now.</p>
+
+    <div class="stat-card">
+      <div class="stat-row"><span>Holders</span><strong>${escapeHtml(holdersLine)}</strong></div>
+      <div class="stat-row"><span>Floor</span><strong>${escapeHtml(floorLine)}</strong></div>
+      ${volLine ? `<div class="stat-row"><span>24h Volume</span><strong>${escapeHtml(volLine)}</strong></div>` : ""}
+      ${skrLine ? `<div class="stat-row"><span>$SKR</span><strong>${escapeHtml(skrLine)}</strong></div>` : ""}
+      <p class="muted">${stats ? `Updated ${timeAgo(stats.updatedAt)}` : ""}</p>
+    </div>
+
+    <h2>Recent Sales</h2>
+    ${salesRows}
+
+    <button class="btn-secondary" onclick="connectWallet()">🔗 Connect Wallet — Find Your Monke</button>
+    <div id="wallet-status"></div>
+
+    <a class="cta btn-primary" href="${DAPP_STORE_LINK}">Get OnlyMonkes</a>
+
+    <div class="footer">
+      <a href="/legal">Legal</a> &nbsp;·&nbsp; <a href="/terms">Terms</a> &nbsp;·&nbsp; <a href="/privacy">Privacy</a>
+    </div>
+  </div>
+
+  <script>
+    async function connectWallet() {
+      const statusEl = document.getElementById('wallet-status');
+      statusEl.textContent = 'Connecting…';
+      try {
+        const provider = (window.solana && window.solana.isPhantom) ? window.solana : window.solflare;
+        if (!provider) {
+          statusEl.textContent = 'No Solana wallet extension found — open this page with Phantom or Solflare installed.';
+          return;
+        }
+        const resp = await provider.connect();
+        const pubkey = (resp && resp.publicKey) ? resp.publicKey : provider.publicKey;
+        const address = pubkey.toString();
+        statusEl.textContent = 'Checking for your Monke…';
+        const res = await fetch('/api/verify?wallet=' + encodeURIComponent(address));
+        const data = await res.json();
+        if (data.owned) {
+          window.location.href = '/monke/' + encodeURIComponent(data.mint);
+        } else {
+          statusEl.textContent = 'No Saga Monke found in this wallet.';
+        }
+      } catch (err) {
+        statusEl.textContent = 'Connection failed — try again.';
+      }
+    }
+  </script>
+</body>
+</html>`;
+
+  return new Response(html, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "public, max-age=60",
+      ...CORS_HEADERS,
+    },
+  });
+}
+
+/** GET /api/stats — public JSON, no auth. Reads the cron-refreshed KV cache. */
+async function handleStatsApi(env: Env): Promise<Response> {
+  const stats = await getCachedStats(env);
+  if (!stats) return jsonResponse({ error: "Stats not available yet" }, 503);
+  return jsonResponse(stats);
+}
+
+/** GET /api/verify?wallet=<address> — public JSON. Low-stakes preview check,
+ *  not a trading gate, so no QuickNode/on-chain-scan fallback like the app's
+ *  full verifyNFTOwnership() chain — a Helius hiccup just shows a friendly
+ *  message rather than needing a 3-tier retry chain. */
+async function handleVerifyApi(url: URL, env: Env): Promise<Response> {
+  const wallet = url.searchParams.get("wallet");
+  if (!wallet || wallet.length < 32 || wallet.length > 48) {
+    return errorResponse("Missing or invalid wallet address", 400);
+  }
+  try {
+    new PublicKey(wallet); // throws on malformed base58
+  } catch {
+    return errorResponse("Invalid wallet address", 400);
+  }
+
+  const monke = await fetchOwnedMonke(wallet, env);
+  if (!monke) return jsonResponse({ owned: false });
+  return jsonResponse({ owned: true, mint: monke.mint, name: monke.name, image: monke.image, traits: monke.traits });
+}
+
+/** GET /monke/:mint — shareable, OG-preview-rich page for a specific Saga
+ *  Monke. Mirrors handleFrameAlertGet's OG/fc:frame meta-tag pattern below,
+ *  so pasting the link into Discord/X renders a rich card. No wallet needed
+ *  to view — this is the piece meant to spread when people flex their Monke. */
+async function handleMonkePage(mint: string, env: Env): Promise<Response> {
+  const [monke, stats] = await Promise.all([
+    fetchMonkeByMint(mint, env),
+    getCachedStats(env),
+  ]);
+
+  if (!monke) {
+    return new Response("Monke not found", { status: 404, headers: { "Content-Type": "text/plain", ...CORS_HEADERS } });
+  }
+
+  const title = `${monke.name} — OnlyMonkes`;
+  const traitsLine = monke.traits.slice(0, 4).map(t => `${escapeHtml(t.trait_type)}: ${escapeHtml(t.value)}`).join(" · ");
+  const floorLine = stats?.floorSol != null ? `Floor: ${stats.floorSol.toFixed(2)} SOL` : "";
+  const description = [traitsLine, floorLine].filter(Boolean).join(" — ") || "Saga Monkes holder on OnlyMonkes";
+  const pageUrl = `${WORKER_BASE}/monke/${encodeURIComponent(mint)}`;
+  const imageUrl = monke.image ?? `${WORKER_BASE}/assets/watermark.png`;
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${escapeHtml(title)}</title>
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="${escapeHtml(title)}" />
+  <meta property="og:description" content="${escapeHtml(description)}" />
+  <meta property="og:image" content="${escapeHtml(imageUrl)}" />
+  <meta property="og:url" content="${escapeHtml(pageUrl)}" />
+  <meta property="og:type" content="website" />
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="${escapeHtml(title)}" />
+  <meta name="twitter:description" content="${escapeHtml(description)}" />
+  <meta name="twitter:image" content="${escapeHtml(imageUrl)}" />
+
+  <!-- Farcaster Frame -->
+  <meta property="fc:frame" content="vNext" />
+  <meta property="fc:frame:image" content="${escapeHtml(imageUrl)}" />
+  <meta property="fc:frame:image:aspect_ratio" content="1:1" />
+  <meta property="fc:frame:button:1" content="Get OnlyMonkes" />
+  <meta property="fc:frame:button:1:action" content="link" />
+  <meta property="fc:frame:button:1:target" content="${escapeHtml(DAPP_STORE_LINK)}" />
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0A0A0F; color: #F8F8FF; padding: 40px 20px; text-align: center; }
+    img { width: 280px; height: 280px; border-radius: 20px; object-fit: cover; margin-bottom: 20px; }
+    h1 { font-size: 24px; color: #6CB4EE; margin-bottom: 8px; }
+    p { color: #8B8B9E; margin-bottom: 24px; }
+    a.cta { display: inline-block; background: #6CB4EE; color: #0A0A0F; font-weight: 600; padding: 14px 28px; border-radius: 14px; text-decoration: none; }
+  </style>
+</head>
+<body>
+  ${monke.image ? `<img src="${escapeHtml(monke.image)}" alt="${escapeHtml(monke.name)}" />` : ""}
+  <h1>${escapeHtml(monke.name)}</h1>
+  <p>${escapeHtml(description)}</p>
+  <a class="cta" href="${DAPP_STORE_LINK}">Get OnlyMonkes</a>
+</body>
+</html>`;
+
+  return new Response(html, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "public, max-age=300",
+      ...CORS_HEADERS,
+    },
+  });
+}
+
 /** POST /frames/alert — bot stores alert data (authenticated). */
 async function handleFrameAlertPost(request: Request, env: Env): Promise<Response> {
   if (!checkBotAuth(request, env)) {
@@ -2058,7 +2528,27 @@ export default {
 
     // Health check
     if (path === "/health") {
-      return jsonResponse({ status: "ok", version: "1.8.0", endpoints: ["/api/actions/swap", "/api/actions/tip", "/api/actions/predict", "/api/actions/bet", "/api/actions/kalshi-bet", "/escrow", "/claim", "/frames/alert", "/legal", "/terms", "/privacy", "/copyright"] });
+      return jsonResponse({ status: "ok", version: "1.8.0", endpoints: ["/api/actions/swap", "/api/actions/tip", "/api/actions/predict", "/api/actions/bet", "/api/actions/kalshi-bet", "/escrow", "/claim", "/frames/alert", "/legal", "/terms", "/privacy", "/copyright", "/", "/api/stats", "/api/verify", "/monke/:mint"] });
+    }
+
+    // 2026-07-30: public "Check Your Monke" growth page — see the section
+    // comment above SAGA_COLLECTION_MINT for context.
+    if (path === "/") {
+      if (request.method === "GET") return handleLandingPage(env);
+      return errorResponse("Method not allowed", 405);
+    }
+    if (path === "/api/stats") {
+      if (request.method === "GET") return handleStatsApi(env);
+      return errorResponse("Method not allowed", 405);
+    }
+    if (path === "/api/verify") {
+      if (request.method === "GET") return handleVerifyApi(url, env);
+      return errorResponse("Method not allowed", 405);
+    }
+    const monkeMatch = path.match(/^\/monke\/([^/]+)$/);
+    if (monkeMatch) {
+      if (request.method === "GET") return handleMonkePage(decodeURIComponent(monkeMatch[1]), env);
+      return errorResponse("Method not allowed", 405);
     }
 
     // Legal pages (Solana Mobile dApp Store compliance)
@@ -2195,5 +2685,18 @@ export default {
     }
 
     return errorResponse("Not found", 404);
+  },
+
+  // 2026-07-30: refreshes the stats:latest KV cache every 4h (see
+  // wrangler.toml [triggers]) so GET / and /monke/:mint always render from
+  // a fast KV read instead of making live Helius/CoinGecko calls per page
+  // view. Runs independently of the bot process — see the section comment
+  // above SAGA_COLLECTION_MINT for why that matters.
+  async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(
+      computeStatsSnapshot(env)
+        .then(snapshot => env.FRAME_ALERTS.put(STATS_KV_KEY, JSON.stringify(snapshot)))
+        .catch(err => console.error("[scheduled] stats refresh failed:", err)),
+    );
   },
 } satisfies ExportedHandler<Env>;
