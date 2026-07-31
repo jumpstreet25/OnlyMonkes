@@ -1392,6 +1392,7 @@ const SAGA_COLLECTION_MINT = "GokAiStXz2Kqbxwz2oqzfEXuUhE7aXySmBGEP7uejKXF";
 const SAGA_CREATOR_WALLET = "8McVhmNjsYSkwQ34QXJb2ADgLWERcHcpqxSzRZUCRZfQ";
 const SKR_MINT = "SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3";
 const STATS_KV_KEY = "stats:latest";
+const TOP_TRADERS_KV_KEY = "top_traders:latest";
 // Same asset + bottom-right placement convention as ShareablePnLCard.tsx —
 // "Shot using OnlyMonkes" watermark, ~28% of the base image's width.
 const WATERMARK_URL = "https://raw.githubusercontent.com/jumpstreet25/OnlyMonkes/master/assets/watermark.png";
@@ -1780,6 +1781,66 @@ async function handleStatsApi(env: Env): Promise<Response> {
   const stats = await getCachedStats(env);
   if (!stats) return jsonResponse({ error: "Stats not available yet" }, 503);
   return jsonResponse(stats);
+}
+
+// ── Top Traders scorecard (2026-07-31) ───────────────────────────────────────
+//
+// Saga-Monkes-holder-sourced smart-money cohort, ranked by trading skill —
+// see Monke_Eliza's smart-money pipeline (discover-saga-monke-holders.ts ->
+// vet-smart-wallets.ts -> build-smart-wallet-list.ts, weekly Friday refresh)
+// and smartMoneyMonitor.ts's live PnL tracking.
+//
+// Privacy-critical: the bot pushes ONLY rank + winRatePct + weeklyGainPct.
+// NEVER a wallet address, NEVER a $/SOL amount, NEVER anything that could
+// identify or size a specific holder's position — CLAUDE.md's standing rule
+// against exposing wallet addresses in user-visible UI applies here even
+// though these are third-party wallets we don't otherwise interact with.
+interface TopTraderEntry {
+  rank: number;
+  winRatePct: number;   // 0-100, rounded
+  weeklyGainPct: number; // rounded, can be negative
+}
+interface TopTradersSnapshot {
+  updatedAt: number;
+  traders: TopTraderEntry[];
+}
+
+function isValidTopTradersPayload(v: unknown): v is TopTradersSnapshot {
+  if (!v || typeof v !== "object") return false;
+  const obj = v as Record<string, unknown>;
+  if (typeof obj.updatedAt !== "number") return false;
+  if (!Array.isArray(obj.traders) || obj.traders.length > 25) return false;
+  return obj.traders.every((t: unknown) => {
+    if (!t || typeof t !== "object") return false;
+    const e = t as Record<string, unknown>;
+    return typeof e.rank === "number" && typeof e.winRatePct === "number" && typeof e.weeklyGainPct === "number"
+      && Object.keys(e).length === 3; // reject anything carrying extra fields (address, sol amount, etc.)
+  });
+}
+
+/** GET /api/top-traders — public JSON, no auth. */
+async function handleTopTradersGet(env: Env): Promise<Response> {
+  const raw = await env.FRAME_ALERTS.get(TOP_TRADERS_KV_KEY);
+  if (!raw) return jsonResponse({ error: "Not available yet" }, 503);
+  return jsonResponse(JSON.parse(raw));
+}
+
+/** POST /api/top-traders — bot-authenticated (same Bearer gate as /escrow).
+ *  Validates shape strictly so a bot-side bug can't accidentally leak a
+ *  wallet address or SOL amount through this endpoint. */
+async function handleTopTradersPost(request: Request, env: Env): Promise<Response> {
+  if (!checkBotAuth(request, env)) return errorResponse("Unauthorized", 401);
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return errorResponse("Invalid JSON body", 400);
+  }
+  if (!isValidTopTradersPayload(body)) {
+    return errorResponse("Invalid payload shape — expected { updatedAt, traders: [{rank, winRatePct, weeklyGainPct}] }", 400);
+  }
+  await env.FRAME_ALERTS.put(TOP_TRADERS_KV_KEY, JSON.stringify(body));
+  return jsonResponse({ ok: true, count: body.traders.length });
 }
 
 /** GET /api/verify?wallet=<address> — public JSON. Low-stakes preview check,
@@ -2646,7 +2707,7 @@ export default {
 
     // Health check
     if (path === "/health") {
-      return jsonResponse({ status: "ok", version: "1.8.0", endpoints: ["/api/actions/swap", "/api/actions/tip", "/api/actions/predict", "/api/actions/bet", "/api/actions/kalshi-bet", "/escrow", "/claim", "/frames/alert", "/legal", "/terms", "/privacy", "/copyright", "/", "/api/stats", "/api/verify", "/monke/:mint"] });
+      return jsonResponse({ status: "ok", version: "1.8.0", endpoints: ["/api/actions/swap", "/api/actions/tip", "/api/actions/predict", "/api/actions/bet", "/api/actions/kalshi-bet", "/escrow", "/claim", "/frames/alert", "/legal", "/terms", "/privacy", "/copyright", "/", "/api/stats", "/api/verify", "/api/top-traders", "/monke/:mint"] });
     }
 
     // 2026-07-30: public "Check Your Monke" growth page — see the section
@@ -2661,6 +2722,11 @@ export default {
     }
     if (path === "/api/verify") {
       if (request.method === "GET") return handleVerifyApi(url, env);
+      return errorResponse("Method not allowed", 405);
+    }
+    if (path === "/api/top-traders") {
+      if (request.method === "GET") return handleTopTradersGet(env);
+      if (request.method === "POST") return handleTopTradersPost(request, env);
       return errorResponse("Method not allowed", 405);
     }
     if (path === "/download/apk") {
