@@ -6,14 +6,13 @@
  * Day 7 = confetti + bonus celebration.
  */
 
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
   StyleSheet,
   Pressable,
   Animated,
-  Alert,
 } from "react-native";
 import * as Haptics from "expo-haptics";
 import { GlassModal } from "@/components/GlassModal";
@@ -32,6 +31,7 @@ export function BananaClaimModal({ visible, claim, onDismiss }: BananaClaimModal
   const scaleAnim = useRef(new Animated.Value(0)).current;
   const bananaAnim = useRef(new Animated.Value(0)).current;
   const countAnim = useRef(new Animated.Value(0)).current;
+  const [showShareConfirm, setShowShareConfirm] = useState(false);
 
   useEffect(() => {
     if (visible && claim) {
@@ -39,6 +39,7 @@ export function BananaClaimModal({ visible, claim, onDismiss }: BananaClaimModal
       scaleAnim.setValue(0);
       bananaAnim.setValue(0);
       countAnim.setValue(0);
+      setShowShareConfirm(false);
 
       // Sequence: popup scales in → banana bounces → count fades in
       Animated.sequence([
@@ -68,27 +69,48 @@ export function BananaClaimModal({ visible, claim, onDismiss }: BananaClaimModal
   const handleClaim = () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     if (claim?.isBonus) {
-      // Day 7 — prompt to share on X
-      Alert.alert(
-        "Share your streak? 🐒",
-        "Let the world know you completed a full banana cycle!",
-        [
-          { text: "Not now", style: "cancel", onPress: onDismiss },
-          {
-            text: "Share to X",
-            onPress: () => {
-              shareDay7Bonus(claim.balance, claim.state.totalCycles);
-              onDismiss();
-            },
-          },
-        ],
-      );
+      // Day 7 — prompt to share on X (in-modal, themed — not a native Alert)
+      setShowShareConfirm(true);
     } else {
       onDismiss();
     }
   };
 
+  const handleShareConfirm = () => {
+    if (claim) shareDay7Bonus(claim.balance, claim.state.totalCycles);
+    onDismiss();
+  };
+
   const streakDays = Array.from({ length: 7 }, (_, i) => i + 1);
+
+  if (showShareConfirm) {
+    return (
+      <GlassModal visible={visible} onClose={onDismiss} cardStyle={styles.card}>
+        <View style={styles.cardInner}>
+          <Text style={styles.shareEmoji}>🐒</Text>
+          <Text style={styles.gmonke}>Share your streak?</Text>
+          <Text style={styles.shareBody}>
+            Let the world know you completed a full banana cycle!
+          </Text>
+
+          <View style={styles.shareButtonRow}>
+            <Pressable
+              style={({ pressed }) => [styles.shareBtn, styles.shareDeclineBtn, pressed && styles.claimBtnPressed]}
+              onPress={onDismiss}
+            >
+              <Text style={styles.shareDeclineText}>Not now</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [styles.claimBtn, styles.shareBtn, pressed && styles.claimBtnPressed]}
+              onPress={handleShareConfirm}
+            >
+              <Text style={styles.claimBtnText}>Share to X</Text>
+            </Pressable>
+          </View>
+        </View>
+      </GlassModal>
+    );
+  }
 
   return (
     <GlassModal visible={visible} onClose={onDismiss} cardStyle={styles.card}>
@@ -316,6 +338,42 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.display,
     fontSize: 18,
     color: "#1a1a1a",
+    letterSpacing: 0.5,
+  },
+
+  // Day-7 "share to X" in-modal confirm (replaces native Alert.alert)
+  shareEmoji: {
+    fontSize: 40,
+  },
+  shareBody: {
+    fontFamily: FONTS.bodyMed,
+    fontSize: 14,
+    color: THEME.textMuted,
+    textAlign: "center",
+    lineHeight: 20,
+  },
+  shareButtonRow: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 8,
+    width: "100%",
+  },
+  shareBtn: {
+    flex: 1,
+    paddingHorizontal: 0,
+    alignItems: "center",
+  },
+  shareDeclineBtn: {
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderRadius: 16,
+    paddingVertical: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+  },
+  shareDeclineText: {
+    fontFamily: FONTS.display,
+    fontSize: 18,
+    color: THEME.textMuted,
     letterSpacing: 0.5,
   },
 
