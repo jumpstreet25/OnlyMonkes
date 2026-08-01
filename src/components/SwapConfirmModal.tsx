@@ -57,47 +57,29 @@ export function SwapConfirmModal({
     <GlassModal visible={visible} onClose={onCancel}>
           <Text style={s.title}>Confirm Swap</Text>
 
-          <View style={s.row}>
-            <Text style={s.label}>You pay</Text>
-            <Text style={s.value}>
+          <View style={s.swapRow}>
+            <Text style={s.swapAmount} numberOfLines={1}>
               {quote.inAmountUi.toFixed(6)} {quote.inputSymbol}
             </Text>
-          </View>
-
-          <View style={s.arrowRow}>
-            <Text style={s.arrow}>↓</Text>
-          </View>
-
-          <View style={s.row}>
-            <Text style={s.label}>You receive</Text>
-            <Text style={s.value}>
+            <Text style={s.swapArrow}>→</Text>
+            <Text style={s.swapAmount} numberOfLines={1}>
               {quote.outAmountUi.toFixed(6)} {quote.outputSymbol}
             </Text>
           </View>
 
-          <View style={s.divider} />
-
           <View style={s.row}>
-            <Text style={s.detailLabel}>Price Impact</Text>
-            <Text style={[s.detailValue, { color: impactColor }]}>
-              {quote.priceImpactPct.toFixed(2)}%
+            <Text style={s.detailLabel}>
+              Impact <Text style={{ color: impactColor }}>{quote.priceImpactPct.toFixed(2)}%</Text>
+              {"   ·   "}
+              Slippage {(quote.slippageBps / 100).toFixed(1)}%
             </Text>
           </View>
 
-          <View style={s.row}>
-            <Text style={s.detailLabel}>Slippage</Text>
-            <Text style={s.detailValue}>
-              {(quote.slippageBps / 100).toFixed(1)}%
-            </Text>
-          </View>
-
-          <View style={s.feeInfoBox}>
-            <Text style={s.feeInfoText}>
-              {isBuy
-                ? `A ${feePct}% fee applies to profits when you sell`
-                : `A ${feePct}% fee applies to profits only — no fee if you lost money on this trade`}
-            </Text>
-          </View>
+          <Text style={s.feeCaption}>
+            {isBuy
+              ? `${feePct}% fee on profits when you sell`
+              : `${feePct}% fee on profits only — none if this trade lost money`}
+          </Text>
 
           {quote.priceImpactPct > 5 && (
             <View style={s.warningBox}>
@@ -146,52 +128,36 @@ const s = StyleSheet.create({
   },
   row: {
     flexDirection: "row",
-    justifyContent: "space-between",
+    justifyContent: "center",
     alignItems: "center",
-    paddingVertical: 6,
+    paddingVertical: 4,
   },
-  label: {
-    fontFamily: FONTS.bodyMed,
-    fontSize: 14,
-    color: OM_BLUE_DIM,
+  swapRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 8,
   },
-  value: {
+  swapAmount: {
     fontFamily: FONTS.mono,
-    fontSize: 16,
+    fontSize: 15,
     color: OM_BLUE,
     fontWeight: "600",
+    flexShrink: 1,
   },
-  arrowRow: { alignItems: "center", paddingVertical: 4 },
-  arrow: { fontSize: 20, color: OM_BLUE },
-  divider: {
-    height: 1,
-    backgroundColor: BORDER,
-    marginVertical: 12,
-  },
+  swapArrow: { fontSize: 16, color: OM_BLUE_DIM },
   detailLabel: {
     fontFamily: FONTS.body,
-    fontSize: 13,
+    fontSize: 12,
     color: OM_BLUE_DIM,
   },
-  detailValue: {
-    fontFamily: FONTS.mono,
-    fontSize: 13,
-    color: OM_BLUE,
-  },
-  feeInfoBox: {
-    backgroundColor: "rgba(0, 150, 199, 0.06)",
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: BORDER,
-    padding: 10,
-    marginTop: 10,
-  },
-  feeInfoText: {
+  feeCaption: {
     fontFamily: FONTS.body,
-    fontSize: 11,
+    fontSize: 10,
     color: OM_BLUE_DIM,
     textAlign: "center",
-    lineHeight: 16,
+    marginTop: 8,
   },
   warningBox: {
     backgroundColor: "rgba(239,68,68,0.12)",

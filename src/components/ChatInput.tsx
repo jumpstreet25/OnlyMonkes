@@ -8,7 +8,7 @@
  *  - Send button (gradient, disabled when empty)
  */
 
-import React, { memo, useRef, useCallback, useEffect, useMemo, useState } from "react";
+import React, { memo, useRef, useCallback, useEffect, useMemo } from "react";
 import {
   View,
   Text,
@@ -26,7 +26,6 @@ import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
 import { THEME, FONTS, MAX_MESSAGE_LENGTH, getWorldBarTint, getWorldAccent } from "@/lib/constants";
 import { getBlurProps } from "@/lib/glassTheme";
-import { MonkeGlass } from "@/components/MonkeGlass";
 import { useThemeColor } from "@/lib/shopTheme";
 import { shortenAddress } from "@/lib/nftVerification";
 import { getCachedProfile, searchUsersByPrefix } from "@/lib/userProfile";
@@ -186,6 +185,7 @@ interface ChatInputProps {
   typingUsers?: TypingUser[];
   onLiveVideo?: () => void;
   onAvatarRoom?: () => void;
+  onOpenLivePicker?: () => void;
   isDmWithBot?: boolean;
 }
 
@@ -204,13 +204,13 @@ export const ChatInput = memo(function ChatInput({
   typingUsers,
   onLiveVideo,
   onAvatarRoom,
+  onOpenLivePicker,
   isDmWithBot,
 }: ChatInputProps) {
   const inputRef = useRef<TextInput>(null);
   const bounceAnim = useRef(new Animated.Value(0)).current;
   const hasTypers = !!(typingUsers && typingUsers.length > 0);
   const myInboxId = useAppStore(s => s.myInboxId);
-  const [livePickerOpen, setLivePickerOpen] = useState(false);
 
   // Theme overrides for Banana Shop Tier 4 themes
   const themeBorder = useThemeColor('border');
@@ -457,7 +457,7 @@ export const ChatInput = memo(function ChatInput({
 
         {(onLiveVideo || onAvatarRoom) && (
           <Pressable
-            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setLivePickerOpen(true); }}
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onOpenLivePicker?.(); }}
             accessibilityLabel="Go live"
             accessibilityRole="button"
             style={({ pressed }) => [styles.toolbarBtn, styles.toolbarLive, toolbarColor !== "#6CB4EE" && { borderColor: toolbarColor + "1F" }, pressed && { opacity: 0.7 }]}
@@ -483,56 +483,6 @@ export const ChatInput = memo(function ChatInput({
         <ChannelButton channelId="sales" />
         <ChannelButton channelId="predictions" />
       </View>
-
-      {/* Live picker popup — choose Audio or Video */}
-      <MonkeGlass
-        visible={livePickerOpen}
-        onClose={() => setLivePickerOpen(false)}
-        cardStyle={styles.livePickerCard}
-      >
-        <Text style={styles.livePickerTitle}>Go Live</Text>
-
-        {onLiveVideo && (
-          <Pressable
-            style={({ pressed }) => [styles.livePickerBtn, pressed && { opacity: 0.7 }]}
-            onPress={() => {
-              setLivePickerOpen(false);
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-              onLiveVideo();
-            }}
-          >
-            <Text style={styles.livePickerEmoji}>📹</Text>
-            <View>
-              <Text style={styles.livePickerBtnText}>Live Video</Text>
-              <Text style={styles.livePickerBtnSub}>Video call with sticker reactions</Text>
-            </View>
-          </Pressable>
-        )}
-
-        {onAvatarRoom && (
-          <Pressable
-            style={({ pressed }) => [styles.livePickerBtn, pressed && { opacity: 0.7 }]}
-            onPress={() => {
-              setLivePickerOpen(false);
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-              onAvatarRoom();
-            }}
-          >
-            <Text style={styles.livePickerEmoji}>🐵</Text>
-            <View>
-              <Text style={styles.livePickerBtnText}>Avatar Room</Text>
-              <Text style={styles.livePickerBtnSub}>Animated Monke avatar chat</Text>
-            </View>
-          </Pressable>
-        )}
-
-        <Pressable
-          style={({ pressed }) => [styles.livePickerCancel, pressed && { opacity: 0.7 }]}
-          onPress={() => setLivePickerOpen(false)}
-        >
-          <Text style={styles.livePickerCancelText}>Cancel</Text>
-        </Pressable>
-      </MonkeGlass>
 
     </View>
   );
@@ -830,57 +780,4 @@ const styles = StyleSheet.create({
   mentionUsername: { fontFamily: FONTS.bodyMed, fontSize: 14, color: THEME.text },
 
   // ── Live picker popup ───────────────────────────────────────────────────────
-  livePickerCard: {
-    width: 260,
-    borderColor: "rgba(0,150,199,0.4)",
-    paddingVertical: 20,
-    paddingHorizontal: 16,
-    alignItems: "center",
-    gap: 12,
-  },
-  livePickerTitle: {
-    fontFamily: FONTS.mono,
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#0096C7",
-    letterSpacing: 1,
-    marginBottom: 4,
-  },
-  livePickerBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    width: "100%",
-    backgroundColor: "rgba(0,150,199,0.1)",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "rgba(0,150,199,0.3)",
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-  },
-  livePickerEmoji: {
-    fontSize: 24,
-  },
-  livePickerBtnText: {
-    fontFamily: FONTS.mono,
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#0096C7",
-  },
-  livePickerBtnSub: {
-    fontFamily: FONTS.mono,
-    fontSize: 10,
-    color: "rgba(255,255,255,0.5)",
-    marginTop: 1,
-  },
-  livePickerCancel: {
-    marginTop: 4,
-    paddingVertical: 8,
-    paddingHorizontal: 20,
-  },
-  livePickerCancelText: {
-    fontFamily: FONTS.mono,
-    fontSize: 12,
-    color: "rgba(255,255,255,0.4)",
-  },
 });

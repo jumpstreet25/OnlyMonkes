@@ -49,7 +49,13 @@ import { assertDeviceTrusted } from "./security";
 import bs58 from "bs58";
 
 const JUP_BUILD_URL = "https://api.jup.ag/swap/v2/build";
-const JUP_TOKEN_LIST_URL = "https://token.jup.ag/strict";
+// 2026-08-01: `token.jup.ag/strict` is DNS-dead (NXDOMAIN) — every ticker
+// (and even raw-mint, since resolveToken's mint branch also hit this list
+// for decimals) resolution was silently failing. Bot-side hit and fixed the
+// same issue 2026-07-28 (userTrade.ts) — same replacement here: Jupiter's
+// live search API, not limited to a curated "strict" whitelist (it indexes
+// anything with a route, including freshly-graduated pump.fun tokens).
+const JUP_SEARCH_URL = "https://lite-api.jup.ag/tokens/v2/search";
 
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 const SOL_DECIMALS = 9;
@@ -60,51 +66,40 @@ const APP_IDENTITY = {
   icon: "favicon.ico",
 };
 
-// ── Token list cache ────────────────────────────────────────────────────────
+// ── Token resolution (live search, no bulk list) ────────────────────────────
 
-interface JupToken {
-  address: string;
+interface JupSearchResult {
+  id: string;
   symbol: string;
-  name: string;
   decimals: number;
-  logoURI?: string;
+  liquidity?: number;
 }
 
-let _tokenListCache: JupToken[] | null = null;
-let _tokenListFetchedAt = 0;
-const TOKEN_LIST_TTL = 30 * 60 * 1000; // 30 min
-
-async function getTokenList(): Promise<JupToken[]> {
-  if (_tokenListCache && Date.now() - _tokenListFetchedAt < TOKEN_LIST_TTL) {
-    return _tokenListCache;
-  }
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 8000);
-  const res = await fetch(JUP_TOKEN_LIST_URL, { signal: controller.signal });
-  clearTimeout(timer);
-  if (!res.ok) throw new Error("Failed to fetch Jupiter token list");
-  const list = (await res.json()) as JupToken[];
-  if (!Array.isArray(list) || list.length === 0) throw new Error("Invalid Jupiter token list");
-  _tokenListCache = list;
-  _tokenListFetchedAt = Date.now();
-  return _tokenListCache;
+async function searchJupiterToken(query: string): Promise<JupSearchResult[]> {
+  const res = await fetch(`${JUP_SEARCH_URL}?query=${encodeURIComponent(query)}`, {
+    signal: AbortSignal.timeout(8_000),
+  });
+  if (!res.ok) return [];
+  const results = (await res.json()) as JupSearchResult[];
+  return Array.isArray(results) ? results : [];
 }
 
 /**
- * Resolve a token symbol (e.g. "SOL", "BONK", "SKR") to its mint address + decimals.
- * Case-insensitive. Returns null if not found.
+ * Resolve a token symbol (e.g. "SOL", "BONK", "SKR") or a raw mint address to
+ * its mint + decimals. Case-insensitive. Returns null if not found.
  */
 export async function resolveToken(
   symbolOrMint: string
 ): Promise<{ mint: string; decimals: number; symbol: string } | null> {
-  // If it looks like a mint address (base58, 32+ chars), use it directly
+  // If it looks like a mint address (base58, 32+ chars), use it directly.
+  // Best-effort decimals/symbol lookup by mint — falls back to the SOL-
+  // standard 9 decimals if the search comes back empty (search failing
+  // doesn't block the swap; Jupiter's own quote is the source of truth for
+  // amounts, this is only for the pre-quote UI display).
   if (symbolOrMint.length >= 32 && !symbolOrMint.includes(" ")) {
-    const list = await getTokenList();
-    const found = list.find(
-      (t) => t.address.toLowerCase() === symbolOrMint.toLowerCase()
-    );
-    if (found) return { mint: found.address, decimals: found.decimals, symbol: found.symbol };
-    // Unknown mint — assume 9 decimals (SOL standard)
+    const results = await searchJupiterToken(symbolOrMint).catch(() => []);
+    const found = results.find((t) => t.id.toLowerCase() === symbolOrMint.toLowerCase());
+    if (found) return { mint: found.id, decimals: found.decimals, symbol: found.symbol };
     return { mint: symbolOrMint, decimals: 9, symbol: symbolOrMint.slice(0, 6) };
   }
 
@@ -112,10 +107,15 @@ export async function resolveToken(
   const sym = symbolOrMint.replace(/^\$/, "").toUpperCase();
   if (sym === "SOL") return { mint: SOL_MINT, decimals: SOL_DECIMALS, symbol: "SOL" };
 
-  const list = await getTokenList();
-  const match = list.find((t) => t.symbol.toUpperCase() === sym);
-  if (!match) return null;
-  return { mint: match.address, decimals: match.decimals, symbol: match.symbol };
+  const results = await searchJupiterToken(sym);
+  // Exact symbol match only — search does fuzzy/substring matching, and a
+  // loose match could silently resolve to an unrelated token. Ticker
+  // squatting (multiple pump.fun tokens sharing a symbol) is common —
+  // prefer the highest-liquidity match as the least-likely decoy.
+  const exact = results.filter((t) => t.symbol?.toUpperCase() === sym);
+  if (exact.length === 0) return null;
+  const best = exact.reduce((a, b) => ((b.liquidity ?? 0) > (a.liquidity ?? 0) ? b : a));
+  return { mint: best.id, decimals: best.decimals, symbol: best.symbol };
 }
 
 // ── Jupiter v2 /build types ─────────────────────────────────────────────────
@@ -208,6 +208,10 @@ export async function getSwapQuote(
     taker,
     slippageBps: String(slippageBps),
     wrapAndUnwrapSol: "true",
+    // Matches worker-actions' Blink builder (index.ts) — without this,
+    // client-typed swaps could go out with no priority fee at all while
+    // Blinks and AutonoMonke both already set one.
+    prioritizationFeeLamports: "auto",
   });
 
   const headers: Record<string, string> = {};
@@ -387,6 +391,7 @@ export async function executeSwap(quote: SwapQuote): Promise<SwapResult> {
         taker: realWallet,
         slippageBps: String(quote.slippageBps),
         wrapAndUnwrapSol: "true",
+        prioritizationFeeLamports: "auto",
       });
       const rebuildRes = await fetch(`${JUP_BUILD_URL}?${params}`, { headers: rebuildHeaders });
       if (rebuildRes.ok) {

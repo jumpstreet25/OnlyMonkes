@@ -118,6 +118,7 @@ import type { TipAmount } from "@/lib/constants";
 import { ChatHeader, CHAT_HEADER_HEIGHT } from "@/components/ChatHeader";
 import { ChatModals } from "@/components/ChatModals";
 import { MonkeGlass, MonkeGlassActionButton } from "@/components/MonkeGlass";
+import { GoLivePicker } from "@/components/GoLivePicker";
 import { ChatMessageList } from "@/components/ChatMessageList";
 
 export default function ChatScreen() {
@@ -984,6 +985,7 @@ export default function ChatScreen() {
   // MonkeGlass sheet so this picker actually reads as glass like the rest
   // of the app.
   const [shareMediaSheetOpen, setShareMediaSheetOpen] = useState(false);
+  const [livePickerOpen, setLivePickerOpen] = useState(false);
   const handleCameraButtonPress = useCallback(() => {
     setShareMediaSheetOpen(true);
   }, []);
@@ -1619,6 +1621,7 @@ export default function ChatScreen() {
           typingUsers={typingUsers}
           onLiveVideo={!activeVideoRoom ? handleStartVideoCall : undefined}
           onAvatarRoom={!activeAvatarRoom ? handleStartAvatarRoom : undefined}
+          onOpenLivePicker={() => setLivePickerOpen(true)}
         />
 
         {/* Support banner — 3-column: [SKR] [Support] [Floor] */}
@@ -1734,6 +1737,12 @@ export default function ChatScreen() {
           onPress={() => setShareMediaSheetOpen(false)}
         />
       </MonkeGlass>
+      <GoLivePicker
+        visible={livePickerOpen}
+        onClose={() => setLivePickerOpen(false)}
+        onLiveVideo={!activeVideoRoom ? handleStartVideoCall : undefined}
+        onAvatarRoom={!activeAvatarRoom ? handleStartAvatarRoom : undefined}
+      />
       <ChatModals
         showConfetti={showConfetti}
         setShowConfetti={setShowConfetti}
