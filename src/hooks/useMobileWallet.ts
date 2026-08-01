@@ -18,10 +18,12 @@ import {
 } from "@solana-mobile/mobile-wallet-adapter-protocol-web3js";
 import { PublicKey } from "@solana/web3.js";
 import { Linking } from "react-native";
+import bs58 from "bs58";
 import { useAppStore } from "@/store/appStore";
 import { bindXmtpToWallet } from "@/lib/xmtp";
 import { rehydrateForWallet } from "@/lib/walletIdentity";
 import { assertDeviceTrusted } from "@/lib/security";
+import { refreshInboxLinks } from "@/lib/inboxLinking";
 import type { WalletAccount } from "@/types";
 
 const APP_IDENTITY = {
@@ -29,6 +31,32 @@ const APP_IDENTITY = {
   uri: "https://onlymonkes.com",  // Update to your app's URI
   icon: "favicon.ico",
 };
+
+/**
+ * Core MWA signing call, parameterized on explicit auth values rather than
+ * hook state — lets `connect()` sign immediately with the auth it just
+ * received, without waiting on a React re-render to see it via `wallet`/
+ * `authToken` state (those only update on the component's next render).
+ */
+async function signMessageWithAuth(
+  messageBytes: Uint8Array,
+  auth: { walletAddress: string; authToken: string; rawAddress: string | null },
+): Promise<Uint8Array> {
+  assertDeviceTrusted("Identity sign");
+  const addressForMwa = auth.rawAddress ?? auth.walletAddress;
+  return transact(async (mobileWallet: Web3MobileWallet) => {
+    await mobileWallet.authorize({
+      cluster: "mainnet-beta",
+      identity: APP_IDENTITY,
+      auth_token: auth.authToken,
+    } as Parameters<typeof mobileWallet.authorize>[0]);
+    const [sig] = await mobileWallet.signMessages({
+      addresses: [addressForMwa],
+      payloads: [messageBytes],
+    });
+    return sig;
+  });
+}
 
 export function useMobileWallet() {
   const { setWallet, setLoading, setError, setMwaAuthToken, wallet, reset } = useAppStore();
@@ -59,6 +87,11 @@ export function useMobileWallet() {
         } catch { /* wallet not installed — fall through to system chooser */ }
       }
 
+      // Captured directly from this connect()'s own auth result — avoids
+      // relying on the hook's `authToken`/`rawAddress` state, which only
+      // updates on the component's NEXT render, not within this call.
+      let freshAuth: { authToken: string; rawAddress: string } | null = null;
+
       const account = await transact(async (mobileWallet: Web3MobileWallet) => {
         const authResult = await mobileWallet.authorize({
           cluster: "mainnet-beta",
@@ -72,6 +105,7 @@ export function useMobileWallet() {
         // We must decode it to bytes before passing to PublicKey constructor.
         const addrRaw = authResult.accounts[0].address;
         setRawAddress(addrRaw as string);
+        freshAuth = { authToken: authResult.auth_token, rawAddress: addrRaw as string };
         const pubkeyBytes =
           typeof addrRaw === "string"
             ? Buffer.from(addrRaw, "base64")
@@ -91,6 +125,25 @@ export function useMobileWallet() {
       setWallet(account);
       await rehydrateForWallet(account.address);
       bindXmtpToWallet(account.address);
+
+      // Best-effort, fire-and-forget: learn every other inboxId already known
+      // for this wallet (e.g. a different app install/device) so messages
+      // from them render as "own" instead of a stranger's. Only safe to do
+      // here — this is the one call site with a live signing session; the
+      // fast session-restore and headless paths have none.
+      if (freshAuth) {
+        const auth = freshAuth as { authToken: string; rawAddress: string };
+        refreshInboxLinks(account.address, async (message: string) => {
+          const messageBytes = new TextEncoder().encode(message);
+          const sigBytes = await signMessageWithAuth(messageBytes, {
+            walletAddress: account.address,
+            authToken: auth.authToken,
+            rawAddress: auth.rawAddress,
+          });
+          return { signatureBase58: bs58.encode(sigBytes), pubkeyBase58: account.address };
+        });
+      }
+
       return account;
     } catch (err) {
       const message =
@@ -111,31 +164,11 @@ export function useMobileWallet() {
       if (!wallet || !authToken) {
         throw new Error("Wallet not connected");
       }
-
-      // Blocks XMTP key derivation on rooted/hooked/repackaged/cloned devices —
-      // those would let an attacker derive the identity keys and read encrypted DMs.
-      assertDeviceTrusted("Identity sign");
-
-      // Use the original base64 address for MWA signMessages (protocol requirement)
-      const addressForMwa = rawAddress ?? wallet.address;
-
-      const signature = await transact(async (mobileWallet: Web3MobileWallet) => {
-        // Re-authorize with cached token
-        await mobileWallet.authorize({
-          cluster: "mainnet-beta",
-          identity: APP_IDENTITY,
-          auth_token: authToken,
-        } as Parameters<typeof mobileWallet.authorize>[0]);
-
-        const [sig] = await mobileWallet.signMessages({
-          addresses: [addressForMwa],
-          payloads: [messageBytes],
-        });
-
-        return sig;
+      return signMessageWithAuth(messageBytes, {
+        walletAddress: wallet.address,
+        authToken,
+        rawAddress,
       });
-
-      return signature;
     },
     [wallet, authToken, rawAddress]
   );

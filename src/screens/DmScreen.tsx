@@ -23,6 +23,7 @@ import { LivePnLCardModal } from '@/components/LivePnLCardModal';
 import type { ClosedTrade, OpenTrade } from '@/lib/positions';
 import type { PortfolioCard, PortfolioResponse } from '@/store/tradesStore';
 import type { ChatMessage, ReactionEmoji } from '@/types';
+import { isMineInbox } from '@/lib/inboxLinking';
 
 type FeedItem =
   | { kind: 'msg'; key: string; ts: number; msg: ChatMessage }
@@ -105,7 +106,7 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
   const lastReadOwnId = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
       const m = messages[i];
-      if (m.senderAddress === myInboxId && m.status === 'read') return m.id;
+      if (isMineInbox(m.senderAddress, myInboxId ?? '') && m.status === 'read') return m.id;
     }
     return null;
   }, [messages, myInboxId]);
@@ -210,7 +211,7 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
               <>
                 <MessageBubble
                   message={m}
-                  isOwn={m.senderAddress === myInboxId}
+                  isOwn={isMineInbox(m.senderAddress, myInboxId ?? '')}
                   onReact={handleReact}
                   onReply={handleReply}
                   onOpenActions={setActionSheetTarget}

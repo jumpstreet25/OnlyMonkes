@@ -26,6 +26,7 @@ import * as Haptics from "expo-haptics";
 import { THEME, FONTS } from "@/lib/constants";
 import { MessageBubble } from "@/components/MessageBubble";
 import type { ChatMessage, ReactionEmoji } from "@/types";
+import { isMineInbox } from "@/lib/inboxLinking";
 import type { ProfileTarget } from "@/components/UserProfileModal";
 
 /** Swipe-to-reply wrapper — swipe right reveals reply arrow, triggers onReply */
@@ -210,7 +211,7 @@ const ChatMessageListInner = React.forwardRef<FlashListRef<ChatMessage>, ChatMes
           <View>
             <MessageBubble
               message={item}
-              isOwn={item.senderAddress === myAddress}
+              isOwn={isMineInbox(item.senderAddress, myAddress)}
               isLatest={isLatest}
               isNew={isNew}
               onReact={handleReact}

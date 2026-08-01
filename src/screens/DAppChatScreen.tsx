@@ -27,6 +27,7 @@ import { MessageActionSheet } from "@/components/MessageActionSheet";
 import { ChatInput } from "@/components/ChatInput";
 import { THEME, FONTS, DAPPS } from "@/lib/constants";
 import type { ChatMessage, ReactionEmoji } from "@/types";
+import { isMineInbox } from "@/lib/inboxLinking";
 
 interface DAppChatScreenProps {
   dappId: string;
@@ -142,7 +143,7 @@ export default function DAppChatScreen({ dappId }: DAppChatScreenProps) {
     ({ item }) => (
       <MessageBubble
         message={item}
-        isOwn={item.senderAddress === myAddress}
+        isOwn={isMineInbox(item.senderAddress, myAddress)}
         onReact={handleReact}
         onReply={setReplyingTo}
         onOpenActions={setActionSheetTarget}

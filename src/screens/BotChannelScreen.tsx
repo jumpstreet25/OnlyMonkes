@@ -35,6 +35,7 @@ import { useThemeColor } from "@/lib/shopTheme";
 import { WorldLayer } from "@/components/worlds/WorldLayer";
 import { markChannelRead } from "@/lib/messageCache";
 import type { ChatMessage } from "@/types";
+import { isMineInbox } from "@/lib/inboxLinking";
 
 const BOT_INBOX_ID = "998001a498174b8a194110ee792b10f97de4965665eaf0d088ed2c71bdf62363";
 
@@ -326,7 +327,7 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
         return (
           <MessageBubble
             message={item}
-            isOwn={item.senderAddress === myAddress}
+            isOwn={isMineInbox(item.senderAddress, myAddress)}
             onReact={noop}
             onReply={noop}
             onOpenActions={noop}

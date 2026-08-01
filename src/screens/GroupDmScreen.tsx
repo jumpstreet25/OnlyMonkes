@@ -12,6 +12,7 @@ import { ChatInput } from '@/components/ChatInput';
 import ImageLightbox from '@/components/ImageLightbox';
 import { useAppStore } from '@/store/appStore';
 import type { ChatMessage, ReactionEmoji } from '@/types';
+import { isMineInbox } from '@/lib/inboxLinking';
 
 export default function GroupDmScreen({ groupId }: { groupId: string }) {
   const insets = useSafeAreaInsets();
@@ -51,7 +52,7 @@ export default function GroupDmScreen({ groupId }: { groupId: string }) {
   const groupName = useMemo(() => {
     const senders = new Set<string>();
     for (const m of messages) {
-      if (m.senderAddress !== myInboxId && m.senderUsername) {
+      if (!isMineInbox(m.senderAddress, myInboxId ?? '') && m.senderUsername) {
         senders.add(m.senderUsername);
       }
     }
@@ -120,7 +121,7 @@ export default function GroupDmScreen({ groupId }: { groupId: string }) {
           renderItem={({ item }) => (
             <MessageBubble
               message={item}
-              isOwn={item.senderAddress === myInboxId}
+              isOwn={isMineInbox(item.senderAddress, myInboxId ?? '')}
               onReact={noop}
               onReply={handleReply}
               onOpenActions={setActionSheetTarget}

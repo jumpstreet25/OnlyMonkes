@@ -38,6 +38,7 @@ import {
   loadVerifiedNft,
 } from "@/lib/session";
 import { prefetchXmtpClient, bindXmtpToWallet } from "@/lib/xmtp";
+import { loadCachedInboxLinks } from "@/lib/inboxLinking";
 import { rehydrateForWallet } from "@/lib/walletIdentity";
 import { THEME, FONTS } from "@/lib/constants";
 import { MonkeGlass } from "@/components/MonkeGlass";
@@ -63,6 +64,7 @@ export default function ConnectScreen() {
         setWallet(wallet);
         await rehydrateForWallet(wallet.address);
         bindXmtpToWallet(wallet.address);
+        void loadCachedInboxLinks(wallet.address); // best-effort, no live signing on this path
         const nft = await loadVerifiedNft();
         if (nft) {
           setVerified(true, nft);

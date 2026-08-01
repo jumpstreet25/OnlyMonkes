@@ -363,7 +363,7 @@ function decodeStringMessage(raw: any, rawContent: string, myInboxId: string): C
     ? rawContent.slice(4).split(":").slice(1).join(":")
     : rawContent;
   const STRUCTURED_PREFIXES = [
-    "REACT:", "STICKER_REACT:", "TYPING:", "PROFILE_UPDATE:", "PROFILE_SNAPSHOT:",
+    "REACT:", "STICKER_REACT:", "TYPING:", "PROFILE_UPDATE:", "PROFILE_SNAPSHOT:", "MY_INBOXES:",
     "LOCATION_SYNC:", "EVENT:", "EDIT:", "PRESENCE:", "LIVE_ROOM:", "VIDEO_ROOM:",
     "AVATAR_ROOM:", "SHOP_PURCHASE:", "GIFT_ITEM:", "THREAD:", "PIN:", "UNPIN:",
     "NFT_LIST:", "NFT_BID:", "NFT_ACCEPT:", "NFT_DELIST:", "NFT_OFFER:",
@@ -1234,6 +1234,34 @@ export function parseProfileSnapshot(raw: string): ParsedProfileSnapshot | null 
     badges: Array.isArray(data.bd) ? data.bd.filter((b: unknown) => typeof b === "string") : undefined,
     marketplaceHistory: Array.isArray(data.mh) ? data.mh : undefined,
     updatedAt: typeof data.updatedAt === "number" ? data.updatedAt : undefined,
+  };
+}
+
+// ─── MY_INBOXES (wallet-ownership-verified inbox linking) ───────────────────
+
+export interface ParsedMyInboxes {
+  wallet: string;
+  inboxIds: string[];
+}
+
+/**
+ * Parse a MY_INBOXES: payload returned by the bot after a successful
+ * /myinboxes challenge handshake. Returns null on malformed input.
+ */
+export function parseMyInboxes(raw: string): ParsedMyInboxes | null {
+  if (!raw.startsWith("MY_INBOXES:")) return null;
+  const jsonStr = raw.slice("MY_INBOXES:".length);
+  if (jsonStr.length > 20_000) return null;
+
+  let data: any;
+  try { data = JSON.parse(jsonStr); } catch { return null; }
+  if (!data || typeof data !== "object" || Array.isArray(data)) return null;
+  if (typeof data.wallet !== "string" || !data.wallet) return null;
+  if (!Array.isArray(data.inboxIds)) return null;
+
+  return {
+    wallet: data.wallet,
+    inboxIds: data.inboxIds.filter((id: unknown) => typeof id === "string"),
   };
 }
 
