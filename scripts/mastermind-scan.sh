@@ -7,6 +7,14 @@
 
 set -uo pipefail
 
+LOCK_FILE="/tmp/mastermind-scan.lock"
+if [ -f "$LOCK_FILE" ] && kill -0 "$(cat "$LOCK_FILE" 2>/dev/null)" 2>/dev/null; then
+  echo "[mastermind] Already running as PID $(cat "$LOCK_FILE") — skipping this run."
+  exit 0
+fi
+echo $$ > "$LOCK_FILE"
+trap 'rm -f "$LOCK_FILE"' EXIT
+
 APP_DIR="${HOME}/AndroidStudioProjects/OnlyMonkes"
 BOT_DIR="${HOME}/Monke_Eliza/agents/monke-trader"
 REPORT="/tmp/mastermind-report.md"
