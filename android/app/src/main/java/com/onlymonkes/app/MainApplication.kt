@@ -8,9 +8,8 @@ import com.facebook.react.ReactApplication
 import com.facebook.react.ReactNativeHost
 import com.facebook.react.ReactPackage
 import com.facebook.react.ReactHost
-import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint.load
+import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint
 import com.facebook.react.defaults.DefaultReactNativeHost
-import com.facebook.react.internal.featureflags.ReactNativeFeatureFlags
 import com.facebook.react.soloader.OpenSourceMergedSoMapping
 import com.facebook.soloader.SoLoader
 
@@ -44,11 +43,11 @@ class MainApplication : Application(), ReactApplication {
     super.onCreate()
     SoLoader.init(this, OpenSourceMergedSoMapping)
     if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
-      // Must run before load() — feature flags are read as soon as Fabric
-      // initializes. See AppFeatureFlags.kt for why this override exists.
-      ReactNativeFeatureFlags.override(AppFeatureFlags())
-      // If you opted-in for the New Architecture, we load the native entry point for this app.
-      load()
+      // loadWithFeatureFlags (not the plain load()) — see AppFeatureFlags.kt.
+      // ReactNativeFeatureFlags.override() can only be called once per
+      // process; load() always calls it internally, so a custom flag can
+      // only be injected by supplying our own provider to this entry point.
+      DefaultNewArchitectureEntryPoint.loadWithFeatureFlags(AppFeatureFlags())
     }
     ApplicationLifecycleDispatcher.onApplicationCreate(this)
   }
