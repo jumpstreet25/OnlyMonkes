@@ -10,7 +10,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   name: 'OnlyMonkes',
   slug: 'monkesonly',
   owner: process.env.EXPO_OWNER ?? undefined,
-  version: '2.38.0',
+  version: '3.0.0',
   orientation: 'portrait',
   icon: './assets/icon.png',
   userInterfaceStyle: 'dark',
@@ -32,7 +32,17 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     fallbackToCacheTimeout: 5000,
     checkAutomatically: 'ON_LOAD',
   },
-  runtimeVersion: '3.3',
+  // 2026-08-01: bumped from '3.3' — that tag is currently shared by BOTH the
+  // old (Reanimated v3) production native binary and the new (Reanimated v4)
+  // canary native binary. expo-updates uses this to gate OTA compatibility,
+  // so that overlap is exactly what let a Reanimated v3/v4 JS bundle get
+  // delivered to the old v3 binary and crash-loop production (see
+  // feedback_never_ota_from_worktree_without_checking_reanimated). A real
+  // native rebuild is happening anyway for the 3.0.0 release — this is the
+  // moment to give it its own distinct runtime tag so that class of mistake
+  // becomes structurally impossible (expo-updates will simply refuse to
+  // apply a mismatched update rather than silently crashing).
+  runtimeVersion: '3.4',
   plugins: [
     'expo-router',
     'expo-secure-store',
