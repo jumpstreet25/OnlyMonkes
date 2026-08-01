@@ -10,6 +10,7 @@ import com.facebook.react.ReactPackage
 import com.facebook.react.ReactHost
 import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint
 import com.facebook.react.defaults.DefaultReactNativeHost
+import com.facebook.react.internal.featureflags.ReactNativeFeatureFlagsProvider
 import com.facebook.react.soloader.OpenSourceMergedSoMapping
 import com.facebook.soloader.SoLoader
 
@@ -43,11 +44,26 @@ class MainApplication : Application(), ReactApplication {
     super.onCreate()
     SoLoader.init(this, OpenSourceMergedSoMapping)
     if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
-      // loadWithFeatureFlags (not the plain load()) — see AppFeatureFlags.kt.
-      // ReactNativeFeatureFlags.override() can only be called once per
-      // process; load() always calls it internally, so a custom flag can
-      // only be injected by supplying our own provider to this entry point.
-      DefaultNewArchitectureEntryPoint.loadWithFeatureFlags(AppFeatureFlags())
+      // DefaultNewArchitectureEntryPoint.load() always calls
+      // ReactNativeFeatureFlags.override() internally (it throws if called
+      // twice), so a custom flag (see AppFeatureFlags.kt) can only be
+      // injected via loadWithFeatureFlags() — but that's `internal` in
+      // Kotlin and won't compile against directly (confirmed via a real EAS
+      // build failure). Kotlin's `internal` is compile-time only though —
+      // the underlying JVM method (marked @JvmStatic) is genuinely public,
+      // so reflection reaches it. This also correctly sets
+      // DefaultNewArchitectureEntryPoint's private fabricEnabled/
+      // turboModulesEnabled/etc. fields, which MainActivity.kt reads.
+      try {
+        val method = DefaultNewArchitectureEntryPoint::class.java.getDeclaredMethod(
+          "loadWithFeatureFlags",
+          ReactNativeFeatureFlagsProvider::class.java,
+        )
+        method.isAccessible = true
+        method.invoke(null, AppFeatureFlags())
+      } catch (e: Exception) {
+        throw RuntimeException("Failed to invoke loadWithFeatureFlags via reflection", e)
+      }
     }
     ApplicationLifecycleDispatcher.onApplicationCreate(this)
   }
