@@ -10,6 +10,7 @@ import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate
 import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint.fabricEnabled
 import com.facebook.react.defaults.DefaultReactActivityDelegate
+import com.facebook.react.views.view.setEdgeToEdgeFeatureFlagOn
 
 import expo.modules.ReactActivityDelegateWrapper
 
@@ -22,14 +23,21 @@ class MainActivity : ReactActivity() {
     // @generated begin expo-splashscreen - expo prebuild (DO NOT MODIFY) sync-f3ff59a738c56c9a6119210cb55f0b613eb8b6af
     SplashScreenManager.registerOnActivity(this)
     // @generated end expo-splashscreen
+    // 2026-08-03: must run BEFORE super.onCreate() — ReactActivityDelegate.onCreate()
+    // only calls RN's own Window.enableEdgeToEdge() when this flag is already on
+    // (checked at ReactActivityDelegate.java:140). The previous approach called
+    // WindowCompat.setDecorFitsSystemWindows(window, false) manually AFTER
+    // super.onCreate(), which is a strict subset of what RN's enableEdgeToEdge()
+    // does — it's missing `isStatusBarContrastEnforced = false` (Android Q+),
+    // so the OS was still drawing its automatic contrast scrim behind the status
+    // bar, i.e. the "visible bar" that was supposed to be gone. Flipping this
+    // flag also fixes every other RN/Expo component that reads it to know
+    // edge-to-edge is active — DeviceInfo.isEdgeToEdge (checked by
+    // expo-status-bar via react-native-is-edge-to-edge), StatusBarModule, and
+    // ReactModalHostView's inset handling — instead of only fixing the window
+    // itself and leaving those consumers thinking edge-to-edge is off.
+    setEdgeToEdgeFeatureFlagOn()
     super.onCreate(null)
-    // 2026-07-23: explicit, version-independent edge-to-edge enforcement.
-    // android:windowOptOutEdgeToEdgeEnforcement=false (styles.xml) only gets
-    // Android to STOP blocking edge-to-edge on API 35+ — below that (down to
-    // this app's minSdkVersion 26) there is no automatic OS enforcement at
-    // all, so without this explicit call the window still reserves its own
-    // space for the system bars on any pre-Android-15 device.
-    WindowCompat.setDecorFitsSystemWindows(window, false)
   }
 
   /**
