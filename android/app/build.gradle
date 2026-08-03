@@ -269,4 +269,32 @@ afterEvaluate {
             dependsOn(autolinkingTask)
         }
     }
+    // 2026-08-02: same missing-dependsOn gap as above, on the Kotlin/Java side.
+    // generateAutolinkingPackageList writes the PackageList class that
+    // MainApplication.kt references; without this wiring compileCanaryReleaseKotlin
+    // can run before it exists on the canary flavor's task graph, failing with
+    // "Unresolved reference 'PackageList'".
+    if (tasks.names.contains("generateAutolinkingPackageList")) {
+        def packageListTask = tasks.named("generateAutolinkingPackageList")
+        tasks.matching { it.name.startsWith("compile") && it.name.endsWith("Kotlin") }.configureEach {
+            dependsOn(packageListTask)
+        }
+    }
+}
+
+// 2026-08-02: same directory-wipe symptom family as the autolinking.h issue
+// above, this time hitting createBundle*JsAndAssets — Gradle clears a task's
+// declared @OutputDirectory before running it, and the underlying `node
+// .../cli.js bundle --sourcemap-output <path>` command doesn't mkdir -p its
+// own parent directory first, so on a variant's first-ever local build (no
+// prior directory to leave behind) it fails with ENOENT writing the .map
+// file. A pre-invocation `mkdir` doesn't help — Gradle wipes it again before
+// the task body runs. This doFirst hook runs AFTER Gradle's own cleanup but
+// BEFORE the task action, so it always exists when needed.
+tasks.matching { it.name.startsWith("createBundle") && it.name.endsWith("JsAndAssets") }.configureEach {
+    doFirst {
+        def variant = name.replace("createBundle", "").replace("JsAndAssets", "")
+        def variantLower = variant[0].toLowerCase() + variant.substring(1)
+        file("${buildDir}/intermediates/sourcemaps/react/${variantLower}").mkdirs()
+    }
 }
