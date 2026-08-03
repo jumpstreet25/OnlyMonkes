@@ -1,5 +1,5 @@
 import React, { useRef, useCallback, useState, useEffect, useMemo } from 'react';
-import { View, StyleSheet, Text, Pressable, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, Text, Pressable, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -119,6 +119,22 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
   const feedInverted = useMemo(() => feed.slice().reverse(), [feed]);
 
   return (
+    // 2026-08-03: DmScreen never had any keyboard-avoidance handling — it
+    // was relying entirely on AndroidManifest's windowSoftInputMode
+    // "adjustResize" to push content above the keyboard natively. That
+    // stops being reliable once the window opts into true edge-to-edge
+    // (WindowCompat.setDecorFitsSystemWindows(false) in MainActivity.kt,
+    // added earlier this session) — adjustResize's resize model assumes
+    // the OS still owns window-bounds fitting, which edge-to-edge
+    // deliberately opts out of. Result: the input bar sat behind the
+    // keyboard instead of being pushed above it. ChatScreen.tsx already
+    // has a KeyboardAvoidingView (its Android `behavior` is intentionally
+    // `undefined` there, tuned separately) — this screen had none at all.
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={0}
+    >
     <View style={[styles.container, { paddingTop: insets.top, backgroundColor: themeBg }]}>
       {/* Header */}
       <View style={[styles.header, { borderBottomColor: themeBorder }]}>
@@ -234,6 +250,7 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
         onReply={handleReply}
       />
     </View>
+    </KeyboardAvoidingView>
   );
 }
 
