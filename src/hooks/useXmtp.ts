@@ -1973,13 +1973,25 @@ export function useXmtp() {
               if (inner.startsWith('PORTFOLIO_RESPONSE:')) {
                 try {
                   const { BOT_INBOX_IDS } = await import('@/lib/constants');
-                  if (!BOT_INBOX_IDS.includes(senderInboxId)) return;
+                  if (!BOT_INBOX_IDS.includes(senderInboxId)) {
+                    // 2026-08-03: was toast.error — visible to real users
+                    // chasing an investigation that's still open. Dev-only
+                    // console log keeps the diagnostic value without the
+                    // user-facing noise.
+                    if (__DEV__) console.warn(`[diag] portfolio(global) sender mismatch: "${senderInboxId}"`);
+                    return;
+                  }
                   const { parsePortfolioResponse } = await import('@/lib/xmtp');
                   const parsed = parsePortfolioResponse(inner);
-                  if (!parsed) return;
+                  if (!parsed) {
+                    if (__DEV__) console.warn(`[diag] portfolio(global) parse returned null, len=${inner.length}`);
+                    return;
+                  }
                   const { useTradesStore } = await import('@/store/tradesStore');
                   useTradesStore.getState().setPortfolioResponse(parsed);
-                } catch { /* swallow */ }
+                } catch (err) {
+                  if (__DEV__) console.warn(`[diag] portfolio(global) handler threw: ${(err as Error)?.message?.slice(0, 100)}`);
+                }
                 return;
               }
 

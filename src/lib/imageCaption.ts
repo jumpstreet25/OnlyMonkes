@@ -53,10 +53,17 @@ export async function requestImageCaption(messageId: string, base64: string): Pr
     const { openOrCreateDm } = await import("@/lib/xmtp");
     const { BOT_INBOX_IDS } = await import("@/lib/constants");
     const client = getXmtpClient();
-    if (!client) return;
+    if (!client) {
+      // 2026-08-03: was toast.error — visible to real users for a
+      // best-effort background feature (Share to X caption). Dev-only
+      // console log keeps the diagnostic value without the user-facing
+      // noise; falls back to the generic caption same as before.
+      if (__DEV__) console.warn("[diag] caption request: no xmtp client");
+      return;
+    }
     const dm = await openOrCreateDm(client, BOT_INBOX_IDS[0]);
     await dm.send(`IMAGE_CAPTION_REQUEST:${messageId}:${base64}`);
-  } catch {
-    // non-fatal — Share to X just falls back to the generic caption
+  } catch (err) {
+    if (__DEV__) console.warn(`[diag] caption request threw: ${(err as Error)?.message?.slice(0, 100)}`);
   }
 }

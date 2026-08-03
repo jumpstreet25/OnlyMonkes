@@ -166,13 +166,24 @@ export function useDm(peerInboxId: string) {
               try {
                 const { BOT_INBOX_IDS } = await import('@/lib/constants');
                 const sender = raw.senderInboxId ?? '';
-                if (!BOT_INBOX_IDS.includes(sender)) return;
+                if (!BOT_INBOX_IDS.includes(sender)) {
+                  // 2026-08-03: was toast.error — visible to real users chasing
+                  // an investigation that's still open. Dev-only console log
+                  // keeps the diagnostic value without the user-facing noise.
+                  if (__DEV__) console.warn(`[diag] portfolio sender mismatch: "${sender}"`);
+                  return;
+                }
                 const { parsePortfolioResponse } = await import('@/lib/xmtp');
                 const parsed = parsePortfolioResponse(innerContent);
-                if (!parsed) return;
+                if (!parsed) {
+                  if (__DEV__) console.warn(`[diag] portfolio parse returned null, len=${innerContent.length}`);
+                  return;
+                }
                 const { useTradesStore } = await import('@/store/tradesStore');
                 useTradesStore.getState().setPortfolioResponse(parsed);
-              } catch { /* swallow */ }
+              } catch (err) {
+                if (__DEV__) console.warn(`[diag] portfolio handler threw: ${(err as Error)?.message?.slice(0, 100)}`);
+              }
               return;
             }
 
