@@ -22,9 +22,11 @@ import {
   Modal,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import { BlurView } from "expo-blur";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
 import { THEME, FONTS, MAX_MESSAGE_LENGTH, getWorldBarTint, getWorldAccent } from "@/lib/constants";
+import { getBlurProps, GLASS_CHROME_BG } from "@/lib/glassTheme";
 import { useThemeColor } from "@/lib/shopTheme";
 import { shortenAddress } from "@/lib/nftVerification";
 import { getCachedProfile, searchUsersByPrefix } from "@/lib/userProfile";
@@ -228,7 +230,7 @@ export const ChatInput = memo(function ChatInput({
   // bar background so falling bananas / candles can be seen piling up behind
   // it. Returns to opaque theme surface when no world is set.
   const worldId = shopStyles?.worldId as string | undefined;
-  const inputBarBg = worldId ? getWorldBarTint(worldId) : themeSurface;
+  const inputBarBg = worldId ? getWorldBarTint(worldId) : GLASS_CHROME_BG;
 
   const slashSuggestions = useMemo(() => getSlashSuggestions(value, isDmWithBot), [value, isDmWithBot]);
 
@@ -302,7 +304,12 @@ export const ChatInput = memo(function ChatInput({
   const isNearLimit = charsLeft <= 50;
 
   return (
-    <View style={[styles.container, { backgroundColor: inputBarBg, borderTopColor: themeBorder }]}>
+    <View style={[styles.container, { borderTopColor: themeBorder }]}>
+      {/* MonkeGlass — blur layer behind the world/theme tint, same treatment
+          as ChatHeader. Not in an RN <Modal>, so safe from the cross-window
+          blur gap documented in glassTheme.ts. */}
+      <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: inputBarBg }]} pointerEvents="none" />
       {/* Slash command suggestions */}
       {slashSuggestions.length > 0 && (
         <View style={styles.mentionList}>
@@ -539,7 +546,9 @@ export const ChatInput = memo(function ChatInput({
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: THEME.surface,
+    overflow: "hidden",
+    // Background is now the BlurView + tint View layered as the first two
+    // children (MonkeGlass, 2026-08-03) instead of a static color here.
     // No borderTop — separator removed per design pass 2026-05-06.
     // 2026-07-23: 8 -> 4, part of a bar-wide compaction pass to reclaim
     // chat viewport height post-edge-to-edge. Tap targets (toolbarBtn

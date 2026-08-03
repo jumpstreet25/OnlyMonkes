@@ -16,8 +16,10 @@ import {
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
+import { BlurView } from 'expo-blur';
 import { toast } from 'sonner-native';
 import { THEME, FONTS } from '@/lib/constants';
+import { getBlurProps, GLASS_CHROME_BG } from '@/lib/glassTheme';
 import { GlassBottomSheet } from '@/components/GlassBottomSheet';
 import { ShareablePnLCard } from '@/components/ShareablePnLCard';
 import { shareImageToX } from '@/lib/shareToX';
@@ -361,6 +363,14 @@ function ActionBtn({ label, sub, onPress, loading, disabled, primary, flat }: Ac
         pressed && !disabled && { opacity: 0.7 },
       ]}
     >
+      {/* MonkeGlass — primary (solid gold CTA) stays opaque for visual
+          hierarchy/contrast; every other action button gets the blur. */}
+      {!primary && (
+        <>
+          <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: GLASS_CHROME_BG }]} pointerEvents="none" />
+        </>
+      )}
       <Text style={styles.btnLabel}>{loading ? '…' : label}</Text>
       <Text style={[styles.btnSub, primary && { color: THEME.bg }]}>{sub}</Text>
     </Pressable>
@@ -388,7 +398,9 @@ const styles = StyleSheet.create({
   utilRow: { flexDirection: 'row', gap: 8 },
   btn: {
     flex: 1, paddingVertical: 12, borderRadius: 14, alignItems: 'center', gap: 4,
-    backgroundColor: THEME.surfaceHigh, borderWidth: 1, borderColor: THEME.border,
+    borderWidth: 1, borderColor: THEME.border, overflow: 'hidden',
+    // Non-primary background is now the BlurView + tint View layered inside
+    // ActionBtn (MonkeGlass, 2026-08-03) instead of a static color here.
   },
   btnPrimary: { backgroundColor: THEME.gold, borderColor: THEME.gold },
   btnFlat: { paddingVertical: 10 },

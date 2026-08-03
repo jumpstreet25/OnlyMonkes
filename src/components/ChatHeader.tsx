@@ -8,13 +8,13 @@ import {
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { BlurView } from "expo-blur";
 import { THEME, FONTS, getWorldBarTint } from "@/lib/constants";
+import { getBlurProps, GLASS_CHROME_BG } from "@/lib/glassTheme";
 import { getLocatedUserCount } from "@/lib/userProfile";
 import { markOnboardingStep } from "@/components/OnboardingChecklist";
 import { BotCommandTicker } from "@/components/BotCommandTicker";
 import { useAppStore } from "@/store/appStore";
-
-const HEADER_BG = "rgba(10, 10, 15, 0.85)";
 
 export interface ChatHeaderProps {
   themeSurface: string;
@@ -45,13 +45,18 @@ export function ChatHeader({
   // flat dark band on top of it. Falls back to themeSurface when no
   // world is set.
   const worldId = useAppStore((s) => s.shopStyles?.worldId) as string | undefined;
-  const headerBg = worldId ? getWorldBarTint(worldId) : themeSurface;
+  const headerBg = worldId ? getWorldBarTint(worldId) : GLASS_CHROME_BG;
   // Status-bar safe-area padding lives INSIDE the header so the bg extends
   // edge-to-edge (behind the status bar) — keeps the world layer visible up
   // top and avoids a black themeBg gap above the chrome.
   const insets = useSafeAreaInsets();
   return (
-    <View style={[styles.header, { backgroundColor: headerBg, borderBottomColor: themeBorder, paddingTop: insets.top }]}>
+    <View style={[styles.header, { borderBottomColor: themeBorder, paddingTop: insets.top }]}>
+      {/* MonkeGlass — blur layer behind the world/theme tint. Not in an
+          RN <Modal>, so this renders in the Activity's own window (same
+          safe case as GlassBottomSheet's backdrop — see glassTheme.ts). */}
+      <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: headerBg }]} pointerEvents="none" />
       {/* Left: Globe with monke count */}
       <View style={styles.headerLeft}>
         <Pressable
@@ -124,9 +129,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 8,
     height: 100,
+    overflow: "hidden",
     // No borderBottom — design pass 2026-05-06 removed all horizontal
     // separator lines across the chat surface.
-    backgroundColor: HEADER_BG,
+    // Background is now the BlurView + tint View layered as the first two
+    // children (MonkeGlass, 2026-08-03) instead of a static color here.
   },
   tickerWrap: {
     position: "absolute",

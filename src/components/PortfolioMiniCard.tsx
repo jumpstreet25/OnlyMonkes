@@ -11,7 +11,9 @@
 
 import React from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { BlurView } from 'expo-blur';
 import { THEME, FONTS } from '@/lib/constants';
+import { getBlurProps, GLASS_CHROME_BG } from '@/lib/glassTheme';
 import type { PortfolioCard } from '@/store/tradesStore';
 
 interface PortfolioMiniCardProps {
@@ -40,6 +42,9 @@ export function PortfolioMiniCard({ card, onPress }: PortfolioMiniCardProps) {
       style={({ pressed }) => [styles.row, pressed && { opacity: 0.7 }]}
     >
       <View style={[styles.bubble, { borderColor: accent + '55' }]}>
+        {/* MonkeGlass — same treatment as the chat chrome bars. */}
+        <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: GLASS_CHROME_BG }]} pointerEvents="none" />
         <View style={styles.header}>
           <Text style={[styles.label, { color: accent }]}>🤖 OPEN POSITION</Text>
           <Text style={styles.live}>● LIVE</Text>
@@ -73,7 +78,9 @@ const styles = StyleSheet.create({
     maxWidth: '85%',
     borderRadius: 16,
     borderWidth: 1,
-    backgroundColor: THEME.surfaceHigh,
+    overflow: 'hidden',
+    // Background is now the BlurView + tint View layered as the first two
+    // children (MonkeGlass, 2026-08-03) instead of a static color here.
     paddingVertical: 10,
     paddingHorizontal: 14,
     gap: 4,

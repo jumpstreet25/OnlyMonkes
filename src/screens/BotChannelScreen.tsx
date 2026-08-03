@@ -28,6 +28,8 @@ import AutonoMonkeSetupWizard from "@/components/AutonoMonkeSetupWizard";
 import { getXmtpClient } from "@/hooks/useXmtp";
 import { sendDmMessage } from "@/lib/xmtp";
 import * as Haptics from "expo-haptics";
+import { BlurView } from "expo-blur";
+import { getBlurProps, GLASS_CHROME_BG } from "@/lib/glassTheme";
 import { THEME, FONTS, getWorldBarTint, getWorldAccent } from "@/lib/constants";
 import { BotChannelIcon } from "@/components/BotChannelIcon";
 import { ErrorMessage } from "@/components/ErrorMessage";
@@ -126,7 +128,7 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
   // the same WORLD_BAR_BG translucent treatment as the main chat so the
   // world reads through them.
   const worldId = useAppStore((s) => s.shopStyles?.worldId) as string | undefined;
-  const chromeBg = worldId ? getWorldBarTint(worldId) : themeSurface;
+  const chromeBg = worldId ? getWorldBarTint(worldId) : GLASS_CHROME_BG;
   const hasThemeOverride = useAppStore(s => !!s.themeOverrides);
 
   // PFP Full Theme: tint channel headers with NFT color
@@ -325,7 +327,10 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
       {/* Header — matches Main Chat header layout exactly. Status-bar safe-
           area lives inside so the bg extends edge-to-edge behind the
           status bar (no themeBg gap above the chrome). */}
-      <View style={[styles.header, { backgroundColor: chromeBg, borderBottomColor: themeBorder, paddingTop: insets.top }]}>
+      <View style={[styles.header, { borderBottomColor: themeBorder, paddingTop: insets.top }]}>
+        {/* MonkeGlass — same treatment as ChatHeader. */}
+        <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: chromeBg }]} pointerEvents="none" />
         <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={8}>
           <Text style={styles.backIcon}>{"\u2039"}</Text>
         </Pressable>
@@ -435,7 +440,9 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
               one again closes it; tapping the other swaps content. Sports
               shows for Bets only; Source shows for Bets + Predictions. */}
           {(channelId === "bets" || channelId === "predictions") && (
-            <View style={[styles.filterBand, { backgroundColor: chromeBg, borderBottomColor: themeBorder }]}>
+            <View style={[styles.filterBand, { borderBottomColor: themeBorder }]}>
+              <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />
+              <View style={[StyleSheet.absoluteFill, { backgroundColor: chromeBg }]} pointerEvents="none" />
               {channelId === "bets" && (
                 <Pressable
                   onPress={() => setOpenDropdown(d => d === "sports" ? null : "sports")}
@@ -457,7 +464,9 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
 
           {/* Sports dropdown panel */}
           {openDropdown === "sports" && channelId === "bets" && (
-            <View style={[styles.dropdownPanel, { backgroundColor: chromeBg, borderBottomColor: themeBorder }]}>
+            <View style={[styles.dropdownPanel, { borderBottomColor: themeBorder }]}>
+              <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />
+              <View style={[StyleSheet.absoluteFill, { backgroundColor: chromeBg }]} pointerEvents="none" />
               {SPORTS_LIST.map(({ key, label }) => {
                 const muted = mutedSports.includes(key);
                 return (
@@ -481,7 +490,9 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
 
           {/* Source dropdown panel */}
           {openDropdown === "sources" && (channelId === "bets" || channelId === "predictions") && (
-            <View style={[styles.dropdownPanel, { backgroundColor: chromeBg, borderBottomColor: themeBorder }]}>
+            <View style={[styles.dropdownPanel, { borderBottomColor: themeBorder }]}>
+              <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />
+              <View style={[StyleSheet.absoluteFill, { backgroundColor: chromeBg }]} pointerEvents="none" />
               {(["polymarket", "kalshi", "drift"] as const).map((src) => {
                 const muted = mutedAlertSources.includes(src);
                 const label = src === "drift" ? "Drift"
@@ -590,7 +601,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 8,
     height: 100,
-    backgroundColor: "transparent",
+    overflow: "hidden",
+    // Background is now the BlurView + tint View layered as the first two
+    // children (MonkeGlass, 2026-08-03) instead of a static color here.
     // No borderBottom — separator removed per design pass 2026-05-06.
   },
   headerCenter: {
@@ -730,6 +743,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderBottomWidth: 1,
+    overflow: "hidden",
   },
   filterTrigger: {
     flexDirection: "row",
@@ -761,6 +775,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 4,
     borderBottomWidth: 1,
+    overflow: "hidden",
   },
   dropdownRow: {
     flexDirection: "row",

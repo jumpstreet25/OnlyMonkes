@@ -20,6 +20,15 @@ export const GLASS_GRADIENT_COLORS: [string, string] = [
 ];
 export const GLASS_RADIUS = 24;
 
+// 2026-08-03: persistent chrome bars (ChatHeader, ChatInput) — NOT modals/
+// sheets, so the cross-window blur risk documented on getBlurProps() below
+// doesn't apply (they render in the Activity's own window, same as
+// GlassBottomSheet's backdrop, not inside an RN <Modal>). Lighter shade than
+// modal GLASS_BG (0.92) — these bars sit over live content the whole time
+// content is on screen, not just while a transient sheet is open, so a
+// heavier tint would read as flattening the app rather than glass over it.
+export const GLASS_CHROME_BG = "rgba(18, 18, 26, 0.5)";
+
 // Phase B (2026-07-22) — activates real optical blur. Previously
 // BlurMethod.NONE (expo-blur's default) just painted a flat tinted View,
 // never sampling content behind it — confirmed by reading ExpoBlurView.kt.
