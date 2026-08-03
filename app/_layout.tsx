@@ -191,7 +191,15 @@ export default function RootLayout() {
     <QueryClientProvider client={queryClient}>
       <SafeAreaProvider>
         <GestureHandlerRootView style={{ flex: 1, backgroundColor: useThemeColor('bg') }}>
-          <StatusBar style="light" />
+          {/* 2026-08-03: edge-to-edge alone (MainActivity.kt) only makes the
+              status bar transparent — content draws behind it, but the
+              clock/battery/wifi icons still render on top. Matching the
+              published Seeker build's fully-immersive look (no status bar
+              visible at all) needs an explicit hide. Android still allows a
+              swipe-down from the top edge to reveal it transiently (RN's
+              enableEdgeToEdge() sets BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE),
+              so system notifications/quick-settings stay reachable. */}
+          <StatusBar style="light" hidden />
           <Stack
             screenOptions={{
               headerShown: false,
