@@ -9,8 +9,7 @@ import {
   TextInput,
   ActivityIndicator,
 } from "react-native";
-// 2026-05-23: switched chat list to FlatList for stability — alias kept.
-import type { FlatList as FlashListRef } from "react-native";
+import type { FlashListRef } from "@shopify/flash-list";
 import { router } from "expo-router";
 import { useVideoPlayer, VideoView } from "expo-video";
 import { THEME, FONTS } from "@/lib/constants";
@@ -42,7 +41,6 @@ import type { ClaimResult } from "@/lib/bananaRewards";
 import type { SwapQuote } from "@/lib/jupiterSwap";
 import type { Badge } from "@/lib/activityBadges";
 import type { TipAmount } from "@/lib/constants";
-import type { FlatList } from "react-native";
 
 // 2026-07-22: was dynamically importing expo-av to defer its startup cost —
 // no longer meaningful now that VideoCameraModal (imported statically just

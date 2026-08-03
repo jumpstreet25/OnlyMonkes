@@ -33,11 +33,7 @@ import {
   AppState,
   type AppStateStatus,
 } from "react-native";
-// 2026-05-23: temporarily using FlatList instead of FlashList for stability
-// on v2.38. The FlashListRef alias above is now a FlatList instance — both
-// share scrollToOffset / scrollToIndex API surfaces. Same shape, different
-// underlying virtualization.
-import type { FlatList as FlashListRef } from "react-native";
+import type { FlashListRef } from "@shopify/flash-list";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { OnboardingChecklist, markOnboardingStep } from "@/components/OnboardingChecklist";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -54,6 +50,8 @@ import { ChatInput } from "@/components/ChatInput";
 import { ChatSkeleton } from "@/components/SkeletonLoader";
 import type { ProfileTarget } from "@/components/UserProfileModal";
 import { router } from "expo-router";
+import { BlurView } from "expo-blur";
+import { getBlurProps, GLASS_CHROME_BG } from "@/lib/glassTheme";
 import { THEME, FONTS, SKR_MINT, getWorldBarTint, getWorldAccent } from "@/lib/constants";
 import { loadUserProfile, getCachedProfile, getDeduplicatedUsers, cacheProfile } from "@/lib/userProfile";
 import { checkAndUpdateStreak } from "@/lib/streaks";
@@ -1201,7 +1199,7 @@ export default function ChatScreen() {
     <ErrorBoundary fallbackMessage="Chat hit an error. Tap below to reload.">
       <KeyboardAvoidingView
         style={[styles.container, { backgroundColor: themeBg }]}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
         keyboardVerticalOffset={0}
       >
         {/* Chat World background (renders behind everything when equipped) */}
@@ -1478,8 +1476,16 @@ export default function ChatScreen() {
           <View style={[
             styles.supportBanner,
             { borderTopColor: themeBorder, paddingBottom: 6 + insets.bottom },
-            worldId ? { backgroundColor: getWorldBarTint(worldId) } : null,
           ]}>
+            {/* MonkeGlass — same treatment as ChatHeader/ChatInput so all
+                three bars read as one unified frame (see comment above).
+                World tint (when equipped) layers on top of the blur instead
+                of replacing it. */}
+            <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />
+            <View
+              style={[StyleSheet.absoluteFill, { backgroundColor: worldId ? getWorldBarTint(worldId) : GLASS_CHROME_BG }]}
+              pointerEvents="none"
+            />
             <View style={{ minWidth: 70, alignItems: 'flex-start' }}>
               {skrPrice && (
                 <Pressable
@@ -1487,6 +1493,7 @@ export default function ChatScreen() {
                   style={({ pressed }) => [styles.floorBtn, accentBtnStyle, pressed && { opacity: 0.7 }]}
                   hitSlop={6}
                 >
+                  <BlurView {...getBlurProps()} style={[StyleSheet.absoluteFill, styles.floorBtnBlur]} />
                   <Text style={[styles.floorBtnText, accentTextStyle]}>$SKR {skrPrice}</Text>
                 </Pressable>
               )}
@@ -1506,6 +1513,7 @@ export default function ChatScreen() {
                   style={({ pressed }) => [styles.floorBtn, accentBtnStyle, pressed && { opacity: 0.7 }]}
                   hitSlop={6}
                 >
+                  <BlurView {...getBlurProps()} style={[StyleSheet.absoluteFill, styles.floorBtnBlur]} />
                   <Text style={[styles.floorBtnText, accentTextStyle]}>Floor {floorPrice}</Text>
                 </Pressable>
               )}
@@ -1767,12 +1775,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    overflow: 'hidden',
     // 2026-07-23: 9 -> 6, part of a bottom-bar compaction pass. paddingBottom
     // is overridden separately below (9 + insets.bottom -> 6 + insets.bottom)
     // where this banner is actually rendered.
     paddingVertical: 6,
     paddingHorizontal: 12,
     // No borderTop — separator removed per design pass 2026-05-06.
+    // Background is now the BlurView + tint View layered as the first two
+    // children (MonkeGlass, 2026-08-03) instead of only a conditional
+    // world-tint color.
   },
   supportBannerText: {
     fontFamily: FONTS.mono,
@@ -1789,6 +1801,12 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderWidth: 1,
     borderColor: 'rgba(108, 180, 238, 0.2)',
+    overflow: 'hidden',
+  },
+  // Pill-sized blur behind floorBtn's own tint color (above) — same
+  // MonkeGlass treatment as the bars, scaled down for a small tap target.
+  floorBtnBlur: {
+    borderRadius: 8,
   },
   floorBtnText: {
     fontFamily: FONTS.mono,

@@ -4,23 +4,10 @@ import {
   Text,
   StyleSheet,
   ActivityIndicator,
-  ScrollView,
-  RefreshControl,
-  type ScrollView as ScrollViewType,
-  type FlatList,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from "react-native";
-// 2026-05-23 DIAGNOSTIC: swapped to plain ScrollView + .map(). Both FlashList
-// v2 and FlatList showed identical flash-on-swipe-toward-older-messages on
-// v2.38 APK. ScrollView has zero virtualization — every cell is mounted at
-// all times. If the flash persists with this, the list isn't the cause at
-// all and we look at Reanimated cell wrappers or Skia surfaces.
-// Type alias kept so callers passing list-typed refs don't break. Callers
-// (ChatScreen et al.) hold the ref typed as FlatList and call scrollToOffset/
-// scrollToIndex on it; those land on the shim object installed below, so the
-// prop must accept a FlatList-typed ref to match the call sites.
-type FlashListRef<T> = FlatList<T>;
+import { FlashList, type FlashListRef } from "@shopify/flash-list";
 import { Swipeable } from "react-native-gesture-handler";
 import * as Haptics from "expo-haptics";
 import { THEME, FONTS } from "@/lib/constants";
@@ -133,36 +120,6 @@ const ChatMessageListInner = React.forwardRef<FlashListRef<ChatMessage>, ChatMes
 
   const swipeableRefs = useRef<Map<string, Swipeable>>(new Map());
 
-  // Shim: callers use FlashList/FlatList imperative API (scrollToOffset,
-  // scrollToIndex). ScrollView only has scrollTo. We expose the same methods
-  // on the passed-in ref so consumers (ChatScreen + others) keep working.
-  // offset=0 in inverted-FlatList meant "scroll to newest". In our oldest-
-  // first ScrollView, newest is at the bottom (content size), so map
-  // offset=0 → scroll to content end.
-  const scrollViewRef = useRef<ScrollViewType | null>(null);
-  const contentHeightRef = useRef(0);
-  React.useEffect(() => {
-    const ref = flatListRef as any;
-    if (!ref) return;
-    ref.current = {
-      scrollToOffset: ({ offset, animated }: { offset: number; animated?: boolean }) => {
-        if (offset === 0) {
-          scrollViewRef.current?.scrollTo({ y: contentHeightRef.current, animated: !!animated });
-        } else {
-          scrollViewRef.current?.scrollTo({ y: contentHeightRef.current - offset, animated: !!animated });
-        }
-      },
-      scrollToIndex: ({ index, animated }: { index: number; animated?: boolean }) => {
-        // Approximate: each row ~80px. Index counts from newest. Convert.
-        const fromBottom = index * 80;
-        scrollViewRef.current?.scrollTo({ y: contentHeightRef.current - fromBottom, animated: !!animated });
-      },
-      scrollToEnd: ({ animated }: { animated?: boolean } = {}) => {
-        scrollViewRef.current?.scrollTo({ y: contentHeightRef.current, animated: !!animated });
-      },
-    } as any;
-  }, [flatListRef]);
-
   const renderMessage = useCallback(
     ({ item, index }: { item: ChatMessage; index: number }) => {
       // A message is "new" only on its very first render in this session
@@ -229,11 +186,9 @@ const ChatMessageListInner = React.forwardRef<FlashListRef<ChatMessage>, ChatMes
 
   const handleScroll = useCallback(
     (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-      // ScrollView (non-inverted): newest is at the visual BOTTOM. Distance
-      // from bottom = contentSize.height - contentOffset.y - layoutHeight.
-      const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
-      const distFromBottom = Math.max(0, contentSize.height - contentOffset.y - layoutMeasurement.height);
-      const nearBottom = distFromBottom <= SCROLL_THRESHOLD;
+      // Inverted: contentOffset.y === 0 means parked at the visual bottom
+      // (newest messages). Distance from bottom is just contentOffset.y.
+      const nearBottom = e.nativeEvent.contentOffset.y <= SCROLL_THRESHOLD;
       isNearBottomRef.current = nearBottom;
       setShowScrollFab(!nearBottom);
       if (nearBottom) setUnreadWhileScrolled(0);
@@ -241,56 +196,32 @@ const ChatMessageListInner = React.forwardRef<FlashListRef<ChatMessage>, ChatMes
     [isNearBottomRef, setShowScrollFab, setUnreadWhileScrolled]
   );
 
-  // 2026-05-23 DIAGNOSTIC: render every message as a plain mounted child of
-  // a ScrollView. No virtualization, no recycling, no FlashList/FlatList
-  // window. Data is sorted newest-first, so we render in reverse (oldest
-  // first → newest at the bottom of the scroll content) and SKIP `inverted`.
-  // That avoids the scaleY(-1) transform that Fabric has known issues with.
-  // If the flash persists with THIS, the list is not the cause at all.
-  const renderedRows = React.useMemo(() => {
-    const ordered = [...messages].reverse();
-    return ordered.map((item, idx) => {
-      // index 0 in the (newest-first) data array = newest. After reverse,
-      // newest is at last index. Recompute isLatest from original ordering.
-      const originalIndex = messages.length - 1 - idx;
-      return (
-        <View key={item.id}>
-          {renderMessage({ item, index: originalIndex } as any)}
-        </View>
-      );
-    });
-  }, [messages, reactionVersion, renderMessage]);
-
   return (
+    // flex:1 + minHeight:0 give FlashList v2 a constrained parent to
+    // virtualize against — without it the list collapses to ~0 height.
     <View style={{ flex: 1, minHeight: 0 }}>
-      <ScrollView
-        ref={scrollViewRef}
-        style={{ flex: 1 }}
+      <FlashList
+        ref={flatListRef}
+        data={messages}
+        extraData={reactionVersion}
+        renderItem={renderMessage as any}
+        keyExtractor={keyExtractor}
+        getItemType={getItemType as any}
         contentContainerStyle={styles.listContent}
-        refreshControl={
-          <RefreshControl refreshing={refreshingChat} onRefresh={handleRefreshChat} />
-        }
-        onScroll={handleScroll}
-        scrollEventThrottle={200}
-        removeClippedSubviews={false}
-        onContentSizeChange={(_w, h) => {
-          contentHeightRef.current = h;
-          // Auto-scroll to bottom (newest) when content grows AND user is
-          // parked near the bottom (i.e. reading newest, not scrolled up
-          // into history). Skip if scrolled up so we don't yank them.
-          if (isNearBottomRef.current) {
-            scrollViewRef.current?.scrollTo({ y: h, animated: false });
-          }
-        }}
-      >
-        {isLoadingHistory ? (
+        inverted
+        refreshing={refreshingChat}
+        onRefresh={handleRefreshChat}
+        onEndReached={loadOlderMessages}
+        onEndReachedThreshold={0.3}
+        ListFooterComponent={isLoadingHistory ? (
           <View style={{ paddingVertical: 16, alignItems: 'center' }}>
             <ActivityIndicator color={THEME.accent} size="small" />
             <Text style={{ fontFamily: FONTS.mono, fontSize: 10, color: THEME.textFaint, marginTop: 4 }}>Loading older messages…</Text>
           </View>
         ) : null}
-        {renderedRows}
-      </ScrollView>
+        onScroll={handleScroll}
+        scrollEventThrottle={200}
+      />
     </View>
   );
 });

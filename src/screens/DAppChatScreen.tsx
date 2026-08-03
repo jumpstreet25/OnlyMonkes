@@ -173,7 +173,7 @@ export default function DAppChatScreen({ dappId }: DAppChatScreenProps) {
   return (
     <KeyboardAvoidingView
       style={[styles.container, { paddingTop: insets.top }]}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
       keyboardVerticalOffset={0}
     >
       {/* Header */}
