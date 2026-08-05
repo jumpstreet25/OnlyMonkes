@@ -295,7 +295,10 @@ export function ChatModals(props: ChatModalsProps) {
           handleConfirmDevTip(amount);
         }}
         onEditProfile={() => {
-          setTimeout(() => { setEditingProfile(true); setShowUsernameModal(true); }, 300);
+          setTimeout(() => {
+            setEditingProfile(true);
+            setShowUsernameModal(true);
+          }, 300);
         }}
         onSwitchPfp={() => {
           setTimeout(() => setPfpPickerOpen(true), 300);

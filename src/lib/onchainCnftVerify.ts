@@ -24,19 +24,20 @@
  * Slower per check than an indexed lookup, but needs no indexer
  * infrastructure.
  *
- * 2026-07-23: the RPC transport underneath this (getConnection() below) was
- * switched from the free public RPC to HELIUS_RPC_URL after the public
- * endpoint's aggressive rate-limiting (documented on withRetry() below)
- * stalled real device testing. Trade-off, explicitly accepted at the time:
- * this path is reached specifically when Helius's DAS API has ALREADY
- * failed/errored on the same request (see verifyNFTOwnership() in
- * nftVerification.ts — on-chain only runs when Helius didn't cleanly
- * answer), so during an actual account-wide Helius outage like 2026-07-11's,
- * this fallback would now likely fail in lockstep with it rather than
- * surviving independently, which was the original point of building it this
- * way. If Helius has another outage and this stops being a working
- * fallback, that's why — revisit RPC choice then (QuickNode's general RPC,
- * if it has one, would restore true independence).
+ * 2026-07-23: the RPC transport underneath this was switched from the free
+ * public RPC to HELIUS_RPC_URL after the public endpoint's aggressive
+ * rate-limiting (documented on withRetry() below) stalled real device
+ * testing — but since this path is reached specifically when Helius's DAS
+ * API has ALREADY failed/errored on the same request (see
+ * verifyNFTOwnership() in nftVerification.ts), pinning the fallback's own
+ * transport to Helius meant it failed in lockstep with the tiers above it
+ * during an account-wide Helius outage, defeating the point of building it
+ * independently in the first place.
+ *
+ * 2026-08-05: fixed — RPC_URLS is now an ordered list (free public first,
+ * QuickNode second, Helius last), with withRetry() rotating to the next
+ * provider on every failed attempt instead of hammering one dead endpoint.
+ * See RPC_URLS/currentConnection()/rotateRpc() below.
  *
  * Instruction account layouts below were confirmed against real on-chain
  * transactions for this collection's genesis tree, not assumed from docs:
@@ -46,7 +47,7 @@
  */
 
 import { Connection, PublicKey, type ParsedTransactionWithMeta } from "@solana/web3.js";
-import { HELIUS_RPC_URL } from "./constants";
+import { HELIUS_RPC_URL, QUICKNODE_DAS_URL, SOLANA_RPC_URL } from "./constants";
 
 const BUBBLEGUM_PROGRAM = "BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY";
 
@@ -59,6 +60,23 @@ const BUBBLEGUM_PROGRAM = "BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY";
 // failure mode.
 const DISCRIMINATOR_TRANSFER = "a334c8e78c0345ba";
 const DISCRIMINATOR_MINT_TO_COLLECTION_V1 = "9912b22fc59e560f";
+
+// 2026-08-05: the five below were computed from the canonical program IDL
+// (github.com/metaplex-foundation/mpl-bubblegum, idls/bubblegum.json) via
+// the standard Anchor sighash formula sha256("global:<snake_case_name>")[0:8]
+// — verified by reproducing the two discriminators above EXACTLY from the
+// same formula before trusting it for the rest. Account orderings below are
+// also pulled directly from that IDL's `accounts` arrays, not guessed.
+// DecompressV1 deliberately has no discriminator constant here: its accounts
+// list doesn't include the merkle tree account at all, so this file's own
+// tree-membership filter (`ixAccounts.find(a => SAGA_MONKES_TREES.has(a))`)
+// can never match it — interpretBubblegumInstruction() is structurally
+// unreachable for that instruction regardless of whether we decode it.
+const DISCRIMINATOR_BURN = "746e1d386bdb2a5d";
+const DISCRIMINATOR_DELEGATE = "5a934bb255580489";
+const DISCRIMINATOR_CANCEL_REDEEM = "6f4ce83227af30f2";
+const DISCRIMINATOR_REDEEM = "b80c569546c461e1";
+const DISCRIMINATOR_COMPRESS = "52c1b075b01573fd";
 
 const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 function base58Decode(str: string): Uint8Array {
@@ -122,16 +140,36 @@ function decodeTransferNonce(dataBase58: string): string | null {
  */
 const SAGA_MONKES_TREES = new Set(["2uH9TkmYkAKGrK7EPnd4Y7JVYswpQ2aED9deMn8QoYVy"]);
 
-// 2026-07-23: was the free public RPC (api.mainnet-beta.solana.com) — see
-// the module doc above for why that changed and the trade-off it accepts.
-const RPC_URL = HELIUS_RPC_URL;
+// 2026-08-05: was pinned to HELIUS_RPC_URL alone (see the 2026-07-23 note
+// above) — meant this "independent on-chain fallback" tier actually failed
+// in lockstep with the Helius DAS tiers above it during an account-wide
+// Helius outage, defeating the whole point of building it. Now an ordered
+// list, free-tier public RPC first (genuinely no shared quota with either
+// DAS provider), QuickNode second (separate quota from Helius — its DAS
+// add-on URL also serves plain JSON-RPC methods like getSignaturesForAddress/
+// getParsedTransaction), Helius last since by the time this tier is reached
+// (see verifyNFTOwnership() in nftVerification.ts) Helius DAS has usually
+// already failed for this same request. withRetry() below rotates to the
+// next URL on every failed attempt rather than hammering one dead endpoint.
+const RPC_URLS: string[] = [SOLANA_RPC_URL, QUICKNODE_DAS_URL, HELIUS_RPC_URL].filter(
+  (u): u is string => !!u,
+);
 const MAX_SIGNATURE_PAGES = 20; // 20 * 100 = 2000 signatures deep, bounds worst-case latency
 const PAGE_SIZE = 100;
 
-let _connection: Connection | null = null;
-function getConnection(): Connection {
-  if (!_connection) _connection = new Connection(RPC_URL, "confirmed");
-  return _connection;
+let _rpcIndex = 0;
+const _connections = new Map<string, Connection>();
+function currentConnection(): Connection {
+  const url = RPC_URLS[_rpcIndex % RPC_URLS.length];
+  let c = _connections.get(url);
+  if (!c) {
+    c = new Connection(url, "confirmed");
+    _connections.set(url, c);
+  }
+  return c;
+}
+function rotateRpc(): void {
+  _rpcIndex = (_rpcIndex + 1) % RPC_URLS.length;
 }
 
 // 2026-07-30: neither RPC call below had any timeout — @solana/web3.js's
@@ -171,6 +209,10 @@ async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 12): Promise<T> 
       return await fn();
     } catch (err) {
       lastErr = err;
+      // Rotate to the next RPC provider before the next attempt — a failing
+      // endpoint gets retried on a DIFFERENT provider instead of hammering
+      // the same dead one for all 12 attempts.
+      rotateRpc();
       if (attempt < maxAttempts) {
         const backoff = Math.min(500 * attempt, 6_000);
         const jitter = Math.random() * 300;
@@ -222,12 +264,67 @@ function interpretBubblegumInstruction(
     return { kind: "inconclusive" };
   }
 
-  // Burn/MintV1/Delegate/CancelRedeem/Redeem/DecompressV1/Compress/etc. —
-  // discriminators not yet verified against real transactions for this
-  // collection, so deliberately not hardcoded/guessed here (a wrong
-  // discriminator could misclassify an instruction). Unrecognized
-  // instructions are a safe "keep scanning further back", not a signal
-  // either way.
+  // Same arg layout as Transfer (root+dataHash+creatorHash+nonce+index,
+  // confirmed against the IDL) — decodeTransferNonce() works unchanged.
+  // Accounts: [tree_authority, leaf_owner, leaf_delegate, merkle_tree, ...]
+  if (disc === DISCRIMINATOR_BURN) {
+    // Unambiguous: burn permanently destroys the leaf/asset — unlike Redeem
+    // (below), there's no decompressed form it could still exist as. Safe
+    // to treat as a definitive give-up.
+    const leafOwner = accounts[1];
+    const nonce = decodeTransferNonce(dataBase58);
+    if (leafOwner === walletAddress) return { kind: "gave_up", nonce };
+    return { kind: "inconclusive" };
+  }
+
+  if (disc === DISCRIMINATOR_DELEGATE) {
+    // Accounts: [tree_authority, leaf_owner, previous_leaf_delegate,
+    // new_leaf_delegate, merkle_tree, ...] — leaf_owner never changes here,
+    // only who's delegated to act on the leaf. Carries no ownership signal;
+    // explicitly classified (rather than falling through as "unrecognized")
+    // purely for documentation — behavior is the same either way.
+    return { kind: "inconclusive" };
+  }
+
+  if (disc === DISCRIMINATOR_CANCEL_REDEEM) {
+    // Args are just `root` — no nonce field, so we can't identify which
+    // leaf this refers to even if we wanted to. Also carries no ownership
+    // signal regardless (cancels a pending Redeem, returning the leaf to
+    // normal in-tree state under the same leaf_owner at accounts[1]).
+    return { kind: "inconclusive" };
+  }
+
+  if (disc === DISCRIMINATOR_REDEEM) {
+    // Same arg layout as Transfer, so the nonce IS decodable — but
+    // deliberately NOT treated as "gave_up". Redeem moves a leaf out of the
+    // compressed tree into a pending-decompress "voucher" state; the wallet
+    // very plausibly still holds the asset moments later as a normal SPL
+    // NFT (see DecompressV1's own doc note above — that follow-up
+    // instruction can't even be observed by this scanner since its accounts
+    // never include the merkle tree). Reporting "gave_up" here risks a false
+    // negative against a wallet that's still a legitimate holder, which is
+    // exactly the failure mode this file's own doc/comments elsewhere are
+    // built to avoid — so this stays "inconclusive" and the scan keeps
+    // looking further back for a clearer signal.
+    return { kind: "inconclusive" };
+  }
+
+  if (disc === DISCRIMINATOR_COMPRESS) {
+    // No args at all (confirmed against the IDL) — no nonce available,
+    // same as MintToCollectionV1 above. This is the reverse of Redeem: an
+    // existing decompressed SPL NFT is being compressed INTO the tree, so
+    // accounts[1] (leaf_owner) now genuinely holds a leaf. Mirrors the mint
+    // case's nonce-null "holds" handling exactly.
+    const leafOwner = accounts[1];
+    if (leafOwner === walletAddress) return { kind: "holds", assetHint: accounts[3] ?? "", nonce: null };
+    return { kind: "inconclusive" };
+  }
+
+  // MintV1/DecompressV1/etc. — remaining discriminators either not verified
+  // against real transactions for this collection, or (DecompressV1)
+  // structurally unreachable here — see the module-level discriminator
+  // comment above. Unrecognized instructions are a safe "keep scanning
+  // further back", not a signal either way.
   return { kind: "inconclusive" };
 }
 
@@ -241,7 +338,6 @@ function interpretBubblegumInstruction(
 export async function verifySagaMonkeOnChain(
   walletAddress: string,
 ): Promise<{ verified: boolean; assetId: string | null; inconclusive: boolean; error?: string }> {
-  const connection = getConnection();
   let owner: PublicKey;
   try {
     owner = new PublicKey(walletAddress);
@@ -264,7 +360,7 @@ export async function verifySagaMonkeOnChain(
     for (let page = 0; page < MAX_SIGNATURE_PAGES; page++) {
       const sigs = await withRetry(() =>
         withTimeout(
-          connection.getSignaturesForAddress(owner, { before, limit: PAGE_SIZE }),
+          currentConnection().getSignaturesForAddress(owner, { before, limit: PAGE_SIZE }),
           RPC_TIMEOUT_MS,
           "getSignaturesForAddress",
         ),
@@ -287,7 +383,7 @@ export async function verifySagaMonkeOnChain(
         try {
           tx = await withRetry(() =>
             withTimeout(
-              connection.getParsedTransaction(sigInfo.signature, { maxSupportedTransactionVersion: 0 }),
+              currentConnection().getParsedTransaction(sigInfo.signature, { maxSupportedTransactionVersion: 0 }),
               RPC_TIMEOUT_MS,
               "getParsedTransaction",
             ),

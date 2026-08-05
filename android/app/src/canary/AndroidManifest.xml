@@ -6,8 +6,15 @@
          prebuild step; a raw `./gradlew assemble...` or `expo prebuild`-free
          bare-workflow build does not, so it must live here instead — without
          it, every update check 400s ("channel-name required"), which can
-         trigger expo-updates' error-recovery reload path. -->
+         trigger expo-updates' error-recovery reload path.
+
+         2026-08-05: the meta-data name was wrong for expo-updates ~29.0.18 —
+         see the matching note in ../production/AndroidManifest.xml for the
+         full trace through UpdatesConfiguration.kt. This SDK version reads
+         the literal key "expo.modules.updates.UPDATES_CONFIGURATION_REQUEST_HEADERS_KEY",
+         not "EXPO_UPDATE_REQUEST_HEADERS" — the old name silently resolved
+         to an empty headers map and broke OTA entirely on both flavors. -->
     <application>
-        <meta-data android:name="expo.modules.updates.EXPO_UPDATE_REQUEST_HEADERS" android:value="{&quot;expo-channel-name&quot;:&quot;preview&quot;}"/>
+        <meta-data android:name="expo.modules.updates.UPDATES_CONFIGURATION_REQUEST_HEADERS_KEY" android:value="{&quot;expo-channel-name&quot;:&quot;preview&quot;}"/>
     </application>
 </manifest>

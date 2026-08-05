@@ -2,8 +2,28 @@
 
     <!-- 2026-07-23: see android/app/src/canary/AndroidManifest.xml for why
          this exists. Production's channel is "production" per eas.json,
-         distinct from canary/preview's "preview". -->
+         distinct from canary/preview's "preview".
+
+         2026-08-05: the meta-data name below was "EXPO_UPDATE_REQUEST_HEADERS"
+         — that key is NEVER read by the installed expo-updates ~29.0.18 native
+         module. Traced through UpdatesConfiguration.kt's
+         getOriginalEmbeddedRequestHeaders(): for a normal (non-dev-client)
+         launch, overrideMap is null (see UpdatesController.kt, which always
+         constructs `UpdatesConfiguration(context, null)`), so it falls
+         through to a manifest meta-data lookup under the literal string
+         "expo.modules.updates.UPDATES_CONFIGURATION_REQUEST_HEADERS_KEY" —
+         apparently an upstream bug where the Kotlin constant's own NAME got
+         used as the lookup string instead of a real short key. Whatever the
+         cause, that's what this SDK version actually reads, confirmed by
+         reading the source directly (not from docs). With the old key name,
+         requestHeaders silently resolved to {} and expo-channel-name was
+         never sent, so every update check 400'd with
+         '"channel-name": Required' and OTA was completely broken on this
+         binary. Fixed by using the (odd but verified-correct) key name
+         below. Revisit if/when expo-updates ships a version that fixes this
+         upstream — check whether the old proper-looking key name works
+         again before removing this one. -->
     <application>
-        <meta-data android:name="expo.modules.updates.EXPO_UPDATE_REQUEST_HEADERS" android:value="{&quot;expo-channel-name&quot;:&quot;production&quot;}"/>
+        <meta-data android:name="expo.modules.updates.UPDATES_CONFIGURATION_REQUEST_HEADERS_KEY" android:value="{&quot;expo-channel-name&quot;:&quot;production&quot;}"/>
     </application>
 </manifest>

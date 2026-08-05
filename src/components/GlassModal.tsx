@@ -64,17 +64,32 @@ export function GlassModal({
   // else, matching how GlassBottomSheet already avoids this exact problem.
   // This is the shared wrapper for most of the app's modals, so this one
   // fix covers all of them at once.
-  const [shouldRender, setShouldRender] = useState(visible);
+  // 2026-08-05: shouldRender used to be a useState mirroring `visible`,
+  // flipped to true only inside the effect below. On this build (RN
+  // bridgeless/Fabric, all three new-arch flags freshly on for the first
+  // time — see AppFeatureFlags.kt / MainApplication.kt) that effect was
+  // observed NOT taking hold for up to 800ms+ across dozens of re-renders
+  // (confirmed via device logs: visible=true, shouldRender=false on every
+  // single render in that window) — every GlassModal-based modal in the
+  // app (this is the shared wrapper for most of them) silently failed to
+  // ever appear on open. Deriving shouldRender directly from `visible`
+  // during render removes the dependency on effect timing for the OPEN
+  // path entirely — it's correct the instant the prop changes, no extra
+  // render needed. isClosing is effect-driven only for the close path,
+  // where we genuinely need to stay mounted through the fade-out.
+  const [isClosing, setIsClosing] = useState(false);
+  const shouldRender = visible || isClosing;
   const progress = useRef(new Animated.Value(visible ? 1 : 0)).current;
   const duration = animationType === "none" ? 0 : 220;
 
   useEffect(() => {
     if (visible) {
-      setShouldRender(true);
+      setIsClosing(false);
       Animated.timing(progress, { toValue: 1, duration, useNativeDriver: true }).start();
     } else {
+      setIsClosing(true);
       Animated.timing(progress, { toValue: 0, duration, useNativeDriver: true }).start(() => {
-        setShouldRender(false);
+        setIsClosing(false);
       });
     }
   }, [visible]);

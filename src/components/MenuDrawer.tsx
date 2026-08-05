@@ -458,16 +458,28 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
   // else, matching how GlassBottomSheet already avoids this exact problem.
   // shouldRender stays true through the fade-out so the close animation
   // still plays instead of popping off instantly.
-  const [shouldRender, setShouldRender] = useState(visible);
+  //
+  // 2026-08-05: was a useState mirroring `visible`, flipped true only
+  // inside the effect below — see the matching, more detailed note in
+  // GlassModal.tsx. That effect was observed not taking hold for 800ms+
+  // during high JS-thread load (e.g. right after cold boot, when this
+  // exact drawer's first render can coincide with XMTP sync churn),
+  // leaving the drawer invisible despite visible=true. Deriving
+  // shouldRender directly from `visible` removes the effect-timing
+  // dependency for the open path; isClosing is effect-driven only for
+  // the close fade-out.
+  const [isClosing, setIsClosing] = useState(false);
+  const shouldRender = visible || isClosing;
   const fadeAnim = useRef(new Animated.Value(visible ? 1 : 0)).current;
 
   useEffect(() => {
     if (visible) {
-      setShouldRender(true);
+      setIsClosing(false);
       Animated.timing(fadeAnim, { toValue: 1, duration: 200, useNativeDriver: true }).start();
     } else {
+      setIsClosing(true);
       Animated.timing(fadeAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
-        setShouldRender(false);
+        setIsClosing(false);
       });
     }
   }, [visible]);
