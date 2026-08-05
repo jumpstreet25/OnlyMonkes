@@ -12,4 +12,5 @@ declare module '@env' {
   export const SENTRY_DSN: string;
   export const SHARPAPI_KEY: string;
   export const QUICKNODE_DAS_URL: string;
+  export const GROQ_API_KEY: string;
 }

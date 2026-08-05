@@ -10,6 +10,7 @@
  */
 
 import type { BlendshapeParams, BlendshapeName } from './faceTracking';
+import { GROQ_API_KEY } from '@/lib/constants';
 
 // ── Emotion Types ───────────────────────────────────────────────────────────
 
@@ -198,7 +199,7 @@ export async function generatePersonality(
 
   // Try Groq (free tier)
   try {
-    const groqKey = process.env.GROQ_API_KEY;
+    const groqKey = GROQ_API_KEY;
     if (!groqKey) return null;
     const controller2 = new AbortController();
     const timer2 = setTimeout(() => controller2.abort(), 8000);

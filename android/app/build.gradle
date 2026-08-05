@@ -106,8 +106,8 @@ android {
         applicationId 'com.onlymonkes.app'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 38
-        versionName "2.38"
+        versionCode 39
+        versionName "3.0.0"
         // English-only — strips non-English resources from native libs (livekit,
         // xmtp, skia, vision-camera). ~2-5 MB savings depending on dep verbosity.
         resConfigs "en"
@@ -117,9 +117,11 @@ android {
     // camera 5, Skia bump) on a real device without touching the production
     // install. Different package = different app to Android: separate storage,
     // separate XMTP identity, can be installed/uninstalled/wiped freely with
-    // zero effect on the real app's wallet/achievements/data. `production`
-    // flavor is identical to the pre-flavor defaultConfig (no suffix, no
-    // behavior change) — this must never drift from what ships today.
+    // zero effect on the real app's wallet/achievements/data.
+    // 2026-08-05: the native-stack bump this flavor field-tested (Reanimated 4,
+    // vision-camera 5, freerasp 5, expo-av→expo-video) is now promoted to
+    // `production` as v3.0.0 — defaultConfig's versionCode/versionName above
+    // carry it. `canary` stays for the NEXT round of risky native testing.
     flavorDimensions "env"
     productFlavors {
         production {

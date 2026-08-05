@@ -10,7 +10,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   name: 'OnlyMonkes',
   slug: 'monkesonly',
   owner: process.env.EXPO_OWNER ?? undefined,
-  version: '2.38.0',
+  version: '3.0.0',
   orientation: 'portrait',
   icon: './assets/icon.png',
   userInterfaceStyle: 'dark',
@@ -32,7 +32,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     fallbackToCacheTimeout: 5000,
     checkAutomatically: 'ON_LOAD',
   },
-  runtimeVersion: '3.3',
+  runtimeVersion: '3.4',
   plugins: [
     'expo-router',
     'expo-secure-store',
@@ -101,6 +101,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   extra: {
     heliusApiKey: process.env.HELIUS_API_KEY ?? '',
     heliusNftApiKey: process.env.HELIUS_NFT_API_KEY ?? '',
+    quickNodeDasUrl: process.env.QUICKNODE_DAS_URL ?? '',
+    groqApiKey: process.env.GROQ_API_KEY ?? '',
     giphyApiKey: process.env.GIPHY_API_KEY ?? '',
     nftCollectionAddress:
       process.env.NFT_COLLECTION_ADDRESS ?? 'GokAiStXz2Kqbxwz2oqzfEXuUhE7aXySmBGEP7uejKXF',

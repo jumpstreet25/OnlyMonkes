@@ -12,6 +12,7 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { GROQ_API_KEY } from '@/lib/constants';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -167,7 +168,7 @@ async function detectViaOllama(imageUri: string): Promise<NFTFeatureMap | null> 
 async function detectViaGroq(imageUri: string): Promise<NFTFeatureMap | null> {
   // Groq's Llama Vision models support image input
   // This is a fallback if Ollama isn't running locally
-  const groqKey = process.env.GROQ_API_KEY;
+  const groqKey = GROQ_API_KEY;
   if (!groqKey) return null;
 
   const base64 = await imageToBase64(imageUri);

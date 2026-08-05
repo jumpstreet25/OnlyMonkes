@@ -26,7 +26,7 @@ import type { WalletAccount } from "@/types";
 
 const APP_IDENTITY = {
   name: "OnlyMonkes",
-  uri: "https://onlymonkes.com",  // Update to your app's URI
+  uri: "https://github.com/jumpstreet25/OnlyMonkes",
   icon: "favicon.ico",
 };
 

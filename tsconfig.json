@@ -16,6 +16,8 @@
     "nativewind-env.d.ts"
   ],
   "exclude": [
-    "scripts/**"
+    "scripts/**",
+    "android/**",
+    "ios/**"
   ]
 }

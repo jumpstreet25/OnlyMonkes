@@ -56,7 +56,7 @@ const SOL_DECIMALS = 9;
 
 const APP_IDENTITY = {
   name: "OnlyMonkes",
-  uri: "https://onlymonkes.com",
+  uri: "https://github.com/jumpstreet25/OnlyMonkes",
   icon: "favicon.ico",
 };
 

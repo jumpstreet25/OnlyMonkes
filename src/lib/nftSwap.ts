@@ -45,7 +45,7 @@ import { assertDeviceTrusted } from "./security";
 
 const APP_IDENTITY = {
   name: "OnlyMonkes",
-  uri: "https://onlymonkes.com",
+  uri: "https://github.com/jumpstreet25/OnlyMonkes",
   icon: "favicon.ico",
 };
 
