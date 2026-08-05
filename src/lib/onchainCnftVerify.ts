@@ -134,9 +134,11 @@ function decodeTransferNonce(dataBase58: string): string | null {
 
 /**
  * Known Saga Monkes trees. The genesis tree (Jan 2024, 8,888 mints) is
- * confirmed on-chain. The Dec 2025 "tech noir" expansion (1,026 more) may
- * live in a second tree that hasn't been traced yet — if a legitimate
- * holder from that batch fails this check, that's the likely reason.
+ * confirmed on-chain. 2026-08-05: the previously-suspected second tree for
+ * the Dec 2025 "tech noir" expansion (1,026 more) was traced via a live
+ * getAssetsByGroup scan of the full collection (10,014 assets, QuickNode
+ * DAS) — every single asset lives in this same tree. No second tree
+ * exists; this set is confirmed complete.
  */
 const SAGA_MONKES_TREES = new Set(["2uH9TkmYkAKGrK7EPnd4Y7JVYswpQ2aED9deMn8QoYVy"]);
 

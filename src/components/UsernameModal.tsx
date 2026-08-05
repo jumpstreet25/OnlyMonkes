@@ -12,8 +12,7 @@ import {
   TextInput,
   StyleSheet,
   Pressable,
-  KeyboardAvoidingView,
-  Platform,
+  Keyboard,
   ActivityIndicator,
   ScrollView,
   Dimensions,
@@ -63,6 +62,28 @@ export function UsernameModal({
   const [location, setLocationLocal] = useState(initialLocation);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  // windowSoftInputMode="adjustResize" doesn't reliably reposition content
+  // under this app's edge-to-edge/immersive mode — same root cause already
+  // found and fixed on Main Chat (ChatScreen.tsx) and DM (DmScreen.tsx),
+  // where content rendered fully hidden behind the IME. KeyboardAvoidingView
+  // relies on that same unreliable resize signal, so it doesn't help here
+  // either — tracking real keyboard height directly and shrinking this
+  // modal's card by it is the robust fix regardless of what adjustResize
+  // does.
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  useEffect(() => {
+    const showSub = Keyboard.addListener("keyboardDidShow", (e) => {
+      setKeyboardHeight(e.endCoordinates?.height ?? 0);
+    });
+    const hideSub = Keyboard.addListener("keyboardDidHide", () => {
+      setKeyboardHeight(0);
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   // Re-populate when opened in edit mode
   useEffect(() => {
@@ -139,11 +160,8 @@ export function UsernameModal({
   }, [canSave, trimmedName, bio, xAccount, tipWallet, location, setUsername, setBio, setXAccount, setTipWallet, setLocation, onDone]);
 
   return (
-    <GlassModal visible={visible} onClose={handleClose} position="bottom" animationType="slide" cardStyle={{ height: Dimensions.get("window").height * 0.7 }}>
-      <KeyboardAvoidingView
-        style={styles.root}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-      >
+    <GlassModal visible={visible} onClose={handleClose} position="bottom" animationType="slide" cardStyle={{ height: Dimensions.get("window").height * 0.7 - keyboardHeight }}>
+      <View style={styles.root}>
         <LinearGradient
           colors={["#7c5cfc18", "#0a0a1400", "#7c5cfc0a"]}
           start={{ x: 0, y: 0 }}
@@ -320,7 +338,7 @@ export function UsernameModal({
             Minimum 2 characters · Max {MAX_USERNAME} characters
           </Text>
         </ScrollView>
-      </KeyboardAvoidingView>
+      </View>
     </GlassModal>
   );
 }
