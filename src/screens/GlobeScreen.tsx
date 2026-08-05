@@ -18,7 +18,6 @@ import {
   Pressable,
   Image,
   ActivityIndicator,
-  Modal,
   ScrollView,
   StatusBar,
   Linking,
@@ -28,6 +27,8 @@ import { WebView } from "react-native-webview";
 import { router } from "expo-router";
 // date-fns format removed — event formatting moved to EventRsvpModal
 import { THEME, FONTS, BOT_INBOX_IDS, BOT_DISPLAY_NAME, BOT_PFP_URL } from "@/lib/constants";
+import { IS_IMMERSIVE_SHELL } from "@/lib/immersiveStatusBar";
+import { MonkeGlass } from "@/components/MonkeGlass";
 import { useAppStore } from "@/store/appStore";
 import { getCachedProfile, getPersistedLocation, useProfileVersion } from "@/lib/userProfile";
 import { isUserOnline, getLastSeenTimestamp } from "@/lib/presence";
@@ -553,7 +554,7 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
 
   return (
     <View style={styles.root}>
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle="light-content" hidden={IS_IMMERSIVE_SHELL} />
 
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
@@ -671,52 +672,48 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
       />
 
       {/* Cluster bottom sheet — shows all users at a location */}
-      <Modal
+      <MonkeGlass
         visible={clusterUsers.length > 0}
-        transparent
+        onClose={() => setClusterUsers([])}
+        position="bottom"
         animationType="slide"
-        onRequestClose={() => setClusterUsers([])}
+        cardStyle={styles.clusterSheet}
       >
-        <Pressable style={styles.modalOverlay} onPress={() => setClusterUsers([])}>
-          <Pressable style={styles.clusterSheet} onPress={(e) => e.stopPropagation()}>
-            <View style={styles.clusterHandle} />
-            <Text style={styles.clusterTitle}>
-              {clusterUsers.length} Monkes at this location
-            </Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.clusterScroll}>
-              {clusterUsers.map((m: GlobeMarker) => (
-                <Pressable
-                  key={m.id}
-                  style={styles.clusterUser}
-                  onPress={() => {
-                    setClusterUsers([]);
-                    if (m.inboxId && onPressUser) {
-                      const profile = getCachedProfile(m.inboxId);
-                      onPressUser({
-                        senderAddress: m.inboxId,
-                        senderUsername: m.username ?? m.label,
-                        senderNft: profile?.nftImage ? { mint: "", name: "", image: profile.nftImage } : null,
-                      });
-                    }
-                  }}
-                >
-                  <View>
-                    {m.nftImage ? (
-                      <Image source={{ uri: m.nftImage }} style={styles.clusterPfp} />
-                    ) : (
-                      <View style={[styles.clusterPfp, styles.clusterPfpFallback]} />
-                    )}
-                    {m.inboxId && (
-                      <View style={[styles.clusterActivityDot, { backgroundColor: getActivityColor(m.inboxId) }]} />
-                    )}
-                  </View>
-                  <Text style={styles.clusterName} numberOfLines={1}>{m.label}</Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-          </Pressable>
-        </Pressable>
-      </Modal>
+        <Text style={styles.clusterTitle}>
+          {clusterUsers.length} Monkes at this location
+        </Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.clusterScroll}>
+          {clusterUsers.map((m: GlobeMarker) => (
+            <Pressable
+              key={m.id}
+              style={styles.clusterUser}
+              onPress={() => {
+                setClusterUsers([]);
+                if (m.inboxId && onPressUser) {
+                  const profile = getCachedProfile(m.inboxId);
+                  onPressUser({
+                    senderAddress: m.inboxId,
+                    senderUsername: m.username ?? m.label,
+                    senderNft: profile?.nftImage ? { mint: "", name: "", image: profile.nftImage } : null,
+                  });
+                }
+              }}
+            >
+              <View>
+                {m.nftImage ? (
+                  <Image source={{ uri: m.nftImage }} style={styles.clusterPfp} />
+                ) : (
+                  <View style={[styles.clusterPfp, styles.clusterPfpFallback]} />
+                )}
+                {m.inboxId && (
+                  <View style={[styles.clusterActivityDot, { backgroundColor: getActivityColor(m.inboxId) }]} />
+                )}
+              </View>
+              <Text style={styles.clusterName} numberOfLines={1}>{m.label}</Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+      </MonkeGlass>
     </View>
   );
 }
@@ -782,10 +779,6 @@ const styles = StyleSheet.create({
   activityDot: { width: 7, height: 7, borderRadius: 4, borderWidth: 1, borderColor: "rgba(0,0,0,0.3)" },
   attendeeBadge: { fontFamily: FONTS.mono, fontSize: 10, color: "#FFD54F" },
 
-  modalOverlay: {
-    flex: 1, backgroundColor: "rgba(0,0,0,0.65)",
-    justifyContent: "center", alignItems: "center", padding: 24,
-  },
   eventCard: {
     backgroundColor: "rgba(18,18,26,0.95)", borderRadius: 20, padding: 24, gap: 14,
     borderWidth: 1, borderColor: "rgba(108,180,238,0.2)",
@@ -828,30 +821,12 @@ const styles = StyleSheet.create({
 
   // Cluster bottom sheet
   clusterSheet: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: "rgba(18, 18, 26, 0.97)",
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
-    paddingBottom: 36,
-    borderTopWidth: 1,
-    borderTopColor: "rgba(153, 69, 255, 0.2)",
+    borderColor: "rgba(153, 69, 255, 0.25)",
     shadowColor: "#9945FF",
     shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.2,
     shadowRadius: 16,
     elevation: 12,
-  },
-  clusterHandle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "rgba(255,255,255,0.15)",
-    alignSelf: "center",
-    marginBottom: 14,
   },
   clusterTitle: {
     fontFamily: FONTS.display,

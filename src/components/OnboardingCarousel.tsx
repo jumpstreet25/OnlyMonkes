@@ -71,6 +71,16 @@ const SLIDES: Slide[] = [
     gradient: ["#100a1e", "#0a0a14"],
   },
   {
+    emoji: "\uD83D\uDCC8",
+    emojiBg: "#44ff8822",
+    accentClr: "#44ff88",
+    title: "Top Traders",
+    subtitle: "See who's actually winning",
+    features:
+      "A live leaderboard of Saga Monkes holders with the best trading track record \u2014 win rate and this week's gain %. Find it under the menu \u2192 Leaderboard.",
+    gradient: ["#001410", "#0a0a14"],
+  },
+  {
     emoji: "\uD83C\uDFAD",
     emojiBg: "#FF6B6B22",
     accentClr: "#FF6B6B",

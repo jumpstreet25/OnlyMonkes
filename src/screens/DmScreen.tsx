@@ -1,5 +1,5 @@
 import React, { useRef, useCallback, useState, useEffect, useMemo } from 'react';
-import { View, StyleSheet, Text, Pressable, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, StyleSheet, Text, Pressable, ActivityIndicator, Keyboard } from 'react-native';
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -23,6 +23,7 @@ import { LivePnLCardModal } from '@/components/LivePnLCardModal';
 import type { ClosedTrade, OpenTrade } from '@/lib/positions';
 import type { PortfolioCard, PortfolioResponse } from '@/store/tradesStore';
 import type { ChatMessage, ReactionEmoji } from '@/types';
+import { isMineInbox } from '@/lib/inboxLinking';
 
 type FeedItem =
   | { kind: 'msg'; key: string; ts: number; msg: ChatMessage }
@@ -42,6 +43,29 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
   const [activeTradeCard, setActiveTradeCard] = useState<ClosedTrade | null>(null);
   const [activeLiveCard, setActiveLiveCard] = useState<PortfolioCard | null>(null);
   const [actionSheetTarget, setActionSheetTarget] = useState<ChatMessage | null>(null);
+  // windowSoftInputMode="adjustResize" doesn't reliably reposition content
+  // under this app's edge-to-edge/immersive mode — same root cause already
+  // found and fixed on Main Chat (ChatScreen.tsx), where the input bar
+  // rendered fully hidden behind the IME. Tracking real keyboard height
+  // directly and using it to push the input row up is the robust fix
+  // regardless of what adjustResize does.
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  // 2026-07-30: measured height of the absolute-positioned input bar below,
+  // fed back into the list's content padding — same pattern as ChatScreen's
+  // bottomBarHeight/bottomInset.
+  const [bottomBarHeight, setBottomBarHeight] = useState(0);
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', (e) => {
+      setKeyboardHeight(e.endCoordinates?.height ?? 0);
+    });
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardHeight(0);
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
   const flatListRef = useRef<FlashListRef<FeedItem>>(null);
   useProfileVersion();
   const peerProfile = getCachedProfile(peerInboxId);
@@ -82,7 +106,7 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
   const lastReadOwnId = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
       const m = messages[i];
-      if (m.senderAddress === myInboxId && m.status === 'read') return m.id;
+      if (isMineInbox(m.senderAddress, myInboxId ?? '') && m.status === 'read') return m.id;
     }
     return null;
   }, [messages, myInboxId]);
@@ -119,22 +143,6 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
   const feedInverted = useMemo(() => feed.slice().reverse(), [feed]);
 
   return (
-    // 2026-08-03: DmScreen never had any keyboard-avoidance handling — it
-    // was relying entirely on AndroidManifest's windowSoftInputMode
-    // "adjustResize" to push content above the keyboard natively. That
-    // stops being reliable once the window opts into true edge-to-edge
-    // (WindowCompat.setDecorFitsSystemWindows(false) in MainActivity.kt,
-    // added earlier this session) — adjustResize's resize model assumes
-    // the OS still owns window-bounds fitting, which edge-to-edge
-    // deliberately opts out of. Result: the input bar sat behind the
-    // keyboard instead of being pushed above it. ChatScreen.tsx already
-    // has a KeyboardAvoidingView (its Android `behavior` is intentionally
-    // `undefined` there, tuned separately) — this screen had none at all.
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={0}
-    >
     <View style={[styles.container, { paddingTop: insets.top, backgroundColor: themeBg }]}>
       {/* Header */}
       <View style={[styles.header, { borderBottomColor: themeBorder }]}>
@@ -146,6 +154,13 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
 
       {isBotDm && <BotCommandTicker variant="dm" />}
 
+      {/* 2026-07-30: flex:1 region wrapping the list — the input bar below
+          is now an absolute overlay (was a normal flex sibling using
+          marginBottom to dodge the keyboard), which on Android left the
+          layout engine unable to reflow this list, snapping the whole
+          input row — camera button included — up near the header the
+          instant the keyboard opened. Mirrors ChatScreen's fix. */}
+      <View style={{ flex: 1 }}>
       {loading ? (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
           <ActivityIndicator color={THEME.accent} size="large" />
@@ -166,8 +181,10 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
           </Pressable>
         </View>
       ) : (
+        <View style={StyleSheet.absoluteFill}>
         <FlashList
           ref={flatListRef}
+          style={{ flex: 1 }}
           data={feedInverted}
           keyExtractor={item => item.key}
           renderItem={({ item }) => {
@@ -194,7 +211,7 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
               <>
                 <MessageBubble
                   message={m}
-                  isOwn={m.senderAddress === myInboxId}
+                  isOwn={isMineInbox(m.senderAddress, myInboxId ?? '')}
                   onReact={handleReact}
                   onReply={handleReply}
                   onOpenActions={setActionSheetTarget}
@@ -206,7 +223,10 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
               </>
             );
           }}
-          contentContainerStyle={{ paddingVertical: 8 }}
+          // Inverted FlashList rotates the whole content 180° — declared
+          // paddingTop renders at the visual BOTTOM (nearest the input bar
+          // overlay), paddingBottom at the visual top (nearest the header).
+          contentContainerStyle={{ paddingTop: 8 + bottomBarHeight + keyboardHeight, paddingBottom: 8 }}
           inverted
           ListEmptyComponent={
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 60 }}>
@@ -216,20 +236,27 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
             </View>
           }
         />
+        </View>
       )}
+      </View>
 
-      <ChatInput
-        value={inputText}
-        onChangeText={setInputText}
-        onSend={handleSend}
-        replyingTo={replyingTo}
-        onCancelReply={() => setReplyingTo(null)}
-        isSending={sending}
-        isDmWithBot={isBotDm}
-        onTyping={sendTyping}
-        typingUsers={typingUsers}
-      />
-      <View style={{ height: insets.bottom }} />
+      <View
+        style={{ position: 'absolute', left: 0, right: 0, bottom: keyboardHeight, zIndex: 100, elevation: 100 }}
+        onLayout={(e) => setBottomBarHeight(e.nativeEvent.layout.height)}
+      >
+        <ChatInput
+          value={inputText}
+          onChangeText={setInputText}
+          onSend={handleSend}
+          replyingTo={replyingTo}
+          onCancelReply={() => setReplyingTo(null)}
+          isSending={sending}
+          isDmWithBot={isBotDm}
+          onTyping={sendTyping}
+          typingUsers={typingUsers}
+        />
+        <View style={{ height: keyboardHeight > 0 ? 0 : insets.bottom }} />
+      </View>
       <ImageLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
       <PnLCardModal
         trade={activeTradeCard}
@@ -250,7 +277,6 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
         onReply={handleReply}
       />
     </View>
-    </KeyboardAvoidingView>
   );
 }
 

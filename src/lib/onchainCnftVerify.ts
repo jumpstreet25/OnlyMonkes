@@ -134,6 +134,27 @@ function getConnection(): Connection {
   return _connection;
 }
 
+// 2026-07-30: neither RPC call below had any timeout — @solana/web3.js's
+// Connection falls back to the RN global fetch with no built-in deadline.
+// withRetry() only catches REJECTED promises; if the RPC call simply
+// stalls (no response, no error) rather than erroring, `await` never
+// returns and the retry loop never even gets a chance to run, hanging
+// verifyNFTOwnership() -> useNFTVerification -> VerifyScreen forever on
+// "Verifying NFT ownership…" with no error ever shown. Flagged as a known
+// gap back on 2026-07-12 (see project memory) but never closed until now.
+// Deliberately a Promise.race timeout, NOT AbortSignal.timeout() — that API
+// throws on Hermes and gets silently swallowed elsewhere in this codebase.
+const RPC_TIMEOUT_MS = 15_000;
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    promise.then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (err) => { clearTimeout(timer); reject(err); },
+    );
+  });
+}
+
 // Originally tuned for the free public RPC, which was observed rate-limiting
 // in bursts of 20-40+ consecutive 429s before responding — a short retry
 // budget (originally 4 attempts, ~3s total) bailed out and reported
@@ -242,7 +263,11 @@ export async function verifySagaMonkeOnChain(
   try {
     for (let page = 0; page < MAX_SIGNATURE_PAGES; page++) {
       const sigs = await withRetry(() =>
-        connection.getSignaturesForAddress(owner, { before, limit: PAGE_SIZE }),
+        withTimeout(
+          connection.getSignaturesForAddress(owner, { before, limit: PAGE_SIZE }),
+          RPC_TIMEOUT_MS,
+          "getSignaturesForAddress",
+        ),
       );
       if (sigs.length === 0) {
         reachedFullHistory = true;
@@ -261,7 +286,11 @@ export async function verifySagaMonkeOnChain(
         let tx: ParsedTransactionWithMeta | null;
         try {
           tx = await withRetry(() =>
-            connection.getParsedTransaction(sigInfo.signature, { maxSupportedTransactionVersion: 0 }),
+            withTimeout(
+              connection.getParsedTransaction(sigInfo.signature, { maxSupportedTransactionVersion: 0 }),
+              RPC_TIMEOUT_MS,
+              "getParsedTransaction",
+            ),
           );
         } catch (err) {
           return {

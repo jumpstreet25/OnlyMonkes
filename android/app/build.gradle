@@ -118,10 +118,15 @@ android {
     // install. Different package = different app to Android: separate storage,
     // separate XMTP identity, can be installed/uninstalled/wiped freely with
     // zero effect on the real app's wallet/achievements/data.
-    // 2026-08-05: the native-stack bump this flavor field-tested (Reanimated 4,
-    // vision-camera 5, freerasp 5, expo-av→expo-video) is now promoted to
-    // `production` as v3.0.0 — defaultConfig's versionCode/versionName above
-    // carry it. `canary` stays for the NEXT round of risky native testing.
+    //
+    // 2026-08-01: `production` (same applicationId as today's live app) is
+    // being promoted to carry the OnlyMonkes 3.0 native stack that canary has
+    // been proving out (Reanimated 4, vision-camera 5, freerasp 5, etc.) —
+    // defaultConfig's versionCode/versionName above were bumped 38/"2.38" to
+    // 39/"3.0.0" for this release. A real native rebuild+distribute (not an
+    // OTA) is required either way, so existing users get the matching native
+    // binary + JS together — no repeat of the Reanimated v3/v4 OTA mismatch
+    // incident. `canary` stays for the NEXT round of risky native testing.
     flavorDimensions "env"
     productFlavors {
         production {
@@ -130,10 +135,11 @@ android {
         canary {
             dimension "env"
             applicationId "com.onlymonkes.app.canary"
-            // Explicit versionName (not a suffix off defaultConfig's "2.38") —
-            // this flavor is currently carrying the OnlyMonkes 3.0 native-stack
-            // work (expo-av removal, vision-camera 5, freerasp 5), not 2.38.
-            versionName "3.0.0-test"
+            // 2026-08-05: production is now on 3.0.0 (this flavor's native-stack
+            // work — expo-av removal, vision-camera 5, freerasp 5 — landed
+            // there). Bumped past it so canary always reads as "ahead of
+            // production," ready for whatever's tested here next.
+            versionName "3.1.0-test"
         }
     }
     // ABI splits → arm64-v8a only. Every Solana Mobile wallet device (Seeker,

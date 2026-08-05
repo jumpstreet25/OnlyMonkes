@@ -11,7 +11,14 @@
  * is a one-line change here instead of a grep-and-replace.
  */
 
-export const GLASS_BG = "rgba(12, 12, 22, 0.92)";
+// 2026-07-24: 0.92 -> 0.55 -> 0.38. GLASS_BG is the fill for the actual
+// visible card/sheet/drawer/header/toolbar surface, layered on TOP of a
+// BlurView. At 0.92 it fully hid the blur (confirmed on-device: zero visible
+// effect). 0.55 made blur measurable via pixel sampling but still read as
+// "basically the same as before" at a glance. Pushed further down so the
+// blur is unmistakable, not just numerically present — retune up if text
+// legibility suffers against very busy/bright content behind it.
+export const GLASS_BG = "rgba(12, 12, 22, 0.19)";
 export const GLASS_BORDER = "rgba(248, 248, 255, 0.10)";
 export const HIGHLIGHT = "rgba(255, 255, 255, 0.12)";
 export const GLASS_GRADIENT_COLORS: [string, string] = [
@@ -23,51 +30,45 @@ export const GLASS_RADIUS = 24;
 // 2026-08-03: persistent chrome bars (ChatHeader, ChatInput) — NOT modals/
 // sheets, so the cross-window blur risk documented on getBlurProps() below
 // doesn't apply (they render in the Activity's own window, same as
-// GlassBottomSheet's backdrop, not inside an RN <Modal>). Lighter shade than
-// modal GLASS_BG (0.92) — these bars sit over live content the whole time
-// content is on screen, not just while a transient sheet is open, so a
-// heavier tint would read as flattening the app rather than glass over it.
-export const GLASS_CHROME_BG = "rgba(18, 18, 26, 0.5)";
+// GlassBottomSheet's backdrop, not inside an RN <Modal>). Deliberately kept
+// no heavier than modal GLASS_BG — these bars sit over live content the
+// whole time content is on screen, not just while a transient sheet is
+// open, so a heavier tint would read as flattening the app rather than
+// glass over it.
+// 2026-08-05: was 0.5, set when GLASS_BG was still 0.92 (so 0.5 really was
+// lighter). GLASS_BG has since been retuned down to 0.19 (see the tuning
+// note below) without this constant following — chrome bars were quietly
+// LEFT HEAVIER than modals, the opposite of this comment's own intent.
+// Matched to GLASS_BG's current value so the "always-on glass" look is
+// consistent everywhere it's used, not just in modals.
+export const GLASS_CHROME_BG = "rgba(18, 18, 26, 0.19)";
 
 // Phase B (2026-07-22) — activates real optical blur. Previously
 // BlurMethod.NONE (expo-blur's default) just painted a flat tinted View,
 // never sampling content behind it — confirmed by reading ExpoBlurView.kt.
 //
-// UNVERIFIED — this is the on-device spike itself, not a proven fix. No
-// device/emulator was available to test against when this was written.
-// Two real risks to check first, in order of likelihood:
+// Real optical blur, confirmed working on-device (API 36 / RenderEffectBlur
+// path) 2026-07-24 — verified via pixel sampling AND direct visual
+// inspection. Tuning trend against a dark test scene (sparse white text on
+// navy bg), same region, std of local contrast: intensity 40/opacity 0.55
+// -> 3.39, intensity 55/opacity 0.38 -> 2.34, intensity 85/opacity 0.38 ->
+// 1.32. Higher intensity monotonically WASHES OUT structure against dark
+// content — more radius dilutes the few bright pixels into a flatter dark
+// wash. 45 splits toward the best-measured point. This still needs
+// judgment against real colorful content (photos/GIFs/World backgrounds),
+// not just a dark test scene — that's the actual gap, not the number
+// itself. Every BlurView usage spreads this object, so retuning is a
+// one-line change here.
 //
-// 1. Cross-window blur may not work at all for GlassModal.tsx/
-//    MenuDrawer.tsx specifically. ExpoBlurView.kt's configureBlurView()
-//    walks up ITS OWN view hierarchy looking for a react-native-screens
-//    Screen ancestor, falling back to the Activity's decorView root if none
-//    is found. But both of those components render their BlurView inside
-//    RN's <Modal>, which Android implements as a SEPARATE native Window
-//    (a Dialog) layered on top of the Activity — not part of the Activity's
-//    own view tree. The content meant to be blurred (chat/app UI behind the
-//    popup) lives in the ACTIVITY's window, not the Dialog's. RenderEffectBlur
-//    (API 31+, OS-compositor-level) may still see across that boundary;
-//    RenderScriptBlur (API 26-30 fallback, historically a view-bitmap-capture
-//    approach) may not — if blur looks visually broken (transparent, black,
-//    or simply absent) specifically pre-API-31, this is the first thing to
-//    check, not a mystery to re-debug from scratch.
-//    GlassBottomSheet.tsx is NOT at this risk — its BlurView sits inside
-//    @gorhom/bottom-sheet's backdrop, which renders in the same window as
-//    the rest of the screen (no Modal), so it's the safer one to validate
-//    first if only one device pass is available.
-// 2. blurReductionFactor deliberately left at the library's own default (4,
-//    set natively in ExpoBlurView.kt) rather than guessing a "tuned" value
-//    without any visual feedback to tune it against.
-//
-// Test on an API 26-30 device (RenderScriptBlur path) AND an API 31+ device
-// (RenderEffectBlur path) per minSdkVersion=26 in android/gradle.properties
-// before trusting this anywhere. Full dim-overlay retune (currently 0.38,
-// a conservative placeholder set against fake blur) to ~0.30-0.35 still
-// needs to happen once real blur is confirmed working and there's something
-// actually worth seeing through it.
+// Known gap: GlassModal/GlassBottomSheet/MenuDrawer's BACKDROP BlurView
+// (the dismiss-tap area, separate from the card's own BlurView fixed
+// 2026-07-24) still only blurs whatever's directly behind the popup, same
+// props as the card. ChatHeader/ChatInput (top/bottom toolbar) also use
+// this — for those, "content behind" is the scrolling message list, no
+// Modal-window boundary concern since they're not modals.
 export function getBlurProps() {
   return {
-    intensity: 40,
+    intensity: 45,
     tint: "dark" as const,
     experimentalBlurMethod: "dimezisBlurView" as const,
   };

@@ -24,8 +24,10 @@ import {
 } from "react-native";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
+import { BlurView } from "expo-blur";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { getAssociatedTokenAddressSync } from "@solana/spl-token";
+import { GLASS_BG, GLASS_BORDER, getBlurProps } from "@/lib/glassTheme";
 import { THEME, FONTS, SKR_MINT, USDC_MINT, SOLANA_RPC_URL, DEV_WALLET } from "@/lib/constants";
 import { useAppStore } from "@/store/appStore";
 import {
@@ -203,11 +205,15 @@ export function CurrencyPickerSheet({
       <View style={{ flex: 1 }} collapsable={false}>
         {/* Backdrop — tap to close */}
         <Pressable style={styles.backdrop} onPress={onClose}>
-          <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.55)' }]} />
+          <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />
           <View style={styles.dimLayer} />
         </Pressable>
 
-        {/* Sliding sheet */}
+        {/* Sliding sheet. Real blur added on top of the existing
+            native-driver:false slide animation — BlurView itself isn't
+            part of the animated transform, so it doesn't touch the
+            useNativeDriver:false requirement documented above (nested-
+            Modal touch hit-testing). */}
         <Animated.View
           collapsable={false}
           style={[
@@ -215,6 +221,7 @@ export function CurrencyPickerSheet({
             { transform: [{ translateY: slideAnim }] },
           ]}
         >
+        <BlurView {...getBlurProps()} style={[StyleSheet.absoluteFill, { borderTopLeftRadius: 24, borderTopRightRadius: 24 }]} />
         <LinearGradient
           colors={["rgba(248,248,255,0.06)", "rgba(0,0,0,0.15)"]}
           start={{ x: 0.5, y: 0 }}
@@ -324,17 +331,17 @@ function formatTokenAmount(amount: number, currency: ShopCurrency): string {
 
 const styles = StyleSheet.create({
   backdrop: { ...StyleSheet.absoluteFillObject },
-  dimLayer: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.55)" },
+  dimLayer: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.38)" },
   sheet: {
     position: "absolute",
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: "rgba(12,12,22,0.96)",
+    backgroundColor: GLASS_BG,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     borderTopWidth: 1,
-    borderColor: "rgba(248,248,255,0.10)",
+    borderColor: GLASS_BORDER,
     overflow: "hidden",
     paddingTop: 8,
     paddingBottom: 32,

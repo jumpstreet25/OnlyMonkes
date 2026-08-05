@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { View, Text, StyleSheet, Pressable, Switch, ScrollView, StatusBar, Alert } from "react-native";
+import { IS_IMMERSIVE_SHELL } from "@/lib/immersiveStatusBar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -47,7 +48,7 @@ export default function SettingsScreen() {
 
   return (
     <View style={styles.root}>
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle="light-content" hidden={IS_IMMERSIVE_SHELL} />
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <Pressable onPress={() => router.back()} hitSlop={8}>
           <Text style={styles.backText}>← Back</Text>

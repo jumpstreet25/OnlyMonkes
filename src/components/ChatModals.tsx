@@ -31,7 +31,9 @@ import ImageLightbox from "@/components/ImageLightbox";
 import { ChartModal } from "@/components/ChartModal";
 import { UserProfileModal, type ProfileTarget } from "@/components/UserProfileModal";
 import { VideoCameraModal } from "@/components/VideoCameraModal";
+import { PhotoReviewModal } from "@/components/PhotoReviewModal";
 import { GlassBottomSheet } from "@/components/GlassBottomSheet";
+import { MonkeGlass } from "@/components/MonkeGlass";
 import { MessageActionSheet } from "@/components/MessageActionSheet";
 import { useAppStore } from "@/store/appStore";
 import { addBananas } from "@/lib/bananaRewards";
@@ -176,6 +178,13 @@ export interface ChatModalsProps {
   setXShareImageUri: (v: string | null) => void;
   handleShareToX: () => void;
 
+  // Photo review (caption picker before send)
+  photoReviewVisible: boolean;
+  photoReviewImageUri: string | null;
+  photoReviewRequestId: string | null;
+  handlePhotoReviewSend: (caption: string) => void;
+  handlePhotoReviewCancel: () => void;
+
   // Message action sheet (react/reply/copy/edit/delete/pin/thread/sticker)
   actionSheetTarget: ChatMessage | null;
   setActionSheetTarget: (v: ChatMessage | null) => void;
@@ -213,6 +222,8 @@ export function ChatModals(props: ChatModalsProps) {
     videoLightboxUrl, setVideoLightboxUrl, handleDownloadVideo,
     editTarget, setEditTarget, editText, setEditText, handleEditSubmit,
     xShareImageUri, setXShareImageUri, handleShareToX,
+    photoReviewVisible, photoReviewImageUri, photoReviewRequestId,
+    handlePhotoReviewSend, handlePhotoReviewCancel,
     actionSheetTarget, setActionSheetTarget, handleReact, setReplyingTo,
     handleEditMessage, handleDelete, handlePin, handleThread, handleStickerReact,
   } = props;
@@ -343,10 +354,19 @@ export function ChatModals(props: ChatModalsProps) {
           await saveSelectedNftMint(nft.mint);
           const { syncPfpBindings, getEquippedStyles: getStyles } = await import("@/lib/bananaShop");
           const { applyThemeFromShop: applyTheme } = await import("@/lib/shopTheme");
+          const { getOrExtractNftColor } = await import("@/lib/nftColor");
           await syncPfpBindings(nft.mint);
           const s = await getStyles();
           useAppStore.getState().setShopStyles(s);
           applyTheme(s);
+          // applyTheme() only recomputes nftDominantColor when PFP Full
+          // Theme is equipped — refresh it unconditionally too, so PFP
+          // Aura / border-tint items pick up the newly-selected NFT's
+          // color right away instead of showing the old one until the
+          // next ChatScreen mount.
+          getOrExtractNftColor(nft.image, nft.mint ?? "nft").then(c => {
+            useAppStore.getState().setNftDominantColor(c);
+          }).catch(() => {});
           setPfpPickerOpen(false);
           await broadcastProfile();
         }}
@@ -370,6 +390,15 @@ export function ChatModals(props: ChatModalsProps) {
           const { setUserChosenNftImage } = await import("@/lib/nftVerification");
           const nft = await setUserChosenNftImage(wallet.address, imageUrl, verifiedNft);
           setVerified(true, nft);
+          // Re-derive PFP-driven color/theme for the NEW image immediately —
+          // without this, PFP Full Theme / aura / border tint kept showing
+          // colors extracted from whichever PFP was equipped before.
+          const { applyThemeFromShop } = await import("@/lib/shopTheme");
+          const { getOrExtractNftColor } = await import("@/lib/nftColor");
+          applyThemeFromShop(useAppStore.getState().shopStyles);
+          getOrExtractNftColor(nft.image, nft.mint ?? "nft").then(c => {
+            useAppStore.getState().setNftDominantColor(c);
+          }).catch(() => {});
           setPfpImagePickerOpen(false);
           await broadcastProfile();
         }}
@@ -441,36 +470,30 @@ export function ChatModals(props: ChatModalsProps) {
         </View>
       </Modal>
 
-      {/* Edit Message Modal */}
-      <Modal
-        visible={!!editTarget}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setEditTarget(null)}
-      >
-        <Pressable style={modalStyles.overlay} onPress={() => setEditTarget(null)}>
-          <Pressable style={modalStyles.sheet} onPress={(e) => e.stopPropagation()}>
-            <Text style={modalStyles.title}>Edit Message</Text>
-            <TextInput
-              style={modalStyles.input}
-              value={editText}
-              onChangeText={setEditText}
-              autoFocus
-              multiline
-              maxLength={2000}
-              placeholderTextColor={THEME.textFaint}
-            />
-            <View style={modalStyles.btnRow}>
-              <Pressable onPress={() => setEditTarget(null)} style={modalStyles.cancelBtn}>
-                <Text style={modalStyles.cancelText}>Cancel</Text>
-              </Pressable>
-              <Pressable onPress={handleEditSubmit} style={modalStyles.confirmBtn}>
-                <Text style={modalStyles.confirmText}>Save</Text>
-              </Pressable>
-            </View>
+      {/* Edit Message — was a raw <Modal> with an opaque #000 sheet (the
+          same cross-window blur-blocking issue GlassModal/MonkeGlass exist
+          to fix — Android's Modal is a separate native Dialog window that
+          BlurView can't see across). */}
+      <MonkeGlass visible={!!editTarget} onClose={() => setEditTarget(null)}>
+        <Text style={modalStyles.title}>Edit Message</Text>
+        <TextInput
+          style={modalStyles.input}
+          value={editText}
+          onChangeText={setEditText}
+          autoFocus
+          multiline
+          maxLength={2000}
+          placeholderTextColor={THEME.textFaint}
+        />
+        <View style={modalStyles.btnRow}>
+          <Pressable onPress={() => setEditTarget(null)} style={modalStyles.cancelBtn}>
+            <Text style={modalStyles.cancelText}>Cancel</Text>
           </Pressable>
-        </Pressable>
-      </Modal>
+          <Pressable onPress={handleEditSubmit} style={modalStyles.confirmBtn}>
+            <Text style={modalStyles.confirmText}>Save</Text>
+          </Pressable>
+        </View>
+      </MonkeGlass>
 
       {/* Share on X Popup */}
       <GlassBottomSheet
@@ -511,6 +534,14 @@ export function ChatModals(props: ChatModalsProps) {
           </Pressable>
         </View>
       </GlassBottomSheet>
+
+      <PhotoReviewModal
+        visible={photoReviewVisible}
+        imageUri={photoReviewImageUri}
+        requestId={photoReviewRequestId}
+        onSend={handlePhotoReviewSend}
+        onCancel={handlePhotoReviewCancel}
+      />
 
       <MessageActionSheet
         target={actionSheetTarget}

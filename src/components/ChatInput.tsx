@@ -8,7 +8,7 @@
  *  - Send button (gradient, disabled when empty)
  */
 
-import React, { memo, useRef, useCallback, useEffect, useMemo, useState } from "react";
+import React, { memo, useRef, useCallback, useEffect, useMemo } from "react";
 import {
   View,
   Text,
@@ -19,7 +19,6 @@ import {
   Image,
   Alert,
   Animated,
-  Modal,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
@@ -186,6 +185,7 @@ interface ChatInputProps {
   typingUsers?: TypingUser[];
   onLiveVideo?: () => void;
   onAvatarRoom?: () => void;
+  onOpenLivePicker?: () => void;
   isDmWithBot?: boolean;
 }
 
@@ -204,16 +204,15 @@ export const ChatInput = memo(function ChatInput({
   typingUsers,
   onLiveVideo,
   onAvatarRoom,
+  onOpenLivePicker,
   isDmWithBot,
 }: ChatInputProps) {
   const inputRef = useRef<TextInput>(null);
   const bounceAnim = useRef(new Animated.Value(0)).current;
   const hasTypers = !!(typingUsers && typingUsers.length > 0);
   const myInboxId = useAppStore(s => s.myInboxId);
-  const [livePickerOpen, setLivePickerOpen] = useState(false);
 
   // Theme overrides for Banana Shop Tier 4 themes
-  const themeSurface = useThemeColor('surface');
   const themeBorder = useThemeColor('border');
 
   // Toolbar label accent (CAM / LIVE / GIF). Priority:
@@ -228,7 +227,8 @@ export const ChatInput = memo(function ChatInput({
     : getWorldAccent(shopStyles?.worldId as string | undefined);
   // World-aware transparency: when a Chat World is equipped, drop the input
   // bar background so falling bananas / candles can be seen piling up behind
-  // it. Returns to opaque theme surface when no world is set.
+  // it. 2026-07-24: always-on glass — was opaque themeSurface when no world
+  // is set, which fully hid the BlurView now rendered behind this bar.
   const worldId = shopStyles?.worldId as string | undefined;
   const inputBarBg = worldId ? getWorldBarTint(worldId) : GLASS_CHROME_BG;
 
@@ -307,8 +307,9 @@ export const ChatInput = memo(function ChatInput({
     <View style={[styles.container, { borderTopColor: themeBorder }]}>
       {/* MonkeGlass — blur layer behind the world/theme tint, same treatment
           as ChatHeader. Not in an RN <Modal>, so safe from the cross-window
-          blur gap documented in glassTheme.ts. */}
-      <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />
+          blur gap documented in glassTheme.ts. Blurs the message list
+          scrolling behind the bottom toolbar, world-equipped or not. */}
+      <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} pointerEvents="none" />
       <View style={[StyleSheet.absoluteFill, { backgroundColor: inputBarBg }]} pointerEvents="none" />
       {/* Slash command suggestions */}
       {slashSuggestions.length > 0 && (
@@ -458,7 +459,7 @@ export const ChatInput = memo(function ChatInput({
 
         {(onLiveVideo || onAvatarRoom) && (
           <Pressable
-            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setLivePickerOpen(true); }}
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onOpenLivePicker?.(); }}
             accessibilityLabel="Go live"
             accessibilityRole="button"
             style={({ pressed }) => [styles.toolbarBtn, styles.toolbarLive, toolbarColor !== "#6CB4EE" && { borderColor: toolbarColor + "1F" }, pressed && { opacity: 0.7 }]}
@@ -485,61 +486,6 @@ export const ChatInput = memo(function ChatInput({
         <ChannelButton channelId="predictions" />
       </View>
 
-      {/* Live picker popup — choose Audio or Video */}
-      <Modal
-        visible={livePickerOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setLivePickerOpen(false)}
-      >
-        <Pressable style={styles.livePickerOverlay} onPress={() => setLivePickerOpen(false)}>
-          <View style={styles.livePickerCard}>
-            <Text style={styles.livePickerTitle}>Go Live</Text>
-
-            {onLiveVideo && (
-              <Pressable
-                style={({ pressed }) => [styles.livePickerBtn, pressed && { opacity: 0.7 }]}
-                onPress={() => {
-                  setLivePickerOpen(false);
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                  onLiveVideo();
-                }}
-              >
-                <Text style={styles.livePickerEmoji}>📹</Text>
-                <View>
-                  <Text style={styles.livePickerBtnText}>Live Video</Text>
-                  <Text style={styles.livePickerBtnSub}>Video call with sticker reactions</Text>
-                </View>
-              </Pressable>
-            )}
-
-            {onAvatarRoom && (
-              <Pressable
-                style={({ pressed }) => [styles.livePickerBtn, pressed && { opacity: 0.7 }]}
-                onPress={() => {
-                  setLivePickerOpen(false);
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                  onAvatarRoom();
-                }}
-              >
-                <Text style={styles.livePickerEmoji}>🐵</Text>
-                <View>
-                  <Text style={styles.livePickerBtnText}>Avatar Room</Text>
-                  <Text style={styles.livePickerBtnSub}>Animated Monke avatar chat</Text>
-                </View>
-              </Pressable>
-            )}
-
-            <Pressable
-              style={({ pressed }) => [styles.livePickerCancel, pressed && { opacity: 0.7 }]}
-              onPress={() => setLivePickerOpen(false)}
-            >
-              <Text style={styles.livePickerCancelText}>Cancel</Text>
-            </Pressable>
-          </View>
-        </Pressable>
-      </Modal>
-
     </View>
   );
 });
@@ -548,12 +494,14 @@ const styles = StyleSheet.create({
   container: {
     overflow: "hidden",
     // Background is now the BlurView + tint View layered as the first two
-    // children (MonkeGlass, 2026-08-03) instead of a static color here.
+    // children (MonkeGlass, 2026-08-03) instead of a static color here —
+    // was THEME.surface (opaque) before that, which sat behind the BlurView
+    // and blocked it from sampling real content.
     // No borderTop — separator removed per design pass 2026-05-06.
-    // 2026-07-23: 8 -> 4, part of a bar-wide compaction pass to reclaim
+    // 2026-07-23: 8 -> 4 -> 2, a bar-wide compaction pass to reclaim
     // chat viewport height post-edge-to-edge. Tap targets (toolbarBtn
     // height, inputWrap minHeight) deliberately untouched.
-    paddingBottom: 4,
+    paddingBottom: 2,
   },
   replyBanner: {
     flexDirection: "row",
@@ -697,7 +645,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-evenly",
     paddingHorizontal: 8,
-    paddingTop: 4,
+    paddingTop: 2,
   },
   toolbarBtn: {
     height: 31,
@@ -835,66 +783,4 @@ const styles = StyleSheet.create({
   mentionUsername: { fontFamily: FONTS.bodyMed, fontSize: 14, color: THEME.text },
 
   // ── Live picker popup ───────────────────────────────────────────────────────
-  livePickerOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.6)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  livePickerCard: {
-    width: 260,
-    backgroundColor: "#000",
-    borderRadius: 18,
-    borderWidth: 1.5,
-    borderColor: "#0096C7",
-    paddingVertical: 20,
-    paddingHorizontal: 16,
-    alignItems: "center",
-    gap: 12,
-  },
-  livePickerTitle: {
-    fontFamily: FONTS.mono,
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#0096C7",
-    letterSpacing: 1,
-    marginBottom: 4,
-  },
-  livePickerBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    width: "100%",
-    backgroundColor: "rgba(0,150,199,0.1)",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "rgba(0,150,199,0.3)",
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-  },
-  livePickerEmoji: {
-    fontSize: 24,
-  },
-  livePickerBtnText: {
-    fontFamily: FONTS.mono,
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#0096C7",
-  },
-  livePickerBtnSub: {
-    fontFamily: FONTS.mono,
-    fontSize: 10,
-    color: "rgba(255,255,255,0.5)",
-    marginTop: 1,
-  },
-  livePickerCancel: {
-    marginTop: 4,
-    paddingVertical: 8,
-    paddingHorizontal: 20,
-  },
-  livePickerCancelText: {
-    fontFamily: FONTS.mono,
-    fontSize: 12,
-    color: "rgba(255,255,255,0.4)",
-  },
 });

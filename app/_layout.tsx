@@ -7,6 +7,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
+import { IS_IMMERSIVE_SHELL } from '../src/lib/immersiveStatusBar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -20,7 +21,7 @@ import { useThemeColor } from '../src/lib/shopTheme';
 import { registerForPushNotifications } from '../src/lib/notifications';
 import { triggerProfileRebroadcast } from '../src/hooks/useXmtp';
 import { useAppStore, loadPersistedPrefs } from '../src/store/appStore';
-import { getEquippedStyles } from '../src/lib/bananaShop';
+import { getEquippedStyles, type ShopState } from '../src/lib/bananaShop';
 import { applyThemeFromShop } from '../src/lib/shopTheme';
 import { clearLegacyKeys, startNftOwnershipGuard } from '../src/lib/session';
 import { initSentry } from '../src/lib/sentry';
@@ -120,7 +121,7 @@ export default function RootLayout() {
           bs.totalEarned = Math.max(bs.totalEarned, 600);
           await saveBananaState(bs);
           useAppStore.getState().setBananaBalance(600);
-          const ss = await loadShopState();
+          const ss: ShopState = await loadShopState();
           ss.owned = ['theme_pfp_full', 'theme_matrix', 'bubble_neon_green'];
           ss.equipped = { bubble: 'bubble_neon_green', text: null, pfp: null, theme: 'theme_matrix', world: null };
           await saveShopState(ss);
@@ -198,8 +199,12 @@ export default function RootLayout() {
               visible at all) needs an explicit hide. Android still allows a
               swipe-down from the top edge to reveal it transiently (RN's
               enableEdgeToEdge() sets BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE),
-              so system notifications/quick-settings stay reachable. */}
-          <StatusBar style="light" hidden />
+              so system notifications/quick-settings stay reachable.
+              IS_IMMERSIVE_SHELL gates this per-shell (see immersiveStatusBar.ts)
+              since this JS ships over-the-air to both the edge-to-edge-native
+              shell and any future non-edge-to-edge shell without a native
+              rebuild in between. */}
+          <StatusBar style="light" hidden={IS_IMMERSIVE_SHELL} />
           <Stack
             screenOptions={{
               headerShown: false,

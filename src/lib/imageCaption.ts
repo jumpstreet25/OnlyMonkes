@@ -1,14 +1,15 @@
 /**
- * imageCaption.ts — client helpers for bot-generated (Ollama vision) photo
- * captions, used by ChatScreen's Share-to-X flow.
+ * imageCaption.ts — client helpers for bot-generated (Ollama) captions used
+ * by various Share-to-X flows: photo captions (vision model) from
+ * ChatScreen, and Banana Streak Day-7 captions (text model) from
+ * BananaClaimModal.
  *
- * Fire-and-forget request pattern, NOT a blocking round trip: the bot's
- * vision inference (llava via Ollama) can realistically take 60s+ on its
- * actual hardware, so the request fires the moment a photo is SENT to chat
- * (see ChatScreen.tsx handleCamera), giving the caption time to be ready
- * well before the user later taps Share to X. If it isn't ready yet when
- * they do, the caller falls back to a generic caption — never blocks the
- * share action waiting on this.
+ * Fire-and-forget request pattern, NOT a blocking round trip: local Ollama
+ * inference can realistically take real time on this bot's actual hardware,
+ * so requests fire as early as possible (photo send / streak-modal open)
+ * rather than when the user later taps Share to X, giving the caption time
+ * to be ready by then. If it isn't ready yet when they do, the caller falls
+ * back to a generic/static caption — never blocks the share action.
  */
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -65,5 +66,51 @@ export async function requestImageCaption(messageId: string, base64: string): Pr
     await dm.send(`IMAGE_CAPTION_REQUEST:${messageId}:${base64}`);
   } catch (err) {
     if (__DEV__) console.warn(`[diag] caption request threw: ${(err as Error)?.message?.slice(0, 100)}`);
+  }
+}
+
+/**
+ * Banana Streak (Day-7 bonus) AI caption — same bot-generated-via-Ollama
+ * pattern as photo captions, but there's only ever one pending streak
+ * celebration at a time, so this is a single cached value rather than a
+ * per-messageId map. Cleared once consumed so a stale caption from a
+ * previous cycle can't leak into a later one.
+ */
+const STREAK_CACHE_KEY = "streak_caption_v1";
+
+/** Fire-and-forget: ask the bot to write a Day-7 streak tweet caption.
+ *  Called as soon as the claim modal shows the bonus (see BananaClaimModal),
+ *  not when the user later taps Share to X — same "fire early, ready by the
+ *  time it's needed" pattern as requestImageCaption. */
+export async function requestStreakCaption(totalBananas: number, cyclesCompleted: number): Promise<void> {
+  try {
+    const { getXmtpClient } = await import("@/hooks/useXmtp");
+    const { openOrCreateDm } = await import("@/lib/xmtp");
+    const { BOT_INBOX_IDS } = await import("@/lib/constants");
+    const client = getXmtpClient();
+    if (!client) return;
+    const dm = await openOrCreateDm(client, BOT_INBOX_IDS[0]);
+    await dm.send(`STREAK_CAPTION_REQUEST:${totalBananas}:${cyclesCompleted}`);
+  } catch {
+    // non-fatal — Share to X just falls back to the static template
+  }
+}
+
+/** Called from useXmtp.ts / useDm.ts when a STREAK_CAPTION_RESPONSE: DM arrives. */
+export async function storeStreakCaptionResponse(caption: string): Promise<void> {
+  try {
+    await AsyncStorage.setItem(STREAK_CACHE_KEY, caption);
+  } catch { /* non-critical */ }
+}
+
+/** Returns the bot-generated streak caption, if it arrived in time, and
+ *  clears it — one-shot, consumed at share time. */
+export async function getAndClearStreakCaption(): Promise<string | null> {
+  try {
+    const cached = await AsyncStorage.getItem(STREAK_CACHE_KEY);
+    if (cached) await AsyncStorage.removeItem(STREAK_CACHE_KEY);
+    return cached;
+  } catch {
+    return null;
   }
 }

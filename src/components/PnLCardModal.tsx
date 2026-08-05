@@ -1,6 +1,6 @@
 import React, { useCallback, useRef, useState } from 'react';
 import {
-  View, Text, Pressable, StyleSheet, Alert, Dimensions, Image,
+  View, Text, Pressable, StyleSheet, Alert, Dimensions,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
@@ -123,7 +123,10 @@ export function PnLCardModal({ trade, visible, onClose }: PnLCardModalProps) {
       const uri = await captureCard();
       await ML.saveToLibraryAsync(uri);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      toast.success('Saved to gallery');
+      // 2026-07-30: defer — same race as handleShareMainChat below (grey
+      // screen when the toast overlay mounts in the same tick as this
+      // Modal's Android Dialog window still settling from the save).
+      setTimeout(() => toast.success('Saved to gallery'), 350);
     } catch (e: any) {
       toast.error(e?.message ?? 'Save failed');
     } finally {
@@ -206,16 +209,9 @@ export function PnLCardModal({ trade, visible, onClose }: PnLCardModalProps) {
       <View style={styles.contentGap}>
         <View style={styles.headerRow}>
           <Text style={styles.title}>Trade Closed</Text>
-          <View style={styles.headerRight}>
-            <Image
-              source={require('../../assets/watermark.png')}
-              style={styles.watermark}
-              resizeMode="contain"
-            />
-            <Pressable onPress={onClose} hitSlop={12} style={styles.closeBtn}>
-              <Text style={styles.closeIcon}>✕</Text>
-            </Pressable>
-          </View>
+          <Pressable onPress={onClose} hitSlop={12} style={styles.closeBtn}>
+            <Text style={styles.closeIcon}>✕</Text>
+          </Pressable>
         </View>
 
         <View style={styles.cardWrap}>
@@ -277,8 +273,6 @@ function ActionBtn({ label, sub, onPress, loading, disabled, primary, flat }: Ac
 const styles = StyleSheet.create({
   contentGap: { gap: 14 },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  watermark: { width: 38, height: 14, opacity: 0.7 },
   title: { fontFamily: FONTS.display, fontSize: 16, color: THEME.text, letterSpacing: 0.5 },
   closeBtn: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   closeIcon: { color: THEME.textMuted, fontSize: 16 },

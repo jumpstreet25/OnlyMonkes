@@ -1944,6 +1944,24 @@ export function useXmtp() {
                 return;
               }
 
+              // AUTOMONKE_STATUS: ground truth for AutonoMonke enrollment,
+              // sent by the bot after every /autonomonke command. Corrects
+              // BotChannelScreen's AsyncStorage-only flag, which has no link
+              // back to real bot state and can read as OFF on a fresh app
+              // install/build even though the bot never stopped trading.
+              if (inner.startsWith('AUTOMONKE_STATUS:')) {
+                const { BOT_INBOX_IDS } = await import('@/lib/constants');
+                if (!BOT_INBOX_IDS.includes(senderInboxId)) return;
+                const { parseAutomonkeStatus } = await import('@/lib/xmtp');
+                const parsed = parseAutomonkeStatus(inner);
+                if (!parsed) return;
+                useAppStore.getState().setAutomonkeStatus(parsed);
+                const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+                await AsyncStorage.setItem('automonke_enrolled', parsed.enrolled ? '1' : '0').catch(() => {});
+                await AsyncStorage.setItem('autonomonke_limit_orders_v1', parsed.limitOrdersEnabled ? '1' : '0').catch(() => {});
+                return;
+              }
+
               // IMAGE_CAPTION_RESPONSE: bot-generated (Ollama vision) photo
               // caption, fired async when the photo was SENT — may well
               // arrive minutes later while the user isn't on the bot's DM
@@ -1962,6 +1980,23 @@ export function useXmtp() {
                   if (!caption) return;
                   const { storeCaptionResponse } = await import('@/lib/imageCaption');
                   await storeCaptionResponse(messageId, caption);
+                  const { usePhotoReviewStore } = await import('@/store/photoReviewStore');
+                  usePhotoReviewStore.getState().setCaption(messageId, caption);
+                } catch { /* swallow */ }
+                return;
+              }
+
+              // STREAK_CAPTION_RESPONSE: bot-generated (Ollama) Banana
+              // Streak Day-7 tweet caption — same "may arrive while off the
+              // bot's DM screen" reasoning as IMAGE_CAPTION_RESPONSE above.
+              if (inner.startsWith('STREAK_CAPTION_RESPONSE:')) {
+                try {
+                  const { BOT_INBOX_IDS } = await import('@/lib/constants');
+                  if (!BOT_INBOX_IDS.includes(senderInboxId)) return;
+                  const caption = inner.slice('STREAK_CAPTION_RESPONSE:'.length);
+                  if (!caption) return;
+                  const { storeStreakCaptionResponse } = await import('@/lib/imageCaption');
+                  await storeStreakCaptionResponse(caption);
                 } catch { /* swallow */ }
                 return;
               }

@@ -371,18 +371,67 @@ export async function verifyNFTOwnership(
     }
   }
 
-  // ── 5. Nothing found a holder ────────────────────────────────────────────
-  if (!HELIUS_NFT_API_KEY && !QUICKNODE_DAS_URL) {
-    return {
-      verified: false,
-      nft: null,
-      error: "No NFT verification API key configured (HELIUS_API_KEY or QUICKNODE_DAS_URL).",
-    };
+  // ── 4. Worker-side fallback — /api/verify runs its own independent
+  // Helius -> QuickNode chain (separate keys/quotas from whatever's bundled
+  // into THIS app build). This is the difference between a per-build key
+  // outage being a temporary inconvenience versus a total, unrecoverable
+  // block: it's genuinely happened that a shipped build had a missing,
+  // exhausted, or misconfigured key with no working fallback at all — see
+  // this function's git history. Tried last (after the faster/richer
+  // indexed + on-chain checks above) since it only returns a bare
+  // owned/not-owned, no NFT metadata for the picker.
+  if (!confirmedNonHolder) {
+    try {
+      const res = await fetchWithAbort(
+        `https://onlymonkes-actions.jumpstreet25.workers.dev/api/verify?wallet=${encodeURIComponent(walletAddress)}`,
+        { method: "GET" },
+      );
+      if (res.ok) {
+        const data = await res.json() as { owned?: boolean; uncertain?: boolean; mint?: string; name?: string; image?: string | null; traits?: Array<{ trait_type: string; value: string }> };
+        if (data.owned && data.mint) {
+          console.log("[NFTVerify] Worker fallback: confirmed current holder");
+          const cached = await getCachedVerifiedNft(walletAddress);
+          const nft: OwnedNFT = cached ?? {
+            mint: data.mint,
+            name: data.name ?? "Saga Monke",
+            symbol: "MONKE",
+            image: data.image ?? null,
+            collectionMint: NFT_COLLECTION_ADDRESS,
+            traits: data.traits,
+          };
+          return { verified: true, nft, allNfts: [nft] };
+        }
+        if (data.uncertain) {
+          errors.push("Worker fallback: uncertain (both its providers failed too)");
+        } else {
+          errors.push("Worker fallback: 0 collection NFTs found");
+          confirmedNonHolder = true;
+        }
+      } else {
+        errors.push(`Worker fallback: HTTP ${res.status}`);
+      }
+    } catch (err) {
+      errors.push(`Worker fallback: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
-  // Only an authoritative source (Helius's DAS-capable "0 found", or the
-  // on-chain check explicitly confirming the wallet gave up/never held it)
-  // counts as real evidence of non-ownership.
+  // ── 5. Nothing found a holder ────────────────────────────────────────────
+  // 2026-08-05: no longer an early-return on "no local key configured" —
+  // the worker fallback above runs regardless of THIS build's own Helius/
+  // QuickNode keys, using its own independently-provisioned ones, so a
+  // build shipped with neither key set can still get a real, authoritative
+  // answer. Missing local keys are now just another line in `errors`
+  // (surfaced below if every provider, including the worker, comes back
+  // uncertain) rather than a hard stop before the worker fallback even had
+  // a chance to run.
+  if (!HELIUS_NFT_API_KEY && !QUICKNODE_DAS_URL) {
+    errors.unshift("(this build has no local HELIUS_API_KEY or QUICKNODE_DAS_URL configured)");
+  }
+
+  // Only an authoritative source (Helius's DAS-capable "0 found", the
+  // on-chain check explicitly confirming the wallet gave up/never held it,
+  // or the worker fallback's own clean "0 found") counts as real evidence
+  // of non-ownership.
   if (confirmedNonHolder) {
     return {
       verified: false,

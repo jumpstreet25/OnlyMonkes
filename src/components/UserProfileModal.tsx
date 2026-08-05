@@ -18,6 +18,7 @@ import {
   Alert,
 } from "react-native";
 import { GlassBottomSheet } from "@/components/GlassBottomSheet";
+import { MonkeGlass, MonkeGlassActionButton } from "@/components/MonkeGlass";
 import { useAppStore } from "@/store/appStore";
 import { THEME, FONTS, DEV_WALLET } from "@/lib/constants";
 import { shortenAddress } from "@/lib/nftVerification";
@@ -53,6 +54,8 @@ export function UserProfileModal({ visible, target, onClose, onEditProfile, onCh
   const { myInboxId, username: myUsername, bio: myBio, xAccount: myXAccount, tipWallet: myTipWallet, verifiedNft, wallet } = useAppStore();
   const isDevAdmin = wallet?.address === DEV_WALLET;
   const [showTipQr, setShowTipQr] = useState(false);
+  // Admin gift picker: null (closed) → "categories" → a specific category name.
+  const [giftPickerStep, setGiftPickerStep] = useState<string | null>(null);
 
   if (!target) return null;
 
@@ -223,37 +226,15 @@ export function UserProfileModal({ visible, target, onClose, onEditProfile, onCh
             </Pressable>
           )}
 
-          {/* Admin: Gift Shop Item (DEV_WALLET only, other profiles only) */}
+          {/* Admin: Gift Shop Item (DEV_WALLET only, other profiles only).
+              2026-07-26: was silently restricted to 7 hardcoded item IDs —
+              a full "all items" list (`items`) was already being built but
+              never actually used, the Alert below re-filtered from it
+              instead. Now genuinely lists every catalog item, category
+              first (Alert can't comfortably show 30+ buttons flat). */}
           {!isOwnProfile && isDevAdmin && (
             <Pressable
-              onPress={() => {
-                const { getAvailableItems } = require("@/lib/bananaShop");
-                const items = getAvailableItems() as { id: string; name: string; category: string; tier: number }[];
-                const buttons = items.map(item => ({
-                  text: `${item.name} (T${item.tier})`,
-                  onPress: () => {
-                    const { sendGiftItem } = require("@/hooks/useXmtp");
-                    sendGiftItem(target.senderAddress, item.id)
-                      .then(() => Alert.alert("Gift Sent", `${item.name} gifted to ${displayName}`))
-                      .catch((e: any) => Alert.alert("Gift Failed", e?.message ?? "Error"));
-                  },
-                }));
-                // Show category selection first, then items
-                Alert.alert("Gift Shop Item", `Choose an item to gift to ${displayName}`, [
-                  ...items
-                    .filter(i => ["pfp_theme", "pfp_aura", "pfp_frame_pulse", "pfp_glow_ring", "bubble_neon_blue", "bubble_gold_glow", "theme_pfp_full"].includes(i.id))
-                    .map(item => ({
-                      text: `${item.name} (T${item.tier})`,
-                      onPress: () => {
-                        const { sendGiftItem } = require("@/hooks/useXmtp");
-                        sendGiftItem(target.senderAddress, item.id)
-                          .then(() => Alert.alert("Gift Sent", `${item.name} gifted to ${displayName}`))
-                          .catch((e: any) => Alert.alert("Gift Failed", e?.message ?? "Error"));
-                      },
-                    })),
-                  { text: "Cancel", style: "cancel" },
-                ]);
-              }}
+              onPress={() => setGiftPickerStep("categories")}
               style={[styles.messageBtn, { backgroundColor: "rgba(255,213,79,0.1)", borderColor: "rgba(255,213,79,0.2)" }]}
             >
               <Text style={[styles.messageBtnText, { color: "#FFD54F" }]}>🎁 Gift Shop Item</Text>
@@ -313,6 +294,61 @@ export function UserProfileModal({ visible, target, onClose, onEditProfile, onCh
               recipientAvatar={nftImage}
             />
           )}
+
+          {/* Admin gift picker — category, then item within it */}
+          {isDevAdmin && giftPickerStep && (() => {
+            const { getAvailableItems, getCategoryName } = require("@/lib/bananaShop");
+            const items = getAvailableItems() as { id: string; name: string; category: import("@/lib/bananaShop").ShopCategory; tier: number }[];
+            const { sendGiftItem } = require("@/hooks/useXmtp");
+            const giftItem = (item: { id: string; name: string }) => {
+              setGiftPickerStep(null);
+              sendGiftItem(target.senderAddress, item.id)
+                .then(() => Alert.alert("Gift Sent", `${item.name} gifted to ${displayName}`))
+                .catch((e: any) => Alert.alert("Gift Failed", e?.message ?? "Error"));
+            };
+            const categories = Array.from(new Set(items.map(i => i.category)));
+            const inCategory = items.filter(i => i.category === giftPickerStep);
+
+            return (
+              <>
+                <MonkeGlass
+                  visible={giftPickerStep === "categories"}
+                  onClose={() => setGiftPickerStep(null)}
+                  position="bottom"
+                  animationType="slide"
+                >
+                  <Text style={styles.giftPickerTitle}>Gift to {displayName} — choose a category</Text>
+                  {categories.map(cat => (
+                    <MonkeGlassActionButton
+                      key={cat}
+                      label={getCategoryName(cat)}
+                      onPress={() => setGiftPickerStep(cat)}
+                    />
+                  ))}
+                  <MonkeGlassActionButton label="Cancel" variant="cancel" onPress={() => setGiftPickerStep(null)} />
+                </MonkeGlass>
+
+                <MonkeGlass
+                  visible={!!giftPickerStep && giftPickerStep !== "categories"}
+                  onClose={() => setGiftPickerStep(null)}
+                  position="bottom"
+                  animationType="slide"
+                >
+                  <Text style={styles.giftPickerTitle}>
+                    {giftPickerStep !== "categories" ? getCategoryName(giftPickerStep as any) : ""} — choose an item
+                  </Text>
+                  {inCategory.map(item => (
+                    <MonkeGlassActionButton
+                      key={item.id}
+                      label={`${item.name} (T${item.tier})`}
+                      onPress={() => giftItem(item)}
+                    />
+                  ))}
+                  <MonkeGlassActionButton label="Cancel" variant="cancel" onPress={() => setGiftPickerStep(null)} />
+                </MonkeGlass>
+              </>
+            );
+          })()}
       </View>
     </GlassBottomSheet>
   );
@@ -328,6 +364,13 @@ function StatPill({ label, value, suffix }: { label: string; value: number; suff
 }
 
 const styles = StyleSheet.create({
+  giftPickerTitle: {
+    fontFamily: FONTS.display,
+    fontSize: 16,
+    color: THEME.text,
+    textAlign: "center",
+    marginBottom: 8,
+  },
   card: {
     alignItems: "center",
     gap: 10,

@@ -26,6 +26,7 @@ import {
   Pressable,
   ActivityIndicator,
   KeyboardAvoidingView,
+  Keyboard,
   Platform,
   TextInput,
   Alert,
@@ -110,8 +111,10 @@ import type { ChatMessage, ReactionEmoji } from "@/types";
 import type { TipAmount } from "@/lib/constants";
 
 // ── Extracted sub-components ────────────────────────────────────────────────
-import { ChatHeader } from "@/components/ChatHeader";
+import { ChatHeader, CHAT_HEADER_HEIGHT } from "@/components/ChatHeader";
 import { ChatModals } from "@/components/ChatModals";
+import { MonkeGlass, MonkeGlassActionButton } from "@/components/MonkeGlass";
+import { GoLivePicker } from "@/components/GoLivePicker";
 import { ChatMessageList } from "@/components/ChatMessageList";
 
 export default function ChatScreen() {
@@ -201,6 +204,33 @@ export default function ChatScreen() {
   const [pfpPickerOpen, setPfpPickerOpen] = useState(false);
   const [pfpImagePickerOpen, setPfpImagePickerOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  // 2026-07-24: measured height of the absolute-positioned bottom toolbar
+  // (ChatInput + support banner combined) — varies with keyboard state,
+  // reply banner, slash/mention suggestions. Fed to ChatMessageList as
+  // scroll-content bottom padding so messages can scroll fully clear of
+  // it while the list itself stays full-bleed behind the glass overlay.
+  const [bottomBarHeight, setBottomBarHeight] = useState(0);
+  // 2026-07-24: explicit keyboard height, since the bottom toolbar is now
+  // position:absolute (bottom:0 no longer reflows with it the way a normal
+  // flex child would). Neither KeyboardAvoidingView's "height" behavior nor
+  // windowSoftInputMode="adjustResize" alone reliably repositions an
+  // absolutely-positioned child under edge-to-edge/immersive mode — found
+  // live: the toolbar was rendering fully hidden behind the keyboard,
+  // typed text invisible. Tracking real IME height directly and offsetting
+  // `bottom` by it is the robust fix regardless of what adjustResize does.
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  useEffect(() => {
+    const showSub = Keyboard.addListener("keyboardDidShow", (e) => {
+      setKeyboardHeight(e.endCoordinates?.height ?? 0);
+    });
+    const hideSub = Keyboard.addListener("keyboardDidHide", () => {
+      setKeyboardHeight(0);
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
   const [profileTarget, setProfileTarget] = useState<ProfileTarget | null>(null);
   const [refreshingChat, setRefreshingChat] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
@@ -228,12 +258,31 @@ export default function ChatScreen() {
   const [editText, setEditText] = useState("");
   const [xShareImageUri, setXShareImageUri] = useState<string | null>(null);
   const [xShareMessageId, setXShareMessageId] = useState<string | null>(null);
+  // Photo review — shown after capture, before send. Holds the pending
+  // photo's data until the user picks a caption (AI, their own, or none)
+  // and taps Send; see handleCamera/handlePhotoReviewSend below.
+  const [photoReviewVisible, setPhotoReviewVisible] = useState(false);
+  const [photoReviewRequestId, setPhotoReviewRequestId] = useState<string | null>(null);
+  const pendingPhotoRef = useRef<{ compressedUri: string; b64: string; dataUri: string } | null>(null);
   const [skrPrice, setSkrPrice] = useState<string | null>(null);
   const [floorPrice, setFloorPrice] = useState<string | null>(null);
   const [pinnedMessages, setPinnedMessages] = useState<PinnedMessage[]>([]);
   const flatListRef = useRef<FlashListRef<ChatMessage>>(null);
   const initialMsgIdsRef = useRef<Set<string>>(new Set());
   const isNearBottomRef = useRef(true);
+  // 2026-07-26: grey/frozen-screen bug on return from X-share. Launching
+  // the native share intent backgrounds the app; shareImageToX()'s promise
+  // resolves (dispatching the intent) almost immediately, well before the
+  // user actually returns, so the "Image saved" toast used to fire right
+  // then. RN JS timers pause while backgrounded, so that toast's own
+  // mount/dismiss animation can still be mid-flight exactly when the
+  // AppState 'active' handler below kicks off its heavy XMTP resync on
+  // resume — same "toast mounts while a heavy operation tears down/redraws"
+  // race as 4+ prior grey-screen fixes, just triggered by the OS AppState
+  // transition instead of an in-app Modal close. Fix: queue the toast text
+  // here instead of calling toast.success directly; the AppState handler
+  // fires it only after its own resync work has fully settled.
+  const pendingResumeToastRef = useRef<string | null>(null);
   // Synchronous double-tap guard for the send button. The React `isSending`
   // state is async — a fast tap-tap on Seeker can fire two onPress events
   // before the state commit, both passing the canSend gate. This ref blocks
@@ -389,6 +438,15 @@ export default function ChatScreen() {
       } catch {
         _streamHealth.foregroundReconnects++;
         initialize().catch(() => {});
+      }
+
+      // Flush any toast queued while backgrounded (e.g. X-share "Image
+      // saved") now that the resync above has settled — see
+      // pendingResumeToastRef's comment for why this can't just fire
+      // immediately from the code that queues it.
+      if (pendingResumeToastRef.current) {
+        toast.success(pendingResumeToastRef.current);
+        pendingResumeToastRef.current = null;
       }
 
       const now = Date.now();
@@ -792,6 +850,10 @@ export default function ChatScreen() {
   }, [send, myAddress, username, verifiedNft]);
 
   // ─── Camera capture ────────────────────────────────────────────────────────
+  // 2026-07-26: capture no longer auto-sends. Photo is held in
+  // pendingPhotoRef until PhotoReviewModal resolves with a caption
+  // decision (AI-generated, user-written, or none) — see
+  // handlePhotoReviewSend/Cancel below.
   const handleCamera = useCallback(async () => {
     try {
       const IP = await getImagePicker();
@@ -813,40 +875,89 @@ export default function ChatScreen() {
       const FS = await getFileSystem();
       const b64 = await FS.readAsStringAsync(compressedUri, { encoding: FS.EncodingType.Base64 });
       const dataUri = `data:image/jpeg;base64,${b64}`;
-      const content = `IMAGE:${dataUri}`;
-      const optimistic: ChatMessage = {
-        id: `opt-${Date.now()}`,
-        senderAddress: myAddress,
-        senderUsername: username ?? undefined,
-        senderNft: verifiedNft ?? undefined,
-        content,
-        sentAt: new Date(),
-        reactions: {} as ChatMessage["reactions"],
-        status: "sending",
-      };
-      useChatStore.getState().addMessage(optimistic);
-      setTimeout(() => flatListRef.current?.scrollToOffset({ offset: 0, animated: true }), 50);
-      try {
-        await send(content);
-        useChatStore.getState().updateMessageStatus(optimistic.id, "sent");
-        appendCachedMessage("main_chat", { ...optimistic, status: "sent" }).catch(() => {});
-        setXShareImageUri(dataUri);
-        setXShareMessageId(optimistic.id);
-        // Fire-and-forget: ask the bot to caption this for X, in the
-        // background — NOT awaited, and NOT on the critical path for
-        // sending the photo. See imageCaption.ts for why this fires now
-        // rather than waiting until the user taps Share to X.
-        import("@/lib/imageCaption").then(({ requestImageCaption }) => {
-          requestImageCaption(optimistic.id, b64).catch(() => {});
-        });
-      } catch (err: any) {
-        Alert.alert("Camera error", err?.message ?? "Could not send photo.");
-        useChatStore.getState().updateMessageStatus(optimistic.id, "failed");
-      }
+      pendingPhotoRef.current = { compressedUri, b64, dataUri };
+      const requestId = `review-${Date.now()}`;
+      setPhotoReviewRequestId(requestId);
+      setPhotoReviewVisible(true);
+      // Fire the caption request as early as possible — same "fire early,
+      // ready by the time it's needed" pattern as before, just now feeding
+      // the review modal live (via photoReviewStore) instead of a silent
+      // background cache the user never sees until Share to X.
+      import("@/lib/imageCaption").then(({ requestImageCaption }) => {
+        requestImageCaption(requestId, b64).catch(() => {});
+      });
     } catch (err: any) {
       Alert.alert("Camera error", err?.message ?? "Could not open camera.");
     }
+  }, []);
+
+  // ─── Photo send (after review modal resolves) ──────────────────────────────
+  const sendPhotoWithCaption = useCallback(async (dataUri: string, b64: string, caption: string) => {
+    const content = `IMAGE:${dataUri}`;
+    const optimistic: ChatMessage = {
+      id: `opt-${Date.now()}`,
+      senderAddress: myAddress,
+      senderUsername: username ?? undefined,
+      senderNft: verifiedNft ?? undefined,
+      content,
+      sentAt: new Date(),
+      reactions: {} as ChatMessage["reactions"],
+      status: "sending",
+    };
+    useChatStore.getState().addMessage(optimistic);
+    setTimeout(() => flatListRef.current?.scrollToOffset({ offset: 0, animated: true }), 50);
+    try {
+      await send(content);
+      useChatStore.getState().updateMessageStatus(optimistic.id, "sent");
+      appendCachedMessage("main_chat", { ...optimistic, status: "sent" }).catch(() => {});
+      setXShareImageUri(dataUri);
+      setXShareMessageId(optimistic.id);
+      if (caption) {
+        // Cache under the REAL sent message's id — handleShareToX looks
+        // caption up by xShareMessageId, regardless of whether it came
+        // from the bot or was hand-typed in the review modal.
+        const { storeCaptionResponse } = await import("@/lib/imageCaption");
+        await storeCaptionResponse(optimistic.id, caption);
+        // Same Monke-voiced caption shown in-chat as a follow-up message —
+        // Share to X appends @xOnlyMonkes on top of this, never the other
+        // way around (see handleShareToX).
+        const capMsg: ChatMessage = {
+          id: `opt-${Date.now()}-cap`,
+          senderAddress: myAddress,
+          senderUsername: username ?? undefined,
+          senderNft: verifiedNft ?? undefined,
+          content: caption,
+          sentAt: new Date(),
+          reactions: {} as ChatMessage["reactions"],
+          status: "sending",
+        };
+        useChatStore.getState().addMessage(capMsg);
+        try {
+          await send(caption);
+          useChatStore.getState().updateMessageStatus(capMsg.id, "sent");
+          appendCachedMessage("main_chat", { ...capMsg, status: "sent" }).catch(() => {});
+        } catch {
+          useChatStore.getState().updateMessageStatus(capMsg.id, "failed");
+        }
+      }
+    } catch (err: any) {
+      Alert.alert("Camera error", err?.message ?? "Could not send photo.");
+      useChatStore.getState().updateMessageStatus(optimistic.id, "failed");
+    }
   }, [send, myAddress, username, verifiedNft]);
+
+  const handlePhotoReviewSend = useCallback(async (caption: string) => {
+    const pending = pendingPhotoRef.current;
+    setPhotoReviewVisible(false);
+    pendingPhotoRef.current = null;
+    if (!pending) return;
+    await sendPhotoWithCaption(pending.dataUri, pending.b64, caption);
+  }, [sendPhotoWithCaption]);
+
+  const handlePhotoReviewCancel = useCallback(() => {
+    setPhotoReviewVisible(false);
+    pendingPhotoRef.current = null;
+  }, []);
 
   // ─── File picker (RemoteAttachment) ──────────────────────────────────────────
   const handleFilePicker = useCallback(async () => {
@@ -863,15 +974,17 @@ export default function ChatScreen() {
     }
   }, [sendFile]);
 
-  // ─── Camera button — alert for Photo vs Video vs File ──────────────────────
+  // ─── Camera button — MonkeGlass sheet for Photo vs Video vs File ───────────
+  // 2026-07-27: was Alert.alert — a native OS dialog that renders as a flat
+  // grey system rectangle and can't be styled at all in React Native (no
+  // custom background/blur/font, full stop). Replaced with a real
+  // MonkeGlass sheet so this picker actually reads as glass like the rest
+  // of the app.
+  const [shareMediaSheetOpen, setShareMediaSheetOpen] = useState(false);
+  const [livePickerOpen, setLivePickerOpen] = useState(false);
   const handleCameraButtonPress = useCallback(() => {
-    Alert.alert('Share media', 'Choose an option', [
-      { text: '📷 Photo', onPress: handleCamera },
-      { text: '🎥 Video', onPress: () => setVideoModalOpen(true) },
-      { text: '📎 File', onPress: handleFilePicker },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
-  }, [handleCamera, handleFilePicker]);
+    setShareMediaSheetOpen(true);
+  }, []);
 
   // ─── Video send (from VideoCameraModal) ──────────────────────────────────────
   const handleVideoSend = useCallback(async (content: string) => {
@@ -938,15 +1051,18 @@ export default function ChatScreen() {
     const messageId = xShareMessageId;
     setXShareImageUri(null);
     setXShareMessageId(null);
-    // Bot-generated (Ollama vision) caption, if it arrived in time — fired
-    // when the photo was sent, not blocking this tap. Falls back to the
-    // generic caption if it's not ready yet (or generation failed).
+    // Bot-generated (Ollama vision) caption, if it arrived in time — the
+    // SAME Monke-voiced text already shown in-chat as a follow-up message
+    // (see sendPhotoWithCaption). @xOnlyMonkes is appended HERE, for the X
+    // post specifically — never stored back into the chat message itself.
+    // Falls back to the generic (already-tagged) caption if nothing was
+    // cached (not ready yet, or generation failed).
     let caption = fallbackCaption;
     if (messageId) {
       try {
         const { getCachedCaption } = await import("@/lib/imageCaption");
         const cached = await getCachedCaption(messageId);
-        if (cached) caption = cached;
+        if (cached) caption = `${cached} @xOnlyMonkes`;
       } catch { /* fall back to generic */ }
     }
     // 2026-07-09: defer launching the native share/intent until after this
@@ -961,7 +1077,18 @@ export default function ChatScreen() {
       }
       try {
         const { saved } = await shareImageToX(imageUri, caption);
-        if (saved) toast.success('Image saved — tap the image icon in X to attach it 📸');
+        // Queued, not shown directly — see pendingResumeToastRef's comment.
+        // Fallback timer covers the (unlikely) case AppState 'active' never
+        // fires to flush it, so the toast still shows eventually either way.
+        if (saved) {
+          pendingResumeToastRef.current = 'Image saved — tap the image icon in X to attach it 📸';
+          setTimeout(() => {
+            if (pendingResumeToastRef.current) {
+              toast.success(pendingResumeToastRef.current);
+              pendingResumeToastRef.current = null;
+            }
+          }, 4000);
+        }
       } catch {
         /* non-fatal */
       }
@@ -1199,27 +1326,46 @@ export default function ChatScreen() {
     <ErrorBoundary fallbackMessage="Chat hit an error. Tap below to reload.">
       <KeyboardAvoidingView
         style={[styles.container, { backgroundColor: themeBg }]}
+        // 2026-07-24: "height" on Android double-compensates with the
+        // Activity's own windowSoftInputMode="adjustResize" (AndroidManifest)
+        // — both resize the container for the keyboard independently, and
+        // when the keyboard closes the two resizes don't always revert in
+        // sync, leaving phantom reserved space at the bottom (looked like
+        // the bottom bar "riding up" after any keyboard interaction).
+        // adjustResize alone is sufficient; matches ThreadScreen's already-
+        // correct pattern.
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         keyboardVerticalOffset={0}
       >
         {/* Chat World background (renders behind everything when equipped) */}
         <WorldLayer active={!drawerOpen} />
 
-        {/* Header */}
-        <ChatHeader
-          themeSurface={themeSurface}
-          themeBorder={themeBorder}
-          bananaBalance={bananaBalance}
-          totalDmUnread={totalDmUnread}
-          communityBadges={communityBadges}
-          isGroupMember={isGroupMember}
-          onOpenDrawer={() => setDrawerOpen(true)}
-          onDmNavigation={() => {
-            useAppStore.getState().clearCommunityBadge('dms');
-            router.push("/dms" as any);
-          }}
-        />
+        {/* Header — 2026-07-24: absolute overlay (was a normal flex sibling
+            taking its own row of layout space) so the message list below
+            can extend full-bleed behind it, letting the glass/blur actually
+            show real scrolled content instead of blurring nothing. */}
+        <View style={{ position: "absolute", top: 0, left: 0, right: 0, zIndex: 100, elevation: 100 }}>
+          <ChatHeader
+            themeSurface={themeSurface}
+            themeBorder={themeBorder}
+            bananaBalance={bananaBalance}
+            totalDmUnread={totalDmUnread}
+            communityBadges={communityBadges}
+            isGroupMember={isGroupMember}
+            onOpenDrawer={() => setDrawerOpen(true)}
+            onDmNavigation={() => {
+              useAppStore.getState().clearCommunityBadge('dms');
+              router.push("/dms" as any);
+            }}
+          />
+        </View>
 
+        {/* 2026-07-24: everything below is normal flex flow again, just
+            pushed down by CHAT_HEADER_HEIGHT since the header itself no
+            longer takes flex space (it's the absolute overlay above).
+            box-none so empty space here (e.g. no banners active) doesn't
+            block scroll/taps on the full-bleed message list underneath. */}
+        <View style={{ flex: 1, marginTop: CHAT_HEADER_HEIGHT, zIndex: 50 }} pointerEvents="box-none">
         {/* Offline indicator */}
         {isOffline && (
           <View style={{ backgroundColor: '#EF4444', paddingVertical: 6, alignItems: 'center' }}>
@@ -1401,41 +1547,62 @@ export default function ChatScreen() {
             </Text>
           </View>
         )}
+        </View>
 
-        {/* Messages */}
+        {/* Messages — 2026-07-24: full-bleed absolute layer, BEHIND the
+            header/footer overlays in z-order (default zIndex, both of
+            those are 100) so scrolled content can actually pass behind
+            their glass/blur instead of the blur having nothing real to
+            sample. topInset/bottomInset pad the scroll content so messages
+            still rest visually clear of the header/toolbar at wherever the
+            list is currently scrolled to. */}
         {isGroupMember && (
-          <ChatMessageList
-            messages={messages}
-            reactionVersion={reactionVersion}
-            myAddress={myAddress}
-            isGroupAdmin={isGroupAdmin}
-            isLoadingHistory={isLoadingHistory}
-            refreshingChat={refreshingChat}
-            initialMsgIdsRef={initialMsgIdsRef}
-            flatListRef={flatListRef}
-            handleReact={handleReact}
-            setReplyingTo={setReplyingTo}
-            handlePressUser={handlePressUser}
-            handleTip={handleTip}
-            handleStickerReact={handleStickerReact}
-            setLightboxUrl={setLightboxUrl}
-            setVideoLightboxUrl={setVideoLightboxUrl}
-            setChartSymbol={setChartSymbol}
-            handleEditMessage={handleEditMessage}
-            handleDelete={handleDelete}
-            handlePin={isGroupAdmin ? handlePin : undefined}
-            handleThread={handleThread}
-            onOpenActions={setActionSheetTarget}
-            handleRefreshChat={handleRefreshChat}
-            loadOlderMessages={loadOlderMessages}
-            setShowScrollFab={setShowScrollFab}
-            setUnreadWhileScrolled={setUnreadWhileScrolled}
-            isNearBottomRef={isNearBottomRef}
-          />
+          <View style={StyleSheet.absoluteFill}>
+            <ChatMessageList
+              messages={messages}
+              reactionVersion={reactionVersion}
+              myAddress={myAddress}
+              isGroupAdmin={isGroupAdmin}
+              isLoadingHistory={isLoadingHistory}
+              refreshingChat={refreshingChat}
+              initialMsgIdsRef={initialMsgIdsRef}
+              flatListRef={flatListRef}
+              handleReact={handleReact}
+              setReplyingTo={setReplyingTo}
+              handlePressUser={handlePressUser}
+              handleTip={handleTip}
+              handleStickerReact={handleStickerReact}
+              setLightboxUrl={setLightboxUrl}
+              setVideoLightboxUrl={setVideoLightboxUrl}
+              setChartSymbol={setChartSymbol}
+              handleEditMessage={handleEditMessage}
+              handleDelete={handleDelete}
+              handlePin={isGroupAdmin ? handlePin : undefined}
+              handleThread={handleThread}
+              onOpenActions={setActionSheetTarget}
+              handleRefreshChat={handleRefreshChat}
+              loadOlderMessages={loadOlderMessages}
+              setShowScrollFab={setShowScrollFab}
+              setUnreadWhileScrolled={setUnreadWhileScrolled}
+              isNearBottomRef={isNearBottomRef}
+              topInset={CHAT_HEADER_HEIGHT}
+              bottomInset={bottomBarHeight + keyboardHeight}
+            />
+          </View>
         )}
 
-        {/* Input */}
-        {isGroupMember && <ChatInput
+        {/* Bottom toolbar — 2026-07-24: absolute overlay (was normal flex
+            siblings taking their own space at the bottom of the column) so
+            the message list above can extend full-bleed behind it. Height
+            is dynamic (reply banner, slash suggestions, keyboard), so it's
+            measured via onLayout and fed back to ChatMessageList as scroll
+            bottom padding. */}
+        {isGroupMember && (
+        <View
+          style={{ position: "absolute", bottom: keyboardHeight, left: 0, right: 0, zIndex: 100, elevation: 100 }}
+          onLayout={(e) => setBottomBarHeight(e.nativeEvent.layout.height)}
+        >
+        <ChatInput
           value={inputText}
           onChangeText={setInputText}
           onSend={handleSend}
@@ -1450,7 +1617,8 @@ export default function ChatScreen() {
           typingUsers={typingUsers}
           onLiveVideo={!activeVideoRoom ? handleStartVideoCall : undefined}
           onAvatarRoom={!activeAvatarRoom ? handleStartAvatarRoom : undefined}
-        />}
+          onOpenLivePicker={() => setLivePickerOpen(true)}
+        />
 
         {/* Support banner — 3-column: [SKR] [Support] [Floor] */}
         {/* Match the chat header / input bar bg when a Chat World is equipped
@@ -1458,7 +1626,7 @@ export default function ChatScreen() {
             Bottom safe-area padding lives INSIDE the bar so its bg extends
             edge-to-edge behind the Android nav bar / iOS home indicator —
             no black themeBg gap below. */}
-        {isGroupMember && (() => {
+        {(() => {
           // Per-world tappable accent (v29). When no PFP theme override,
           // tappable chrome (SKR price btn, Floor btn, Help Support text)
           // adopts the world's accent — warm honey gold for Banana Grove,
@@ -1475,13 +1643,14 @@ export default function ChatScreen() {
           return (
           <View style={[
             styles.supportBanner,
-            { borderTopColor: themeBorder, paddingBottom: 6 + insets.bottom },
+            { borderTopColor: themeBorder, paddingBottom: 4 + insets.bottom },
           ]}>
             {/* MonkeGlass — same treatment as ChatHeader/ChatInput so all
                 three bars read as one unified frame (see comment above).
                 World tint (when equipped) layers on top of the blur instead
-                of replacing it. */}
-            <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />
+                of replacing it. Was fully transparent (no world) or an
+                opaque world tint with no blur behind it at all before. */}
+            <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} pointerEvents="none" />
             <View
               style={[StyleSheet.absoluteFill, { backgroundColor: worldId ? getWorldBarTint(worldId) : GLASS_CHROME_BG }]}
               pointerEvents="none"
@@ -1521,12 +1690,14 @@ export default function ChatScreen() {
           </View>
           );
         })()}
+        </View>
+        )}
 
         {/* Non-members don't render the support banner (which carries the
             bottom safe-area padding for group members), so add a transparent
             fallback spacer here. World layer still shows through. */}
         {!isGroupMember && insets.bottom > 0 && (
-          <View pointerEvents="none" style={{ height: insets.bottom }} />
+          <View pointerEvents="none" style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: insets.bottom }} />
         )}
         <EdgePullDetector
           onTrigger={() => setDrawerOpen(true)}
@@ -1538,6 +1709,39 @@ export default function ChatScreen() {
             mower isn't active. */}
         <BananaMowerOverlay />
       </KeyboardAvoidingView>
+      <MonkeGlass
+        visible={shareMediaSheetOpen}
+        onClose={() => setShareMediaSheetOpen(false)}
+        position="bottom"
+        animationType="slide"
+      >
+        <Text style={{ fontFamily: FONTS.display, fontSize: 18, color: THEME.text, textAlign: "center", marginBottom: 8 }}>
+          Share media
+        </Text>
+        <MonkeGlassActionButton
+          label="📷 Photo"
+          onPress={() => { setShareMediaSheetOpen(false); handleCamera(); }}
+        />
+        <MonkeGlassActionButton
+          label="🎥 Video"
+          onPress={() => { setShareMediaSheetOpen(false); setVideoModalOpen(true); }}
+        />
+        <MonkeGlassActionButton
+          label="📎 File"
+          onPress={() => { setShareMediaSheetOpen(false); handleFilePicker(); }}
+        />
+        <MonkeGlassActionButton
+          label="Cancel"
+          variant="cancel"
+          onPress={() => setShareMediaSheetOpen(false)}
+        />
+      </MonkeGlass>
+      <GoLivePicker
+        visible={livePickerOpen}
+        onClose={() => setLivePickerOpen(false)}
+        onLiveVideo={!activeVideoRoom ? handleStartVideoCall : undefined}
+        onAvatarRoom={!activeAvatarRoom ? handleStartAvatarRoom : undefined}
+      />
       <ChatModals
         showConfetti={showConfetti}
         setShowConfetti={setShowConfetti}
@@ -1615,6 +1819,11 @@ export default function ChatScreen() {
         xShareImageUri={xShareImageUri}
         setXShareImageUri={setXShareImageUri}
         handleShareToX={handleShareToX}
+        photoReviewVisible={photoReviewVisible}
+        photoReviewImageUri={pendingPhotoRef.current?.compressedUri ?? null}
+        photoReviewRequestId={photoReviewRequestId}
+        handlePhotoReviewSend={handlePhotoReviewSend}
+        handlePhotoReviewCancel={handlePhotoReviewCancel}
         actionSheetTarget={actionSheetTarget}
         setActionSheetTarget={setActionSheetTarget}
         handleReact={handleReact}
@@ -1776,10 +1985,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     overflow: 'hidden',
-    // 2026-07-23: 9 -> 6, part of a bottom-bar compaction pass. paddingBottom
-    // is overridden separately below (9 + insets.bottom -> 6 + insets.bottom)
+    // 2026-07-23: 9 -> 6 -> 4, part of a bottom-bar compaction pass.
+    // paddingBottom is overridden separately below (now 4 + insets.bottom)
     // where this banner is actually rendered.
-    paddingVertical: 6,
+    paddingVertical: 4,
     paddingHorizontal: 12,
     // No borderTop — separator removed per design pass 2026-05-06.
     // Background is now the BlurView + tint View layered as the first two

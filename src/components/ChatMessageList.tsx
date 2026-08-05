@@ -13,6 +13,7 @@ import * as Haptics from "expo-haptics";
 import { THEME, FONTS } from "@/lib/constants";
 import { MessageBubble } from "@/components/MessageBubble";
 import type { ChatMessage, ReactionEmoji } from "@/types";
+import { isMineInbox } from "@/lib/inboxLinking";
 import type { ProfileTarget } from "@/components/UserProfileModal";
 
 /** Swipe-to-reply wrapper — swipe right reveals reply arrow, triggers onReply */
@@ -62,6 +63,15 @@ export interface ChatMessageListProps {
   setShowScrollFab: (v: boolean) => void;
   setUnreadWhileScrolled: (v: number) => void;
   isNearBottomRef: React.MutableRefObject<boolean>;
+
+  /**
+   * 2026-07-24: extra scroll-content padding so messages can pass BEHIND
+   * the header/bottom-toolbar glass overlays (ChatScreen positions this
+   * list full-bleed, absolute, top:0/bottom:0) instead of stopping short
+   * of them. Without this, the overlays would have nothing real to blur.
+   */
+  topInset?: number;
+  bottomInset?: number;
 }
 
 const SCROLL_THRESHOLD = 270; // ~3 message heights
@@ -116,6 +126,8 @@ const ChatMessageListInner = React.forwardRef<FlashListRef<ChatMessage>, ChatMes
     setShowScrollFab,
     setUnreadWhileScrolled,
     isNearBottomRef,
+    topInset = 0,
+    bottomInset = 0,
   } = props;
 
   const swipeableRefs = useRef<Map<string, Swipeable>>(new Map());
@@ -156,7 +168,7 @@ const ChatMessageListInner = React.forwardRef<FlashListRef<ChatMessage>, ChatMes
           <View>
             <MessageBubble
               message={item}
-              isOwn={item.senderAddress === myAddress}
+              isOwn={isMineInbox(item.senderAddress, myAddress)}
               isLatest={isLatest}
               isNew={isNew}
               onReact={handleReact}
@@ -213,14 +225,14 @@ const ChatMessageListInner = React.forwardRef<FlashListRef<ChatMessage>, ChatMes
         onRefresh={handleRefreshChat}
         onEndReached={loadOlderMessages}
         onEndReachedThreshold={0.3}
+        onScroll={handleScroll}
+        scrollEventThrottle={200}
         ListFooterComponent={isLoadingHistory ? (
           <View style={{ paddingVertical: 16, alignItems: 'center' }}>
             <ActivityIndicator color={THEME.accent} size="small" />
             <Text style={{ fontFamily: FONTS.mono, fontSize: 10, color: THEME.textFaint, marginTop: 4 }}>Loading older messages…</Text>
           </View>
         ) : null}
-        onScroll={handleScroll}
-        scrollEventThrottle={200}
       />
     </View>
   );

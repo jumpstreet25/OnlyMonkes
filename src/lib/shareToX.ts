@@ -87,8 +87,14 @@ export function shareBadgeEarned(badgeName: string, badgeEmoji: string): void {
   );
 }
 
-/** Share Day 7 banana bonus. */
-export function shareDay7Bonus(totalBananas: number, cyclesCompleted: number): void {
+/** Share Day 7 banana bonus. Falls back to the static template below when
+ *  no AI-generated caption is passed (e.g. the bot didn't respond in time —
+ *  see requestStreakCaption/getCachedStreakCaption in imageCaption.ts). */
+export function shareDay7Bonus(totalBananas: number, cyclesCompleted: number, aiCaption?: string | null): void {
+  if (aiCaption) {
+    openTweet(`${aiCaption}\n\n${HASHTAGS}`);
+    return;
+  }
   openTweet(
     `🍌 BANANA BONUS! 7-day streak complete on ${HANDLE}!\n\n` +
     `${totalBananas} bananas earned · ${cyclesCompleted} cycles deep\n` +

@@ -93,7 +93,21 @@ export default function VerifyScreen() {
     return () => clearInterval(timer);
   }, [phase]);
 
-  useEffect(() => { runVerification(); }, []);
+  // 2026-07-26: root-caused the "lands on retry screen" bug the 2026-07-23
+  // diagnostic log below was added to chase. This effect used to fire once
+  // on mount with `[]` deps regardless of wallet state — if the wallet-
+  // connect promise resolved even slightly after this screen mounted, the
+  // ONE AND ONLY verification attempt ran with a stale null wallet, hit
+  // "No wallet connected", and never automatically retried once wallet
+  // actually became available (empty deps array never re-fires). The user
+  // had to manually tap Retry, by which point wallet was set and it just
+  // worked — exactly the confusing "retry screen, but retry works" shape
+  // reported by real holders. Now gated on wallet.address itself: never
+  // fires on a null wallet, and automatically re-fires the moment it
+  // becomes available, closing the race instead of requiring manual retry.
+  useEffect(() => {
+    if (wallet?.address) runVerification();
+  }, [wallet?.address]);
 
   const goToChat = async (nftOverride?: OwnedNFT) => {
     setPhase("ready");
@@ -102,6 +116,12 @@ export default function VerifyScreen() {
       await saveVerifiedNft(nftToSave);
       await stampNftCheck();
     }
+    // Re-apply shop theme now that verifiedNft is populated — covers
+    // PFP Full Theme, whose NFT-color extraction can only run once the
+    // NFT is actually known (see the same fix in ConnectScreen.tsx's
+    // session-restore path).
+    const { applyThemeFromShop } = await import("@/lib/shopTheme");
+    applyThemeFromShop(useAppStore.getState().shopStyles);
     if (wallet?.address) {
       // Fire-and-forget — wallet-scoped one-time flag makes this safe against
       // re-verification (e.g. 7-day session expiry re-running this screen).

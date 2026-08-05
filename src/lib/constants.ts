@@ -183,6 +183,9 @@ export function getWorldAccent(worldId: string | undefined | null): string {
     // Deep Space — nebula purple
     case 'world_deep_space':
       return '#9B70FF';
+    // Frost Grove — icy cyan-blue, cold moonlight accent
+    case 'world_frost_grove':
+      return '#8FD8FF';
     default:
       return '#6CB4EE';
   }
@@ -215,6 +218,9 @@ export function getWorldBarTint(worldId: string | undefined | null): string {
     // Deep Space — deep purple-black void.
     case 'world_deep_space':
       return 'rgba(6, 3, 18, 0.36)';
+    // Frost Grove — dark cold-blue tint matching the midnight-navy gradient's upper stop.
+    case 'world_frost_grove':
+      return 'rgba(8, 18, 30, 0.32)';
     default:
       return WORLD_BAR_BG;
   }

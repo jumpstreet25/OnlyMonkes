@@ -7,9 +7,11 @@
     "deploy": "wrangler deploy"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260804.1",
     "wrangler": "^4.0.0"
   },
   "dependencies": {
+    "@cf-wasm/photon": "^0.3.7",
     "@solana/spl-token": "^0.4.0",
     "@solana/web3.js": "^1.95.0",
     "bs58": "^6.0.0"

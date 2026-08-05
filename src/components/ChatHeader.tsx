@@ -10,11 +10,22 @@ import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BlurView } from "expo-blur";
 import { THEME, FONTS, getWorldBarTint } from "@/lib/constants";
-import { getBlurProps, GLASS_CHROME_BG } from "@/lib/glassTheme";
+import { getBlurProps } from "@/lib/glassTheme";
 import { getLocatedUserCount } from "@/lib/userProfile";
 import { markOnboardingStep } from "@/components/OnboardingChecklist";
 import { BotCommandTicker } from "@/components/BotCommandTicker";
 import { useAppStore } from "@/store/appStore";
+
+// 2026-07-24: always-on glass — was themeSurface (#12121A, fully opaque)
+// when no world is equipped, which hid the BlurView below completely.
+// World tints (getWorldBarTint) were already translucent (0.30-0.38) and
+// didn't need this treatment.
+const HEADER_BG_NO_WORLD = "rgba(18, 18, 26, 0.19)";
+
+// Exported so ChatScreen can position the header as an absolute overlay
+// and pad the message list's scroll content to clear it — must match
+// styles.header.height below exactly.
+export const CHAT_HEADER_HEIGHT = 100;
 
 export interface ChatHeaderProps {
   themeSurface: string;
@@ -45,17 +56,16 @@ export function ChatHeader({
   // flat dark band on top of it. Falls back to themeSurface when no
   // world is set.
   const worldId = useAppStore((s) => s.shopStyles?.worldId) as string | undefined;
-  const headerBg = worldId ? getWorldBarTint(worldId) : GLASS_CHROME_BG;
+  const headerBg = worldId ? getWorldBarTint(worldId) : HEADER_BG_NO_WORLD;
   // Status-bar safe-area padding lives INSIDE the header so the bg extends
   // edge-to-edge (behind the status bar) — keeps the world layer visible up
   // top and avoids a black themeBg gap above the chrome.
   const insets = useSafeAreaInsets();
   return (
     <View style={[styles.header, { borderBottomColor: themeBorder, paddingTop: insets.top }]}>
-      {/* MonkeGlass — blur layer behind the world/theme tint. Not in an
-          RN <Modal>, so this renders in the Activity's own window (same
-          safe case as GlassBottomSheet's backdrop — see glassTheme.ts). */}
-      <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />
+      {/* 2026-07-24: always-on glass — blurs the message list scrolling
+          behind the header, world-equipped or not. */}
+      <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} pointerEvents="none" />
       <View style={[StyleSheet.absoluteFill, { backgroundColor: headerBg }]} pointerEvents="none" />
       {/* Left: Globe with monke count */}
       <View style={styles.headerLeft}>
@@ -132,8 +142,9 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     // No borderBottom — design pass 2026-05-06 removed all horizontal
     // separator lines across the chat surface.
-    // Background is now the BlurView + tint View layered as the first two
-    // children (MonkeGlass, 2026-08-03) instead of a static color here.
+    // 2026-07-24: no backgroundColor here — was HEADER_BG (opaque), which
+    // sat behind the BlurView and blocked it. Actual visible tint is the
+    // separate headerBg View rendered on top of the blur.
   },
   tickerWrap: {
     position: "absolute",
