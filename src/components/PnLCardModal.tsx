@@ -1,18 +1,20 @@
 import React, { useCallback, useRef, useState } from 'react';
 import {
-  Modal, View, Text, Pressable, StyleSheet, Alert, Share, Dimensions,
+  View, Text, Pressable, StyleSheet, Alert, Dimensions,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { toast } from 'sonner-native';
 import { THEME, FONTS } from '@/lib/constants';
+import { GlassBottomSheet } from '@/components/GlassBottomSheet';
 import { ShareablePnLCard } from '@/components/ShareablePnLCard';
+import { shareImageToX } from '@/lib/shareToX';
 import type { ClosedTrade } from '@/lib/positions';
 import { useXmtp } from '@/hooks/useXmtp';
 
 const getViewShot = () => import('react-native-view-shot');
 const getMediaLibrary = () => import('expo-media-library');
-const getFileSystem = () => import('expo-file-system');
+const getFileSystem = () => import('expo-file-system/legacy');
 const getImageManipulator = () => import('expo-image-manipulator');
 
 interface PnLCardModalProps {
@@ -49,7 +51,6 @@ export function PnLCardModal({ trade, visible, onClose }: PnLCardModalProps) {
       format: 'png',
       quality: 1,
       result: 'tmpfile',
-      // @ts-expect-error - Android-only knob, not in the TS types
       useRenderInContext: true,
     });
   }, []);
@@ -64,9 +65,20 @@ export function PnLCardModal({ trade, visible, onClose }: PnLCardModalProps) {
   }, []);
 
   const sendToMainChat = useCallback(async (uri: string) => {
-    const compressed = await compressForShare(uri);
+    // Chat bubbles render this at a fraction of the 1080px compressForShare()
+    // targets for external sharing (X/system share sheet) — that width was
+    // producing an unnecessarily large base64 string embedded directly in
+    // the message content, adding real weight to every chat re-render this
+    // message appears in AND to the local message cache (see messageCache.ts
+    // MAX_PRESERVABLE — these never expired, so every share made every
+    // future cold start slower).
+    const IM = await getImageManipulator();
+    const resized = await IM.manipulateAsync(uri, [{ resize: { width: 540 } }], {
+      compress: 0.7,
+      format: IM.SaveFormat.JPEG,
+    });
     const FS = await getFileSystem();
-    const b64 = await FS.readAsStringAsync(compressed, { encoding: FS.EncodingType.Base64 });
+    const b64 = await FS.readAsStringAsync(resized.uri, { encoding: FS.EncodingType.Base64 });
     const payload = `IMAGE:data:image/jpeg;base64,${b64}`;
 
     // Optimistic local insert so the user sees their share immediately —
@@ -109,7 +121,10 @@ export function PnLCardModal({ trade, visible, onClose }: PnLCardModalProps) {
       const uri = await captureCard();
       await ML.saveToLibraryAsync(uri);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      toast.success('Saved to gallery');
+      // 2026-07-30: defer — same race as handleShareMainChat below (grey
+      // screen when the toast overlay mounts in the same tick as this
+      // Modal's Android Dialog window still settling from the save).
+      setTimeout(() => toast.success('Saved to gallery'), 350);
     } catch (e: any) {
       toast.error(e?.message ?? 'Save failed');
     } finally {
@@ -137,8 +152,11 @@ export function PnLCardModal({ trade, visible, onClose }: PnLCardModalProps) {
     try {
       const uri = await captureCard();
       const compressed = await compressForShare(uri);
-      await Share.share({ url: compressed, message: formatTradeSummary(trade) });
+      const { saved } = await shareImageToX(compressed, formatTradeSummary(trade));
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      if (saved) {
+        toast.success('Image saved — tap the image icon in X to attach it 📸');
+      }
     } catch (e: any) {
       if (e?.message && !/dismiss/i.test(e.message)) toast.error(e.message);
     } finally {
@@ -153,7 +171,11 @@ export function PnLCardModal({ trade, visible, onClose }: PnLCardModalProps) {
       const uri = await captureCard();
       await sendToMainChat(uri);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      toast.success('Posted to Main Chat');
+      // 2026-07-09: defer — sendToMainChat() pushes a large base64 IMAGE
+      // message into chatStore, which can still be laying out behind this
+      // Modal when the toast overlay mounts; firing both at once left a
+      // stuck grey screen on Android (same race as the reaction toast fix).
+      setTimeout(() => toast.success('Posted to Main Chat'), 350);
     } catch (e: any) {
       toast.error(e?.message ?? 'Post failed');
     } finally {
@@ -168,9 +190,9 @@ export function PnLCardModal({ trade, visible, onClose }: PnLCardModalProps) {
       const uri = await captureCard();
       await sendToMainChat(uri);
       const compressed = await compressForShare(uri);
-      await Share.share({ url: compressed, message: formatTradeSummary(trade) });
+      const { saved } = await shareImageToX(compressed, formatTradeSummary(trade));
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      toast.success('Posted to Main Chat');
+      setTimeout(() => toast.success(saved ? 'Posted to Main Chat — image saved for X too 📸' : 'Posted to Main Chat'), 350);
     } catch (e: any) {
       if (e?.message && !/dismiss/i.test(e.message)) toast.error(e.message);
     } finally {
@@ -181,35 +203,31 @@ export function PnLCardModal({ trade, visible, onClose }: PnLCardModalProps) {
   if (!trade) return null;
 
   return (
-    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
-      <View style={styles.backdrop}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+    <GlassBottomSheet visible={visible} onClose={onClose} snapPoints={['65%', '95%']}>
+      <View style={styles.contentGap}>
+        <View style={styles.headerRow}>
+          <Text style={styles.title}>Trade Closed</Text>
+          <Pressable onPress={onClose} hitSlop={12} style={styles.closeBtn}>
+            <Text style={styles.closeIcon}>✕</Text>
+          </Pressable>
+        </View>
 
-        <View style={styles.sheet}>
-          <View style={styles.headerRow}>
-            <Text style={styles.title}>Trade Closed</Text>
-            <Pressable onPress={onClose} hitSlop={12} style={styles.closeBtn}>
-              <Text style={styles.closeIcon}>✕</Text>
-            </Pressable>
-          </View>
+        <View style={styles.cardWrap}>
+          <ShareablePnLCard ref={cardRef} trade={trade} width={cardWidth} />
+        </View>
 
-          <View style={styles.cardWrap}>
-            <ShareablePnLCard ref={cardRef} trade={trade} width={cardWidth} />
-          </View>
+        <View style={styles.shareRow}>
+          <ActionBtn label="𝕏" sub="Tweet" onPress={handleShareX} loading={busy === 'x'} disabled={!!busy && busy !== 'x'} />
+          <ActionBtn label="💬" sub="Main Chat" onPress={handleShareMainChat} loading={busy === 'chat'} disabled={!!busy && busy !== 'chat'} />
+          <ActionBtn label="🚀" sub="Both" onPress={handleShareBoth} loading={busy === 'both'} disabled={!!busy && busy !== 'both'} primary />
+        </View>
 
-          <View style={styles.shareRow}>
-            <ActionBtn label="𝕏" sub="Tweet" onPress={handleShareX} loading={busy === 'x'} disabled={!!busy && busy !== 'x'} />
-            <ActionBtn label="💬" sub="Main Chat" onPress={handleShareMainChat} loading={busy === 'chat'} disabled={!!busy && busy !== 'chat'} />
-            <ActionBtn label="🚀" sub="Both" onPress={handleShareBoth} loading={busy === 'both'} disabled={!!busy && busy !== 'both'} primary />
-          </View>
-
-          <View style={styles.utilRow}>
-            <ActionBtn label="💾" sub="Save" onPress={handleSave} loading={busy === 'save'} disabled={!!busy && busy !== 'save'} flat />
-            <ActionBtn label="📋" sub="Copy" onPress={handleCopy} loading={busy === 'copy'} disabled={!!busy && busy !== 'copy'} flat />
-          </View>
+        <View style={styles.utilRow}>
+          <ActionBtn label="💾" sub="Save" onPress={handleSave} loading={busy === 'save'} disabled={!!busy && busy !== 'save'} flat />
+          <ActionBtn label="📋" sub="Copy" onPress={handleCopy} loading={busy === 'copy'} disabled={!!busy && busy !== 'copy'} flat />
         </View>
       </View>
-    </Modal>
+    </GlassBottomSheet>
   );
 }
 
@@ -243,12 +261,7 @@ function ActionBtn({ label, sub, onPress, loading, disabled, primary, flat }: Ac
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center' },
-  sheet: {
-    width: '92%', maxWidth: 420, borderRadius: 24, padding: 16,
-    backgroundColor: THEME.surface, borderWidth: 1, borderColor: THEME.border,
-    gap: 14,
-  },
+  contentGap: { gap: 14 },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   title: { fontFamily: FONTS.display, fontSize: 16, color: THEME.text, letterSpacing: 0.5 },
   closeBtn: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },

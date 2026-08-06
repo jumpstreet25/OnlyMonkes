@@ -1,0 +1,13 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- 2026-07-23: EAS Update requires an expo-channel-name request header
+         per flavor (matches eas.json's "canary" build profile channel).
+         `eas build` injects this automatically via its config-plugin
+         prebuild step; a raw `./gradlew assemble...` or `expo prebuild`-free
+         bare-workflow build does not, so it must live here instead — without
+         it, every update check 400s ("channel-name required"), which can
+         trigger expo-updates' error-recovery reload path. -->
+    <application>
+        <meta-data android:name="expo.modules.updates.EXPO_UPDATE_REQUEST_HEADERS" android:value="{&quot;expo-channel-name&quot;:&quot;preview&quot;}"/>
+    </application>
+</manifest>

@@ -24,20 +24,20 @@ import {
   StyleSheet,
   Image,
   Pressable,
-  Modal,
   PanResponder,
   Animated,
   ActivityIndicator,
   Keyboard,
-  ScrollView,
   Linking,
+  TextInput,
   useWindowDimensions,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { BlurView } from "expo-blur";
 import { SkiaGlowBubble, SkiaGlassFront, SkiaGlowPfp } from "@/components/SkiaGlowBubble";
 import { CyberpunkGlitchBubble } from "@/components/CyberpunkGlitchBubble";
 import { BananaGroveSignBubble } from "@/components/BananaGroveSignBubble";
+import { TechNoirBubble } from "@/components/TechNoirBubble";
+import { DeepSpaceBubble } from "@/components/DeepSpaceBubble";
 import { BotAlertCard, parseTopSalesAlert } from "@/components/BotAlertCard";
 import Reanimated, {
   useSharedValue,
@@ -50,10 +50,8 @@ import Reanimated, {
 } from "react-native-reanimated";
 import { getOrExtractNftColor } from "@/lib/nftColor";
 import { setLatestBubbleHeight } from "@/lib/chatViewport";
-import * as Clipboard from "expo-clipboard";
 import { Image as ExpoImage } from "expo-image";
 import * as Haptics from "expo-haptics";
-import { toast } from "sonner-native";
 import { format } from "date-fns";
 import { THEME, FONTS } from "@/lib/constants";
 import { shortenAddress } from "@/lib/nftVerification";
@@ -63,7 +61,6 @@ import { getEarnedBadges, getBadgeDef } from "@/lib/badges";
 import { BadgeGlyph } from "./BadgeGlyph";
 import { getFlairSync } from "@/lib/monkeClout";
 // nftColor no longer needed — glass bubbles use fixed semi-transparent backgrounds
-import { searchStickers, getGiphyLastStatus, type GiphyItem } from "@/lib/giphy";
 import type { ChatMessage, ReactionEmoji } from "@/types";
 import type { ProfileTarget } from "@/components/UserProfileModal";
 import { LinkPreviewCard } from "@/components/LinkPreviewCard";
@@ -71,7 +68,6 @@ import { BlinkCard } from "@/components/BlinkCard";
 import { extractBlinkUrl } from "@/lib/blinkActions";
 import { OnlineDot } from "@/components/OnlineDot";
 import { isUserOnline } from "@/lib/presence";
-import { ReactionPicker } from "@/components/ReactionPicker";
 import MarkdownContent from "@/components/MarkdownContent";
 
 // ─── Pulse Frame — animated ring for Tier 3 PFP shop item ─────────────────
@@ -112,14 +108,21 @@ function PulseRing({ color }: { color: string }) {
 }
 import { hasThread, getThreadMeta } from "@/lib/threads";
 import { router } from "expo-router";
+import { BlurView } from "expo-blur";
+import { getBlurProps } from "@/lib/glassTheme";
 
 // ─── Glassmorphism constants ─────────────────────────────────────────────────
 const GLASS_BLUE = "#6CB4EE";                    // OnlyMonkes blue
 const SOLANA_PURPLE = "#9945FF";                  // Solana brand purple for PFP glow
 // Unified bubble style — all bubbles use the same dark glass tint (rugdoctor 12:37 style)
-const GLASS_OWN_BG = "rgba(26, 26, 40, 0.65)";    // Same as other — unified look
-const GLASS_OTHER_BG = "rgba(26, 26, 40, 0.65)";   // Dark glass tint
-const GLASS_BOT_BG = "rgba(26, 26, 40, 0.65)";     // Same for bot channels
+// 2026-07-26: 0.65 → 0.19 — same fix as every other glass surface this
+// session (GlassModal, ChatHeader, ChatInput): a real BlurView was just
+// added below, but at 0.65 opacity the tint alone fully hides it, same
+// "blur is there but you can't see it" bug already found and fixed
+// elsewhere. Matches glassTheme.ts's GLASS_BG for consistency.
+const GLASS_OWN_BG = "rgba(26, 26, 40, 0.19)";    // Same as other — unified look
+const GLASS_OTHER_BG = "rgba(26, 26, 40, 0.19)";   // Dark glass tint
+const GLASS_BOT_BG = "rgba(26, 26, 40, 0.19)";     // Same for bot channels
 const GLASS_BORDER_OWN = "rgba(248, 248, 255, 0.08)";
 const GLASS_BORDER_OTHER = "rgba(248, 248, 255, 0.08)";
 
@@ -380,6 +383,10 @@ interface MessageBubbleProps {
   isOwn: boolean;
   onReact: (emoji: ReactionEmoji, messageId: string) => void;
   onReply: (message: ChatMessage) => void;
+  /** Opens the lifted MessageActionSheet (react/reply/copy/edit/delete/pin/
+   * thread) for this message — rendered once at the screen level, not per
+   * bubble. See MessageActionSheet.tsx for why. */
+  onOpenActions: (message: ChatMessage) => void;
   onPressUser?: (target: ProfileTarget) => void;
   onTip?: (message: ChatMessage) => void;
   onStickerReact?: (url: string, messageId: string) => void;
@@ -421,6 +428,7 @@ export const MessageBubble = memo(function MessageBubble({
   isOwn,
   onReact,
   onReply,
+  onOpenActions,
   onPressUser,
   onTip,
   onStickerReact,
@@ -456,15 +464,11 @@ export const MessageBubble = memo(function MessageBubble({
   // purchase, so it falls through to viewer's world automatically.
   const effectiveWorld = (myShopStyles?.worldId as string | undefined)
     ?? (shopStyles.worldId as string | undefined);
-  const useGlitchBubble = effectiveWorld === "world_solana_cyberpunk";
-  const useBananaGroveEntry = effectiveWorld === "world_banana_grove";
-  // ── Banana Grove bubble chrome — A/B preview, 2026-05-08 ──
-  // While the user evaluates Sign vs Vine, render Sign for own messages and
-  // Vine for received so both styles appear simultaneously in chat. Single
-  // OTA, side-by-side empirical comparison. After user picks the winner,
-  // collapse this to a single component and rip out the loser.
-  const useBananaGroveBubble = useBananaGroveEntry;
-  const hasWorldChrome = useGlitchBubble || useBananaGroveBubble;
+  const useGlitchBubble      = effectiveWorld === "world_solana_cyberpunk";
+  const useBananaGroveBubble = effectiveWorld === "world_banana_grove";
+  const useTechNoirBubble    = effectiveWorld === "world_tech_noir";
+  const useDeepSpaceBubble   = effectiveWorld === "world_deep_space";
+  const hasWorldChrome = useGlitchBubble || useBananaGroveBubble || useTechNoirBubble || useDeepSpaceBubble;
   const hasSkiaGlow =
     !!(shopStyles.hasBubbleCosmetic && shopStyles.glowColor) && !hasWorldChrome;
 
@@ -477,30 +481,24 @@ export const MessageBubble = memo(function MessageBubble({
   //     on a 3.5s loop after the entry settles. Stops + returns to 0
   //     when the bubble is no longer the latest.
   // floatOpacity pairs with the entry slide for a subtle fade-in.
-  const floatY = useSharedValue(isNew ? 12 : 0);
-  const floatOpacity = useSharedValue(isNew ? 0 : 1);
+  // 2026-05-23 DISABLED entry animation. Reanimated 3.19 (bumped from 3.17
+  // in v2.38 APK) appears to leave cells stuck with opacity=0 when FlashList
+  // v2 recycles them mid-animation — user reported chat going 80% blank
+  // permanently after a few scroll cycles, specifically on v2.38 and not
+  // v2.37. Cells start at full opacity, no entry animation. We lose the
+  // float-in visual polish; we gain stability. Restore as a single
+  // commented unit once Reanimated has a v3.20+ fix or we swap recycler.
+  const floatY = useSharedValue(0);
+  const floatOpacity = useSharedValue(1);
 
+  // Aggressively cancel any in-flight float animation on every render so a
+  // stuck-mid-animation shared value can never strand a recycled cell at
+  // opacity=0. Cheap no-op when there's no active animation.
   useEffect(() => {
-    if (isNew) {
-      if (useBananaGroveEntry) {
-        // Drop + bounce — message falls in from above and bounces on
-        // arrival, matching the falling-banana aesthetic of the world.
-        // Easing.bounce applies the bounce at the END of the animation,
-        // so the bubble drops fast then settles with 2-3 small bounces.
-        floatY.value = -22;
-        floatOpacity.value = 0;
-        floatY.value = withTiming(0, { duration: 700, easing: REasing.bounce });
-        floatOpacity.value = withTiming(1, { duration: 220, easing: REasing.out(REasing.quad) });
-      } else {
-        // Universal float-in — Cyberpunk + default chat. Drift up + fade.
-        floatY.value = 12;
-        floatOpacity.value = 0;
-        floatY.value = withTiming(0, { duration: 400, easing: REasing.out(REasing.quad) });
-        floatOpacity.value = withTiming(1, { duration: 400, easing: REasing.out(REasing.quad) });
-      }
-    } else {
-      floatOpacity.value = 1;
-    }
+    cancelAnimation(floatOpacity);
+    cancelAnimation(floatY);
+    floatOpacity.value = 1;
+    floatY.value = 0;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isNew]);
 
@@ -554,25 +552,6 @@ export const MessageBubble = memo(function MessageBubble({
   const [imgAspect, setImgAspect] = useState<number>(3 / 4); // sensible portrait default
 
   const [botExpanded, setBotExpanded] = useState(false);
-  const [pickerVisible, setPickerVisible] = useState(false);
-  const [stickerItems, setStickerItems] = useState<GiphyItem[]>([]);
-  const [stickersLoading, setStickersLoading] = useState(false);
-
-  // Fetch SagaMonkes stickers when picker opens
-  useEffect(() => {
-    if (!pickerVisible) return;
-    let cancelled = false;
-    setStickersLoading(true);
-    searchStickers("SagaMonkes", 30).then((items) => {
-      if (!cancelled) {
-        setStickerItems(items);
-        setStickersLoading(false);
-      }
-    }).catch(() => {
-      if (!cancelled) setStickersLoading(false);
-    });
-    return () => { cancelled = true; };
-  }, [pickerVisible]);
 
   // Look up @mentioned username → open their profile
   const handlePressMention = useCallback((mentionedUsername: string) => {
@@ -601,51 +580,11 @@ export const MessageBubble = memo(function MessageBubble({
   // Determine displayed content (edited or original)
   const displayContent = message.editedContent ?? message.content;
 
-  // Can edit own text messages within 1 minute of sending
-  const isMediaContent =
-    message.content.startsWith("GIF:") ||
-    message.content.startsWith("IMAGE:") ||
-    message.content.startsWith("VIDEO:") ||
-    message.content.startsWith("STICKER:");
-  const canEdit = isOwn && !isMediaContent
-    && (Date.now() - message.sentAt.getTime()) < 60_000;
-
   const handleLongPress = useCallback(() => {
     Keyboard.dismiss();
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setPickerVisible(true);
-  }, []);
-
-  const handleCopy = useCallback(() => {
-    setPickerVisible(false);
-    const text = message.editedContent ?? message.content;
-    // Strip media prefixes for copy
-    const cleaned = text.startsWith("IMAGE:") ? "[Image]"
-      : text.startsWith("GIF:") ? "[GIF]"
-      : text.startsWith("VIDEO:") ? "[Video]"
-      : text.startsWith("STICKER:") ? "[Sticker]"
-      : text;
-    Clipboard.setStringAsync(cleaned);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    toast.success("Copied to clipboard");
-  }, [message]);
-
-  const handleEdit = useCallback(() => {
-    setPickerVisible(false);
-    onEdit?.(message);
-  }, [onEdit, message]);
-
-  const handlePickReaction = useCallback((emoji: ReactionEmoji) => {
-    setPickerVisible(false);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    onReact(emoji, message.id);
-  }, [onReact, message.id]);
-
-  const handlePickReply = useCallback(() => {
-    setPickerVisible(false);
-    onReply(message);
-  }, [onReply, message]);
-
+    onOpenActions(message);
+  }, [onOpenActions, message]);
 
   const handlePressAvatar = useCallback(() => {
     if (!onPressUser) return;
@@ -742,15 +681,6 @@ export const MessageBubble = memo(function MessageBubble({
   const activeReactions = useMemo(() => {
     return Object.values(message.reactions).filter(r => r && r.count > 0);
   }, [message.reactions]);
-
-  // Set of emojis I've already reacted with (for picker highlight)
-  const myActiveEmojis = useMemo(() => {
-    const s = new Set<string>();
-    for (const r of activeReactions) {
-      if (r.reactedByMe) s.add(r.emoji);
-    }
-    return s;
-  }, [activeReactions]);
 
   // ── Avatar ────────────────────────────────────────────────────────────────
   // Own: use live verifiedNft. Others: always prefer fresh profile cache.
@@ -926,11 +856,29 @@ export const MessageBubble = memo(function MessageBubble({
                   tailSide={centerBubble ? "none" : isOwn ? "right" : "left"}
                 />
               ) : null}
-              {/* ── Banana Grove world chrome — wooden Sign for ALL messages
-                  (v4 2026-05-08, A/B winner). Tail side flips own vs received
-                  so the wooden peg points at the sender's PFP. */}
+              {/* ── Banana Grove world chrome — wooden Sign */}
               {useBananaGroveBubble && bubbleSize ? (
                 <BananaGroveSignBubble
+                  width={bubbleSize.w}
+                  height={bubbleSize.h}
+                  color={glitchAccent}
+                  radius={14}
+                  tailSide={centerBubble ? "none" : isOwn ? "right" : "left"}
+                />
+              ) : null}
+              {/* ── Tech Noir world chrome — steel case-file frame */}
+              {useTechNoirBubble && bubbleSize ? (
+                <TechNoirBubble
+                  width={bubbleSize.w}
+                  height={bubbleSize.h}
+                  color={glitchAccent}
+                  radius={5}
+                  tailSide={centerBubble ? "none" : isOwn ? "right" : "left"}
+                />
+              ) : null}
+              {/* ── Deep Space world chrome — comm-panel HUD frame */}
+              {useDeepSpaceBubble && bubbleSize ? (
+                <DeepSpaceBubble
                   width={bubbleSize.w}
                   height={bubbleSize.h}
                   color={glitchAccent}
@@ -990,6 +938,14 @@ export const MessageBubble = memo(function MessageBubble({
                   ? { backgroundColor: "rgba(26, 26, 40, 0.32)" }
                   : null,
               ]}>
+                {/* Real optical blur, text bubbles only — GIF/IMAGE/VIDEO render
+                    in a separate branch below that bypasses glassBubble
+                    entirely, so this can never blur shared media. Skipped for
+                    Skia-glow/world-chrome bubbles, same guard as the gradient/
+                    highlight below — those own their own bubble surface. */}
+                {!hasSkiaGlow && !hasWorldChrome ? (
+                  <BlurView {...getBlurProps()} style={[StyleSheet.absoluteFill, { borderRadius: 22 }]} pointerEvents="none" />
+                ) : null}
                 {/* Glass gradient — only for non-Skia, non-world-chrome bubbles */}
                 {!hasSkiaGlow && !hasWorldChrome ? (
                   <LinearGradient
@@ -1349,126 +1305,8 @@ export const MessageBubble = memo(function MessageBubble({
     )}
 
     {/* Sticker reactions now rendered inline with emoji reactions above */}
-
-    {/* ── Reaction picker Modal ──────────────────────────────────────── */}
-    <Modal
-      visible={pickerVisible}
-      transparent
-      animationType="fade"
-      onRequestClose={() => setPickerVisible(false)}
-    >
-      <Pressable style={styles.pickerOverlay} onPress={() => setPickerVisible(false)}>
-        <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
-        <Pressable style={styles.pickerSheet} onPress={(e) => e.stopPropagation()}>
-          {/* Animated emoji reaction pill */}
-          <ReactionPicker onPick={handlePickReaction} activeEmojis={myActiveEmojis} />
-
-          <View style={styles.pickerActionRow}>
-            <Pressable
-              onPress={handlePickReply}
-              style={({ pressed }) => [
-                styles.pickerReplyBtn,
-                pressed && styles.pickerReplyBtnPressed,
-              ]}
-            >
-              <Text style={styles.pickerReplyText}>↩  Reply</Text>
-            </Pressable>
-
-            <Pressable
-              onPress={handleCopy}
-              style={({ pressed }) => [
-                styles.pickerReplyBtn,
-                pressed && styles.pickerReplyBtnPressed,
-              ]}
-            >
-              <Text style={styles.pickerReplyText}>📋  Copy</Text>
-            </Pressable>
-
-            {canEdit && onEdit && (
-              <Pressable
-                onPress={handleEdit}
-                style={({ pressed }) => [
-                  styles.pickerReplyBtn,
-                  pressed && styles.pickerReplyBtnPressed,
-                ]}
-              >
-                <Text style={styles.pickerReplyText}>✏️  Edit</Text>
-              </Pressable>
-            )}
-
-            {(isOwn || isGroupAdmin) && onDelete && (
-              <Pressable
-                onPress={() => { setPickerVisible(false); onDelete(message); }}
-                style={({ pressed }) => [
-                  styles.pickerReplyBtn,
-                  pressed && styles.pickerReplyBtnPressed,
-                ]}
-              >
-                <Text style={[styles.pickerReplyText, { color: THEME.error }]}>🗑  Delete</Text>
-              </Pressable>
-            )}
-
-            {onPin && (
-              <Pressable
-                onPress={() => { setPickerVisible(false); onPin(message); }}
-                style={({ pressed }) => [
-                  styles.pickerReplyBtn,
-                  pressed && styles.pickerReplyBtnPressed,
-                ]}
-              >
-                <Text style={styles.pickerReplyText}>📌  Pin</Text>
-              </Pressable>
-            )}
-
-            {onThread && (
-              <Pressable
-                onPress={() => { setPickerVisible(false); onThread(message); }}
-                style={({ pressed }) => [
-                  styles.pickerReplyBtn,
-                  pressed && styles.pickerReplyBtnPressed,
-                ]}
-              >
-                <Text style={styles.pickerReplyText}>🧵  Thread</Text>
-              </Pressable>
-            )}
-          </View>
-
-          {/* SagaMonkes sticker grid */}
-          {onStickerReact && (
-            <View style={styles.stickerSection}>
-              {stickersLoading ? (
-                <ActivityIndicator size="small" color={THEME.accent} style={{ marginVertical: 8 }} />
-              ) : stickerItems.length === 0 ? (
-                // Diagnostic surface for the empty-pack bug. Removable once fixed.
-                <Text style={{ fontFamily: FONTS.mono, fontSize: 10, color: THEME.textFaint, textAlign: "center", paddingVertical: 12 }}>
-                  No SagaMonkes stickers loaded.{"\n"}
-                  status: {getGiphyLastStatus()}
-                </Text>
-              ) : (
-                <ScrollView style={styles.stickerScroll} showsVerticalScrollIndicator={false}>
-                  <View style={styles.stickerGrid}>
-                    {stickerItems.map((item) => (
-                      <Pressable
-                        key={item.id}
-                        onPress={() => {
-                          setPickerVisible(false);
-                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                          onStickerReact(item.displayUrl, message.id);
-                        }}
-                        style={({ pressed }) => [styles.stickerGridCell, pressed && { opacity: 0.7 }]}
-                      >
-                        <Image source={{ uri: item.previewUrl }} style={styles.stickerGridImg} />
-                      </Pressable>
-                    ))}
-                  </View>
-                </ScrollView>
-              )}
-            </View>
-          )}
-        </Pressable>
-      </Pressable>
-    </Modal>
-
+    {/* Long-press action sheet (react/reply/copy/edit/delete/pin/thread) is
+        rendered once at the screen level — see MessageActionSheet.tsx. */}
 </>
   );
 }, arePropsEqual);
@@ -1830,84 +1668,6 @@ const styles = StyleSheet.create({
   },
   pillCountActive: { color: "#FFD54F" },
 
-  // ── Reaction picker Modal ──────────────────────────────────────────────────
-  pickerOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.35)",
-    justifyContent: "flex-end",
-    paddingBottom: 40,
-    alignItems: "center",
-  },
-  pickerSheet: {
-    backgroundColor: "rgba(18, 18, 32, 0.82)",
-    borderRadius: 24,
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    alignItems: "center",
-    gap: 12,
-    borderWidth: 1,
-    borderColor: "rgba(248, 248, 255, 0.10)",
-    minWidth: 280,
-    maxHeight: "75%",
-    // Glass glow on picker sheet
-    shadowColor: GLASS_BLUE,
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 20,
-    elevation: 8,
-  },
-  pickerEmojiRow: {
-    flexDirection: "row",
-    gap: 8,
-  },
-  pickerEmojiBtn: {
-    width: 52,
-    height: 58,
-    borderRadius: 16,
-    backgroundColor: "rgba(255,255,255,0.06)",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 2,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.05)",
-  },
-  pickerEmojiBtnPressed: {
-    backgroundColor: "rgba(108, 180, 238, 0.15)",
-    transform: [{ scale: 1.15 }],
-  },
-  pickerEmojiBtnActive: {
-    backgroundColor: "rgba(255,213,79,0.18)",
-    borderColor: "rgba(255,213,79,0.2)",
-  },
-  pickerEmoji: { fontSize: 26 },
-  pickerEmojiCount: {
-    fontFamily: FONTS.mono,
-    fontSize: 9,
-    color: THEME.textFaint,
-  },
-  pickerActionRow: {
-    flexDirection: "row",
-    gap: 8,
-    flexWrap: "wrap",
-    justifyContent: "center",
-  },
-  pickerReplyBtn: {
-    paddingVertical: 8,
-    paddingHorizontal: 20,
-    borderRadius: 16,
-    backgroundColor: "rgba(255,255,255,0.06)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.05)",
-  },
-  pickerReplyBtnPressed: {
-    backgroundColor: "rgba(108, 180, 238, 0.15)",
-    borderColor: "rgba(108, 180, 238, 0.3)",
-  },
-  pickerReplyText: {
-    fontFamily: FONTS.bodySemi,
-    fontSize: 14,
-    color: THEME.text,
-  },
 
   // ── GIF & Sticker in bubble ─────────────────────────────────────────────────
   gifImage: {
@@ -2092,37 +1852,4 @@ const styles = StyleSheet.create({
     color: GLASS_BLUE,
   },
 
-  // ── Sticker picker inside long-press sheet ─────────────────────────────────
-  stickerSection: {
-    alignSelf: "stretch",
-    marginTop: 4,
-    gap: 8,
-  },
-  stickerSectionLabel: {
-    fontFamily: FONTS.mono,
-    fontSize: 10,
-    color: THEME.textFaint,
-    letterSpacing: 1.5,
-    textTransform: "uppercase",
-    textAlign: "center",
-  },
-  stickerScroll: {
-    maxHeight: 320,
-    alignSelf: "stretch",
-  },
-  stickerGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-    justifyContent: "center",
-    paddingBottom: 8,
-  },
-  stickerGridCell: {
-    borderRadius: 12,
-    overflow: "hidden",
-  },
-  stickerGridImg: {
-    width: 72,
-    height: 72,
-  },
 });

@@ -1,5 +1,6 @@
 import {
   HELIUS_API_KEY as ENV_HELIUS,
+  HELIUS_NFT_API_KEY as ENV_HELIUS_NFT,
   GIPHY_API_KEY as ENV_GIPHY,
   CLOUDINARY_CLOUD_NAME as ENV_CLOUD_NAME,
   CLOUDINARY_UPLOAD_PRESET as ENV_CLOUD_PRESET,
@@ -9,7 +10,7 @@ import {
   SKR_MINT as ENV_SKR,
   DEV_WALLET as ENV_DEV,
   SENTRY_DSN as ENV_SENTRY,
-  SHYFT_API_KEY as ENV_SHYFT,
+  QUICKNODE_DAS_URL as ENV_QUICKNODE_DAS,
 } from '@env';
 import Constants from 'expo-constants';
 
@@ -48,6 +49,18 @@ const _extra = (Constants.expoConfig?.extra ?? {}) as Record<string, unknown>;
 const _str = (v: unknown): string => (typeof v === 'string' ? v : '');
 
 export const HELIUS_API_KEY: string = ENV_HELIUS || _str(_extra.heliusApiKey);
+// Dedicated key for NFT ownership verification only (Helius "Gatekeeper"
+// endpoint, beta.helius-rpc.com) — isolated from HELIUS_API_KEY's shared
+// quota with the bot's trading/scanner traffic, which was starving the
+// user-facing verification gate.
+const _HELIUS_NFT_API_KEY_RAW: string = ENV_HELIUS_NFT || _str(_extra.heliusNftApiKey);
+export const HELIUS_NFT_API_KEY: string = _HELIUS_NFT_API_KEY_RAW || HELIUS_API_KEY;
+// Only route through the Gatekeeper host when the dedicated key is actually
+// configured — the shared HELIUS_API_KEY isn't provisioned for it, so
+// falling back to this host with that key would just fail differently.
+export const HELIUS_NFT_RPC_URL = _HELIUS_NFT_API_KEY_RAW
+  ? `https://beta.helius-rpc.com/?api-key=${_HELIUS_NFT_API_KEY_RAW}`
+  : `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`;
 export const GIPHY_API_KEY: string = ENV_GIPHY || _str(_extra.giphyApiKey);
 export const CLOUDINARY_CLOUD_NAME: string = ENV_CLOUD_NAME || _str(_extra.cloudinaryCloudName);
 export const CLOUDINARY_UPLOAD_PRESET: string = ENV_CLOUD_PRESET || _str(_extra.cloudinaryUploadPreset);
@@ -55,7 +68,11 @@ export const LIVEKIT_URL_ENV: string = ENV_LK_URL || _str(_extra.livekitUrl);
 export const LIVEKIT_TOKEN_URL_ENV: string = ENV_LK_TOKEN || _str(_extra.livekitTokenUrl);
 export const JUP_API_KEY: string = ENV_JUP || _str(_extra.jupApiKey);
 export const SENTRY_DSN_ENV: string = ENV_SENTRY || _str(_extra.sentryDsn);
-export const SHYFT_API_KEY: string = ENV_SHYFT || '';
+// QuickNode DAS endpoint — auth token is embedded in the URL path itself
+// (QuickNode's convention), so this is used as a full URL, not a bare key.
+// Added 2026-07-13 as a 30-day trial; see project memory for the expiry
+// date and what to do when it runs out.
+export const QUICKNODE_DAS_URL: string = ENV_QUICKNODE_DAS || '';
 export const HELIUS_RPC_URL = `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`;
 export const SOLANA_RPC_URL = 'https://api.mainnet-beta.solana.com';
 
@@ -140,6 +157,15 @@ export function getWorldAccent(worldId: string | undefined | null): string {
     // Trading Floor — bright gold (financial/ticker feel)
     case 'world_trading_floor':
       return '#FFD24A';
+    // Tech Noir — cold steel silver-blue
+    case 'world_tech_noir':
+      return '#8BAFC8';
+    // Deep Space — nebula purple
+    case 'world_deep_space':
+      return '#9B70FF';
+    // Frost Grove — icy cyan-blue, cold moonlight accent
+    case 'world_frost_grove':
+      return '#8FD8FF';
     default:
       return '#6CB4EE';
   }
@@ -166,6 +192,15 @@ export function getWorldBarTint(worldId: string | undefined | null): string {
     // Trading Floor — financial dark. Dark navy tint.
     case 'world_trading_floor':
       return 'rgba(10, 18, 32, 0.30)';
+    // Tech Noir — cold noir black, very dark with blue cast.
+    case 'world_tech_noir':
+      return 'rgba(4, 8, 18, 0.38)';
+    // Deep Space — deep purple-black void.
+    case 'world_deep_space':
+      return 'rgba(6, 3, 18, 0.36)';
+    // Frost Grove — dark cold-blue tint matching the midnight-navy gradient's upper stop.
+    case 'world_frost_grove':
+      return 'rgba(8, 18, 30, 0.32)';
     default:
       return WORLD_BAR_BG;
   }

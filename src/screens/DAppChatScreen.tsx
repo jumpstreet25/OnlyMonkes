@@ -23,9 +23,11 @@ import { router } from "expo-router";
 import { useAppStore } from "@/store/appStore";
 import { useGroupChat } from "@/hooks/useGroupChat";
 import { MessageBubble } from "@/components/MessageBubble";
+import { MessageActionSheet } from "@/components/MessageActionSheet";
 import { ChatInput } from "@/components/ChatInput";
 import { THEME, FONTS, DAPPS } from "@/lib/constants";
 import type { ChatMessage, ReactionEmoji } from "@/types";
+import { isMineInbox } from "@/lib/inboxLinking";
 
 interface DAppChatScreenProps {
   dappId: string;
@@ -54,6 +56,7 @@ export default function DAppChatScreen({ dappId }: DAppChatScreenProps) {
   const [inputText, setInputText] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
+  const [actionSheetTarget, setActionSheetTarget] = useState<ChatMessage | null>(null);
   const flatListRef = useRef<FlatList>(null);
 
   const myAddress = myInboxId ?? "";
@@ -140,9 +143,10 @@ export default function DAppChatScreen({ dappId }: DAppChatScreenProps) {
     ({ item }) => (
       <MessageBubble
         message={item}
-        isOwn={item.senderAddress === myAddress}
+        isOwn={isMineInbox(item.senderAddress, myAddress)}
         onReact={handleReact}
         onReply={setReplyingTo}
+        onOpenActions={setActionSheetTarget}
       />
     ),
     [myAddress, handleReact]
@@ -170,7 +174,9 @@ export default function DAppChatScreen({ dappId }: DAppChatScreenProps) {
   return (
     <KeyboardAvoidingView
       style={[styles.container, { paddingTop: insets.top }]}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      // 2026-07-24: see ChatScreen.tsx for why "height" is wrong on Android
+      // here — double-compensates with windowSoftInputMode="adjustResize".
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
       keyboardVerticalOffset={0}
     >
       {/* Header */}
@@ -264,6 +270,15 @@ export default function DAppChatScreen({ dappId }: DAppChatScreenProps) {
       )}
 
       <View style={{ height: insets.bottom }} />
+
+      <MessageActionSheet
+        target={actionSheetTarget}
+        onClose={() => setActionSheetTarget(null)}
+        myAddress={myAddress}
+        isGroupAdmin={false}
+        onReact={handleReact}
+        onReply={setReplyingTo}
+      />
     </KeyboardAvoidingView>
   );
 }

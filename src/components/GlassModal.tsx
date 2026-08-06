@@ -16,20 +16,19 @@
  *   </GlassModal>
  */
 
-import React from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
-  Modal,
   View,
   Pressable,
   StyleSheet,
+  Animated,
+  BackHandler,
+  Dimensions,
   type ViewStyle,
 } from "react-native";
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
-
-const GLASS_BG = "rgba(12, 12, 22, 0.92)";
-const GLASS_BORDER = "rgba(248, 248, 255, 0.10)";
-const HIGHLIGHT = "rgba(255, 255, 255, 0.12)";
+import { GLASS_BG, GLASS_BORDER, HIGHLIGHT, GLASS_GRADIENT_COLORS, getBlurProps } from "@/lib/glassTheme";
 
 interface GlassModalProps {
   visible: boolean;
@@ -57,13 +56,52 @@ export function GlassModal({
   animationType = "fade",
   glassBg,
 }: GlassModalProps) {
+  // 2026-07-23: replaces RN's <Modal> — Android implements Modal as a
+  // SEPARATE native Dialog window from the Activity, which BlurView (below)
+  // can't see across to actually blur the real content behind it (confirmed
+  // on-device: no visible blur, just a flat tint). Rendering directly in the
+  // component tree instead keeps this in the same window as everything
+  // else, matching how GlassBottomSheet already avoids this exact problem.
+  // This is the shared wrapper for most of the app's modals, so this one
+  // fix covers all of them at once.
+  const [shouldRender, setShouldRender] = useState(visible);
+  const progress = useRef(new Animated.Value(visible ? 1 : 0)).current;
+  const duration = animationType === "none" ? 0 : 220;
+
+  useEffect(() => {
+    if (visible) {
+      setShouldRender(true);
+      Animated.timing(progress, { toValue: 1, duration, useNativeDriver: true }).start();
+    } else {
+      Animated.timing(progress, { toValue: 0, duration, useNativeDriver: true }).start(() => {
+        setShouldRender(false);
+      });
+    }
+  }, [visible]);
+
+  useEffect(() => {
+    if (!visible) return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      onClose();
+      return true;
+    });
+    return () => sub.remove();
+  }, [visible, onClose]);
+
+  if (!shouldRender) return null;
+
+  const screenHeight = Dimensions.get("window").height;
+  const animatedStyle =
+    animationType === "slide"
+      ? { transform: [{ translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [screenHeight, 0] }) }] }
+      : animationType === "fade"
+        ? { opacity: progress }
+        : null; // "none" — no animated style at all
+
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType={animationType}
-      onRequestClose={onClose}
-      statusBarTranslucent
+    <Animated.View
+      style={[StyleSheet.absoluteFill, { zIndex: 1000, elevation: 1000 }, animatedStyle]}
+      pointerEvents={visible ? "auto" : "none"}
     >
       <View style={styles.root}>
         {/* Blurred backdrop */}
@@ -72,8 +110,7 @@ export function GlassModal({
           onPress={persistent ? undefined : onClose}
         >
           <BlurView
-            intensity={40}
-            tint="dark"
+            {...getBlurProps()}
             style={StyleSheet.absoluteFill}
           />
           <View style={styles.dimOverlay} />
@@ -88,9 +125,14 @@ export function GlassModal({
             glassBg ? { backgroundColor: glassBg } : null,
           ]}
         >
+          {/* 2026-07-24: the card's own BlurView — the backdrop one above
+              only ever blurred the dismiss-tap area around this card, never
+              the card's own (previously opaque) fill. This is what actually
+              makes the visible card read as glass. */}
+          <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />
           {/* Inner gradient — top lighter, bottom darker */}
           <LinearGradient
-            colors={["rgba(248, 248, 255, 0.06)", "rgba(0, 0, 0, 0.12)"]}
+            colors={GLASS_GRADIENT_COLORS}
             start={{ x: 0.5, y: 0 }}
             end={{ x: 0.5, y: 1 }}
             style={[StyleSheet.absoluteFill, { borderRadius: 24 }]}
@@ -104,7 +146,7 @@ export function GlassModal({
           {children}
         </View>
       </View>
-    </Modal>
+    </Animated.View>
   );
 }
 
@@ -121,6 +163,7 @@ export function GlassCard({
 }) {
   return (
     <View style={[styles.card, styles.cardCenter, style]}>
+      <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />
       <LinearGradient
         colors={["rgba(248, 248, 255, 0.06)", "rgba(0, 0, 0, 0.12)"]}
         start={{ x: 0.5, y: 0 }}
@@ -141,7 +184,7 @@ const styles = StyleSheet.create({
   },
   dimOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0, 0, 0, 0.45)",
+    backgroundColor: "rgba(0, 0, 0, 0.38)",
   },
   card: {
     backgroundColor: GLASS_BG,
@@ -149,6 +192,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: GLASS_BORDER,
     overflow: "hidden",
+    elevation: 16,
+    shadowColor: "#000",
+    shadowOpacity: 0.4,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
   },
   cardCenter: {
     width: "88%",

@@ -22,7 +22,9 @@ import { useAppStore } from '@/store/appStore';
 import { useChatStore } from '@/store/chatStore';
 import { ChatInput } from '@/components/ChatInput';
 import { MessageBubble } from '@/components/MessageBubble';
+import { MessageActionSheet } from '@/components/MessageActionSheet';
 import type { ChatMessage } from '@/types';
+import { isMineInbox } from '@/lib/inboxLinking';
 import { getThreadMeta, buildThreadMessage, trackThreadReply } from '@/lib/threads';
 import { sendRawToGroup } from '@/hooks/useXmtp';
 
@@ -47,9 +49,10 @@ export default function ThreadScreen() {
 
   const [inputText, setInputText] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const [actionSheetTarget, setActionSheetTarget] = useState<ChatMessage | null>(null);
 
   const isOwn = useCallback(
-    (msg: ChatMessage) => msg.senderAddress === myInboxId,
+    (msg: ChatMessage) => isMineInbox(msg.senderAddress, myInboxId ?? ''),
     [myInboxId],
   );
 
@@ -93,6 +96,7 @@ export default function ThreadScreen() {
         isOwn={isOwn(item)}
         onReact={() => {}}
         onReply={() => {}}
+        onOpenActions={setActionSheetTarget}
       />
     ),
     [isOwn],
@@ -150,6 +154,14 @@ export default function ThreadScreen() {
           onCancelReply={() => {}}
         />
       </View>
+      <MessageActionSheet
+        target={actionSheetTarget}
+        onClose={() => setActionSheetTarget(null)}
+        myAddress={myInboxId ?? ''}
+        isGroupAdmin={false}
+        onReact={() => {}}
+        onReply={() => {}}
+      />
     </KeyboardAvoidingView>
   );
 }

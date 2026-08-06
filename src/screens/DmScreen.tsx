@@ -1,5 +1,5 @@
 import React, { useRef, useCallback, useState, useEffect, useMemo } from 'react';
-import { View, StyleSheet, Text, Pressable, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, Text, Pressable, ActivityIndicator, Keyboard } from 'react-native';
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -9,6 +9,7 @@ import { BotCommandTicker } from '@/components/BotCommandTicker';
 import { getCachedProfile, useProfileVersion } from '@/lib/userProfile';
 import { useDm } from '@/hooks/useDm';
 import { MessageBubble } from '@/components/MessageBubble';
+import { MessageActionSheet } from '@/components/MessageActionSheet';
 import { ChatInput } from '@/components/ChatInput';
 import ImageLightbox from '@/components/ImageLightbox';
 import { useAppStore } from '@/store/appStore';
@@ -22,6 +23,7 @@ import { LivePnLCardModal } from '@/components/LivePnLCardModal';
 import type { ClosedTrade, OpenTrade } from '@/lib/positions';
 import type { PortfolioCard, PortfolioResponse } from '@/store/tradesStore';
 import type { ChatMessage, ReactionEmoji } from '@/types';
+import { isMineInbox } from '@/lib/inboxLinking';
 
 type FeedItem =
   | { kind: 'msg'; key: string; ts: number; msg: ChatMessage }
@@ -34,12 +36,36 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
   const insets = useSafeAreaInsets();
   const { myInboxId } = useAppStore();
   const [retryKey, setRetryKey] = useState(0);
-  const { messages, loading, error, sending, send, sendTyping, typingUsers } = useDm(peerInboxId);
+  const { messages, loading, error, sending, send, react, sendTyping, typingUsers } = useDm(peerInboxId);
   const [inputText, setInputText] = useState('');
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [activeTradeCard, setActiveTradeCard] = useState<ClosedTrade | null>(null);
   const [activeLiveCard, setActiveLiveCard] = useState<PortfolioCard | null>(null);
+  const [actionSheetTarget, setActionSheetTarget] = useState<ChatMessage | null>(null);
+  // windowSoftInputMode="adjustResize" doesn't reliably reposition content
+  // under this app's edge-to-edge/immersive mode — same root cause already
+  // found and fixed on Main Chat (ChatScreen.tsx), where the input bar
+  // rendered fully hidden behind the IME. Tracking real keyboard height
+  // directly and using it to push the input row up is the robust fix
+  // regardless of what adjustResize does.
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  // 2026-07-30: measured height of the absolute-positioned input bar below,
+  // fed back into the list's content padding — same pattern as ChatScreen's
+  // bottomBarHeight/bottomInset.
+  const [bottomBarHeight, setBottomBarHeight] = useState(0);
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', (e) => {
+      setKeyboardHeight(e.endCoordinates?.height ?? 0);
+    });
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardHeight(0);
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
   const flatListRef = useRef<FlashListRef<FeedItem>>(null);
   useProfileVersion();
   const peerProfile = getCachedProfile(peerInboxId);
@@ -64,7 +90,13 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
     setTimeout(() => flatListRef.current?.scrollToOffset({ offset: 0, animated: true }), 50);
   }, [inputText, send]);
 
-  const noop = useCallback(async (_: ReactionEmoji, __: string) => {}, []);
+  const handleReact = useCallback(async (emoji: ReactionEmoji, messageId: string) => {
+    try {
+      await react(emoji, messageId);
+    } catch (err) {
+      if (__DEV__) console.warn('[DmScreen] Reaction failed:', err);
+    }
+  }, [react]);
 
   const handleReply = useCallback((msg: ChatMessage) => {
     setReplyingTo(msg);
@@ -74,7 +106,7 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
   const lastReadOwnId = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
       const m = messages[i];
-      if (m.senderAddress === myInboxId && m.status === 'read') return m.id;
+      if (isMineInbox(m.senderAddress, myInboxId ?? '') && m.status === 'read') return m.id;
     }
     return null;
   }, [messages, myInboxId]);
@@ -122,6 +154,13 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
 
       {isBotDm && <BotCommandTicker variant="dm" />}
 
+      {/* 2026-07-30: flex:1 region wrapping the list — the input bar below
+          is now an absolute overlay (was a normal flex sibling using
+          marginBottom to dodge the keyboard), which on Android left the
+          layout engine unable to reflow this list, snapping the whole
+          input row — camera button included — up near the header the
+          instant the keyboard opened. Mirrors ChatScreen's fix. */}
+      <View style={{ flex: 1 }}>
       {loading ? (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
           <ActivityIndicator color={THEME.accent} size="large" />
@@ -142,8 +181,10 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
           </Pressable>
         </View>
       ) : (
+        <View style={StyleSheet.absoluteFill}>
         <FlashList
           ref={flatListRef}
+          style={{ flex: 1 }}
           data={feedInverted}
           keyExtractor={item => item.key}
           renderItem={({ item }) => {
@@ -170,9 +211,10 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
               <>
                 <MessageBubble
                   message={m}
-                  isOwn={m.senderAddress === myInboxId}
-                  onReact={noop}
+                  isOwn={isMineInbox(m.senderAddress, myInboxId ?? '')}
+                  onReact={handleReact}
                   onReply={handleReply}
+                  onOpenActions={setActionSheetTarget}
                   onPressImage={setLightboxUrl}
                 />
                 {m.id === lastReadOwnId && (
@@ -181,7 +223,10 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
               </>
             );
           }}
-          contentContainerStyle={{ paddingVertical: 8 }}
+          // Inverted FlashList rotates the whole content 180° — declared
+          // paddingTop renders at the visual BOTTOM (nearest the input bar
+          // overlay), paddingBottom at the visual top (nearest the header).
+          contentContainerStyle={{ paddingTop: 8 + bottomBarHeight + keyboardHeight, paddingBottom: 8 }}
           inverted
           ListEmptyComponent={
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 60 }}>
@@ -191,20 +236,27 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
             </View>
           }
         />
+        </View>
       )}
+      </View>
 
-      <ChatInput
-        value={inputText}
-        onChangeText={setInputText}
-        onSend={handleSend}
-        replyingTo={replyingTo}
-        onCancelReply={() => setReplyingTo(null)}
-        isSending={sending}
-        isDmWithBot={isBotDm}
-        onTyping={sendTyping}
-        typingUsers={typingUsers}
-      />
-      <View style={{ height: insets.bottom }} />
+      <View
+        style={{ position: 'absolute', left: 0, right: 0, bottom: keyboardHeight, zIndex: 100, elevation: 100 }}
+        onLayout={(e) => setBottomBarHeight(e.nativeEvent.layout.height)}
+      >
+        <ChatInput
+          value={inputText}
+          onChangeText={setInputText}
+          onSend={handleSend}
+          replyingTo={replyingTo}
+          onCancelReply={() => setReplyingTo(null)}
+          isSending={sending}
+          isDmWithBot={isBotDm}
+          onTyping={sendTyping}
+          typingUsers={typingUsers}
+        />
+        <View style={{ height: keyboardHeight > 0 ? 0 : insets.bottom }} />
+      </View>
       <ImageLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
       <PnLCardModal
         trade={activeTradeCard}
@@ -215,6 +267,14 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
         card={activeLiveCard}
         visible={!!activeLiveCard}
         onClose={() => setActiveLiveCard(null)}
+      />
+      <MessageActionSheet
+        target={actionSheetTarget}
+        onClose={() => setActionSheetTarget(null)}
+        myAddress={myInboxId ?? ''}
+        isGroupAdmin={false}
+        onReact={handleReact}
+        onReply={handleReply}
       />
     </View>
   );

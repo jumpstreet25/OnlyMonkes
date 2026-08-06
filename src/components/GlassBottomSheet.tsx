@@ -10,18 +10,16 @@
  *   </GlassBottomSheet>
  */
 
-import React, { useCallback, useEffect, useMemo, useRef } from 'react';
-import { StyleSheet, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AppState, StyleSheet, View, type AppStateStatus } from 'react-native';
 import BottomSheet, {
   BottomSheetScrollView,
   BottomSheetBackdrop,
   type BottomSheetBackdropProps,
 } from '@gorhom/bottom-sheet';
 import { LinearGradient } from 'expo-linear-gradient';
-
-const GLASS_BG = 'rgba(12, 12, 22, 0.95)';
-const GLASS_BORDER = 'rgba(248, 248, 255, 0.10)';
-const HIGHLIGHT = 'rgba(255, 255, 255, 0.12)';
+import { BlurView } from 'expo-blur';
+import { GLASS_BG, GLASS_BORDER, HIGHLIGHT, GLASS_GRADIENT_COLORS, GLASS_RADIUS, getBlurProps } from '@/lib/glassTheme';
 
 interface GlassBottomSheetProps {
   visible: boolean;
@@ -31,6 +29,8 @@ interface GlassBottomSheetProps {
   snapPoints?: string[];
   /** Override background color */
   glassBg?: string;
+  /** Index into snapPoints to open at — default 0 (the smallest point) */
+  initialIndex?: number;
 }
 
 export function GlassBottomSheet({
@@ -39,18 +39,49 @@ export function GlassBottomSheet({
   children,
   snapPoints: snapPointsProp,
   glassBg,
+  initialIndex = 0,
 }: GlassBottomSheetProps) {
   const sheetRef = useRef<BottomSheet>(null);
   const snapPoints = useMemo(() => snapPointsProp ?? ['50%', '90%'], [snapPointsProp]);
+  // 2026-07-09: raw <BottomSheet> (what this wraps — deliberately, not
+  // <BottomSheetModal>, to stay in the same Android window and avoid the
+  // grey-screen race) stays fully mounted — gesture detector + Reanimated
+  // shared values live — even at index=-1. Every screen now renders several
+  // of these unconditionally (ChartModal, UserProfileModal, share sheet,
+  // MessageActionSheet, ...), so they were all paying that cost from the
+  // moment the screen opened, before the user ever touched one — general
+  // touch/scroll jank, not a specific broken feature. Defer actually
+  // mounting the sheet until it's opened for the first time; once opened,
+  // keep it mounted (same behavior as before for the rest of the session).
+  const [hasOpenedOnce, setHasOpenedOnce] = useState(visible);
 
   useEffect(() => {
     if (visible) {
-      sheetRef.current?.snapToIndex(0);
+      setHasOpenedOnce(true);
+      sheetRef.current?.snapToIndex(initialIndex);
     } else {
       sheetRef.current?.close();
     }
-  }, [visible]);
+  }, [visible, initialIndex]);
 
+  // 2026-07-14: backgrounding the app (e.g. switching to another app right
+  // after tapping Copy, before the sheet's ~300ms Reanimated close animation
+  // finishes) can leave that animation suspended mid-flight on Android —
+  // resuming into a half-closed sheet/backdrop has manifested as the same
+  // stuck-grey-screen class of bug documented throughout this codebase, just
+  // triggered by OS-level backgrounding instead of an in-app Modal race.
+  // Force the sheet fully closed the instant the app leaves 'active' so
+  // there's never an animated transition left in flight to resume into.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (next: AppStateStatus) => {
+      if (next !== 'active') sheetRef.current?.close();
+    });
+    return () => sub.remove();
+  }, []);
+
+  // Hooks below must stay ABOVE the early return (Rules of Hooks — this
+  // component must call the same hooks on every render, whether or not
+  // hasOpenedOnce is true yet).
   const handleSheetChange = useCallback(
     (index: number) => {
       if (index === -1) onClose();
@@ -66,15 +97,19 @@ export function GlassBottomSheet({
         appearsOnIndex={0}
         opacity={0.6}
         pressBehavior="close"
-      />
+      >
+        <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />
+      </BottomSheetBackdrop>
     ),
     [],
   );
 
+  if (!hasOpenedOnce) return null;
+
   return (
     <BottomSheet
       ref={sheetRef}
-      index={visible ? 0 : -1}
+      index={visible ? initialIndex : -1}
       snapPoints={snapPoints}
       onChange={handleSheetChange}
       enablePanDownToClose
@@ -86,12 +121,18 @@ export function GlassBottomSheet({
       handleIndicatorStyle={styles.handle}
       style={styles.sheet}
     >
+      {/* 2026-07-24: the sheet's own BlurView — the backdrop one (above, in
+          renderBackdrop) only ever blurred the area behind the WHOLE sheet,
+          never the sheet's own (previously opaque, via backgroundStyle's
+          GLASS_BG) fill. GLASS_BG is now translucent enough for this to
+          actually show through. */}
+      <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />
       {/* Inner gradient — matches GlassModal */}
       <LinearGradient
-        colors={['rgba(248, 248, 255, 0.06)', 'rgba(0, 0, 0, 0.12)']}
+        colors={GLASS_GRADIENT_COLORS}
         start={{ x: 0.5, y: 0 }}
         end={{ x: 0.5, y: 1 }}
-        style={[StyleSheet.absoluteFill, { borderTopLeftRadius: 16, borderTopRightRadius: 16 }]}
+        style={[StyleSheet.absoluteFill, { borderTopLeftRadius: GLASS_RADIUS, borderTopRightRadius: GLASS_RADIUS }]}
         pointerEvents="none"
       />
       {/* Top-edge highlight */}
@@ -106,8 +147,8 @@ export function GlassBottomSheet({
 
 const styles = StyleSheet.create({
   sheet: {
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
+    borderTopLeftRadius: GLASS_RADIUS,
+    borderTopRightRadius: GLASS_RADIUS,
     borderWidth: 1,
     borderBottomWidth: 0,
     borderColor: GLASS_BORDER,
@@ -117,8 +158,8 @@ const styles = StyleSheet.create({
   },
   background: {
     backgroundColor: GLASS_BG,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
+    borderTopLeftRadius: GLASS_RADIUS,
+    borderTopRightRadius: GLASS_RADIUS,
   },
   handle: {
     width: 40,

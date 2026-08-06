@@ -118,6 +118,22 @@ export const SHOP_ITEMS: ShopItem[] = [
     preview: "👻",
     style: { glowColor: "#8B5CF6", glowOpacity: 0.75, glowRadius: 20 },
   },
+  {
+    id: "bubble_arctic_violet",
+    name: "Arctic Violet",
+    description: "Cool violet-blue glow with a frosty edge",
+    category: "bubble", tier: 1, bananaCost: 35, usdCost: 1,
+    preview: "🩵",
+    style: { glowColor: "#7B9FFF", glowOpacity: 0.8, glowRadius: 20 },
+  },
+  {
+    id: "bubble_emerald_frost",
+    name: "Emerald Frost",
+    description: "Cool mint-emerald glow — crisp and clean",
+    category: "bubble", tier: 1, bananaCost: 35, usdCost: 1,
+    preview: "🍏",
+    style: { glowColor: "#2ED9C3", glowOpacity: 0.8, glowRadius: 20 },
+  },
 
   // ── Tier 2: Text & Name Styles (50-100 🍌, $2) ─────────────────────────
   {
@@ -191,6 +207,14 @@ export const SHOP_ITEMS: ShopItem[] = [
     category: "text", tier: 2, bananaCost: 50, usdCost: 2,
     preview: "💚",
     style: { nameColor: "#10B981" },
+  },
+  {
+    id: "text_ice_blue_name",
+    name: "Ice Blue Name",
+    description: "Cool ice-blue username — sharp and clean",
+    category: "text", tier: 2, bananaCost: 50, usdCost: 2,
+    preview: "🧊",
+    style: { nameColor: "#5FC8F2" },
   },
 
   // ── Tier 3: PFP Styles (100-200 🍌, $3) ────────────────────────────────
@@ -309,6 +333,30 @@ export const SHOP_ITEMS: ShopItem[] = [
     category: "world", tier: 5, bananaCost: 750, usdCost: 4.99,
     preview: "📈",
     style: { worldId: "world_trading_floor" },
+  },
+  {
+    id: "world_tech_noir",
+    name: "Tech Noir",
+    description: "Noir city skyline in the rain. Cold chrome bubbles. Steel-blue night.",
+    category: "world", tier: 5, bananaCost: 750, usdCost: 4.99,
+    preview: "🌧️",
+    style: { worldId: "world_tech_noir" },
+  },
+  {
+    id: "world_deep_space",
+    name: "Deep Space",
+    description: "Infinite star field, drifting nebulae, and shooting stars across your chat",
+    category: "world", tier: 5, bananaCost: 750, usdCost: 4.99,
+    preview: "🌌",
+    style: { worldId: "world_deep_space" },
+  },
+  {
+    id: "world_frost_grove",
+    name: "Frost Grove",
+    description: "Moonlit pine silhouettes and drifting snowflakes across your chat",
+    category: "world", tier: 5, bananaCost: 750, usdCost: 4.99,
+    preview: "❄️",
+    style: { worldId: "world_frost_grove" },
   },
 ];
 

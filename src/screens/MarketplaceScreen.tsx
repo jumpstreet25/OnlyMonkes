@@ -167,7 +167,13 @@ export default function MarketplaceScreen() {
   useEffect(() => { loadAll(); }, [myInboxId]);
 
   useEffect(() => {
-    if (!wallet?.address || allNfts.length > 1) return;
+    // 2026-07-12: was `allNfts.length > 1`, which only skips re-verification
+    // when the wallet holds MULTIPLE Monkes — for the common case of exactly
+    // one, this fired a fresh Helius verification on every single visit to
+    // this screen, completely bypassing the 48h cache built into
+    // session.ts/startNftOwnershipGuard. Only re-verify when we genuinely
+    // have no NFT data yet (e.g. a guest who never verified).
+    if (!wallet?.address || allNfts.length > 0) return;
     verifyNFTOwnership(wallet.address).then((r) => {
       if (r.verified && r.allNfts) setAllNfts(r.allNfts);
     }).catch(() => {});

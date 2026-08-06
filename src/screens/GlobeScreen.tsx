@@ -18,15 +18,17 @@ import {
   Pressable,
   Image,
   ActivityIndicator,
-  Modal,
   ScrollView,
   StatusBar,
   Linking,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
 import { router } from "expo-router";
 // date-fns format removed — event formatting moved to EventRsvpModal
 import { THEME, FONTS, BOT_INBOX_IDS, BOT_DISPLAY_NAME, BOT_PFP_URL } from "@/lib/constants";
+import { IS_IMMERSIVE_SHELL } from "@/lib/immersiveStatusBar";
+import { MonkeGlass } from "@/components/MonkeGlass";
 import { useAppStore } from "@/store/appStore";
 import { getCachedProfile, getPersistedLocation, useProfileVersion } from "@/lib/userProfile";
 import { isUserOnline, getLastSeenTimestamp } from "@/lib/presence";
@@ -55,9 +57,29 @@ interface GlobeMarker {
 
 // Globe HTML loaded from static asset file — avoids Hermes template literal escaping issues
 import { Asset } from "expo-asset";
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 
 let _cachedGlobeHtml: string | null = null;
+
+// globe.html's TextureLoader fetches the earth surface from a third-party
+// CDN (unpkg.com) — a 1.46MB, 4096x2048 image, over the network, inside the
+// WebView, before the sphere can render, on every single globe open. That's
+// the single biggest contributor to "MonkeGlobe is slow" — worse, it's a
+// live dependency on an external host with no fallback. Bundled a resized
+// (2048x1024, ~390KB) local copy instead; loadGlobeHtml() swaps the CDN URL
+// for a local base64 data URI so the texture loads instantly from disk with
+// zero network round-trip, same as every other texture in this file (PFP/
+// Solana-logo textures already use CanvasTexture from data URIs).
+const EARTH_TEXTURE_CDN_URL = "https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg";
+
+// globe.html also loaded the three.js engine itself (r128, ~600KB) and
+// OrbitControls (~26KB) as render-blocking <script src> tags from two
+// separate third-party CDNs (cdnjs, jsdelivr) on every open — nothing in
+// the WebView can render, not even the loading placeholder's globe shape,
+// until both round trips complete. Same class of bug as the texture above,
+// and comparable in size. Bundled locally (renamed .js.txt so Metro treats
+// them as opaque assets instead of trying to parse them as app source) and
+// inlined as plain <script> bodies in place of the CDN tags.
 
 async function loadGlobeHtml(): Promise<string> {
   if (_cachedGlobeHtml) return _cachedGlobeHtml;
@@ -66,7 +88,48 @@ async function loadGlobeHtml(): Promise<string> {
     const asset = Asset.fromModule(require("../../assets/globe.html"));
     await asset.downloadAsync();
     const uri = asset.localUri ?? asset.uri;
-    const html = await FileSystem.readAsStringAsync(uri);
+    let html = await FileSystem.readAsStringAsync(uri);
+
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const textureAsset = Asset.fromModule(require("../../assets/earth-texture.jpg"));
+      await textureAsset.downloadAsync();
+      const textureUri = textureAsset.localUri ?? textureAsset.uri;
+      const textureB64 = await FileSystem.readAsStringAsync(textureUri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      html = html.replace(EARTH_TEXTURE_CDN_URL, `data:image/jpeg;base64,${textureB64}`);
+    } catch {
+      // Fall back to the CDN URL (still works, just slower/network-dependent)
+      // if the local asset fails to resolve for any reason.
+    }
+
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const threeAsset = Asset.fromModule(require("../../assets/three.min.js.txt"));
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const orbitAsset = Asset.fromModule(require("../../assets/OrbitControls.js.txt"));
+      await Promise.all([threeAsset.downloadAsync(), orbitAsset.downloadAsync()]);
+      const [threeJs, orbitJs] = await Promise.all([
+        FileSystem.readAsStringAsync(threeAsset.localUri ?? threeAsset.uri),
+        FileSystem.readAsStringAsync(orbitAsset.localUri ?? orbitAsset.uri),
+      ]);
+      html = html
+        .replace("/*__THREE_JS__*/", threeJs)
+        .replace("/*__ORBIT_CONTROLS_JS__*/", orbitJs);
+    } catch {
+      // Fall back to CDN script tags if the local assets fail to resolve.
+      html = html
+        .replace(
+          "<script>/*__THREE_JS__*/</script>",
+          '<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>',
+        )
+        .replace(
+          "<script>/*__ORBIT_CONTROLS_JS__*/</script>",
+          '<script src="https://cdn.jsdelivr.net/npm/three@0.128/examples/js/controls/OrbitControls.js"></script>',
+        );
+    }
+
     _cachedGlobeHtml = html;
     return html;
   } catch {
@@ -120,6 +183,14 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
     let cancelled = false;
 
     async function load() {
+      // Catch up on any PROFILE_UPDATE broadcasts older than the Main Chat's
+      // 24h history window before building markers — see backfillProfileHistory's
+      // doc comment for why this exists (2026-07-20: this was the actual
+      // cause of most "missing" Monkes on the globe, not users never having
+      // set a location).
+      const { backfillProfileHistory } = await import("@/hooks/useXmtp");
+      await backfillProfileHistory();
+
       const allMarkers: GlobeMarker[] = [];
       const uncachedUserLocs: { inboxId: string; username: string; profile: any; location: string }[] = [];
       const seenInboxIds = new Set<string>();
@@ -193,13 +264,19 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
       const { getDeduplicatedUsers } = await import("@/lib/userProfile");
       const allUsers = getDeduplicatedUsers();
 
+      // Diagnostic: classify every known user by why they do/don't get a
+      // marker. Logged at the end of load() once geocoding (phase 2, below)
+      // has had a chance to resolve or fail. See backfillProfileHistory's
+      // doc comment in useXmtp.ts for the bug this traces back to.
+      const skipReasons = new Map<string, "no-location" | "pending-geocode" | "geocode-failed">();
+
       for (const [inboxId, username] of allUsers.entries()) {
         if (seenInboxIds.has(inboxId)) continue; // skip self (already added)
         seenInboxIds.add(inboxId);
         const profile = getCachedProfile(inboxId);
         // Check profile cache first, then persistent location map (survives eviction + restart)
         const location = profile?.location || getPersistedLocation(inboxId);
-        if (!location) continue;
+        if (!location) { skipReasons.set(inboxId, "no-location"); continue; }
         const key = location.trim().toLowerCase();
         const cached = cachedGeo[key];
 
@@ -209,6 +286,7 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
             type: "user", label: username, inboxId, username, nftImage: profile?.nftImage ?? null,
           });
         } else {
+          skipReasons.set(inboxId, "pending-geocode");
           uncachedUserLocs.push({ inboxId, username, profile: profile ?? {}, location });
         }
       }
@@ -282,7 +360,11 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
         if (!cancelled) setLoadingStatus(`Geocoding ${i + 1}/${uncachedUserLocs.length}...`);
         if (cancelled) return;
         const coords = await geocodeLocation(location);
-        if (!coords || cancelled) continue;
+        if (!coords || cancelled) {
+          if (!coords) skipReasons.set(inboxId, "geocode-failed");
+          continue;
+        }
+        skipReasons.delete(inboxId);
         allMarkers.push({
           id: `user-${inboxId}`, lat: coords.lat, lng: coords.lng,
           type: "user", label: username, inboxId, username, nftImage: profile.nftImage,
@@ -290,6 +372,27 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
         setMarkers([...allMarkers]);
       }
       if (!cancelled) setLoadingStatus("");
+
+      // Diagnostic: log why the marker count doesn't match the group roster.
+      // Requested 2026-07-20 after a user reported 6 markers vs 11 known
+      // Monkes — root cause was mostly stale profile cache (fixed by
+      // backfillProfileHistory above), not users never setting a location.
+      if (!cancelled && __DEV__) {
+        try {
+          const { getGroupMembers } = await import("@/hooks/useXmtp");
+          const members = await getGroupMembers();
+          const neverCached = members.filter(id => id !== myInboxId && !allUsers.has(id) && !BOT_INBOX_IDS.includes(id));
+          const noLocation = [...skipReasons.entries()].filter(([, r]) => r === "no-location").map(([id]) => id);
+          const geocodeFailed = [...skipReasons.entries()].filter(([, r]) => r === "geocode-failed").map(([id]) => id);
+          console.log(
+            `[Globe] roster=${members.length} markers(users)=${allMarkers.filter(m => m.type === "user").length} ` +
+            `| never-cached=${neverCached.length} no-location=${noLocation.length} geocode-failed=${geocodeFailed.length}`,
+          );
+          if (neverCached.length > 0) console.log("[Globe] never-cached inboxIds (profile broadcast never received, even after 30d backfill):", neverCached);
+          if (noLocation.length > 0) console.log("[Globe] no-location inboxIds (profile cached, location field empty):", noLocation);
+          if (geocodeFailed.length > 0) console.log("[Globe] geocode-failed inboxIds (location set but Nominatim couldn't resolve it):", geocodeFailed);
+        } catch { /* diagnostic only, never block the globe on this */ }
+      }
     }
 
     load();
@@ -341,9 +444,25 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
     }));
   }, []);
 
-  // Push markers when they change
+  // Push markers when they change — debounced. Phase 2 (background geocoding
+  // of uncached user locations, below) calls setMarkers() once per user as
+  // each one resolves, respecting Nominatim's 1 req/s rate limit. Without
+  // debouncing, every single one of those trickle-in updates re-serialized
+  // and re-sent the ENTIRE marker list — including every other user's base64
+  // NFT avatar (up to 150KB each) — across the WebView bridge again, even
+  // though only one marker actually changed. The marker STATE still updates
+  // instantly (feeds the below-globe list UI); only the expensive WebView
+  // postMessage is coalesced.
+  const sendMarkersTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    if (markers.length > 0) sendMarkersToWebView(markers);
+    if (markers.length === 0) return;
+    if (sendMarkersTimer.current) clearTimeout(sendMarkersTimer.current);
+    sendMarkersTimer.current = setTimeout(() => {
+      sendMarkersToWebView(markers);
+    }, 400);
+    return () => {
+      if (sendMarkersTimer.current) clearTimeout(sendMarkersTimer.current);
+    };
   }, [markers, sendMarkersToWebView]);
 
   // FIX #1: when globeHtml swaps from the synchronous fallback to the real
@@ -431,12 +550,14 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
     return { userMarkers: um, lumaMarkers: lm, irlMarkers: im, eventMarkers: [...lm, ...im] };
   }, [markers]);
 
+  const insets = useSafeAreaInsets();
+
   return (
     <View style={styles.root}>
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle="light-content" hidden={IS_IMMERSIVE_SHELL} />
 
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
         <Pressable onPress={() => router.back()} hitSlop={8} style={styles.backBtn}>
           <Text style={styles.backText}>← Back</Text>
         </Pressable>
@@ -492,7 +613,7 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
 
       {/* Tappable marker pills */}
       <View style={styles.markerList}>
-        {userMarkers.slice(0, 6).map((m: GlobeMarker) => (
+        {userMarkers.map((m: GlobeMarker) => (
           <Pressable
             key={m.id}
             style={styles.markerPill}
@@ -551,52 +672,48 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
       />
 
       {/* Cluster bottom sheet — shows all users at a location */}
-      <Modal
+      <MonkeGlass
         visible={clusterUsers.length > 0}
-        transparent
+        onClose={() => setClusterUsers([])}
+        position="bottom"
         animationType="slide"
-        onRequestClose={() => setClusterUsers([])}
+        cardStyle={styles.clusterSheet}
       >
-        <Pressable style={styles.modalOverlay} onPress={() => setClusterUsers([])}>
-          <Pressable style={styles.clusterSheet} onPress={(e) => e.stopPropagation()}>
-            <View style={styles.clusterHandle} />
-            <Text style={styles.clusterTitle}>
-              {clusterUsers.length} Monkes at this location
-            </Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.clusterScroll}>
-              {clusterUsers.map((m: GlobeMarker) => (
-                <Pressable
-                  key={m.id}
-                  style={styles.clusterUser}
-                  onPress={() => {
-                    setClusterUsers([]);
-                    if (m.inboxId && onPressUser) {
-                      const profile = getCachedProfile(m.inboxId);
-                      onPressUser({
-                        senderAddress: m.inboxId,
-                        senderUsername: m.username ?? m.label,
-                        senderNft: profile?.nftImage ? { mint: "", name: "", image: profile.nftImage } : null,
-                      });
-                    }
-                  }}
-                >
-                  <View>
-                    {m.nftImage ? (
-                      <Image source={{ uri: m.nftImage }} style={styles.clusterPfp} />
-                    ) : (
-                      <View style={[styles.clusterPfp, styles.clusterPfpFallback]} />
-                    )}
-                    {m.inboxId && (
-                      <View style={[styles.clusterActivityDot, { backgroundColor: getActivityColor(m.inboxId) }]} />
-                    )}
-                  </View>
-                  <Text style={styles.clusterName} numberOfLines={1}>{m.label}</Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-          </Pressable>
-        </Pressable>
-      </Modal>
+        <Text style={styles.clusterTitle}>
+          {clusterUsers.length} Monkes at this location
+        </Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.clusterScroll}>
+          {clusterUsers.map((m: GlobeMarker) => (
+            <Pressable
+              key={m.id}
+              style={styles.clusterUser}
+              onPress={() => {
+                setClusterUsers([]);
+                if (m.inboxId && onPressUser) {
+                  const profile = getCachedProfile(m.inboxId);
+                  onPressUser({
+                    senderAddress: m.inboxId,
+                    senderUsername: m.username ?? m.label,
+                    senderNft: profile?.nftImage ? { mint: "", name: "", image: profile.nftImage } : null,
+                  });
+                }
+              }}
+            >
+              <View>
+                {m.nftImage ? (
+                  <Image source={{ uri: m.nftImage }} style={styles.clusterPfp} />
+                ) : (
+                  <View style={[styles.clusterPfp, styles.clusterPfpFallback]} />
+                )}
+                {m.inboxId && (
+                  <View style={[styles.clusterActivityDot, { backgroundColor: getActivityColor(m.inboxId) }]} />
+                )}
+              </View>
+              <Text style={styles.clusterName} numberOfLines={1}>{m.label}</Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+      </MonkeGlass>
     </View>
   );
 }
@@ -607,7 +724,7 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: THEME.bg },
   header: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    paddingTop: 52, paddingHorizontal: 16, paddingBottom: 8,
+    paddingHorizontal: 16, paddingBottom: 8,
   },
   backBtn: { paddingVertical: 4, paddingRight: 12 },
   backText: { fontFamily: FONTS.bodyMed, fontSize: 14, color: "#6CB4EE" },
@@ -662,10 +779,6 @@ const styles = StyleSheet.create({
   activityDot: { width: 7, height: 7, borderRadius: 4, borderWidth: 1, borderColor: "rgba(0,0,0,0.3)" },
   attendeeBadge: { fontFamily: FONTS.mono, fontSize: 10, color: "#FFD54F" },
 
-  modalOverlay: {
-    flex: 1, backgroundColor: "rgba(0,0,0,0.65)",
-    justifyContent: "center", alignItems: "center", padding: 24,
-  },
   eventCard: {
     backgroundColor: "rgba(18,18,26,0.95)", borderRadius: 20, padding: 24, gap: 14,
     borderWidth: 1, borderColor: "rgba(108,180,238,0.2)",
@@ -708,30 +821,12 @@ const styles = StyleSheet.create({
 
   // Cluster bottom sheet
   clusterSheet: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: "rgba(18, 18, 26, 0.97)",
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
-    paddingBottom: 36,
-    borderTopWidth: 1,
-    borderTopColor: "rgba(153, 69, 255, 0.2)",
+    borderColor: "rgba(153, 69, 255, 0.25)",
     shadowColor: "#9945FF",
     shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.2,
     shadowRadius: 16,
     elevation: 12,
-  },
-  clusterHandle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "rgba(255,255,255,0.15)",
-    alignSelf: "center",
-    marginBottom: 14,
   },
   clusterTitle: {
     fontFamily: FONTS.display,

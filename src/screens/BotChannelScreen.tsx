@@ -27,6 +27,7 @@ import AutonoMonkeDisclaimerModal, { type AutonomyFeature } from "@/components/A
 import AutonoMonkeSetupWizard from "@/components/AutonoMonkeSetupWizard";
 import { getXmtpClient } from "@/hooks/useXmtp";
 import { sendDmMessage } from "@/lib/xmtp";
+import * as Haptics from "expo-haptics";
 import { THEME, FONTS, getWorldBarTint, getWorldAccent } from "@/lib/constants";
 import { BotChannelIcon } from "@/components/BotChannelIcon";
 import { ErrorMessage } from "@/components/ErrorMessage";
@@ -34,6 +35,7 @@ import { useThemeColor } from "@/lib/shopTheme";
 import { WorldLayer } from "@/components/worlds/WorldLayer";
 import { markChannelRead } from "@/lib/messageCache";
 import type { ChatMessage } from "@/types";
+import { isMineInbox } from "@/lib/inboxLinking";
 
 const BOT_INBOX_ID = "998001a498174b8a194110ee792b10f97de4965665eaf0d088ed2c71bdf62363";
 
@@ -133,15 +135,57 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
   const nftDominantColor = useAppStore(s => s.nftDominantColor);
   const pfpFullThemeActive = !!(shopStyles?.pfpFullTheme && nftDominantColor);
 
-  // Check enrollment on mount
+  // Ground truth from the bot's AUTOMONKE_STATUS: DM (useXmtp.ts stream
+  // handler), sent after every /autonomonke command. The AsyncStorage flag
+  // below is only ever set locally by THIS install completing enrollment,
+  // so it silently reads OFF on a fresh app install/build even when the
+  // bot never stopped trading — this corrects it the moment a status DM
+  // lands.
+  const automonkeStatus = useAppStore(s => s.automonkeStatus);
+
+  // Check enrollment on mount — AsyncStorage first (fast, no round-trip),
+  // then actively ask the bot for real status so a stale/missing local flag
+  // self-corrects without the user having to run a command manually.
   useEffect(() => {
-    if (hasAutonomy) {
-      const key = AUTONOMY_CONFIG[channelId].storageKey;
-      AsyncStorage.getItem(key).then(v => {
-        if (v === "1") setAutonomyEnrolled(true);
-      }).catch(() => {});
-    }
+    if (!hasAutonomy) return;
+    const key = AUTONOMY_CONFIG[channelId].storageKey;
+    AsyncStorage.getItem(key).then(v => {
+      if (v === "1") setAutonomyEnrolled(true);
+    }).catch(() => {});
+
+    if (channelId !== "trades") return;
+    // 2026-07-29: this used to fire unconditionally on every mount — since
+    // the trades screen remounts basically every time the app opens (or the
+    // user navigates back to it), that meant a fresh "/autonomonke status"
+    // DM (and the bot's reply, which shows up as a notification) every
+    // single time. Throttle to once per cooldown window instead — still
+    // self-corrects a stale local flag, just not on a hair trigger.
+    const STATUS_CHECK_COOLDOWN_MS = 30 * 60 * 1000; // 30 min
+    const STATUS_CHECK_STORAGE_KEY = "automonke_last_status_check_v1";
+    (async () => {
+      try {
+        const lastCheckRaw = await AsyncStorage.getItem(STATUS_CHECK_STORAGE_KEY);
+        const lastCheck = lastCheckRaw ? parseInt(lastCheckRaw, 10) : 0;
+        if (Date.now() - lastCheck < STATUS_CHECK_COOLDOWN_MS) return;
+        const client = getXmtpClient();
+        if (!client) return;
+        const dm = await (client.conversations as any).findOrCreateDm(BOT_INBOX_ID);
+        if (dm) {
+          await sendDmMessage(dm, "/autonomonke status", username);
+          await AsyncStorage.setItem(STATUS_CHECK_STORAGE_KEY, String(Date.now()));
+        }
+      } catch (err) {
+        if (__DEV__) console.warn("[Autonomy:trades] status refresh DM failed:", (err as Error).message);
+      }
+    })();
   }, [channelId]);
+
+  // React to the bot's answer whenever it arrives this session.
+  useEffect(() => {
+    if (!automonkeStatus || channelId !== "trades") return;
+    setAutonomyEnrolled(automonkeStatus.enrolled);
+    setLimitOrdersEnabled(automonkeStatus.limitOrdersEnabled);
+  }, [automonkeStatus, channelId]);
 
   // Limit Orders opt-in flag — only relevant on the trades channel.
   useEffect(() => {
@@ -283,9 +327,10 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
         return (
           <MessageBubble
             message={item}
-            isOwn={item.senderAddress === myAddress}
+            isOwn={isMineInbox(item.senderAddress, myAddress)}
             onReact={noop}
             onReply={noop}
+            onOpenActions={noop}
             isBotChannel
           />
         );
@@ -323,31 +368,17 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
       {/* Header — matches Main Chat header layout exactly. Status-bar safe-
           area lives inside so the bg extends edge-to-edge behind the
           status bar (no themeBg gap above the chrome). */}
-      <View style={[styles.header, { backgroundColor: chromeBg, borderBottomColor: themeBorder, paddingTop: insets.top }]}>
+      <View style={[styles.header, { backgroundColor: chromeBg, borderBottomColor: themeBorder, paddingTop: insets.top, height: 100 + insets.top }]}>
         <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={8}>
           <Text style={styles.backIcon}>{"\u2039"}</Text>
         </Pressable>
 
-        {/* Left-side Limit Orders pill \u2014 mirrors the AutonoMonke pill on the
-            right. Only on the trades channel; AutonoMonke-specific feature.
-            Tap when not enrolled opens the AutonoMonke modal (handler
-            short-circuits via setShowAutonoMonkeModal). */}
-        {channelId === "trades" && hasAutonomy && (
-          <Pressable
-            onPress={handleLimitOrdersToggle}
-            style={[styles.limitOrdersBtn, limitOrdersEnabled && styles.limitOrdersBtnActive]}
-            hitSlop={8}
-          >
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-              {limitOrdersEnabled && <View style={styles.blueCheck}><Text style={styles.blueCheckText}>{"\u2713"}</Text></View>}
-              <Text style={[styles.limitOrdersBtnText, limitOrdersEnabled && styles.limitOrdersBtnTextActive]}>
-                Limit Orders
-              </Text>
-            </View>
-          </Pressable>
-        )}
-
-        {/* Center: banner image — matches Main Chat header layout */}
+        {/* Center: banner image — matches Main Chat header layout. Only the
+            back button and mute pill share the row with it now (both
+            content-hugging and present on every channel), so the banner
+            gets the same, generous available width everywhere — no more
+            reserving space for the Limit Orders / AutonoMonke pills, which
+            moved to their own row below. */}
         <ImageBackground
           source={config.banner}
           style={styles.headerCenter}
@@ -358,7 +389,7 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
           )}
         </ImageBackground>
 
-        {/* Right column: Alert bell + Autonomy button */}
+        {/* Right: Alert bell only */}
         <View style={styles.headerRight}>
           <Pressable
             onPress={() => {
@@ -372,32 +403,60 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
               {isMuted ? "🔇 Muted" : "🔔 On"}
             </Text>
           </Pressable>
+        </View>
+      </View>
 
-          {hasAutonomy && (
+      {/* Pill band — Limit Orders (trades only) + AutonoMonke (trades/bets/
+          predictions), relocated out of the header so they stop competing
+          with the banner for width. Solid chromeBg backing + each pill's
+          own opaque fill/border keeps them readable over the busy World
+          background instead of blending in; the active/enrolled state gets
+          a visibly heavier fill + border so "on" reads at a glance. Only
+          rendered when this channel actually has a pill to show. */}
+      {hasAutonomy && (
+        <View style={[styles.pillBand, { backgroundColor: chromeBg, borderBottomColor: themeBorder }]}>
+          {channelId === "trades" && (
             <Pressable
-              onPress={() => {
-                if (autonomyEnrolled) {
-                  router.push(`/dm/${BOT_INBOX_ID}` as any);
-                } else {
-                  setShowAutonoMonkeModal(true);
-                }
-              }}
-              style={[styles.autonomyBtn, autonomyEnrolled && styles.autonomyBtnActive]}
+              onPress={handleLimitOrdersToggle}
+              style={[styles.limitOrdersBtn, limitOrdersEnabled && styles.limitOrdersBtnActive]}
               hitSlop={8}
             >
               <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                {autonomyEnrolled && <View style={styles.blueCheck}><Text style={styles.blueCheckText}>✓</Text></View>}
-                <Text style={[styles.autonomyBtnText, autonomyEnrolled && styles.autonomyBtnTextActive]}>
-                  AutonoMonke
+                {limitOrdersEnabled && <View style={styles.blueCheck}><Text style={styles.blueCheckText}>{"\u2713"}</Text></View>}
+                <Text style={[styles.limitOrdersBtnText, limitOrdersEnabled && styles.limitOrdersBtnTextActive]}>
+                  Limit Orders
                 </Text>
               </View>
             </Pressable>
           )}
-        </View>
-      </View>
 
-      {/* Bot Alerts · Live status bar removed 2026-05-07 — redundant chrome.
-          Filter band sits directly below the header now. */}
+          <Pressable
+            onPress={() => {
+              if (autonomyEnrolled) {
+                router.push(`/dm/${BOT_INBOX_ID}` as any);
+              } else {
+                setShowAutonoMonkeModal(true);
+              }
+            }}
+            onLongPress={() => {
+              if (autonomyEnrolled) {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+                setShowAutonoMonkeModal(true);
+              }
+            }}
+            delayLongPress={400}
+            style={[styles.autonomyBtn, autonomyEnrolled && styles.autonomyBtnActive]}
+            hitSlop={8}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+              {autonomyEnrolled && <View style={styles.blueCheck}><Text style={styles.blueCheckText}>{"\u2713"}</Text></View>}
+              <Text style={[styles.autonomyBtnText, autonomyEnrolled && styles.autonomyBtnTextActive]}>
+                AutonoMonke
+              </Text>
+            </View>
+          </Pressable>
+        </View>
+      )}
 
       {/* Loading / connecting state */}
       {isLoading && (
@@ -568,10 +627,12 @@ const styles = StyleSheet.create({
   },
   // Header geometry matched to ChatHeader.tsx (Main Chat) so the banner
   // image renders at the same visible size and is centered the same way.
-  // Bot channels' headerRight is wider (mute pill + AutonoMonke pill stacked
-  // vertically) than Main Chat's banana pill, so the centered banner has
-  // slightly less horizontal room — but the height + scale + margin all
-  // match, which is what the community feedback was about.
+  // Only backBtn + the mute pill share the row with the banner now (both
+  // content-hugging, present on every channel) — the Limit Orders /
+  // AutonoMonke pills live in their own row below (pillBand) so they don't
+  // compete with the banner for width. That's what keeps headerCenter's
+  // flex:1 share, and the banner's rendered size, identical across every
+  // channel regardless of which pills that channel has.
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -613,9 +674,11 @@ const styles = StyleSheet.create({
   },
   headerRight: {
     alignItems: "center",
-    gap: 6,
     zIndex: 1,
   },
+  // Pill band — sits below the header (see pillBand style further down)
+  // with its own solid backing so the Limit Orders / AutonoMonke pills
+  // read clearly over the busy World background instead of blending in.
   muteBtn: {
     paddingHorizontal: 10,
     paddingVertical: 6,
@@ -804,16 +867,37 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
 
+  // Pill band — Limit Orders + AutonoMonke live here now, below the
+  // header, instead of squeezed in beside the banner. Solid chromeBg
+  // backing (same pattern as filterBand above) so the row itself reads
+  // as a distinct toolbar strip over the World background.
+  pillBand: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+  },
+  // Base fill bumped from 0.15→0.22 and a matching border added — at 0.15
+  // with no border, the pills nearly disappeared against the busy World
+  // background (grid lines, gradients). Active/enrolled state jumps to a
+  // visibly heavier fill + brighter border ("shaded") so enrollment status
+  // reads at a glance instead of only via the small checkmark badge.
   autonomyBtn: {
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 8,
-    backgroundColor: "rgba(124, 58, 237, 0.15)",
+    backgroundColor: "rgba(124, 58, 237, 0.22)",
+    borderWidth: 1,
+    borderColor: "rgba(124, 58, 237, 0.45)",
     minWidth: 44,
     alignItems: "center",
+    elevation: 2,
   },
   autonomyBtnActive: {
-    backgroundColor: "rgba(124, 58, 237, 0.3)",
+    backgroundColor: "rgba(124, 58, 237, 0.4)",
+    borderColor: "rgba(124, 58, 237, 0.8)",
   },
   autonomyBtnText: {
     fontFamily: FONTS.bodyMed,
@@ -830,13 +914,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 8,
-    backgroundColor: "rgba(20, 184, 166, 0.15)",
+    backgroundColor: "rgba(20, 184, 166, 0.22)",
+    borderWidth: 1,
+    borderColor: "rgba(20, 184, 166, 0.45)",
     minWidth: 44,
     alignItems: "center",
-    marginLeft: 4,
+    elevation: 2,
   },
   limitOrdersBtnActive: {
-    backgroundColor: "rgba(20, 184, 166, 0.3)",
+    backgroundColor: "rgba(20, 184, 166, 0.4)",
+    borderColor: "rgba(20, 184, 166, 0.8)",
   },
   limitOrdersBtnText: {
     fontFamily: FONTS.bodyMed,

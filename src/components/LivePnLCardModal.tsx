@@ -12,20 +12,22 @@
 
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
-  Modal, View, Text, Pressable, StyleSheet, Alert, Share, Dimensions,
+  View, Text, Pressable, StyleSheet, Alert, Dimensions,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { toast } from 'sonner-native';
 import { THEME, FONTS } from '@/lib/constants';
+import { GlassBottomSheet } from '@/components/GlassBottomSheet';
 import { ShareablePnLCard } from '@/components/ShareablePnLCard';
+import { shareImageToX } from '@/lib/shareToX';
 import type { ClosedTrade } from '@/lib/positions';
 import type { PortfolioCard } from '@/store/tradesStore';
 import { useXmtp } from '@/hooks/useXmtp';
 
 const getViewShot = () => import('react-native-view-shot');
 const getMediaLibrary = () => import('expo-media-library');
-const getFileSystem = () => import('expo-file-system');
+const getFileSystem = () => import('expo-file-system/legacy');
 const getImageManipulator = () => import('expo-image-manipulator');
 
 interface LivePnLCardModalProps {
@@ -87,7 +89,6 @@ export function LivePnLCardModal({ card, visible, onClose }: LivePnLCardModalPro
       format: 'png',
       quality: 1,
       result: 'tmpfile',
-      // @ts-expect-error - Android-only knob, not in the TS types
       useRenderInContext: true,
     });
   }, []);
@@ -102,9 +103,19 @@ export function LivePnLCardModal({ card, visible, onClose }: LivePnLCardModalPro
   }, []);
 
   const sendToMainChat = useCallback(async (uri: string) => {
-    const compressed = await compressForShare(uri);
+    // Chat bubbles render this at a fraction of the 1080px compressForShare()
+    // targets for external sharing — that width produced an unnecessarily
+    // large base64 string embedded directly in message content, adding real
+    // weight to every re-render this message appears in AND to the local
+    // message cache (see messageCache.ts MAX_PRESERVABLE — these never
+    // expired, so every share made every future cold start slower).
+    const IM = await getImageManipulator();
+    const resized = await IM.manipulateAsync(uri, [{ resize: { width: 540 } }], {
+      compress: 0.7,
+      format: IM.SaveFormat.JPEG,
+    });
     const FS = await getFileSystem();
-    const b64 = await FS.readAsStringAsync(compressed, { encoding: FS.EncodingType.Base64 });
+    const b64 = await FS.readAsStringAsync(resized.uri, { encoding: FS.EncodingType.Base64 });
     const payload = `IMAGE:data:image/jpeg;base64,${b64}`;
 
     // Optimistic local insert — XMTP doesn't echo own sends back via stream,
@@ -149,7 +160,10 @@ export function LivePnLCardModal({ card, visible, onClose }: LivePnLCardModalPro
       const uri = await captureCard();
       await ML.saveToLibraryAsync(uri);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      toast.success('Saved to gallery');
+      // 2026-07-30: defer — same race as handleShareMainChat below (grey
+      // screen when the toast overlay mounts in the same tick as this
+      // Modal's Android Dialog window still settling from the save).
+      setTimeout(() => toast.success('Saved to gallery'), 350);
     } catch (e: any) {
       toast.error(e?.message ?? 'Save failed');
     } finally {
@@ -177,8 +191,11 @@ export function LivePnLCardModal({ card, visible, onClose }: LivePnLCardModalPro
     try {
       const uri = await captureCard();
       const compressed = await compressForShare(uri);
-      await Share.share({ url: compressed, message: formatLiveSummary(card) });
+      const { saved } = await shareImageToX(compressed, formatLiveSummary(card));
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      if (saved) {
+        toast.success('Image saved — tap the image icon in X to attach it 📸');
+      }
     } catch (e: any) {
       if (e?.message && !/dismiss/i.test(e.message)) toast.error(e.message);
     } finally {
@@ -193,7 +210,8 @@ export function LivePnLCardModal({ card, visible, onClose }: LivePnLCardModalPro
       const uri = await captureCard();
       await sendToMainChat(uri);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      toast.success('Posted to Main Chat');
+      // 2026-07-09: defer — see matching comment in PnLCardModal.handleShareMainChat.
+      setTimeout(() => toast.success('Posted to Main Chat'), 350);
     } catch (e: any) {
       toast.error(e?.message ?? 'Post failed');
     } finally {
@@ -233,7 +251,10 @@ export function LivePnLCardModal({ card, visible, onClose }: LivePnLCardModalPro
       await sendDmMessage(dm, `/autonomonke close $${card.token}`, username);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       toast.success(`Closing $${card.token}…`);
-      onClose();
+      // 2026-07-09: defer the Modal close so it doesn't tear down its Android
+      // Dialog window in the same tick as the toast overlay mounting — see
+      // matching comment in PnLCardModal.handleShareMainChat.
+      setTimeout(() => onClose(), 350);
     } catch (e: any) {
       toast.error(e?.message ?? 'Close failed');
     } finally {
@@ -248,9 +269,9 @@ export function LivePnLCardModal({ card, visible, onClose }: LivePnLCardModalPro
       const uri = await captureCard();
       await sendToMainChat(uri);
       const compressed = await compressForShare(uri);
-      await Share.share({ url: compressed, message: formatLiveSummary(card) });
+      const { saved } = await shareImageToX(compressed, formatLiveSummary(card));
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      toast.success('Posted to Main Chat');
+      setTimeout(() => toast.success(saved ? 'Posted to Main Chat — image saved for X too 📸' : 'Posted to Main Chat'), 350);
     } catch (e: any) {
       if (e?.message && !/dismiss/i.test(e.message)) toast.error(e.message);
     } finally {
@@ -261,59 +282,55 @@ export function LivePnLCardModal({ card, visible, onClose }: LivePnLCardModalPro
   if (!card || !synthetic) return null;
 
   return (
-    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
-      <View style={styles.backdrop}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-
-        <View style={styles.sheet}>
-          <View style={styles.headerRow}>
-            <View style={styles.titleGroup}>
-              <Text style={styles.title}>Live Position</Text>
-              <View style={styles.liveBadge}>
-                <Text style={styles.liveDot}>●</Text>
-                <Text style={styles.liveText}>LIVE</Text>
-              </View>
+    <GlassBottomSheet visible={visible} onClose={onClose} snapPoints={['75%', '95%']}>
+      <View style={styles.contentGap}>
+        <View style={styles.headerRow}>
+          <View style={styles.titleGroup}>
+            <Text style={styles.title}>Live Position</Text>
+            <View style={styles.liveBadge}>
+              <Text style={styles.liveDot}>●</Text>
+              <Text style={styles.liveText}>LIVE</Text>
             </View>
-            <Pressable onPress={onClose} hitSlop={12} style={styles.closeBtn}>
-              <Text style={styles.closeIcon}>✕</Text>
-            </Pressable>
           </View>
-
-          <View style={styles.cardWrap}>
-            <ShareablePnLCard ref={cardRef} trade={synthetic} width={cardWidth} isLive />
-          </View>
-
-          <View style={styles.shareRow}>
-            <ActionBtn label="𝕏" sub="Tweet" onPress={handleShareX} loading={busy === 'x'} disabled={!!busy && busy !== 'x'} />
-            <ActionBtn label="💬" sub="Main Chat" onPress={handleShareMainChat} loading={busy === 'chat'} disabled={!!busy && busy !== 'chat'} />
-            <ActionBtn label="🚀" sub="Both" onPress={handleShareBoth} loading={busy === 'both'} disabled={!!busy && busy !== 'both'} primary />
-          </View>
-
-          <View style={styles.utilRow}>
-            <ActionBtn label="💾" sub="Save" onPress={handleSave} loading={busy === 'save'} disabled={!!busy && busy !== 'save'} flat />
-            <ActionBtn label="📋" sub="Copy" onPress={handleCopy} loading={busy === 'copy'} disabled={!!busy && busy !== 'copy'} flat />
-          </View>
-
-          <Pressable
-            onPress={handleClosePosition}
-            disabled={!!busy && busy !== 'close'}
-            style={({ pressed }) => [
-              styles.closePosBtn,
-              closeArmed && styles.closePosBtnArmed,
-              pressed && !busy && { opacity: 0.7 },
-            ]}
-          >
-            <Text style={[styles.closePosText, closeArmed && styles.closePosTextArmed]}>
-              {busy === 'close'
-                ? 'Closing…'
-                : closeArmed
-                  ? `Tap again to confirm — close $${card.token}`
-                  : `🔻 Close Position`}
-            </Text>
+          <Pressable onPress={onClose} hitSlop={12} style={styles.closeBtn}>
+            <Text style={styles.closeIcon}>✕</Text>
           </Pressable>
         </View>
+
+        <View style={styles.cardWrap}>
+          <ShareablePnLCard ref={cardRef} trade={synthetic} width={cardWidth} isLive />
+        </View>
+
+        <View style={styles.shareRow}>
+          <ActionBtn label="𝕏" sub="Tweet" onPress={handleShareX} loading={busy === 'x'} disabled={!!busy && busy !== 'x'} />
+          <ActionBtn label="💬" sub="Main Chat" onPress={handleShareMainChat} loading={busy === 'chat'} disabled={!!busy && busy !== 'chat'} />
+          <ActionBtn label="🚀" sub="Both" onPress={handleShareBoth} loading={busy === 'both'} disabled={!!busy && busy !== 'both'} primary />
+        </View>
+
+        <View style={styles.utilRow}>
+          <ActionBtn label="💾" sub="Save" onPress={handleSave} loading={busy === 'save'} disabled={!!busy && busy !== 'save'} flat />
+          <ActionBtn label="📋" sub="Copy" onPress={handleCopy} loading={busy === 'copy'} disabled={!!busy && busy !== 'copy'} flat />
+        </View>
+
+        <Pressable
+          onPress={handleClosePosition}
+          disabled={!!busy && busy !== 'close'}
+          style={({ pressed }) => [
+            styles.closePosBtn,
+            closeArmed && styles.closePosBtnArmed,
+            pressed && !busy && { opacity: 0.7 },
+          ]}
+        >
+          <Text style={[styles.closePosText, closeArmed && styles.closePosTextArmed]}>
+            {busy === 'close'
+              ? 'Closing…'
+              : closeArmed
+                ? `Tap again to confirm — close $${card.token}`
+                : `🔻 Close Position`}
+          </Text>
+        </Pressable>
       </View>
-    </Modal>
+    </GlassBottomSheet>
   );
 }
 
@@ -347,12 +364,7 @@ function ActionBtn({ label, sub, onPress, loading, disabled, primary, flat }: Ac
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center' },
-  sheet: {
-    width: '92%', maxWidth: 420, borderRadius: 24, padding: 16,
-    backgroundColor: THEME.surface, borderWidth: 1, borderColor: THEME.border,
-    gap: 14,
-  },
+  contentGap: { gap: 14 },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   titleGroup: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   title: { fontFamily: FONTS.display, fontSize: 16, color: THEME.text, letterSpacing: 0.5 },

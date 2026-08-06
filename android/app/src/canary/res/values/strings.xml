@@ -1,0 +1,10 @@
+<resources>
+  <!-- Overrides app_name only for the canary flavor — everything else
+       (splash config, runtime version) inherits from src/main. Distinct
+       label so the test app is visually distinguishable from the real one
+       on the home screen even though the icon is currently the same.
+       2026-07-22: relabeled for the OnlyMonkes 3.0 native-stack smoke test
+       (vision-camera 5, freerasp 5, expo-video/audio) — same canary
+       applicationId/flavor mechanism, just a clearer label for this round. -->
+  <string name="app_name">Test 3.0 Monke</string>
+</resources>

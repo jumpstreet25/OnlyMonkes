@@ -3,9 +3,11 @@ import {
   View, Text, StyleSheet, Pressable, ScrollView, StatusBar,
   ActivityIndicator, RefreshControl,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Connection, PublicKey, LAMPORTS_PER_SOL } from "@solana/web3.js";
-import { THEME, FONTS, HELIUS_RPC_URL, SKR_MINT } from "@/lib/constants";
+import { THEME, FONTS, SOLANA_RPC_URL, SKR_MINT } from "@/lib/constants";
+import { IS_IMMERSIVE_SHELL } from "@/lib/immersiveStatusBar";
 import { useAppStore } from "@/store/appStore";
 import { MiniChart } from "@/components/MiniChart";
 import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
@@ -102,12 +104,15 @@ export default function PortfolioScreen() {
   const loadPortfolio = useCallback(async () => {
     if (!wallet?.address) return;
     try {
-      const connection = new Connection(HELIUS_RPC_URL, "confirmed");
+      // Plain SOL/token-account balance reads don't need Helius's indexing —
+      // route through the free public RPC to keep this off the shared,
+      // often-maxed Helius account (2026-07-12).
+      const connection = new Connection(SOLANA_RPC_URL, "confirmed");
 
       // Fetch SOL balance, token accounts, token map in parallel
       const [lamports, tokenRes, jupMap] = await Promise.all([
         connection.getBalance(new PublicKey(wallet.address)),
-        fetchWithTimeout(HELIUS_RPC_URL, {
+        fetchWithTimeout(SOLANA_RPC_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -196,11 +201,12 @@ export default function PortfolioScreen() {
   // Total portfolio value
   const totalUsd = (solBalance && solPrice ? solBalance * solPrice : 0)
     + tokens.reduce((sum, t) => sum + (t.usdValue ?? 0), 0);
+  const insets = useSafeAreaInsets();
 
   return (
     <View style={styles.root}>
-      <StatusBar barStyle="light-content" />
-      <View style={styles.header}>
+      <StatusBar barStyle="light-content" hidden={IS_IMMERSIVE_SHELL} />
+      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <Pressable onPress={() => router.back()} hitSlop={8}>
           <Text style={styles.backText}>← Back</Text>
         </Pressable>
@@ -321,7 +327,7 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: THEME.bg },
   header: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    paddingTop: 52, paddingHorizontal: 16, paddingBottom: 12,
+    paddingHorizontal: 16, paddingBottom: 12,
     borderBottomWidth: 0.75, borderBottomColor: "rgba(255,255,255,0.06)",
   },
   backText: { fontFamily: FONTS.bodyMed, fontSize: 14, color: "#6CB4EE" },

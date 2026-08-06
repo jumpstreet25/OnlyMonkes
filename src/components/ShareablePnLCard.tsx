@@ -200,9 +200,7 @@ export const ShareablePnLCard = forwardRef<View, ShareablePnLCardProps>(
 
           <View style={styles.spacer} />
 
-          {/* Footer — PFP + username (in user's identity color) + wallet.
-              Watermark dropped: the doubled hero header now carries the
-              OnlyMonkes branding, so a second mark would be redundant. */}
+          {/* Footer — PFP + username (in user's identity color) + wallet. */}
           <View style={styles.footerRow}>
             {pfpUri ? (
               <View style={[styles.pfpRing, { borderColor: usernameColor }]}>
@@ -219,6 +217,18 @@ export const ShareablePnLCard = forwardRef<View, ShareablePnLCardProps>(
             </View>
           </View>
         </View>
+
+        {/* 2026-07-30: "Shot using OnlyMonkes" watermark — was only ever
+            shown in the share-sheet modal's header chrome (outside the
+            capture area), so it never actually made it into the exported
+            share image. Baking it in here, bottom-right, matches every
+            other watermarked share surface in the app (chat images, video,
+            camera preview). */}
+        <Image
+          source={require('../../assets/watermark.png')}
+          style={[styles.watermark, { width: width * 0.3, height: width * 0.3 * (1024 / 1536) }]}
+          resizeMode="contain"
+        />
       </View>
     );
   }
@@ -364,5 +374,11 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: THEME.textMuted,
     letterSpacing: 0.5,
+  },
+  watermark: {
+    position: 'absolute',
+    bottom: 10,
+    right: 14,
+    opacity: 0.9,
   },
 });

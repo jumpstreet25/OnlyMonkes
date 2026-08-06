@@ -19,8 +19,8 @@
 <div id="tooltip"></div>
 <div id="loading" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#6CB4EE;font:14px sans-serif;text-align:center">Loading globe...</div>
 <script>window.onerror=function(m){document.getElementById('loading').innerHTML='Globe error: '+m;return false;}</script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128/examples/js/controls/OrbitControls.js"></script>
+<script>/*__THREE_JS__*/</script>
+<script>/*__ORBIT_CONTROLS_JS__*/</script>
 <script>
 var MARKERS = [];
 let scene, camera, renderer, globe, controls, raycaster, mouse;

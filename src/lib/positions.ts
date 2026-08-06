@@ -15,6 +15,16 @@ export interface ClosedTrade {
   closedAt: number;
   signature?: string;
   reason?: string;
+  // v2.38 multi-base trading. All optional — pre-v2.38 trades won't have
+  // these set; UI falls back to the SOL view. Trades are native-base:
+  // SOL trades return SOL, USDC trades return USDC, SKR trades return SKR.
+  // entrySolAmount / exitSolAmount / pnlSol fields semantically hold base
+  // units when baseSymbol !== 'SOL' (legacy names, new meaning).
+  baseMint?: string;             // e.g. SKR mint for SKR-funded trades
+  baseSymbol?: 'SOL' | 'USDC' | 'SKR';
+  entryBaseAmount?: number;      // cost basis in baseSymbol units
+  exitBaseAmount?: number;       // exit proceeds in baseSymbol units
+  pnlBase?: number;              // PnL in baseSymbol units
 }
 
 /**

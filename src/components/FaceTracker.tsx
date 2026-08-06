@@ -8,6 +8,13 @@
  *
  * ML Kit provides: landmarks, contours, head rotation, eye/smile probability.
  * We estimate blendshapes from these for the avatar animation pipeline.
+ *
+ * 2026-07-22: migrated to vision-camera 5 + face-detector 2.x (Nitro-based).
+ * v5 removed useFrameProcessor entirely in favor of an "outputs" model —
+ * useFaceDetectorOutput attaches as a CameraOutput and calls onFacesDetected
+ * as a plain JS callback, so the old useFrameProcessor + detectFaces() +
+ * Worklets.createRunOnJS bridge (react-native-worklets-core, no longer a
+ * real dependency post-SDK54) is gone entirely, not just swapped.
  */
 
 import React, { useCallback, useRef, useEffect, useState } from 'react';
@@ -16,26 +23,12 @@ import {
   Camera,
   useCameraDevice,
   useCameraPermission,
-  useFrameProcessor,
 } from 'react-native-vision-camera';
-import {
-  useFaceDetector,
-  FaceDetectionOptions,
-} from 'react-native-vision-camera-face-detector';
-import { Worklets } from 'react-native-worklets-core';
+import { useFaceDetectorOutput, type Face } from 'react-native-vision-camera-face-detector';
 import {
   type BlendshapeParams,
   BLENDSHAPE_IDLE,
 } from '@/lib/faceTracking';
-
-// ML Kit detection config: performance mode, all features enabled
-const DETECTION_OPTIONS: FaceDetectionOptions = {
-  performanceMode: 'fast',
-  classificationMode: 'all',    // smile + eyes open probability
-  contourMode: 'all',           // lip/eye/brow contours
-  landmarkMode: 'all',          // nose, eyes, ears, mouth landmarks
-  minFaceSize: 0.15,
-};
 
 interface FaceTrackerProps {
   enabled: boolean;
@@ -47,7 +40,6 @@ export function FaceTracker({ enabled, onBlendshapes }: FaceTrackerProps) {
   const device = useCameraDevice('front');
   const lastFrameRef = useRef(0);
   const [ready, setReady] = useState(false);
-  const { detectFaces } = useFaceDetector(DETECTION_OPTIONS);
 
   // Request permission on mount if needed
   useEffect(() => {
@@ -63,7 +55,7 @@ export function FaceTracker({ enabled, onBlendshapes }: FaceTrackerProps) {
     setReady(false);
   }, [enabled, hasPermission, device]);
 
-  const handleFaceResults = useCallback((faces: any[]) => {
+  const handleFaceResults = useCallback((faces: Face[]) => {
     if (!faces || faces.length === 0) return;
 
     // Throttle to ~20fps
@@ -123,32 +115,41 @@ export function FaceTracker({ enabled, onBlendshapes }: FaceTrackerProps) {
     values.eyeSquintRight = rightEyeOpen < 0.7 && rightEyeOpen > 0.2 ? (0.7 - rightEyeOpen) / 0.5 : 0;
 
     // ── Brows ────────────────────────────────────────────────────────────
-    // Estimate from eye/brow contour Y distance
-    if (face.contours?.LEFT_EYEBROW_TOP && face.contours?.LEFT_EYE_TOP) {
-      const browY = face.contours.LEFT_EYEBROW_TOP[Math.floor(face.contours.LEFT_EYEBROW_TOP.length / 2)]?.y ?? 0;
-      const eyeY = face.contours.LEFT_EYE_TOP[Math.floor(face.contours.LEFT_EYE_TOP.length / 2)]?.y ?? 0;
-      const gap = eyeY - browY;
-      const faceH = face.bounds?.height ?? 200;
-      const normalGapPct = 0.06;
-      const currentGapPct = gap / faceH;
-      if (currentGapPct > normalGapPct * 1.3) {
-        values.browOuterUpLeft = Math.min(1, (currentGapPct - normalGapPct) / normalGapPct);
-        values.browInnerUp = values.browOuterUpLeft * 0.7;
-      } else if (currentGapPct < normalGapPct * 0.7) {
-        values.browDownLeft = Math.min(1, (normalGapPct - currentGapPct) / normalGapPct);
+    // Estimate from eyebrow/eye contour Y distance. face-detector 2.x's
+    // Contours type only exposes the full LEFT_EYE/RIGHT_EYE outline (no
+    // _TOP-suffixed variant like the 1.x library had) — take the topmost
+    // point of the outline (min y) as the equivalent "eye top" reference.
+    if (face.contours?.LEFT_EYEBROW_TOP && face.contours?.LEFT_EYE) {
+      const eyePoints = face.contours.LEFT_EYE;
+      if (eyePoints.length > 0) {
+        const browY = face.contours.LEFT_EYEBROW_TOP[Math.floor(face.contours.LEFT_EYEBROW_TOP.length / 2)]?.y ?? 0;
+        const eyeY = Math.min(...eyePoints.map((p) => p.y));
+        const gap = eyeY - browY;
+        const faceH = face.bounds?.height ?? 200;
+        const normalGapPct = 0.06;
+        const currentGapPct = gap / faceH;
+        if (currentGapPct > normalGapPct * 1.3) {
+          values.browOuterUpLeft = Math.min(1, (currentGapPct - normalGapPct) / normalGapPct);
+          values.browInnerUp = values.browOuterUpLeft * 0.7;
+        } else if (currentGapPct < normalGapPct * 0.7) {
+          values.browDownLeft = Math.min(1, (normalGapPct - currentGapPct) / normalGapPct);
+        }
       }
     }
-    if (face.contours?.RIGHT_EYEBROW_TOP && face.contours?.RIGHT_EYE_TOP) {
-      const browY = face.contours.RIGHT_EYEBROW_TOP[Math.floor(face.contours.RIGHT_EYEBROW_TOP.length / 2)]?.y ?? 0;
-      const eyeY = face.contours.RIGHT_EYE_TOP[Math.floor(face.contours.RIGHT_EYE_TOP.length / 2)]?.y ?? 0;
-      const gap = eyeY - browY;
-      const faceH = face.bounds?.height ?? 200;
-      const normalGapPct = 0.06;
-      const currentGapPct = gap / faceH;
-      if (currentGapPct > normalGapPct * 1.3) {
-        values.browOuterUpRight = Math.min(1, (currentGapPct - normalGapPct) / normalGapPct);
-      } else if (currentGapPct < normalGapPct * 0.7) {
-        values.browDownRight = Math.min(1, (normalGapPct - currentGapPct) / normalGapPct);
+    if (face.contours?.RIGHT_EYEBROW_TOP && face.contours?.RIGHT_EYE) {
+      const eyePoints = face.contours.RIGHT_EYE;
+      if (eyePoints.length > 0) {
+        const browY = face.contours.RIGHT_EYEBROW_TOP[Math.floor(face.contours.RIGHT_EYEBROW_TOP.length / 2)]?.y ?? 0;
+        const eyeY = Math.min(...eyePoints.map((p) => p.y));
+        const gap = eyeY - browY;
+        const faceH = face.bounds?.height ?? 200;
+        const normalGapPct = 0.06;
+        const currentGapPct = gap / faceH;
+        if (currentGapPct > normalGapPct * 1.3) {
+          values.browOuterUpRight = Math.min(1, (currentGapPct - normalGapPct) / normalGapPct);
+        } else if (currentGapPct < normalGapPct * 0.7) {
+          values.browDownRight = Math.min(1, (normalGapPct - currentGapPct) / normalGapPct);
+        }
       }
     }
 
@@ -162,20 +163,16 @@ export function FaceTracker({ enabled, onBlendshapes }: FaceTrackerProps) {
     onBlendshapes({ values, headRotation });
   }, [onBlendshapes]);
 
-  // JS callback bridge from worklet
-  const handleFacesJS = Worklets.createRunOnJS(handleFaceResults);
-
-  const frameProcessor = useFrameProcessor((frame) => {
-    'worklet';
-    try {
-      const faces = detectFaces(frame);
-      if (faces && faces.length > 0) {
-        handleFacesJS(faces);
-      }
-    } catch {
-      // Silently ignore frame processor errors
-    }
-  }, [detectFaces, handleFacesJS]);
+  const faceDetectorOutput = useFaceDetectorOutput({
+    cameraFacing: 'front',
+    performanceMode: 'fast',
+    runClassifications: true,
+    runContours: true,
+    runLandmarks: true,
+    minFaceSize: 0.15,
+    onFacesDetected: handleFaceResults,
+    onError: () => { /* silently ignore detection errors, same as the old frame-processor try/catch */ },
+  });
 
   if (!enabled || !hasPermission || !device || !ready) return null;
 
@@ -185,8 +182,7 @@ export function FaceTracker({ enabled, onBlendshapes }: FaceTrackerProps) {
         style={styles.camera}
         device={device}
         isActive={true}
-        frameProcessor={frameProcessor}
-        pixelFormat="yuv"
+        outputs={[faceDetectorOutput]}
       />
     </View>
   );

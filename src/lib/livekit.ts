@@ -14,6 +14,21 @@ import { LIVEKIT_URL_ENV, LIVEKIT_TOKEN_URL_ENV } from '@/lib/constants';
 export const LK_URL       = LIVEKIT_URL_ENV;
 const LK_TOKEN_URL        = LIVEKIT_TOKEN_URL_ENV || 'https://onlymonkes-livekit-token.jumpstreet25.workers.dev';
 
+let _globalsRegistered = false;
+
+/**
+ * Registers LiveKit's WebRTC globals on first actual use instead of at app
+ * boot — this is native-module-binding work that every cold start used to
+ * pay even for users who never open a Live/Avatar Room.
+ */
+export function ensureLiveKitGlobals(): void {
+  if (_globalsRegistered) return;
+  _globalsRegistered = true;
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { registerGlobals } = require('@livekit/react-native');
+  registerGlobals();
+}
+
 export function livekitConfigured(): boolean {
   return !!(LK_URL && LK_TOKEN_URL);
 }

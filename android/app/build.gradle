@@ -1,7 +1,17 @@
 apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
-apply plugin: "com.google.gms.google-services"
+
+// google-services.json only has a client registered for com.onlymonkes.app —
+// the canary flavor (com.onlymonkes.app.canary) has no matching Firebase app,
+// which makes the plugin's processGoogleServices task fail for that variant.
+// Canary exists to test native modules (Reanimated/vision-camera/Skia), not
+// push notifications, so we just skip applying the plugin when a canary
+// variant is being built rather than registering a second Firebase app.
+def isCanaryBuild = gradle.startParameter.taskNames.any { it.toLowerCase().contains("canary") }
+if (!isCanaryBuild) {
+    apply plugin: "com.google.gms.google-services"
+}
 
 def projectRoot = rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()
 
@@ -96,11 +106,40 @@ android {
         applicationId 'com.onlymonkes.app'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 38
-        versionName "2.38"
+        versionCode 39
+        versionName "3.0.0"
         // English-only — strips non-English resources from native libs (livekit,
         // xmtp, skia, vision-camera). ~2-5 MB savings depending on dep verbosity.
         resConfigs "en"
+    }
+    // 2026-07-09: "canary" flavor — a genuinely separate Android app (distinct
+    // applicationId) for testing risky native changes (Reanimated 4, vision-
+    // camera 5, Skia bump) on a real device without touching the production
+    // install. Different package = different app to Android: separate storage,
+    // separate XMTP identity, can be installed/uninstalled/wiped freely with
+    // zero effect on the real app's wallet/achievements/data.
+    //
+    // 2026-08-01: `production` (same applicationId as today's live app) is
+    // being promoted to carry the OnlyMonkes 3.0 native stack that canary has
+    // been proving out (Reanimated 4, vision-camera 5, freerasp 5, etc.) —
+    // defaultConfig's versionCode/versionName above were bumped 38/"2.38" to
+    // 39/"3.0.0" for this release. A real native rebuild+distribute (not an
+    // OTA) is required either way, so existing users get the matching native
+    // binary + JS together — no repeat of the Reanimated v3/v4 OTA mismatch
+    // incident (see feedback_never_ota_from_worktree_without_checking_reanimated).
+    flavorDimensions "env"
+    productFlavors {
+        production {
+            dimension "env"
+        }
+        canary {
+            dimension "env"
+            applicationId "com.onlymonkes.app.canary"
+            // Explicit versionName (not a suffix off defaultConfig's "2.38") —
+            // this flavor is currently carrying the OnlyMonkes 3.0 native-stack
+            // work (expo-av removal, vision-camera 5, freerasp 5), not 2.38.
+            versionName "3.0.0-test"
+        }
     }
     // ABI splits → arm64-v8a only. Every Solana Mobile wallet device (Seeker,
     // Saga, Phantom-on-Android, Solflare-on-Android) is arm64. The other ABIs
@@ -202,5 +241,39 @@ dependencies {
         implementation("com.facebook.react:hermes-android")
     } else {
         implementation jscFlavor
+    }
+}
+
+// 2026-07-10: NECESSARY BUT NOT SUFFICIENT fix for a still-unresolved native
+// build bug on this branch. RN 0.81's gradle plugin wires
+// generateAutolinkingNewArchitectureFiles (writes
+// build/generated/autolinking/src/main/jni/autolinking.h, which OnLoad.cpp
+// #includes) as a dependency of the generic `preBuild` task only. With the
+// `canary`/`production` productFlavors split added this session, AGP's CMake
+// configure/build tasks for the app module don't route through `preBuild` at
+// all, so without this block the header generation task never even runs
+// before the C++ compile. This line below IS confirmed necessary (verified
+// via debug instrumentation: generateAutolinkingNewArchitectureFiles now
+// reliably runs/is-UP-TO-DATE before :app:configureCMakeRelWithDebInfo in
+// every build) - use tasks.named() (lazy), not tasks.findByName() (eager;
+// forces the task to realize before react-native-gradle-plugin finishes
+// configuring it, causing it to silently write nothing).
+//
+// BUT: even with this fix, `generated/autolinking/src/main/jni/` is
+// mysteriously EMPTY again by the time :app:buildCMakeRelWithDebInfo runs,
+// every single time, on a full `assembleCanaryRelease` - even when the
+// generate task shows UP-TO-DATE. Confirmed via isolated single-task Gradle
+// invocations that neither generateAutolinkingNewArchitectureFiles nor
+// configureCMakeRelWithDebInfo deletes the directory on their own; something
+// specific to the FULL build graph does. Root cause NOT found as of this
+// commit - see project memory for the full investigation and next-step
+// options. Do not remove this block; it's confirmed necessary, just not
+// sufficient on its own.
+afterEvaluate {
+    if (tasks.names.contains("generateAutolinkingNewArchitectureFiles")) {
+        def autolinkingTask = tasks.named("generateAutolinkingNewArchitectureFiles")
+        tasks.matching { it.name.startsWith("configureCMake") || it.name.startsWith("buildCMake") }.configureEach {
+            dependsOn(autolinkingTask)
+        }
     }
 }

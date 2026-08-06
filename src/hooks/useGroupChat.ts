@@ -21,6 +21,7 @@ import {
   decodeMessage,
   resolveReplyTargets,
   applyReaction,
+  applyWithRetry,
   sendMessage,
   sendReply,
   sendReaction,
@@ -145,7 +146,7 @@ export function useGroupChat(groupId: string, groupName: string) {
 
               // Native or legacy reaction
               if (isReactionContent(content)) {
-                setMessages(prev => applyReaction(prev, raw, myInboxIdRef.current));
+                applyWithRetry(m => applyReaction(m, raw, myInboxIdRef.current), setMessages);
                 return;
               }
 
@@ -255,7 +256,7 @@ export function useGroupChat(groupId: string, groupName: string) {
 
         // Native or legacy reaction
         if (isReactionContent(content)) {
-          setMessages((prev) => applyReaction(prev, raw, myInboxIdRef.current));
+          applyWithRetry(m => applyReaction(m, raw, myInboxIdRef.current), setMessages);
           return;
         }
 
@@ -343,7 +344,7 @@ export function useGroupChat(groupId: string, groupName: string) {
             let content: unknown;
             try { content = raw.content(); } catch { return; }
             if (isReactionContent(content)) {
-              setMessages((prev) => applyReaction(prev, raw, myInboxIdRef.current));
+              applyWithRetry(m => applyReaction(m, raw, myInboxIdRef.current), setMessages);
               return;
             }
             const msg = decodeMessage(raw, myInboxIdRef.current);
@@ -382,6 +383,23 @@ export function useGroupChat(groupId: string, groupName: string) {
 
   const react = useCallback(async (emoji: ReactionEmoji, targetId: string) => {
     if (!groupRef.current) throw new Error("Not connected");
+
+    // Apply optimistically — XMTP does not echo own messages back in the
+    // stream, so without this the reaction only appeared after the next
+    // resync/reopen (same pattern as useXmtp.ts's react()).
+    const fakeRaw = {
+      content: () => ({
+        reaction: {
+          reference: targetId,
+          action: "added",
+          schema: "unicode",
+          content: emoji,
+        },
+      }),
+      senderInboxId: myInboxIdRef.current,
+    };
+    setMessages((prev) => applyReaction(prev, fakeRaw, myInboxIdRef.current));
+
     await sendReaction(groupRef.current, emoji, targetId);
   }, []);
 

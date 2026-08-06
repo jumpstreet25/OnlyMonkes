@@ -26,6 +26,7 @@ import {
   applyReaction,
   applyEdit,
   applyStickerReaction,
+  applyWithRetry,
   resolveReplyTargets,
   sendMessage,
   sendReply,
@@ -45,6 +46,7 @@ import {
 } from "@/lib/xmtp";
 import { parseLiveRoomMessage, buildLiveRoomMessage, type LiveRoomData } from "@/lib/livekit";
 import { parsePinMessage, pinMessage, unpinMessage, getPinnedMessages } from "@/lib/pinnedMessages";
+import { parseDeleteMessage, buildDeleteMessage, markMessageDeleted, isMessageDeleted, filterDeleted, loadDeletedMessageIds } from "@/lib/deletedMessages";
 import { parsePresenceMessage, updatePresence, buildPresenceMessage } from "@/lib/presence";
 import { parseThreadMessage, trackThreadReply } from "@/lib/threads";
 import { parseMarketplaceMessage, addListing, addBid, markPendingSwap, markSold, delistNft, getListingById, getBidsForListing, getHistory as getMarketplaceHistory, type NftSwapMessage } from "@/lib/marketplace";
@@ -84,7 +86,7 @@ function setTypingTimeout(key: string, timer: ReturnType<typeof setTimeout>) {
 }
 // Throttle own typing broadcasts (one signal per 2.5 s max)
 let _lastTypingSent = 0;
-import { showLocalNotification, detectMention, getCachedPushToken, registerForExpoPushToken, CH_ALL, CH_MENTIONS, CH_BOT, CH_LIVE, CH_MARKET, CH_SOCIAL } from "@/lib/notifications";
+import { showLocalNotification, showLocalNotificationWithJoinAction, showLocalNotificationWithReactions, detectMention, getCachedPushToken, registerForExpoPushToken, CH_ALL, CH_MENTIONS, CH_BOT, CH_LIVE, CH_MARKET, CH_SOCIAL } from "@/lib/notifications";
 
 const BOT_USERNAME = "AI Agent #9385";
 import { loadCachedMessages, saveCachedMessages, appendCachedMessage, getLastReadTimestamp } from "@/lib/messageCache";
@@ -124,6 +126,10 @@ export async function sendGiftItem(recipientInboxId: string, itemId: string): Pr
 let _unsubscribeStream: (() => void) | null = null;
 let _botChannelUnsubs: (() => void)[] = [];
 let _myInboxId = "";
+// The app owner's inboxId (from published remote config) — the only identity
+// allowed to delete messages it didn't author (e.g. the bot's). Set during
+// initialize(); used to authorize incoming DELETE: requests from other devices.
+let _adminInboxId: string | null = null;
 let _streamAlive = false;
 let _lastStreamEvent = 0; // timestamp of last stream callback
 
@@ -199,6 +205,72 @@ async function _doProfileRebroadcast(pushToken: string): Promise<void> {
     );
     if (__DEV__) console.log('[XMTP] Re-broadcast profile with push token:', pushToken.slice(0, 30) + '…');
   } catch { /* non-critical */ }
+}
+
+let _profileBackfillDone = false;
+
+/**
+ * Wider one-time-per-session scan for PROFILE_UPDATE broadcasts the regular
+ * 24h history window (initialize()'s main history load, ~line 712) misses —
+ * anyone who set their profile more than 24h before this device's last sync,
+ * and hasn't touched it since (no re-edit, no legendary streak, no shop
+ * style equip — see broadcastProfile/triggerProfileRebroadcast call sites,
+ * none of which fire unconditionally on every app open), never gets
+ * ingested by the normal path. Confirmed real 2026-07-20: MonkeGlobe showing
+ * 6/11 known Monkes traced back to exactly this gap, not (primarily) users
+ * never having set a location.
+ *
+ * 30-day window, filtering ONLY for PROFILE_UPDATE (skips DELETE/EVENT/etc.
+ * the main history load also handles) to keep decode cost down. Triggered
+ * lazily from GlobeScreen on mount — NOT part of the Main Chat startup
+ * critical path, since it only matters for the Globe/roster use case.
+ */
+export async function backfillProfileHistory(): Promise<{ scanned: number; newProfiles: number }> {
+  if (_profileBackfillDone) return { scanned: 0, newProfiles: 0 };
+  if (!_group || !_myInboxId) return { scanned: 0, newProfiles: 0 };
+  _profileBackfillDone = true;
+  try {
+    const THIRTY_DAYS_NS = 30 * 24 * 60 * 60 * 1_000_000_000;
+    const afterNs = (Date.now() * 1_000_000) - THIRTY_DAYS_NS;
+    const rawHistory: any[] = await (_group as any).messages({ afterNs });
+    let newProfiles = 0;
+    // Oldest-first so later (newer) PROFILE_UPDATEs win, same as the main
+    // history load's seedProfilesAndEvents loop.
+    for (const raw of [...rawHistory].reverse()) {
+      try {
+        let content = raw.content();
+        if (content && typeof content === "object" && typeof (content as any).text === "string") {
+          content = (content as any).text;
+        }
+        if (typeof content !== "string" || !content.startsWith("PROFILE_UPDATE:")) continue;
+        const profile = parseProfileUpdate(content);
+        // Same spoofing guard as the main history load — a client can only
+        // legitimately broadcast an update for its own sender identity.
+        if (!profile || profile.id !== (raw.senderInboxId as string)) continue;
+        const hadProfile = !!getCachedProfile(profile.id);
+        const nftImage = isValidNftImage(profile.nftImage) ? profile.nftImage : null;
+        cacheProfile(profile.id, { username: profile.username, bio: profile.bio, xAccount: profile.xAccount, walletAddress: profile.walletAddress, tipWallet: profile.tipWallet, location: profile.location, nftImage, legendary: profile.legendary, pushToken: profile.pushToken, expoPushToken: profile.expoPushToken, badges: profile.badges, shopStyles: profile.shopStyles, statusMessage: profile.statusMessage });
+        trackUser(profile.id, profile.username);
+        if (!hadProfile) newProfiles++;
+      } catch { /* skip malformed message */ }
+    }
+    if (__DEV__) console.log(`[XMTP] backfillProfileHistory: scanned ${rawHistory.length} messages (30d), found ${newProfiles} new profiles`);
+    return { scanned: rawHistory.length, newProfiles };
+  } catch (err) {
+    if (__DEV__) console.warn("[XMTP] backfillProfileHistory failed:", err);
+    return { scanned: 0, newProfiles: 0 };
+  }
+}
+
+/** Authoritative group roster (inboxIds), for diagnostics comparing "who's actually a member" against "whose profile we've cached." */
+export async function getGroupMembers(): Promise<string[]> {
+  if (!_group) return [];
+  try {
+    const members = await (_group as any).members();
+    return (members as { inboxId: string }[]).map(m => m.inboxId);
+  } catch {
+    return [];
+  }
 }
 
 const AK_JOIN_REQUEST_SENT = "xmtp_join_request_sent";
@@ -307,6 +379,17 @@ export function useXmtp() {
   const { setMessages, addMessage, mergeMessage, upgradeOwnMessage, applyReactionUpdate, setLoadingHistory } =
     useChatStore();
 
+  // Adapts the Zustand `applyReactionUpdate(messages: ChatMessage[])` setter
+  // to the updater-function shape applyWithRetry() expects (same shape
+  // React's useState setter takes) — lets the retry helper be shared
+  // verbatim with useDm.ts/useGroupChat.ts's plain useState-based setters.
+  const applyReactionUpdateFn = useCallback(
+    (updater: (prev: ChatMessage[]) => ChatMessage[]) => {
+      applyReactionUpdate(updater(useChatStore.getState().messages));
+    },
+    [applyReactionUpdate],
+  );
+
   const initialize = useCallback(async () => {
     if (_initRunning) return;
     _initRunning = true;
@@ -353,6 +436,7 @@ export function useXmtp() {
       // ── 2. Fetch remote config (group ID + admin inboxId) ──────────────────
       const config = await fetchAppConfig();
       setRemoteGroupId(config.globalGroupId);
+      if (config.adminInboxId) _adminInboxId = config.adminInboxId;
       if (config.botChannels) {
         useAppStore.getState().setBotChannelIds({
           bets: config.botChannels.bets ?? '',
@@ -697,6 +781,25 @@ export function useXmtp() {
       const afterNs = (Date.now() * 1_000_000) - ONE_DAY_NS;
       const rawHistory: any[] = await (activeGroup as any).messages({ afterNs });
 
+      // ── Reconstruct deletions from history ───────────────────────────────
+      // A device that was offline/fresh-installed when a DELETE: broadcast
+      // went out never persisted it locally — without this, the deleted
+      // message would resurface once on this device's first sync. Authorize
+      // the same way the live stream handler does: requester must be the
+      // target's original sender, or the app admin.
+      //
+      // 2026-07-10: folded into the seedProfilesAndEvents loop below instead
+      // of its own separate pass — that loop already calls raw.content() on
+      // every message for PROFILE_UPDATE/EVENT/etc. detection, so scanning
+      // for DELETE: here too is free. A standalone pass over the full 24h
+      // history (re-decoding every message a second time) was adding a full
+      // blocking scan to the startup critical path before any messages could
+      // render. markMessageDeleted() writes are now batched with Promise.all
+      // after the loop instead of sequentially awaited inside it.
+      await loadDeletedMessageIds();
+      const senderById = new Map<string, string>(rawHistory.map((raw: any) => [raw.id, raw.senderInboxId as string]));
+      const pendingDeletes: string[] = [];
+
       // ── Helper: seed profile cache + events from raw messages ────────────
       const seedProfilesAndEvents = async (raws: any[]) => {
         // Iterate oldest-first so later (newer) PROFILE_UPDATEs win.
@@ -707,9 +810,28 @@ export function useXmtp() {
             if (content && typeof content === "object" && typeof (content as any).text === "string") {
               content = (content as any).text;
             }
-            if (typeof content === "string" && content.startsWith("PROFILE_UPDATE:")) {
+            if (typeof content === "string" && content.startsWith("DELETE:")) {
+              const targetId = parseDeleteMessage(content);
+              if (targetId && !isMessageDeleted(targetId)) {
+                const requester = raw.senderInboxId as string;
+                const targetSender = senderById.get(targetId);
+                if (requester === config.adminInboxId || targetSender === requester) {
+                  pendingDeletes.push(targetId);
+                }
+              }
+            } else if (typeof content === "string" && content.startsWith("PROFILE_UPDATE:")) {
               const profile = parseProfileUpdate(content);
-              if (profile) {
+              // profile.id is attacker-controlled message content, not a
+              // cryptographic identity — a client can only ever legitimately
+              // broadcast an update for its OWN sender identity. Without this
+              // check, anyone can spoof a PROFILE_UPDATE with id set to
+              // another user's inboxId (e.g. the admin's) and have it cached
+              // as that user's real profile — including a bogus nftImage —
+              // since the isRemote-gated verification below only runs when
+              // the (forgeable) id differs from the reader's own inboxId.
+              if (profile && profile.id !== (raw.senderInboxId as string)) {
+                if (__DEV__) console.warn("[XMTP] Dropped spoofed PROFILE_UPDATE — id != senderInboxId", profile.id, raw.senderInboxId);
+              } else if (profile) {
                 const nftImage = isValidNftImage(profile.nftImage) ? profile.nftImage : null;
                 cacheProfile(profile.id, { username: profile.username, bio: profile.bio, xAccount: profile.xAccount, walletAddress: profile.walletAddress, tipWallet: profile.tipWallet, location: profile.location, nftImage, legendary: profile.legendary, pushToken: profile.pushToken, expoPushToken: profile.expoPushToken, badges: profile.badges, shopStyles: profile.shopStyles, statusMessage: profile.statusMessage });
                 trackUser(profile.id, profile.username);
@@ -789,6 +911,14 @@ export function useXmtp() {
                 }
               } catch { /* ignore */ }
             }
+            // 2026-07-18: BANANA_BET_OPEN:/BANANA_BET_SETTLED: no longer render
+            // an inline pill on history replay (or anywhere in Main Chat) —
+            // BananaBetPopup/BananaBetResultPopup are the only surface now.
+            // Falling through here without a match is intentional: these
+            // message types are already in the system-prefix filter list, so
+            // simply not handling them means they're silently dropped, same
+            // as any other filtered system message. POLL_OPEN:/POLL_RESULT:
+            // (2026-07-20) follow the exact same pattern — live-stream only.
           } catch { /* skip */ }
         }
       };
@@ -921,7 +1051,10 @@ export function useXmtp() {
 
       // ── Seed profiles + decode all 50 messages ──────────────────────────
       await seedProfilesAndEvents(rawHistory);
-      const recentMessages = decodeAndEnrich(rawHistory);
+      if (pendingDeletes.length > 0) {
+        await Promise.all(pendingDeletes.map(id => markMessageDeleted(id))).catch(() => {});
+      }
+      const recentMessages = filterDeleted(decodeAndEnrich(rawHistory));
       // Ensure oldest-first order for inverted FlatList (index 0 = top, last = bottom)
       recentMessages.sort((a, b) => a.sentAt.getTime() - b.sentAt.getTime());
 
@@ -1078,8 +1211,7 @@ export function useXmtp() {
             const targetMsg = messages.find(m => m.id === targetId);
             if (targetMsg) trackActivity(targetMsg.senderAddress, 'received');
           }
-          const updated = applyReaction(messages, raw, _myInboxId);
-          applyReactionUpdate(updated);
+          applyWithRetry(m => applyReaction(m, raw, _myInboxId), applyReactionUpdateFn);
           // Pull the emoji from the raw content for the notification body.
           let emoji = "";
           if (typeof content === "string" && content.startsWith("REACT:")) {
@@ -1093,9 +1225,7 @@ export function useXmtp() {
         }
 
         if (typeof content === "string" && content.startsWith("STICKER_REACT:")) {
-          const { messages } = useChatStore.getState();
-          const updated = applyStickerReaction(messages, raw, _myInboxId);
-          applyReactionUpdate(updated);
+          applyWithRetry(m => applyStickerReaction(m, raw, _myInboxId), applyReactionUpdateFn);
           // STICKER_REACT format: STICKER_REACT:<url>:<targetId>. URL contains
           // colons (https://) so split on LAST colon to get targetId.
           const withoutPrefix = content.slice("STICKER_REACT:".length);
@@ -1134,6 +1264,13 @@ export function useXmtp() {
 
         if (typeof content === "string" && content.startsWith("PROFILE_UPDATE:")) {
           const profile = parseProfileUpdate(content);
+          // profile.id is attacker-controlled message content, not a
+          // cryptographic identity — see matching guard in seedProfilesAndEvents
+          // above for the full spoofing scenario this closes.
+          if (profile && profile.id !== (raw.senderInboxId as string)) {
+            if (__DEV__) console.warn("[XMTP] Dropped spoofed PROFILE_UPDATE — id != senderInboxId", profile.id, raw.senderInboxId);
+            return;
+          }
           if (profile) {
             // Remote users must provide nftMint for PFP verification
             const isRemote = profile.id !== _myInboxId;
@@ -1215,6 +1352,26 @@ export function useXmtp() {
               useAppStore.getState().incrementCommunityBadge('events');
             }
           } catch { /* ignore */ }
+          return;
+        }
+
+        // ── Deleted messages ──────────────────────────────────────────────────
+        // Authorize on the RECEIVING end too — the sending client's UI only
+        // shows the Delete button for own/admin messages, but that's not
+        // enforceable on a decentralized log, so a raw DELETE: request must
+        // still prove the requester is either the app admin or the target's
+        // original sender before we honor it.
+        if (typeof content === "string" && content.startsWith("DELETE:")) {
+          const targetId = parseDeleteMessage(content);
+          if (targetId && !isMessageDeleted(targetId)) {
+            const requester = raw.senderInboxId as string;
+            const target = useChatStore.getState().messages.find(m => m.id === targetId);
+            const authorized = requester === _adminInboxId || (!!target && target.senderAddress === requester);
+            if (authorized) {
+              await markMessageDeleted(targetId);
+              useChatStore.getState().removeMessage(targetId);
+            }
+          }
           return;
         }
 
@@ -1384,10 +1541,90 @@ export function useXmtp() {
                   status: "sent",
                 };
                 mergeMessage(enrichWithNft(pillMsg));
+                // 2026-07-23: recipients previously got nothing but the pill
+                // above (invisible unless Main Chat was already open) — a
+                // real notification with a Join action for everyone except
+                // the host, who already knows they started it.
+                if (raw.senderInboxId !== _myInboxId) {
+                  showLocalNotificationWithJoinAction(
+                    "🐒 Avatar Room started",
+                    `${data.host} is live — tap to join`,
+                    CH_LIVE,
+                    "avatar",
+                    data.id,
+                  ).catch(() => { /* non-fatal */ });
+                }
               } else {
                 const current = useAppStore.getState().activeAvatarRoom;
                 if (current?.id === data.id) useAppStore.getState().setActiveAvatarRoom(null);
               }
+            }
+          } catch { /* ignore */ }
+          return;
+        }
+
+        if (typeof content === "string" && content.startsWith("BANANA_BET_OPEN:")) {
+          try {
+            const { parseBananaBetOpen, markBetSeenIfFirstTime } = await import("@/lib/bananaBet");
+            const data = parseBananaBetOpen(content);
+            if (data) {
+              // 2026-07-18: no longer merged into chatStore as a pill —
+              // BananaBetPopup is the only surface now, Main Chat never
+              // shows bet content. markBetSeenIfFirstTime below already
+              // dedupes a reprocessed broadcast safely on its own.
+              // App-wide pop-up — only fires from the live stream (a fresh
+              // signal), never on history replay, so re-opening the app
+              // hours later doesn't pop up a stale/already-seen bet. Also
+              // gated on markBetSeenIfFirstTime: 2026-07-16 report — the
+              // pop-up was "returning a few times" for the same bet, most
+              // likely an XMTP stream reconnect replaying recent messages.
+              // This makes a replay a no-op regardless of the exact cause.
+              if (await markBetSeenIfFirstTime(data.id)) {
+                useAppStore.getState().setActiveBananaBet(data);
+              }
+            }
+          } catch { /* ignore */ }
+          return;
+        }
+
+        if (typeof content === "string" && content.startsWith("BANANA_BET_SETTLED:")) {
+          try {
+            const { parseBananaBetSettled, markBetSeenIfFirstTime, getMyBet } = await import("@/lib/bananaBet");
+            const data = parseBananaBetSettled(content);
+            if (data) {
+              // 2026-07-18: no longer merged into chatStore as a pill — the
+              // group broadcast now only drives BananaBetResultPopup, never
+              // Main Chat content.
+              if (await markBetSeenIfFirstTime(`settled-${data.betId}`)) {
+                const myBet = await getMyBet(data.betId);
+                useAppStore.getState().setActiveBananaBetResult({ ...data, myBet });
+              }
+            }
+          } catch { /* ignore */ }
+          return;
+        }
+
+        if (typeof content === "string" && content.startsWith("POLL_OPEN:")) {
+          try {
+            const { parsePollOpen, markPollSeenIfFirstTime } = await import("@/lib/poll");
+            const data = parsePollOpen(content);
+            // Same reasoning as BANANA_BET_OPEN: only fires from the live
+            // stream (never history replay), gated on markPollSeenIfFirstTime
+            // so a reconnect-replay of this broadcast is a no-op.
+            if (data && await markPollSeenIfFirstTime(`open-${data.id}`)) {
+              useAppStore.getState().setActivePoll(data);
+            }
+          } catch { /* ignore */ }
+          return;
+        }
+
+        if (typeof content === "string" && content.startsWith("POLL_RESULT:")) {
+          try {
+            const { parsePollResult, markPollSeenIfFirstTime, getMyVote } = await import("@/lib/poll");
+            const data = parsePollResult(content);
+            if (data && await markPollSeenIfFirstTime(`result-${data.pollId}`)) {
+              const myVote = await getMyVote(data.pollId);
+              useAppStore.getState().setActivePollResult({ ...data, myVote });
             }
           } catch { /* ignore */ }
           return;
@@ -1479,7 +1716,14 @@ export function useXmtp() {
           ? `${senderLabel} mentioned you 🍌`
           : `${senderLabel} in OnlyMonkes`;
 
-        await showLocalNotification(title, msg.content, channelId);
+        const mainGroupId = (_group as any)?.id;
+        if (mainGroupId && msg.id) {
+          await showLocalNotificationWithReactions(title, msg.content, channelId, msg.id, mainGroupId);
+        } else {
+          // Fallback — shouldn't happen once connected, but never block the
+          // notification itself on missing reaction metadata.
+          await showLocalNotification(title, msg.content, channelId);
+        }
         } catch (streamErr) {
           if (__DEV__) console.warn("[XMTP] Stream handler error:", (streamErr as Error).message);
         }
@@ -1637,7 +1881,21 @@ export function useXmtp() {
       (async () => {
         try {
           await client.conversations.sync();
-          const unsub = await (client.conversations as any).streamAllDmMessages(async (raw: any) => {
+          // 2026-07-23: streamAllDmMessages() doesn't exist in this SDK
+          // version (@xmtp/react-native-sdk 5.7) — it silently threw
+          // "is not a function" every launch, meaning DM badge counting and
+          // the "DM'd you" notification below were completely dead. Correct
+          // current API: streamAllMessages(callback, filterType) — but
+          // unlike streamMessages()/stream(), this one resolves to void, not
+          // an unsubscribe function (confirmed against the SDK's own type
+          // signature). Pushing its return value into _botChannelUnsubs like
+          // the other streams below caused a real regression: undefined
+          // landed in that array, and the NEXT initialize() call's cleanup
+          // pass (_botChannelUnsubs.forEach(u => u())) threw trying to
+          // invoke it, killing the client and forcing an endless reconnect
+          // loop. Nothing to push here — this stream has no handle to clean
+          // up the same way.
+          await (client.conversations as any).streamAllMessages(async (raw: any) => {
             try {
               let content: unknown;
               try { content = raw.content(); } catch { return; }
@@ -1676,7 +1934,70 @@ export function useXmtp() {
                   closedAt: parsed.ts,
                   reason: parsed.reason,
                   signature: parsed.signature,
+                  // v2.38 multi-base fields — undefined for pre-v2.38 bot builds.
+                  baseMint: parsed.baseMint,
+                  baseSymbol: parsed.baseSymbol,
+                  entryBaseAmount: parsed.entryBaseAmount,
+                  exitBaseAmount: parsed.exitBaseAmount,
+                  pnlBase: parsed.pnlBase,
                 });
+                return;
+              }
+
+              // AUTOMONKE_STATUS: ground truth for AutonoMonke enrollment,
+              // sent by the bot after every /autonomonke command. Corrects
+              // BotChannelScreen's AsyncStorage-only flag, which has no link
+              // back to real bot state and can read as OFF on a fresh app
+              // install/build even though the bot never stopped trading.
+              if (inner.startsWith('AUTOMONKE_STATUS:')) {
+                const { BOT_INBOX_IDS } = await import('@/lib/constants');
+                if (!BOT_INBOX_IDS.includes(senderInboxId)) return;
+                const { parseAutomonkeStatus } = await import('@/lib/xmtp');
+                const parsed = parseAutomonkeStatus(inner);
+                if (!parsed) return;
+                useAppStore.getState().setAutomonkeStatus(parsed);
+                const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+                await AsyncStorage.setItem('automonke_enrolled', parsed.enrolled ? '1' : '0').catch(() => {});
+                await AsyncStorage.setItem('autonomonke_limit_orders_v1', parsed.limitOrdersEnabled ? '1' : '0').catch(() => {});
+                return;
+              }
+
+              // IMAGE_CAPTION_RESPONSE: bot-generated (Ollama vision) photo
+              // caption, fired async when the photo was SENT — may well
+              // arrive minutes later while the user isn't on the bot's DM
+              // screen, so this global-stream branch is the common case for
+              // this one, not just the "just in case" fallback it is for
+              // TRADE_CLOSED/PORTFOLIO_RESPONSE above.
+              if (inner.startsWith('IMAGE_CAPTION_RESPONSE:')) {
+                try {
+                  const { BOT_INBOX_IDS } = await import('@/lib/constants');
+                  if (!BOT_INBOX_IDS.includes(senderInboxId)) return;
+                  const rest = inner.slice('IMAGE_CAPTION_RESPONSE:'.length);
+                  const sepIdx = rest.indexOf(':');
+                  if (sepIdx <= 0) return;
+                  const messageId = rest.slice(0, sepIdx);
+                  const caption = rest.slice(sepIdx + 1);
+                  if (!caption) return;
+                  const { storeCaptionResponse } = await import('@/lib/imageCaption');
+                  await storeCaptionResponse(messageId, caption);
+                  const { usePhotoReviewStore } = await import('@/store/photoReviewStore');
+                  usePhotoReviewStore.getState().setCaption(messageId, caption);
+                } catch { /* swallow */ }
+                return;
+              }
+
+              // STREAK_CAPTION_RESPONSE: bot-generated (Ollama) Banana
+              // Streak Day-7 tweet caption — same "may arrive while off the
+              // bot's DM screen" reasoning as IMAGE_CAPTION_RESPONSE above.
+              if (inner.startsWith('STREAK_CAPTION_RESPONSE:')) {
+                try {
+                  const { BOT_INBOX_IDS } = await import('@/lib/constants');
+                  if (!BOT_INBOX_IDS.includes(senderInboxId)) return;
+                  const caption = inner.slice('STREAK_CAPTION_RESPONSE:'.length);
+                  if (!caption) return;
+                  const { storeStreakCaptionResponse } = await import('@/lib/imageCaption');
+                  await storeStreakCaptionResponse(caption);
+                } catch { /* swallow */ }
                 return;
               }
 
@@ -1768,8 +2089,7 @@ export function useXmtp() {
                 ).catch(() => {});
               }
             } catch { /* ignore per-message errors */ }
-          });
-          _botChannelUnsubs.push(unsub);
+          }, 'dms');
           if (__DEV__) console.log('[XMTP] Streaming DMs for badge count');
         } catch (err) {
           if (__DEV__) console.warn('[XMTP] DM badge stream failed:', err);
@@ -1873,7 +2193,12 @@ export function useXmtp() {
       applyReactionUpdate(applyReaction(messages, fakeRaw, _myInboxId));
 
       await sendReaction(_group, emoji, targetMessageId);
-      toast.success("Reaction sent");
+      // 2026-07-09: defer the toast until after the ReactionPicker Modal's
+      // fade-out completes — sendReaction() often resolves before that
+      // ~300ms animation finishes, so firing the toast overlay immediately
+      // raced the Modal dismiss and left a stuck grey screen on Android
+      // (same class of bug fixed for Copy in MessageBubble on 2026-06-12).
+      setTimeout(() => toast.success("Reaction sent"), 350);
       incrementProgress('reactions_given');
       tryMintBadge();
     },
@@ -1912,11 +2237,22 @@ export function useXmtp() {
     [initialize],
   );
 
+  // 2026-07-09: was a bare call to the native SDK's deleteMessage(), which
+  // only tombstones the message in THIS device's local XMTP store — other
+  // devices never learn about it, and this device's own next history resync
+  // (background reconnect, loadOlderMessages) re-fetches the untouched
+  // network copy and resurrects it. Broadcasting DELETE: (same pattern as
+  // PIN:/EDIT:) makes the removal durable and propagates it to everyone.
   const deleteMessage = useCallback(
-    async (messageId: string) => {
+    async (messageId: string, originalSenderAddress: string) => {
+      const authorized = _myInboxId === originalSenderAddress || _myInboxId === _adminInboxId;
+      if (!authorized) throw new Error("You can only delete your own messages.");
       if (!_group) await initialize();
       if (!_group) throw new Error("Not connected to chat");
-      await (_group as any).deleteMessage(messageId);
+      await markMessageDeleted(messageId);
+      useChatStore.getState().removeMessage(messageId);
+      const { username } = useAppStore.getState();
+      await sendMessage(_group, buildDeleteMessage(messageId), username);
     },
     [initialize],
   );
@@ -2021,9 +2357,15 @@ export function useXmtp() {
   // calls this every minute, so it MUST stay non-blocking to keep scroll smooth.
   const checkStreamLiveness = useCallback(() => {
     if (!_group) return;
-    const STREAM_STALE_MS = 90_000;
+    // 2026-07-09: was 90s, calibrated assuming another member's 60s PRESENCE
+    // heartbeat always arrives to refresh this — but a client's own presence
+    // sends never echo back through its own stream, so a quiet room (or just
+    // this device online) legitimately goes minutes without any stream event.
+    // That was tripping a false "stream dead" reconnect every ~90-150s,
+    // forcing a full history re-sync (isLoadingHistory flash) for no reason.
+    const STREAM_STALE_MS = 10 * 60_000;
     if (_lastStreamEvent > 0 && Date.now() - _lastStreamEvent > STREAM_STALE_MS) {
-      if (__DEV__) console.warn("[XMTP] Stream appears dead (no events in 90s) — forcing reconnect");
+      if (__DEV__) console.warn("[XMTP] Stream appears dead (no events in 10min) — forcing reconnect");
       _streamAlive = false;
       _streamHealth.staleReconnects++;
       _streamHealth.lastStaleAt = Date.now();
@@ -2035,16 +2377,17 @@ export function useXmtp() {
   const syncMessages = useCallback(async () => {
     if (!_group) return;
 
-    // Stream liveness check: if no stream event in 90s, treat the stream as
+    // Stream liveness check: if no stream event in 10min, treat the stream as
     // dead and force a full re-initialize. The `_streamAlive` flag is not a
     // reliable signal on its own — on Android the SDK never fires our unsub
     // when the OS suspends the WebSocket, so the flag stays `true` while
-    // messages silently stop arriving. The 90s no-events window is the actual
+    // messages silently stop arriving. The no-events window is the actual
     // liveness signal; the alive flag is only used as a fast-path bypass when
-    // we've already torn the stream down ourselves.
-    const STREAM_STALE_MS = 90_000;
+    // we've already torn the stream down ourselves. See checkStreamLiveness
+    // above for why this was bumped from 90s (false positives in quiet rooms).
+    const STREAM_STALE_MS = 10 * 60_000;
     if (_lastStreamEvent > 0 && Date.now() - _lastStreamEvent > STREAM_STALE_MS) {
-      if (__DEV__) console.warn("[XMTP] Stream appears dead (no events in 90s) — forcing reconnect");
+      if (__DEV__) console.warn("[XMTP] Stream appears dead (no events in 10min) — forcing reconnect");
       _streamAlive = false;
       _streamHealth.staleReconnects++;
       _streamHealth.lastStaleAt = Date.now();
@@ -2060,14 +2403,39 @@ export function useXmtp() {
       const afterNs = (Date.now() * 1_000_000) - TWO_HOURS_NS;
       const rawHistory: any[] = await (_group as any).messages({ afterNs });
 
+      // Replay any DELETE: requests this device missed while offline/backgrounded
+      // (e.g. the live stream event fired while the app wasn't running) so the
+      // deletion still lands instead of silently re-showing the message.
+      // senderById covers targets that arrived in this same resync batch (not
+      // yet in the store) so a delete landing right after its target isn't
+      // wrongly treated as unauthorized.
+      const senderById = new Map<string, string>(rawHistory.map((raw: any) => [raw.id, raw.senderInboxId as string]));
+      for (const raw of rawHistory) {
+        try {
+          const content = raw.content();
+          if (typeof content !== "string" || !content.startsWith("DELETE:")) continue;
+          const targetId = parseDeleteMessage(content);
+          if (!targetId || isMessageDeleted(targetId)) continue;
+          const requester = raw.senderInboxId as string;
+          const targetSender =
+            useChatStore.getState().messages.find(m => m.id === targetId)?.senderAddress
+            ?? senderById.get(targetId);
+          const authorized = requester === _adminInboxId || targetSender === requester;
+          if (authorized) {
+            await markMessageDeleted(targetId);
+            useChatStore.getState().removeMessage(targetId);
+          }
+        } catch { /* skip */ }
+      }
+
       const { messages: existing } = useChatStore.getState();
       const existingIds = new Set(existing.map((m) => m.id));
 
-      const newMsgs: ChatMessage[] = resolveReplyTargets(
+      const newMsgs: ChatMessage[] = filterDeleted(resolveReplyTargets(
         rawHistory
           .map((m) => decodeMessage(m, _myInboxId))
           .filter((m): m is ChatMessage => !!m && !existingIds.has(m.id))
-      ).reverse(); // oldest-first within the batch
+      )).reverse(); // oldest-first within the batch
 
       for (const msg of newMsgs) {
         if (msg.senderAddress === _myInboxId) {
@@ -2233,11 +2601,11 @@ export function useXmtp() {
       }
 
       const existingIds = new Set(existing.map(m => m.id));
-      const decoded = resolveReplyTargets(
+      const decoded = filterDeleted(resolveReplyTargets(
         rawHistory
           .map(m => decodeMessage(m, _myInboxId))
           .filter((m): m is ChatMessage => !!m && !existingIds.has(m.id))
-      );
+      ));
 
       if (decoded.length === 0) {
         useChatStore.getState().setLoadingHistory(false);

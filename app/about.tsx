@@ -1,16 +1,19 @@
 import React from "react";
 import { View, Text, StyleSheet, Pressable, Linking, ScrollView, StatusBar } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import Constants from "expo-constants";
 import { THEME, FONTS, APP_NAME } from "@/lib/constants";
+import { IS_IMMERSIVE_SHELL } from "@/lib/immersiveStatusBar";
 
 export default function AboutScreen() {
   // Read from app.config.ts via Constants so this stays in sync forever.
   const versionName = Constants.expoConfig?.version ?? "?";
+  const insets = useSafeAreaInsets();
   return (
     <View style={styles.root}>
-      <StatusBar barStyle="light-content" />
-      <View style={styles.header}>
+      <StatusBar barStyle="light-content" hidden={IS_IMMERSIVE_SHELL} />
+      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <Pressable onPress={() => router.back()} hitSlop={8}>
           <Text style={styles.backText}>← Back</Text>
         </Pressable>
@@ -72,7 +75,7 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: THEME.bg },
   header: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    paddingTop: 52, paddingHorizontal: 16, paddingBottom: 12,
+    paddingHorizontal: 16, paddingBottom: 12,
     borderBottomWidth: 0.75, borderBottomColor: "rgba(255,255,255,0.06)",
   },
   backText: { fontFamily: FONTS.bodyMed, fontSize: 14, color: "#6CB4EE" },

@@ -23,6 +23,7 @@ import {
   Platform,
 } from "react-native";
 import { WebView, type WebViewMessageEvent } from "react-native-webview";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 // Inline shape of the WebView's onShouldStartLoadWithRequest argument —
 // avoids depending on a non-public subpath import.
@@ -32,6 +33,7 @@ interface NavRequest {
   isTopFrame?: boolean;
 }
 import { THEME, FONTS } from "@/lib/constants";
+import { IS_IMMERSIVE_SHELL } from "@/lib/immersiveStatusBar";
 import { useAppStore } from "@/store/appStore";
 import { buildWalletBridgeJs, handleBridgeMessage } from "@/lib/walletBridge";
 
@@ -201,6 +203,7 @@ export function WebViewModal({ visible, url, title, onClose }: WebViewModalProps
     }
   })();
   const bridgeActive = !!injectedBridgeJs;
+  const insets = useSafeAreaInsets();
 
   return (
     <Modal
@@ -209,11 +212,11 @@ export function WebViewModal({ visible, url, title, onClose }: WebViewModalProps
       onRequestClose={onClose}
       statusBarTranslucent
     >
-      <StatusBar barStyle="light-content" backgroundColor="#0A0A0F" translucent />
+      <StatusBar barStyle="light-content" backgroundColor="#0A0A0F" translucent hidden={IS_IMMERSIVE_SHELL} />
       <WebViewErrorBoundary onClose={onClose}>
       <View style={styles.root}>
         {/* Top bar */}
-        <View style={styles.bar}>
+        <View style={[styles.bar, { paddingTop: insets.top + 10 }]}>
           <Pressable onPress={onClose} hitSlop={12} style={styles.iconBtn}>
             <Text style={styles.closeIcon}>✕</Text>
           </Pressable>
@@ -309,7 +312,6 @@ const styles = StyleSheet.create({
   bar: {
     flexDirection: "row",
     alignItems: "center",
-    paddingTop: 52,
     paddingBottom: 10,
     paddingHorizontal: 12,
     backgroundColor: "rgba(10, 10, 15, 0.96)",

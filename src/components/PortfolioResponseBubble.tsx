@@ -104,9 +104,18 @@ export function PortfolioResponseBubble({ response, onPressPosition, onPressClos
                 resizeMode="contain"
               />
             </View>
-            <Text style={styles.wallet}>
-              {response.walletAddress.slice(0, 4)}…{response.walletAddress.slice(-4)}
-            </Text>
+            {(() => {
+              // Display the HOT wallet — that's what actually holds tokens
+              // and executes trades. Login wallet is just the identity key.
+              // Falls back to walletAddress for old bot builds that don't
+              // include hotWalletAddress yet.
+              const addr = response.hotWalletAddress ?? response.walletAddress;
+              return (
+                <Text style={styles.wallet}>
+                  🔥 {addr.slice(0, 4)}…{addr.slice(-4)}
+                </Text>
+              );
+            })()}
           </View>
 
           {/* Hairline-separated stats — three even columns */}
@@ -188,7 +197,7 @@ export function PortfolioResponseBubble({ response, onPressPosition, onPressClos
                     <View style={styles.posChart}>
                       <Sparkline closes={pos.sparkline} width={260} height={32} colorOverride={accent} />
                     </View>
-                    {hasPartialData && (realized > 0 || (pos.fractionRemaining ?? 1) < 1) ? (
+                    {hasPartialData ? (
                       <View style={styles.posBreakdown}>
                         <View style={styles.posBreakdownRow}>
                           <Text style={styles.posBreakdownLabel}>Holding</Text>
@@ -199,13 +208,15 @@ export function PortfolioResponseBubble({ response, onPressPosition, onPressClos
                             )}
                           </Text>
                         </View>
-                        <View style={styles.posBreakdownRow}>
-                          <Text style={styles.posBreakdownLabel}>Realized</Text>
-                          <Text style={[styles.posBreakdownValue, { color: THEME.gold }]}>
-                            +{realized.toFixed(4)} SOL
-                            <Text style={styles.posBreakdownSub}>  ·  {((realized / pos.entrySolAmount) * 100).toFixed(0)}% of cost</Text>
-                          </Text>
-                        </View>
+                        {realized > 0 && (
+                          <View style={styles.posBreakdownRow}>
+                            <Text style={styles.posBreakdownLabel}>Realized</Text>
+                            <Text style={[styles.posBreakdownValue, { color: THEME.gold }]}>
+                              +{realized.toFixed(4)} SOL
+                              <Text style={styles.posBreakdownSub}>  ·  {((realized / pos.entrySolAmount) * 100).toFixed(0)}% of cost</Text>
+                            </Text>
+                          </View>
+                        )}
                         <View style={[styles.posBreakdownRow, styles.posBreakdownTotal]}>
                           <Text style={styles.posBreakdownLabel}>Net</Text>
                           <Text style={[styles.posBreakdownValue, { color: netUp ? THEME.gold : THEME.error }]}>

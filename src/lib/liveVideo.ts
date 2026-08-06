@@ -21,7 +21,7 @@
  *   docker run -d --name livekit \
  *     -p 7880:7880 -p 7881:7881 -p 7882:7882/udp \
  *     -p 50000-60000:50000-60000/udp \
- *     -e LIVEKIT_KEYS="REDACTED_LIVEKIT_API_KEY: REDACTED_LIVEKIT_API_SECRET" \
+ *     -e LIVEKIT_KEYS="YOUR_LIVEKIT_API_KEY: YOUR_LIVEKIT_API_SECRET" \
  *     -v ./livekit.yaml:/etc/livekit.yaml \
  *     livekit/livekit-server --config /etc/livekit.yaml
  *
@@ -38,7 +38,7 @@
  *     tls_port: 5349
  *     udp_port: 3478
  *   keys:
- *     REDACTED_LIVEKIT_API_KEY: REDACTED_LIVEKIT_API_SECRET
+ *     YOUR_LIVEKIT_API_KEY: YOUR_LIVEKIT_API_SECRET
  */
 
 import {
@@ -55,7 +55,7 @@ import {
 } from 'livekit-client';
 import { AudioSession } from '@livekit/react-native';
 import { Platform, PermissionsAndroid } from 'react-native';
-import { createLivekitToken, createRoomName, LK_URL } from './livekit';
+import { createLivekitToken, createRoomName, LK_URL, ensureLiveKitGlobals } from './livekit';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -181,6 +181,7 @@ export async function connectToVideoRoom(
   token: string,
   onDisconnect: () => void,
 ): Promise<void> {
+  ensureLiveKitGlobals();
   if (_room) await disconnectFromVideoRoom();
 
   _room = new Room({

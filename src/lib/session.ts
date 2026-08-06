@@ -16,8 +16,10 @@ const SK_LABEL = "session_wallet_label";
 const SK_TIMESTAMP = "session_timestamp";
 const SK_LAST_NFT_CHECK = "session_last_nft_check";
 
-/** Re-check NFT ownership every 24 hours */
-const NFT_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
+/** Re-check NFT ownership every 48 hours — widened 2026-07-12 to cut how
+ *  often users hit the (slower, on-chain-fallback-capable) verification
+ *  path while Helius capacity is constrained. */
+const NFT_CHECK_INTERVAL_MS = 48 * 60 * 60 * 1000;
 
 /** Session expires after 7 days */
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -199,6 +201,14 @@ export function startNftOwnershipGuard(onForceLogout: () => void): void {
       const result = await verifyNFTOwnership(wallet.address);
 
       if (!result.verified) {
+        if (result.providerError) {
+          // Helius + Shyft both errored — an infrastructure outage, not
+          // confirmation the wallet sold its NFT. Keep the existing session
+          // and retry on the next foreground instead of mass-logging-out
+          // every user whose 24h window happens to land during a blip.
+          console.warn("[NFTGuard] Re-check hit a provider outage — keeping session, will retry:", result.error);
+          return;
+        }
         console.log("[NFTGuard] User no longer owns a collection NFT — forcing logout");
         await clearSession();
         await clearVerifiedNft();

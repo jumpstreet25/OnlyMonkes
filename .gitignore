@@ -60,3 +60,10 @@ google-services.json
 .last_published_version_code
 .last_release_id
 
+# Claude Code local config (machine-specific: paths, permissions, locks)
+.claude/
+
+# Image/asset backups (cruft; .bak2 is often a JPEG — AAPT2 trap)
+*.bak
+*.bak2
+

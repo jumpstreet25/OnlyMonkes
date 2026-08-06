@@ -10,7 +10,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   name: 'OnlyMonkes',
   slug: 'monkesonly',
   owner: process.env.EXPO_OWNER ?? undefined,
-  version: '2.38.0',
+  version: '3.0.0',
   orientation: 'portrait',
   icon: './assets/icon.png',
   userInterfaceStyle: 'dark',
@@ -32,7 +32,17 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     fallbackToCacheTimeout: 5000,
     checkAutomatically: 'ON_LOAD',
   },
-  runtimeVersion: '3.3',
+  // 2026-08-01: bumped from '3.3' — that tag is currently shared by BOTH the
+  // old (Reanimated v3) production native binary and the new (Reanimated v4)
+  // canary native binary. expo-updates uses this to gate OTA compatibility,
+  // so that overlap is exactly what let a Reanimated v3/v4 JS bundle get
+  // delivered to the old v3 binary and crash-loop production (see
+  // feedback_never_ota_from_worktree_without_checking_reanimated). A real
+  // native rebuild is happening anyway for the 3.0.0 release — this is the
+  // moment to give it its own distinct runtime tag so that class of mistake
+  // becomes structurally impossible (expo-updates will simply refuse to
+  // apply a mismatched update rather than silently crashing).
+  runtimeVersion: '3.4',
   plugins: [
     'expo-router',
     'expo-secure-store',
@@ -41,10 +51,18 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       {
         android: {
           minSdkVersion: 26,
-          compileSdkVersion: 35,
-          targetSdkVersion: 35,
-          buildToolsVersion: '35.0.0',
-          kotlinVersion: '2.0.21',
+          // SDK 54 target (bumped from 35 on the sdk54-upgrade branch).
+          compileSdkVersion: 36,
+          targetSdkVersion: 36,
+          buildToolsVersion: '36.0.0',
+          kotlinVersion: '2.1.20',
+          // 2026-07-09: bumped from 26.1.10909125 — Nitro Modules (vision-camera
+          // 5 / nitro-modules / nitro-image) requires NDK 27+. NOTE: this field
+          // is a no-op for Android (expo-build-properties has no Android writer
+          // for ndkVersion) — the real pin is `rootProject.ext.ndkVersion` in
+          // android/build.gradle. Kept here only as a human-readable record of
+          // intent; do not rely on it actually doing anything.
+          ndkVersion: '27.1.12297006',
         },
       },
     ],
@@ -79,10 +97,20 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         recordAudioAndroid: true,
       },
     ],
+    'expo-video',
+    [
+      // expo-av replacement (SDK 55 removes expo-av entirely) — sounds.ts is
+      // playback-only (no recording), so recordAudioAndroid: false avoids
+      // requesting RECORD_AUDIO a second time (expo-camera above already
+      // declares it for actual video recording).
+      'expo-audio',
+      { recordAudioAndroid: false },
+    ],
   ],
   scheme: 'onlymonkes',
   extra: {
     heliusApiKey: process.env.HELIUS_API_KEY ?? '',
+    heliusNftApiKey: process.env.HELIUS_NFT_API_KEY ?? '',
     giphyApiKey: process.env.GIPHY_API_KEY ?? '',
     nftCollectionAddress:
       process.env.NFT_COLLECTION_ADDRESS ?? 'GokAiStXz2Kqbxwz2oqzfEXuUhE7aXySmBGEP7uejKXF',

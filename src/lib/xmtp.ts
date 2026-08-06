@@ -195,7 +195,9 @@ export async function getOrCreateGlobalChat(
           return { group: g as unknown as XmtpGroup, isNewAdmin: false };
         }
       }
-    } catch { /* ignore */ }
+    } catch (e) {
+      console.log(`[XMTP] listGroups threw: ${(e as Error).message}`);
+    }
 
     // Second pass: sync again in case the welcome message arrived during first pass
     try {
@@ -225,10 +227,22 @@ export async function getOrCreateGlobalChat(
   return { group: group as unknown as XmtpGroup, isNewAdmin: true };
 }
 
+/**
+ * Add (or re-add) an inbox to a group, refreshing its installation set.
+ * Inbox IDs are wallet-derived, so a reinstall or Cross-Device Recovery
+ * regenerates the SAME inbox ID with a brand-new local installation.
+ * addMembers() on an already-member inbox silently no-ops instead of
+ * granting the new installation access — removing first forces a fresh
+ * add-commit that picks up the current installation set. Mirrors the
+ * bot-side fix in Monke_Eliza's xmtpOnlyMonkes.ts (addOrRefreshMember).
+ */
 export async function addMemberToGroup(
   group: XmtpGroup,
   inboxId: string
 ): Promise<void> {
+  try {
+    await (group as any).removeMembers?.([inboxId]);
+  } catch { /* not a member yet — expected for genuinely new users */ }
   await (group as any).addMembers([inboxId]);
 }
 
@@ -349,13 +363,15 @@ function decodeStringMessage(raw: any, rawContent: string, myInboxId: string): C
     ? rawContent.slice(4).split(":").slice(1).join(":")
     : rawContent;
   const STRUCTURED_PREFIXES = [
-    "REACT:", "STICKER_REACT:", "TYPING:", "PROFILE_UPDATE:", "PROFILE_SNAPSHOT:",
+    "REACT:", "STICKER_REACT:", "TYPING:", "PROFILE_UPDATE:", "PROFILE_SNAPSHOT:", "MY_INBOXES:",
     "LOCATION_SYNC:", "EVENT:", "EDIT:", "PRESENCE:", "LIVE_ROOM:", "VIDEO_ROOM:",
     "AVATAR_ROOM:", "SHOP_PURCHASE:", "GIFT_ITEM:", "THREAD:", "PIN:", "UNPIN:",
     "NFT_LIST:", "NFT_BID:", "NFT_ACCEPT:", "NFT_DELIST:", "NFT_OFFER:",
     "NFT_SWAP:", "NFT_COMPLETE:", "AUTOMONKE_STATUS:", "TRADE_CLOSED:",
     "TRADE_OPENED:", "PORTFOLIO_CARD:", "PORTFOLIO_RESPONSE:", "RSVP:", "READ:",
-    "BANANA_GRANT:", "HEALTH:",
+    "BANANA_GRANT:", "BANANA_BET_OPEN:", "BANANA_BET_SETTLED:", "HEALTH:", "DELETE:",
+    "IMAGE_CAPTION_REQUEST:", "IMAGE_CAPTION_RESPONSE:", "POLL_OPEN:", "POLL_RESULT:",
+    "STREAK_CAPTION_REQUEST:", "STREAK_CAPTION_RESPONSE:", "JOIN_REQUEST:",
   ];
   for (const p of STRUCTURED_PREFIXES) {
     if (rawContent.startsWith(p) || innerPreview.startsWith(p)) return null;
@@ -571,6 +587,48 @@ export function applyReaction(
   return updated;
 }
 
+const REACTION_RETRY_MS = 500;
+const REACTION_MAX_RETRIES = 30;
+
+/**
+ * Retries applyReaction()/applyStickerReaction() a few times if the target
+ * message isn't in the list YET. Both of those are pure functions that
+ * silently return the SAME array reference when the target id isn't found
+ * (a deliberate perf optimization for reactions on old/evicted messages,
+ * see applyReaction's comment) — but that also means a reaction arriving in
+ * a race against its OWN target message still being asynchronously
+ * processed (profile enrichment, etc.) gets dropped forever with no retry,
+ * reported 2026-07-16 as "reactions don't show at all, or not until the app
+ * reopens" (reopening re-runs history load, where all messages are already
+ * materialized before reactions apply, so the race can't happen there).
+ * Detects a no-op via reference equality and retries briefly before giving
+ * up — a genuinely out-of-window old message still fails, just a couple
+ * seconds later instead of immediately.
+ *
+ * 2026-07-27: reported AGAIN, same shape, on both the published app and the
+ * 3.0 dev branch — the original 2s window (5 * 400ms) wasn't actually long
+ * enough for real-world conditions (slow network, message backlog on
+ * reconnect, profile enrichment queued behind other work). Retrying is
+ * cheap (a no-op array-reference check) so there's little cost to a much
+ * more generous window — 30 * 500ms = 15s — before finally giving up on a
+ * genuinely evicted/out-of-window target.
+ */
+export function applyWithRetry(
+  applyFn: (messages: ChatMessage[]) => ChatMessage[],
+  setMessages: (updater: (prev: ChatMessage[]) => ChatMessage[]) => void,
+  attempt = 0,
+): void {
+  let matched = false;
+  setMessages(prev => {
+    const next = applyFn(prev);
+    matched = next !== prev;
+    return next;
+  });
+  if (!matched && attempt < REACTION_MAX_RETRIES) {
+    setTimeout(() => applyWithRetry(applyFn, setMessages, attempt + 1), REACTION_RETRY_MS);
+  }
+}
+
 /**
  * Apply an EDIT message to the message list.
  * Format: EDIT:<originalMessageId>:<senderUsername>:<newContent>
@@ -646,6 +704,8 @@ export interface ParsedTradeOpened {
   openClawConfidence?: number;
   txHash?: string;
   ts: number;
+  /** Hot wallet pubkey that opened the position. Render on trade cards. */
+  hotWalletAddress?: string;
 }
 
 export interface ParsedTradeClosed {
@@ -660,6 +720,19 @@ export interface ParsedTradeClosed {
   ts: number;
   reason?: string;
   signature?: string;
+  /** Hot wallet pubkey that executed the trade (post-2026-05-24 bot builds).
+   *  Render on PnL cards instead of the login wallet — tokens live here. */
+  hotWalletAddress?: string;
+  // v2.38 multi-base trading — all optional, native-base PnL only.
+  // When baseSymbol === 'SOL' (or missing) the legacy SOL view is correct.
+  // For USDC/SKR positions, UI should prefer the *Base fields and label
+  // amounts with baseSymbol. Trades round-trip in the chosen base —
+  // there is no separate USD-normalized PnL.
+  baseMint?: string;
+  baseSymbol?: 'SOL' | 'USDC' | 'SKR';
+  entryBaseAmount?: number;
+  exitBaseAmount?: number;
+  pnlBase?: number;
 }
 
 export function parseTradeClosed(raw: string): ParsedTradeClosed | null {
@@ -689,6 +762,15 @@ export function parseTradeClosed(raw: string): ParsedTradeClosed | null {
   const pnlSol = numOrNull(data.pnlSol) ?? (exitSolAmount - entrySolAmount);
   const source = data.source === 'autonomonke' ? 'autonomonke' : 'manual';
 
+  // v2.38 multi-base fields. Whitelist baseSymbol so a malformed payload
+  // can't poison the UI rendering path. All fields optional — pre-v2.38
+  // bot builds omit them and the parser still produces a valid trade.
+  const baseSymRaw = typeof data.baseSymbol === 'string' ? data.baseSymbol.toUpperCase() : null;
+  const baseSymbol: 'SOL' | 'USDC' | 'SKR' | undefined =
+    baseSymRaw === 'SOL' || baseSymRaw === 'USDC' || baseSymRaw === 'SKR'
+      ? baseSymRaw
+      : undefined;
+
   return {
     source,
     token: token.slice(0, 32),
@@ -701,6 +783,40 @@ export function parseTradeClosed(raw: string): ParsedTradeClosed | null {
     ts,
     reason: strOrNull(data.reason) ?? undefined,
     signature: strOrNull(data.signature) ?? undefined,
+    hotWalletAddress: strOrNull(data.hotWalletAddress)?.slice(0, 80) ?? undefined,
+    baseMint: strOrNull(data.baseMint)?.slice(0, 80) ?? undefined,
+    baseSymbol,
+    entryBaseAmount: numOrNull(data.entryBaseAmount) ?? undefined,
+    exitBaseAmount: numOrNull(data.exitBaseAmount) ?? undefined,
+    pnlBase: numOrNull(data.pnlBase) ?? undefined,
+  };
+}
+
+export interface ParsedAutomonkeStatus {
+  enrolled: boolean;
+  active: boolean;
+  limitOrdersEnabled: boolean;
+}
+
+/**
+ * Parse an AUTOMONKE_STATUS: structured DM — the bot's ground truth for
+ * AutonoMonke enrollment, sent as a follow-up after every /autonomonke
+ * reply. Fixes the app's local AsyncStorage flag (BotChannelScreen.tsx)
+ * silently drifting to "OFF" on a fresh install/build even though bot-side
+ * enrollment never changed (sender must be in BOT_INBOX_IDS at the call
+ * site — same spoof guard as parseTradeClosed).
+ */
+export function parseAutomonkeStatus(raw: string): ParsedAutomonkeStatus | null {
+  if (!raw.startsWith("AUTOMONKE_STATUS:")) return null;
+  const jsonStr = raw.slice("AUTOMONKE_STATUS:".length);
+  if (jsonStr.length > 500) return null;
+  let data: any;
+  try { data = JSON.parse(jsonStr); } catch { return null; }
+  if (!data || typeof data !== "object") return null;
+  return {
+    enrolled: data.enrolled === true,
+    active: data.active === true,
+    limitOrdersEnabled: data.limitOrdersEnabled === true,
   };
 }
 
@@ -750,6 +866,7 @@ export function parseTradeOpened(raw: string): ParsedTradeOpened | null {
     openClawConfidence: numOrNull(data.openClawConfidence) ?? undefined,
     txHash: strOrNull(data.txHash) ?? undefined,
     ts,
+    hotWalletAddress: strOrNull(data.hotWalletAddress)?.slice(0, 80) ?? undefined,
   };
 }
 
@@ -899,7 +1016,13 @@ export interface ParsedRecentClosed {
 
 export interface ParsedPortfolioResponse {
   source: 'autonomonke';
+  /** Login wallet — the user's identity key. NOT what holds tokens. */
   walletAddress: string;
+  /** Hot wallet — the bot-managed keypair pubkey that actually holds tokens
+   *  and executes trades. Render THIS on PnL/portfolio cards (the user cares
+   *  about where their assets live). Older bot builds omit it → falls back
+   *  to walletAddress so display gracefully degrades. */
+  hotWalletAddress: string | null;
   walletBalanceSOL: number | null;
   realizedPnlPct: number;
   /** Absolute SOL realized across closed positions. Older bot builds omit this
@@ -1010,6 +1133,7 @@ export function parsePortfolioResponse(raw: string): ParsedPortfolioResponse | n
   return {
     source: 'autonomonke',
     walletAddress: walletAddress.slice(0, 80),
+    hotWalletAddress: strOrNull(data.hotWalletAddress)?.slice(0, 80) ?? null,
     walletBalanceSOL: numOrNull(data.walletBalanceSOL),
     realizedPnlPct: numOrNull(data.realizedPnlPct) ?? 0,
     realizedPnlSol: numOrNull(data.realizedPnlSol),
@@ -1110,6 +1234,34 @@ export function parseProfileSnapshot(raw: string): ParsedProfileSnapshot | null 
     badges: Array.isArray(data.bd) ? data.bd.filter((b: unknown) => typeof b === "string") : undefined,
     marketplaceHistory: Array.isArray(data.mh) ? data.mh : undefined,
     updatedAt: typeof data.updatedAt === "number" ? data.updatedAt : undefined,
+  };
+}
+
+// ─── MY_INBOXES (wallet-ownership-verified inbox linking) ───────────────────
+
+export interface ParsedMyInboxes {
+  wallet: string;
+  inboxIds: string[];
+}
+
+/**
+ * Parse a MY_INBOXES: payload returned by the bot after a successful
+ * /myinboxes challenge handshake. Returns null on malformed input.
+ */
+export function parseMyInboxes(raw: string): ParsedMyInboxes | null {
+  if (!raw.startsWith("MY_INBOXES:")) return null;
+  const jsonStr = raw.slice("MY_INBOXES:".length);
+  if (jsonStr.length > 20_000) return null;
+
+  let data: any;
+  try { data = JSON.parse(jsonStr); } catch { return null; }
+  if (!data || typeof data !== "object" || Array.isArray(data)) return null;
+  if (typeof data.wallet !== "string" || !data.wallet) return null;
+  if (!Array.isArray(data.inboxIds)) return null;
+
+  return {
+    wallet: data.wallet,
+    inboxIds: data.inboxIds.filter((id: unknown) => typeof id === "string"),
   };
 }
 

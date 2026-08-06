@@ -9,8 +9,10 @@ import {
   TextInput,
   ActivityIndicator,
 } from "react-native";
-import type { FlashListRef } from "@shopify/flash-list";
+// 2026-05-23: switched chat list to FlatList for stability — alias kept.
+import type { FlatList as FlashListRef } from "react-native";
 import { router } from "expo-router";
+import { useVideoPlayer, VideoView } from "expo-video";
 import { THEME, FONTS } from "@/lib/constants";
 import { ConfettiView } from "@/components/ConfettiView";
 import { BananaClaimModal } from "@/components/BananaClaimModal";
@@ -25,33 +27,38 @@ import { TipModal } from "@/components/TipModal";
 import { SwapConfirmModal } from "@/components/SwapConfirmModal";
 import { GifPickerModal } from "@/components/GifPickerModal";
 import { NftPickerModal } from "@/components/NftPickerModal";
+import { SetMonkeImageModal } from "@/components/SetMonkeImageModal";
 import ImageLightbox from "@/components/ImageLightbox";
 import { ChartModal } from "@/components/ChartModal";
 import { UserProfileModal, type ProfileTarget } from "@/components/UserProfileModal";
 import { VideoCameraModal } from "@/components/VideoCameraModal";
+import { PhotoReviewModal } from "@/components/PhotoReviewModal";
+import { GlassBottomSheet } from "@/components/GlassBottomSheet";
+import { MonkeGlass } from "@/components/MonkeGlass";
+import { MessageActionSheet } from "@/components/MessageActionSheet";
 import { useAppStore } from "@/store/appStore";
 import { addBananas } from "@/lib/bananaRewards";
 import { saveSelectedNftMint } from "@/lib/userProfile";
-import type { ChatMessage } from "@/types";
+import type { ChatMessage, ReactionEmoji } from "@/types";
 import type { ClaimResult } from "@/lib/bananaRewards";
 import type { SwapQuote } from "@/lib/jupiterSwap";
 import type { Badge } from "@/lib/activityBadges";
 import type { TipAmount } from "@/lib/constants";
 import type { FlatList } from "react-native";
 
-/** Lazy-loaded Video player — avoids importing expo-av at startup */
-const getExpoAv = () => import("expo-av");
+// 2026-07-22: was dynamically importing expo-av to defer its startup cost —
+// no longer meaningful now that VideoCameraModal (imported statically just
+// above) already pulls expo-video into this same file's module graph
+// unconditionally. A dynamic import here would also make useVideoPlayer a
+// conditionally-called hook, which Rules of Hooks disallows.
 function LazyVideo({ uri }: { uri: string }) {
-  const [Mod, setMod] = React.useState<{ Video: any; ResizeMode: any } | null>(null);
-  React.useEffect(() => { getExpoAv().then(m => setMod(m)); }, []);
-  if (!Mod) return <ActivityIndicator style={{ flex: 1 }} color="#fff" />;
+  const player = useVideoPlayer(uri, (p) => { p.play(); });
   return (
-    <Mod.Video
-      source={{ uri }}
+    <VideoView
+      player={player}
       style={{ flex: 1 }}
-      useNativeControls
-      shouldPlay
-      resizeMode={Mod.ResizeMode.CONTAIN}
+      nativeControls
+      contentFit="contain"
     />
   );
 }
@@ -102,6 +109,8 @@ export interface ChatModalsProps {
   setCalendarOpen: (v: boolean) => void;
   setProfileTarget: (v: ProfileTarget | null) => void;
   setPfpPickerOpen: (v: boolean) => void;
+  pfpImagePickerOpen: boolean;
+  setPfpImagePickerOpen: (v: boolean) => void;
 
   // Search
   searchOpen: boolean;
@@ -170,6 +179,24 @@ export interface ChatModalsProps {
   xShareImageUri: string | null;
   setXShareImageUri: (v: string | null) => void;
   handleShareToX: () => void;
+
+  // Photo review (caption picker before send)
+  photoReviewVisible: boolean;
+  photoReviewImageUri: string | null;
+  photoReviewRequestId: string | null;
+  handlePhotoReviewSend: (caption: string) => void;
+  handlePhotoReviewCancel: () => void;
+
+  // Message action sheet (react/reply/copy/edit/delete/pin/thread/sticker)
+  actionSheetTarget: ChatMessage | null;
+  setActionSheetTarget: (v: ChatMessage | null) => void;
+  handleReact: (emoji: ReactionEmoji, messageId: string) => void;
+  setReplyingTo: (msg: ChatMessage | null) => void;
+  handleEditMessage: (msg: ChatMessage) => void;
+  handleDelete: (msg: ChatMessage) => void;
+  handlePin: ((msg: ChatMessage) => void) | undefined;
+  handleThread: (msg: ChatMessage) => void;
+  handleStickerReact: (url: string, messageId: string) => void;
 }
 
 export function ChatModals(props: ChatModalsProps) {
@@ -183,6 +210,7 @@ export function ChatModals(props: ChatModalsProps) {
     username, bio, xAccount, tipWallet, userLocation, broadcastProfile,
     drawerOpen, setDrawerOpen, handleStartAvatarRoom, handleStartVideoCall,
     handleConfirmDevTip, setSearchOpen, setCalendarOpen, setProfileTarget, setPfpPickerOpen,
+    pfpImagePickerOpen, setPfpImagePickerOpen,
     searchOpen, calendarOpen, broadcastEvent,
     tipTarget, setTipTarget, handleConfirmTip,
     devTipOpen, setDevTipOpen,
@@ -196,7 +224,15 @@ export function ChatModals(props: ChatModalsProps) {
     videoLightboxUrl, setVideoLightboxUrl, handleDownloadVideo,
     editTarget, setEditTarget, editText, setEditText, handleEditSubmit,
     xShareImageUri, setXShareImageUri, handleShareToX,
+    photoReviewVisible, photoReviewImageUri, photoReviewRequestId,
+    handlePhotoReviewSend, handlePhotoReviewCancel,
+    actionSheetTarget, setActionSheetTarget, handleReact, setReplyingTo,
+    handleEditMessage, handleDelete, handlePin, handleThread, handleStickerReact,
   } = props;
+
+  const isGroupAdmin = useAppStore(s => s.isGroupAdmin);
+  const wallet = useAppStore(s => s.wallet);
+  const verifiedNft = useAppStore(s => s.verifiedNft);
 
   return (
     <>
@@ -320,10 +356,19 @@ export function ChatModals(props: ChatModalsProps) {
           await saveSelectedNftMint(nft.mint);
           const { syncPfpBindings, getEquippedStyles: getStyles } = await import("@/lib/bananaShop");
           const { applyThemeFromShop: applyTheme } = await import("@/lib/shopTheme");
+          const { getOrExtractNftColor } = await import("@/lib/nftColor");
           await syncPfpBindings(nft.mint);
           const s = await getStyles();
           useAppStore.getState().setShopStyles(s);
           applyTheme(s);
+          // applyTheme() only recomputes nftDominantColor when PFP Full
+          // Theme is equipped — refresh it unconditionally too, so PFP
+          // Aura / border-tint items pick up the newly-selected NFT's
+          // color right away instead of showing the old one until the
+          // next ChatScreen mount.
+          getOrExtractNftColor(nft.image, nft.mint ?? "nft").then(c => {
+            useAppStore.getState().setNftDominantColor(c);
+          }).catch(() => {});
           setPfpPickerOpen(false);
           await broadcastProfile();
         }}
@@ -339,12 +384,38 @@ export function ChatModals(props: ChatModalsProps) {
         onClose={() => setChartSymbol(null)}
       />
 
+      <SetMonkeImageModal
+        visible={pfpImagePickerOpen}
+        onSkip={() => setPfpImagePickerOpen(false)}
+        onPicked={async (imageUrl) => {
+          if (!wallet?.address) { setPfpImagePickerOpen(false); return; }
+          const { setUserChosenNftImage } = await import("@/lib/nftVerification");
+          const nft = await setUserChosenNftImage(wallet.address, imageUrl, verifiedNft);
+          setVerified(true, nft);
+          // Re-derive PFP-driven color/theme for the NEW image immediately —
+          // without this, PFP Full Theme / aura / border tint kept showing
+          // colors extracted from whichever PFP was equipped before.
+          const { applyThemeFromShop } = await import("@/lib/shopTheme");
+          const { getOrExtractNftColor } = await import("@/lib/nftColor");
+          applyThemeFromShop(useAppStore.getState().shopStyles);
+          getOrExtractNftColor(nft.image, nft.mint ?? "nft").then(c => {
+            useAppStore.getState().setNftDominantColor(c);
+          }).catch(() => {});
+          setPfpImagePickerOpen(false);
+          await broadcastProfile();
+        }}
+      />
+
       <UserProfileModal
         visible={!!profileTarget}
         target={profileTarget}
         onClose={() => setProfileTarget(null)}
         onEditProfile={() => setEditingProfile(true)}
-        onChangePfp={allNfts.length > 0 ? () => setPfpPickerOpen(true) : undefined}
+        onChangePfp={
+          allNfts.length > 0
+            ? () => (verifiedNft?.image ? setPfpPickerOpen(true) : setPfpImagePickerOpen(true))
+            : undefined
+        }
         onLogout={async () => { await logout(); router.replace("/"); }}
         onSwitchWallet={async () => { await logout(); router.replace("/"); }}
         onMessage={profileTarget && profileTarget.senderAddress !== myAddress
@@ -359,7 +430,7 @@ export function ChatModals(props: ChatModalsProps) {
         onSend={handleVideoSend}
       />
 
-      {/* Video Lightbox (expo-av loaded on demand) */}
+      {/* Video Lightbox */}
       <Modal
         visible={!!videoLightboxUrl}
         transparent
@@ -401,78 +472,92 @@ export function ChatModals(props: ChatModalsProps) {
         </View>
       </Modal>
 
-      {/* Edit Message Modal */}
-      <Modal
-        visible={!!editTarget}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setEditTarget(null)}
-      >
-        <Pressable style={modalStyles.overlay} onPress={() => setEditTarget(null)}>
-          <Pressable style={modalStyles.sheet} onPress={(e) => e.stopPropagation()}>
-            <Text style={modalStyles.title}>Edit Message</Text>
-            <TextInput
-              style={modalStyles.input}
-              value={editText}
-              onChangeText={setEditText}
-              autoFocus
-              multiline
-              maxLength={2000}
-              placeholderTextColor={THEME.textFaint}
-            />
-            <View style={modalStyles.btnRow}>
-              <Pressable onPress={() => setEditTarget(null)} style={modalStyles.cancelBtn}>
-                <Text style={modalStyles.cancelText}>Cancel</Text>
-              </Pressable>
-              <Pressable onPress={handleEditSubmit} style={modalStyles.confirmBtn}>
-                <Text style={modalStyles.confirmText}>Save</Text>
-              </Pressable>
-            </View>
+      {/* Edit Message — was a raw <Modal> with an opaque #000 sheet (the
+          same cross-window blur-blocking issue GlassModal/MonkeGlass exist
+          to fix — Android's Modal is a separate native Dialog window that
+          BlurView can't see across). */}
+      <MonkeGlass visible={!!editTarget} onClose={() => setEditTarget(null)}>
+        <Text style={modalStyles.title}>Edit Message</Text>
+        <TextInput
+          style={modalStyles.input}
+          value={editText}
+          onChangeText={setEditText}
+          autoFocus
+          multiline
+          maxLength={2000}
+          placeholderTextColor={THEME.textFaint}
+        />
+        <View style={modalStyles.btnRow}>
+          <Pressable onPress={() => setEditTarget(null)} style={modalStyles.cancelBtn}>
+            <Text style={modalStyles.cancelText}>Cancel</Text>
           </Pressable>
-        </Pressable>
-      </Modal>
+          <Pressable onPress={handleEditSubmit} style={modalStyles.confirmBtn}>
+            <Text style={modalStyles.confirmText}>Save</Text>
+          </Pressable>
+        </View>
+      </MonkeGlass>
 
       {/* Share on X Popup */}
-      <Modal
+      <GlassBottomSheet
         visible={!!xShareImageUri}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setXShareImageUri(null)}
+        onClose={() => setXShareImageUri(null)}
+        snapPoints={['55%']}
       >
-        <Pressable style={modalStyles.overlay} onPress={() => setXShareImageUri(null)}>
-          <Pressable style={modalStyles.sheet} onPress={(e) => e.stopPropagation()}>
-            {/* Close X button */}
+        <View style={modalStyles.xShareContent}>
+          <View style={modalStyles.xShareHeader}>
+            <Text style={[modalStyles.title, { flex: 1 }]}>Share this Image on X?</Text>
             <Pressable
               onPress={() => setXShareImageUri(null)}
-              style={modalStyles.closeX}
+              style={modalStyles.xShareCloseBtn}
               hitSlop={10}
             >
               <Text style={modalStyles.closeXText}>✕</Text>
             </Pressable>
+          </View>
 
-            <Text style={modalStyles.title}>Share this Image on X?</Text>
-            {xShareImageUri && (
-              <View style={modalStyles.previewWrap}>
-                <Image
-                  source={{ uri: xShareImageUri }}
-                  style={modalStyles.previewImg}
-                  resizeMode="cover"
-                />
-                <Image
-                  source={require("../../assets/watermark.png")}
-                  style={modalStyles.previewWatermark}
-                  resizeMode="contain"
-                />
-              </View>
-            )}
-            <Text style={modalStyles.caption}>Shot Using @xOnlyMonkes</Text>
+          {xShareImageUri && (
+            <View style={modalStyles.previewWrap}>
+              <Image
+                source={{ uri: xShareImageUri }}
+                style={modalStyles.previewImg}
+                resizeMode="cover"
+              />
+              <Image
+                source={require("../../assets/watermark.png")}
+                style={modalStyles.previewWatermark}
+                resizeMode="contain"
+              />
+            </View>
+          )}
+          <Text style={modalStyles.caption}>Shot Using @xOnlyMonkes</Text>
 
-            <Pressable onPress={handleShareToX} style={modalStyles.xBtn}>
-              <Text style={modalStyles.xBtnText}>Share this Image on X</Text>
-            </Pressable>
+          <Pressable onPress={handleShareToX} style={modalStyles.xBtn}>
+            <Text style={modalStyles.xBtnText}>Share this Image on X</Text>
           </Pressable>
-        </Pressable>
-      </Modal>
+        </View>
+      </GlassBottomSheet>
+
+      <PhotoReviewModal
+        visible={photoReviewVisible}
+        imageUri={photoReviewImageUri}
+        requestId={photoReviewRequestId}
+        onSend={handlePhotoReviewSend}
+        onCancel={handlePhotoReviewCancel}
+      />
+
+      <MessageActionSheet
+        target={actionSheetTarget}
+        onClose={() => setActionSheetTarget(null)}
+        myAddress={myAddress}
+        isGroupAdmin={isGroupAdmin}
+        onReact={handleReact}
+        onReply={setReplyingTo}
+        onEdit={handleEditMessage}
+        onDelete={handleDelete}
+        onPin={isGroupAdmin ? handlePin : undefined}
+        onThread={handleThread}
+        onStickerReact={handleStickerReact}
+      />
     </>
   );
 }
@@ -563,6 +648,24 @@ const modalStyles = StyleSheet.create({
     color: "#fff",
     fontSize: 14,
     fontWeight: "bold",
+  },
+  xShareContent: {
+    gap: 12,
+    alignItems: "center",
+  },
+  xShareHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    alignSelf: "stretch",
+  },
+  xShareCloseBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: "#6CB4EE",
+    alignItems: "center",
+    justifyContent: "center",
   },
   previewWrap: {
     width: 220,

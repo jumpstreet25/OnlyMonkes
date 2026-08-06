@@ -9,8 +9,14 @@
  *  - Monke of the Week announcement
  */
 
-import { showLocalNotification, CH_SOCIAL } from "@/lib/notifications";
+import {
+  showLocalNotification,
+  scheduleLocalNotificationAt,
+  cancelLocalNotification,
+  CH_SOCIAL,
+} from "@/lib/notifications";
 import { loadBananaState } from "@/lib/bananaRewards";
+import { CLOUT_TIERS, cloutTierIndex } from "@/lib/monkeClout";
 
 const TWENTY_HOURS = 20 * 60 * 60 * 1000;
 
@@ -73,6 +79,78 @@ export async function notifyMonkeOfTheWeek(username: string): Promise<void> {
     `${username} has been crowned this week's top Monke by AI Agent #9385!`,
     CH_SOCIAL,
   );
+}
+
+// ─── Streak-about-to-expire (scheduled, on-device) ─────────────────────────────
+
+const AK_STREAK_NOTIF_ID = "banana_streak_notif_id_v1";
+
+/**
+ * Schedule a local notification ~20h after `lastClaimTs` warning the user
+ * their streak is about to lapse. Cancels/replaces any prior pending one —
+ * safe to call after every claim, only the newest scheduled fire matters.
+ */
+export async function scheduleStreakExpiryWarning(lastClaimTs: number): Promise<void> {
+  await cancelStreakExpiryWarning();
+  const fireAt = lastClaimTs + TWENTY_HOURS;
+  const id = await scheduleLocalNotificationAt(
+    "Your streak is slipping! 🍌",
+    "Claim today's bananas before your streak resets.",
+    fireAt,
+  );
+  if (id) await AsyncStorage.setItem(AK_STREAK_NOTIF_ID, id).catch(() => {});
+}
+
+export async function cancelStreakExpiryWarning(): Promise<void> {
+  try {
+    const raw = await AsyncStorage.getItem(AK_STREAK_NOTIF_ID);
+    if (raw) {
+      await cancelLocalNotification(raw);
+      await AsyncStorage.removeItem(AK_STREAK_NOTIF_ID);
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+// ─── Clout tier rank-up (immediate) ────────────────────────────────────────────
+
+const AK_CLOUT_LAST_TIER = "monke_clout_last_tier_v1"; // Record<inboxId, tierIndex>
+
+async function readTierMap(): Promise<Record<string, number>> {
+  try {
+    const raw = await AsyncStorage.getItem(AK_CLOUT_LAST_TIER);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+async function writeTierMap(map: Record<string, number>): Promise<void> {
+  await AsyncStorage.setItem(AK_CLOUT_LAST_TIER, JSON.stringify(map)).catch(() => {});
+}
+
+/**
+ * Fire a local notification when the caller's own Clout score crosses into a
+ * new (higher) tier. Persists the tier on every change (up or down) so
+ * dropping back to a previously-seen tier doesn't re-fire.
+ */
+export async function notifyCloutTierUp(inboxId: string, newScore: number): Promise<void> {
+  const newTierIdx = cloutTierIndex(newScore);
+  const map = await readTierMap();
+  const prevIdx = map[inboxId] ?? 0;
+  if (newTierIdx === prevIdx) return;
+
+  map[inboxId] = newTierIdx;
+  await writeTierMap(map);
+
+  if (newTierIdx > prevIdx) {
+    await showLocalNotification(
+      "🐒 Your Monke ranked up!",
+      `You're now a ${CLOUT_TIERS[newTierIdx].name} in Monke Clout — keep grinding!`,
+      CH_SOCIAL,
+    );
+  }
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

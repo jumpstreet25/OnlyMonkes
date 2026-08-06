@@ -1,18 +1,31 @@
 /**
  * NFT Verification Service
  *
- * Provider chain: Helius DAS (primary) → Shyft (fallback)
- * Each provider gets 2 attempts with exponential backoff before falling through.
+ * Provider chain: Helius DAS (primary) → QuickNode DAS (2026-07-13, 30-day
+ * trial — see constants.ts) → direct on-chain check (no third-party
+ * indexer). Each indexed provider gets 2 attempts with exponential backoff
+ * before falling through.
  *
- * Helius DAS is primary — authoritative on-chain source via getAssetsByOwner.
- * Shyft is fallback in case Helius is down or rate-limited.
+ * Helius and QuickNode are both DAS-capable (see compressed NFTs via
+ * getAssetsByOwner) — either one giving a clean "0 found" is authoritative.
+ * Shyft used to sit in this chain as a fallback — removed 2026-07-15,
+ * confirmed unusable (403, wrong plan tier) and even when it worked it
+ * couldn't verify this collection anyway (confirmed 2026-07-11/13: blanket
+ * "DAS RPC method not supported" on all DAS methods regardless of
+ * key/tier). The on-chain check (onchainCnftVerify.ts) is the final
+ * fallback — added 2026-07-11 after the shared Helius account hit its usage
+ * cap, and is what will keep working after the QuickNode trial ends.
  */
 
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   HELIUS_API_KEY,
+  HELIUS_NFT_API_KEY,
+  HELIUS_NFT_RPC_URL,
   NFT_COLLECTION_ADDRESS,
-  SHYFT_API_KEY,
+  QUICKNODE_DAS_URL,
 } from "./constants";
+import { verifySagaMonkeOnChain } from "./onchainCnftVerify";
 import type { NFTVerificationResult, OwnedNFT } from "@/types";
 
 const TIMEOUT_MS = 15_000;
@@ -23,6 +36,42 @@ const MAX_RETRIES = 2; // per provider
 
 function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+// ─── Verified-NFT image cache ──────────────────────────────────────────────────
+// Persists the last known-good NFT (with real image/metadata from an indexed
+// provider) per wallet, so the on-chain fallback — which can confirm
+// ownership but has no way to fetch compressed-NFT metadata — can still show
+// the user's real PFP instead of a blank one. Also means a returning user
+// doesn't need a live Helius/Shyft call just to redraw their own PFP.
+const AK_NFT_IMAGE_CACHE = "nft_verified_nft_cache_v1";
+let _imageCache: Record<string, OwnedNFT> | null = null;
+
+async function loadImageCache(): Promise<Record<string, OwnedNFT>> {
+  if (_imageCache) return _imageCache;
+  try {
+    const raw = await AsyncStorage.getItem(AK_NFT_IMAGE_CACHE);
+    _imageCache = raw ? JSON.parse(raw) : {};
+  } catch {
+    _imageCache = {};
+  }
+  return _imageCache!;
+}
+
+async function cacheVerifiedNft(walletAddress: string, nft: OwnedNFT): Promise<void> {
+  if (!nft.image) return; // only cache entries that actually have an image to offer later
+  const cache = await loadImageCache();
+  cache[walletAddress] = nft;
+  try {
+    await AsyncStorage.setItem(AK_NFT_IMAGE_CACHE, JSON.stringify(cache));
+  } catch {
+    // non-fatal — worst case we just re-fetch from an indexed provider next time one's available
+  }
+}
+
+async function getCachedVerifiedNft(walletAddress: string): Promise<OwnedNFT | null> {
+  const cache = await loadImageCache();
+  return cache[walletAddress] ?? null;
 }
 
 async function fetchWithAbort(
@@ -64,57 +113,6 @@ async function withRetry<T>(
   throw lastErr!;
 }
 
-// ─── Shyft Provider (primary) ─────────────────────────────────────────────────
-
-interface ShyftNft {
-  mint: string;
-  name: string;
-  symbol: string;
-  image_uri: string;
-  attributes?: Record<string, string | number>;
-  collection?: { address?: string; verified?: boolean };
-}
-
-async function fetchViaSHyft(walletAddress: string): Promise<OwnedNFT[]> {
-  const url =
-    `https://api.shyft.to/sol/v1/nft/read_all` +
-    `?network=mainnet-beta` +
-    `&address=${walletAddress}` +
-    `&collection=${NFT_COLLECTION_ADDRESS}`;
-
-  const res = await fetchWithAbort(url, {
-    method: "GET",
-    headers: { "x-api-key": SHYFT_API_KEY },
-  });
-
-  if (!res.ok) throw new Error(`Shyft API error: ${res.status}`);
-  const json = await res.json();
-
-  if (!json?.success || !json?.result) {
-    throw new Error(json?.message ?? "Shyft returned unsuccessful response");
-  }
-
-  const nfts: ShyftNft[] = json.result;
-
-  return nfts.map((n) => {
-    const traits = n.attributes
-      ? Object.entries(n.attributes).map(([k, v]) => ({
-          trait_type: k,
-          value: String(v),
-        }))
-      : undefined;
-
-    return {
-      mint: n.mint,
-      name: n.name || "Unknown NFT",
-      symbol: n.symbol || "",
-      image: n.image_uri || "",
-      collectionMint: NFT_COLLECTION_ADDRESS,
-      traits: traits && traits.length > 0 ? traits : undefined,
-    };
-  });
-}
-
 // ─── Helius DAS Provider (fallback) ───────────────────────────────────────────
 
 interface DASAsset {
@@ -134,7 +132,7 @@ interface DASAsset {
 }
 
 async function fetchAssetsViaHelius(walletAddress: string): Promise<OwnedNFT[]> {
-  const url = `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`;
+  const url = HELIUS_NFT_RPC_URL;
 
   let page = 1;
   const MAX_PAGES = 10;
@@ -201,12 +199,83 @@ async function fetchAssetsViaHelius(walletAddress: string): Promise<OwnedNFT[]> 
   });
 }
 
+// ─── QuickNode DAS Provider (fallback, 30-day trial) ──────────────────────────
+// Same getAssetsByOwner DAS shape as Helius. Auth is embedded directly in the
+// URL path (QuickNode's convention) rather than an api-key query param, so
+// QUICKNODE_DAS_URL is used as-is with no query string appended. Verified
+// live against a real multi-Monke wallet 2026-07-13 — correctly returns
+// compressed NFTs with accurate collection grouping, unlike Shyft.
+
+async function fetchAssetsViaQuickNode(walletAddress: string): Promise<OwnedNFT[]> {
+  let page = 1;
+  const MAX_PAGES = 10;
+  const assets: DASAsset[] = [];
+
+  while (page <= MAX_PAGES) {
+    const res = await fetchWithAbort(QUICKNODE_DAS_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "nft-gate",
+        method: "getAssetsByOwner",
+        params: {
+          ownerAddress: walletAddress,
+          page,
+          limit: 1000,
+          displayOptions: {
+            showCollectionMetadata: false,
+            showUnverifiedCollections: false,
+            showFungible: false,
+          },
+        },
+      }),
+    });
+
+    if (!res.ok) throw new Error(`QuickNode API error: ${res.status}`);
+    const json = await res.json();
+    if (json?.error) throw new Error(`QuickNode RPC error: ${JSON.stringify(json.error)}`);
+    const items: DASAsset[] = json?.result?.items ?? [];
+    assets.push(...items);
+
+    if (items.length < 1000) break;
+    page++;
+  }
+
+  const collectionNFTs = assets.filter((asset) =>
+    asset.grouping?.some(
+      (g) => g.group_key === "collection" && g.group_value === NFT_COLLECTION_ADDRESS,
+    ),
+  );
+
+  return collectionNFTs.map((asset) => {
+    const image =
+      asset.content?.links?.image ??
+      asset.content?.files?.find((f) => f.mime?.startsWith("image/"))?.cdn_uri ??
+      asset.content?.files?.find((f) => f.mime?.startsWith("image/"))?.uri ??
+      "";
+
+    const traits = (asset.content?.metadata?.attributes ?? [])
+      .filter((a) => a.trait_type && a.value)
+      .map((a) => ({ trait_type: a.trait_type, value: a.value }));
+
+    return {
+      mint: asset.id,
+      name: asset.content?.metadata?.name ?? "Unknown NFT",
+      symbol: asset.content?.metadata?.symbol ?? "",
+      image,
+      collectionMint: NFT_COLLECTION_ADDRESS,
+      traits: traits.length > 0 ? traits : undefined,
+    };
+  });
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
  * Verify whether a wallet owns any NFT from the configured collection.
  *
- * Chain: Shyft (×2 retries) → Helius (×2 retries) → error
+ * Chain: Helius (×2 retries) → QuickNode (×2 retries) → on-chain → error
  */
 export async function verifyNFTOwnership(
   walletAddress: string,
@@ -220,56 +289,101 @@ export async function verifyNFTOwnership(
   }
 
   const errors: string[] = [];
+  let confirmedNonHolder = false;
 
   // ── 1. Helius DAS (primary) ─────────────────────────────────────────────
-  if (HELIUS_API_KEY) {
+  if (HELIUS_NFT_API_KEY) {
     try {
       const nfts = await withRetry("Helius", () =>
         fetchAssetsViaHelius(walletAddress),
       );
       if (nfts.length > 0) {
         console.log(`[NFTVerify] Helius: found ${nfts.length} collection NFT(s)`);
+        cacheVerifiedNft(walletAddress, nfts[0]).catch(() => {});
         return { verified: true, nft: nfts[0], allNfts: nfts };
       }
-      // Helius succeeded but found 0 NFTs — still try Shyft in case of index lag
+      // Helius is DAS-capable (sees compressed NFTs) — a clean "0 found"
+      // from it is authoritative.
       errors.push("Helius: 0 collection NFTs found");
+      confirmedNonHolder = true;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       errors.push(`Helius: ${msg}`);
-      console.warn("[NFTVerify] Helius exhausted, falling back to Shyft");
+      console.warn("[NFTVerify] Helius exhausted, falling back to QuickNode");
     }
   }
 
-  // ── 2. Shyft (fallback) ────────────────────────────────────────────────
-  if (SHYFT_API_KEY) {
+  // ── 2. QuickNode DAS (fallback, 30-day trial) ───────────────────────────
+  // Also DAS-capable (sees compressed NFTs) — a clean "0 found" here is
+  // just as authoritative as Helius's.
+  if (QUICKNODE_DAS_URL && !confirmedNonHolder) {
     try {
-      const nfts = await withRetry("Shyft", () =>
-        fetchViaSHyft(walletAddress),
+      const nfts = await withRetry("QuickNode", () =>
+        fetchAssetsViaQuickNode(walletAddress),
       );
       if (nfts.length > 0) {
-        console.log(`[NFTVerify] Shyft: found ${nfts.length} collection NFT(s)`);
+        console.log(`[NFTVerify] QuickNode: found ${nfts.length} collection NFT(s)`);
+        cacheVerifiedNft(walletAddress, nfts[0]).catch(() => {});
         return { verified: true, nft: nfts[0], allNfts: nfts };
       }
-      errors.push("Shyft: 0 collection NFTs found");
+      errors.push("QuickNode: 0 collection NFTs found");
+      confirmedNonHolder = true;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      errors.push(`Shyft: ${msg}`);
-      console.warn("[NFTVerify] Shyft exhausted");
+      errors.push(`QuickNode: ${msg}`);
+      console.warn("[NFTVerify] QuickNode exhausted, falling back to on-chain");
     }
   }
 
-  // ── 3. Both failed or returned 0 ───────────────────────────────────────
-  if (!HELIUS_API_KEY && !SHYFT_API_KEY) {
+  // ── 3. On-chain fallback — no third-party indexer, immune to Helius/
+  // QuickNode outages. Slower (scans wallet history directly), so only
+  // tried once the faster indexed providers haven't already given an
+  // authoritative answer. Shyft used to sit here as an extra fallback —
+  // removed 2026-07-15, confirmed unusable (403, wrong plan tier) and even
+  // when it worked it had no cNFT support for this collection anyway.
+  if (!confirmedNonHolder) {
+    try {
+      const onchain = await verifySagaMonkeOnChain(walletAddress);
+      if (onchain.verified) {
+        console.log("[NFTVerify] On-chain: confirmed current holder");
+        // On-chain check confirms ownership but has no way to fetch
+        // compressed-NFT metadata. Reuse the last known-good image/name for
+        // this wallet from a prior indexed-provider success, if we have one,
+        // instead of showing a blank PFP.
+        const cached = await getCachedVerifiedNft(walletAddress);
+        const nft: OwnedNFT = cached ?? {
+          mint: onchain.assetId ?? walletAddress,
+          name: "Saga Monke",
+          symbol: "MONKE",
+          image: null,
+          collectionMint: NFT_COLLECTION_ADDRESS,
+        };
+        return { verified: true, nft, allNfts: [nft] };
+      }
+      if (onchain.inconclusive) {
+        errors.push(`On-chain: inconclusive${onchain.error ? ` (${onchain.error})` : ""}`);
+      } else {
+        errors.push("On-chain: confirmed not a current holder");
+        confirmedNonHolder = true;
+      }
+    } catch (err) {
+      errors.push(`On-chain: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  // ── 5. Nothing found a holder ────────────────────────────────────────────
+  if (!HELIUS_NFT_API_KEY && !QUICKNODE_DAS_URL) {
     return {
       verified: false,
       nft: null,
-      error: "No NFT verification API key configured (HELIUS_API_KEY or SHYFT_API_KEY).",
+      error: "No NFT verification API key configured (HELIUS_API_KEY or QUICKNODE_DAS_URL).",
     };
   }
 
-  // If both providers returned 0 NFTs, user genuinely doesn't hold one
-  const allZero = errors.every((e) => e.includes("0 collection NFTs"));
-  if (allZero) {
+  // Only an authoritative source (Helius's DAS-capable "0 found", or the
+  // on-chain check explicitly confirming the wallet gave up/never held it)
+  // counts as real evidence of non-ownership.
+  if (confirmedNonHolder) {
     return {
       verified: false,
       nft: null,
@@ -277,26 +391,31 @@ export async function verifyNFTOwnership(
     };
   }
 
+  // At least one provider errored/timed out rather than cleanly confirming
+  // zero NFTs — this is an infrastructure outage, not evidence the wallet
+  // doesn't hold the collection. Callers must not treat this the same as a
+  // confirmed non-holder (see providerError doc on NFTVerificationResult).
   return {
     verified: false,
     nft: null,
     error: `Verification failed after retries: ${errors.join("; ")}`,
+    providerError: true,
   };
 }
 
 /**
  * Verify a single NFT mint belongs to the configured collection.
  *
- * Chain: Helius getAsset → Shyft getAsset → false
+ * Chain: Helius getAsset → QuickNode getAsset → false
  */
 export async function verifyNftMintInCollection(nftMint: string): Promise<boolean> {
   if (!NFT_COLLECTION_ADDRESS || !nftMint) return false;
 
   // ── Helius (primary) ──────────────────────────────────────────────────
-  if (HELIUS_API_KEY) {
+  if (HELIUS_NFT_API_KEY) {
     try {
       const res = await fetchWithAbort(
-        `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`,
+        HELIUS_NFT_RPC_URL,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -319,26 +438,32 @@ export async function verifyNftMintInCollection(nftMint: string): Promise<boolea
         );
       }
     } catch {
-      // fall through to Shyft
+      // fall through to QuickNode
     }
   }
 
-  // ── Shyft (fallback) ────────────────────────────────────────────────────
-  if (SHYFT_API_KEY) {
+  // ── QuickNode DAS (fallback, 30-day trial) ──────────────────────────────
+  if (QUICKNODE_DAS_URL) {
     try {
-      const url =
-        `https://api.shyft.to/sol/v1/nft/read` +
-        `?network=mainnet-beta` +
-        `&token_address=${nftMint}`;
-
-      const res = await fetchWithAbort(url, {
-        method: "GET",
-        headers: { "x-api-key": SHYFT_API_KEY },
+      const res = await fetchWithAbort(QUICKNODE_DAS_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: "mint-check",
+          method: "getAsset",
+          params: { id: nftMint },
+        }),
       });
       if (res.ok) {
         const json = await res.json();
-        const collection = json?.result?.collection?.address;
-        if (collection === NFT_COLLECTION_ADDRESS) return true;
+        const grouping: { group_key: string; group_value: string }[] =
+          json?.result?.grouping ?? [];
+        return grouping.some(
+          (g) =>
+            g.group_key === "collection" &&
+            g.group_value === NFT_COLLECTION_ADDRESS,
+        );
       }
     } catch {
       // both failed
@@ -353,4 +478,35 @@ export async function verifyNftMintInCollection(nftMint: string): Promise<boolea
  */
 export function shortenAddress(address: string, chars = 4): string {
   return `${address.slice(0, chars)}...${address.slice(-chars)}`;
+}
+
+/**
+ * Manually set the verified NFT image for a wallet — used when no indexed
+ * provider (Helius/Shyft) can supply one (e.g. Saga Monkes' compressed
+ * metadata can't be fetched via the on-chain-only fallback). The user
+ * supplies their own image (saved from their wallet app's NFT gallery,
+ * uploaded via the app's normal image picker), which then flows through the
+ * exact same cache an auto-fetched image would, so future verifications
+ * keep showing it.
+ */
+export async function setUserChosenNftImage(
+  walletAddress: string,
+  imageUrl: string,
+  base?: OwnedNFT | null,
+): Promise<OwnedNFT> {
+  const nft: OwnedNFT = {
+    mint: base?.mint ?? walletAddress,
+    name: base?.name ?? "Saga Monke",
+    symbol: base?.symbol ?? "MONKE",
+    image: imageUrl,
+    collectionMint: NFT_COLLECTION_ADDRESS,
+    traits: base?.traits,
+  };
+  await cacheVerifiedNft(walletAddress, nft);
+  return nft;
+}
+
+/** Look up the cached NFT (if any) for a wallet without re-verifying ownership. */
+export async function getCachedNftForWallet(walletAddress: string): Promise<OwnedNFT | null> {
+  return getCachedVerifiedNft(walletAddress);
 }

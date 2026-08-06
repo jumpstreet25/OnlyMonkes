@@ -1,7 +1,16 @@
-import { useEffect } from 'react';
+import React, { Suspense, useEffect } from 'react';
+import { View, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAppStore } from '../src/store/appStore';
-import ChatScreen from '../src/screens/ChatScreen';
+import { THEME } from '../src/lib/constants';
+
+const ChatScreen = React.lazy(() => import('../src/screens/ChatScreen'));
+
+const Loading = () => (
+  <View style={{ flex: 1, backgroundColor: THEME.bg, alignItems: 'center', justifyContent: 'center' }}>
+    <ActivityIndicator size="large" color={THEME.accent} />
+  </View>
+);
 
 export default function ChatRoute() {
   const router = useRouter();
@@ -17,5 +26,9 @@ export default function ChatRoute() {
 
   if (!wallet || !verified) return null;
 
-  return <ChatScreen />;
+  return (
+    <Suspense fallback={<Loading />}>
+      <ChatScreen />
+    </Suspense>
+  );
 }

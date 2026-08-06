@@ -22,9 +22,20 @@ import type { WalletAccount, OwnedNFT } from '../types';
 import type { LiveRoomData } from '../lib/livekit';
 import type { VideoRoomData } from '../lib/liveVideo';
 import type { AvatarRoomData } from '../lib/avatarRoom';
+import type { BananaBetOpenData, BananaBetSettledData, MyBetRecord } from '../lib/bananaBet';
+import type { PollOpenData, PollResultData } from '../lib/poll';
+
+/** Settlement popup state, enriched client-side with this device's own bet
+ *  (if any) so the popup + its Share-to-X caption can be personalized —
+ *  see getMyBet() in bananaBet.ts for why this is derived locally rather
+ *  than sent over the wire (the group broadcast is intentionally anonymous). */
+export type BananaBetResultDisplay = BananaBetSettledData & { myBet: MyBetRecord | null };
+/** Same reasoning as BananaBetResultDisplay — enriched client-side with this device's own vote. */
+export type PollResultDisplay = PollResultData & { myVote: string | null };
 import type { NftSwapMessage } from '../lib/marketplace';
 
 const AK_MUTED_SPORTS = 'om_muted_sports';
+const AK_HIDDEN_BANANA_BETS = 'om_hidden_banana_bets';
 const AK_MUTED_CHANNELS = 'om_muted_channels';
 const AK_MUTED_ALERT_SOURCES = 'om_muted_alert_sources';
 const AK_NOTIF_PREFS = 'om_notif_prefs';
@@ -143,6 +154,10 @@ interface AppSettingsState {
   mutedSports: string[];
   /** Alert sources hidden from MonkeBets/MonkePredictions. Values: 'polymarket' | 'drift'. */
   mutedAlertSources: string[];
+  /** BananaBet ids the user dismissed — local-only, per-device. Dismissing
+   *  never places a wager (distinct from betting NO) and never affects
+   *  other users' view of the same card. */
+  hiddenBananaBetIds: string[];
   isGroupMember: boolean;
   isGroupAdmin: boolean;
   joinRequests: JoinRequest[];
@@ -153,6 +168,12 @@ interface AppSettingsState {
   expoPushToken: string | null;
   communityBadges: { dms: number; events: number; links: number };
   dmUnreadCounts: Record<string, number>;
+  /** Ground truth from the bot's AUTOMONKE_STATUS: DM, sent after every
+   *  /autonomonke command. Corrects BotChannelScreen's AsyncStorage-only
+   *  enrollment flag, which has no link back to real bot state and can
+   *  read as OFF on a fresh app install/build even when the bot never
+   *  stopped trading. Null until the first status DM arrives this session. */
+  automonkeStatus: { enrolled: boolean; active: boolean; limitOrdersEnabled: boolean } | null;
 }
 
 interface AppSettingsActions {
@@ -166,6 +187,7 @@ interface AppSettingsActions {
   toggleBotChannelMute: (channel: 'bets' | 'trades' | 'sales' | 'predictions') => void;
   toggleSportMute: (sport: string) => void;
   toggleAlertSourceMute: (source: string) => void;
+  hideBananaBet: (id: string) => void;
   setIsGroupMember: (isMember: boolean) => void;
   setIsGroupAdmin: (isAdmin: boolean) => void;
   setJoinRequests: (requests: JoinRequest[]) => void;
@@ -185,6 +207,7 @@ interface AppSettingsActions {
   setDmUnreadCounts: (counts: Record<string, number>) => void;
   incrementDmUnread: (peerInboxId: string) => void;
   clearDmUnread: (peerInboxId: string) => void;
+  setAutomonkeStatus: (status: { enrolled: boolean; active: boolean; limitOrdersEnabled: boolean }) => void;
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -202,6 +225,10 @@ interface LiveFeaturesState {
   isInAvatarRoom: boolean;
   avatarRoomToken: string | null;
   pendingNftSwap: NftSwapMessage | null;
+  activeBananaBet: BananaBetOpenData | null;
+  activeBananaBetResult: BananaBetResultDisplay | null;
+  activePoll: PollOpenData | null;
+  activePollResult: PollResultDisplay | null;
 }
 
 interface LiveFeaturesActions {
@@ -216,6 +243,10 @@ interface LiveFeaturesActions {
   setIsInAvatarRoom: (val: boolean) => void;
   setAvatarRoomToken: (token: string | null) => void;
   setPendingNftSwap: (swap: NftSwapMessage | null) => void;
+  setActiveBananaBet: (bet: BananaBetOpenData | null) => void;
+  setActiveBananaBetResult: (result: BananaBetResultDisplay | null) => void;
+  setActivePoll: (poll: PollOpenData | null) => void;
+  setActivePollResult: (result: PollResultDisplay | null) => void;
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -267,6 +298,7 @@ const initialState: AppState = {
   liveRoomNotificationsEnabled: true,
   mutedBotChannels: { bets: false, trades: false, sales: false, predictions: false },
   mutedSports: [],
+  hiddenBananaBetIds: [],
   // Drift Prediction Markets UI (bet.drift.trade) is currently under
   // construction. Alerts still fire from the on-chain program but the link
   // would land users on a stay-tuned page, so we mute by default. Users can
@@ -283,6 +315,7 @@ const initialState: AppState = {
   expoPushToken: null,
   communityBadges: { dms: 0, events: 0, links: 0 },
   dmUnreadCounts: {},
+  automonkeStatus: null,
 
   // Slice 4: Live Features
   activeLiveRoom: null,
@@ -295,6 +328,10 @@ const initialState: AppState = {
   isInAvatarRoom: false,
   avatarRoomToken: null,
   pendingNftSwap: null,
+  activeBananaBet: null,
+  activeBananaBetResult: null,
+  activePoll: null,
+  activePollResult: null,
 };
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -380,6 +417,15 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
       return { mutedSports: next };
     });
   },
+  // One-way (no un-hide) — "clear the message," not a togglable mute.
+  hideBananaBet: (id) => {
+    set((s) => {
+      if (s.hiddenBananaBetIds.includes(id)) return s;
+      const next = [...s.hiddenBananaBetIds, id];
+      AsyncStorage.setItem(AK_HIDDEN_BANANA_BETS, JSON.stringify(next)).catch(() => {});
+      return { hiddenBananaBetIds: next };
+    });
+  },
   toggleAlertSourceMute: (source) => {
     set((s) => {
       const key = source.toLowerCase();
@@ -447,6 +493,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
     delete next[peerInboxId];
     return { dmUnreadCounts: next };
   }),
+  setAutomonkeStatus: (automonkeStatus) => set({ automonkeStatus }),
 
   // ── Slice 4: Live Features actions ─────────────────────────────────────────
 
@@ -462,6 +509,10 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   setIsInAvatarRoom: (isInAvatarRoom) => set({ isInAvatarRoom }),
   setAvatarRoomToken: (avatarRoomToken) => set({ avatarRoomToken }),
   setPendingNftSwap: (pendingNftSwap) => set({ pendingNftSwap }),
+  setActiveBananaBet: (activeBananaBet) => set({ activeBananaBet }),
+  setActiveBananaBetResult: (activeBananaBetResult) => set({ activeBananaBetResult }),
+  setActivePoll: (activePoll) => set({ activePoll }),
+  setActivePollResult: (activePollResult) => set({ activePollResult }),
 
   // ── Reset (all slices) ─────────────────────────────────────────────────────
 
@@ -510,16 +561,21 @@ function _persistNotifPrefs() {
  */
 export async function loadPersistedPrefs(): Promise<void> {
   try {
-    const [sportsRaw, channelsRaw, notifRaw, sourcesRaw] = await Promise.all([
+    const [sportsRaw, channelsRaw, notifRaw, sourcesRaw, hiddenBetsRaw] = await Promise.all([
       AsyncStorage.getItem(AK_MUTED_SPORTS),
       AsyncStorage.getItem(AK_MUTED_CHANNELS),
       AsyncStorage.getItem(AK_NOTIF_PREFS),
       AsyncStorage.getItem(AK_MUTED_ALERT_SOURCES),
+      AsyncStorage.getItem(AK_HIDDEN_BANANA_BETS),
     ]);
     const state: Record<string, unknown> = {};
     if (sportsRaw) {
       const parsed = JSON.parse(sportsRaw);
       if (Array.isArray(parsed)) state.mutedSports = parsed;
+    }
+    if (hiddenBetsRaw) {
+      const parsed = JSON.parse(hiddenBetsRaw);
+      if (Array.isArray(parsed)) state.hiddenBananaBetIds = parsed;
     }
     if (channelsRaw) {
       const parsed = JSON.parse(channelsRaw);

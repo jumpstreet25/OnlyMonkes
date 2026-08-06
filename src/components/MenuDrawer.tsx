@@ -21,8 +21,8 @@ import {
   Text,
   StyleSheet,
   Pressable,
-  Modal,
   Animated,
+  BackHandler,
   useWindowDimensions,
   Image,
   ScrollView,
@@ -33,6 +33,7 @@ import {
   Platform,
   ActivityIndicator,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Slider from "@react-native-community/slider";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
@@ -54,8 +55,9 @@ import { loadBananaState, type BananaState } from "@/lib/bananaRewards";
 import { BananaShopModal } from "@/components/BananaShopModal";
 import { ReclaimModal } from "@/components/ReclaimModal";
 import type { ProfileTarget } from "@/components/UserProfileModal";
-import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
+import { BlurView } from "expo-blur";
+import { GLASS_GRADIENT_COLORS, HIGHLIGHT, getBlurProps } from "@/lib/glassTheme";
 import { LeaderboardView } from "@/components/LeaderboardView";
 import { EventRsvpModal } from "@/components/EventRsvpModal";
 import { getAttendeeCount } from "@/lib/eventRsvp";
@@ -442,25 +444,64 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
   const [webView, setWebView] = useState<{ url: string; title: string } | null>(null);
   const [bananaState, setBananaState] = useState<BananaState | null>(null);
   const bananaBalance = useAppStore(s => s.bananaBalance);
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     if (visible) loadBananaState().then(setBananaState);
   }, [visible]);
 
+  // 2026-07-23: replaces RN's <Modal> — Android implements Modal as a
+  // SEPARATE native Dialog window from the Activity, which BlurView (below)
+  // can't see across to actually blur the real content behind it (confirmed
+  // on-device: no visible blur, just a flat tint). Rendering directly in the
+  // component tree instead keeps this in the same window as everything
+  // else, matching how GlassBottomSheet already avoids this exact problem.
+  // shouldRender stays true through the fade-out so the close animation
+  // still plays instead of popping off instantly.
+  const [shouldRender, setShouldRender] = useState(visible);
+  const fadeAnim = useRef(new Animated.Value(visible ? 1 : 0)).current;
+
+  useEffect(() => {
+    if (visible) {
+      setShouldRender(true);
+      Animated.timing(fadeAnim, { toValue: 1, duration: 200, useNativeDriver: true }).start();
+    } else {
+      Animated.timing(fadeAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
+        setShouldRender(false);
+      });
+    }
+  }, [visible]);
+
+  // Replaces Modal's onRequestClose — Android hardware/gesture back button.
+  useEffect(() => {
+    if (!visible) return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (activeView !== "list") { setActiveView("list"); } else { onClose(); }
+      return true;
+    });
+    return () => sub.remove();
+  }, [visible, activeView, onClose]);
+
+  if (!shouldRender) return null;
+
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={() => { if (activeView !== "list") { setActiveView("list"); } else { onClose(); } }}
-      statusBarTranslucent
+    <Animated.View
+      style={[StyleSheet.absoluteFill, { opacity: fadeAnim, zIndex: 1000, elevation: 1000 }]}
+      pointerEvents={visible ? "auto" : "none"}
     >
       <Pressable style={StyleSheet.absoluteFill} onPress={onClose}>
-        <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
+        <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.55)' }]} />
         <View style={styles.overlay} />
       </Pressable>
 
-      <View style={[styles.popup, { borderColor: themeBorder }, worldId ? null : { backgroundColor: drawerBg }]}>
+      <View style={[styles.popup, { paddingTop: insets.top + 12, borderColor: themeBorder }, worldId ? null : { backgroundColor: drawerBg }]}>
+        {/* 2026-07-24: card's own BlurView, matching GlassModal/GlassCard —
+            the backdrop BlurView (above, in the Pressable) only ever blurred
+            the dismiss-tap area, never this popup's own (previously 0.96-
+            opaque) fill. No-op when a world is equipped — WorldLayer below
+            renders opaque on top of it by design (see the comment there). */}
+        <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />
         {/* (v37 2026-05-09) When a world is equipped, render the WorldLayer
             (paused) inside the drawer so its background — gradient,
             silhouette skyline, dappled-light orbs — shows through behind
@@ -475,7 +516,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
         ) : null}
         {/* Glass gradient overlay */}
         <LinearGradient
-          colors={["rgba(248,248,255,0.06)", "rgba(0,0,0,0.12)"]}
+          colors={GLASS_GRADIENT_COLORS}
           start={{ x: 0.5, y: 0 }}
           end={{ x: 0.5, y: 1 }}
           style={[StyleSheet.absoluteFill, { borderRadius: 20 }]}
@@ -1255,7 +1296,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
         title={webView?.title}
         onClose={() => setWebView(null)}
       />
-    </Modal>
+    </Animated.View>
   );
 }
 
@@ -1418,13 +1459,19 @@ const styles = StyleSheet.create({
     right: 0,
     top: 0,
     bottom: 0,
-    backgroundColor: "rgba(8, 8, 16, 0.96)",
+    // 2026-07-24: 0.96 -> 0.55 (fixed opacity hiding the new BlurView).
+    // 2026-07-27: 0.55 -> 0.19, finally matching GLASS_BG/bubble tint/
+    // header/toolbar — this was the one glass surface never brought in
+    // line with the rest of the app's settled shade value. Known
+    // remaining gap, unchanged by this: blur is still not visible when a
+    // World theme is equipped (WorldLayer renders opaque on top by
+    // design) — flagged in the 2026-07-24 session, not revisited here.
+    backgroundColor: "rgba(8, 8, 16, 0.19)",
     borderRadius: 0,
     marginHorizontal: 0,
     borderWidth: 0,
     borderColor: "rgba(255, 255, 255, 0.06)",
     overflow: "hidden",
-    paddingTop: 52,
   },
   glassHighlight: {
     position: "absolute",
@@ -1432,7 +1479,7 @@ const styles = StyleSheet.create({
     left: 16,
     right: 16,
     height: 1.5,
-    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    backgroundColor: HIGHLIGHT,
     borderRadius: 1,
     zIndex: 1,
   },

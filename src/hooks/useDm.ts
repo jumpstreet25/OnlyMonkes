@@ -2,10 +2,10 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { AppState } from 'react-native';
 import { useAppStore } from '@/store/appStore';
 import { getXmtpClient } from '@/hooks/useXmtp';
-import { openOrCreateDm, loadDmMessages, sendDmMessage, sendTypingIndicator, sendReadReceipt, getLastPeerReadReceipt, decodeMessage } from '@/lib/xmtp';
+import { openOrCreateDm, loadDmMessages, sendDmMessage, sendReaction, applyReaction, applyWithRetry, sendTypingIndicator, sendReadReceipt, getLastPeerReadReceipt, decodeMessage } from '@/lib/xmtp';
 import { getCachedProfile } from '@/lib/userProfile';
 import { markChannelRead } from '@/lib/messageCache';
-import type { ChatMessage } from '@/types';
+import type { ChatMessage, ReactionEmoji } from '@/types';
 
 // Throttle own typing broadcasts in DMs (one signal per 2.5 s max)
 let _lastDmTypingSent = 0;
@@ -31,6 +31,17 @@ async function relayDmPush(
       body: JSON.stringify(body),
     });
   } catch { /* non-critical */ }
+}
+
+// Reactions (native ReactionCodec/V2 or legacy REACT: string) never decode
+// to a displayable ChatMessage — decodeMessage() returns null for them by
+// design, so they must be intercepted before that call and folded into the
+// target message via applyReaction() instead (same pattern as useXmtp.ts /
+// useGroupChat.ts).
+function isReactionContent(content: unknown): boolean {
+  if (typeof content === 'string') return content.startsWith('REACT:');
+  if (content && typeof content === 'object') return !!((content as any).reaction || (content as any).reactionV2);
+  return false;
 }
 
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
@@ -165,6 +176,38 @@ export function useDm(peerInboxId: string) {
               return;
             }
 
+            if (innerContent.startsWith('IMAGE_CAPTION_RESPONSE:')) {
+              try {
+                const { BOT_INBOX_IDS } = await import('@/lib/constants');
+                const sender = raw.senderInboxId ?? '';
+                if (!BOT_INBOX_IDS.includes(sender)) return;
+                const rest = innerContent.slice('IMAGE_CAPTION_RESPONSE:'.length);
+                const sepIdx = rest.indexOf(':');
+                if (sepIdx <= 0) return;
+                const messageId = rest.slice(0, sepIdx);
+                const caption = rest.slice(sepIdx + 1);
+                if (!caption) return;
+                const { storeCaptionResponse } = await import('@/lib/imageCaption');
+                await storeCaptionResponse(messageId, caption);
+                const { usePhotoReviewStore } = await import('@/store/photoReviewStore');
+                usePhotoReviewStore.getState().setCaption(messageId, caption);
+              } catch { /* swallow */ }
+              return;
+            }
+
+            if (innerContent.startsWith('STREAK_CAPTION_RESPONSE:')) {
+              try {
+                const { BOT_INBOX_IDS } = await import('@/lib/constants');
+                const sender = raw.senderInboxId ?? '';
+                if (!BOT_INBOX_IDS.includes(sender)) return;
+                const caption = innerContent.slice('STREAK_CAPTION_RESPONSE:'.length);
+                if (!caption) return;
+                const { storeStreakCaptionResponse } = await import('@/lib/imageCaption');
+                await storeStreakCaptionResponse(caption);
+              } catch { /* swallow */ }
+              return;
+            }
+
             if (innerContent.startsWith('TRADE_CLOSED:')) {
               try {
                 const { BOT_INBOX_IDS } = await import('@/lib/constants');
@@ -188,6 +231,13 @@ export function useDm(peerInboxId: string) {
                   closedAt: parsed.ts,
                   reason: parsed.reason,
                   signature: parsed.signature,
+                  // v2.38 multi-base fields — undefined for pre-v2.38 bot
+                  // builds; UI falls back to SOL view. Native-base PnL only.
+                  baseMint: parsed.baseMint,
+                  baseSymbol: parsed.baseSymbol,
+                  entryBaseAmount: parsed.entryBaseAmount,
+                  exitBaseAmount: parsed.exitBaseAmount,
+                  pnlBase: parsed.pnlBase,
                 });
               } catch { /* swallow */ }
               return;
@@ -242,6 +292,14 @@ export function useDm(peerInboxId: string) {
                   });
                 });
               }
+              return;
+            }
+
+            // Reaction from the peer (own reactions are applied optimistically
+            // in react() below — XMTP does not echo own messages back in the
+            // stream, so this branch only ever fires for the other party).
+            if (isReactionContent(rawContent)) {
+              applyWithRetry(m => applyReaction(m, raw, myInboxId), setMessages);
               return;
             }
 
@@ -375,6 +433,28 @@ export function useDm(peerInboxId: string) {
     }
   }, [myInboxId, peerInboxId]);
 
+  const react = useCallback(async (emoji: ReactionEmoji, targetMessageId: string) => {
+    if (!dmRef.current || !myInboxId) return;
+
+    // Apply optimistically — XMTP does not echo own messages back in the
+    // stream, so without this the reaction never appeared in a DM at all
+    // (react() previously didn't exist here — DM reactions were a no-op).
+    const fakeRaw = {
+      content: () => ({
+        reaction: {
+          reference: targetMessageId,
+          action: 'added',
+          schema: 'unicode',
+          content: emoji,
+        },
+      }),
+      senderInboxId: myInboxId,
+    };
+    setMessages(prev => applyReaction(prev, fakeRaw, myInboxId));
+
+    await sendReaction(dmRef.current, emoji, targetMessageId);
+  }, [myInboxId]);
+
   const retry = useCallback(async (messageId: string) => {
     const msg = messages.find(m => m.id === messageId && m.status === 'failed');
     if (!msg || !dmRef.current) return;
@@ -400,5 +480,5 @@ export function useDm(peerInboxId: string) {
     ? [{ inboxId: peerInboxId, username: peerProfile?.username }]
     : [];
 
-  return { messages, loading, error, sending, sendError, send, retry, sendTyping, typingUsers };
+  return { messages, loading, error, sending, sendError, send, retry, react, sendTyping, typingUsers };
 }

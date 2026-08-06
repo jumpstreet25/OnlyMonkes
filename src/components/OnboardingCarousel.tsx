@@ -71,6 +71,16 @@ const SLIDES: Slide[] = [
     gradient: ["#100a1e", "#0a0a14"],
   },
   {
+    emoji: "\uD83D\uDCC8",
+    emojiBg: "#44ff8822",
+    accentClr: "#44ff88",
+    title: "Top Traders",
+    subtitle: "See who's actually winning",
+    features:
+      "A live leaderboard of Saga Monkes holders with the best trading track record \u2014 win rate and this week's gain %. Find it under the menu \u2192 Leaderboard.",
+    gradient: ["#001410", "#0a0a14"],
+  },
+  {
     emoji: "\uD83C\uDFAD",
     emojiBg: "#FF6B6B22",
     accentClr: "#FF6B6B",
@@ -104,9 +114,10 @@ const SLIDES: Slide[] = [
 
 interface Props {
   onDone: () => void;
+  onLoginNow: () => void;
 }
 
-export function OnboardingCarousel({ onDone }: Props) {
+export function OnboardingCarousel({ onDone, onLoginNow }: Props) {
   const { width } = useWindowDimensions();
   const flatListRef = useRef<FlatList<Slide>>(null);
   const [index, setIndex] = useState(0);
@@ -154,6 +165,11 @@ export function OnboardingCarousel({ onDone }: Props) {
   const handleDone = async () => {
     await AsyncStorage.setItem(ONBOARDING_KEY, "1").catch(() => {});
     onDone();
+  };
+
+  const handleLoginNow = async () => {
+    await AsyncStorage.setItem(ONBOARDING_KEY, "1").catch(() => {});
+    onLoginNow();
   };
 
   const slide = SLIDES[index];
@@ -249,6 +265,18 @@ export function OnboardingCarousel({ onDone }: Props) {
             </Text>
           </LinearGradient>
         </Pressable>
+
+        {/* Last slide only: skip straight to wallet connect, pitching the
+            welcome bonus as the hook. Delegates entirely to the callback —
+            no wallet logic here, that lives in ConnectScreen. */}
+        {isLast && (
+          <Pressable
+            style={({ pressed }) => [styles.loginNowBtn, pressed && { opacity: 0.7 }]}
+            onPress={handleLoginNow}
+          >
+            <Text style={styles.loginNowText}>🍌 Login now — claim your welcome bonus</Text>
+          </Pressable>
+        )}
       </View>
     </View>
   );
@@ -358,5 +386,16 @@ const styles = StyleSheet.create({
     fontSize: 17,
     color: "#fff",
     letterSpacing: 0.3,
+  },
+
+  loginNowBtn: {
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  loginNowText: {
+    fontFamily: FONTS.bodyMed,
+    fontSize: 14,
+    color: THEME.gold,
+    letterSpacing: 0.2,
   },
 });

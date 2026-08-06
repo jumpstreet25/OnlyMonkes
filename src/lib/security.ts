@@ -75,11 +75,17 @@ export function assertDeviceTrusted(action: string): void {
 // ── Config ───────────────────────────────────────────────────────────────────
 
 // SHA-256 of `android/app/onlymonkes-release.keystore` (created 2026-04-19).
-// To re-derive after a keystore rotation, run keytool against the keystore
-// using the password stored privately (env var or password manager — NOT
-// in this repo or any tracked file). Output format: upper-case hex, no
-// colons. Free-RASP expects exactly that shape.
-const ANDROID_RELEASE_CERT_SHA256 = '2E2FEEB81CCF0DE5D191F6E174113BA9839181B1CB7540AB6D5C94A9CFF487D8';
+// To re-derive after a keystore rotation:
+//   keytool -exportcert -alias onlymonkes-release -keystore <path> -storepass <pw> \
+//     | openssl dgst -sha256 -binary | openssl enc -base64
+// Output format: standard Base64 (44 chars, trailing '='). 2026-07-23: was
+// stored as upper-case hex, which this exact same digest also validates as
+// — but freerasp 5's native Talsec module throws TalsecInitializationError
+// ("... is not in Base64 form") on the hex form at runtime, silently
+// disabling app-tamper detection. freerasp 4 apparently didn't validate
+// this strictly. Verified this Base64 value decodes to the identical bytes
+// as the old hex value (same keystore, just re-encoded) before swapping.
+const ANDROID_RELEASE_CERT_SHA256 = 'Li/uuBzPDeXRkfbhdBE7qYORgbHLdUCrbVyUqc/0h9g=';
 
 export const RASP_CONFIG: TalsecConfig = {
   androidConfig: {
@@ -97,10 +103,11 @@ export const RASP_CONFIG: TalsecConfig = {
 };
 
 // Production guard: validate the platform we actually ship on. Hash must be
-// 64 hex chars (SHA-256). Catches both the literal placeholder AND a stale
-// hash from a rotated keystore.
+// a Base64-encoded SHA-256 digest (44 chars, trailing '=') — the format
+// freerasp 5's native Talsec module actually requires. Catches both the
+// literal placeholder AND a stale hash from a rotated keystore.
 if (!__DEV__) {
-  const ANDROID_HASH_RE = /^[A-F0-9]{64}$/;
+  const ANDROID_HASH_RE = /^[A-Za-z0-9+/]{43}=$/;
   const androidHash = RASP_CONFIG.androidConfig?.certificateHashes?.[0] ?? '';
   const androidValid = ANDROID_HASH_RE.test(androidHash);
 

@@ -11,6 +11,15 @@ import { SENTRY_DSN_ENV } from '@/lib/constants';
 const SENTRY_DSN: string = SENTRY_DSN_ENV;
 
 export function initSentry() {
+  // 2026-05-23 kill-switch: Sentry 8 RN's native frame tracker + auto-perf
+  // tracing is the prime suspect for v2.38's Main Chat flashing/blanking.
+  // v2.37 ran Sentry 6 with much lighter native instrumentation. Disabling
+  // here as a binary test — if flash stops, Sentry 8 is the cause and we
+  // ship a tuned config. If it persists, Skia 2.6.2 native is next suspect.
+  console.log('[Sentry] Disabled for v2.38 flash diagnostic');
+  return;
+
+  // eslint-disable-next-line no-unreachable
   if (!SENTRY_DSN) {
     console.log('[Sentry] No DSN configured — crash reporting disabled');
     return;

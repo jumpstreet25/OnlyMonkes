@@ -17,6 +17,7 @@ import {
 } from 'livekit-client';
 import { AudioSession } from '@livekit/react-native';
 import { Platform, PermissionsAndroid } from 'react-native';
+import { ensureLiveKitGlobals } from './livekit';
 import { type MouthTrait, DEFAULT_MOUTH_TRAIT, parseMouthTrait } from './mouthOverlays';
 import {
   type FaceParams,
@@ -65,6 +66,13 @@ export interface AvatarRoomData {
   active: boolean;
 }
 
+/** Snapshot of a completed avatar-room session, used to settle Banana Raid rewards. */
+export interface AvatarSessionStats {
+  durationMs: number;
+  maxParticipants: number;
+  wasHost: boolean;
+}
+
 type StateListener = (state: AvatarRoomState) => void;
 type ReactionListener = (reaction: AvatarReaction) => void;
 
@@ -90,6 +98,12 @@ let _localMouthTrait: MouthTrait = DEFAULT_MOUTH_TRAIT;
 let _listeners = new Set<StateListener>();
 let _reactionListeners = new Set<ReactionListener>();
 let _onDisconnectCallback: (() => void) | null = null;
+
+// ── Session stats (for Banana Raid settlement) ──────────────────────────────
+let _joinedAtTs: number | null = null;
+let _maxParticipantCount = 0;
+let _isHost = false;
+let _lastSessionStats: AvatarSessionStats | null = null;
 
 // ── Internal helpers ─────────────────────────────────────────────────────────
 
@@ -139,12 +153,28 @@ function _notify() {
     _mapParticipant(local as unknown as Participant, true),
     ...remotes.map(r => _mapParticipant(r as unknown as Participant, false)),
   ];
+  _maxParticipantCount = Math.max(_maxParticipantCount, all.length);
   const state: AvatarRoomState = {
     participants: all,
     connectionState: _room.state as ConnectionState,
     localMuted: _isMuted,
   };
   _listeners.forEach(fn => fn(state));
+}
+
+/** Snapshot current session stats before clearing singleton state. */
+function _teardown(): AvatarSessionStats | null {
+  if (_joinedAtTs === null) return null;
+  const stats: AvatarSessionStats = {
+    durationMs: Date.now() - _joinedAtTs,
+    maxParticipants: _maxParticipantCount,
+    wasHost: _isHost,
+  };
+  _lastSessionStats = stats;
+  _joinedAtTs = null;
+  _maxParticipantCount = 0;
+  _isHost = false;
+  return stats;
 }
 
 // Exponential smoothing factor: 0 = no smoothing (raw), 1 = frozen.
@@ -243,8 +273,10 @@ export async function connectToAvatarRoom(
   url: string,
   token: string,
   localMouthTrait: MouthTrait,
+  isHost: boolean,
   onDisconnect: () => void,
 ): Promise<void> {
+  ensureLiveKitGlobals();
   if (_room) await disconnectFromAvatarRoom();
 
   _room = new Room();
@@ -255,6 +287,9 @@ export async function connectToAvatarRoom(
   _participantFaceParams = new Map();
   _localMouthTrait = localMouthTrait;
   _onDisconnectCallback = onDisconnect;
+  _joinedAtTs = Date.now();
+  _maxParticipantCount = 0;
+  _isHost = isHost;
 
   // Store local user's mouth trait
   // (will be set after connect when identity is known)
@@ -285,6 +320,7 @@ export async function connectToAvatarRoom(
 
   _room.on(RoomEvent.Disconnected, () => {
     _stopEnergyPolling();
+    _teardown(); // involuntary disconnect (network drop) — still snapshot stats
     _onDisconnectCallback?.();
   });
 
@@ -382,8 +418,14 @@ export async function connectToAvatarRoom(
   _notify();
 }
 
-export async function disconnectFromAvatarRoom(): Promise<void> {
-  if (!_room) return;
+export async function disconnectFromAvatarRoom(): Promise<AvatarSessionStats | null> {
+  if (!_room) return null;
+  // Snapshot stats deterministically before calling _room.disconnect() —
+  // don't rely on the RoomEvent.Disconnected listener's _teardown() call
+  // (which also fires as a side effect of disconnect()) for the explicit
+  // leave/end path; that listener exists for the involuntary-disconnect
+  // case. _teardown()'s guard makes a second call here a safe no-op either way.
+  const stats = _teardown();
   _onDisconnectCallback = null;
   _stopEnergyPolling();
   try {
@@ -404,6 +446,12 @@ export async function disconnectFromAvatarRoom(): Promise<void> {
     localMuted: false,
   }));
   _reactionListeners.clear();
+  return stats;
+}
+
+/** Last completed session's stats — read after an involuntary disconnect (network drop), where `disconnectFromAvatarRoom()` was never explicitly called. */
+export function getLastAvatarSessionStats(): AvatarSessionStats | null {
+  return _lastSessionStats;
 }
 
 export async function toggleMute(): Promise<boolean> {

@@ -28,6 +28,15 @@ export interface NFTVerificationResult {
   nft: OwnedNFT | null;
   allNfts?: OwnedNFT[];   // all collection NFTs found in wallet
   error?: string;
+  /**
+   * True when `verified: false` is because every provider errored/timed out
+   * (Helius + Shyft both down/rate-limited), NOT because the wallet was
+   * confirmed to hold zero collection NFTs. Callers that would otherwise
+   * force-logout or reject on `!verified` MUST check this first — treating
+   * an outage as "confirmed not a holder" mass-logs-out legitimate users
+   * the moment both providers hiccup at once.
+   */
+  providerError?: boolean;
 }
 
 // ─── Messaging ────────────────────────────────────────────────────────────────
