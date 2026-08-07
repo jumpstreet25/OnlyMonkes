@@ -82,7 +82,8 @@ const VIEW_TITLES: Record<ActiveView, string> = {
   links:       "Shared Links",
   settings:    "App Settings",
   tools:       "Monke Tools",
-  leaderboard: "Leaderboard",
+  /** Empty — LeaderboardView owns the "TOP TRADERS" title so it sits flush under Back. */
+  leaderboard: "",
 };
 
 
@@ -570,15 +571,23 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
               <Text style={styles.backIcon}>‹</Text>
               <Text style={styles.backLabel}>Back</Text>
             </Pressable>
-            <Text style={styles.subViewTitle}>{VIEW_TITLES[activeView]}</Text>
+            {VIEW_TITLES[activeView] ? (
+              <Text style={styles.subViewTitle}>{VIEW_TITLES[activeView]}</Text>
+            ) : (
+              <View style={styles.subViewTitleSpacer} />
+            )}
             <Pressable onPress={onClose} style={styles.closeBtn} hitSlop={10} accessibilityLabel="Close menu" accessibilityRole="button">
               <Text style={styles.closeIcon}>✕</Text>
             </Pressable>
           </View>
         )}
 
-        {/* Content */}
-        <ScrollView showsVerticalScrollIndicator={false} style={styles.content}>
+        {/* Content — leaderboard sits flush under header (no extra title gap) */}
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          style={styles.content}
+          contentContainerStyle={activeView === "leaderboard" ? styles.leaderboardContent : undefined}
+        >
 
           {/* ── Main grid ──────────────────────────────────────────────────── */}
           {activeView === "list" && (
@@ -1575,6 +1584,12 @@ const styles = StyleSheet.create({
     color: THEME.text,
     flex: 1,
     textAlign: "center",
+  },
+  subViewTitleSpacer: {
+    flex: 1,
+  },
+  leaderboardContent: {
+    paddingTop: 4,
   },
   backBtn: {
     flexDirection: "row",

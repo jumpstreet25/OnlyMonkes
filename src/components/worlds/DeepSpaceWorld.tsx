@@ -1,18 +1,19 @@
 /**
- * DeepSpaceWorld — the infinite cosmos.
+ * DeepSpaceWorld — NFT-style deep space plate with 3D OnlyMonkes logo planet.
  *
- * Composition:
- *   - Near-black deep purple gradient backdrop.
- *   - 120 tiny static star dots at randomised positions.
- *   - 10 twinkling stars that pulse opacity on independent cycles.
- *   - 2 soft nebula clouds — Skia Rects with a blurred RadialGradient-like
- *     linear fill (purple, deep blue, magenta at very low alpha).
- *   - Shooting star: a thin angled streak that fires every 18-35s,
- *     with a bright head and fading trail.
+ * Plate (assets/deep-space-plate.jpg):
+ *   - Near-black indigo void + violet nebulae
+ *   - Hero: 3D monke-logo planet (Solana light-blue oceans, light-purple land)
+ *   - Planet sits upper third so it clears dense chat bubbles
+ *
+ * Light Skia overlays only (match Tech Noir / Trading Floor craft):
+ *   - Top/bottom vignettes for chrome readability
+ *   - Soft pulse on the planet glow
+ *   - Rare shooting star
  */
 
 import React, { useEffect, useMemo } from "react";
-import { View, StyleSheet, Dimensions } from "react-native";
+import { View, StyleSheet, Dimensions, Image as RNImage } from "react-native";
 import {
   Canvas,
   Rect,
@@ -24,136 +25,95 @@ import {
   BlurMask,
   Circle,
 } from "@shopify/react-native-skia";
-import Animated, {
+import {
   useSharedValue,
   useDerivedValue,
-  useAnimatedStyle,
   withRepeat,
   withTiming,
   withSequence,
-  withDelay,
   cancelAnimation,
-  runOnJS,
   Easing,
 } from "react-native-reanimated";
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
 
-// ── Stars ───────────────────────────────────────────────────────────────────
+// Plate is 9:16 (720×1280) — top-pin cover framing (same as Tech Noir).
+const PLATE_ASPECT = 720 / 1280;
+const SPACE_PLATE = require("../../../assets/deep-space-plate.jpg");
 
-interface StarData {
-  x: number;
-  y: number;
-  r: number;  // radius
-  a: number;  // base alpha
+interface DeepSpaceWorldProps {
+  active?: boolean;
 }
 
-function genStars(count: number, seed: number): StarData[] {
-  const stars: StarData[] = [];
-  for (let i = 0; i < count; i++) {
-    const h1 = ((seed * 1103515245 + i * 12345) & 0x7fffffff) / 0x7fffffff;
-    const h2 = ((seed * 6764231 + i * 22695477) & 0x7fffffff) / 0x7fffffff;
-    const h3 = ((seed * 214013 + i * 2531011) & 0x7fffffff) / 0x7fffffff;
-    stars.push({
-      x: h1 * SCREEN_W,
-      y: h2 * SCREEN_H * 0.85, // stars only in upper 85% (city skyline equiv.)
-      r: 0.5 + h3 * 1.2,
-      a: 0.35 + h3 * 0.55,
-    });
+function plateLayout() {
+  let w = SCREEN_W;
+  let h = w / PLATE_ASPECT;
+  if (h < SCREEN_H) {
+    h = SCREEN_H;
+    w = h * PLATE_ASPECT;
   }
-  return stars;
+  const left = (SCREEN_W - w) / 2;
+  const top = 0;
+  return { w, h, left, top };
 }
 
-// Static star field — renders as a single Skia canvas, no animation.
-function StarField({ stars }: { stars: StarData[] }) {
-  return (
-    <>
-      {stars.map((s, i) => (
-        <Circle key={i} cx={s.x} cy={s.y} r={s.r} color={`rgba(220,230,255,${s.a})`} />
-      ))}
-    </>
-  );
+function buildShotPath(len: number): string {
+  const angle = 0.28;
+  const ex = Math.cos(angle) * len;
+  const ey = Math.sin(angle) * len;
+  return `M0 0 L${ex} ${ey}`;
 }
 
-// Twinkling star — single shared value cycling 0→1→0 for opacity.
-interface TwinkleProps {
-  x: number;
-  y: number;
-  r: number;
-  durationMs: number;
-  phaseMs: number;
-  active: boolean;
-}
-
-function TwinkleStar({ x, y, r, durationMs, phaseMs, active }: TwinkleProps) {
-  const alpha = useSharedValue(0.2);
-
-  useEffect(() => {
-    if (!active) { cancelAnimation(alpha); alpha.value = 0.2; return; }
-    alpha.value = withDelay(
-      phaseMs,
-      withRepeat(
-        withSequence(
-          withTiming(0.9, { duration: durationMs * 0.5, easing: Easing.inOut(Easing.sin) }),
-          withTiming(0.2, { duration: durationMs * 0.5, easing: Easing.inOut(Easing.sin) }),
-        ),
-        -1, false,
-      ),
-    );
-    return () => cancelAnimation(alpha);
-  }, [active, durationMs, phaseMs, alpha]);
-
-  return <Circle cx={x} cy={y} r={r} color="#FFFFFF" opacity={alpha} />;
-}
-
-// ── Shooting star ───────────────────────────────────────────────────────────
-
-function buildShotPath(sx: number, sy: number, len: number): string {
-  const angle = 0.28; // radians ~16° diagonal
-  const ex = sx + Math.cos(angle) * len;
-  const ey = sy + Math.sin(angle) * len;
-  return `M${sx} ${sy} L${ex} ${ey}`;
-}
-
-interface ShootingStarProps {
-  active: boolean;
-}
-
-function ShootingStar({ active }: ShootingStarProps) {
+function ShootingStar({ active }: { active: boolean }) {
   const alpha = useSharedValue(0);
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
-  const shotPath = useMemo(() => buildShotPath(0, 0, 140), []);
+  const shotPath = useMemo(() => buildShotPath(140), []);
 
   useEffect(() => {
-    if (!active) { cancelAnimation(alpha); cancelAnimation(translateX); cancelAnimation(translateY); return; }
+    if (!active) {
+      cancelAnimation(alpha);
+      cancelAnimation(translateX);
+      cancelAnimation(translateY);
+      return;
+    }
 
     let alive = true;
     const fire = () => {
       if (!alive) return;
-      const delay = 18_000 + Math.random() * 17_000;
+      const delay = 22_000 + Math.random() * 18_000;
       setTimeout(() => {
         if (!alive) return;
-        // Start in upper-left quadrant, travel diagonally right-down
-        const startX = Math.random() * SCREEN_W * 0.6;
-        const startY = Math.random() * SCREEN_H * 0.35;
-        const travelX = 80 + Math.random() * 120;
-        const travelY = 30 + Math.random() * 50;
-        const dur = 600 + Math.random() * 300;
+        const startX = Math.random() * SCREEN_W * 0.55;
+        const startY = Math.random() * SCREEN_H * 0.22;
+        const travelX = 90 + Math.random() * 110;
+        const travelY = 28 + Math.random() * 45;
+        const dur = 550 + Math.random() * 280;
 
         translateX.value = startX;
         translateY.value = startY;
         alpha.value = withSequence(
-          withTiming(1, { duration: 60 }),
+          withTiming(1, { duration: 50 }),
           withTiming(0, { duration: dur }),
         );
-        translateX.value = withTiming(startX + travelX, { duration: dur + 60, easing: Easing.out(Easing.quad) });
-        translateY.value = withTiming(startY + travelY, { duration: dur + 60, easing: Easing.out(Easing.quad) });
+        translateX.value = withTiming(startX + travelX, {
+          duration: dur + 50,
+          easing: Easing.out(Easing.quad),
+        });
+        translateY.value = withTiming(startY + travelY, {
+          duration: dur + 50,
+          easing: Easing.out(Easing.quad),
+        });
         setTimeout(fire, dur + 200);
       }, delay);
     };
     fire();
-    return () => { alive = false; cancelAnimation(alpha); cancelAnimation(translateX); cancelAnimation(translateY); };
+    return () => {
+      alive = false;
+      cancelAnimation(alpha);
+      cancelAnimation(translateX);
+      cancelAnimation(translateY);
+    };
   }, [active, alpha, translateX, translateY]);
 
   const transform = useDerivedValue(
@@ -163,84 +123,129 @@ function ShootingStar({ active }: ShootingStarProps) {
 
   return (
     <Group opacity={alpha} transform={transform}>
-      {/* Head glow */}
-      <Circle cx={0} cy={0} r={2.5} color="#FFFFFF">
-        <BlurMask blur={5} style="normal" />
+      <Circle cx={0} cy={0} r={2.2} color="#FFFFFF">
+        <BlurMask blur={4} style="normal" />
       </Circle>
-      {/* Trail */}
-      <Path path={shotPath} style="stroke" strokeWidth={1.5} color="#C8DEFF">
-        <LinearGradient start={vec(0, 0)} end={vec(140, 40)} colors={["rgba(255,255,255,0.9)", "rgba(180,210,255,0)"]} />
+      <Path path={shotPath} style="stroke" strokeWidth={1.4} color="#C8DEFF">
+        <LinearGradient
+          start={vec(0, 0)}
+          end={vec(140, 40)}
+          colors={["rgba(255,255,255,0.85)", "rgba(155,112,255,0)"]}
+        />
       </Path>
     </Group>
   );
 }
 
-// ── World root ──────────────────────────────────────────────────────────────
-
-interface DeepSpaceWorldProps {
-  active?: boolean;
-}
-
 export function DeepSpaceWorld({ active = true }: DeepSpaceWorldProps) {
-  const stars    = useMemo(() => genStars(120, 42), []);
-  const twinkles = useMemo(() => [
-    { x: SCREEN_W * 0.12, y: SCREEN_H * 0.08, r: 1.8, dur: 2800, phase: 0 },
-    { x: SCREEN_W * 0.34, y: SCREEN_H * 0.14, r: 2.2, dur: 3600, phase: 900 },
-    { x: SCREEN_W * 0.56, y: SCREEN_H * 0.06, r: 1.5, dur: 2200, phase: 400 },
-    { x: SCREEN_W * 0.78, y: SCREEN_H * 0.20, r: 2.0, dur: 4100, phase: 1500 },
-    { x: SCREEN_W * 0.88, y: SCREEN_H * 0.09, r: 1.6, dur: 3200, phase: 700 },
-    { x: SCREEN_W * 0.22, y: SCREEN_H * 0.30, r: 2.4, dur: 5000, phase: 2000 },
-    { x: SCREEN_W * 0.44, y: SCREEN_H * 0.25, r: 1.4, dur: 2600, phase: 300 },
-    { x: SCREEN_W * 0.64, y: SCREEN_H * 0.32, r: 1.9, dur: 3800, phase: 1100 },
-    { x: SCREEN_W * 0.06, y: SCREEN_H * 0.45, r: 1.7, dur: 4400, phase: 600 },
-    { x: SCREEN_W * 0.92, y: SCREEN_H * 0.38, r: 2.1, dur: 3000, phase: 1800 },
-  ], []);
+  const layout = useMemo(() => plateLayout(), []);
+
+  const pulse = useSharedValue(0.5);
+
+  useEffect(() => {
+    if (!active) {
+      cancelAnimation(pulse);
+      pulse.value = 0.5;
+      return;
+    }
+    pulse.value = withRepeat(
+      withSequence(
+        withTiming(1, { duration: 3200, easing: Easing.inOut(Easing.sin) }),
+        withTiming(0.45, { duration: 3600, easing: Easing.inOut(Easing.sin) }),
+      ),
+      -1,
+      false,
+    );
+    return () => cancelAnimation(pulse);
+  }, [active, pulse]);
+
+  // Offset upper-right so monke stays visible when Main Chat images sit center
+  const planetCx = SCREEN_W * 0.62;
+  const planetCy = SCREEN_H * 0.26;
+  const planetR = SCREEN_W * 0.34;
 
   return (
     <View style={styles.root} pointerEvents="none">
+      <RNImage
+        source={SPACE_PLATE}
+        style={{
+          position: "absolute",
+          width: layout.w,
+          height: layout.h,
+          left: layout.left,
+          top: layout.top,
+        }}
+        resizeMode="stretch"
+      />
+
       <Canvas style={StyleSheet.absoluteFill}>
-        {/* Deep space gradient — near-black with a subtle purple/indigo shift */}
-        <Rect x={0} y={0} width={SCREEN_W} height={SCREEN_H * 1.25}>
+        {/* Soft top fade under header */}
+        <Rect x={0} y={0} width={SCREEN_W} height={SCREEN_H * 0.10}>
           <LinearGradient
             start={vec(0, 0)}
-            end={vec(SCREEN_W, SCREEN_H)}
-            colors={["#010108", "#03020F", "#050218", "#080320"]}
+            end={vec(0, SCREEN_H * 0.10)}
+            colors={["rgba(0,0,0,0.40)", "rgba(0,0,0,0)"]}
           />
         </Rect>
 
-        {/* Nebula cloud A — purple, upper-left */}
-        <Rect x={-SCREEN_W * 0.2} y={SCREEN_H * 0.02} width={SCREEN_W * 0.7} height={SCREEN_H * 0.4}>
-          <RadialGradient
-            c={vec(SCREEN_W * 0.18, SCREEN_H * 0.15)}
-            r={SCREEN_W * 0.38}
-            colors={["rgba(100,40,180,0.08)", "rgba(60,20,120,0.04)", "rgba(0,0,0,0)"]}
+        {/* Side vignettes */}
+        <Rect x={0} y={0} width={SCREEN_W * 0.08} height={SCREEN_H}>
+          <LinearGradient
+            start={vec(0, 0)}
+            end={vec(SCREEN_W * 0.08, 0)}
+            colors={["rgba(0,0,0,0.35)", "rgba(0,0,0,0)"]}
+          />
+        </Rect>
+        <Rect x={SCREEN_W * 0.92} y={0} width={SCREEN_W * 0.08} height={SCREEN_H}>
+          <LinearGradient
+            start={vec(SCREEN_W, 0)}
+            end={vec(SCREEN_W * 0.92, 0)}
+            colors={["rgba(0,0,0,0.35)", "rgba(0,0,0,0)"]}
           />
         </Rect>
 
-        {/* Nebula cloud B — blue-magenta, right side */}
-        <Rect x={SCREEN_W * 0.4} y={SCREEN_H * 0.1} width={SCREEN_W * 0.7} height={SCREEN_H * 0.5}>
-          <RadialGradient
-            c={vec(SCREEN_W * 0.72, SCREEN_H * 0.28)}
-            r={SCREEN_W * 0.42}
-            colors={["rgba(40,60,180,0.07)", "rgba(80,20,130,0.04)", "rgba(0,0,0,0)"]}
-          />
-        </Rect>
+        {/* Planet aura pulse — reads under monke globe without washing it out */}
+        <Group opacity={pulse}>
+          <Circle cx={planetCx} cy={planetCy} r={planetR}>
+            <RadialGradient
+              c={vec(planetCx, planetCy)}
+              r={planetR}
+              colors={[
+                "rgba(155, 112, 255, 0.22)",
+                "rgba(125, 211, 252, 0.08)",
+                "rgba(155, 112, 255, 0)",
+              ]}
+            />
+          </Circle>
+          <Circle
+            cx={planetCx}
+            cy={planetCy}
+            r={planetR * 0.55}
+            color="rgba(155, 112, 255, 0.10)"
+          >
+            <BlurMask blur={28} style="normal" />
+          </Circle>
+        </Group>
 
-        {/* Static star field */}
-        <StarField stars={stars} />
-
-        {/* Twinkling stars */}
-        {twinkles.map((t, i) => (
-          <TwinkleStar key={i} x={t.x} y={t.y} r={t.r} durationMs={t.dur} phaseMs={t.phase} active={active} />
-        ))}
-
-        {/* Shooting star */}
+        {/* Rare shooting star */}
         <ShootingStar active={active} />
+
+        {/* Bottom contact under input — darker for bubble contrast */}
+        <Rect x={0} y={SCREEN_H * 0.78} width={SCREEN_W} height={SCREEN_H * 0.22}>
+          <LinearGradient
+            start={vec(0, SCREEN_H * 0.78)}
+            end={vec(0, SCREEN_H)}
+            colors={["rgba(0,0,0,0)", "rgba(2,1,10,0.55)"]}
+          />
+        </Rect>
       </Canvas>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { ...StyleSheet.absoluteFillObject },
+  root: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "#010108",
+  },
 });

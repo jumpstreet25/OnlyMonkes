@@ -218,31 +218,14 @@ export function WorldMiniPreview({ worldId, width, height }: WorldMiniPreviewPro
     );
   }
   if (worldId === "world_deep_space") {
-    // Star field + nebula glow over a near-black gradient
-    const stars: Array<{ cx: number; cy: number; r: number; a: number }> = [];
-    const starSeeds = [11,29,53,79,101,127,149,173,197,223,241,269,293,311,337,359,383,409,421,449];
-    for (let i = 0; i < starSeeds.length; i++) {
-      const s = starSeeds[i];
-      const fx = ((s * 1103515245 + i * 12345) & 0x7fffffff) / 0x7fffffff;
-      const fy = ((s * 6764231 + i * 22695477) & 0x7fffffff) / 0x7fffffff;
-      const fa = ((s * 214013 + i * 2531011) & 0x7fffffff) / 0x7fffffff;
-      stars.push({ cx: fx * width, cy: fy * height, r: 0.5 + fa * 1.1, a: 0.35 + fa * 0.5 });
-    }
+    // Shop mini-preview: same 3D monke-logo planet plate as the live world.
     return (
-      <View style={[miniStyles.root, { width, height }]}>
-        <Canvas style={{ width, height }}>
-          <Rect x={0} y={0} width={width} height={height}>
-            <LinearGradient start={vec(0, 0)} end={vec(width, height)} colors={["#010108", "#03020F", "#050218", "#080320"]} />
-          </Rect>
-          {/* Nebula hint */}
-          <Rect x={-width * 0.1} y={0} width={width * 0.7} height={height}>
-            <LinearGradient start={vec(0, height * 0.2)} end={vec(width * 0.4, height * 0.6)}
-              colors={["rgba(80,30,160,0.10)", "rgba(0,0,0,0)"]} />
-          </Rect>
-          {stars.map((s, i) => (
-            <Rect key={i} x={s.cx} y={s.cy} width={s.r * 2} height={s.r * 2} color={`rgba(220,230,255,${s.a})`} />
-          ))}
-        </Canvas>
+      <View style={[miniStyles.root, { width, height, backgroundColor: "#010108" }]}>
+        <RNImage
+          source={require("../../../assets/deep-space-plate.jpg")}
+          style={{ width, height }}
+          resizeMode="cover"
+        />
       </View>
     );
   }

@@ -1,72 +1,129 @@
 /**
  * LeaderboardView — Top Traders scorecard.
  *
- * Two sections:
- *   1. AI Agent #9385 — pinned bot books (Entered vs Monitored), with bot PFP
- *   2. Community — Saga Monkes holders active this week (smart-money pipeline)
+ *   1. AI Agent #9385 — Actual trades + Monitored (Hermes TA) books
+ *   2. Community — Saga holders ranked by weekly gain
  *
- * Anonymous ranks + win rate + weekly gain %; optional public NFT/bot pfp
- * (never a wallet address).
+ * Top Trader copy-book is NOT shown here (separate pipeline).
  */
 
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { View, Text, StyleSheet, RefreshControl, ScrollView, Image } from "react-native";
 import { THEME, FONTS } from "@/lib/constants";
-import { fetchTopTraders, isBotTrader, type TopTrader } from "@/lib/topTraders";
+import {
+  fetchTopTraders,
+  isBotTrader,
+  BOT_LEADERBOARD_PFP,
+  BOT_LEADERBOARD_NAME,
+  type TopTrader,
+} from "@/lib/topTraders";
 import { useWorldGlassCardStyle } from "@/components/worlds/WorldScreenShell";
 import { WorldGlassFill } from "@/components/WorldGlassFill";
 import { useAppStore } from "@/store/appStore";
 
 const MEDALS = ["🥇", "🥈", "🥉"];
+const PODIUM_BORDER = ["#FFD700", "#C0C0C0", "#CD7F32"]; // gold, silver, bronze
+/** Shared green for both bot books (Actual + Monitored). */
+const BOT_ACCENT = "#44DDBB";
 
-function botBookLabel(t: TopTrader): string {
-  if (t.kind === "bot_entered") return "Entered trades";
+function botBookTitle(t: TopTrader): string {
+  if (t.kind === "bot_entered") return "Actual trades";
   if (t.kind === "bot_monitored") return "Monitored book";
-  return "Bot";
+  return "Bot book";
 }
 
-function botBookHint(t: TopTrader): string {
+function botBookDetail(t: TopTrader): string {
   if (t.kind === "bot_entered") {
-    return "AutonoMonke positions the bot opened";
+    return "AutonoMonke positions the bot opened & closed";
   }
   if (t.kind === "bot_monitored") {
-    return "Round-trips on wallets the bot tracks";
+    return "Hermes TA-alert outcomes the bot tracked (not Top Trader buys)";
   }
   return "";
 }
 
-function TraderRow({
+function BotBookCard({
   t,
   worldId,
   cardStyle,
-  rankLabel,
-  subtitle,
 }: {
   t: TopTrader;
   worldId?: string;
   cardStyle: object;
-  rankLabel: string;
-  subtitle: string;
 }) {
-  const bot = isBotTrader(t);
+  const isEntered = t.kind === "bot_entered";
+  const badge = isEntered ? "ACTUAL" : "WATCH";
+  const pfp = t.nftImage && t.nftImage.startsWith("http") ? t.nftImage : BOT_LEADERBOARD_PFP;
+
   return (
-    <View style={[styles.row, cardStyle, bot && styles.botRow]}>
+    <View style={[styles.row, styles.botRow, cardStyle, { borderColor: `${BOT_ACCENT}99` }]}>
+      {worldId ? <WorldGlassFill worldId={worldId} blur={false} showHighlight={false} /> : null}
+      <View style={[styles.botBadge, { backgroundColor: `${BOT_ACCENT}33` }]}>
+        <Text style={[styles.botBadgeText, { color: BOT_ACCENT }]}>{badge}</Text>
+      </View>
+      <Image
+        source={{ uri: pfp }}
+        style={[styles.pfp, styles.botPfp, { borderColor: BOT_ACCENT }]}
+      />
+      <View style={styles.info}>
+        <Text style={styles.username} numberOfLines={1}>
+          {BOT_LEADERBOARD_NAME}
+        </Text>
+        <Text style={[styles.bookTitle, { color: BOT_ACCENT }]} numberOfLines={1}>
+          {botBookTitle(t)}
+        </Text>
+        <Text style={styles.stats} numberOfLines={1}>
+          {t.winRatePct}% all-time win rate
+        </Text>
+      </View>
+      <View style={styles.scoreCol}>
+        <Text style={[styles.score, t.weeklyGainPct < 0 && styles.scoreNegative]}>
+          {t.weeklyGainPct >= 0 ? "+" : ""}
+          {t.weeklyGainPct}%
+        </Text>
+        <Text style={styles.scoreCaption}>this week</Text>
+      </View>
+    </View>
+  );
+}
+
+function HolderRow({
+  t,
+  worldId,
+  cardStyle,
+}: {
+  t: TopTrader;
+  worldId?: string;
+  cardStyle: object;
+}) {
+  const rankLabel = t.rank <= 3 && t.rank >= 1 ? MEDALS[t.rank - 1] : `${t.rank}.`;
+  const podium = t.rank >= 1 && t.rank <= 3 ? PODIUM_BORDER[t.rank - 1] : undefined;
+
+  return (
+    <View
+      style={[
+        styles.row,
+        styles.communityRow,
+        cardStyle,
+        podium
+          ? { borderWidth: 1.5, borderColor: podium }
+          : { borderWidth: 0.75, borderColor: "transparent" },
+      ]}
+    >
       {worldId ? <WorldGlassFill worldId={worldId} blur={false} showHighlight={false} /> : null}
       <Text style={styles.rank}>{rankLabel}</Text>
       {t.nftImage ? (
-        <Image source={{ uri: t.nftImage }} style={[styles.pfp, bot && styles.botPfp]} />
+        <Image source={{ uri: t.nftImage }} style={[styles.pfp, styles.communityPfp]} />
       ) : (
-        <View style={[styles.pfp, styles.pfpFallback]}>
-          <Text style={{ fontSize: 16 }}>{bot ? "🤖" : "🐒"}</Text>
+        <View style={[styles.pfp, styles.communityPfp, styles.pfpFallback]}>
+          <Text style={{ fontSize: 18 }}>🐒</Text>
         </View>
       )}
       <View style={styles.info}>
         <Text style={styles.username} numberOfLines={1}>
-          {t.monkeName?.trim() || (bot ? "AI Agent #9385" : `Trader #${t.rank}`)}
+          {t.monkeName?.trim() || `Trader #${t.rank}`}
         </Text>
-        <Text style={styles.stats} numberOfLines={1}>
-          {subtitle}
-        </Text>
+        <Text style={styles.stats}>{t.winRatePct}% win rate</Text>
       </View>
       <Text style={[styles.score, t.weeklyGainPct < 0 && styles.scoreNegative]}>
         {t.weeklyGainPct >= 0 ? "+" : ""}
@@ -101,18 +158,24 @@ export function LeaderboardView() {
 
   const { botRows, holderRows } = useMemo(() => {
     const bots = traders.filter(isBotTrader);
-    const holders = traders.filter((t) => !isBotTrader(t));
-    return { botRows: bots, holderRows: holders };
+    const entered = bots.filter((t) => t.kind === "bot_entered");
+    const monitored = bots.filter((t) => t.kind === "bot_monitored");
+    const otherBots = bots.filter((t) => t.kind !== "bot_entered" && t.kind !== "bot_monitored");
+    const orderedBots = [...entered, ...monitored, ...otherBots];
+    const holders = traders.filter((t) => !isBotTrader(t) && t.rank > 0);
+    return { botRows: orderedBots, holderRows: holders };
   }, [traders]);
 
   return (
     <ScrollView
       style={styles.root}
+      contentContainerStyle={styles.content}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={THEME.textMuted} />}
     >
+      {/* Single title bar — no duplicate "Leaderboard" */}
       <Text style={styles.header}>TOP TRADERS</Text>
       <Text style={styles.subheader}>
-        Bot books + Saga Monkes holders — win rate & weekly gain
+        Bot books · community ranked by weekly gain
       </Text>
 
       {loading ? (
@@ -130,19 +193,12 @@ export function LeaderboardView() {
           {botRows.length > 0 ? (
             <>
               <Text style={styles.sectionLabel}>AI AGENT #9385</Text>
-              {botRows.map((t) => (
-                <TraderRow
-                  key={t.kind ?? t.monkeName ?? "bot"}
-                  t={t}
-                  worldId={worldId}
-                  cardStyle={cardStyle}
-                  rankLabel={t.kind === "bot_entered" ? "⚡" : "👁"}
-                  subtitle={`${t.winRatePct}% win rate · ${botBookLabel(t)}`}
-                />
+              {botRows.map((t, i) => (
+                <View key={t.kind ?? `bot-${i}`}>
+                  <BotBookCard t={t} worldId={worldId} cardStyle={cardStyle} />
+                  <Text style={styles.botHint}>{botBookDetail(t)}</Text>
+                </View>
               ))}
-              <Text style={styles.botHint}>
-                {botRows.map(botBookHint).filter(Boolean).join(" · ")}
-              </Text>
             </>
           ) : null}
 
@@ -152,13 +208,11 @@ export function LeaderboardView() {
                 COMMUNITY
               </Text>
               {holderRows.map((t) => (
-                <TraderRow
+                <HolderRow
                   key={`h-${t.rank}-${t.monkeName ?? ""}`}
                   t={t}
                   worldId={worldId}
                   cardStyle={cardStyle}
-                  rankLabel={t.rank <= 3 ? MEDALS[t.rank - 1] : `${t.rank}.`}
-                  subtitle={`${t.winRatePct}% win rate`}
                 />
               ))}
             </>
@@ -171,8 +225,7 @@ export function LeaderboardView() {
           ) : null}
 
           <Text style={styles.formula}>
-            Bot: all-time win rate · weekly avg gain when available · Community: active this week,
-            ranked by weekly gain
+            Actual = AutonoMonke · Monitored = Hermes TA alerts · Top Trader buys are a separate copy-book
           </Text>
         </>
       )}
@@ -181,7 +234,8 @@ export function LeaderboardView() {
 }
 
 const styles = StyleSheet.create({
-  root: { gap: 4 },
+  root: { flex: 1 },
+  content: { paddingTop: 0, paddingBottom: 16, gap: 0 },
 
   header: {
     fontFamily: FONTS.mono,
@@ -191,13 +245,14 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
     textAlign: "center",
     marginBottom: 4,
+    marginTop: 0,
   },
   subheader: {
     fontFamily: FONTS.body,
     fontSize: 12,
     color: THEME.textMuted,
     textAlign: "center",
-    marginBottom: 14,
+    marginBottom: 12,
   },
 
   sectionLabel: {
@@ -216,24 +271,45 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.mono,
     fontSize: 9,
     color: THEME.textFaint,
-    textAlign: "center",
-    marginBottom: 4,
-    marginTop: -2,
+    textAlign: "left",
+    marginBottom: 10,
+    marginTop: -4,
+    marginLeft: 4,
+    paddingHorizontal: 8,
   },
 
   row: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    paddingVertical: 10,
+    paddingVertical: 12,
     paddingHorizontal: 12,
     borderRadius: 14,
     borderWidth: 0.75,
     marginBottom: 8,
     overflow: "hidden",
+    minHeight: 64,
   },
   botRow: {
-    borderColor: "rgba(153,69,255,0.45)",
+    borderWidth: 1.25,
+  },
+  communityRow: {
+    minHeight: 64,
+  },
+  botBadge: {
+    position: "absolute",
+    top: 6,
+    right: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    zIndex: 2,
+  },
+  botBadgeText: {
+    fontFamily: FONTS.mono,
+    fontSize: 9,
+    fontWeight: "800",
+    letterSpacing: 0.8,
   },
   rank: {
     fontFamily: FONTS.display,
@@ -244,23 +320,44 @@ const styles = StyleSheet.create({
   },
   pfp: { width: 34, height: 34, borderRadius: 17 },
   botPfp: {
-    borderWidth: 1.5,
-    borderColor: "rgba(153,69,255,0.7)",
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 2,
+  },
+  communityPfp: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
   },
   pfpFallback: {
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(153,69,255,0.15)",
   },
-  info: { flex: 1 },
+  info: { flex: 1, paddingRight: 4 },
   username: { fontFamily: FONTS.bodySemi, fontSize: 13, color: THEME.text },
+  bookTitle: {
+    fontFamily: FONTS.mono,
+    fontSize: 11,
+    fontWeight: "700",
+    marginTop: 1,
+    letterSpacing: 0.3,
+  },
   stats: { fontFamily: FONTS.mono, fontSize: 10, color: THEME.textMuted, marginTop: 1 },
+  scoreCol: { alignItems: "flex-end", minWidth: 56 },
   score: {
     fontFamily: FONTS.display,
     fontSize: 16,
     color: "#44ff88",
     minWidth: 52,
     textAlign: "right",
+  },
+  scoreCaption: {
+    fontFamily: FONTS.mono,
+    fontSize: 8,
+    color: THEME.textFaint,
+    marginTop: 1,
   },
   scoreNegative: { color: "#FF6B6B" },
   formula: {

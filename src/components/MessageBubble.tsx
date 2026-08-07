@@ -894,13 +894,13 @@ export const MessageBubble = memo(function MessageBubble({
                   tailSide={centerBubble ? "none" : isOwn ? "right" : "left"}
                 />
               ) : null}
-              {/* ── Deep Space world chrome — comm-panel HUD frame */}
+              {/* ── Deep Space world chrome — violet MonkeGlass (plate-backed) */}
               {useDeepSpaceBubble && bubbleSize ? (
                 <DeepSpaceBubble
                   width={bubbleSize.w}
                   height={bubbleSize.h}
                   color={glitchAccent}
-                  radius={14}
+                  radius={18}
                   tailSide={centerBubble ? "none" : isOwn ? "right" : "left"}
                 />
               ) : null}
@@ -933,7 +933,7 @@ export const MessageBubble = memo(function MessageBubble({
                 // Tech Noir uses MonkeGlass BlurView inside TechNoirBubble (not
                 // opaque Skia fill), still needs a transparent content host.
                 (hasSkiaGlow || hasWorldChrome) ? {
-                  borderRadius: (useTechNoirBubble || useTradingFloorBubble) ? 18 : 22,
+                  borderRadius: (useTechNoirBubble || useTradingFloorBubble || useDeepSpaceBubble) ? 18 : 22,
                   paddingHorizontal: 20,
                   paddingVertical: 14,
                   backgroundColor: "transparent",

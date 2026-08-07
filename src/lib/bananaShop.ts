@@ -345,7 +345,7 @@ export const SHOP_ITEMS: ShopItem[] = [
   {
     id: "world_deep_space",
     name: "Deep Space",
-    description: "Infinite star field, drifting nebulae, and shooting stars across your chat",
+    description: "NFT deep space — 3D OnlyMonkes logo planet in Solana blue oceans & purple land, nebulae behind your chat",
     category: "world", tier: 5, bananaCost: 750, usdCost: 4.99,
     preview: "🌌",
     style: { worldId: "world_deep_space" },

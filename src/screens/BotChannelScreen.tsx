@@ -42,6 +42,9 @@ import { isMineInbox } from "@/lib/inboxLinking";
 
 const BOT_INBOX_ID = "998001a498174b8a194110ee792b10f97de4965665eaf0d088ed2c71bdf62363";
 
+/** Process-lifetime guard — MonkeTrades remount must not re-DM status. */
+let _automonkeStatusCheckedThisSession = false;
+
 const AUTONOMY_CONFIG: Record<string, { command: string; storageKey: string }> = {
   trades:      { command: "/automonke start",      storageKey: "automonke_enrolled" },
   bets:        { command: "/monkebets start",      storageKey: "monkebets_enrolled" },
@@ -157,23 +160,31 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
     }).catch(() => {});
 
     if (channelId !== "trades") return;
-    // 2026-07-29: this used to fire unconditionally on every mount — since
-    // the trades screen remounts basically every time the app opens (or the
-    // user navigates back to it), that meant a fresh "/autonomonke status"
-    // DM (and the bot's reply, which shows up as a notification) every
-    // single time. Throttle to once per cooldown window instead — still
-    // self-corrects a stale local flag, just not on a hair trigger.
-    const STATUS_CHECK_COOLDOWN_MS = 30 * 60 * 1000; // 30 min
+    // 2026-08-07: was 30 min + no session guard — MonkeTrades remount + pill
+    // taps + cold starts stacked into a flood of "/autonomonke status" DMs
+    // (and push noise). Once-per-process + 6h disk cooldown is enough to
+    // self-correct enrollment without spamming Hermes.
+    if (_automonkeStatusCheckedThisSession) return;
+    const STATUS_CHECK_COOLDOWN_MS = 6 * 60 * 60 * 1000; // 6 hours
     const STATUS_CHECK_STORAGE_KEY = "automonke_last_status_check_v1";
     (async () => {
       try {
+        // Already have bot ground truth this session — no need to re-ask.
+        if (useAppStore.getState().automonkeStatus) {
+          _automonkeStatusCheckedThisSession = true;
+          return;
+        }
         const lastCheckRaw = await AsyncStorage.getItem(STATUS_CHECK_STORAGE_KEY);
         const lastCheck = lastCheckRaw ? parseInt(lastCheckRaw, 10) : 0;
-        if (Date.now() - lastCheck < STATUS_CHECK_COOLDOWN_MS) return;
+        if (Date.now() - lastCheck < STATUS_CHECK_COOLDOWN_MS) {
+          _automonkeStatusCheckedThisSession = true;
+          return;
+        }
         const client = getXmtpClient();
         if (!client) return;
         const dm = await (client.conversations as any).findOrCreateDm(BOT_INBOX_ID);
         if (dm) {
+          _automonkeStatusCheckedThisSession = true; // claim before await to block remount races
           await sendDmMessage(dm, "/autonomonke status", username);
           await AsyncStorage.setItem(STATUS_CHECK_STORAGE_KEY, String(Date.now()));
         }
@@ -454,24 +465,20 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
                 setShowAutonoMonkeModal(true);
                 return;
               }
+              // 2026-08-07: was sending /autonomonke status whenever
+              // automonkeStatus was null — every pill tap re-spammed Hermes.
+              // Only auto-DM when we KNOW they're paused (resume). Otherwise
+              // just open the bot DM; user can type /autonomonke status if needed.
               const paused = automonkeStatus?.enrolled && !automonkeStatus?.active;
-              // If we don't have bot ground truth yet, still try resume —
-              // bot start/resume is idempotent for active wallets.
-              if (paused || automonkeStatus == null) {
+              if (paused) {
                 try {
                   const client = getXmtpClient();
                   if (client) {
                     const dm = await (client.conversations as any).findOrCreateDm(BOT_INBOX_ID);
-                    if (dm) {
-                      // resume if we know they're paused; status if unknown so
-                      // the pill + AUTOMONKE_STATUS self-correct before user
-                      // has to hunt for commands.
-                      const cmd = paused ? "/autonomonke resume" : "/autonomonke status";
-                      await sendDmMessage(dm, cmd, username);
-                    }
+                    if (dm) await sendDmMessage(dm, "/autonomonke resume", username);
                   }
                 } catch (err) {
-                  if (__DEV__) console.warn("[Autonomy:trades] resume/status DM failed:", (err as Error)?.message);
+                  if (__DEV__) console.warn("[Autonomy:trades] resume DM failed:", (err as Error)?.message);
                 }
               }
               router.push(`/dm/${BOT_INBOX_ID}` as any);
