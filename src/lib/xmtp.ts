@@ -364,7 +364,7 @@ function decodeStringMessage(raw: any, rawContent: string, myInboxId: string): C
     : rawContent;
   const STRUCTURED_PREFIXES = [
     "REACT:", "STICKER_REACT:", "TYPING:", "PROFILE_UPDATE:", "PROFILE_SNAPSHOT:", "MY_INBOXES:",
-    "LOCATION_SYNC:", "EVENT:", "EDIT:", "PRESENCE:", "LIVE_ROOM:", "VIDEO_ROOM:",
+    "LOCATION_SYNC:", "LOCATION_SYNC_REQUEST", "EVENT:", "EDIT:", "PRESENCE:", "LIVE_ROOM:", "VIDEO_ROOM:",
     "AVATAR_ROOM:", "SHOP_PURCHASE:", "GIFT_ITEM:", "THREAD:", "PIN:", "UNPIN:",
     "NFT_LIST:", "NFT_BID:", "NFT_ACCEPT:", "NFT_DELIST:", "NFT_OFFER:",
     "NFT_SWAP:", "NFT_COMPLETE:", "AUTOMONKE_STATUS:", "TRADE_CLOSED:",
@@ -372,8 +372,21 @@ function decodeStringMessage(raw: any, rawContent: string, myInboxId: string): C
     "BANANA_GRANT:", "BANANA_BET_OPEN:", "BANANA_BET_SETTLED:", "HEALTH:", "DELETE:",
     "IMAGE_CAPTION_REQUEST:", "IMAGE_CAPTION_RESPONSE:", "POLL_OPEN:", "POLL_RESULT:",
     "STREAK_CAPTION_REQUEST:", "STREAK_CAPTION_RESPONSE:", "JOIN_REQUEST:",
+    "BADGE_GRANT:",
   ];
   for (const p of STRUCTURED_PREFIXES) {
+    // LOCATION_SYNC_REQUEST is a bare token (optionally with trailing :payload)
+    if (p === "LOCATION_SYNC_REQUEST") {
+      if (
+        rawContent === "LOCATION_SYNC_REQUEST" ||
+        rawContent.startsWith("LOCATION_SYNC_REQUEST:") ||
+        innerPreview === "LOCATION_SYNC_REQUEST" ||
+        innerPreview.startsWith("LOCATION_SYNC_REQUEST:")
+      ) {
+        return null;
+      }
+      continue;
+    }
     if (rawContent.startsWith(p) || innerPreview.startsWith(p)) return null;
   }
 

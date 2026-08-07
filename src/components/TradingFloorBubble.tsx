@@ -1,10 +1,8 @@
 /**
- * TechNoirBubble — MonkeGlass speech bubble for Tech Noir.
+ * TradingFloorBubble — MonkeGlass speech bubble for Trading Floor world.
  *
- * Same real-blur construction as the rest of the app (BlurView + light
- * fill + glass gradient): the wet city plate shows through as a soft
- * frosted field. Cyan chrome for border / tail outline only (corner ticks
- * removed 2026-08-07 — read as little triangles on every bubble).
+ * Same real-blur construction as TechNoirBubble / rest of app.
+ * Jade chrome for border / tail only (corner ticks removed 2026-08-07).
  */
 
 import React, { useMemo } from "react";
@@ -24,19 +22,20 @@ import {
   getWorldGlassWash,
 } from "@/lib/glassTheme";
 
-interface TechNoirBubbleProps {
+interface TradingFloorBubbleProps {
   width: number;
   height: number;
-  color: string; // unused — noir chrome is fixed to world accent
+  color?: string;
   radius?: number;
   tailSide?: "left" | "right" | "none";
 }
 
-// Electric cyan — matches getWorldAccent('world_tech_noir') / TechNoirWorld
-const CHROME = "#4FD8FF";
+// Dirty jade — matches getWorldAccent('world_trading_floor')
+const CHROME = "#2F8F6A";
+const CHROME_SOFT = "rgba(47, 143, 106, 0.45)";
 const TAIL_W = 10;
 const TAIL_H = 8;
-const WASH = getWorldGlassWash("world_tech_noir");
+const WASH = getWorldGlassWash("world_trading_floor");
 
 function buildTailPath(w: number, h: number, side: "left" | "right"): string {
   const midY = h / 2;
@@ -48,12 +47,12 @@ function buildTailPath(w: number, h: number, side: "left" | "right"): string {
   return `M0 ${midY - TAIL_H / 2} L${tx} ${midY} L0 ${midY + TAIL_H / 2} Z`;
 }
 
-export function TechNoirBubble({
+export function TradingFloorBubble({
   width: w,
   height: h,
   radius = 18,
   tailSide = "none",
-}: TechNoirBubbleProps) {
+}: TradingFloorBubbleProps) {
   const tailPath = useMemo(
     () => (tailSide !== "none" ? buildTailPath(w, h, tailSide) : null),
     [w, h, tailSide],
@@ -73,7 +72,7 @@ export function TechNoirBubble({
         height: h,
       }}
     >
-      {/* Glass body — BlurView samples the city plate behind the bubble */}
+      {/* Glass body — BlurView samples jungle plate behind this bubble only */}
       <View
         style={{
           position: "absolute",
@@ -84,7 +83,7 @@ export function TechNoirBubble({
           borderRadius: radius,
           overflow: "hidden",
           borderWidth: 1,
-          borderColor: "rgba(79, 216, 255, 0.45)",
+          borderColor: CHROME_SOFT,
         }}
       >
         <BlurView {...getPanelBlurProps()} style={StyleSheet.absoluteFill} />
@@ -116,7 +115,6 @@ export function TechNoirBubble({
         />
       </View>
 
-      {/* Tail outline only — no corner ticks */}
       {tailPath ? (
         <Canvas
           style={{
@@ -128,7 +126,7 @@ export function TechNoirBubble({
           }}
         >
           <Group transform={[{ translateX: offsetX }]}>
-            <Path path={tailPath} color="rgba(12, 12, 22, 0.45)" />
+            <Path path={tailPath} color="rgba(8, 16, 12, 0.45)" />
             <Path path={tailPath} color={CHROME} style="stroke" strokeWidth={1.2} />
           </Group>
         </Canvas>

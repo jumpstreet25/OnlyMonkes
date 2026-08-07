@@ -26,9 +26,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
 import { router } from "expo-router";
 // date-fns format removed — event formatting moved to EventRsvpModal
-import { THEME, FONTS, BOT_INBOX_IDS, BOT_DISPLAY_NAME, BOT_PFP_URL } from "@/lib/constants";
+import { THEME, FONTS, BOT_INBOX_IDS, BOT_DISPLAY_NAME, BOT_PFP_URL, getWorldBarTint, getWorldAccent } from "@/lib/constants";
 import { IS_IMMERSIVE_SHELL } from "@/lib/immersiveStatusBar";
 import { MonkeGlass } from "@/components/MonkeGlass";
+import { BlurView } from "expo-blur";
+import { getBlurProps } from "@/lib/glassTheme";
 import { useAppStore } from "@/store/appStore";
 import { getCachedProfile, getPersistedLocation, useProfileVersion } from "@/lib/userProfile";
 import { isUserOnline, getLastSeenTimestamp } from "@/lib/presence";
@@ -377,6 +379,9 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
       // Requested 2026-07-20 after a user reported 6 markers vs 11 known
       // Monkes — root cause was mostly stale profile cache (fixed by
       // backfillProfileHistory above), not users never setting a location.
+      // 2026-08-05: traced a second case (3-vs-18 markers between two
+      // devices on the same build) to the profile-rebroadcast-on-launch
+      // path being gated behind push-token success — see _layout.tsx.
       if (!cancelled && __DEV__) {
         try {
           const { getGroupMembers } = await import("@/hooks/useXmtp");
@@ -551,6 +556,10 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
   }, [markers]);
 
   const insets = useSafeAreaInsets();
+  // 2026-08-06: glass header chrome so Globe matches Settings/Portfolio/etc.
+  // Full WorldLayer behind a WebView globe is wasted (the globe fills the
+  // viewport) — only the header needs the world-aware treatment.
+  const worldId = useAppStore((s) => s.shopStyles?.worldId) as string | undefined;
 
   return (
     <View style={styles.root}>
@@ -558,10 +567,16 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
 
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
+        {worldId ? (
+          <>
+            <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} pointerEvents="none" />
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: getWorldBarTint(worldId) }]} pointerEvents="none" />
+          </>
+        ) : null}
         <Pressable onPress={() => router.back()} hitSlop={8} style={styles.backBtn}>
-          <Text style={styles.backText}>← Back</Text>
+          <Text style={[styles.backText, worldId ? { color: getWorldAccent(worldId) } : null]}>← Back</Text>
         </Pressable>
-        <Text style={styles.headerTitle}>Monke Globe</Text>
+        <Text style={[styles.headerTitle, worldId ? { color: getWorldAccent(worldId) } : null]}>Monke Globe</Text>
         <View style={{ width: 60 }} />
       </View>
 

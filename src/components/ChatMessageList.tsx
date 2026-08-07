@@ -219,7 +219,18 @@ const ChatMessageListInner = React.forwardRef<FlashListRef<ChatMessage>, ChatMes
         renderItem={renderMessage as any}
         keyExtractor={keyExtractor}
         getItemType={getItemType as any}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[
+          styles.listContent,
+          // 2026-08-05: topInset/bottomInset were declared props that were
+          // never actually applied anywhere — the chat header and bottom
+          // input bar (both absolute-positioned overlays, see ChatScreen.tsx)
+          // had no corresponding reserved space in the list's own content,
+          // so the newest messages rendered underneath the input bar's blur
+          // instead of above it. This is `inverted`, so the visual bottom
+          // (bottomInset, the input bar) maps to paddingTop, and the visual
+          // top (topInset, the header) maps to paddingBottom.
+          { paddingTop: 8 + bottomInset, paddingBottom: 8 + topInset },
+        ]}
         inverted
         refreshing={refreshingChat}
         onRefresh={handleRefreshChat}

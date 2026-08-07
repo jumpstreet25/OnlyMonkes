@@ -136,24 +136,67 @@ export function useDm(peerInboxId: string) {
           async (raw: any) => {
             if (cancelled) return;
 
-            const rawContent = typeof raw.content === 'function' ? raw.content() : raw.content;
+            // Robust text extract — same shapes as streamAllMessages
+            // (string / {text} / nativeContent.text / fallback).
+            const { extractXmtpText, parseImageCaptionResponse, deliverCaptionResponse } =
+              await import('@/lib/imageCaption');
+            const rawContent: string | null = extractXmtpText(raw);
 
             // Strip the bot's `MSG:<name>:` envelope so prefix checks below
             // match both wrapped and bare structured payloads.
-            const innerContent: string = typeof rawContent === 'string'
+            const innerContent: string = rawContent
               ? (rawContent.startsWith('MSG:')
                   ? rawContent.slice(4).split(':').slice(1).join(':')
                   : rawContent)
               : '';
 
             // Detect typing signals from peer
-            if (typeof rawContent === 'string' && rawContent.startsWith('TYPING:')) {
+            if (rawContent && rawContent.startsWith('TYPING:')) {
               const typerId = rawContent.split(':')[1];
               if (typerId && typerId !== myInboxId) {
                 setPeerTyping(true);
                 if (typingTimeout.current) clearTimeout(typingTimeout.current);
                 typingTimeout.current = setTimeout(() => setPeerTyping(false), 4000);
               }
+              return;
+            }
+
+            // Caption: substring parse before startsWith checks (envelope-safe).
+            if (rawContent) {
+              const captionParsed = parseImageCaptionResponse(rawContent);
+              if (captionParsed) {
+                try {
+                  const { BOT_INBOX_IDS } = await import('@/lib/constants');
+                  const sender = raw.senderInboxId ?? '';
+                  if (BOT_INBOX_IDS.includes(sender)) {
+                    await deliverCaptionResponse(captionParsed.messageId, captionParsed.caption);
+                  }
+                } catch { /* swallow */ }
+                return;
+              }
+            }
+
+            // Bot may reply LOCATION_SYNC: on the DM when we request a roster
+            // (also broadcast to main chat). Apply pins without showing the
+            // protocol payload in the thread.
+            if (
+              rawContent &&
+              (rawContent.startsWith('LOCATION_SYNC:') ||
+                innerContent.startsWith('LOCATION_SYNC:'))
+            ) {
+              try {
+                const { BOT_INBOX_IDS } = await import('@/lib/constants');
+                const sender = raw.senderInboxId ?? '';
+                if (BOT_INBOX_IDS.includes(sender)) {
+                  const payload = (rawContent.startsWith('LOCATION_SYNC:')
+                    ? rawContent
+                    : innerContent
+                  ).slice('LOCATION_SYNC:'.length);
+                  const locs = JSON.parse(payload);
+                  const { applyLocationSync } = await import('@/lib/userProfile');
+                  applyLocationSync(locs as Record<string, { u?: string; loc?: string; ni?: string }>);
+                }
+              } catch { /* ignore */ }
               return;
             }
 
@@ -187,24 +230,7 @@ export function useDm(peerInboxId: string) {
               return;
             }
 
-            if (innerContent.startsWith('IMAGE_CAPTION_RESPONSE:')) {
-              try {
-                const { BOT_INBOX_IDS } = await import('@/lib/constants');
-                const sender = raw.senderInboxId ?? '';
-                if (!BOT_INBOX_IDS.includes(sender)) return;
-                const rest = innerContent.slice('IMAGE_CAPTION_RESPONSE:'.length);
-                const sepIdx = rest.indexOf(':');
-                if (sepIdx <= 0) return;
-                const messageId = rest.slice(0, sepIdx);
-                const caption = rest.slice(sepIdx + 1);
-                if (!caption) return;
-                const { storeCaptionResponse } = await import('@/lib/imageCaption');
-                await storeCaptionResponse(messageId, caption);
-                const { usePhotoReviewStore } = await import('@/store/photoReviewStore');
-                usePhotoReviewStore.getState().setCaption(messageId, caption);
-              } catch { /* swallow */ }
-              return;
-            }
+            // IMAGE_CAPTION_RESPONSE handled above via parseImageCaptionResponse.
 
             if (innerContent.startsWith('STREAK_CAPTION_RESPONSE:')) {
               try {

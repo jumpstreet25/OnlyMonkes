@@ -30,6 +30,7 @@ import { sendDmMessage } from "@/lib/xmtp";
 import * as Haptics from "expo-haptics";
 import { BlurView } from "expo-blur";
 import { getBlurProps, GLASS_CHROME_BG } from "@/lib/glassTheme";
+import { WorldGlassFill } from "@/components/WorldGlassFill";
 import { THEME, FONTS, getWorldBarTint, getWorldAccent } from "@/lib/constants";
 import { BotChannelIcon } from "@/components/BotChannelIcon";
 import { ErrorMessage } from "@/components/ErrorMessage";
@@ -370,9 +371,11 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
       {/* Header — matches Main Chat header layout exactly. Status-bar safe-
           area lives inside so the bg extends edge-to-edge behind the
           status bar (no themeBg gap above the chrome). */}
-      <View style={[styles.header, { borderBottomColor: themeBorder, paddingTop: insets.top, height: 100 + insets.top }]}>
-        {/* MonkeGlass — same treatment as ChatHeader. */}
-        <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />
+      <View style={[styles.header, { borderBottomColor: themeBorder, paddingTop: insets.top, height: 100 + insets.top, overflow: "hidden" }]}>
+        {/* Same MonkeGlass as MainChat bubbles + light chrome bar tint */}
+        {worldId ? <WorldGlassFill worldId={worldId} /> : (
+          <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />
+        )}
         <View style={[StyleSheet.absoluteFill, { backgroundColor: chromeBg }]} pointerEvents="none" />
         <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={8}>
           <Text style={styles.backIcon}>{"\u2039"}</Text>
@@ -419,7 +422,13 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
           a visibly heavier fill + border so "on" reads at a glance. Only
           rendered when this channel actually has a pill to show. */}
       {hasAutonomy && (
-        <View style={[styles.pillBand, { backgroundColor: chromeBg, borderBottomColor: themeBorder }]}>
+        <View style={[styles.pillBand, { backgroundColor: worldId ? "transparent" : chromeBg, borderBottomColor: themeBorder, overflow: "hidden" }]}>
+          {worldId ? (
+            <>
+              <WorldGlassFill worldId={worldId} showHighlight={false} />
+              <View style={[StyleSheet.absoluteFill, { backgroundColor: chromeBg }]} pointerEvents="none" />
+            </>
+          ) : null}
           {channelId === "trades" && (
             <Pressable
               onPress={handleLimitOrdersToggle}
@@ -436,18 +445,42 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
           )}
 
           <Pressable
-            onPress={() => {
-              if (autonomyEnrolled) {
-                router.push(`/dm/${BOT_INBOX_ID}` as any);
-              } else {
+            onPress={async () => {
+              // 2026-08-07: enrolled users were dumped into bot DM, then typed
+              // /autonomonke start and the bot said "use MonkeTrades" — loop.
+              // Not enrolled → wizard. Enrolled + paused → resume. Enrolled +
+              // active → open DM. Long-press always reopens the wizard.
+              if (!autonomyEnrolled) {
                 setShowAutonoMonkeModal(true);
+                return;
               }
+              const paused = automonkeStatus?.enrolled && !automonkeStatus?.active;
+              // If we don't have bot ground truth yet, still try resume —
+              // bot start/resume is idempotent for active wallets.
+              if (paused || automonkeStatus == null) {
+                try {
+                  const client = getXmtpClient();
+                  if (client) {
+                    const dm = await (client.conversations as any).findOrCreateDm(BOT_INBOX_ID);
+                    if (dm) {
+                      // resume if we know they're paused; status if unknown so
+                      // the pill + AUTOMONKE_STATUS self-correct before user
+                      // has to hunt for commands.
+                      const cmd = paused ? "/autonomonke resume" : "/autonomonke status";
+                      await sendDmMessage(dm, cmd, username);
+                    }
+                  }
+                } catch (err) {
+                  if (__DEV__) console.warn("[Autonomy:trades] resume/status DM failed:", (err as Error)?.message);
+                }
+              }
+              router.push(`/dm/${BOT_INBOX_ID}` as any);
             }}
             onLongPress={() => {
-              if (autonomyEnrolled) {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-                setShowAutonoMonkeModal(true);
-              }
+              // Always allow re-running the Activate wizard (reconfigure /
+              // re-enroll after a wipe / fix stale ✓ without DM limbo).
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+              setShowAutonoMonkeModal(true);
             }}
             delayLongPress={400}
             style={[styles.autonomyBtn, autonomyEnrolled && styles.autonomyBtnActive]}
@@ -486,8 +519,10 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
               one again closes it; tapping the other swaps content. Sports
               shows for Bets only; Source shows for Bets + Predictions. */}
           {(channelId === "bets" || channelId === "predictions") && (
-            <View style={[styles.filterBand, { borderBottomColor: themeBorder }]}>
-              <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />
+            <View style={[styles.filterBand, { borderBottomColor: themeBorder, overflow: "hidden" }]}>
+              {worldId ? <WorldGlassFill worldId={worldId} showHighlight={false} /> : (
+                <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />
+              )}
               <View style={[StyleSheet.absoluteFill, { backgroundColor: chromeBg }]} pointerEvents="none" />
               {channelId === "bets" && (
                 <Pressable
@@ -510,8 +545,10 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
 
           {/* Sports dropdown panel */}
           {openDropdown === "sports" && channelId === "bets" && (
-            <View style={[styles.dropdownPanel, { borderBottomColor: themeBorder }]}>
-              <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />
+            <View style={[styles.dropdownPanel, { borderBottomColor: themeBorder, overflow: "hidden" }]}>
+              {worldId ? <WorldGlassFill worldId={worldId} showHighlight={false} /> : (
+                <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />
+              )}
               <View style={[StyleSheet.absoluteFill, { backgroundColor: chromeBg }]} pointerEvents="none" />
               {SPORTS_LIST.map(({ key, label }) => {
                 const muted = mutedSports.includes(key);
@@ -536,8 +573,10 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
 
           {/* Source dropdown panel */}
           {openDropdown === "sources" && (channelId === "bets" || channelId === "predictions") && (
-            <View style={[styles.dropdownPanel, { borderBottomColor: themeBorder }]}>
-              <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />
+            <View style={[styles.dropdownPanel, { borderBottomColor: themeBorder, overflow: "hidden" }]}>
+              {worldId ? <WorldGlassFill worldId={worldId} showHighlight={false} /> : (
+                <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />
+              )}
               <View style={[StyleSheet.absoluteFill, { backgroundColor: chromeBg }]} pointerEvents="none" />
               {(["polymarket", "kalshi", "drift"] as const).map((src) => {
                 const muted = mutedAlertSources.includes(src);

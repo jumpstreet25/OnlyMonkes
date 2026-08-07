@@ -51,9 +51,10 @@ import { ChatInput } from "@/components/ChatInput";
 import { ChatSkeleton } from "@/components/SkeletonLoader";
 import type { ProfileTarget } from "@/components/UserProfileModal";
 import { router } from "expo-router";
+import { useIsFocused } from "@react-navigation/native";
 import { BlurView } from "expo-blur";
 import { getBlurProps, GLASS_CHROME_BG } from "@/lib/glassTheme";
-import { THEME, FONTS, SKR_MINT, getWorldBarTint, getWorldAccent } from "@/lib/constants";
+import { THEME, FONTS, SKR_MINT, getWorldBarTint, getWorldAccent, chromeAccentColor } from "@/lib/constants";
 import { loadUserProfile, getCachedProfile, getDeduplicatedUsers, cacheProfile } from "@/lib/userProfile";
 import { checkAndUpdateStreak } from "@/lib/streaks";
 import { claimDailyBananas, type ClaimResult } from "@/lib/bananaRewards";
@@ -119,6 +120,8 @@ import { ChatMessageList } from "@/components/ChatMessageList";
 
 export default function ChatScreen() {
   const insets = useSafeAreaInsets();
+  // Pause WorldLayer when this screen is covered by DMs/settings/etc.
+  const isFocused = useIsFocused();
   const netInfo = useNetInfo();
   const isOffline = netInfo.isConnected === false;
   const fetchAbortable = useAbortableFetch();
@@ -324,6 +327,17 @@ export default function ChatScreen() {
   // ─── XMTP connect + network-aware sync ───────────────────────────────────────
   useEffect(() => {
     initialize().then(async () => {
+      // 2026-08-06: profile backfill used to run only when GlobeScreen
+      // opened — so the header 🌍 count stayed at whatever this device had
+      // already cached (often ~3 on a device that missed old PROFILE_UPDATE
+      // live broadcasts) until the user happened to open the globe. Run it
+      // once after XMTP is up so Main Chat's pill converges toward the
+      // same ~18 monkes other devices show. Fire-and-forget — not on the
+      // critical path for chat render.
+      import("@/hooks/useXmtp").then(({ backfillProfileHistory }) => {
+        backfillProfileHistory().catch(() => {});
+      }).catch(() => {});
+
       const { justHitLegendary } = await checkAndUpdateStreak();
       const { loginStreak, bestStreak } = useAppStore.getState();
       updateBadgeStreak(loginStreak, bestStreak);
@@ -638,6 +652,24 @@ export default function ChatScreen() {
     }
   }, [isLoadingHistory, messages.length]);
 
+  // ─── Auto-scroll to newest message while parked at the bottom ───────────────
+  // messages[0] is the newest (inverted, newest-first). History back-fill
+  // (loadOlderMessages) appends at the END of the array, so it never changes
+  // messages[0] and never triggers this. A genuinely new incoming message
+  // changes messages[0] — only then, and only if the user hasn't scrolled up
+  // to read older messages, snap the list back to the visual bottom so it
+  // doesn't render hidden behind the input bar until a manual scroll.
+  const prevNewestIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    const newest = messages[0];
+    if (!newest) return;
+    const prevId = prevNewestIdRef.current;
+    prevNewestIdRef.current = newest.id;
+    if (prevId !== null && newest.id !== prevId && isNearBottomRef.current) {
+      setTimeout(() => flatListRef.current?.scrollToOffset({ offset: 0, animated: true }), 50);
+    }
+  }, [messages]);
+
   // ─── Send ────────────────────────────────────────────────────────────────────
   const handleSend = useCallback(async () => {
     // Synchronous re-entry guard — catches Seeker double-taps that race
@@ -883,8 +915,13 @@ export default function ChatScreen() {
       // ready by the time it's needed" pattern as before, just now feeding
       // the review modal live (via photoReviewStore) instead of a silent
       // background cache the user never sees until Share to X.
+      // Pass compressedUri so requestImageCaption can ship a small vision
+      // JPEG over XMTP (full chat base64 is often multi-MB and slow). The
+      // helper also polls the bot DM until the response lands in
+      // photoReviewStore — stream-only delivery used to leave the modal
+      // stuck on "Monke is thinking…" even after the bot sent a caption.
       import("@/lib/imageCaption").then(({ requestImageCaption }) => {
-        requestImageCaption(requestId, b64).catch(() => {});
+        requestImageCaption(requestId, b64, compressedUri).catch(() => {});
       });
     } catch (err: any) {
       Alert.alert("Camera error", err?.message ?? "Could not open camera.");
@@ -1016,6 +1053,7 @@ export default function ChatScreen() {
       await stickerReact(url, messageId);
     } catch (err) {
       if (__DEV__) console.warn("Sticker react failed:", err);
+      toast.error(`[dbg] sticker react failed: ${(err as Error)?.message ?? String(err)}`);
     }
   }, [stickerReact]);
 
@@ -1325,7 +1363,11 @@ export default function ChatScreen() {
   return (
     <ErrorBoundary fallbackMessage="Chat hit an error. Tap below to reload.">
       <KeyboardAvoidingView
-        style={[styles.container, { backgroundColor: themeBg }]}
+        // 2026-08-06: when a Chat World is equipped the solid themeBg fill
+        // sat UNDER WorldLayer but still showed through any translucent
+        // gaps as a flat slab (and on some Android window resizes flashed
+        // opaque). Transparent root lets the world plate be the only bg.
+        style={[styles.container, { backgroundColor: myShopStyles?.worldId ? "transparent" : themeBg }]}
         // 2026-07-24: "height" on Android double-compensates with the
         // Activity's own windowSoftInputMode="adjustResize" (AndroidManifest)
         // — both resize the container for the keyboard independently, and
@@ -1337,8 +1379,9 @@ export default function ChatScreen() {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         keyboardVerticalOffset={0}
       >
-        {/* Chat World background (renders behind everything when equipped) */}
-        <WorldLayer active={!drawerOpen} />
+        {/* Chat World background — pause effects while drawer (Menu/Shop) is
+            open or this screen is not focused (DMs / other routes on top). */}
+        <WorldLayer active={!drawerOpen && isFocused} />
 
         {/* Header — 2026-07-24: absolute overlay (was a normal flex sibling
             taking its own row of layout space) so the message list below
@@ -1627,16 +1670,17 @@ export default function ChatScreen() {
             edge-to-edge behind the Android nav bar / iOS home indicator —
             no black themeBg gap below. */}
         {(() => {
-          // Per-world tappable accent (v29). When no PFP theme override,
-          // tappable chrome (SKR price btn, Floor btn, Help Support text)
-          // adopts the world's accent — warm honey gold for Banana Grove,
-          // neon pink for Cyberpunk, gold for Trading Floor. PFP theme
-          // override (if user has an NFT-color theme equipped) still
-          // takes precedence.
+          // Support-bar chrome: World accent when a world is equipped
+          // (same for every monke on that world). PFP Full Theme must not
+          // recolor this bar while a world is active — see chromeAccentColor.
           const worldId = myShopStyles?.worldId as string | undefined;
           const worldAccent = worldId ? getWorldAccent(worldId) : null;
-          const useWorldAccent = !hasThemeOverride && worldAccent;
-          const accent = hasThemeOverride ? themeAccent : (worldAccent ?? null);
+          const useWorldAccent = !!worldAccent;
+          const accent = chromeAccentColor(
+            hasThemeOverride,
+            themeAccent,
+            worldId,
+          );
           const accentBtnStyle = accent ? { backgroundColor: accent + '1A', borderColor: accent + '33' } : null;
           const accentTextStyle = accent ? { color: accent } : null;
           const accentSupportTextStyle = accent ? { color: accent + '99' } : null;
@@ -1662,7 +1706,6 @@ export default function ChatScreen() {
                   style={({ pressed }) => [styles.floorBtn, accentBtnStyle, pressed && { opacity: 0.7 }]}
                   hitSlop={6}
                 >
-                  <BlurView {...getBlurProps()} style={[StyleSheet.absoluteFill, styles.floorBtnBlur]} />
                   <Text style={[styles.floorBtnText, accentTextStyle]}>$SKR {skrPrice}</Text>
                 </Pressable>
               )}
@@ -1682,7 +1725,6 @@ export default function ChatScreen() {
                   style={({ pressed }) => [styles.floorBtn, accentBtnStyle, pressed && { opacity: 0.7 }]}
                   hitSlop={6}
                 >
-                  <BlurView {...getBlurProps()} style={[StyleSheet.absoluteFill, styles.floorBtnBlur]} />
                   <Text style={[styles.floorBtnText, accentTextStyle]}>Floor {floorPrice}</Text>
                 </Pressable>
               )}

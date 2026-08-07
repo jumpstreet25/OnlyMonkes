@@ -13,7 +13,6 @@ import {
   StyleSheet,
   Pressable,
   ScrollView,
-  Alert,
   ActivityIndicator,
   Dimensions,
   Modal,
@@ -23,13 +22,16 @@ import * as Haptics from "expo-haptics";
 import { toast } from "sonner-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { playSound } from "@/lib/sounds";
-import { THEME, FONTS, DEV_WALLET } from "@/lib/constants";
+import { THEME, FONTS, DEV_WALLET, getWorldBarTint, getWorldAccent } from "@/lib/constants";
+import { GLASS_BORDER } from "@/lib/glassTheme";
+import { WorldGlassFill } from "@/components/WorldGlassFill";
 import { IS_IMMERSIVE_SHELL } from "@/lib/immersiveStatusBar";
 import { useAppStore } from "@/store/appStore";
 import { spendBananas, addBananas } from "@/lib/bananaRewards";
+import { showGlassAlert } from "@/lib/glassAlert";
 import { sendShopPaymentMulti, type ShopCurrency } from "@/lib/solana";
 import { CurrencyPickerSheet } from "@/components/CurrencyPickerSheet";
-import { WorldMiniPreview } from "@/components/worlds/WorldLayer";
+import { WorldMiniPreview, WorldLayer } from "@/components/worlds/WorldLayer";
 import {
   getAvailableItems, loadShopState, saveShopState, addOwnedItem, equipItem, unequipCategory, unequipItem,
   getTierInfo, getCategoryName, getEquippedStyles, PURCHASE_DISCLAIMER, bindPfpItemToNft,
@@ -89,7 +91,7 @@ function getEffectSummary(item: ShopItem): string {
       const wid = item.style.worldId as string | undefined;
       if (wid === "world_banana_grove") return "Animated jungle backdrop with bananas drifting down behind your chat";
       if (wid === "world_solana_cyberpunk") return "Purple-to-teal Saga grid backdrop with a slow neon drift";
-      if (wid === "world_trading_floor") return "Dark room with a candlestick chart layer drifting behind your messages";
+      if (wid === "world_trading_floor") return "Jungle floor where five dirty-green Monke Core candles ripped through the earth — heavy waterfall is the only motion";
       return item.description;
     }
     default: return item.description;
@@ -478,6 +480,7 @@ interface BananaShopModalProps {
 
 export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
   const bananaBalance = useAppStore(s => s.bananaBalance);
+  const worldId = useAppStore(s => s.shopStyles?.worldId) as string | undefined;
   const [shopState, setShopState] = useState<ShopState | null>(null);
   const [purchasing, setPurchasing] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState<ShopCategory | "all">("all");
@@ -526,7 +529,18 @@ export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
         }).catch(() => {});
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       } else {
-        const updated = await equipItem(item.id);
+        let updated = await equipItem(item.id);
+        // 2026-08-06: equipping a world left whatever Tier-4 theme was
+        // equipped from before (possibly ages ago, easy to forget) silently
+        // overriding the new world's own accent/palette on every screen
+        // that checks themeOverrides first — reported as "I never equipped
+        // Matrix after enabling Frost Grove" but it was still winning.
+        // World equip should be a clean slate: the world's own look loads,
+        // and any further customization (re-equipping a theme included) is
+        // then an explicit, fresh choice via the shop, not an inherited one.
+        if (item.category === "world") {
+          updated = await unequipCategory("theme");
+        }
         setShopState(updated);
         getEquippedStyles().then(s => {
           if (s.pfpAuraEnabled) s.pfpAuraColor = (s.glowColor as string) ?? useAppStore.getState().nftDominantColor ?? undefined;
@@ -545,7 +559,7 @@ export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
     const isDevForBananaCheck = myWalletForCheck === DEV_WALLET;
 
     if (!isDevForBananaCheck && bananaBalance < item.bananaCost) {
-      Alert.alert("Not enough bananas", `You need ${item.bananaCost} 🍌 but have ${bananaBalance}. Keep logging in daily!`);
+      showGlassAlert("Not enough bananas", `You need ${item.bananaCost} 🍌 but have ${bananaBalance}. Keep logging in daily!`);
       return;
     }
 
@@ -553,7 +567,7 @@ export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
     // Show disclaimer Alert once on first-ever purchase, then open picker.
     const isFirstPurchase = shopState.owned.length === 0;
     if (isFirstPurchase) {
-      Alert.alert(
+      showGlassAlert(
         `Buy ${item.name}?`,
         `${item.bananaCost} 🍌 + $${item.usdCost.toFixed(2)}\n\n${PURCHASE_DISCLAIMER}`,
         [
@@ -595,25 +609,51 @@ export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
       statusBarTranslucent
     >
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent hidden={IS_IMMERSIVE_SHELL} />
-      <View style={styles.fullRoot}>
-        {/* Glass background */}
-        <LinearGradient
-          colors={["rgba(12,12,22,1)", "rgba(8,8,18,1)", "rgba(5,5,12,1)"]}
-          style={StyleSheet.absoluteFill}
-        />
-        {/* Subtle top gradient shimmer */}
+      {/* 2026-08-06: fullRoot's solid #0A0A0F must also drop when a world is
+          equipped — WorldLayer mounts as a sibling under it, but an opaque
+          root fill still paints the "void" around any transparent cards and
+          flashes black during world art load. */}
+      <View style={[styles.fullRoot, worldId ? { backgroundColor: "transparent" } : null]}>
+        {/* 2026-08-06: was a fully opaque (alpha=1) LinearGradient over a
+            solid #0A0A0F fullRoot — no world could ever show through this
+            regardless of how transparent individual item cards were. Skip
+            it entirely when a world is equipped and mount WorldLayer
+            instead, same pattern as MenuDrawer/DM screens. */}
+        {worldId ? (
+          <View style={StyleSheet.absoluteFill} pointerEvents="none">
+            {/* 2026-08-07: pause world effects while shop is open — static
+                plate still shows through glass cards, no waterfall/rain/etc. */}
+            <WorldLayer active={false} />
+          </View>
+        ) : (
+          <LinearGradient
+            colors={["rgba(12,12,22,1)", "rgba(8,8,18,1)", "rgba(5,5,12,1)"]}
+            style={StyleSheet.absoluteFill}
+          />
+        )}
+        {/* Subtle top gradient shimmer — harmless over a world too, kept regardless */}
         <LinearGradient
           colors={["rgba(255,213,79,0.06)", "rgba(255,213,79,0.02)", "transparent"]}
           style={styles.topShimmer}
         />
 
         {/* Header */}
-        <View style={styles.header}>
-          <Pressable onPress={onClose} hitSlop={12} style={styles.backBtn}>
+        <View style={[styles.header, worldId ? { overflow: "hidden" } : null]}>
+          {worldId ? (
+            <>
+              {/* Same MonkeGlass stack as MainChat bubbles + light world bar tint */}
+              <WorldGlassFill worldId={worldId} />
+              <View
+                style={[StyleSheet.absoluteFill, { backgroundColor: getWorldBarTint(worldId) }]}
+                pointerEvents="none"
+              />
+            </>
+          ) : null}
+          <Pressable onPress={onClose} hitSlop={12} style={[styles.backBtn, worldId ? { backgroundColor: "rgba(255,255,255,0.08)" } : null]}>
             <Text style={styles.backText}>←</Text>
           </Pressable>
           <View style={styles.titleWrap}>
-            <Text style={styles.title}>Banana Shop</Text>
+            <Text style={[styles.title, worldId ? { color: getWorldAccent(worldId), textShadowColor: getWorldAccent(worldId) + "59" } : null]}>Banana Shop</Text>
             <Text style={styles.subtitle}>{items.length} customizations</Text>
           </View>
           <View style={styles.balancePill}>
@@ -631,10 +671,29 @@ export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
           {categories.map(c => (
             <Pressable
               key={c.key}
-              style={[styles.catPill, activeCategory === c.key && styles.catPillActive]}
+              style={[
+                styles.catPill,
+                worldId ? { backgroundColor: "transparent", borderColor: "rgba(255,255,255,0.10)", overflow: "hidden" } : null,
+                activeCategory === c.key && (worldId ? { borderColor: getWorldAccent(worldId) + "40" } : styles.catPillActive),
+              ]}
               onPress={() => setActiveCategory(c.key)}
             >
-              <Text style={[styles.catText, activeCategory === c.key && styles.catTextActive]}>
+              {worldId ? (
+                <>
+                  {/* No BlurView on category chips — static tint only */}
+                  <WorldGlassFill worldId={worldId} blur={false} showHighlight={false} />
+                  {activeCategory === c.key ? (
+                    <View
+                      style={[StyleSheet.absoluteFill, { backgroundColor: getWorldAccent(worldId) + "20" }]}
+                      pointerEvents="none"
+                    />
+                  ) : null}
+                </>
+              ) : null}
+              <Text style={[
+                styles.catText,
+                activeCategory === c.key && (worldId ? { color: getWorldAccent(worldId) } : styles.catTextActive),
+              ]}>
                 {c.label}
               </Text>
             </Pressable>
@@ -647,17 +706,20 @@ export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
           {/* Banana Chest */}
           {activeCategory === "all" && (
             <Pressable
-              style={styles.crateCard}
+              style={[
+                styles.crateCard,
+                worldId ? { backgroundColor: "transparent", borderColor: "rgba(255,213,79,0.22)" } : null,
+              ]}
               onPress={async () => {
                 if (spinningCrate) return;
                 const cost = getCrateCost();
                 const crateWallet = useAppStore.getState().wallet?.address;
                 const isDevCrate = crateWallet === DEV_WALLET;
                 if (!isDevCrate && bananaBalance < cost) {
-                  Alert.alert("Not enough bananas", `You need ${cost} 🍌 to open a Banana Chest.`);
+                  showGlassAlert("Not enough bananas", `You need ${cost} 🍌 to open a Banana Chest.`);
                   return;
                 }
-                Alert.alert("Open Banana Chest?", `Spend ${cost} 🍌 for a random prize?\n\nPrizes: Banana bonus, 2x multiplier, free shop items, legendary exclusives!`, [
+                showGlassAlert("Open Banana Chest?", `Spend ${cost} 🍌 for a random prize?\n\nPrizes: Banana bonus, 2x multiplier, free shop items, legendary exclusives!`, [
                   { text: "Cancel", style: "cancel" },
                   { text: "Open!", onPress: async () => {
                     setSpinningCrate(true);
@@ -681,8 +743,18 @@ export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
                 ]);
               }}
             >
+              {/* 2026-08-07: real MonkeGlass — a single BlurView here is
+                  cheap (this is the only card in "all", not a repeated grid
+                  item), so it gets the same per-panel blur as MenuDrawer
+                  tiles / chat bubbles instead of a flat tint over sharp
+                  world art. */}
+              {worldId ? <WorldGlassFill worldId={worldId} blur={false} /> : null}
               <LinearGradient
-                colors={["rgba(255,213,79,0.08)", "rgba(255,213,79,0.02)"]}
+                colors={
+                  worldId
+                    ? ["rgba(255,213,79,0.14)", "rgba(255,213,79,0.04)"]
+                    : ["rgba(255,213,79,0.08)", "rgba(255,213,79,0.02)"]
+                }
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
                 style={[StyleSheet.absoluteFill, { borderRadius: 16 }]}
@@ -766,7 +838,20 @@ export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
                         key={item.id}
                         style={[
                           styles.itemCard,
-                          { borderColor: owned ? cardAccent + "30" : "rgba(255,255,255,0.06)" },
+                          // 2026-08-07: real per-card MonkeGlass blur — was a
+                          // flat GLASS_BG tint with no BlurView (a 2-column
+                          // grid of ~38 blur surfaces was flagged as a scroll
+                          // FPS risk on Seeker). Requested explicitly despite
+                          // that tradeoff for visual consistency with
+                          // MenuDrawer/chat bubbles; re-flatten back to the
+                          // tint-only version here if scrolling the full
+                          // "All" grid turns out to actually drop frames.
+                          worldId
+                            ? {
+                                backgroundColor: "transparent",
+                                borderColor: owned ? cardAccent + "55" : GLASS_BORDER,
+                              }
+                            : { borderColor: owned ? cardAccent + "30" : "rgba(255,255,255,0.06)" },
                           equipped && {
                             borderColor: "#FFD54F50",
                             shadowColor: "#FFD54F",
@@ -779,13 +864,17 @@ export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
                         onPress={() => setPreviewItem(item)}
                         disabled={isBuying}
                       >
+                        {/* blur=false: N-item grid of BlurViews was the shop scroll lag */}
+                        {worldId ? <WorldGlassFill worldId={worldId} blur={false} /> : null}
                         <LinearGradient
                           colors={
                             equipped
-                              ? ["rgba(255,213,79,0.06)", "rgba(255,213,79,0.02)"]
+                              ? ["rgba(255,213,79,0.10)", "rgba(255,213,79,0.03)"]
                               : owned
-                                ? ["rgba(108,180,238,0.04)", "rgba(108,180,238,0.01)"]
-                                : ["rgba(255,255,255,0.03)", "rgba(255,255,255,0.01)"]
+                                ? ["rgba(108,180,238,0.08)", "rgba(108,180,238,0.02)"]
+                                : worldId
+                                  ? ["rgba(248,248,255,0.06)", "rgba(0,0,0,0.10)"]
+                                  : ["rgba(255,255,255,0.03)", "rgba(255,255,255,0.01)"]
                           }
                           style={[StyleSheet.absoluteFill, { borderRadius: 14 }]}
                         />
@@ -882,7 +971,7 @@ export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
             // Dev wallet skips banana spend AND crypto payment (test path).
             if (!isDevWallet) {
               const spent = await spendBananas(item.bananaCost);
-              if (!spent) { Alert.alert("Error", "Failed to deduct bananas"); return; }
+              if (!spent) { showGlassAlert("Error", "Failed to deduct bananas"); return; }
               useAppStore.getState().setBananaBalance(bananaBalance - item.bananaCost);
 
               try {
@@ -896,6 +985,9 @@ export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
 
             const updated = await addOwnedItem(item.id);
             updated.equipped[item.category] = item.id;
+            // Same clean-slate rule as the equip-toggle path above: buying a
+            // new world shouldn't inherit whatever theme was equipped before.
+            if (item.category === "world") updated.equipped.theme = null;
             await saveShopState(updated);
             setShopState(updated);
 
@@ -916,7 +1008,7 @@ export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
             playSound("purchase");
 
             // Show success immediately — receipt minting runs in background.
-            Alert.alert("Purchased!", `${item.name} is now equipped.`);
+            showGlassAlert("Purchased!", `${item.name} is now equipped.`);
 
             // Auto-mint cNFT receipt as a permanent on-chain log entry tied
             // to the buyer wallet. Non-blocking, fail-silent: the purchase is
@@ -934,7 +1026,7 @@ export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
                 .catch(() => { /* silent */ });
             }
           } catch (err: any) {
-            Alert.alert("Purchase failed", err?.message ?? "Please try again");
+            showGlassAlert("Purchase failed", err?.message ?? "Please try again");
           } finally {
             setPurchasing(null);
             setPreviewItem(null);
@@ -1144,6 +1236,8 @@ const styles = StyleSheet.create({
   },
   itemCard: {
     width: (SCREEN_W - 42) / 2,
+    // Default (no world) — near-flat dark tile. World-equipped path
+    // overrides to GLASS_BG + GLASS_BORDER at render time.
     backgroundColor: "rgba(255,255,255,0.02)",
     borderRadius: 14,
     borderWidth: 0.75,
@@ -1187,7 +1281,7 @@ const styles = StyleSheet.create({
   itemDesc: {
     fontFamily: FONTS.body,
     fontSize: 10,
-    color: THEME.textFaint,
+    color: THEME.textMuted,
     lineHeight: 14,
   },
   itemCatPill: {

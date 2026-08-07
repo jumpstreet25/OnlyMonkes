@@ -1,30 +1,87 @@
 /**
  * LeaderboardView — Top Traders scorecard.
  *
- * 2026-07-31: replaced the old Activity/Clout leaderboard (community
- * engagement metrics) with a leaderboard of the top Saga Monkes holders
- * who are ALSO consistently profitable traders — sourced from
- * Monke_Eliza's smart-money pipeline (holder discovery -> on-chain vet ->
- * weekly refresh) via the onlymonkes-actions worker's /api/top-traders.
+ * Two sections:
+ *   1. AI Agent #9385 — pinned bot books (Entered vs Monitored), with bot PFP
+ *   2. Community — Saga Monkes holders active this week (smart-money pipeline)
  *
- * Privacy: entries are anonymous ranks only — win rate % and this week's
- * gain % — never a wallet address, never a $/SOL amount. The bot-side
- * payload validator enforces this before it ever reaches the worker, and
- * this screen has no wallet identity to attach even if it wanted to (these
- * are external holder wallets, not necessarily OnlyMonkes app users).
+ * Anonymous ranks + win rate + weekly gain %; optional public NFT/bot pfp
+ * (never a wallet address).
  */
 
-import React, { useEffect, useState, useCallback } from "react";
-import { View, Text, StyleSheet, RefreshControl, ScrollView } from "react-native";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
+import { View, Text, StyleSheet, RefreshControl, ScrollView, Image } from "react-native";
 import { THEME, FONTS } from "@/lib/constants";
-import { fetchTopTraders, type TopTrader } from "@/lib/topTraders";
+import { fetchTopTraders, isBotTrader, type TopTrader } from "@/lib/topTraders";
+import { useWorldGlassCardStyle } from "@/components/worlds/WorldScreenShell";
+import { WorldGlassFill } from "@/components/WorldGlassFill";
+import { useAppStore } from "@/store/appStore";
 
 const MEDALS = ["🥇", "🥈", "🥉"];
+
+function botBookLabel(t: TopTrader): string {
+  if (t.kind === "bot_entered") return "Entered trades";
+  if (t.kind === "bot_monitored") return "Monitored book";
+  return "Bot";
+}
+
+function botBookHint(t: TopTrader): string {
+  if (t.kind === "bot_entered") {
+    return "AutonoMonke positions the bot opened";
+  }
+  if (t.kind === "bot_monitored") {
+    return "Round-trips on wallets the bot tracks";
+  }
+  return "";
+}
+
+function TraderRow({
+  t,
+  worldId,
+  cardStyle,
+  rankLabel,
+  subtitle,
+}: {
+  t: TopTrader;
+  worldId?: string;
+  cardStyle: object;
+  rankLabel: string;
+  subtitle: string;
+}) {
+  const bot = isBotTrader(t);
+  return (
+    <View style={[styles.row, cardStyle, bot && styles.botRow]}>
+      {worldId ? <WorldGlassFill worldId={worldId} blur={false} showHighlight={false} /> : null}
+      <Text style={styles.rank}>{rankLabel}</Text>
+      {t.nftImage ? (
+        <Image source={{ uri: t.nftImage }} style={[styles.pfp, bot && styles.botPfp]} />
+      ) : (
+        <View style={[styles.pfp, styles.pfpFallback]}>
+          <Text style={{ fontSize: 16 }}>{bot ? "🤖" : "🐒"}</Text>
+        </View>
+      )}
+      <View style={styles.info}>
+        <Text style={styles.username} numberOfLines={1}>
+          {t.monkeName?.trim() || (bot ? "AI Agent #9385" : `Trader #${t.rank}`)}
+        </Text>
+        <Text style={styles.stats} numberOfLines={1}>
+          {subtitle}
+        </Text>
+      </View>
+      <Text style={[styles.score, t.weeklyGainPct < 0 && styles.scoreNegative]}>
+        {t.weeklyGainPct >= 0 ? "+" : ""}
+        {t.weeklyGainPct}%
+      </Text>
+    </View>
+  );
+}
 
 export function LeaderboardView() {
   const [traders, setTraders] = useState<TopTrader[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const cardStyle = useWorldGlassCardStyle();
+  const worldId = useAppStore((s) => s.shopStyles?.worldId) as string | undefined;
 
   const load = useCallback(async (forceRefresh = false) => {
     const entries = await fetchTopTraders(forceRefresh);
@@ -32,7 +89,9 @@ export function LeaderboardView() {
     setLoading(false);
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -40,13 +99,21 @@ export function LeaderboardView() {
     setRefreshing(false);
   };
 
+  const { botRows, holderRows } = useMemo(() => {
+    const bots = traders.filter(isBotTrader);
+    const holders = traders.filter((t) => !isBotTrader(t));
+    return { botRows: bots, holderRows: holders };
+  }, [traders]);
+
   return (
     <ScrollView
       style={styles.root}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={THEME.textMuted} />}
     >
       <Text style={styles.header}>TOP TRADERS</Text>
-      <Text style={styles.subheader}>Saga Monkes holders with the best trading track record</Text>
+      <Text style={styles.subheader}>
+        Bot books + Saga Monkes holders — win rate & weekly gain
+      </Text>
 
       {loading ? (
         <View style={styles.empty}>
@@ -54,28 +121,59 @@ export function LeaderboardView() {
         </View>
       ) : traders.length === 0 ? (
         <View style={styles.empty}>
-          <Text style={styles.emptyText}>No data yet — check back soon 🐒</Text>
+          <Text style={styles.emptyText}>
+            No active traders this week yet — check back after the next refresh 🐒
+          </Text>
         </View>
       ) : (
         <>
-          {traders.map((t) => (
-            <View key={t.rank} style={styles.row}>
-              <Text style={styles.rank}>
-                {t.rank <= 3 ? MEDALS[t.rank - 1] : `${t.rank}.`}
+          {botRows.length > 0 ? (
+            <>
+              <Text style={styles.sectionLabel}>AI AGENT #9385</Text>
+              {botRows.map((t) => (
+                <TraderRow
+                  key={t.kind ?? t.monkeName ?? "bot"}
+                  t={t}
+                  worldId={worldId}
+                  cardStyle={cardStyle}
+                  rankLabel={t.kind === "bot_entered" ? "⚡" : "👁"}
+                  subtitle={`${t.winRatePct}% win rate · ${botBookLabel(t)}`}
+                />
+              ))}
+              <Text style={styles.botHint}>
+                {botRows.map(botBookHint).filter(Boolean).join(" · ")}
               </Text>
-              <View style={[styles.pfp, styles.pfpFallback]}>
-                <Text style={{ fontSize: 16 }}>🐒</Text>
-              </View>
-              <View style={styles.info}>
-                <Text style={styles.username}>Trader #{t.rank}</Text>
-                <Text style={styles.stats}>{t.winRatePct}% win rate</Text>
-              </View>
-              <Text style={[styles.score, t.weeklyGainPct < 0 && styles.scoreNegative]}>
-                {t.weeklyGainPct >= 0 ? "+" : ""}{t.weeklyGainPct}%
+            </>
+          ) : null}
+
+          {holderRows.length > 0 ? (
+            <>
+              <Text style={[styles.sectionLabel, botRows.length > 0 && styles.sectionLabelSpaced]}>
+                COMMUNITY
+              </Text>
+              {holderRows.map((t) => (
+                <TraderRow
+                  key={`h-${t.rank}-${t.monkeName ?? ""}`}
+                  t={t}
+                  worldId={worldId}
+                  cardStyle={cardStyle}
+                  rankLabel={t.rank <= 3 ? MEDALS[t.rank - 1] : `${t.rank}.`}
+                  subtitle={`${t.winRatePct}% win rate`}
+                />
+              ))}
+            </>
+          ) : botRows.length > 0 ? (
+            <View style={styles.empty}>
+              <Text style={styles.emptyText}>
+                No community traders with closed trades this week yet
               </Text>
             </View>
-          ))}
-          <Text style={styles.formula}>Weekly gain % · ranked by this week's performance · refreshed weekly</Text>
+          ) : null}
+
+          <Text style={styles.formula}>
+            Bot: all-time win rate · weekly avg gain when available · Community: active this week,
+            ranked by weekly gain
+          </Text>
         </>
       )}
     </ScrollView>
@@ -102,23 +200,82 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
 
-  row: {
-    flexDirection: "row", alignItems: "center", gap: 10,
-    paddingVertical: 10, paddingHorizontal: 12,
-    backgroundColor: "rgba(18,18,30,0.8)", borderRadius: 14,
-    borderWidth: 0.75, borderColor: "rgba(255,255,255,0.06)",
+  sectionLabel: {
+    fontFamily: FONTS.mono,
+    fontSize: 10,
+    color: THEME.textMuted,
+    letterSpacing: 1.5,
+    fontWeight: "700",
     marginBottom: 8,
+    marginTop: 2,
   },
-  rank: { fontFamily: FONTS.display, fontSize: 16, width: 28, textAlign: "center", color: THEME.text },
-  pfp: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center" },
-  pfpFallback: { backgroundColor: "rgba(153,69,255,0.15)" },
+  sectionLabelSpaced: {
+    marginTop: 14,
+  },
+  botHint: {
+    fontFamily: FONTS.mono,
+    fontSize: 9,
+    color: THEME.textFaint,
+    textAlign: "center",
+    marginBottom: 4,
+    marginTop: -2,
+  },
+
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    borderWidth: 0.75,
+    marginBottom: 8,
+    overflow: "hidden",
+  },
+  botRow: {
+    borderColor: "rgba(153,69,255,0.45)",
+  },
+  rank: {
+    fontFamily: FONTS.display,
+    fontSize: 16,
+    width: 28,
+    textAlign: "center",
+    color: THEME.text,
+  },
+  pfp: { width: 34, height: 34, borderRadius: 17 },
+  botPfp: {
+    borderWidth: 1.5,
+    borderColor: "rgba(153,69,255,0.7)",
+  },
+  pfpFallback: {
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(153,69,255,0.15)",
+  },
   info: { flex: 1 },
   username: { fontFamily: FONTS.bodySemi, fontSize: 13, color: THEME.text },
   stats: { fontFamily: FONTS.mono, fontSize: 10, color: THEME.textMuted, marginTop: 1 },
-  score: { fontFamily: FONTS.display, fontSize: 16, color: "#44ff88", minWidth: 52, textAlign: "right" },
+  score: {
+    fontFamily: FONTS.display,
+    fontSize: 16,
+    color: "#44ff88",
+    minWidth: 52,
+    textAlign: "right",
+  },
   scoreNegative: { color: "#FF6B6B" },
-  formula: { fontFamily: FONTS.mono, fontSize: 9, color: THEME.textFaint, textAlign: "center", marginTop: 6 },
+  formula: {
+    fontFamily: FONTS.mono,
+    fontSize: 9,
+    color: THEME.textFaint,
+    textAlign: "center",
+    marginTop: 6,
+  },
 
   empty: { padding: 20, alignItems: "center" },
-  emptyText: { fontFamily: FONTS.body, fontSize: 13, color: THEME.textMuted, textAlign: "center" },
+  emptyText: {
+    fontFamily: FONTS.body,
+    fontSize: 13,
+    color: THEME.textMuted,
+    textAlign: "center",
+  },
 });

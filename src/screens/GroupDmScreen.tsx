@@ -1,9 +1,12 @@
 import React, { useRef, useCallback, useState, useEffect, useMemo } from 'react';
 import { View, FlatList, StyleSheet, Text, Pressable, ActivityIndicator, Keyboard } from 'react-native';
+import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { THEME, FONTS } from '@/lib/constants';
+import { THEME, FONTS, getWorldBarTint, getWorldAccent } from '@/lib/constants';
 import { useThemeColor } from '@/lib/shopTheme';
+import { getBlurProps, GLASS_CHROME_BG } from '@/lib/glassTheme';
+import { WorldLayer } from '@/components/worlds/WorldLayer';
 import { getCachedProfile, useProfileVersion } from '@/lib/userProfile';
 import { useGroupDm } from '@/hooks/useGroupDm';
 import { MessageBubble } from '@/components/MessageBubble';
@@ -16,7 +19,8 @@ import { isMineInbox } from '@/lib/inboxLinking';
 
 export default function GroupDmScreen({ groupId }: { groupId: string }) {
   const insets = useSafeAreaInsets();
-  const { myInboxId } = useAppStore();
+  const { myInboxId, shopStyles } = useAppStore();
+  const worldId = shopStyles?.worldId as string | undefined;
   const { messages, loading, error, sending, send, sendTyping, typingUsers } = useGroupDm(groupId);
   const [inputText, setInputText] = useState('');
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
@@ -76,11 +80,22 @@ export default function GroupDmScreen({ groupId }: { groupId: string }) {
   }, []);
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top, backgroundColor: themeBg }]}>
-      {/* Header */}
-      <View style={[styles.header, { borderBottomColor: themeBorder }]}>
+    <View style={[styles.container, { paddingTop: insets.top }, worldId ? null : { backgroundColor: themeBg }]}>
+      {/* 2026-08-07: static world only while Group DM is open */}
+      {worldId ? (
+        <View style={StyleSheet.absoluteFill} pointerEvents="none">
+          <WorldLayer active={false} />
+        </View>
+      ) : null}
+
+      {/* Header — always-on MonkeGlass (see DmScreen's matching fix) so
+          this reads as the same chrome family as ChatHeader/BotChannelScreen/
+          ChatInput instead of only blurring when a world is equipped. */}
+      <View style={styles.header}>
+        <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} pointerEvents="none" />
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: worldId ? getWorldBarTint(worldId) : GLASS_CHROME_BG, borderBottomWidth: worldId ? 0 : 1, borderBottomColor: themeBorder }]} pointerEvents="none" />
         <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={8}>
-          <Text style={styles.backArrow}>←</Text>
+          <Text style={[styles.backArrow, worldId ? { color: getWorldAccent(worldId) } : null]}>←</Text>
         </Pressable>
         <Text style={styles.peerName} numberOfLines={1}>{groupName}</Text>
       </View>
@@ -182,8 +197,7 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingHorizontal: 16,
     paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: THEME.border,
+    overflow: 'hidden',
   },
   backBtn: { padding: 4 },
   backArrow: { fontSize: 22, color: THEME.text },

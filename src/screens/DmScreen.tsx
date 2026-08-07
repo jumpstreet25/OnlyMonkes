@@ -1,10 +1,13 @@
 import React, { useRef, useCallback, useState, useEffect, useMemo } from 'react';
 import { View, StyleSheet, Text, Pressable, ActivityIndicator, Keyboard } from 'react-native';
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
+import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { THEME, FONTS, BOT_INBOX_IDS } from '@/lib/constants';
+import { THEME, FONTS, BOT_INBOX_IDS, getWorldBarTint, getWorldAccent } from '@/lib/constants';
 import { useThemeColor } from '@/lib/shopTheme';
+import { getBlurProps, GLASS_CHROME_BG } from '@/lib/glassTheme';
+import { WorldLayer } from '@/components/worlds/WorldLayer';
 import { BotCommandTicker } from '@/components/BotCommandTicker';
 import { getCachedProfile, useProfileVersion } from '@/lib/userProfile';
 import { useDm } from '@/hooks/useDm';
@@ -34,7 +37,8 @@ type FeedItem =
 
 export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
   const insets = useSafeAreaInsets();
-  const { myInboxId } = useAppStore();
+  const { myInboxId, shopStyles } = useAppStore();
+  const worldId = shopStyles?.worldId as string | undefined;
   const [retryKey, setRetryKey] = useState(0);
   const { messages, loading, error, sending, send, react, sendTyping, typingUsers } = useDm(peerInboxId);
   const [inputText, setInputText] = useState('');
@@ -143,11 +147,26 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
   const feedInverted = useMemo(() => feed.slice().reverse(), [feed]);
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top, backgroundColor: themeBg }]}>
-      {/* Header */}
-      <View style={[styles.header, { borderBottomColor: themeBorder }]}>
+    <View style={[styles.container, { paddingTop: insets.top }, worldId ? null : { backgroundColor: themeBg }]}>
+      {/* 2026-08-06: equipped world behind DM chrome.
+          2026-08-07: active=false — static plate only; pause waterfall/rain
+          etc. while any DM is open (same for Menu/Shop). */}
+      {worldId ? (
+        <View style={StyleSheet.absoluteFill} pointerEvents="none">
+          <WorldLayer active={false} />
+        </View>
+      ) : null}
+
+      {/* Header — always-on MonkeGlass now (was blur-only when a world is
+          equipped, flat opaque themeBg otherwise) — matches ChatHeader/
+          BotChannelScreen/ChatInput, which all blur regardless of world so
+          the header/input-bar chrome reads as one consistent family across
+          every screen, not just world-equipped ones. */}
+      <View style={styles.header}>
+        <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} pointerEvents="none" />
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: worldId ? getWorldBarTint(worldId) : GLASS_CHROME_BG, borderBottomWidth: worldId ? 0 : 1, borderBottomColor: themeBorder }]} pointerEvents="none" />
         <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={8}>
-          <Text style={styles.backArrow}>←</Text>
+          <Text style={[styles.backArrow, worldId ? { color: getWorldAccent(worldId) } : null]}>←</Text>
         </Pressable>
         <Text style={styles.peerName}>{peerName}</Text>
       </View>
@@ -288,8 +307,7 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingHorizontal: 16,
     paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: THEME.border,
+    overflow: 'hidden',
   },
   backBtn: { padding: 4 },
   backArrow: { fontSize: 22, color: THEME.text },

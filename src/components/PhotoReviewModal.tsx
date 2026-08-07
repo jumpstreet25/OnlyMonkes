@@ -19,6 +19,7 @@ import {
 import { GlassModal } from "@/components/GlassModal";
 import { THEME, FONTS } from "@/lib/constants";
 import { usePhotoReviewStore } from "@/store/photoReviewStore";
+import { CAPTION_WAIT_MS, waitForImageCaption } from "@/lib/imageCaption";
 
 interface PhotoReviewModalProps {
   visible: boolean;
@@ -44,18 +45,30 @@ export function PhotoReviewModal({ visible, imageUri, requestId, onSend, onCance
       setCaptionText("");
       setIsGenerating(true);
       userEditedRef.current = false;
-      // 2026-07-26: real-world repro — bot-side vision generation can time
-      // out (confirmed live: moondream cold-loading past its own 90s
-      // server-side timeout), and with no client-side limit of our own
-      // this modal was left showing "Monke is thinking..." forever with no
-      // signal that it may never resolve — Send/Send-without-caption were
-      // always technically tappable, but nothing told the user that. Give
-      // up waiting after 20s and fall back to the plain "write your own"
-      // state; the user can still send blank or type at any point before
-      // that too.
-      const giveUpTimer = setTimeout(() => setIsGenerating(false), 20_000);
+      // 2026-07-26: client give-up so we never spin forever. 2026-08-06:
+      // raised 20s → CAPTION_WAIT_MS (45s) — bot vision is fast on Groq,
+      // but XMTP delivery of the request+response pair can lag, and we
+      // now actively poll the bot DM (waitForImageCaption) so a missed
+      // stream event still fills the description field.
+      const giveUpTimer = setTimeout(() => setIsGenerating(false), CAPTION_WAIT_MS);
       return () => clearTimeout(giveUpTimer);
     }
+  }, [visible, requestId]);
+
+  // Active wait: poll store + bot DM until caption arrives or give-up.
+  useEffect(() => {
+    if (!visible || !requestId) return;
+    let cancelled = false;
+    waitForImageCaption(requestId, CAPTION_WAIT_MS)
+      .then((caption) => {
+        if (cancelled || !caption) return;
+        setIsGenerating(false);
+        if (!userEditedRef.current) setCaptionText(caption);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, [visible, requestId]);
 
   useEffect(() => {
@@ -73,7 +86,7 @@ export function PhotoReviewModal({ visible, imageUri, requestId, onSend, onCance
 
   return (
     <GlassModal visible={visible} onClose={onCancel} position="center" cardStyle={styles.card}>
-      <Text style={styles.title}>Add a caption?</Text>
+      <Text style={styles.title}>Add description</Text>
       {imageUri && (
         <RNImage source={{ uri: imageUri }} style={styles.preview} resizeMode="cover" />
       )}
@@ -82,7 +95,7 @@ export function PhotoReviewModal({ visible, imageUri, requestId, onSend, onCance
           style={styles.input}
           value={captionText}
           onChangeText={handleChangeText}
-          placeholder={isGenerating ? "Monke is thinking of something cheeky…" : "Write your own caption…"}
+          placeholder={isGenerating ? "Monke is thinking of a description…" : "Add description…"}
           placeholderTextColor={THEME.textDim}
           multiline
           maxLength={280}

@@ -27,6 +27,7 @@ import { clearLegacyKeys, startNftOwnershipGuard } from '../src/lib/session';
 import { initSentry } from '../src/lib/sentry';
 import { clearStaleOtaCacheIfNeeded } from '../src/lib/otaUpdates';
 import { OtaUpdateIndicator } from '../src/components/OtaUpdateIndicator';
+import { GlassAlertRoot } from '../src/lib/glassAlert';
 import { logAppOpen, logDailySession } from '../src/lib/analytics';
 import { loadBadgeData, setOnBadgeEarned, getBadgeBananaReward, type BadgeDef } from '../src/lib/badges';
 import { addBananas } from '../src/lib/bananaRewards';
@@ -159,10 +160,19 @@ export default function RootLayout() {
     // XMTP init doesn't need the token; profile rebroadcast sends it when ready.
     setTimeout(() => {
       registerForPushNotifications().then(async token => {
-        if (token) {
-          useAppStore.getState().setExpoPushToken(token);
-          await triggerProfileRebroadcast(token);
-        }
+        if (token) useAppStore.getState().setExpoPushToken(token);
+        // 2026-08-05: was gated behind `if (token)` — anyone who denies
+        // notification permissions (registerForPushNotifications resolves
+        // falsy) never re-broadcast their profile on launch at all, even
+        // though they're actively using the app. That's the mechanism that
+        // keeps every OTHER member's local profile cache fresh (see
+        // backfillProfileHistory's doc comment) — traced after a live
+        // full-history scan on a real device found the current group's
+        // history contains zero PROFILE_UPDATE broadcasts for 36 of 39
+        // roster members, MonkeGlobe showing 3 markers instead of the
+        // expected ~18. Always rebroadcast on launch now; pushToken is "" if
+        // registration failed/was denied, same as every other call site.
+        await triggerProfileRebroadcast(token ?? '');
       }).catch(err => console.warn('[Layout] Push token error:', err));
     }, 2000);
 
@@ -225,6 +235,7 @@ export default function RootLayout() {
           <PollPopup />
           <PollResultPopup />
           <OtaUpdateIndicator />
+          <GlassAlertRoot />
         </GestureHandlerRootView>
       </SafeAreaProvider>
     </QueryClientProvider>

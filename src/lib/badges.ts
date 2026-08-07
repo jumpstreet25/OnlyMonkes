@@ -46,6 +46,7 @@ const BADGE_BANANA_REWARDS: Record<string, number> = {
   top_monke: 100,
   og_monke: 50,
   top_trader: 40,
+  top_trader_recruit: 50,
 };
 
 export const BADGE_DEFS: BadgeDef[] = [
@@ -60,6 +61,8 @@ export const BADGE_DEFS: BadgeDef[] = [
   { id: 'top_monke',       name: 'Top Monke',        description: '#1 on weekly leaderboard',   emoji: '🏆', threshold: 1,    metric: 'leaderboard_wins' },
   { id: 'og_monke',        name: 'OG Monke',         description: 'One of the first 50 members', emoji: '🐒', threshold: 1,    metric: 'special' },
   { id: 'top_trader',      name: 'Top Trader',       description: '20+ trades, 60% win rate',   emoji: '📈', threshold: 1,    metric: 'special' },
+  /** Awarded when a tracked smart-money wallet joins OnlyMonkes (bot BADGE_GRANT). */
+  { id: 'top_trader_recruit', name: 'Smart Money', description: 'Joined as a tracked top trader', emoji: '🎯', threshold: 1, metric: 'special' },
 ];
 
 /** Get banana reward amount for a badge. */
@@ -185,6 +188,20 @@ export function updateStreak(streak: number, bestStreak: number): BadgeDef[] {
 
 export function recordLeaderboardWin(): BadgeDef[] {
   return incrementProgress('leaderboard_wins', 1);
+}
+
+/**
+ * Grant a special (non-metric) badge by id — e.g. bot-pushed TOP_TRADER_RECRUIT.
+ * Idempotent; fires onBadgeEarned only on first grant.
+ */
+export function grantSpecialBadge(badgeId: string): BadgeDef | null {
+  if (_earnedBadges.has(badgeId)) return null;
+  const def = BADGE_DEFS.find(b => b.id === badgeId);
+  if (!def || def.metric !== 'special') return null;
+  _earnedBadges.add(badgeId);
+  _onBadgeEarned?.(def);
+  _scheduleSave();
+  return def;
 }
 
 // cNFT minting removed — badges are now cosmetic achievements that reward bananas.

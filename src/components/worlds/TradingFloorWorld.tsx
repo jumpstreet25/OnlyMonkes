@@ -1,365 +1,258 @@
 /**
- * TradingFloorWorld — live-printing candlestick chart that fills the chat bg.
+ * TradingFloorWorld — stationary jungle plate + waterfall only.
  *
- * Design (per Banana Grove design discussion 2026-05-06):
- *   - Single foreground row (no parallax back row).
- *   - Each candle "prints" over 4s on the rightmost slot: body height grows
- *     from 0 (open price line) to full close-price extent. Green candles grow
- *     UP from the open; red candles grow DOWN from the open.
- *   - When a candle finishes printing, the whole row shifts left by one
- *     candle-stride (smooth ~250ms transition) and a fresh candle starts
- *     forming on the right. Already-printed candles stay frozen during their
- *     own printing window — they only move when the row shifts.
- *   - 8 chart "patterns" (steady climb, pump-and-dump, V recovery, etc.)
- *     cycle randomly so the chart shape stays varied without looking random.
- *   - Pre-filled with VISIBLE_COUNT candles on mount so the chart is never
- *     empty when the user equips the world.
+ * Motion: heavy waterfall on the far candle (4 legs + soft sheen + splash).
+ * The painted stream is left as plate art — no live creek flow overlay.
  *
- * Wicks render at full extent immediately (high/low pre-known); only the body
- * animates during formation. Candles drift off the left edge and unmount
- * automatically when the array exceeds VISIBLE_COUNT * 2.
+ * Scope: world BACKGROUND only.
  */
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { View, StyleSheet, Dimensions } from "react-native";
+import React, { useEffect, useMemo } from "react";
+import { View, StyleSheet, Dimensions, Image as RNImage } from "react-native";
 import {
   Canvas,
-  Rect,
-  LinearGradient,
+  Circle,
+  Line,
   vec,
+  Group,
+  BlurMask,
+  LinearGradient,
+  Rect,
 } from "@shopify/react-native-skia";
 import {
   useSharedValue,
-  useAnimatedStyle,
+  useDerivedValue,
+  withRepeat,
   withTiming,
+  cancelAnimation,
   Easing,
+  type SharedValue,
 } from "react-native-reanimated";
-import Animated from "react-native-reanimated";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
 
-// ── Layout constants ────────────────────────────────────────────────────────
-const CANDLE_W = 16;
-const CANDLE_GAP = 7;
-const STRIDE = CANDLE_W + CANDLE_GAP;
-const CHART_TOP_INSET = 110;       // clears chat header
-const INPUT_BAR_HEIGHT = 96;       // matches chat input bar
-const FORMATION_MS = 4000;         // each candle prints over 4s
-const SHIFT_MS = 250;              // smooth row shift between prints
-const VISIBLE_COUNT = Math.ceil(SCREEN_W / STRIDE) + 2; // +2 buffer
-const MAX_CANDLES = VISIBLE_COUNT + 4;
-const BODY_OPACITY = 0.5;
-const WICK_OPACITY = 0.45;
-const GREEN = "#10B981";
-const RED = "#EF4444";
+const PLATE_ASPECT = 9 / 16;
+const JUNGLE_PLATE = require("../../../assets/trading-floor-jungle.jpg");
 
-// ── Pattern engine ──────────────────────────────────────────────────────────
-//
-// Each pattern is a function (prevClose, stepIndex, patternLength) → close.
-// The wickFactor scales how much the high/low extend beyond the body — a
-// gentle nudge per-pattern to give each one its own visual character.
-
-const PATTERN_LENGTH = 14;
-const rand = () => Math.random();
-
-// Mean-reverting clamp. Hard-clamps to [lo, hi] for safety, but ALSO dampens
-// any delta that would push the price further toward an edge. This keeps
-// prices spending most of their time in the playable middle range and stops
-// the chart from saturating at one extreme (which used to make every candle
-// after the first ~5 look like a doji "+" sign pinned to the top/bottom).
-function meanReverted(prev: number, delta: number, lo = 0.05, hi = 0.95): number {
-  const center = 0.5;
-  // Distance from center, normalized to [0, 1].
-  const distance = Math.abs(prev - center) / 0.45;
-  // If we're already past 65% of the way to an edge, halve any delta that
-  // pushes further in the same direction. Past 85%, quarter it.
-  const pushingFurther =
-    (prev > center && delta > 0) || (prev < center && delta < 0);
-  let damped = delta;
-  if (pushingFurther) {
-    if (distance > 0.85) damped *= 0.25;
-    else if (distance > 0.65) damped *= 0.5;
-  }
-  return Math.max(lo, Math.min(hi, prev + damped));
-}
-
-// Convenience wrapper so pattern definitions stay readable.
-const clamp = (prev: number, delta: number) => meanReverted(prev, delta);
-
-interface PatternStep {
-  close: number;
-  wickFactor?: number; // multiplier on default wick range (default 1)
-}
-
-type Pattern = (prev: number, step: number) => PatternStep;
-
-const PATTERNS: Pattern[] = [
-  // 1. Steady bull climb
-  (prev) => ({ close: clamp(prev, 0.015 + rand() * 0.04) }),
-  // 2. Pump → dump → recovery
-  (prev, i) => {
-    if (i < 4) return { close: clamp(prev, 0.05 + rand() * 0.05), wickFactor: 1.4 };
-    if (i < 7) return { close: clamp(prev, -0.04 - rand() * 0.05), wickFactor: 1.4 };
-    return { close: clamp(prev, 0.025 + rand() * 0.04) };
-  },
-  // 3. Bullish breakout — tight consolidation then strong rally
-  (prev, i) => {
-    if (i < 3) return { close: clamp(prev, (rand() - 0.5) * 0.02), wickFactor: 0.6 };
-    return { close: clamp(prev, 0.04 + rand() * 0.05), wickFactor: 1.2 };
-  },
-  // 4. Choppy sideways
-  (prev) => ({ close: clamp(prev, (rand() - 0.5) * 0.06), wickFactor: 1.5 }),
-  // 5. V recovery — dump, doji bottom, strong recovery
-  (prev, i) => {
-    if (i < 4) return { close: clamp(prev, -0.03 - rand() * 0.04) };
-    if (i < 5) return { close: clamp(prev, (rand() - 0.5) * 0.012) };
-    return { close: clamp(prev, 0.045 + rand() * 0.04) };
-  },
-  // 6. Strong rally — big greens, magnitude grows
-  (prev, i) => {
-    const magnitude = 0.025 + (i / PATTERN_LENGTH) * 0.05;
-    return { close: clamp(prev, magnitude), wickFactor: 1.1 };
-  },
-  // 7. Bull flag — pole, flag (sideways), resume
-  (prev, i) => {
-    const phase = i / PATTERN_LENGTH;
-    if (phase < 0.3) return { close: clamp(prev, 0.04 + rand() * 0.02) };
-    if (phase < 0.6) return { close: clamp(prev, (rand() - 0.5) * 0.018), wickFactor: 0.8 };
-    return { close: clamp(prev, 0.04 + rand() * 0.02) };
-  },
-  // 8. Fakeout — green run, brief red trap, rally resumes
-  (prev, i) => {
-    if (i < 3) return { close: clamp(prev, 0.04 + rand() * 0.02) };
-    if (i < 5) return { close: clamp(prev, -0.025 - rand() * 0.025), wickFactor: 1.3 };
-    return { close: clamp(prev, 0.045 + rand() * 0.04) };
-  },
-];
-
-interface CandleData {
-  id: number;
-  open: number;
-  close: number;
-  high: number;
-  low: number;
-}
-
-// ── Per-candle component ────────────────────────────────────────────────────
-
-interface CandleViewProps {
-  candle: CandleData;
-  slotIndex: number;        // 0 = newest (rightmost), grows leftward
-  chartTop: number;
-  chartHeight: number;
-  baseRightX: number;       // x-coord of slot 0's left edge
-}
-
-function CandleView({ candle, slotIndex, chartTop, chartHeight, baseRightX }: CandleViewProps) {
-  // Snapshot whether this candle was MOUNTED at the freshly-printing slot.
-  // If yes, animate body scaleY from 0 → 1 over FORMATION_MS. If no (pre-
-  // filled candles or candles created during a batch refill), they're already
-  // "printed" — render at full body size immediately.
-  const isFreshRef = useRef(slotIndex === 0);
-  const isFresh = isFreshRef.current;
-
-  const formation = useSharedValue(isFresh ? 0 : 1);
-  const slot = useSharedValue(slotIndex);
-
-  // One-shot formation animation on initial mount when fresh.
-  useEffect(() => {
-    if (isFresh) {
-      formation.value = withTiming(1, {
-        duration: FORMATION_MS,
-        easing: Easing.out(Easing.cubic),
-      });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Animate to new slot when row shifts.
-  useEffect(() => {
-    slot.value = withTiming(slotIndex, {
-      duration: SHIFT_MS,
-      easing: Easing.out(Easing.cubic),
-    });
-  }, [slotIndex, slot]);
-
-  const isGreen = candle.close >= candle.open;
-  const color = isGreen ? GREEN : RED;
-
-  const yFor = (norm: number) => chartTop + (1 - norm) * chartHeight;
-  const openY = yFor(candle.open);
-  const closeY = yFor(candle.close);
-  const highY = yFor(candle.high);
-  const lowY = yFor(candle.low);
-  const bodyHeightFull = Math.max(1.5, Math.abs(openY - closeY));
-
-  // Position the candle column at slot 0 (rightmost), then animate translateX
-  // leftward by `slot * STRIDE`. So slot=0 → no shift, slot=5 → 5 strides left.
-  const containerStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: -slot.value * STRIDE }],
-  }));
-
-  // Body grows from open price line: green grows UP, red grows DOWN. We can't
-  // use `transform-origin` reliably across RN versions, so we explicitly
-  // compute top + height from the formation progress.
-  const bodyStyle = useAnimatedStyle(() => {
-    const h = bodyHeightFull * formation.value;
-    const top = isGreen ? openY - h : openY;
-    return { top, height: Math.max(0.5, h) };
-  });
-
-  return (
-    <Animated.View
-      pointerEvents="none"
-      style={[
-        {
-          position: "absolute",
-          left: baseRightX,
-          top: 0,
-          width: CANDLE_W,
-          height: SCREEN_H,
-        },
-        containerStyle,
-      ]}
-    >
-      {/* Wick — full extent immediately (high/low are pre-known) */}
-      <View
-        style={{
-          position: "absolute",
-          left: CANDLE_W / 2 - 0.5,
-          top: highY,
-          width: 1,
-          height: Math.max(1, lowY - highY),
-          backgroundColor: color,
-          opacity: WICK_OPACITY,
-        }}
-      />
-      {/* Body — animates */}
-      <Animated.View
-        style={[
-          {
-            position: "absolute",
-            left: 0,
-            width: CANDLE_W,
-            backgroundColor: color,
-            opacity: BODY_OPACITY,
-          },
-          bodyStyle,
-        ]}
-      />
-    </Animated.View>
-  );
-}
-
-// ── Main world component ────────────────────────────────────────────────────
+const SHEEN = "rgba(220, 248, 255, 0.55)";
+const FOAM = "rgba(245, 252, 255, 0.32)";
+const FALL_WHITE = "rgba(220, 250, 255, 0.42)";
+const FALL_SOFT = "rgba(160, 220, 230, 0.30)";
 
 interface TradingFloorWorldProps {
   active?: boolean;
 }
 
+type Layout = { w: number; h: number; left: number; top: number };
+
+function plateLayout(): Layout {
+  let w = SCREEN_W;
+  let h = w / PLATE_ASPECT;
+  if (h < SCREEN_H) {
+    h = SCREEN_H;
+    w = h * PLATE_ASPECT;
+  }
+  return { w, h, left: (SCREEN_W - w) / 2, top: 0 };
+}
+
+// 4 painted curtain legs under the far candle (left → right)
+const FALL_LEGS = [
+  { u: 0.720, phase: 0.0, w: 6.5 },
+  { u: 0.752, phase: 0.22, w: 7.5 },
+  { u: 0.782, phase: 0.45, w: 7.0 },
+  { u: 0.812, phase: 0.68, w: 6.0 },
+];
+const FALL_V0 = 0.185;
+const FALL_V1 = 0.375;
+
 export function TradingFloorWorld({ active = true }: TradingFloorWorldProps) {
-  const insets = useSafeAreaInsets();
-  const idRef = useRef(0);
-  const lastCloseRef = useRef(0.4);
-  const patternIdxRef = useRef(Math.floor(rand() * PATTERNS.length));
-  const stepRef = useRef(0);
+  const layout = useMemo(() => plateLayout(), []);
+  const { left, top, w, h } = layout;
 
-  // Generate next candle from the current pattern, then advance the pattern
-  // step. Picks a new (different) pattern at the end of each PATTERN_LENGTH.
-  const nextCandle = (): CandleData => {
-    const open = lastCloseRef.current;
-    const pattern = PATTERNS[patternIdxRef.current];
-    const { close, wickFactor = 1 } = pattern(open, stepRef.current);
-    const wickRange = 0.025 * wickFactor;
-    const high = Math.min(0.98, Math.max(open, close) + wickRange * rand());
-    const low = Math.max(0.02, Math.min(open, close) - wickRange * rand());
-
-    lastCloseRef.current = close;
-    stepRef.current += 1;
-    if (stepRef.current >= PATTERN_LENGTH) {
-      let next = Math.floor(rand() * PATTERNS.length);
-      if (next === patternIdxRef.current && PATTERNS.length > 1) {
-        next = (next + 1) % PATTERNS.length;
-      }
-      patternIdxRef.current = next;
-      stepRef.current = 0;
-    }
-    return { id: idRef.current++, open, close, high, low };
-  };
-
-  // Pre-fill the chart with VISIBLE_COUNT candles so it's not empty on equip.
-  // Generate them in chronological order (oldest first), then REVERSE so the
-  // newest sits at array index 0 — the renderer maps array index → slotIndex
-  // with index 0 = rightmost slot, so the newest pre-fill candle visually
-  // anchors the right side and the price walk reads naturally left-to-right.
-  // The candle at index 0 mounts with slotIndex=0 → its formation animation
-  // runs (printing the rightmost candle); subsequent runtime spawns also land
-  // at slotIndex=0 with formation, so prints continue every TICK_MS.
-  const initialCandles = useMemo(() => {
-    const arr: CandleData[] = [];
-    for (let i = 0; i < VISIBLE_COUNT; i++) arr.push(nextCandle());
-    return arr.reverse();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const [candles, setCandles] = useState<CandleData[]>(initialCandles);
+  const flow = useSharedValue(0);
+  const shimmer = useSharedValue(0);
 
   useEffect(() => {
-    if (!active) return;
-    const intervalId = setInterval(() => {
-      setCandles((prev) => {
-        const next = [nextCandle(), ...prev];
-        // Cap to MAX_CANDLES — older candles fall off the left edge and
-        // unmount cleanly.
-        return next.length > MAX_CANDLES ? next.slice(0, MAX_CANDLES) : next;
-      });
-    }, FORMATION_MS);
-    return () => clearInterval(intervalId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active]);
+    if (!active) {
+      cancelAnimation(flow);
+      cancelAnimation(shimmer);
+      flow.value = 0;
+      shimmer.value = 0;
+      return;
+    }
+    flow.value = withRepeat(
+      withTiming(1, { duration: 2600, easing: Easing.linear }),
+      -1,
+      false,
+    );
+    shimmer.value = withRepeat(
+      withTiming(1, { duration: 1600, easing: Easing.inOut(Easing.sin) }),
+      -1,
+      true,
+    );
+    return () => {
+      cancelAnimation(flow);
+      cancelAnimation(shimmer);
+    };
+  }, [active, flow, shimmer]);
 
-  // Chart Y range EXTENDS BEYOND the chat area on top + bottom by OVERFLOW_PX.
-  // Effect: a candle at extreme price (close ≈ 0.95) renders with its body
-  // partly inside the translucent header bar at the top of the screen; a
-  // candle at close ≈ 0.05 extends into the translucent input bar at the
-  // bottom. Most price action stays in the playable middle (mean-reversion
-  // keeps it there) so this overflow only kicks in for genuine spikes — no
-  // more "+" sign clipping at the chart edges.
-  const OVERFLOW_PX = 70;
-  const chartTop = CHART_TOP_INSET - OVERFLOW_PX;
-  const chartBottom = SCREEN_H - INPUT_BAR_HEIGHT - insets.bottom + OVERFLOW_PX;
-  const chartHeight = Math.max(200, chartBottom - chartTop);
+  const fallTop = top + FALL_V0 * h;
+  const fallPx = (FALL_V1 - FALL_V0) * h;
+  const fallLeft = left + 0.705 * w;
+  const fallWidth = 0.135 * w;
 
-  // Slot 0 (rightmost) sits with its right edge inset ~12px from the screen
-  // edge so the newest candle isn't mashed against the right border.
-  const baseRightX = SCREEN_W - STRIDE - 12;
+  const fallSheenY = useDerivedValue(() => fallTop + (flow.value % 1) * fallPx);
+  const fallSheenOp = useDerivedValue(() => {
+    const t = flow.value % 1;
+    if (t < 0.08) return t / 0.08;
+    if (t > 0.8) return (1 - t) / 0.2;
+    return 0.5 + 0.2 * Math.sin(t * Math.PI * 2);
+  });
 
   return (
     <View style={styles.root} pointerEvents="none">
-      <Canvas style={StyleSheet.absoluteFill}>
-        {/* Gradient height oversized 25% to cover Android edge-to-edge system
-            bar zones where Dimensions.get("window") may underreport. */}
-        <Rect x={0} y={0} width={SCREEN_W} height={SCREEN_H * 1.25}>
-          <LinearGradient
-            start={vec(0, 0)}
-            end={vec(0, SCREEN_H)}
-            colors={["#06070d", "#08130d", "#06140e"]}
-          />
-        </Rect>
-      </Canvas>
+      <RNImage
+        source={JUNGLE_PLATE}
+        style={{
+          position: "absolute",
+          left,
+          top,
+          width: w,
+          height: h,
+        }}
+        resizeMode="stretch"
+      />
 
-      {candles.map((c, i) => (
-        <CandleView
-          key={c.id}
-          candle={c}
-          slotIndex={i}
-          chartTop={chartTop}
-          chartHeight={chartHeight}
-          baseRightX={baseRightX}
-        />
-      ))}
+      <Canvas style={StyleSheet.absoluteFill}>
+        {FALL_LEGS.map((leg, i) => (
+          <FallLeg
+            key={`leg-${i}`}
+            leg={leg}
+            left={left}
+            top={top}
+            pw={w}
+            ph={h}
+            flow={flow}
+            shimmer={shimmer}
+          />
+        ))}
+
+        <Group opacity={fallSheenOp}>
+          <Rect x={fallLeft} y={fallSheenY} width={fallWidth} height={fallPx * 0.12}>
+            <LinearGradient
+              start={vec(0, 0)}
+              end={vec(0, fallPx * 0.12)}
+              colors={[
+                "rgba(230, 250, 255, 0)",
+                "rgba(230, 250, 255, 0.5)",
+                "rgba(230, 250, 255, 0)",
+              ]}
+            />
+            <BlurMask blur={7} style="normal" />
+          </Rect>
+        </Group>
+
+        <SplashPulse left={left} top={top} pw={w} ph={h} shimmer={shimmer} />
+      </Canvas>
     </View>
+  );
+}
+
+function FallLeg({
+  leg,
+  left,
+  top,
+  pw,
+  ph,
+  flow,
+  shimmer,
+}: {
+  leg: { u: number; phase: number; w: number };
+  left: number;
+  top: number;
+  pw: number;
+  ph: number;
+  flow: SharedValue<number>;
+  shimmer: SharedValue<number>;
+}) {
+  const x = left + leg.u * pw;
+  const y0 = top + FALL_V0 * ph;
+  const fallPx = (FALL_V1 - FALL_V0) * ph;
+
+  const yA = useDerivedValue(() => {
+    const t = (flow.value * 1.15 + leg.phase) % 1;
+    return y0 + t * fallPx;
+  });
+  const yB = useDerivedValue(() => {
+    const t = (flow.value * 1.15 + leg.phase + 0.38) % 1;
+    return y0 + t * fallPx;
+  });
+  const opacity = useDerivedValue(() => {
+    const wave = 0.5 + 0.5 * Math.sin((shimmer.value + leg.phase) * Math.PI * 2);
+    return 0.4 + 0.35 * wave;
+  });
+
+  const streakA1 = useDerivedValue(() => Math.max(y0, yA.value - 10));
+  const streakA2 = useDerivedValue(() => Math.min(y0 + fallPx, yA.value + 10));
+  const streakB1 = useDerivedValue(() => Math.max(y0, yB.value - 8));
+  const streakB2 = useDerivedValue(() => Math.min(y0 + fallPx, yB.value + 8));
+  const pA1 = useDerivedValue(() => vec(x, streakA1.value));
+  const pA2 = useDerivedValue(() => vec(x + 0.3, streakA2.value));
+  const pB1 = useDerivedValue(() => vec(x - 0.8, streakB1.value));
+  const pB2 = useDerivedValue(() => vec(x - 0.4, streakB2.value));
+
+  return (
+    <Group opacity={opacity}>
+      <Line
+        p1={vec(x, y0)}
+        p2={vec(x + 0.4, y0 + fallPx)}
+        color={FALL_SOFT}
+        strokeWidth={leg.w}
+        style="stroke"
+      >
+        <BlurMask blur={2.5} style="normal" />
+      </Line>
+      <Line
+        p1={vec(x - 1, y0 + 2)}
+        p2={vec(x - 0.4, y0 + fallPx * 0.97)}
+        color={FALL_WHITE}
+        strokeWidth={leg.w * 0.4}
+        style="stroke"
+        opacity={0.65}
+      >
+        <BlurMask blur={1.2} style="normal" />
+      </Line>
+      <Line p1={pA1} p2={pA2} color={FALL_WHITE} strokeWidth={leg.w * 0.55} style="stroke" opacity={0.75}>
+        <BlurMask blur={2} style="normal" />
+      </Line>
+      <Line p1={pB1} p2={pB2} color={SHEEN} strokeWidth={leg.w * 0.35} style="stroke" opacity={0.55}>
+        <BlurMask blur={1.5} style="normal" />
+      </Line>
+    </Group>
+  );
+}
+
+function SplashPulse({
+  left,
+  top,
+  pw,
+  ph,
+  shimmer,
+}: {
+  left: number;
+  top: number;
+  pw: number;
+  ph: number;
+  shimmer: SharedValue<number>;
+}) {
+  const cx = left + 0.785 * pw;
+  const cy = top + 0.375 * ph;
+  const r = useDerivedValue(() => 12 + shimmer.value * 5);
+  const opacity = useDerivedValue(() => 0.12 + shimmer.value * 0.14);
+  return (
+    <Circle cx={cx} cy={cy} r={r} color={FOAM} opacity={opacity}>
+      <BlurMask blur={9} style="normal" />
+    </Circle>
   );
 }
 

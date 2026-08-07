@@ -16,10 +16,13 @@ import {
   Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BlurView } from 'expo-blur';
 import { router, useLocalSearchParams } from 'expo-router';
-import { THEME, FONTS } from '@/lib/constants';
+import { THEME, FONTS, getWorldBarTint, getWorldAccent } from '@/lib/constants';
 import { useAppStore } from '@/store/appStore';
 import { useChatStore } from '@/store/chatStore';
+import { getBlurProps, GLASS_CHROME_BG } from '@/lib/glassTheme';
+import { WorldLayer } from '@/components/worlds/WorldLayer';
 import { ChatInput } from '@/components/ChatInput';
 import { MessageBubble } from '@/components/MessageBubble';
 import { MessageActionSheet } from '@/components/MessageActionSheet';
@@ -40,6 +43,7 @@ export default function ThreadScreen() {
   const myInboxId = useAppStore(s => s.myInboxId);
   const username = useAppStore(s => s.username) ?? 'Anon';
   const verifiedNft = useAppStore(s => s.verifiedNft);
+  const worldId = useAppStore(s => s.shopStyles?.worldId) as string | undefined;
 
   // Thread replies from dedicated store (populated by useXmtp on THREAD: receipt)
   const threadReplies = useChatStore(s => s.threadMessages[parentId ?? ''] ?? []);
@@ -104,14 +108,24 @@ export default function ThreadScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={styles.container}
+      style={[styles.container, worldId ? { backgroundColor: 'transparent' } : null]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={insets.top}
     >
-      {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
+      {worldId ? (
+        <View style={StyleSheet.absoluteFill} pointerEvents="none">
+          <WorldLayer active={true} />
+        </View>
+      ) : null}
+
+      {/* Header — always-on MonkeGlass (was blur-only when a world is
+          equipped, fully transparent otherwise) — matches ChatHeader/
+          BotChannelScreen/ChatInput/DmScreen/GroupDmScreen. */}
+      <View style={[styles.header, { paddingTop: insets.top + 8 }, worldId ? { borderBottomWidth: 0 } : null]}>
+        <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} pointerEvents="none" />
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: worldId ? getWorldBarTint(worldId) : GLASS_CHROME_BG }]} pointerEvents="none" />
         <Pressable onPress={() => router.back()} hitSlop={12}>
-          <Text style={styles.backBtn}>← Back</Text>
+          <Text style={[styles.backBtn, worldId ? { color: getWorldAccent(worldId) } : null]}>← Back</Text>
         </Pressable>
         <Text style={styles.headerTitle}>Thread</Text>
         <Text style={styles.headerCount}>
@@ -120,7 +134,13 @@ export default function ThreadScreen() {
       </View>
 
       {/* Parent message */}
-      <View style={styles.parentWrap}>
+      <View style={[styles.parentWrap, worldId ? { backgroundColor: 'transparent' } : null]}>
+        {worldId ? (
+          <>
+            <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} pointerEvents="none" />
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: getWorldBarTint(worldId) }]} pointerEvents="none" />
+          </>
+        ) : null}
         <Text style={styles.parentSender}>{parentSender ?? 'Unknown'}</Text>
         <Text style={styles.parentContent} numberOfLines={5}>
           {parentContent}

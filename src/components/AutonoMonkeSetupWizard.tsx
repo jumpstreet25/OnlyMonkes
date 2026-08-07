@@ -102,6 +102,12 @@ export default function AutonoMonkeSetupWizard({ visible, onClose }: Props) {
       };
       await sendDmMessage(dm, `/autonomonke setup ${JSON.stringify(payload)}`, username);
       await AsyncStorage.setItem(STORAGE_KEY, '1');
+      // Optimistic — bot AUTOMONKE_STATUS will confirm; keep pill in sync now.
+      useAppStore.getState().setAutomonkeStatus({
+        enrolled: true,
+        active: true,
+        limitOrdersEnabled: useAppStore.getState().automonkeStatus?.limitOrdersEnabled ?? false,
+      });
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       // 2026-07-20: closing the Modal in the same tick as the toast mounting

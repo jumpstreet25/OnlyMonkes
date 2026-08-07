@@ -13,15 +13,15 @@ import {
   Pressable,
   TextInput,
   ActivityIndicator,
-  Alert,
 } from "react-native";
 import { FlashList } from "@shopify/flash-list";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { THEME, FONTS } from "@/lib/constants";
 import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
 import { ChartModal } from "@/components/ChartModal";
 import { MiniChart } from "@/components/MiniChart";
+import { showGlassAlert } from "@/lib/glassAlert";
+import { WorldScreenShell, useWorldGlassCardStyle } from "@/components/worlds/WorldScreenShell";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -93,11 +93,11 @@ const DEMO_TOKENS: WatchlistToken[] = [
 ];
 
 export default function WatchlistScreen() {
-  const insets = useSafeAreaInsets();
   const [tokens, setTokens] = useState<WatchlistToken[]>(DEMO_TOKENS);
   const [loading, setLoading] = useState(true);
   const [addText, setAddText] = useState("");
   const [chartSymbol, setChartSymbol] = useState("");
+  const cardStyle = useWorldGlassCardStyle();
 
   // Fetch prices on mount
   useEffect(() => {
@@ -120,18 +120,18 @@ export default function WatchlistScreen() {
     const sym = addText.replace(/^\$/, "").trim().toUpperCase();
     if (!sym) return;
     if (tokens.some(t => t.symbol === sym)) {
-      Alert.alert("Already watching", `$${sym} is already on your watchlist.`);
+      showGlassAlert("Already watching", `$${sym} is already on your watchlist.`);
       setAddText("");
       return;
     }
     // TODO: In production, send /watch $SYM via DM to bot and parse response
     // For now, just add locally with placeholder address
-    Alert.alert("DM the bot", `Send "/watch $${sym}" to AI Agent #9385 in DMs to add it to your watchlist.`);
+    showGlassAlert("DM the bot", `Send "/watch $${sym}" to AI Agent #9385 in DMs to add it to your watchlist.`);
     setAddText("");
   }, [addText, tokens]);
 
   const handleRemove = useCallback((symbol: string) => {
-    Alert.alert(
+    showGlassAlert(
       `Remove $${symbol}?`,
       `Send "/unwatch $${symbol}" to AI Agent #9385 in DMs to remove it.`,
       [{ text: "OK" }],
@@ -150,7 +150,7 @@ export default function WatchlistScreen() {
     const isUp = hasSparkline ? item.sparkline![item.sparkline!.length - 1] > item.sparkline![0] : undefined;
 
     return (
-      <Pressable style={styles.tokenRow} onPress={() => setChartSymbol(item.symbol)}>
+      <Pressable style={[styles.tokenRow, cardStyle]} onPress={() => setChartSymbol(item.symbol)}>
         <View style={styles.tokenInfo}>
           <Text style={styles.tokenSymbol}>${item.symbol}</Text>
           <Text style={styles.tokenPrice}>{formatPrice(item.price)}</Text>
@@ -175,23 +175,18 @@ export default function WatchlistScreen() {
         </Pressable>
       </Pressable>
     );
-  }, [handleRemove]);
+  }, [handleRemove, cardStyle]);
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={12}>
-          <Text style={styles.backBtn}>← Back</Text>
-        </Pressable>
-        <Text style={styles.title}>Watchlist</Text>
-        <Text style={styles.count}>{tokens.length} tokens</Text>
-      </View>
-
+    <WorldScreenShell
+      title="Watchlist"
+      onBack={() => router.back()}
+      headerRight={<Text style={styles.count}>{tokens.length} tokens</Text>}
+    >
       {/* Add token input */}
       <View style={styles.addRow}>
         <TextInput
-          style={styles.addInput}
+          style={[styles.addInput, cardStyle]}
           value={addText}
           onChangeText={setAddText}
           placeholder="Add token (e.g. SOL)"
@@ -236,25 +231,11 @@ export default function WatchlistScreen() {
         symbol={chartSymbol}
         onClose={() => setChartSymbol("")}
       />
-    </View>
+    </WorldScreenShell>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: THEME.bg },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 14,
-    paddingBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: THEME.border,
-  },
-  backBtn: { fontFamily: FONTS.mono, fontSize: 14, color: "#0096C7" },
-  title: {
-    fontFamily: FONTS.mono, fontSize: 18, fontWeight: "700",
-    color: THEME.text, marginLeft: 12, flex: 1,
-  },
   count: { fontFamily: FONTS.mono, fontSize: 11, color: THEME.textMuted },
   addRow: {
     flexDirection: "row", alignItems: "center",
@@ -262,9 +243,9 @@ const styles = StyleSheet.create({
   },
   addInput: {
     flex: 1, height: 40, borderRadius: 10,
-    backgroundColor: THEME.surface, paddingHorizontal: 12,
+    paddingHorizontal: 12,
     fontFamily: FONTS.mono, fontSize: 14, color: THEME.text,
-    borderWidth: 1, borderColor: THEME.border,
+    borderWidth: 1,
   },
   addBtn: {
     width: 40, height: 40, borderRadius: 10,
@@ -278,9 +259,9 @@ const styles = StyleSheet.create({
   list: { paddingHorizontal: 8 },
   tokenRow: {
     flexDirection: "row", alignItems: "center",
-    backgroundColor: THEME.surface, marginVertical: 3,
+    marginVertical: 3,
     marginHorizontal: 6, borderRadius: 12, padding: 12,
-    borderWidth: 1, borderColor: THEME.border,
+    borderWidth: 1,
   },
   tokenInfo: { width: 90 },
   tokenSymbol: {

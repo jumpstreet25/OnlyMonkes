@@ -37,6 +37,7 @@ import { SkiaGlowBubble, SkiaGlassFront, SkiaGlowPfp } from "@/components/SkiaGl
 import { CyberpunkGlitchBubble } from "@/components/CyberpunkGlitchBubble";
 import { BananaGroveSignBubble } from "@/components/BananaGroveSignBubble";
 import { TechNoirBubble } from "@/components/TechNoirBubble";
+import { TradingFloorBubble } from "@/components/TradingFloorBubble";
 import { DeepSpaceBubble } from "@/components/DeepSpaceBubble";
 import { BotAlertCard, parseTopSalesAlert } from "@/components/BotAlertCard";
 import Reanimated, {
@@ -462,13 +463,18 @@ export const MessageBubble = memo(function MessageBubble({
   // world theme — non-owners see themed bubbles from owners as a "show off"
   // / sales pitch. Non-owner ↔ non-owner = default. Bot has no world
   // purchase, so it falls through to viewer's world automatically.
-  const effectiveWorld = (myShopStyles?.worldId as string | undefined)
-    ?? (shopStyles.worldId as string | undefined);
-  const useGlitchBubble      = effectiveWorld === "world_solana_cyberpunk";
-  const useBananaGroveBubble = effectiveWorld === "world_banana_grove";
-  const useTechNoirBubble    = effectiveWorld === "world_tech_noir";
-  const useDeepSpaceBubble   = effectiveWorld === "world_deep_space";
-  const hasWorldChrome = useGlitchBubble || useBananaGroveBubble || useTechNoirBubble || useDeepSpaceBubble;
+  // World chrome is LOCAL only — the viewer's equipped Chat World wraps
+  // the whole chat. Never fall back to the sender's broadcast shopStyles
+  // worldId (that would let someone else's world/cosmetics drive bubble
+  // chrome on your screen).
+  const effectiveWorld = myShopStyles?.worldId as string | undefined;
+  const useGlitchBubble       = effectiveWorld === "world_solana_cyberpunk";
+  const useBananaGroveBubble  = effectiveWorld === "world_banana_grove";
+  const useTechNoirBubble     = effectiveWorld === "world_tech_noir";
+  const useTradingFloorBubble = effectiveWorld === "world_trading_floor";
+  const useDeepSpaceBubble    = effectiveWorld === "world_deep_space";
+  const hasWorldChrome = useGlitchBubble || useBananaGroveBubble || useTechNoirBubble
+    || useTradingFloorBubble || useDeepSpaceBubble;
   const hasSkiaGlow =
     !!(shopStyles.hasBubbleCosmetic && shopStyles.glowColor) && !hasWorldChrome;
 
@@ -866,13 +872,25 @@ export const MessageBubble = memo(function MessageBubble({
                   tailSide={centerBubble ? "none" : isOwn ? "right" : "left"}
                 />
               ) : null}
-              {/* ── Tech Noir world chrome — steel case-file frame */}
+              {/* ── Tech Noir world chrome — cyan MonkeGlass frame */}
               {useTechNoirBubble && bubbleSize ? (
                 <TechNoirBubble
                   width={bubbleSize.w}
                   height={bubbleSize.h}
                   color={glitchAccent}
-                  radius={5}
+                  // Match MonkeGlass / default glassBubble radius so Tech Noir
+                  // reads as the same frosted system, not a sharp case-file card.
+                  radius={18}
+                  tailSide={centerBubble ? "none" : isOwn ? "right" : "left"}
+                />
+              ) : null}
+              {/* ── Trading Floor world chrome — jade MonkeGlass (blur plate only behind bubble) */}
+              {useTradingFloorBubble && bubbleSize ? (
+                <TradingFloorBubble
+                  width={bubbleSize.w}
+                  height={bubbleSize.h}
+                  color={glitchAccent}
+                  radius={18}
                   tailSide={centerBubble ? "none" : isOwn ? "right" : "left"}
                 />
               ) : null}
@@ -912,8 +930,10 @@ export const MessageBubble = memo(function MessageBubble({
                 !isOwn && !centerBubble ? styles.glassBubbleOther : null,
                 centerBubble && styles.glassBubbleBot,
                 // Skia / world-chrome overlay handles bubble surface — make RN View transparent
+                // Tech Noir uses MonkeGlass BlurView inside TechNoirBubble (not
+                // opaque Skia fill), still needs a transparent content host.
                 (hasSkiaGlow || hasWorldChrome) ? {
-                  borderRadius: 22,
+                  borderRadius: (useTechNoirBubble || useTradingFloorBubble) ? 18 : 22,
                   paddingHorizontal: 20,
                   paddingVertical: 14,
                   backgroundColor: "transparent",

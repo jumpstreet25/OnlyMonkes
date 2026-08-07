@@ -166,20 +166,78 @@ export const WORLD_BAR_BG = 'rgba(10,10,20,0.22)';
  *
  * Falls back to OnlyMonkes light blue ('#6CB4EE') for default / unknown.
  */
+/**
+ * Relative luminance 0–1 (sRGB). Used so PFP-full-theme NFT colors that
+ * are nearly black can't paint CAM/LIVE/GIF/channel icons invisible on
+ * dark world chrome bars (Tech Noir etc.).
+ */
+export function colorLuminance(hex: string): number {
+  const raw = hex.replace('#', '').trim();
+  if (raw.length < 6) return 0;
+  const n = parseInt(raw.slice(0, 6), 16);
+  if (!Number.isFinite(n)) return 0;
+  const srgb = [n >> 16, (n >> 8) & 0xff, n & 0xff].map((c) => {
+    const x = c / 255;
+    return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4);
+  });
+  return 0.2126 * srgb[0] + 0.7152 * srgb[1] + 0.0722 * srgb[2];
+}
+
+/**
+ * Chrome accent for CAM/LIVE/GIF, channel icons, support banner, etc.
+ *
+ * Priority (2026-08-06):
+ *   1) **Chat World always owns full-bleed chrome** when equipped — so two
+ *      monkes both on Tech Noir both get cyan bars, regardless of whether
+ *      either also has PFP Full Theme. PFP Full Theme recolors bubbles /
+ *      general UI, not World chrome (user: "My full theme shouldn't affect
+ *      [World] theme").
+ *   2) No world + PFP Full Theme → NFT color only if bright enough to read
+ *      on dark glass (dark Saga Monke palettes used to black out the bar).
+ *   3) Default OnlyMonkes light blue.
+ */
+export function chromeAccentColor(
+  pfpFullTheme: boolean | undefined,
+  nftDominantColor: string | null | undefined,
+  worldId: string | undefined | null,
+  minLuma = 0.42,
+): string {
+  if (worldId) return getWorldAccent(worldId);
+  if (pfpFullTheme && nftDominantColor && colorLuminance(nftDominantColor) >= minLuma) {
+    return nftDominantColor;
+  }
+  return getWorldAccent(null);
+}
+
 export function getWorldAccent(worldId: string | undefined | null): string {
   switch (worldId) {
     // Banana Grove — warm honey gold, fits dusk/wood palette
     case 'world_banana_grove':
       return '#E6B870';
-    // Cyberpunk — neon magenta-pink (matches the bot's pink glitch color)
+    // Cyberpunk — Solana green, matching the grid-line color the real
+    // world already renders (SolanaCyberpunkWorld.tsx uses rgba(20,241,
+    // 149,...) for its neon grid) and the actual purple-to-teal background
+    // gradient (#1a0533→#0f7a85) — neither has any pink in it at all.
+    // 2026-08-06: was #FF6CB4 hot pink, picked to match the bot's own
+    // glitch-message color rather than this world's actual palette —
+    // clashed badly against every top/bottom bar once WorldLayer started
+    // rendering behind them (chrome pills, icons, CAM/LIVE/GIF all went
+    // stark pink over a background with zero pink in it).
     case 'world_solana_cyberpunk':
-      return '#FF6CB4';
-    // Trading Floor — bright gold (financial/ticker feel)
+      return '#14F195';
+    // Trading Floor — dirty jade (jungle Monke Core candles plate).
+    // 2026-08-07: gold → mint → jade to match stationary candle world.
     case 'world_trading_floor':
-      return '#FFD24A';
-    // Tech Noir — cold steel silver-blue
+      return '#2F8F6A';
+    // Tech Noir — bright electric cyan-blue. 2026-08-06: was #8BAFC8, a
+    // muted grayish-blue with too little contrast against this world's
+    // near-black gradient (#010308→#0A1428) — every icon/pill/chrome-bar
+    // read as barely-visible washed-out gray once WorldLayer started
+    // rendering behind them. Same token drives TechNoirBubble chrome and
+    // TechNoirWorld's NOIR_ACCENT (rain edge / billboard frame) so the
+    // whole surface stays one palette.
     case 'world_tech_noir':
-      return '#8BAFC8';
+      return '#4FD8FF';
     // Deep Space — nebula purple
     case 'world_deep_space':
       return '#9B70FF';
@@ -202,25 +260,26 @@ export function getWorldAccent(worldId: string | undefined | null): string {
  */
 export function getWorldBarTint(worldId: string | undefined | null): string {
   switch (worldId) {
+    // 2026-08-07: alphas nudged down ~0.08 so chrome bars are a bit more
+    // transparent (user: "more transparent, not much") without losing text.
     // Banana Grove — warm dusk gradient (#3A2418 → #7A4A20 → #0D2818).
-    // Bar tint = dark warm brown matching the upper twilight stop.
     case 'world_banana_grove':
-      return 'rgba(40, 22, 12, 0.32)';
+      return 'rgba(40, 22, 12, 0.24)';
     // Solana Cyberpunk — purple/black neon. Dark cool purple tint.
     case 'world_solana_cyberpunk':
-      return 'rgba(22, 12, 40, 0.30)';
-    // Trading Floor — financial dark. Dark navy tint.
+      return 'rgba(22, 12, 40, 0.22)';
+    // Trading Floor — deep canopy / mud cast (matches jungle plate).
     case 'world_trading_floor':
-      return 'rgba(10, 18, 32, 0.30)';
+      return 'rgba(8, 16, 12, 0.26)';
     // Tech Noir — cold noir black, very dark with blue cast.
     case 'world_tech_noir':
-      return 'rgba(4, 8, 18, 0.38)';
+      return 'rgba(4, 8, 18, 0.28)';
     // Deep Space — deep purple-black void.
     case 'world_deep_space':
-      return 'rgba(6, 3, 18, 0.36)';
+      return 'rgba(6, 3, 18, 0.26)';
     // Frost Grove — dark cold-blue tint matching the midnight-navy gradient's upper stop.
     case 'world_frost_grove':
-      return 'rgba(8, 18, 30, 0.32)';
+      return 'rgba(8, 18, 30, 0.24)';
     default:
       return WORLD_BAR_BG;
   }

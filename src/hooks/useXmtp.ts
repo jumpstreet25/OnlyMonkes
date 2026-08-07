@@ -53,9 +53,9 @@ import { parseMarketplaceMessage, addListing, addBid, markPendingSwap, markSold,
 import { parseVideoRoomMessage, type VideoRoomData } from "@/lib/liveVideo";
 import { parseAvatarRoomMessage, type AvatarRoomData } from "@/lib/avatarRoom";
 import { verifyNFTOwnership, verifyNftMintInCollection } from "@/lib/nftVerification";
-import { cacheProfile, getCachedProfile, loadProfileCache, trackUser, loadAllTimeUsers } from "@/lib/userProfile";
+import { cacheProfile, getCachedProfile, loadProfileCache, trackUser, loadAllTimeUsers, applyLocationSync, getLocatedUserCount } from "@/lib/userProfile";
 import { loadWeeklyActivity, trackActivity } from "@/lib/activityTracker";
-import { incrementProgress, updateStreak, getEarnedBadges, type BadgeDef } from "@/lib/badges";
+import { incrementProgress, updateStreak, getEarnedBadges, grantSpecialBadge, type BadgeDef } from "@/lib/badges";
 import { processBananaGrant } from "@/lib/bananaGrant";
 import { loadBananaState, mergeBananaBalance } from "@/lib/bananaRewards";
 import { loadShopState, mergeOwnedItems, getEquippedStyles, addOwnedItem, equipItem } from "@/lib/bananaShop";
@@ -230,20 +230,54 @@ export async function backfillProfileHistory(): Promise<{ scanned: number; newPr
   if (!_group || !_myInboxId) return { scanned: 0, newProfiles: 0 };
   _profileBackfillDone = true;
   try {
-    const THIRTY_DAYS_NS = 30 * 24 * 60 * 60 * 1_000_000_000;
-    const afterNs = (Date.now() * 1_000_000) - THIRTY_DAYS_NS;
-    const rawHistory: any[] = await (_group as any).messages({ afterNs });
+    // Local-only read otherwise — messages() serves whatever this device has
+    // already synced from the network, not the full remote history (every
+    // other historical read in this file syncs first — see initialize()
+    // above; this one didn't).
+    await withTimeout((_group as any).sync(), 15_000, "profileBackfill.sync");
+    // 2026-08-05: was a 30-day, newest-first window — measured live on a
+    // production device at 433 messages scanned / 0 new profiles found.
+    // Root cause: most veteran members broadcast PROFILE_UPDATE exactly
+    // once, near when they first joined, and never touch it again (nothing
+    // in the app nudges a re-broadcast absent a profile edit/badge/shop
+    // purchase/push-token registration). Newest-first from "30 days ago"
+    // means recent PRESENCE-heartbeat spam (every 60s per active member)
+    // crowds out those old one-time broadcasts before the scan ever reaches
+    // them — this is why a device that wasn't around for the ORIGINAL live
+    // broadcast can never recover it via a recent-window scan, causing a
+    // 3-vs-18 MonkeGlobe count mismatch between two devices on the same
+    // build (one present for early broadcasts, one not).
+    // Fix: scan the group's full lifetime OLDEST-first instead, so each
+    // member's original onboarding broadcast is near the FRONT of the scan
+    // order rather than buried behind everyone's current heartbeat noise.
+    // `limit` is a safety valve on total pull size, not a recency window.
+    // Also ingest LOCATION_SYNC payloads (bot roster of all known pins).
+    const rawHistory: any[] = await (_group as any).messages({ direction: "ASCENDING", limit: 5000 });
     let newProfiles = 0;
-    // Oldest-first so later (newer) PROFILE_UPDATEs win, same as the main
-    // history load's seedProfilesAndEvents loop.
-    for (const raw of [...rawHistory].reverse()) {
+    // rawHistory is already oldest-first (direction: "ASCENDING" above), so
+    // later (newer) PROFILE_UPDATEs naturally overwrite earlier ones as we
+    // iterate forward — same "last write wins" intent as the main history
+    // load's seedProfilesAndEvents loop, no extra reverse needed here.
+    for (const raw of rawHistory) {
       try {
         let content = raw.content();
         if (content && typeof content === "object" && typeof (content as any).text === "string") {
           content = (content as any).text;
         }
-        if (typeof content !== "string" || !content.startsWith("PROFILE_UPDATE:")) continue;
-        const profile = parseProfileUpdate(content);
+        if (typeof content !== "string") continue;
+        // Strip bot MSG: envelope if present
+        const text = content.startsWith("MSG:")
+          ? content.slice(4).split(":").slice(1).join(":")
+          : content;
+        if (text.startsWith("LOCATION_SYNC:")) {
+          try {
+            const locs = JSON.parse(text.slice("LOCATION_SYNC:".length));
+            applyLocationSync(locs as Record<string, { u?: string; loc?: string; ni?: string }>);
+          } catch { /* ignore */ }
+          continue;
+        }
+        if (!text.startsWith("PROFILE_UPDATE:")) continue;
+        const profile = parseProfileUpdate(text.startsWith("PROFILE_UPDATE:") ? text : content);
         // Same spoofing guard as the main history load — a client can only
         // legitimately broadcast an update for its own sender identity.
         if (!profile || profile.id !== (raw.senderInboxId as string)) continue;
@@ -254,7 +288,39 @@ export async function backfillProfileHistory(): Promise<{ scanned: number; newPr
         if (!hadProfile) newProfiles++;
       } catch { /* skip malformed message */ }
     }
-    if (__DEV__) console.log(`[XMTP] backfillProfileHistory: scanned ${rawHistory.length} messages (30d), found ${newProfiles} new profiles`);
+
+    // 2026-08-07: was every cold launch when 🌍 < 10 — bot only has ~7 pins
+    // persisted so the threshold NEVER cleared, flooding bot DMs with
+    // LOCATION_SYNC_REQUEST on every relaunch (and the user saw each one
+    // live in the bot thread). Bot also broadcasts LOCATION_SYNC on a
+    // scheduler + at startup. Cap to once per 24h, and only when truly empty.
+    // Protocol message is hidden from chat UI (decodeMessage structured list).
+    const LOCATION_SYNC_REQ_KEY = "location_sync_request_at_v1";
+    const LOCATION_SYNC_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+    const located = getLocatedUserCount();
+    if (located < 3) {
+      try {
+        const lastRaw = await AsyncStorage.getItem(LOCATION_SYNC_REQ_KEY);
+        const lastAt = lastRaw ? parseInt(lastRaw, 10) : 0;
+        if (!lastAt || Date.now() - lastAt > LOCATION_SYNC_COOLDOWN_MS) {
+          const client = getXmtpClient();
+          if (client) {
+            const { openOrCreateDm } = await import("@/lib/xmtp");
+            const { BOT_INBOX_IDS } = await import("@/lib/constants");
+            const dm = await openOrCreateDm(client, BOT_INBOX_IDS[0]);
+            await dm.send("LOCATION_SYNC_REQUEST");
+            await AsyncStorage.setItem(LOCATION_SYNC_REQ_KEY, String(Date.now()));
+            if (__DEV__) console.log("[XMTP] LOCATION_SYNC_REQUEST sent (cooldown-gated, sparse globe)");
+          }
+        } else if (__DEV__) {
+          console.log("[XMTP] LOCATION_SYNC_REQUEST skipped (cooldown)");
+        }
+      } catch (err) {
+        if (__DEV__) console.warn("[XMTP] LOCATION_SYNC_REQUEST failed:", err);
+      }
+    }
+
+    if (__DEV__) console.log(`[XMTP] backfillProfileHistory: scanned ${rawHistory.length} messages, found ${newProfiles} new profiles, located=${getLocatedUserCount()}`);
     return { scanned: rawHistory.length, newProfiles };
   } catch (err) {
     if (__DEV__) console.warn("[XMTP] backfillProfileHistory failed:", err);
@@ -271,6 +337,63 @@ export async function getGroupMembers(): Promise<string[]> {
   } catch {
     return [];
   }
+}
+
+/**
+ * 2026-08-05: one-time admin cleanup. Repeated app reinstalls during dev/
+ * testing regenerate a brand-new XMTP inboxId per install (traced via
+ * `.wallet_profile_index.json` on the bot side — the "wallet-derived,
+ * stable inboxId" assumption in addMemberToGroup's doc comment doesn't
+ * hold in practice), leaving stale duplicate memberships in the group and
+ * inflating MonkeGlobe's roster count (39 raw members vs ~18 real people).
+ * The bot's own inbox is deliberately NOT a group admin/superAdmin (so a
+ * compromised bot could never unilaterally remove real members), so this
+ * can only run from an actual super-admin session — i.e. here, in-app.
+ * Gated on a LIVE protocol-level isSuperAdmin(myInboxId) check, not the
+ * store's isGroupAdmin flag — that flag is set from AsyncStorage / a
+ * remote-config adminInboxId match, both of which go stale across the
+ * same reinstall-regenerates-inboxId issue this cleanup exists to fix, so
+ * it can't be trusted to reflect this session's real permission. Verifies
+ * removal via a real before/after member diff rather than trusting
+ * removeMembers' own resolution/rejection, since the underlying binding
+ * was observed throwing on genuine successes during a bot-side dry run of
+ * the same cleanup.
+ */
+export async function amISuperAdmin(): Promise<boolean> {
+  if (!_group || !_myInboxId) return false;
+  try {
+    await (_group as any).sync();
+    return await (_group as any).isSuperAdmin(_myInboxId);
+  } catch {
+    return false;
+  }
+}
+const STALE_DUPLICATE_INBOX_IDS = [
+  "931475426aed924bc7dd19d9dcee1cab6a74d1ee238a402685888bd66811e20a",
+  "ab90147fcca38a9ac72298bb7d265d028789408206129f7ffad8dc2967a1896b",
+  "750659281c36bbec23c4be6059c20d637d30061a1b96983fa0a530dc832efdc7",
+  "93e0b16c17af07039371943f73017f245b489cae99dc44d5a1bfeb704633bb82",
+  "2fb7e9981b03587a83222e3a14687997adb1b262771df9f76a0b000439d593ac",
+  "a4810fdd17d217a46aea448f03e25dad7b04214a54f87d43e68f2ce085d54f32",
+  "3751b1ad9a7ae974ec002dd4eeaa289d2aa40e8fcb61006ccdfc93665c8f4bb9",
+  "6ff1b93028873a9c94eb0cf432ec32568bbc59923ae1d90f89f14d3ebe6c0d48",
+  "fe0f8db5db8e875a2a0adf6d7f8cf204d6d3830686f18153d534b61a802aa3ae",
+  "ca00886616a8861962ad6fc446cf4dc3422f8ca19fc8a37b8150a1daa4e15e30",
+  "43a273a7fcf834f5243f9cc2acd6f266faacf6e32383d8bfdb36207c5225ec75",
+  "d913d0a6a2e5720af8015bb2cef3aff5e023528facfe5005152cea5cd0710f71",
+];
+
+export async function pruneStaleDuplicateMembers(): Promise<{ before: number; after: number; removed: number; stillPresent: string[] }> {
+  if (!_group) throw new Error("Not connected to chat");
+  await (_group as any).sync();
+  const beforeIds = ((await (_group as any).members()) as { inboxId: string }[]).map(m => m.inboxId);
+  for (const id of STALE_DUPLICATE_INBOX_IDS) {
+    try { await (_group as any).removeMembers([id]); } catch { /* verified via real before/after diff below regardless */ }
+  }
+  await (_group as any).sync();
+  const afterIds = ((await (_group as any).members()) as { inboxId: string }[]).map(m => m.inboxId);
+  const stillPresent = STALE_DUPLICATE_INBOX_IDS.filter(id => afterIds.includes(id));
+  return { before: beforeIds.length, after: afterIds.length, removed: beforeIds.length - afterIds.length, stillPresent };
 }
 
 const AK_JOIN_REQUEST_SENT = "xmtp_join_request_sent";
@@ -864,20 +987,11 @@ export function useXmtp() {
                 if (event) await saveEvent(event);
               } catch { /* ignore */ }
             } else if (typeof content === "string" && content.startsWith("LOCATION_SYNC:")) {
-              // Bot broadcasts all known user locations every 12h
+              // Bot broadcasts all known user locations (every 12h + on demand)
               try {
                 const locs = JSON.parse(content.slice("LOCATION_SYNC:".length));
-                for (const [inboxId, data] of Object.entries(locs)) {
-                  const d = data as { u?: string; loc?: string; ni?: string };
-                  if (d.loc) {
-                    cacheProfile(inboxId, {
-                      username: d.u || undefined,
-                      location: d.loc,
-                      nftImage: d.ni || undefined,
-                    });
-                  }
-                }
-                if (__DEV__) console.log(`[XMTP] Location sync: updated ${Object.keys(locs).length} users`);
+                const n = applyLocationSync(locs as Record<string, { u?: string; loc?: string; ni?: string }>);
+                if (__DEV__) console.log(`[XMTP] Location sync: updated ${n} users`);
               } catch { /* ignore */ }
             } else if (typeof content === "string" && content.startsWith("RSVP:")) {
               processRsvpMessage(content).catch(() => {});
@@ -1335,10 +1449,7 @@ export function useXmtp() {
         if (typeof content === "string" && content.startsWith("LOCATION_SYNC:")) {
           try {
             const locs = JSON.parse(content.slice("LOCATION_SYNC:".length));
-            for (const [inboxId, data] of Object.entries(locs)) {
-              const d = data as { u?: string; loc?: string; ni?: string };
-              if (d.loc) cacheProfile(inboxId, { username: d.u || undefined, location: d.loc, nftImage: d.ni || undefined });
-            }
+            applyLocationSync(locs as Record<string, { u?: string; loc?: string; ni?: string }>);
           } catch { /* ignore */ }
           return;
         }
@@ -1402,6 +1513,27 @@ export function useXmtp() {
         // ── Banana grant (bot → users, deduped) ────────────────────────────
         if (typeof content === "string" && content.startsWith("BANANA_GRANT:")) {
           processBananaGrant(raw.id as string, content, raw.senderInboxId as string, _myInboxId, true).catch(() => {});
+          return;
+        }
+
+        // ── Badge grant (bot → specific user, e.g. top_trader_recruit) ─────
+        // Format: BADGE_GRANT:<badgeId>:<targetInboxId>
+        if (typeof content === "string" && content.startsWith("BADGE_GRANT:")) {
+          const parts = content.slice("BADGE_GRANT:".length).split(":");
+          const badgeId = parts[0]?.trim();
+          const targetInbox = parts[1]?.trim();
+          if (badgeId && targetInbox && _myInboxId && targetInbox === _myInboxId) {
+            const earned = grantSpecialBadge(badgeId);
+            if (earned) {
+              toast.success(`${earned.emoji} Badge earned: ${earned.name}`);
+              // Mirror onto profile so others see it on next PROFILE_UPDATE
+              try {
+                const prev = getCachedProfile(_myInboxId);
+                const badges = Array.from(new Set([...(prev?.badges ?? []), badgeId]));
+                cacheProfile(_myInboxId, { badges });
+              } catch { /* non-fatal */ }
+            }
+          }
           return;
         }
 
@@ -1897,11 +2029,24 @@ export function useXmtp() {
           // up the same way.
           await (client.conversations as any).streamAllMessages(async (raw: any) => {
             try {
-              let content: unknown;
-              try { content = raw.content(); } catch { return; }
-              // Skip native reactions
-              if (isReactionContent(content)) return;
-              if (typeof content !== 'string') return;
+              // Skip native reactions before text extraction
+              try {
+                let probe: unknown;
+                try { probe = raw.content(); } catch { probe = null; }
+                if (isReactionContent(probe)) return;
+              } catch { /* continue */ }
+
+              // 2026-08-06: bare `typeof content !== 'string'` dropped
+              // object-wrapped text (`{ text }`) — confirmed for
+              // IMAGE_CAPTION_RESPONSE. 2026-08-06 (follow-up): also fall
+              // back to nativeContent.text / fallback and parse captions via
+              // substring match (see imageCaption.extractXmtpText /
+              // parseImageCaptionResponse) so envelope drift can't strand
+              // PhotoReviewModal on "Monke is thinking…".
+              const { extractXmtpText, parseImageCaptionResponse, deliverCaptionResponse } =
+                await import('@/lib/imageCaption');
+              const content = extractXmtpText(raw);
+              if (!content) return;
               const senderInboxId: string = raw.senderInboxId ?? '';
               if (senderInboxId === client.inboxId) return;
 
@@ -1910,6 +2055,21 @@ export function useXmtp() {
               const inner: string = content.startsWith('MSG:')
                 ? content.slice(4).split(':').slice(1).join(':')
                 : content;
+
+              // Caption responses: prefer robust substring parse (handles
+              // envelope variants stream startsWith would miss).
+              {
+                const captionParsed = parseImageCaptionResponse(content);
+                if (captionParsed) {
+                  try {
+                    const { BOT_INBOX_IDS } = await import('@/lib/constants');
+                    if (BOT_INBOX_IDS.includes(senderInboxId)) {
+                      await deliverCaptionResponse(captionParsed.messageId, captionParsed.caption);
+                    }
+                  } catch { /* swallow */ }
+                  return;
+                }
+              }
 
               // TRADE_CLOSED: structured close payload from the bot.
               // Only honor messages from a known bot inbox to prevent spoofing.
@@ -1962,29 +2122,7 @@ export function useXmtp() {
                 return;
               }
 
-              // IMAGE_CAPTION_RESPONSE: bot-generated (Ollama vision) photo
-              // caption, fired async when the photo was SENT — may well
-              // arrive minutes later while the user isn't on the bot's DM
-              // screen, so this global-stream branch is the common case for
-              // this one, not just the "just in case" fallback it is for
-              // TRADE_CLOSED/PORTFOLIO_RESPONSE above.
-              if (inner.startsWith('IMAGE_CAPTION_RESPONSE:')) {
-                try {
-                  const { BOT_INBOX_IDS } = await import('@/lib/constants');
-                  if (!BOT_INBOX_IDS.includes(senderInboxId)) return;
-                  const rest = inner.slice('IMAGE_CAPTION_RESPONSE:'.length);
-                  const sepIdx = rest.indexOf(':');
-                  if (sepIdx <= 0) return;
-                  const messageId = rest.slice(0, sepIdx);
-                  const caption = rest.slice(sepIdx + 1);
-                  if (!caption) return;
-                  const { storeCaptionResponse } = await import('@/lib/imageCaption');
-                  await storeCaptionResponse(messageId, caption);
-                  const { usePhotoReviewStore } = await import('@/store/photoReviewStore');
-                  usePhotoReviewStore.getState().setCaption(messageId, caption);
-                } catch { /* swallow */ }
-                return;
-              }
+              // IMAGE_CAPTION_RESPONSE handled above via parseImageCaptionResponse.
 
               // STREAK_CAPTION_RESPONSE: bot-generated (Ollama) Banana
               // Streak Day-7 tweet caption — same "may arrive while off the

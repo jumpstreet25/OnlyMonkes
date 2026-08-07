@@ -24,7 +24,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
-import { THEME, FONTS, MAX_MESSAGE_LENGTH, getWorldBarTint, getWorldAccent } from "@/lib/constants";
+import { THEME, FONTS, MAX_MESSAGE_LENGTH, getWorldBarTint, chromeAccentColor } from "@/lib/constants";
 import { getBlurProps, GLASS_CHROME_BG } from "@/lib/glassTheme";
 import { useThemeColor } from "@/lib/shopTheme";
 import { shortenAddress } from "@/lib/nftVerification";
@@ -131,12 +131,17 @@ function ChannelButton({ channelId }: { channelId: 'bets' | 'trades' | 'sales' |
   const clearCount = useAppStore((s) => s.clearBotChannelCount);
   const shopStyles = useAppStore(s => s.shopStyles);
   const nftDominantColor = useAppStore(s => s.nftDominantColor);
-  const pfpTint = shopStyles?.pfpFullTheme && nftDominantColor ? nftDominantColor : null;
-  // (v30 2026-05-09) Icon color follows the same priority as toolbarColor
-  // above: PFP-theme override > world accent > default light blue.
-  const iconColor = (shopStyles?.pfpFullTheme && nftDominantColor)
+  // Contrast-safe chrome: dark NFT PFP colors used to paint channel icons
+  // nearly black on Tech Noir / Deep Space bars (user-visible "blacked out"
+  // bottom). chromeAccentColor falls back to world cyan/etc when too dark.
+  const iconColor = chromeAccentColor(
+    !!shopStyles?.pfpFullTheme,
+    nftDominantColor,
+    shopStyles?.worldId as string | undefined,
+  );
+  const pfpTint = shopStyles?.pfpFullTheme && nftDominantColor && iconColor === nftDominantColor
     ? nftDominantColor
-    : getWorldAccent(shopStyles?.worldId as string | undefined);
+    : null;
 
   return (
     <Pressable
@@ -215,16 +220,16 @@ export const ChatInput = memo(function ChatInput({
   // Theme overrides for Banana Shop Tier 4 themes
   const themeBorder = useThemeColor('border');
 
-  // Toolbar label accent (CAM / LIVE / GIF). Priority:
-  //   1) PFP Full Theme override (user equipped NFT-color theme)
-  //   2) World accent (per-world via getWorldAccent — Banana Grove =
-  //      warm honey gold, Cyberpunk = neon pink, Trading Floor = gold)
-  //   3) Default OnlyMonkes light blue
+  // Toolbar (CAM / LIVE / GIF): World owns chrome when equipped — same
+  // Tech Noir cyan for every monke on that world. PFP Full Theme only
+  // tints chrome when NO world is equipped (and NFT color is readable).
   const shopStyles = useAppStore(s => s.shopStyles);
   const nftDominantColor = useAppStore(s => s.nftDominantColor);
-  const toolbarColor = (shopStyles?.pfpFullTheme && nftDominantColor)
-    ? nftDominantColor
-    : getWorldAccent(shopStyles?.worldId as string | undefined);
+  const toolbarColor = chromeAccentColor(
+    !!shopStyles?.pfpFullTheme,
+    nftDominantColor,
+    shopStyles?.worldId as string | undefined,
+  );
   // World-aware transparency: when a Chat World is equipped, drop the input
   // bar background so falling bananas / candles can be seen piling up behind
   // it. 2026-07-24: always-on glass — was opaque themeSurface when no world

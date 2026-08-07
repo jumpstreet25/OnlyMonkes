@@ -11,7 +11,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BlurView } from "expo-blur";
 import { THEME, FONTS, getWorldBarTint } from "@/lib/constants";
 import { getBlurProps } from "@/lib/glassTheme";
-import { getLocatedUserCount } from "@/lib/userProfile";
+import { getLocatedUserCount, useProfileVersion } from "@/lib/userProfile";
 import { markOnboardingStep } from "@/components/OnboardingChecklist";
 import { BotCommandTicker } from "@/components/BotCommandTicker";
 import { useAppStore } from "@/store/appStore";
@@ -20,7 +20,8 @@ import { useAppStore } from "@/store/appStore";
 // when no world is equipped, which hid the BlurView below completely.
 // World tints (getWorldBarTint) were already translucent (0.30-0.38) and
 // didn't need this treatment.
-const HEADER_BG_NO_WORLD = "rgba(18, 18, 26, 0.19)";
+// 2026-08-07: 0.19 → 0.12 — slightly more transparent over chat (not much).
+const HEADER_BG_NO_WORLD = "rgba(18, 18, 26, 0.12)";
 
 // Exported so ChatScreen can position the header as an absolute overlay
 // and pad the message list's scroll content to clear it — must match
@@ -61,6 +62,16 @@ export function ChatHeader({
   // edge-to-edge (behind the status bar) — keeps the world layer visible up
   // top and avoids a black themeBg gap above the chrome.
   const insets = useSafeAreaInsets();
+  // 2026-08-06: globe count is derived from the local PROFILE_UPDATE cache
+  // (not the live group roster). Without subscribing to profile-cache
+  // version, the pill stayed stuck at whatever count was true on first
+  // render (often 3 on a fresh/less-synced device) while another monke who
+  // had accumulated more locations showed 18 — even after backfill finished.
+  const profileVersion = useProfileVersion();
+  const locatedCount = getLocatedUserCount();
+  // Keep profileVersion in the dependency path so React treats it as used
+  // (getLocatedUserCount re-reads the cache after each notify).
+  void profileVersion;
   return (
     <View style={[styles.header, { borderBottomColor: themeBorder, paddingTop: insets.top }]}>
       {/* 2026-07-24: always-on glass — blurs the message list scrolling
@@ -76,7 +87,7 @@ export function ChatHeader({
           accessibilityLabel="Open globe"
           accessibilityRole="button"
         >
-          <Text style={styles.globeHeaderText}>🌍 {getLocatedUserCount()}</Text>
+          <Text style={styles.globeHeaderText}>🌍 {locatedCount}</Text>
         </Pressable>
       </View>
 

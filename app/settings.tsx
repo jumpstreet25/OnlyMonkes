@@ -1,12 +1,12 @@
 import React, { useState } from "react";
-import { View, Text, StyleSheet, Pressable, Switch, ScrollView, StatusBar, Alert } from "react-native";
-import { IS_IMMERSIVE_SHELL } from "@/lib/immersiveStatusBar";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { View, Text, StyleSheet, Pressable, Switch, ScrollView } from "react-native";
 import { router } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { THEME, FONTS } from "@/lib/constants";
 import { useAppStore } from "@/store/appStore";
 import { getActiveThreats, getThreatSeverity } from "@/lib/security";
+import { showGlassAlert } from "@/lib/glassAlert";
+import { WorldScreenShell, useWorldGlassCardStyle } from "@/components/worlds/WorldScreenShell";
 
 export default function SettingsScreen() {
   const {
@@ -19,10 +19,10 @@ export default function SettingsScreen() {
   } = useAppStore();
 
   const [clearing, setClearing] = useState(false);
-  const insets = useSafeAreaInsets();
+  const cardStyle = useWorldGlassCardStyle();
 
   const handleClearCache = async () => {
-    Alert.alert(
+    showGlassAlert(
       "Clear Cache",
       "This will clear cached images, geocode data, and message cache. Your account, bananas, and purchases are not affected.",
       [
@@ -39,7 +39,7 @@ export default function SettingsScreen() {
               ]);
             } catch { /* ignore */ }
             setClearing(false);
-            Alert.alert("Cache Cleared", "Restart the app for changes to take effect.");
+            showGlassAlert("Cache Cleared", "Restart the app for changes to take effect.");
           },
         },
       ]
@@ -47,28 +47,19 @@ export default function SettingsScreen() {
   };
 
   return (
-    <View style={styles.root}>
-      <StatusBar barStyle="light-content" hidden={IS_IMMERSIVE_SHELL} />
-      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-        <Pressable onPress={() => router.back()} hitSlop={8}>
-          <Text style={styles.backText}>← Back</Text>
-        </Pressable>
-        <Text style={styles.headerTitle}>Settings</Text>
-        <View style={{ width: 60 }} />
-      </View>
-
+    <WorldScreenShell title="Settings" onBack={() => router.back()}>
       <ScrollView contentContainerStyle={styles.content}>
         {/* Notifications */}
         <Text style={styles.sectionTitle}>Notifications</Text>
-        <ToggleRow label="All Messages" value={notificationsEnabled} onToggle={setNotificationsEnabled} />
-        <ToggleRow label="Mentions Only" value={mentionsOnly} onToggle={setMentionsOnly} />
-        <ToggleRow label="Bot Alerts" value={botNotificationsEnabled} onToggle={setBotNotificationsEnabled} />
-        <ToggleRow label="DM Notifications" value={dmNotificationsEnabled} onToggle={setDmNotificationsEnabled} />
-        <ToggleRow label="Live Room Alerts" value={liveRoomNotificationsEnabled} onToggle={setLiveRoomNotificationsEnabled} />
+        <ToggleRow label="All Messages" value={notificationsEnabled} onToggle={setNotificationsEnabled} cardStyle={cardStyle} />
+        <ToggleRow label="Mentions Only" value={mentionsOnly} onToggle={setMentionsOnly} cardStyle={cardStyle} />
+        <ToggleRow label="Bot Alerts" value={botNotificationsEnabled} onToggle={setBotNotificationsEnabled} cardStyle={cardStyle} />
+        <ToggleRow label="DM Notifications" value={dmNotificationsEnabled} onToggle={setDmNotificationsEnabled} cardStyle={cardStyle} />
+        <ToggleRow label="Live Room Alerts" value={liveRoomNotificationsEnabled} onToggle={setLiveRoomNotificationsEnabled} cardStyle={cardStyle} />
 
         {/* Display */}
         <Text style={[styles.sectionTitle, { marginTop: 24 }]}>Display</Text>
-        <View style={styles.row}>
+        <View style={[styles.row, cardStyle]}>
           <Text style={styles.rowLabel}>Text Size</Text>
           <View style={styles.textScaleRow}>
             {[0.85, 1.0, 1.15, 1.3].map(s => (
@@ -87,23 +78,23 @@ export default function SettingsScreen() {
 
         {/* Data */}
         <Text style={[styles.sectionTitle, { marginTop: 24 }]}>Data</Text>
-        <Pressable style={styles.actionRow} onPress={handleClearCache} disabled={clearing}>
+        <Pressable style={[styles.actionRow, cardStyle]} onPress={handleClearCache} disabled={clearing}>
           <Text style={styles.actionText}>{clearing ? "Clearing..." : "Clear Cache"}</Text>
           <Text style={styles.actionDesc}>Clears profile and geocode caches</Text>
         </Pressable>
 
         {/* Device Security */}
         <Text style={[styles.sectionTitle, { marginTop: 24 }]}>Device Security</Text>
-        <SecurityPanel />
+        <SecurityPanel cardStyle={cardStyle} />
 
         {/* Links */}
         <Text style={[styles.sectionTitle, { marginTop: 24 }]}>Info</Text>
-        <Pressable style={styles.actionRow} onPress={() => router.push("/about" as any)}>
+        <Pressable style={[styles.actionRow, cardStyle]} onPress={() => router.push("/about" as any)}>
           <Text style={styles.actionText}>About OnlyMonkes</Text>
           <Text style={styles.actionDesc}>Version, links, credits, legal docs</Text>
         </Pressable>
       </ScrollView>
-    </View>
+    </WorldScreenShell>
   );
 }
 
@@ -121,20 +112,19 @@ const THREAT_LABELS: Record<string, string> = {
   devMode: "Developer mode enabled",
 };
 
-function SecurityPanel() {
+function SecurityPanel({ cardStyle }: { cardStyle: object }) {
   const threats = getActiveThreats();
   if (threats.length === 0) {
     return (
-      <View style={styles.actionRow}>
+      <View style={[styles.actionRow, cardStyle]}>
         <Text style={[styles.actionText, { color: "#22c55e" }]}>✓ Device verified</Text>
         <Text style={styles.actionDesc}>No security threats detected. Trading is enabled.</Text>
       </View>
     );
   }
   const hard = threats.filter((t) => getThreatSeverity(t) === "hard");
-  const soft = threats.filter((t) => getThreatSeverity(t) === "soft");
   return (
-    <View style={styles.actionRow}>
+    <View style={[styles.actionRow, cardStyle]}>
       <Text style={[styles.actionText, { color: hard.length > 0 ? "#ef4444" : "#f59e0b" }]}>
         {hard.length > 0 ? "⚠ Trading blocked" : "ℹ Security notice"}
       </Text>
@@ -161,9 +151,19 @@ function SecurityPanel() {
   );
 }
 
-function ToggleRow({ label, value, onToggle }: { label: string; value: boolean; onToggle: (v: boolean) => void }) {
+function ToggleRow({
+  label,
+  value,
+  onToggle,
+  cardStyle,
+}: {
+  label: string;
+  value: boolean;
+  onToggle: (v: boolean) => void;
+  cardStyle: object;
+}) {
   return (
-    <View style={styles.row}>
+    <View style={[styles.row, cardStyle]}>
       <Text style={styles.rowLabel}>{label}</Text>
       <Switch
         value={value}
@@ -176,21 +176,13 @@ function ToggleRow({ label, value, onToggle }: { label: string; value: boolean; 
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: THEME.bg },
-  header: {
-    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    paddingHorizontal: 16, paddingBottom: 12,
-    borderBottomWidth: 0.75, borderBottomColor: "rgba(255,255,255,0.06)",
-  },
-  backText: { fontFamily: FONTS.bodyMed, fontSize: 14, color: "#6CB4EE" },
-  headerTitle: { fontFamily: FONTS.display, fontSize: 20, color: THEME.text },
   content: { padding: 16, paddingBottom: 40 },
   sectionTitle: { fontFamily: FONTS.display, fontSize: 15, color: THEME.text, marginBottom: 8, marginTop: 8 },
   row: {
     flexDirection: "row", justifyContent: "space-between", alignItems: "center",
     paddingVertical: 14, paddingHorizontal: 16,
-    backgroundColor: "rgba(18,18,30,0.8)", borderRadius: 14,
-    borderWidth: 0.75, borderColor: "rgba(255,255,255,0.06)", marginBottom: 6,
+    borderRadius: 14,
+    borderWidth: 0.75, marginBottom: 6,
   },
   rowLabel: { fontFamily: FONTS.bodyMed, fontSize: 14, color: THEME.text },
   textScaleRow: { flexDirection: "row", gap: 6 },
@@ -203,8 +195,8 @@ const styles = StyleSheet.create({
   scaleTextActive: { color: "#7C3AED" },
   actionRow: {
     paddingVertical: 14, paddingHorizontal: 16,
-    backgroundColor: "rgba(18,18,30,0.8)", borderRadius: 14,
-    borderWidth: 0.75, borderColor: "rgba(255,255,255,0.06)", marginBottom: 6,
+    borderRadius: 14,
+    borderWidth: 0.75, marginBottom: 6,
   },
   actionText: { fontFamily: FONTS.bodyMed, fontSize: 14, color: "#6CB4EE" },
   actionDesc: { fontFamily: FONTS.body, fontSize: 12, color: THEME.textMuted, marginTop: 2 },

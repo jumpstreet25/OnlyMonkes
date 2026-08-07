@@ -1835,6 +1835,16 @@ interface TopTraderEntry {
   rank: number;
   winRatePct: number;   // 0-100, rounded
   weeklyGainPct: number; // rounded, can be negative
+  /** Optional public CDN image for a Saga Monke held by the trader — never a wallet. */
+  nftImage?: string;
+  /** Optional public display name e.g. "MONKE #622" */
+  monkeName?: string;
+  /**
+   * bot_entered  — AutonoMonke trades the bot opened
+   * bot_monitored — smart-money wallets the bot tracks
+   * holder       — community Saga Monkes trader (default)
+   */
+  kind?: "bot_entered" | "bot_monitored" | "holder";
 }
 interface TopTradersSnapshot {
   updatedAt: number;
@@ -1846,11 +1856,30 @@ function isValidTopTradersPayload(v: unknown): v is TopTradersSnapshot {
   const obj = v as Record<string, unknown>;
   if (typeof obj.updatedAt !== "number") return false;
   if (!Array.isArray(obj.traders) || obj.traders.length > 25) return false;
+  const ALLOWED = new Set(["rank", "winRatePct", "weeklyGainPct", "nftImage", "monkeName", "kind"]);
+  const KIND_OK = new Set(["bot_entered", "bot_monitored", "holder"]);
   return obj.traders.every((t: unknown) => {
     if (!t || typeof t !== "object") return false;
     const e = t as Record<string, unknown>;
-    return typeof e.rank === "number" && typeof e.winRatePct === "number" && typeof e.weeklyGainPct === "number"
-      && Object.keys(e).length === 3; // reject anything carrying extra fields (address, sol amount, etc.)
+    // Reject wallet/amount fields and anything else not on the allowlist
+    for (const k of Object.keys(e)) {
+      if (!ALLOWED.has(k)) return false;
+    }
+    if (typeof e.rank !== "number" || typeof e.winRatePct !== "number" || typeof e.weeklyGainPct !== "number") {
+      return false;
+    }
+    if (e.nftImage !== undefined) {
+      if (typeof e.nftImage !== "string" || !/^https:\/\//i.test(e.nftImage) || e.nftImage.length > 512) {
+        return false;
+      }
+    }
+    if (e.monkeName !== undefined) {
+      if (typeof e.monkeName !== "string" || e.monkeName.length > 40) return false;
+    }
+    if (e.kind !== undefined) {
+      if (typeof e.kind !== "string" || !KIND_OK.has(e.kind)) return false;
+    }
+    return true;
   });
 }
 
@@ -1873,7 +1902,10 @@ async function handleTopTradersPost(request: Request, env: Env): Promise<Respons
     return errorResponse("Invalid JSON body", 400);
   }
   if (!isValidTopTradersPayload(body)) {
-    return errorResponse("Invalid payload shape — expected { updatedAt, traders: [{rank, winRatePct, weeklyGainPct}] }", 400);
+    return errorResponse(
+      "Invalid payload shape — expected { updatedAt, traders: [{rank, winRatePct, weeklyGainPct, nftImage?, monkeName?}] }",
+      400,
+    );
   }
   await env.FRAME_ALERTS.put(TOP_TRADERS_KV_KEY, JSON.stringify(body));
   return jsonResponse({ ok: true, count: body.traders.length });

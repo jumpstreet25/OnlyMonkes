@@ -231,6 +231,28 @@ export function getPersistedLocation(inboxId: string): string | undefined {
   return _locationMap.get(inboxId);
 }
 
+/**
+ * Apply a bot LOCATION_SYNC payload (inboxId → { u, loc, ni }) into the
+ * local profile cache + all-time users so MonkeGlobe / 🌍 count can fill
+ * without waiting for each monke's original PROFILE_UPDATE broadcast.
+ */
+export function applyLocationSync(
+  locs: Record<string, { u?: string; loc?: string; ni?: string }>,
+): number {
+  let n = 0;
+  for (const [inboxId, data] of Object.entries(locs)) {
+    if (!inboxId || !data?.loc?.trim()) continue;
+    cacheProfile(inboxId, {
+      username: data.u || undefined,
+      location: data.loc.trim(),
+      nftImage: data.ni || undefined,
+    });
+    trackUser(inboxId, data.u || undefined);
+    n++;
+  }
+  return n;
+}
+
 // ─── All-time user registry ───────────────────────────────────────────────────
 // Persistent set of every unique inboxId that has ever appeared in the chat.
 // Never shrinks, survives app restarts, never double-counts the same wallet.
@@ -347,25 +369,45 @@ export function getDeduplicatedUsers(): Map<string, string> {
  * Bot inboxes are pinned to a hardcoded coordinate on the Globe screen
  * (see GlobeScreen "Pin the bot(s) at Solana Beach" block), so include them
  * in the header counter even if their PROFILE_UPDATE never carried a `loc`
- * field. Avoid double-counting if a bot ever does broadcast a location. */
+ * field. Avoid double-counting if a bot ever does broadcast a location.
+ *
+ * Also folds in any inboxId that only lives in the persistent location map
+ * (e.g. restored from disk after profile-cache LRU eviction, before
+ * trackUser re-seeds all-time users) so the 🌍 pill doesn't under-count
+ * relative to MonkeGlobe markers. */
 export function getLocatedUserCount(): number {
   // Lazy require to avoid a circular import at module load (constants ↔ profile).
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { BOT_INBOX_IDS } = require('@/lib/constants') as { BOT_INBOX_IDS: string[] };
   const deduped = getDeduplicatedUsers();
-  let count = 0;
   const counted = new Set<string>();
   for (const inboxId of deduped.keys()) {
     const profile = _profileCache.get(inboxId);
     if (profile?.location || _locationMap.has(inboxId)) {
-      count++;
       counted.add(inboxId);
     }
   }
-  for (const botId of BOT_INBOX_IDS) {
-    if (!counted.has(botId)) count++;
+  // Location-map-only entries (not yet in all-time users) still count —
+  // wallet-dedup when possible via profile cache.
+  for (const inboxId of _locationMap.keys()) {
+    if (counted.has(inboxId)) continue;
+    const wallet = _profileCache.get(inboxId)?.walletAddress;
+    if (wallet) {
+      let already = false;
+      for (const id of counted) {
+        if (_profileCache.get(id)?.walletAddress === wallet) {
+          already = true;
+          break;
+        }
+      }
+      if (already) continue;
+    }
+    counted.add(inboxId);
   }
-  return count;
+  for (const botId of BOT_INBOX_IDS) {
+    counted.add(botId);
+  }
+  return counted.size;
 }
 
 // Memoized result cache for getPrimaryInboxId. The function does an O(N=200)
@@ -379,6 +421,10 @@ let _profileCacheVersion = 0;
 const _primaryInboxCache = new Map<string, { primary: string; v: number }>();
 export function _bumpProfileCacheVersion(): void {
   _profileCacheVersion++;
+  // Also wake UI subscribers (ChatHeader globe count, MessageBubble PFP,
+  // etc.) — previously only cacheProfile/trackUser notified, so paths that
+  // only bumped the version left the 🌍 pill stuck on a stale number.
+  _notifyProfileListeners();
 }
 
 /**

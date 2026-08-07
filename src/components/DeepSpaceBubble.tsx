@@ -7,8 +7,8 @@
  *   2. Dark body fill (near-black with deep purple cast)
  *   3. Star speckles inside (8 tiny dots, very low opacity)
  *   4. Gradient border — purple → electric blue
- *   5. Corner bracket marks (HUD-style: 2 lines per corner, smaller inset)
- *   6. Simple tail (gradient-matched)
+ *   5. Simple tail (gradient-matched)
+ *   (Corner brackets removed 2026-08-07)
  */
 
 import React, { useMemo } from "react";
@@ -17,8 +17,6 @@ import {
   Path,
   Group,
   BlurMask,
-  Line,
-  vec,
   Circle,
 } from "@shopify/react-native-skia";
 
@@ -32,8 +30,6 @@ interface DeepSpaceBubbleProps {
 
 const TAIL_W = 11;
 const TAIL_H = 10;
-const BRACKET_LEN = 10;  // length of each bracket arm
-const BRACKET_INSET = 4; // how far brackets sit inside the bubble boundary
 
 function buildRoundedRect(w: number, h: number, r: number): string {
   return [
@@ -81,8 +77,6 @@ export function DeepSpaceBubble({ width: w, height: h, color, radius = 14, tailS
   const canvasW = tailSide === "right" ? w + TAIL_W + 2 : tailSide === "left" ? w + TAIL_W + 2 : w;
   const offsetX = tailSide === "left" ? TAIL_W : 0;
 
-  const BI = BRACKET_INSET;
-
   return (
     <Canvas
       style={{
@@ -121,19 +115,7 @@ export function DeepSpaceBubble({ width: w, height: h, color, radius = 14, tailS
         {/* Second pass shifted for the blue edge — gives the dual-color feel */}
         <Path path={bodyPath} style="stroke" strokeWidth={0.8} color="rgba(80,180,255,0.55)" />
 
-        {/* Corner bracket marks — HUD-style, inset from edge */}
-        {/* Top-left */}
-        <Line p1={vec(BI, BI + BRACKET_LEN)} p2={vec(BI, BI)} color="#8860FF" strokeWidth={1.8} />
-        <Line p1={vec(BI, BI)} p2={vec(BI + BRACKET_LEN, BI)} color="#8860FF" strokeWidth={1.8} />
-        {/* Top-right */}
-        <Line p1={vec(w - BI - BRACKET_LEN, BI)} p2={vec(w - BI, BI)} color="#5090FF" strokeWidth={1.8} />
-        <Line p1={vec(w - BI, BI)} p2={vec(w - BI, BI + BRACKET_LEN)} color="#5090FF" strokeWidth={1.8} />
-        {/* Bottom-left */}
-        <Line p1={vec(BI, h - BI - BRACKET_LEN)} p2={vec(BI, h - BI)} color="#8860FF" strokeWidth={1.8} />
-        <Line p1={vec(BI, h - BI)} p2={vec(BI + BRACKET_LEN, h - BI)} color="#8860FF" strokeWidth={1.8} />
-        {/* Bottom-right */}
-        <Line p1={vec(w - BI - BRACKET_LEN, h - BI)} p2={vec(w - BI, h - BI)} color="#5090FF" strokeWidth={1.8} />
-        <Line p1={vec(w - BI, h - BI)} p2={vec(w - BI, h - BI - BRACKET_LEN)} color="#5090FF" strokeWidth={1.8} />
+        {/* Corner brackets removed 2026-08-07 — read as triangles on bubbles */}
       </Group>
     </Canvas>
   );

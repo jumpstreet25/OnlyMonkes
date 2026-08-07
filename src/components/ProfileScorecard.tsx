@@ -10,12 +10,14 @@ import { View, Text, StyleSheet, Pressable, Image } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { toast } from "sonner-native";
+
 import { Canvas, RoundedRect, BlurMask, LinearGradient, Group, Rect, Circle, vec } from "@shopify/react-native-skia";
 import { useAppStore } from "@/store/appStore";
 import { getEarnedBadges, getBadgeDef } from "@/lib/badges";
 import { loadBananaState, type BananaState } from "@/lib/bananaRewards";
 import { getShieldExpiry, daysUntilNextPurchase, purchaseShield, SHIELD_COST_BANANAS } from "@/lib/streakShield";
 import { THEME, FONTS, getWorldAccent } from "@/lib/constants";
+import { WorldGlassFill } from "@/components/WorldGlassFill";
 import { MenuIcon } from "@/components/MenuIcon";
 import { BadgeGlyph } from "@/components/BadgeGlyph";
 
@@ -32,7 +34,7 @@ interface ProfileScorecardProps {
 const SOLANA_PURPLE = "#9945FF";
 
 // Skia 3D glass card — same treatment as premium chat bubbles
-function SkiaGlassCard({ width, height, glowColor }: { width: number; height: number; glowColor: string }) {
+function SkiaGlassCard({ width, height, glowColor, worldId }: { width: number; height: number; glowColor: string; worldId?: string }) {
   if (width <= 0 || height <= 0) return null;
   const pad = 20;
   const r = 20;
@@ -40,11 +42,26 @@ function SkiaGlassCard({ width, height, glowColor }: { width: number; height: nu
   const y = pad;
   const w = width;
   const h = height;
+  // 2026-08-06: was a flat rgba(6,6,14,0.94) fill regardless of world —
+  // reported as "the profile card is dark" while every other MenuDrawer
+  // card had already been fixed to let the equipped world's WorldLayer art
+  // show through (see MenuDrawer.tsx's gridBtn/bananaSection/shopBtn/
+  // searchBar fix, same day). Same treatment here: much lower alpha when a
+  // world is equipped so this Skia canvas doesn't paint over it.
+  // 2026-08-07: a BlurView now sits behind this Skia canvas (see the render
+  // function below) frosting the world art directly, same MonkeGlass unit
+  // as a chat bubble — so this fill goes back to a light tint (blur does
+  // the legibility work) instead of the flat 0.60 scrim from earlier today,
+  // which fought the "world stays sharp, only glass panels blur" direction.
+  // 2026-08-07: when a world is equipped, WorldGlassFill (BlurView stack)
+  // under this canvas is the real glass — keep Skia body nearly clear so
+  // the profile card matches MenuDrawer panels instead of a dark Skia slab.
+  const glassBodyColor = worldId ? "rgba(6, 6, 14, 0.06)" : "rgba(6, 6, 14, 0.94)";
   const minDim = Math.min(w, h);
 
   return (
     <Canvas style={{ width: w + pad * 2, height: h + pad * 2, position: "absolute", top: -pad, left: -pad }} pointerEvents="none">
-      {/* Outer glow */}
+      {/* Outer glow — cosmetic only */}
       <RoundedRect x={x} y={y} width={w} height={h} r={r} color={glowColor + "30"}>
         <BlurMask blur={16} style="normal" />
       </RoundedRect>
@@ -52,8 +69,8 @@ function SkiaGlassCard({ width, height, glowColor }: { width: number; height: nu
         <BlurMask blur={8} style="normal" />
       </RoundedRect>
 
-      {/* Glass body — dark */}
-      <RoundedRect x={x} y={y} width={w} height={h} r={r} color="rgba(6, 6, 14, 0.94)" />
+      {/* Glass body */}
+      <RoundedRect x={x} y={y} width={w} height={h} r={r} color={glassBodyColor} />
 
       {/* Interior effects */}
       <Group clip={{ rect: { x, y, width: w, height: h }, rx: r, ry: r }}>
@@ -163,8 +180,23 @@ export function ProfileScorecard({ onEditProfile, onPressPfp, onClose }: Profile
   const badges = badgeIds.map(id => getBadgeDef(id)).filter(Boolean);
   const walletShort = wallet?.address ? `${wallet.address.slice(0, 4)}...${wallet.address.slice(-4)}` : null;
 
-  // Use shop glow color → NFT dominant color → Solana purple
-  const glowColor = (shopStyles.glowColor as string) ?? nftDominantColor ?? SOLANA_PURPLE;
+  // 2026-08-06: was shop glow color (from the CHAT BUBBLE cosmetic category,
+  // e.g. Neon Green Glow) → NFT dominant color → Solana purple — never
+  // considered worldId at all. That's correct in isolation (bubble glow is
+  // meant to color chat bubbles), but this same value was ALSO recycled to
+  // color the profile card, so equipping a world never changed this card's
+  // look while it changed every other MenuDrawer surface, reported as "the
+  // profile card is still green" after Frost Grove was equipped. Priority
+  // now matches iconAccent's chain elsewhere in this file: an explicit PFP-
+  // specific override (PFP Aura, a Banana Shop item scoped to the profile/
+  // PFP identity, not chat bubbles) wins first, then the world's own
+  // accent, then the bubble glow as a last-resort default for users with
+  // no world equipped at all.
+  const glowColor = shopStyles.pfpAuraEnabled
+    ? (nftDominantColor ?? (shopStyles.glowColor as string) ?? SOLANA_PURPLE)
+    : worldId
+      ? getWorldAccent(worldId)
+      : (shopStyles.glowColor as string) ?? nftDominantColor ?? SOLANA_PURPLE;
   const pfpRingColor = shopStyles.pfpAuraEnabled ? (nftDominantColor ?? glowColor) : glowColor;
 
   const handleCopyWallet = () => {
@@ -175,9 +207,25 @@ export function ProfileScorecard({ onEditProfile, onPressPfp, onClose }: Profile
     }
   };
 
+  // 2026-08-07: when a world is equipped, match MenuDrawer tiles exactly —
+  // WorldGlassFill with blur=false (same as grid/streak/search), no Skia
+  // colored glow body (that was why the profile card looked "still colored
+  // and blurred" while tiles below were plain glass tint).
+  const worldGlass = !!worldId;
+
   return (
     <View
-      style={st.card}
+      style={[
+        st.card,
+        worldGlass
+          ? {
+              backgroundColor: "transparent",
+              overflow: "hidden",
+              borderWidth: 0.75,
+              borderColor: "rgba(248, 248, 255, 0.10)",
+            }
+          : null,
+      ]}
       onLayout={(e) => {
         const { width, height } = e.nativeEvent.layout;
         if (Math.abs(cardSize.w - width) > 1 || Math.abs(cardSize.h - height) > 1) {
@@ -185,7 +233,11 @@ export function ProfileScorecard({ onEditProfile, onPressPfp, onClose }: Profile
         }
       }}
     >
-      {cardSize.w > 0 && <SkiaGlassCard width={cardSize.w} height={cardSize.h} glowColor={glowColor} />}
+      {worldGlass ? (
+        <WorldGlassFill worldId={worldId} blur={false} />
+      ) : cardSize.w > 0 ? (
+        <SkiaGlassCard width={cardSize.w} height={cardSize.h} glowColor={glowColor} worldId={worldId} />
+      ) : null}
 
       {/* Top-right: Edit + Close buttons */}
       <View style={st.topActions}>
@@ -337,7 +389,7 @@ const st = StyleSheet.create({
   sub: { fontFamily: FONTS.body, fontSize: 12, color: THEME.textMuted },
   wallet: { fontFamily: FONTS.mono, fontSize: 11, color: THEME.textMuted },
   statsGrid: { flexDirection: "row", justifyContent: "space-between", marginBottom: 12, gap: 6 },
-  statItem: { flex: 1, alignItems: "center", backgroundColor: "rgba(255,255,255,0.02)", borderRadius: 12, paddingVertical: 8, borderWidth: 0.5, borderColor: "rgba(255,255,255,0.04)" },
+  statItem: { flex: 1, alignItems: "center", backgroundColor: "rgba(0,0,0,0.18)", borderRadius: 12, paddingVertical: 8, borderWidth: 0.5, borderColor: "rgba(255,255,255,0.08)" },
   statValue: { fontFamily: FONTS.displayMed, fontSize: 18, color: THEME.text },
   statLabelRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2 },
   statLabel: { fontFamily: FONTS.body, fontSize: 10, color: THEME.textMuted },
@@ -346,12 +398,12 @@ const st = StyleSheet.create({
   shieldRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: "rgba(255,255,255,0.03)", borderRadius: 12, paddingVertical: 10, paddingHorizontal: 12, borderWidth: 0.5, marginBottom: 12 },
   shieldText: { fontFamily: FONTS.bodyMed, fontSize: 12, color: THEME.text, letterSpacing: 0.3 },
   milestones: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
-  pill: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "rgba(255,255,255,0.03)", borderRadius: 10, paddingHorizontal: 8, paddingVertical: 4, borderWidth: 0.5 },
+  pill: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "rgba(0,0,0,0.18)", borderRadius: 10, paddingHorizontal: 8, paddingVertical: 4, borderWidth: 0.5 },
   pillText: { fontFamily: FONTS.body, fontSize: 11, color: THEME.textMuted },
   traitsSection: { marginTop: 12, gap: 6 },
   traitsTitle: { fontFamily: FONTS.bodyMed, fontSize: 11, color: THEME.textMuted, marginBottom: 2 },
   traitsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
-  traitPill: { backgroundColor: "rgba(255,255,255,0.03)", borderRadius: 10, paddingHorizontal: 8, paddingVertical: 5, borderWidth: 0.5, minWidth: "28%" as any },
-  traitType: { fontFamily: FONTS.mono, fontSize: 8, color: THEME.textFaint, textTransform: "uppercase", letterSpacing: 0.5 },
+  traitPill: { backgroundColor: "rgba(0,0,0,0.18)", borderRadius: 10, paddingHorizontal: 8, paddingVertical: 5, borderWidth: 0.5, minWidth: "28%" as any },
+  traitType: { fontFamily: FONTS.mono, fontSize: 8, color: THEME.textMuted, textTransform: "uppercase", letterSpacing: 0.5 },
   traitValue: { fontFamily: FONTS.bodyMed, fontSize: 12, color: THEME.text, marginTop: 1 },
 });

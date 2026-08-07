@@ -337,9 +337,9 @@ export const SHOP_ITEMS: ShopItem[] = [
   {
     id: "world_tech_noir",
     name: "Tech Noir",
-    description: "Noir city skyline in the rain. Cold chrome bubbles. Steel-blue night.",
+    description: "Street-level wet avenue at night. Neon skyscrapers, Saga Monke tower at the vanishing point.",
     category: "world", tier: 5, bananaCost: 750, usdCost: 4.99,
-    preview: "🌧️",
+    preview: "🌃",
     style: { worldId: "world_tech_noir" },
   },
   {

@@ -58,11 +58,13 @@ import type { ProfileTarget } from "@/components/UserProfileModal";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import { GLASS_GRADIENT_COLORS, HIGHLIGHT, getBlurProps } from "@/lib/glassTheme";
+import { WorldGlassFill } from "@/components/WorldGlassFill";
 import { LeaderboardView } from "@/components/LeaderboardView";
 import { EventRsvpModal } from "@/components/EventRsvpModal";
 import { getAttendeeCount } from "@/lib/eventRsvp";
 import { CHAT_THEMES, saveThemeId } from "@/lib/theme";
 import { WebViewModal } from "@/components/WebViewModal";
+import { pruneStaleDuplicateMembers, amISuperAdmin } from "@/hooks/useXmtp";
 
 const DRAWER_WIDTH_RATIO = 0.82;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
@@ -138,6 +140,11 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
   const calendarEvents = useAppStore(s => s.calendarEvents);
   const [rsvpEvent, setRsvpEvent] = useState<CalendarEvent | null>(null);
   const myInboxId = useAppStore(s => s.myInboxId);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  useEffect(() => {
+    if (!visible) return;
+    amISuperAdmin().then(setIsSuperAdmin).catch(() => setIsSuperAdmin(false));
+  }, [visible]);
   const notificationsEnabled = useAppStore(s => s.notificationsEnabled);
   const mentionsOnly = useAppStore(s => s.mentionsOnly);
   const botNotificationsEnabled = useAppStore(s => s.botNotificationsEnabled);
@@ -418,11 +425,26 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
   }) {
     return (
       <Pressable
-        style={({ pressed }) => [styles.gridBtn, pressed && { opacity: 0.7, transform: [{ scale: 0.95 }] }]}
+        style={({ pressed }) => [
+          styles.gridBtn,
+          // 2026-08-07: real MonkeGlass instead of a flat scrim — gridBtn's
+          // base style is a near-opaque rgba(6,6,14,0.80) tile, fine on the
+          // flat default drawer but a solid box stamped over world art. A
+          // BlurView + tint (below, matching TechNoirBubble's per-panel
+          // recipe) frosts just this tile's own footprint of the world
+          // behind it, so the tile reads as glass ON the world instead of
+          // either a flat scrim over it or (the previous attempt) blurring
+          // the entire world background at once.
+          worldId ? { backgroundColor: "transparent", borderColor: accentRgba(0.25) } : null,
+          pressed && { opacity: 0.7, transform: [{ scale: 0.95 }] },
+        ]}
         onPress={onPress}
         accessibilityLabel={label}
         accessibilityRole="button"
       >
+        {/* blur=false: scrollable grid — live BlurView per tile was the
+            main MenuDrawer scroll lag source. Tint stack still matches glass. */}
+        {worldId ? <WorldGlassFill worldId={worldId} blur={false} /> : null}
         <MenuIcon name={iconName} size={28} color={iconAccent} />
         <Text style={styles.gridLabel}>{label}</Text>
         {badge !== undefined && badge > 0 && (
@@ -508,31 +530,31 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
       </Pressable>
 
       <View style={[styles.popup, { paddingTop: insets.top + 12, borderColor: themeBorder }, worldId ? null : { backgroundColor: drawerBg }]}>
-        {/* 2026-07-24: card's own BlurView, matching GlassModal/GlassCard —
-            the backdrop BlurView (above, in the Pressable) only ever blurred
-            the dismiss-tap area, never this popup's own (previously 0.96-
-            opaque) fill. No-op when a world is equipped — WorldLayer below
-            renders opaque on top of it by design (see the comment there). */}
-        <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />
-        {/* (v37 2026-05-09) When a world is equipped, render the WorldLayer
-            (paused) inside the drawer so its background — gradient,
-            silhouette skyline, dappled-light orbs — shows through behind
-            the menu content. Replaces the translucent tint that was
-            letting the live chat bleed through. active={false} stops
-            world animations while the drawer is open so we're not
-            double-rendering banana mowers etc. */}
+        {/* 2026-08-07: reverted the earlier attempt at blurring this whole
+            card over WorldLayer — that smeared the entire equipped world's
+            art into a flat wash, which reads as "the background changed"
+            rather than "there's glass sitting on top of it". World
+            backgrounds stay sharp; glass/blur now lives only on the
+            individual panels sitting on top (gridBtn, bananaSection,
+            shopBtn, searchBar, ProfileScorecard), each with its own small
+            BlurView sampling just what's behind it — same unit of blur as
+            a chat bubble, just tiled across the drawer instead of smeared
+            once across the whole thing. */}
         {worldId ? (
           <View style={StyleSheet.absoluteFill} pointerEvents="none">
             <WorldLayer active={false} />
           </View>
-        ) : null}
-        {/* Glass gradient overlay */}
-        <LinearGradient
-          colors={GLASS_GRADIENT_COLORS}
-          start={{ x: 0.5, y: 0 }}
-          end={{ x: 0.5, y: 1 }}
-          style={[StyleSheet.absoluteFill, { borderRadius: 20 }]}
-        />
+        ) : (
+          <>
+            <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />
+            <LinearGradient
+              colors={GLASS_GRADIENT_COLORS}
+              start={{ x: 0.5, y: 0 }}
+              end={{ x: 0.5, y: 1 }}
+              style={[StyleSheet.absoluteFill, { borderRadius: 20 }]}
+            />
+          </>
+        )}
         {/* Top highlight */}
         <View style={styles.glassHighlight} />
         {/* Header — only shown on sub-views (Back button) */}
@@ -577,7 +599,8 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                 const minsLeft = Math.floor((msLeft % 3600000) / 60000);
                 const canClaim = msLeft === 0;
                 return (
-                <View style={styles.bananaSection}>
+                <View style={[styles.bananaSection, worldId ? { backgroundColor: "transparent" } : null]}>
+                  {worldId ? <WorldGlassFill worldId={worldId} blur={false} /> : null}
                   <View style={styles.bananaHeader}>
                     <Text style={styles.bananaTitle}>
                       Daily Streak{" "}
@@ -610,9 +633,10 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                   </View>
                   {/* Banana Shop button — Skia cart (iconAccent) + label (v39) */}
                   <Pressable
-                    style={({ pressed }) => [styles.shopBtn, pressed && { opacity: 0.8 }]}
+                    style={({ pressed }) => [styles.shopBtn, worldId ? { backgroundColor: "transparent" } : null, pressed && { opacity: 0.8 }]}
                     onPress={() => setShopOpen(true)}
                   >
+                    {worldId ? <WorldGlassFill worldId={worldId} blur={false} showHighlight={false} /> : null}
                     <MenuIcon name="cart" size={16} color={iconAccent} />
                     <Text style={styles.shopBtnText}>Banana Shop</Text>
                   </Pressable>
@@ -625,8 +649,9 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                   same iconAccent priority chain (PFP-theme > world > blue). */}
               <View style={[
                 styles.searchBar,
-                worldId ? { borderColor: accentRgba(0.22) } : null,
+                worldId ? { backgroundColor: "transparent", borderColor: accentRgba(0.22) } : null,
               ]}>
+                {worldId ? <WorldGlassFill worldId={worldId} blur={false} showHighlight={false} /> : null}
                 <MenuIcon name="search" size={16} color={iconAccent} />
                 <TextInput
                   style={styles.searchInput}
@@ -709,6 +734,40 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                   label="Settings"
                   onPress={() => { onClose(); setTimeout(() => router.push('/settings' as any), 300); }}
                 />
+                {isSuperAdmin && (
+                  <GridButton
+                    iconName="monketools"
+                    label="Prune Dupes"
+                    onPress={() => {
+                      Alert.alert(
+                        "Prune duplicate members?",
+                        "Removes 12 stale inboxIds left over from repeated reinstalls during testing (roster 39 → 27). Real members and current sessions are unaffected.",
+                        [
+                          { text: "Cancel", style: "cancel" },
+                          {
+                            text: "Prune",
+                            style: "destructive",
+                            onPress: async () => {
+                              try {
+                                const result = await pruneStaleDuplicateMembers();
+                                if (result.stillPresent.length === 0) {
+                                  Alert.alert("Done", `Roster: ${result.before} → ${result.after} (removed ${result.removed}).`);
+                                } else {
+                                  Alert.alert(
+                                    "Partial result",
+                                    `Roster: ${result.before} → ${result.after} (removed ${result.removed}). ${result.stillPresent.length} still present — may need admin/superAdmin rights confirmed.`,
+                                  );
+                                }
+                              } catch (err) {
+                                Alert.alert("Failed", (err as Error).message);
+                              }
+                            },
+                          },
+                        ],
+                      );
+                    }}
+                  />
+                )}
               </View>
             </>
           )}
@@ -1625,6 +1684,7 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255, 213, 79, 0.10)",
     padding: 14,
     gap: 10,
+    overflow: "hidden",
   },
   bananaHeader: {
     flexDirection: "row",
@@ -1685,6 +1745,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderWidth: 0.75,
     borderColor: "rgba(255, 213, 79, 0.12)",
+    overflow: "hidden",
   },
   shopBtnText: {
     fontFamily: FONTS.displayMed,
@@ -1704,6 +1765,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     marginBottom: 20,
     gap: 8,
+    overflow: "hidden",
   },
   searchInput: {
     flex: 1,
@@ -1732,6 +1794,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 6,
+    overflow: "hidden",
   },
   gridIcon: { fontSize: 28 },
   gridLabel: {
