@@ -1223,6 +1223,8 @@ export default function ChatScreen() {
     }
     try {
       const roomId = createRoomName(myInboxId);
+      // Token first — don't broadcast a room the host cannot enter
+      const token = await createLivekitToken(roomId, myInboxId, username, true);
       const data: AvatarRoomData = {
         id: roomId,
         host: username,
@@ -1231,26 +1233,33 @@ export default function ChatScreen() {
         active: true,
       };
       setActiveAvatarRoom(data);
-      await broadcastAvatarRoom(data);
-      await showLocalNotification(`${username} started a Live`, "Avatar Room in OnlyMonkes", CH_LIVE);
-      const token = await createLivekitToken(roomId, myInboxId, username);
       setAvatarRoomToken(token);
       setIsInAvatarRoom(true);
       router.push(`/avatar-room?token=${encodeURIComponent(token)}&isHost=true`);
-    } catch {
-      Alert.alert("Failed to start", "Could not create the avatar room.");
+      // Signal peers after we're navigating into the room
+      void broadcastAvatarRoom(data).catch((err) =>
+        console.warn("[AvatarRoom] broadcast failed:", (err as Error)?.message),
+      );
+      void showLocalNotification(`${username} started a Live`, "Avatar Room in OnlyMonkes", CH_LIVE);
+    } catch (err: any) {
+      Alert.alert("Failed to start", err?.message ?? "Could not create the avatar room.");
     }
   }, [myInboxId, username, broadcastAvatarRoom, setActiveAvatarRoom, setAvatarRoomToken, setIsInAvatarRoom]);
 
   const handleJoinAvatarRoom = useCallback(async () => {
-    if (!myInboxId || !username || !activeAvatarRoom) return;
+    if (!activeAvatarRoom) return;
+    if (!myInboxId) return;
+    if (!username) {
+      Alert.alert("Set a username first", "Go to your profile and set a username before joining.");
+      return;
+    }
     try {
-      const token = await createLivekitToken(activeAvatarRoom.id, myInboxId, username);
+      const token = await createLivekitToken(activeAvatarRoom.id, myInboxId, username, true);
       setAvatarRoomToken(token);
       setIsInAvatarRoom(true);
       router.push(`/avatar-room?token=${encodeURIComponent(token)}&isHost=false`);
-    } catch {
-      Alert.alert("Failed to join", "Could not join the avatar room.");
+    } catch (err: any) {
+      Alert.alert("Failed to join", err?.message ?? "Could not join the avatar room.");
     }
   }, [myInboxId, username, activeAvatarRoom, setAvatarRoomToken, setIsInAvatarRoom]);
 

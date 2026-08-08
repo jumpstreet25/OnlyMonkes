@@ -130,37 +130,78 @@ const GLASS_BORDER_OTHER = "rgba(248, 248, 255, 0.08)";
 // Removed FALLBACK_BUBBLE — glass bubbles don't use solid NFT-derived colors
 
 // ─── Live Room Pill ──────────────────────────────────────────────────────────
-// Content format: LIVE_PILL:<audio|video>:<hostUsername>:<roomId>
+// Content format: LIVE_PILL:<audio|video|avatar>:<hostUsername>:<roomId>
 
-function parseLivePill(content: string): { type: "audio" | "video"; host: string; roomId: string } | null {
+type LivePillType = "audio" | "video" | "avatar";
+
+function parseLivePill(content: string): { type: LivePillType; host: string; roomId: string } | null {
   if (!content.startsWith("LIVE_PILL:")) return null;
   const parts = content.split(":");
   if (parts.length < 4) return null;
-  return { type: parts[1] as "audio" | "video", host: parts[2], roomId: parts.slice(3).join(":") };
+  const type = parts[1] as LivePillType;
+  if (type !== "audio" && type !== "video" && type !== "avatar") return null;
+  return { type, host: parts[2], roomId: parts.slice(3).join(":") };
 }
 
-function LivePillBubble({ type, host, sentAt }: { type: "audio" | "video"; host: string; sentAt: Date }) {
-  const icon = type === "video" ? "📹" : "🎙";
-  const label = type === "video" ? "Live Video Chat" : "Live Audio Chat";
+function LivePillBubble({ type, host, sentAt, roomId }: { type: LivePillType; host: string; sentAt: Date; roomId: string }) {
+  const icon = type === "video" ? "📹" : type === "avatar" ? "🐒" : "🎙";
+  const label =
+    type === "video" ? "Live Video Chat" :
+    type === "avatar" ? "Avatar Room" :
+    "Live Audio Chat";
   const handleJoin = useCallback(async () => {
-    const { myInboxId, username, activeLiveRoom, activeVideoRoom } = useAppStore.getState();
-    if (!myInboxId || !username) return;
+    const store = useAppStore.getState();
+    const { myInboxId, username, activeLiveRoom, activeVideoRoom, activeAvatarRoom } = store;
+    if (!myInboxId) return;
+    if (!username) {
+      // Match start-room UX — join needs a display name for LiveKit
+      const { Alert } = require("react-native");
+      Alert.alert("Set a username first", "Go to your profile and set a username before joining.");
+      return;
+    }
     try {
-      if (type === "video" && activeVideoRoom) {
+      if (type === "video") {
+        const roomIdToJoin = activeVideoRoom?.id ?? roomId;
         const { joinVideoRoom } = require("@/lib/liveVideo");
-        const token = await joinVideoRoom(activeVideoRoom.id, myInboxId, username);
-        useAppStore.getState().setIsInVideoCall(true);
+        const token = await joinVideoRoom(roomIdToJoin, myInboxId, username);
+        store.setIsInVideoCall(true);
         router.push(`/video-room?token=${encodeURIComponent(token)}&isHost=0` as any);
-      } else if (type === "audio" && activeLiveRoom) {
+      } else if (type === "avatar") {
+        // Prefer store room (full metadata); fall back to pill roomId
+        const roomIdToJoin = activeAvatarRoom?.id ?? roomId;
+        if (activeAvatarRoom && activeAvatarRoom.id !== roomIdToJoin) {
+          /* keep store as source of truth for banner; pill can still join by id */
+        }
+        if (!activeAvatarRoom && roomIdToJoin) {
+          // Reconstruct minimal room so /avatar-room route does not bounce
+          store.setActiveAvatarRoom({
+            id: roomIdToJoin,
+            host,
+            hostId: "",
+            ts: Date.now(),
+            active: true,
+          });
+        }
         const { createLivekitToken } = require("@/lib/livekit");
-        const token = await createLivekitToken(activeLiveRoom.id, myInboxId, username);
-        useAppStore.getState().setLiveRoomToken(token);
+        const token = await createLivekitToken(roomIdToJoin, myInboxId, username);
+        store.setAvatarRoomToken(token);
+        store.setIsInAvatarRoom(true);
+        router.push(`/avatar-room?token=${encodeURIComponent(token)}&isHost=false` as any);
+      } else if (type === "audio") {
+        const roomIdToJoin = activeLiveRoom?.id ?? roomId;
+        const { createLivekitToken } = require("@/lib/livekit");
+        const token = await createLivekitToken(roomIdToJoin, myInboxId, username);
+        store.setLiveRoomToken(token);
         router.push(`/live-room?token=${encodeURIComponent(token)}&isHost=0` as any);
       }
     } catch (err) {
       console.warn("[LivePill] Join failed:", err);
+      try {
+        const { Alert } = require("react-native");
+        Alert.alert("Could not join", (err as Error)?.message ?? "Try again from the banner.");
+      } catch { /* ignore */ }
     }
-  }, [type]);
+  }, [type, host, roomId]);
 
   return (
     <View style={livePillStyles.container}>
@@ -744,7 +785,14 @@ export const MessageBubble = memo(function MessageBubble({
   // ── Live Room Pill — early return for LIVE_PILL: messages ──────────────────
   const livePill = parseLivePill(message.content);
   if (livePill) {
-    return <LivePillBubble type={livePill.type} host={livePill.host} sentAt={message.sentAt} />;
+    return (
+      <LivePillBubble
+        type={livePill.type}
+        host={livePill.host}
+        roomId={livePill.roomId}
+        sentAt={message.sentAt}
+      />
+    );
   }
 
   // Center bot messages in bot channels

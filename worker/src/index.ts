@@ -58,7 +58,9 @@ async function createToken(
     nbf: now - 60,
     exp: now + 6 * 3600,
     video: {
-      roomCreate: false,
+      // Hosts must create rooms; canPublish true ≈ publisher/host path.
+      // LiveKit rejects first join when roomCreate is false and room is empty.
+      roomCreate: canPublish === true,
       roomJoin: true,
       room: roomName,
       canPublish,
