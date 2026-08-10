@@ -111,6 +111,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     heliusApiKey: process.env.HELIUS_API_KEY ?? '',
     heliusNftApiKey: process.env.HELIUS_NFT_API_KEY ?? '',
     quickNodeDasUrl: process.env.QUICKNODE_DAS_URL ?? '',
+    alchemyApiKey: process.env.ALCHEMY_API_KEY ?? '',
     groqApiKey: process.env.GROQ_API_KEY ?? '',
     giphyApiKey: process.env.GIPHY_API_KEY ?? '',
     nftCollectionAddress:

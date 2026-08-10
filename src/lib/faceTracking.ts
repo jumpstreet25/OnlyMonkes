@@ -105,7 +105,12 @@ export function blendshapesToFaceParams(bs: BlendshapeParams): FaceParams {
 
 const FLOAT_COUNT = BLENDSHAPE_NAMES.length + 3; // 22 + 3 = 25
 
-export function encodeBlendshapes(identity: string, params: BlendshapeParams): Uint8Array {
+// Explicit Uint8Array<ArrayBuffer> return type (not bare Uint8Array, which
+// TS 5.7+ defaults to Uint8Array<ArrayBufferLike>) — livekit-client 2.21.0's
+// publishData() narrowed its param type to require ArrayBuffer specifically.
+// Truthful here: always constructed from `new ArrayBuffer(...)`, never a
+// SharedArrayBuffer.
+export function encodeBlendshapes(identity: string, params: BlendshapeParams): Uint8Array<ArrayBuffer> {
   const buffer = new ArrayBuffer(4 + FLOAT_COUNT * 4); // 4 header + 100 data = 104 bytes
   const view = new DataView(buffer);
 
@@ -245,7 +250,11 @@ export function getDominantViseme(visemes: VisemeValues): { viseme: keyof Viseme
 }
 
 // Legacy JSON encode/decode (kept for backward compat during migration)
-export function encodeFaceParams(identity: string, params: FaceParams): Uint8Array {
+// Same Uint8Array<ArrayBuffer> narrowing as encodeBlendshapes above —
+// TextEncoder.encode() is typed as Uint8Array<ArrayBufferLike> in this
+// project's lib config, but never actually backs onto a SharedArrayBuffer
+// at runtime, so the cast is truthful.
+export function encodeFaceParams(identity: string, params: FaceParams): Uint8Array<ArrayBuffer> {
   const data = {
     i: identity,
     m: Math.round(params.mouthOpenness * 100) / 100,
@@ -254,7 +263,7 @@ export function encodeFaceParams(identity: string, params: FaceParams): Uint8Arr
     rz: Math.round(params.headRotation.z * 10) / 10,
     e: Math.round(params.eyeOpenness * 100) / 100,
   };
-  return new TextEncoder().encode(JSON.stringify(data));
+  return new TextEncoder().encode(JSON.stringify(data)) as Uint8Array<ArrayBuffer>;
 }
 
 export function decodeFaceParams(

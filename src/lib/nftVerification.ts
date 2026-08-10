@@ -24,6 +24,7 @@ import {
   HELIUS_NFT_RPC_URL,
   NFT_COLLECTION_ADDRESS,
   QUICKNODE_DAS_URL,
+  ALCHEMY_DAS_URL,
 } from "./constants";
 import { verifySagaMonkeOnChain } from "./onchainCnftVerify";
 import type { NFTVerificationResult, OwnedNFT } from "@/types";
@@ -270,6 +271,83 @@ async function fetchAssetsViaQuickNode(walletAddress: string): Promise<OwnedNFT[
   });
 }
 
+// ─── Alchemy DAS Provider (fallback, added 2026-08-10) ────────────────────────
+// Free tier: 30M CU/month, getAssetsByOwner confirmed to support compressed
+// NFTs. IMPORTANT: unlike Helius/QuickNode, Alchemy's DAS methods take
+// POSITIONAL array params, not a named object — this is the original
+// Metaplex DAS wire shape (see MetaMask/Infura's Solana Snap docs), which
+// Helius/QuickNode both diverged from in favor of an object. Verified
+// directly against Alchemy's docs before writing this — do not "fix" this
+// back to an object shape, it will silently 400/no-op if changed.
+// params: [ownerAddress, {sortBy,sortDirection}, limit, page, before, after, displayOptions]
+
+async function fetchAssetsViaAlchemy(walletAddress: string): Promise<OwnedNFT[]> {
+  let page = 1;
+  const MAX_PAGES = 10;
+  const assets: DASAsset[] = [];
+
+  while (page <= MAX_PAGES) {
+    const res = await fetchWithAbort(ALCHEMY_DAS_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "nft-gate",
+        method: "getAssetsByOwner",
+        params: [
+          walletAddress,
+          { sortBy: "created", sortDirection: "asc" },
+          1000,
+          page,
+          null,
+          null,
+          {
+            showCollectionMetadata: false,
+            showUnverifiedCollections: false,
+            showFungible: false,
+          },
+        ],
+      }),
+    });
+
+    if (!res.ok) throw new Error(`Alchemy API error: ${res.status}`);
+    const json = await res.json();
+    if (json?.error) throw new Error(`Alchemy RPC error: ${JSON.stringify(json.error)}`);
+    const items: DASAsset[] = json?.result?.items ?? [];
+    assets.push(...items);
+
+    if (items.length < 1000) break;
+    page++;
+  }
+
+  const collectionNFTs = assets.filter((asset) =>
+    asset.grouping?.some(
+      (g) => g.group_key === "collection" && g.group_value === NFT_COLLECTION_ADDRESS,
+    ),
+  );
+
+  return collectionNFTs.map((asset) => {
+    const image =
+      asset.content?.links?.image ??
+      asset.content?.files?.find((f) => f.mime?.startsWith("image/"))?.cdn_uri ??
+      asset.content?.files?.find((f) => f.mime?.startsWith("image/"))?.uri ??
+      "";
+
+    const traits = (asset.content?.metadata?.attributes ?? [])
+      .filter((a) => a.trait_type && a.value)
+      .map((a) => ({ trait_type: a.trait_type, value: a.value }));
+
+    return {
+      mint: asset.id,
+      name: asset.content?.metadata?.name ?? "Unknown NFT",
+      symbol: asset.content?.metadata?.symbol ?? "",
+      image,
+      collectionMint: NFT_COLLECTION_ADDRESS,
+      traits: traits.length > 0 ? traits : undefined,
+    };
+  });
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
@@ -335,9 +413,33 @@ export async function verifyNFTOwnership(
     }
   }
 
-  // ── 3. On-chain fallback — no third-party indexer, immune to Helius/
-  // QuickNode outages. Slower (scans wallet history directly), so only
-  // tried once the faster indexed providers haven't already given an
+  // ── 3. Alchemy DAS (fallback, added 2026-08-10) ─────────────────────────
+  // Genuinely vendor-independent from Helius/QuickNode (different company,
+  // different infra) — added specifically because QuickNode's 30-day trial
+  // is about to lapse and this is the only remaining *indexed* fallback,
+  // vs. jumping straight to the slower on-chain scan below.
+  if (ALCHEMY_DAS_URL && !confirmedNonHolder) {
+    try {
+      const nfts = await withRetry("Alchemy", () =>
+        fetchAssetsViaAlchemy(walletAddress),
+      );
+      if (nfts.length > 0) {
+        console.log(`[NFTVerify] Alchemy: found ${nfts.length} collection NFT(s)`);
+        cacheVerifiedNft(walletAddress, nfts[0]).catch(() => {});
+        return { verified: true, nft: nfts[0], allNfts: nfts };
+      }
+      errors.push("Alchemy: 0 collection NFTs found");
+      confirmedNonHolder = true;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      errors.push(`Alchemy: ${msg}`);
+      console.warn("[NFTVerify] Alchemy exhausted, falling back to on-chain");
+    }
+  }
+
+  // ── 4. On-chain fallback — no third-party indexer, immune to Helius/
+  // QuickNode/Alchemy outages. Slower (scans wallet history directly), so
+  // only tried once the faster indexed providers haven't already given an
   // authoritative answer. Shyft used to sit here as an extra fallback —
   // removed 2026-07-15, confirmed unusable (403, wrong plan tier) and even
   // when it worked it had no cNFT support for this collection anyway.
@@ -371,7 +473,7 @@ export async function verifyNFTOwnership(
     }
   }
 
-  // ── 4. Worker-side fallback — /api/verify runs its own independent
+  // ── 5. Worker-side fallback — /api/verify runs its own independent
   // Helius -> QuickNode chain (separate keys/quotas from whatever's bundled
   // into THIS app build). This is the difference between a per-build key
   // outage being a temporary inconvenience versus a total, unrecoverable
@@ -415,17 +517,17 @@ export async function verifyNFTOwnership(
     }
   }
 
-  // ── 5. Nothing found a holder ────────────────────────────────────────────
+  // ── 6. Nothing found a holder ────────────────────────────────────────────
   // 2026-08-05: no longer an early-return on "no local key configured" —
   // the worker fallback above runs regardless of THIS build's own Helius/
-  // QuickNode keys, using its own independently-provisioned ones, so a
-  // build shipped with neither key set can still get a real, authoritative
+  // QuickNode/Alchemy keys, using its own independently-provisioned ones, so
+  // a build shipped with neither key set can still get a real, authoritative
   // answer. Missing local keys are now just another line in `errors`
   // (surfaced below if every provider, including the worker, comes back
   // uncertain) rather than a hard stop before the worker fallback even had
   // a chance to run.
-  if (!HELIUS_NFT_API_KEY && !QUICKNODE_DAS_URL) {
-    errors.unshift("(this build has no local HELIUS_API_KEY or QUICKNODE_DAS_URL configured)");
+  if (!HELIUS_NFT_API_KEY && !QUICKNODE_DAS_URL && !ALCHEMY_DAS_URL) {
+    errors.unshift("(this build has no local HELIUS_API_KEY, QUICKNODE_DAS_URL, or ALCHEMY_API_KEY configured)");
   }
 
   // Only an authoritative source (Helius's DAS-capable "0 found", the

@@ -11,6 +11,7 @@ import {
   DEV_WALLET as ENV_DEV,
   SENTRY_DSN as ENV_SENTRY,
   QUICKNODE_DAS_URL as ENV_QUICKNODE_DAS,
+  ALCHEMY_API_KEY as ENV_ALCHEMY,
   GROQ_API_KEY as ENV_GROQ,
 } from '@env';
 import Constants from 'expo-constants';
@@ -93,6 +94,17 @@ export const GROQ_API_KEY: string = ENV_GROQ || _str(_extra.groqApiKey);
 // through to the on-chain check — unreliable for compressed NFTs — and
 // falsely reported him as a non-holder.
 export const QUICKNODE_DAS_URL: string = ENV_QUICKNODE_DAS || _str(_extra.quickNodeDasUrl);
+// Alchemy DAS — added 2026-08-10 as a second, vendor-independent fallback
+// tier ahead of QuickNode's 30-day trial expiring (~2026-08-12). Free tier:
+// 30M CU/month, confirmed to support getAssetsByOwner for compressed NFTs.
+// Unlike Helius/QuickNode, Alchemy's DAS methods take POSITIONAL array
+// params, not a named object — see fetchAssetsViaAlchemy in
+// nftVerification.ts. Same dual-fallback (`@env` + `extra`) pattern as
+// above, to avoid repeating the QUICKNODE_DAS_URL silent-empty-string bug.
+const _ALCHEMY_API_KEY: string = ENV_ALCHEMY || _str(_extra.alchemyApiKey);
+export const ALCHEMY_DAS_URL: string = _ALCHEMY_API_KEY
+  ? `https://solana-mainnet.g.alchemy.com/v2/${_ALCHEMY_API_KEY}`
+  : '';
 export const HELIUS_RPC_URL = `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`;
 export const SOLANA_RPC_URL = 'https://api.mainnet-beta.solana.com';
 

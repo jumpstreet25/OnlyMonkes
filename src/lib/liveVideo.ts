@@ -309,7 +309,10 @@ export async function sendVideoReaction(
     senderId,
     ts: Date.now(),
   };
-  const payload = new TextEncoder().encode(JSON.stringify(reaction));
+  // Cast: TextEncoder.encode() is typed as Uint8Array<ArrayBufferLike> here,
+  // but livekit-client 2.21.0's publishData() wants Uint8Array<ArrayBuffer>
+  // specifically — truthful cast, TextEncoder never backs a SharedArrayBuffer.
+  const payload = new TextEncoder().encode(JSON.stringify(reaction)) as Uint8Array<ArrayBuffer>;
   await _room.localParticipant.publishData(payload, {
     reliable: true,
     topic: DATA_TOPIC_REACTION,

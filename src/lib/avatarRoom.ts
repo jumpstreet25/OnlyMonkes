@@ -227,10 +227,13 @@ function _stopEnergyPolling() {
 
 async function _broadcastMouthTrait() {
   if (!_room?.localParticipant) return;
+  // Cast: TextEncoder.encode() is typed as Uint8Array<ArrayBufferLike> here,
+  // but livekit-client 2.21.0's publishData() wants Uint8Array<ArrayBuffer>
+  // specifically — truthful cast, TextEncoder never backs a SharedArrayBuffer.
   const payload = new TextEncoder().encode(JSON.stringify({
     identity: _room.localParticipant.identity,
     mouthTrait: _localMouthTrait,
-  }));
+  })) as Uint8Array<ArrayBuffer>;
   try {
     await _room.localParticipant.publishData(payload, {
       reliable: true,
@@ -510,7 +513,8 @@ export async function sendReaction(
 ): Promise<void> {
   if (!_room?.localParticipant) return;
   const reaction: AvatarReaction = { stickerUrl, senderName, senderId, ts: Date.now() };
-  const payload = new TextEncoder().encode(JSON.stringify(reaction));
+  // Cast: see _broadcastMouthTrait's comment above.
+  const payload = new TextEncoder().encode(JSON.stringify(reaction)) as Uint8Array<ArrayBuffer>;
   await _room.localParticipant.publishData(payload, {
     reliable: true,
     topic: TOPIC_REACTION,
