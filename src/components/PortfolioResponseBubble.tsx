@@ -159,9 +159,6 @@ export function PortfolioResponseBubble({ response, onPressPosition, onPressClos
             <View style={styles.positionsSection}>
               <Text style={styles.sectionLabel}>OPEN · {response.positions.length}</Text>
               {response.positions.map(pos => {
-                const isUp = pos.pnlPct >= 0;
-                const accent = isUp ? THEME.gold : THEME.error;
-                const sign = isUp ? '+' : '';
                 // Partial-sell-aware breakdown. If the bot supplied
                 // realizedSolFromSells (post-2026-05-14 bot build), render
                 // a 3-line Holding / Realized / Net breakdown that reflects
@@ -169,14 +166,24 @@ export function PortfolioResponseBubble({ response, onPressPosition, onPressClos
                 // fall back to the prior single-line "entry SOL · duration"
                 // display.
                 const realized = pos.realizedSolFromSells ?? 0;
-                const remainingCost = pos.remainingCostBasisSol ?? pos.entrySolAmount;
                 const netSol = realized + pos.currentSolValue - pos.entrySolAmount;
                 const netUp = netSol >= 0;
                 const hasPartialData = pos.realizedSolFromSells != null;
+                // Chip must match Net: price-only leftover-bag % disagrees after T1.
+                const displayPct = pos.entrySolAmount > 0
+                  ? (netSol / pos.entrySolAmount) * 100
+                  : pos.pnlPct;
+                const chipUp = displayPct >= 0;
+                const chipAccent = chipUp ? THEME.gold : THEME.error;
+                const chipSign = chipUp ? '+' : '';
                 return (
                   <Pressable
                     key={pos.positionId}
-                    onPress={() => onPressPosition?.(positionAsCard(pos))}
+                    onPress={() => onPressPosition?.(positionAsCard({
+                      ...pos,
+                      pnlPct: displayPct,
+                      pnlSol: netSol,
+                    }))}
                     style={({ pressed }) => [styles.posRow, pressed && { opacity: 0.7 }]}
                   >
                     <View style={styles.posTopRow}>
@@ -188,14 +195,14 @@ export function PortfolioResponseBubble({ response, onPressPosition, onPressClos
                           </View>
                         )}
                       </View>
-                      <View style={[styles.pnlChip, { backgroundColor: accent + '22', borderColor: accent + '55' }]}>
-                        <Text style={[styles.pnlChipText, { color: accent }]}>
-                          {sign}{pos.pnlPct.toFixed(2)}%
+                      <View style={[styles.pnlChip, { backgroundColor: chipAccent + '22', borderColor: chipAccent + '55' }]}>
+                        <Text style={[styles.pnlChipText, { color: chipAccent }]}>
+                          {chipSign}{displayPct.toFixed(2)}%
                         </Text>
                       </View>
                     </View>
                     <View style={styles.posChart}>
-                      <Sparkline closes={pos.sparkline} width={260} height={32} colorOverride={accent} />
+                      <Sparkline closes={pos.sparkline} width={260} height={32} colorOverride={chipAccent} />
                     </View>
                     {hasPartialData ? (
                       <View style={styles.posBreakdown}>

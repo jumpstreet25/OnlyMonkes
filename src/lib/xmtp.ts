@@ -983,7 +983,7 @@ export interface ParsedPortfolioPosition {
   /** Current SOL value of tokens still held. */
   currentSolValue: number;
   pnlPct: number;
-  /** Unrealized SOL P&L on remaining tokens only (not lifetime gain). */
+  /** Lifetime net SOL P&L: realized partials + remaining bag MTM − entry. */
   pnlSol: number;
   /** Cumulative SOL realized from partial sales on this position. */
   realizedSolFromSells?: number | null;

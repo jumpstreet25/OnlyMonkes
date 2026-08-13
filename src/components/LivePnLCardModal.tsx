@@ -49,15 +49,18 @@ function formatLiveSummary(card: PortfolioCard): string {
 }
 
 /** Adapt PortfolioCard → ClosedTrade shape so existing PnLCard renders.
- *  exitSolAmount = currentSolValue, durationMs = age, reason = "live snapshot". */
+ *  exitSolAmount is implied mark-to-market of the whole trade (entry + net
+ *  PnL), not remaining-bag value alone — after a T1 that leftover would
+ *  look like a −50% wipe vs the original cost. */
 function liveCardAsClosedTrade(card: PortfolioCard): ClosedTrade {
+  const exitSolAmount = card.entrySolAmount + card.pnlSol;
   return {
     id: card.positionId,
     source: card.source,
     token: card.token,
     mint: card.mint,
     entrySolAmount: card.entrySolAmount,
-    exitSolAmount: card.currentSolValue,
+    exitSolAmount,
     pnlSol: card.pnlSol,
     pnlPct: card.pnlPct,
     durationMs: card.durationMs,
