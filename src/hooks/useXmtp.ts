@@ -66,7 +66,6 @@ import {
   fetchAppConfig,
   publishAppConfig,
   saveAdminToken,
-  getAdminToken,
 } from "@/lib/remoteConfig";
 import { toast } from "sonner-native";
 import { useAppStore } from "@/store/appStore";
@@ -570,7 +569,7 @@ export function useXmtp() {
       }
       if (__DEV__) console.log("[XMTP] remote config:", config);
 
-      // ── 3. Find or create the global group ─────────────────────────────────
+      // ── 3. Join the published global group (never create) ──────────────────
       const { group, isNewAdmin } = await getOrCreateGlobalChat(
         client,
         config.globalGroupId
@@ -604,7 +603,7 @@ export function useXmtp() {
         const mainGroupId = (group as any)?.id ?? config.globalGroupId;
         setRemoteGroupId(mainGroupId);
 
-        // Create any missing bot channels
+        // Fail-closed: never mint missing bot channels. Join configured IDs only.
         const existingBotIds = useAppStore.getState().botChannelIds ?? {} as any;
         const channelDefs = [
           { key: "bets", name: "Monke Bets" },
@@ -613,36 +612,11 @@ export function useXmtp() {
           { key: "predictions", name: "Monke Predictions" },
         ] as const;
         const botChannels: Record<string, string> = { ...existingBotIds };
-        let botChannelsChanged = false;
-        for (const ch of channelDefs) {
-          if (botChannels[ch.key]) continue; // already have it
-          try {
-            const chGroup = await client.conversations.newGroup([], {
-              permissionLevel: "all_members",
-              name: ch.name,
-            });
-            botChannels[ch.key] = (chGroup as any).id ?? "";
-            botChannelsChanged = true;
-            if (__DEV__) console.log(`[XMTP] Created missing bot channel "${ch.name}":`, botChannels[ch.key]);
-          } catch (chErr) {
-            if (__DEV__) console.warn(`[XMTP] Failed to create bot channel "${ch.name}":`, chErr);
-          }
-        }
-        if (botChannelsChanged) {
-          useAppStore.getState().setBotChannelIds(botChannels as any);
-        }
 
         // Ensure bot is a member of all groups (main + channels)
         // Bot inbox ID from remote config (fallback to hardcoded for offline startup)
         const BOT_INBOX = config?.botInboxId ?? "998001a498174b8a194110ee792b10f97de4965665eaf0d088ed2c71bdf62363";
         const BOT_INBOXES = [BOT_INBOX];
-        const allGroupsToCheck = [
-          { name: "main", ref: group },
-          ...channelDefs.map(ch => ({
-            name: ch.name,
-            ref: null as any, // will find below
-          })),
-        ];
         // Add bots to main group
         for (const botId of BOT_INBOXES) {
           try {
@@ -665,23 +639,6 @@ export function useXmtp() {
               }
             }
           } catch { /* find failed */ }
-        }
-
-        // Auto-publish config if admin token is saved and bot channels were just created
-        if (botChannelsChanged || isNewAdmin) {
-          try {
-            const token = await getAdminToken();
-            if (token) {
-              await publishAppConfig({
-                globalGroupId: mainGroupId,
-                adminInboxId: client.inboxId,
-                botChannels: botChannels as any,
-              });
-              if (__DEV__) console.log("[XMTP] Auto-published config (with bot channels) to GitHub.");
-            }
-          } catch (err) {
-            if (__DEV__) console.warn("[XMTP] Auto-publish failed:", err);
-          }
         }
       }
 
@@ -786,100 +743,36 @@ export function useXmtp() {
       }
 
       if (!group) {
-        // Remote config has a group ID, but this user is not yet a member.
+        // Fail-closed: never recreate Main/Trades. Ask admin / send join request.
+        if (__DEV__) console.log("[XMTP] Production group not found — join or ask admin (not creating)");
+        setIsGroupMember(false);
 
-        // ── Admin self-heal: if this device was admin, create all groups ──
-        const storedAdminFlag = await AsyncStorage.getItem(AK_IS_ADMIN);
-        const isAdminByConfig = config.adminInboxId === client.inboxId;
-        if (storedAdminFlag === "1" || isAdminByConfig) {
-          if (__DEV__) console.log("[XMTP] Admin device cannot find group — recreating all channels…");
-          try {
-            // Create main chat group
-            const newGroup = await client.conversations.newGroup([], {
-              permissionLevel: "all_members",
-              name: "OnlyMonkes Global Chat",
-            });
-            const newGroupId = (newGroup as any).id ?? "";
-            if (__DEV__) console.log("[XMTP] Main group created:", newGroupId);
-            setRemoteGroupId(newGroupId);
-            _group = newGroup as unknown as XmtpGroup;
-
-            // Create all 4 bot channel groups
-            const channelNames = [
-              { key: "bets", name: "Monke Bets" },
-              { key: "trades", name: "Monke Trades" },
-              { key: "sales", name: "Monke Sales" },
-              { key: "predictions", name: "Monke Predictions" },
-            ] as const;
-            const botChannels: Record<string, string> = {};
-            for (const ch of channelNames) {
-              const chGroup = await client.conversations.newGroup([], {
-                permissionLevel: "all_members",
-                name: ch.name,
-              });
-              botChannels[ch.key] = (chGroup as any).id ?? "";
-              if (__DEV__) console.log(`[XMTP] Bot channel "${ch.name}" created:`, botChannels[ch.key]);
-            }
-
-            // Store bot channel IDs in app state
-            useAppStore.getState().setBotChannelIds(botChannels as any);
-
-            // Publish full config (main group + bot channels) to GitHub
+        if (config.adminInboxId) {
+          const lastSentRaw = await AsyncStorage.getItem(AK_JOIN_REQUEST_SENT);
+          const lastSent = lastSentRaw ? parseInt(lastSentRaw, 10) : 0;
+          const elapsed = Date.now() - lastSent;
+          // Re-send every 30s to handle bot restarts / missed DMs
+          if (elapsed > 30_000) {
             try {
-              const token = await getAdminToken();
-              if (token) {
-                await publishAppConfig({
-                  globalGroupId: newGroupId,
-                  adminInboxId: client.inboxId,
-                  botChannels: botChannels as any,
-                });
-                if (__DEV__) console.log("[XMTP] Auto-published full config to GitHub.");
-              }
-            } catch (pubErr) {
-              if (__DEV__) console.warn("[XMTP] Could not auto-publish config:", pubErr);
-            }
-
-            await AsyncStorage.setItem(AK_IS_ADMIN, "1");
-            setIsGroupAdmin(true);
-            setIsGroupMember(true);
-            // Fall through to load message history (group is now set)
-          } catch (createErr) {
-            if (__DEV__) console.warn("[XMTP] Admin group recreation failed:", createErr);
-            setIsGroupMember(false);
-            setLoading(false);
-            return;
-          }
-        } else {
-          // Non-admin: send join request DM and wait for bot/admin to approve
-          setIsGroupMember(false);
-
-          if (config.adminInboxId) {
-            const lastSentRaw = await AsyncStorage.getItem(AK_JOIN_REQUEST_SENT);
-            const lastSent = lastSentRaw ? parseInt(lastSentRaw, 10) : 0;
-            const elapsed = Date.now() - lastSent;
-            // Re-send every 30s to handle bot restarts / missed DMs
-            if (elapsed > 30_000) {
-              try {
-                const { username, verifiedNft } = useAppStore.getState();
-                await sendJoinRequestDM(
-                  client,
-                  config.adminInboxId,
-                  client.inboxId,
-                  username,
-                  verifiedNft?.mint ?? null,
-                  config.botInboxId ?? null,
-                );
-                await AsyncStorage.setItem(AK_JOIN_REQUEST_SENT, String(Date.now()));
-                if (__DEV__) console.log("[XMTP] Join request DM sent to bot (nft:", verifiedNft?.mint ?? "none", ")");
-              } catch (err) {
-                if (__DEV__) console.warn("[XMTP] Could not send join request DM:", err);
-              }
+              const { username, verifiedNft } = useAppStore.getState();
+              await sendJoinRequestDM(
+                client,
+                config.adminInboxId,
+                client.inboxId,
+                username,
+                verifiedNft?.mint ?? null,
+                config.botInboxId ?? null,
+              );
+              await AsyncStorage.setItem(AK_JOIN_REQUEST_SENT, String(Date.now()));
+              if (__DEV__) console.log("[XMTP] Join request DM sent to bot (nft:", verifiedNft?.mint ?? "none", ")");
+            } catch (err) {
+              if (__DEV__) console.warn("[XMTP] Could not send join request DM:", err);
             }
           }
-
-          setLoading(false);
-          return;
         }
+
+        setLoading(false);
+        return;
       }
 
       // ── 4. Load message history ────────────────────────────────────────────
@@ -2691,32 +2584,12 @@ export function useXmtp() {
     if (__DEV__) console.log("[XMTP] Group config published to GitHub.");
   }, []);
 
-  // ── Admin recovery: create a new group + publish when stale config blocks admin ─
-  // Call this from the pending screen when the admin is locked out after reinstall.
-  const forceAdminInit = useCallback(async (githubPat: string) => {
-    if (!_client) throw new Error("XMTP client not ready");
-
-    // Save PAT first so publishAppConfig can use it.
-    await saveAdminToken(githubPat);
-
-    // Create a brand-new group.
-    const rawGroup = await (_client.conversations as any).newGroup([], {
-      permissionLevel: "all_members",
-      name: "OnlyMonkes Global Chat",
-    });
-    const groupId = (rawGroup as any).id;
-
-    // Mark as admin in persistent storage so the next initialize() picks it up.
-    await AsyncStorage.setItem(AK_IS_ADMIN, "1");
-
-    // Publish new config — all clients will pick this up on next launch.
-    // force:true because forceAdminInit is explicit manual recovery.
-    await publishAppConfig({ globalGroupId: groupId, adminInboxId: _client.inboxId }, { force: true });
-    if (__DEV__) console.log("[XMTP] forceAdminInit: new group", groupId, "published.");
-
-    // Re-run full initialize — it will find the new group and complete setup.
-    await initialize();
-  }, [initialize]);
+  // ── Admin recovery: minting is disabled. Join the published rooms only. ─────
+  const forceAdminInit = useCallback(async (_githubPat: string) => {
+    throw new Error(
+      "Minting new Main/Trades rooms is disabled. Send a join request and wait to be added to the published group IDs."
+    );
+  }, []);
 
   const sendFile = useCallback(async (url: string, filename: string, size: number) => {
     if (!_group) await initialize();

@@ -28,7 +28,6 @@ import {
   KeyboardAvoidingView,
   Keyboard,
   Platform,
-  TextInput,
   Alert,
   Linking,
   AppState,
@@ -185,7 +184,7 @@ export default function ChatScreen() {
   const isLoadingHistory = useChatStore(s => s.isLoadingHistory);
   const setReplyingTo    = useChatStore(s => s.setReplyingTo);
   const typingUsers      = useChatStore(s => s.typingUsers);
-  const { initialize, disconnect, logout, streamAlive, send, reply, react, edit, deleteMessage, stickerReact, sendFile, sendTyping, forceAdminInit, broadcastProfile, broadcastEvent, broadcastVideoRoom, broadcastAvatarRoom, syncMessages, checkStreamLiveness, loadOlderMessages } = useXmtp();
+  const { initialize, disconnect, logout, streamAlive, send, reply, react, edit, deleteMessage, stickerReact, sendFile, sendTyping, broadcastProfile, broadcastEvent, broadcastVideoRoom, broadcastAvatarRoom, syncMessages, checkStreamLiveness, loadOlderMessages } = useXmtp();
   const [inputText, setInputTextRaw] = useState("");
   // Draft auto-save — persist input text so it survives navigation/restart
   const _draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -250,9 +249,6 @@ export default function ChatScreen() {
   const [videoLightboxUrl, setVideoLightboxUrl] = useState<string | null>(null);
   const [chartSymbol, setChartSymbol] = useState<string | null>(null);
   const [adminRecoveryOpen, setAdminRecoveryOpen] = useState(false);
-  const [adminRecoveryPat, setAdminRecoveryPat] = useState("");
-  const [adminRecoveryBusy, setAdminRecoveryBusy] = useState(false);
-  const [adminRecoveryError, setAdminRecoveryError] = useState<string | null>(null);
   const [videoCallToken, setVideoCallToken] = useState<string | null>(null);
   const [swapQuote, setSwapQuote] = useState<SwapQuote | null>(null);
   const [swapConfirmOpen, setSwapConfirmOpen] = useState(false);
@@ -1473,43 +1469,8 @@ export default function ChatScreen() {
               <View style={styles.adminRecoveryBox}>
                 <Text style={styles.adminRecoveryTitle}>Admin Recovery</Text>
                 <Text style={styles.adminRecoveryHint}>
-                  Enter your GitHub PAT (repo scope) to create a new group and re-claim admin.
+                  Minting new rooms is disabled. Stay on this screen — a join request is already sent. You will be added to the published Main + Trades groups.
                 </Text>
-                <TextInput
-                  style={styles.adminRecoveryInput}
-                  placeholder="ghp_..."
-                  placeholderTextColor={THEME.textFaint}
-                  value={adminRecoveryPat}
-                  onChangeText={(t) => { setAdminRecoveryPat(t); setAdminRecoveryError(null); }}
-                  secureTextEntry
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-                {adminRecoveryError && (
-                  <Text style={styles.adminRecoveryError}>{adminRecoveryError}</Text>
-                )}
-                <Pressable
-                  style={[styles.adminRecoveryBtn, (!adminRecoveryPat.trim() || adminRecoveryBusy) && { opacity: 0.5 }]}
-                  disabled={!adminRecoveryPat.trim() || adminRecoveryBusy}
-                  onPress={async () => {
-                    setAdminRecoveryBusy(true);
-                    setAdminRecoveryError(null);
-                    try {
-                      await forceAdminInit(adminRecoveryPat.trim());
-                      setAdminRecoveryOpen(false);
-                      setAdminRecoveryPat("");
-                    } catch (e) {
-                      setAdminRecoveryError(e instanceof Error ? e.message : "Failed — check your PAT and try again.");
-                    } finally {
-                      setAdminRecoveryBusy(false);
-                    }
-                  }}
-                >
-                  {adminRecoveryBusy
-                    ? <ActivityIndicator size="small" color="#fff" />
-                    : <Text style={styles.adminRecoveryBtnText}>Claim Admin</Text>
-                  }
-                </Pressable>
               </View>
             )}
           </View>
