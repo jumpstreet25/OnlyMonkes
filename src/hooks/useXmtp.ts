@@ -409,33 +409,13 @@ export function useXmtp() {
         const mainGroupId = (group as any)?.id ?? config.globalGroupId;
         setRemoteGroupId(mainGroupId);
 
-        // Create any missing bot channels
+        // Fail-closed: never mint missing bot channels. Join configured IDs only.
         const existingBotIds = useAppStore.getState().botChannelIds ?? {} as any;
         const channelDefs = [
-          { key: "bets", name: "Monke Bets" },
           { key: "trades", name: "Monke Trades" },
-          { key: "sales", name: "Monke Sales" },
-          { key: "predictions", name: "Monke Predictions" },
         ] as const;
         const botChannels: Record<string, string> = { ...existingBotIds };
-        let botChannelsChanged = false;
-        for (const ch of channelDefs) {
-          if (botChannels[ch.key]) continue; // already have it
-          try {
-            const chGroup = await client.conversations.newGroup([], {
-              permissionLevel: "all_members",
-              name: ch.name,
-            });
-            botChannels[ch.key] = (chGroup as any).id ?? "";
-            botChannelsChanged = true;
-            if (__DEV__) console.log(`[XMTP] Created missing bot channel "${ch.name}":`, botChannels[ch.key]);
-          } catch (chErr) {
-            if (__DEV__) console.warn(`[XMTP] Failed to create bot channel "${ch.name}":`, chErr);
-          }
-        }
-        if (botChannelsChanged) {
-          useAppStore.getState().setBotChannelIds(botChannels as any);
-        }
+        const botChannelsChanged = false;
 
         // Ensure bot is a member of all groups (main + channels)
         // Bot inbox ID from remote config (fallback to hardcoded for offline startup)
@@ -591,71 +571,8 @@ export function useXmtp() {
       }
 
       if (!group) {
-        // Remote config has a group ID, but this user is not yet a member.
-
-        // ── Admin self-heal: if this device was admin, create all groups ──
-        const storedAdminFlag = await AsyncStorage.getItem(AK_IS_ADMIN);
-        const isAdminByConfig = config.adminInboxId === client.inboxId;
-        if (storedAdminFlag === "1" || isAdminByConfig) {
-          if (__DEV__) console.log("[XMTP] Admin device cannot find group — recreating all channels…");
-          try {
-            // Create main chat group
-            const newGroup = await client.conversations.newGroup([], {
-              permissionLevel: "all_members",
-              name: "OnlyMonkes Global Chat",
-            });
-            const newGroupId = (newGroup as any).id ?? "";
-            if (__DEV__) console.log("[XMTP] Main group created:", newGroupId);
-            setRemoteGroupId(newGroupId);
-            _group = newGroup as unknown as XmtpGroup;
-
-            // Create all 4 bot channel groups
-            const channelNames = [
-              { key: "bets", name: "Monke Bets" },
-              { key: "trades", name: "Monke Trades" },
-              { key: "sales", name: "Monke Sales" },
-              { key: "predictions", name: "Monke Predictions" },
-            ] as const;
-            const botChannels: Record<string, string> = {};
-            for (const ch of channelNames) {
-              const chGroup = await client.conversations.newGroup([], {
-                permissionLevel: "all_members",
-                name: ch.name,
-              });
-              botChannels[ch.key] = (chGroup as any).id ?? "";
-              if (__DEV__) console.log(`[XMTP] Bot channel "${ch.name}" created:`, botChannels[ch.key]);
-            }
-
-            // Store bot channel IDs in app state
-            useAppStore.getState().setBotChannelIds(botChannels as any);
-
-            // Publish full config (main group + bot channels) to GitHub
-            try {
-              const token = await getAdminToken();
-              if (token) {
-                await publishAppConfig({
-                  globalGroupId: newGroupId,
-                  adminInboxId: client.inboxId,
-                  botChannels: botChannels as any,
-                });
-                if (__DEV__) console.log("[XMTP] Auto-published full config to GitHub.");
-              }
-            } catch (pubErr) {
-              if (__DEV__) console.warn("[XMTP] Could not auto-publish config:", pubErr);
-            }
-
-            await AsyncStorage.setItem(AK_IS_ADMIN, "1");
-            setIsGroupAdmin(true);
-            setIsGroupMember(true);
-            // Fall through to load message history (group is now set)
-          } catch (createErr) {
-            if (__DEV__) console.warn("[XMTP] Admin group recreation failed:", createErr);
-            setIsGroupMember(false);
-            setLoading(false);
-            return;
-          }
-        } else {
-          // Non-admin: send join request DM and wait for bot/admin to approve
+        // Fail-closed: never recreate Main/Trades. Ask admin / send join request.
+          if (__DEV__) console.log("[XMTP] Production group not found — join or ask admin (not creating)");
           setIsGroupMember(false);
 
           if (config.adminInboxId) {
@@ -684,7 +601,6 @@ export function useXmtp() {
 
           setLoading(false);
           return;
-        }
       }
 
       // ── 4. Load message history ────────────────────────────────────────────
