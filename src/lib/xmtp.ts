@@ -154,77 +154,68 @@ export async function getOrInitXmtpClient(): Promise<Client> {
 // ─── Global Group ─────────────────────────────────────────────────────────────
 
 /**
- * groupId: fetched from remote config (GitHub). Empty string = no group yet.
- * Returns the group if found/created, or null if the user isn't a member yet.
- * Returns { group: null, isNewAdmin: true } when this client just created the group.
+ * Join the production global group from remote config. Never creates a group.
+ * Empty/missing groupId or not-a-member → { group: null } so the UI can
+ * show "ask admin" instead of minting another OnlyMonkes Global Chat.
  */
 export async function getOrCreateGlobalChat(
   client: XmtpClient,
   groupId: string
 ): Promise<{ group: XmtpGroup | null; isNewAdmin: boolean }> {
-  if (groupId) {
-    // Step 1: discover conversations (fetches welcome messages / group invites)
-    // Include "unknown" consent state — groups added by bot start as "unknown"
-    console.log("[XMTP] Syncing conversations to discover group invites…");
-    await client.conversations.sync();
-
-    // syncAllConversations with all consent states to pick up bot-added groups
-    try {
-      await client.conversations.syncAllConversations(["allowed", "unknown"] as any);
-    } catch (e) {
-      console.warn("[XMTP] syncAllConversations failed:", (e as Error).message);
-    }
-
-    // Try findGroup first (fastest path)
-    let found = await client.conversations.findGroup(groupId as any);
-    if (found) {
-      console.log("[XMTP] Found group via findGroup");
-      return { group: found as unknown as XmtpGroup, isNewAdmin: false };
-    }
-
-    // Fallback: list all groups INCLUDING "unknown" consent state
-    // Groups added by the bot start as "unknown" until the user explicitly allows them
-    try {
-      const allGroups = await client.conversations.listGroups(
-        undefined, undefined, ["allowed", "unknown"] as any,
-      );
-      console.log(`[XMTP] listGroups returned ${allGroups.length} groups, looking for ${groupId.slice(0, 12)}…`);
-      for (const g of allGroups) {
-        if ((g as any).id === groupId) {
-          console.log("[XMTP] Found group via listGroups fallback (consent: unknown)");
-          return { group: g as unknown as XmtpGroup, isNewAdmin: false };
-        }
-      }
-    } catch (e) {
-      console.log(`[XMTP] listGroups threw: ${(e as Error).message}`);
-    }
-
-    // Second pass: sync again in case the welcome message arrived during first pass
-    try {
-      await client.conversations.sync();
-      found = await client.conversations.findGroup(groupId as any);
-      if (found) {
-        console.log("[XMTP] Found group on second sync pass");
-        return { group: found as unknown as XmtpGroup, isNewAdmin: false };
-      }
-    } catch { /* ignore */ }
-
-    // Group ID set but user is not yet a member — must be added by admin.
-    console.log("[XMTP] Group not found after sync — user not yet a member");
+  if (!groupId) {
+    console.warn("[XMTP] No globalGroupId in remote config — not creating a group");
     return { group: null, isNewAdmin: false };
   }
 
-  // No group ID in remote config — this is the first admin run. Create the group.
-  const group = await client.conversations.newGroup([], {
-    permissionLevel: "all_members",
-    name: "OnlyMonkes Global Chat",
-  });
+  // Step 1: discover conversations (fetches welcome messages / group invites)
+  // Include "unknown" consent state — groups added by bot start as "unknown"
+  console.log("[XMTP] Syncing conversations to discover group invites…");
+  await client.conversations.sync();
 
-  console.warn(
-    `[XMTP] Global group created. ID:\n${(group as any).id}`
-  );
+  // syncAllConversations with all consent states to pick up bot-added groups
+  try {
+    await client.conversations.syncAllConversations(["allowed", "unknown"] as any);
+  } catch (e) {
+    console.warn("[XMTP] syncAllConversations failed:", (e as Error).message);
+  }
 
-  return { group: group as unknown as XmtpGroup, isNewAdmin: true };
+  // Try findGroup first (fastest path)
+  let found = await client.conversations.findGroup(groupId as any);
+  if (found) {
+    console.log("[XMTP] Found group via findGroup");
+    return { group: found as unknown as XmtpGroup, isNewAdmin: false };
+  }
+
+  // Fallback: list all groups INCLUDING "unknown" consent state
+  // Groups added by the bot start as "unknown" until the user explicitly allows them
+  try {
+    const allGroups = await client.conversations.listGroups(
+      undefined, undefined, ["allowed", "unknown"] as any,
+    );
+    console.log(`[XMTP] listGroups returned ${allGroups.length} groups, looking for ${groupId.slice(0, 12)}…`);
+    for (const g of allGroups) {
+      if ((g as any).id === groupId) {
+        console.log("[XMTP] Found group via listGroups fallback (consent: unknown)");
+        return { group: g as unknown as XmtpGroup, isNewAdmin: false };
+      }
+    }
+  } catch (e) {
+    console.log(`[XMTP] listGroups threw: ${(e as Error).message}`);
+  }
+
+  // Second pass: sync again in case the welcome message arrived during first pass
+  try {
+    await client.conversations.sync();
+    found = await client.conversations.findGroup(groupId as any);
+    if (found) {
+      console.log("[XMTP] Found group on second sync pass");
+      return { group: found as unknown as XmtpGroup, isNewAdmin: false };
+    }
+  } catch { /* ignore */ }
+
+  // Group ID set but user is not yet a member — must be added by admin.
+  console.log("[XMTP] Group not found after sync — user not yet a member");
+  return { group: null, isNewAdmin: false };
 }
 
 /**
@@ -1330,16 +1321,7 @@ export async function getOrCreateDAppGroup(
     throw new Error(`Bot channel "${groupName}" not found. You may not be a member yet — ask the admin to add you.`);
   }
 
-  const group = await client.conversations.newGroup([], {
-    permissionLevel: "all_members",
-    name: groupName,
-  });
-
-  console.warn(
-    `[XMTP] New dApp group "${groupName}" created. Update DAPPS[].groupId to:\n'${(group as any).id}'`
-  );
-
-  return group as unknown as XmtpGroup;
+  throw new Error(`Bot channel "${groupName}" has no group ID. Ask the admin to add you.`);
 }
 
 // ─── Sending ──────────────────────────────────────────────────────────────────
