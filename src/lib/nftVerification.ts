@@ -27,6 +27,7 @@ import {
   ALCHEMY_DAS_URL,
 } from "./constants";
 import { verifySagaMonkeOnChain } from "./onchainCnftVerify";
+import { getSagaMonkeMeta } from "./sagaMonkesIndex";
 import type { NFTVerificationResult, OwnedNFT } from "@/types";
 
 const TIMEOUT_MS = 15_000;
@@ -449,17 +450,38 @@ export async function verifyNFTOwnership(
       if (onchain.verified) {
         console.log("[NFTVerify] On-chain: confirmed current holder");
         // On-chain check confirms ownership but has no way to fetch
-        // compressed-NFT metadata. Reuse the last known-good image/name for
-        // this wallet from a prior indexed-provider success, if we have one,
-        // instead of showing a blank PFP.
-        const cached = await getCachedVerifiedNft(walletAddress);
-        const nft: OwnedNFT = cached ?? {
-          mint: onchain.assetId ?? walletAddress,
-          name: "Saga Monke",
-          symbol: "MONKE",
-          image: null,
-          collectionMint: NFT_COLLECTION_ADDRESS,
-        };
+        // compressed-NFT metadata on its own. Preference order for a real
+        // image: (1) sagaMonkesIndex.ts's static, offline-built collection
+        // index — cross-referenced by the real per-leaf asset ID
+        // onchainCnftVerify.ts now derives, needs no live DAS call at all;
+        // (2) a prior indexed-provider success cached for this wallet;
+        // (3) a blank placeholder, which routes the caller to the manual
+        // upload fallback (see setUserChosenNftImage's doc comment) — the
+        // last resort this index exists to make rare instead of routine.
+        let nft: OwnedNFT | null = null;
+        if (onchain.assetId) {
+          const meta = await getSagaMonkeMeta(onchain.assetId);
+          if (meta) {
+            nft = {
+              mint: onchain.assetId,
+              name: meta.name,
+              symbol: "MONKE",
+              image: meta.image,
+              collectionMint: NFT_COLLECTION_ADDRESS,
+            };
+          }
+        }
+        if (!nft) {
+          const cached = await getCachedVerifiedNft(walletAddress);
+          nft = cached ?? {
+            mint: onchain.assetId ?? walletAddress,
+            name: "Saga Monke",
+            symbol: "MONKE",
+            image: null,
+            collectionMint: NFT_COLLECTION_ADDRESS,
+          };
+        }
+        if (nft.image) cacheVerifiedNft(walletAddress, nft).catch(() => {});
         return { verified: true, nft, allNfts: [nft] };
       }
       if (onchain.inconclusive) {

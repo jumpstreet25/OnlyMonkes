@@ -132,6 +132,40 @@ function decodeTransferNonce(dataBase58: string): string | null {
   }
 }
 
+const BUBBLEGUM_PROGRAM_PUBKEY = new PublicKey(BUBBLEGUM_PROGRAM);
+
+function nonceToLEBytes(nonceStr: string): Buffer {
+  let n = BigInt(nonceStr);
+  const buf = Buffer.alloc(8);
+  for (let i = 0; i < 8; i++) {
+    buf[i] = Number(n & 0xffn);
+    n >>= 8n;
+  }
+  return buf;
+}
+
+/**
+ * Derive a compressed NFT's real, globally-unique asset ID from its tree +
+ * leaf nonce — the same deterministic PDA every DAS indexer (Helius/
+ * QuickNode/Alchemy) computes and returns as an asset's `id` field.
+ * Formula: findProgramAddress(["asset", tree, nonce_le_u64], Bubblegum) —
+ * confirmed against the canonical mpl-bubblegum SDK's getLeafAssetId(). No
+ * indexer needed: this is pure on-chain-derivable math, which is what makes
+ * it possible to cross-reference against sagaMonkesIndex.ts's static
+ * mint→image map without any live DAS call.
+ */
+function deriveAssetId(tree: PublicKey, nonce: string): PublicKey | null {
+  try {
+    const [pda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("asset"), tree.toBuffer(), nonceToLEBytes(nonce)],
+      BUBBLEGUM_PROGRAM_PUBKEY,
+    );
+    return pda;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Known Saga Monkes trees. The genesis tree (Jan 2024, 8,888 mints) is
  * confirmed on-chain. 2026-08-05: the previously-suspected second tree for
@@ -251,8 +285,22 @@ function interpretBubblegumInstruction(
     // Confirmed layout: [tree_authority, leaf_owner, leaf_delegate, new_leaf_owner, merkle_tree, ...]
     const leafOwner = accounts[1];
     const newLeafOwner = accounts[3];
+    const treeAddr = accounts[4];
     const nonce = decodeTransferNonce(dataBase58);
-    if (newLeafOwner === walletAddress) return { kind: "holds", assetHint: accounts[4] ?? "", nonce };
+    if (newLeafOwner === walletAddress) {
+      // assetHint used to be the tree address itself (same for every asset
+      // in the tree — useless for looking up a SPECIFIC Monke's metadata).
+      // Now the real per-leaf asset ID, when derivable.
+      let assetHint = "";
+      if (nonce && treeAddr) {
+        try {
+          assetHint = deriveAssetId(new PublicKey(treeAddr), nonce)?.toBase58() ?? "";
+        } catch {
+          assetHint = "";
+        }
+      }
+      return { kind: "holds", assetHint, nonce };
+    }
     if (leafOwner === walletAddress) return { kind: "gave_up", nonce };
     return { kind: "inconclusive" };
   }
