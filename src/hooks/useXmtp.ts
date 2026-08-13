@@ -143,6 +143,21 @@ export function _getLastStreamEvent(): number { return _lastStreamEvent; }
 export function _getStreamAliveFlag(): boolean { return _streamAlive; }
 let _profileBroadcastDone = false;
 let _initRunning = false;
+// streamAllMessages() has no unsubscribe. Start it once per inbox, and
+// drop duplicate deliveries so one DM cannot fire N "DM'd you" banners.
+let _dmAllStreamInbox: string | null = null;
+const _seenDmStreamIds = new Set<string>();
+function alreadySawDm(raw: any): boolean {
+  const id = typeof raw?.id === "string" ? raw.id : "";
+  if (!id) return false;
+  if (_seenDmStreamIds.has(id)) return true;
+  _seenDmStreamIds.add(id);
+  if (_seenDmStreamIds.size > 300) {
+    const oldest = _seenDmStreamIds.values().next().value;
+    if (oldest) _seenDmStreamIds.delete(oldest);
+  }
+  return false;
+}
 // Badge minting removed — badges now award bananas via _layout.tsx callback.
 // tryMintBadge kept as no-op for existing call sites.
 function tryMintBadge(): void { /* no-op */ }
@@ -1561,6 +1576,8 @@ export function useXmtp() {
       // ── 9. Stream DMs for community badge count ──────────────────────────────
       (async () => {
         try {
+          if (_dmAllStreamInbox === client.inboxId) return;
+          _dmAllStreamInbox = client.inboxId;
           await client.conversations.sync();
           // 2026-07-23: streamAllDmMessages() doesn't exist in this SDK
           // version (@xmtp/react-native-sdk 5.7) — it silently threw
@@ -1578,6 +1595,7 @@ export function useXmtp() {
           // up the same way.
           await (client.conversations as any).streamAllMessages(async (raw: any) => {
             try {
+              if (alreadySawDm(raw)) return;
               let content: unknown;
               try { content = raw.content(); } catch { return; }
               // Skip native reactions
