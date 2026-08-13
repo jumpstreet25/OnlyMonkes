@@ -562,10 +562,7 @@ export function useXmtp() {
       if (config.adminInboxId) _adminInboxId = config.adminInboxId;
       if (config.botChannels) {
         useAppStore.getState().setBotChannelIds({
-          bets: config.botChannels.bets ?? '',
           trades: config.botChannels.trades ?? '',
-          sales: config.botChannels.sales ?? '',
-          predictions: config.botChannels.predictions ?? '',
         });
       }
       if (__DEV__) console.log("[XMTP] remote config:", config);
@@ -607,10 +604,7 @@ export function useXmtp() {
         // Create any missing bot channels
         const existingBotIds = useAppStore.getState().botChannelIds ?? {} as any;
         const channelDefs = [
-          { key: "bets", name: "Monke Bets" },
           { key: "trades", name: "Monke Trades" },
-          { key: "sales", name: "Monke Sales" },
-          { key: "predictions", name: "Monke Predictions" },
         ] as const;
         const botChannels: Record<string, string> = { ...existingBotIds };
         let botChannelsChanged = false;
@@ -804,12 +798,9 @@ export function useXmtp() {
             setRemoteGroupId(newGroupId);
             _group = newGroup as unknown as XmtpGroup;
 
-            // Create all 4 bot channel groups
+            // Create the bot channel group
             const channelNames = [
-              { key: "bets", name: "Monke Bets" },
               { key: "trades", name: "Monke Trades" },
-              { key: "sales", name: "Monke Sales" },
-              { key: "predictions", name: "Monke Predictions" },
             ] as const;
             const botChannels: Record<string, string> = {};
             for (const ch of channelNames) {
@@ -1946,8 +1937,8 @@ export function useXmtp() {
         try {
           const channelIds = useAppStore.getState().botChannelIds;
           if (!channelIds) return;
-          const counts = { bets: 0, trades: 0, sales: 0, predictions: 0 };
-          for (const key of ['bets', 'trades', 'sales', 'predictions'] as const) {
+          const counts = { trades: 0 };
+          for (const key of ['trades'] as const) {
             const chId = channelIds[key];
             if (!chId) continue;
             try {
@@ -1979,8 +1970,8 @@ export function useXmtp() {
         try {
           const channelIds = useAppStore.getState().botChannelIds;
           if (!channelIds) return;
-          const channelMap = new Map<string, 'bets' | 'trades' | 'sales' | 'predictions'>();
-          for (const key of ['bets', 'trades', 'sales', 'predictions'] as const) {
+          const channelMap = new Map<string, 'trades'>();
+          for (const key of ['trades'] as const) {
             const chId = channelIds[key];
             if (chId) channelMap.set(chId, key);
           }
@@ -2609,8 +2600,8 @@ export function useXmtp() {
         // Bot channel counts
         const channelIds = useAppStore.getState().botChannelIds;
         if (channelIds) {
-          const counts = { bets: 0, trades: 0, sales: 0, predictions: 0 };
-          for (const key of ['bets', 'trades', 'sales', 'predictions'] as const) {
+          const counts = { trades: 0 };
+          for (const key of ['trades'] as const) {
             const chId = channelIds[key];
             if (!chId) continue;
             try {

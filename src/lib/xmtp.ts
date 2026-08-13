@@ -1415,7 +1415,7 @@ export async function sendProfileUpdate(
   pushToken?: string | null,
   notifPrefs?: {
     all: boolean; mentions: boolean; bot: boolean; dm: boolean; live: boolean;
-    mutedChannels?: { bets: boolean; trades: boolean; sales: boolean; predictions: boolean };
+    mutedChannels?: { trades: boolean };
     mutedSports?: string[];
   } | null,
   expoPushToken?: string | null,

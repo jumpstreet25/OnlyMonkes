@@ -73,7 +73,7 @@ export function useGroupChat(groupId: string, groupName: string) {
   const unsubscribeRef = useRef<(() => void) | null>(null);
   const myInboxIdRef = useRef<string>("");
 
-  // Use groupName as the cache key (e.g. "bets", "trades", etc.)
+  // Use groupName as the cache key (e.g. "monke_trades")
   const cacheKey = groupName.toLowerCase().replace(/\s+/g, "_");
 
   // On mount: if warm cache exists, hydrate messages immediately (no loading state)

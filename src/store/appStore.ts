@@ -150,9 +150,11 @@ interface AppSettingsState {
   botNotificationsEnabled: boolean;
   dmNotificationsEnabled: boolean;
   liveRoomNotificationsEnabled: boolean;
-  mutedBotChannels: { bets: boolean; trades: boolean; sales: boolean; predictions: boolean };
+  mutedBotChannels: { trades: boolean };
   mutedSports: string[];
-  /** Alert sources hidden from MonkeBets/MonkePredictions. Values: 'polymarket' | 'drift'. */
+  /** Orphaned 2026-08-13 (MonkeBets/MonkePredictions removed) — no live UI
+   *  writes this anymore; kept only so old persisted values don't crash
+   *  hydration. Values: 'polymarket' | 'drift'. */
   mutedAlertSources: string[];
   /** BananaBet ids the user dismissed — local-only, per-device. Dismissing
    *  never places a wager (distinct from betting NO) and never affects
@@ -162,8 +164,8 @@ interface AppSettingsState {
   isGroupAdmin: boolean;
   joinRequests: JoinRequest[];
   remoteGroupId: string;
-  botChannelIds: { bets: string; trades: string; sales: string; predictions: string };
-  botChannelCounts: { bets: number; trades: number; sales: number; predictions: number };
+  botChannelIds: { trades: string };
+  botChannelCounts: { trades: number };
   calendarEvents: CalendarEvent[];
   expoPushToken: string | null;
   communityBadges: { dms: number; events: number; links: number };
@@ -184,7 +186,7 @@ interface AppSettingsActions {
   setBotNotificationsEnabled: (enabled: boolean) => void;
   setDmNotificationsEnabled: (enabled: boolean) => void;
   setLiveRoomNotificationsEnabled: (enabled: boolean) => void;
-  toggleBotChannelMute: (channel: 'bets' | 'trades' | 'sales' | 'predictions') => void;
+  toggleBotChannelMute: (channel: 'trades') => void;
   toggleSportMute: (sport: string) => void;
   toggleAlertSourceMute: (source: string) => void;
   hideBananaBet: (id: string) => void;
@@ -194,10 +196,10 @@ interface AppSettingsActions {
   addJoinRequest: (req: JoinRequest) => void;
   removeJoinRequest: (inboxId: string) => void;
   setRemoteGroupId: (id: string) => void;
-  setBotChannelIds: (ids: { bets: string; trades: string; sales: string; predictions: string }) => void;
-  setBotChannelCounts: (counts: { bets: number; trades: number; sales: number; predictions: number }) => void;
-  clearBotChannelCount: (channel: 'bets' | 'trades' | 'sales' | 'predictions') => void;
-  incrementBotChannelCount: (channel: 'bets' | 'trades' | 'sales' | 'predictions') => void;
+  setBotChannelIds: (ids: { trades: string }) => void;
+  setBotChannelCounts: (counts: { trades: number }) => void;
+  clearBotChannelCount: (channel: 'trades') => void;
+  incrementBotChannelCount: (channel: 'trades') => void;
   setCalendarEvents: (events: CalendarEvent[]) => void;
   addCalendarEvent: (event: CalendarEvent) => void;
   setExpoPushToken: (token: string | null) => void;
@@ -296,21 +298,16 @@ const initialState: AppState = {
   botNotificationsEnabled: true,
   dmNotificationsEnabled: true,
   liveRoomNotificationsEnabled: true,
-  mutedBotChannels: { bets: false, trades: false, sales: false, predictions: false },
+  mutedBotChannels: { trades: false },
   mutedSports: [],
   hiddenBananaBetIds: [],
-  // Drift Prediction Markets UI (bet.drift.trade) is currently under
-  // construction. Alerts still fire from the on-chain program but the link
-  // would land users on a stay-tuned page, so we mute by default. Users can
-  // unmute via the Source: Drift pill on Predictions/Bets channels. Bot's
-  // driftUptimeMonitor will announce in-channel when the UI returns.
   mutedAlertSources: ['drift'],
   isGroupMember: false,
   isGroupAdmin: false,
   joinRequests: [],
   remoteGroupId: '',
-  botChannelIds: { bets: '', trades: '', sales: '', predictions: '' },
-  botChannelCounts: { bets: 0, trades: 0, sales: 0, predictions: 0 },
+  botChannelIds: { trades: '' },
+  botChannelCounts: { trades: 0 },
   calendarEvents: [],
   expoPushToken: null,
   communityBadges: { dms: 0, events: 0, links: 0 },

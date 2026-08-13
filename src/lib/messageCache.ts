@@ -24,7 +24,7 @@ const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
 /** Bot channels keep only 24h of messages; main chat keeps 50 */
-const BOT_CHANNELS = new Set(["bets", "trades", "sales", "predictions"]);
+const BOT_CHANNELS = new Set(["trades"]);
 const MAX_CACHED_MAIN = 150;
 const MAX_CACHED_BOT = 200;
 // isPreservable messages (IMAGE/GIF/VIDEO/URL) were exempt from maxCached

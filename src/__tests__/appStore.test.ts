@@ -11,7 +11,7 @@ describe('appStore', () => {
     expect(state.verified).toBe(false);
     expect(state.isGroupMember).toBe(false);
     expect(state.communityBadges).toEqual({ dms: 0, events: 0, links: 0 });
-    expect(state.botChannelCounts).toEqual({ bets: 0, trades: 0, sales: 0, predictions: 0 });
+    expect(state.botChannelCounts).toEqual({ trades: 0 });
   });
 
   it('sets and resets username', () => {
@@ -37,13 +37,12 @@ describe('appStore', () => {
   it('increments and clears bot channel counts', () => {
     const { incrementBotChannelCount, clearBotChannelCount } = useAppStore.getState();
 
-    incrementBotChannelCount('bets');
-    incrementBotChannelCount('bets');
     incrementBotChannelCount('trades');
-    expect(useAppStore.getState().botChannelCounts).toEqual({ bets: 2, trades: 1, sales: 0, predictions: 0 });
+    incrementBotChannelCount('trades');
+    expect(useAppStore.getState().botChannelCounts).toEqual({ trades: 2 });
 
-    clearBotChannelCount('bets');
-    expect(useAppStore.getState().botChannelCounts.bets).toBe(0);
+    clearBotChannelCount('trades');
+    expect(useAppStore.getState().botChannelCounts.trades).toBe(0);
   });
 
   it('manages join requests without duplicates', () => {

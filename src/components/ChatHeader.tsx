@@ -8,8 +8,8 @@ import {
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { BlurView } from "expo-blur";
-import { THEME, FONTS, getWorldBarTint } from "@/lib/constants";
+import { BlurView } from "@sbaiahmed1/react-native-blur";
+import { THEME, FONTS, getWorldBarTint, chromeAccentColor } from "@/lib/constants";
 import { getBlurProps } from "@/lib/glassTheme";
 import { getLocatedUserCount, useProfileVersion } from "@/lib/userProfile";
 import { markOnboardingStep } from "@/components/OnboardingChecklist";
@@ -58,6 +58,16 @@ export function ChatHeader({
   // world is set.
   const worldId = useAppStore((s) => s.shopStyles?.worldId) as string | undefined;
   const headerBg = worldId ? getWorldBarTint(worldId) : HEADER_BG_NO_WORLD;
+  // Message pill color — same World/BananaShop precedence as every other
+  // piece of chrome (ChatInput toolbar icons, bot channel icons): World
+  // wins when equipped, else PFP Full Theme's NFT color, else default blue.
+  const shopStyles = useAppStore((s) => s.shopStyles);
+  const nftDominantColor = useAppStore((s) => s.nftDominantColor);
+  const messagePillColor = chromeAccentColor(
+    !!shopStyles?.pfpFullTheme,
+    nftDominantColor,
+    worldId,
+  );
   // Status-bar safe-area padding lives INSIDE the header so the bg extends
   // edge-to-edge (behind the status bar) — keeps the world layer visible up
   // top and avoids a black themeBg gap above the chrome.
@@ -76,7 +86,7 @@ export function ChatHeader({
     <View style={[styles.header, { borderBottomColor: themeBorder, paddingTop: insets.top }]}>
       {/* 2026-07-24: always-on glass — blurs the message list scrolling
           behind the header, world-equipped or not. */}
-      <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} pointerEvents="none" />
+      <BlurView {...getBlurProps()} style={[StyleSheet.absoluteFill, { pointerEvents: "none" }]} />
       <View style={[StyleSheet.absoluteFill, { backgroundColor: headerBg }]} pointerEvents="none" />
       {/* Left: Globe with monke count */}
       <View style={styles.headerLeft}>
@@ -99,23 +109,20 @@ export function ChatHeader({
         resizeMode="contain"
       />
 
-      {/* Right: banana pill — opens DMs if unread, otherwise opens drawer */}
+      {/* Right: Message pill (always opens DMs, World/BananaShop-colored,
+          carries the DM-unread badge) + banana pill (always opens the
+          menu drawer — no more DM dual-purpose behavior). Split 2026-08-13
+          so DMs get their own dedicated, themed entry point instead of
+          fighting the banana pill for the same badge slot. */}
       <View style={styles.headerRight}>
         <Pressable
-          style={styles.bananaHeaderPill}
-          onPress={() => {
-            if (totalDmUnread > 0) {
-              onDmNavigation();
-            } else {
-              onOpenDrawer();
-            }
-          }}
+          style={[styles.messageHeaderPill, { backgroundColor: messagePillColor + "1A", borderColor: messagePillColor + "26" }]}
+          onPress={onDmNavigation}
           hitSlop={6}
-          accessibilityLabel={totalDmUnread > 0 ? `${totalDmUnread} unread messages` : `${bananaBalance} bananas, open menu`}
+          accessibilityLabel={totalDmUnread > 0 ? `${totalDmUnread} unread messages` : "Open messages"}
           accessibilityRole="button"
         >
-          <Text style={styles.bananaHeaderText}>{bananaBalance} 🍌</Text>
-          {/* DM unread badge — shown above pill like bot channel alerts */}
+          <Text style={[styles.messageHeaderText, { color: messagePillColor }]}>✉️</Text>
           {totalDmUnread > 0 && (
             <View style={styles.communityBadge}>
               <Text style={styles.communityBadgeText}>
@@ -123,8 +130,17 @@ export function ChatHeader({
               </Text>
             </View>
           )}
-          {/* Other community badges (events, links) — shown when no DM unreads */}
-          {totalDmUnread === 0 && (communityBadges.events + communityBadges.links) > 0 && (
+        </Pressable>
+
+        <Pressable
+          style={styles.bananaHeaderPill}
+          onPress={onOpenDrawer}
+          hitSlop={6}
+          accessibilityLabel={`${bananaBalance} bananas, open menu`}
+          accessibilityRole="button"
+        >
+          <Text style={styles.bananaHeaderText}>{bananaBalance} 🍌</Text>
+          {(communityBadges.events + communityBadges.links) > 0 && (
             <View style={styles.communityBadge}>
               <Text style={styles.communityBadgeText}>
                 {communityBadges.events + communityBadges.links}
@@ -207,6 +223,17 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     borderWidth: 1,
     borderColor: "rgba(255,213,79,0.15)",
+  },
+  messageHeaderPill: {
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  messageHeaderText: {
+    fontSize: 13,
   },
   bananaHeaderText: {
     fontFamily: FONTS.mono,

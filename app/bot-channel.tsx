@@ -54,13 +54,13 @@ export default function BotChannelRoute() {
     else if (!verified) router.replace("/verify");
   }, [verified, wallet]);
 
-  const validIds = ["bets", "trades", "sales", "predictions"] as const;
+  const validIds = ["trades"] as const;
   if (!wallet || !verified || !channelId || !validIds.includes(channelId as any)) return null;
 
   return (
     <BotChannelErrorBoundary onBack={() => router.back()}>
       <Suspense fallback={<Loading />}>
-        <BotChannelScreen channelId={channelId as "bets" | "trades" | "sales" | "predictions"} />
+        <BotChannelScreen channelId={channelId as "trades"} />
       </Suspense>
     </BotChannelErrorBoundary>
   );

@@ -21,7 +21,7 @@ import {
   Animated,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { BlurView } from "expo-blur";
+import { BlurView } from "@sbaiahmed1/react-native-blur";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
 import { THEME, FONTS, MAX_MESSAGE_LENGTH, getWorldBarTint, chromeAccentColor } from "@/lib/constants";
@@ -49,7 +49,6 @@ const BOT_COMMANDS = [
   { cmd: "/hottest",    args: "",                 desc: "Top 10 tokens by score" },
   { cmd: "/coldest",    args: "",                 desc: "Bottom 10 contrarian watch" },
   { cmd: "/alerts",     args: "",                 desc: "Recent TA signals" },
-  { cmd: "/sports",     args: "",                 desc: "Top sports betting setups" },
   // Watchlist
   { cmd: "/watchlist",  args: "",                 desc: "Group watchlist" },
   { cmd: "/watch",      args: "$TOKEN",           desc: "Add to your watchlist" },
@@ -108,9 +107,6 @@ const DM_BOT_COMMANDS = [
   { cmd: "/hermes best",          args: "",              desc: "Your best tokens" },
   { cmd: "/hermes worst",         args: "",              desc: "Your worst tokens" },
   { cmd: "/hermes achievements",  args: "",              desc: "Badges & streaks" },
-  // Predictions & Bets
-  { cmd: "/predictions",          args: "",              desc: "Drift predictions" },
-  { cmd: "/bets",                 args: "",              desc: "Sports betting" },
   // Recovery & meta
   { cmd: "/reclaim",              args: "",              desc: "Restore profile on a new device" },
   { cmd: "/myid",                 args: "",              desc: "Your XMTP inbox ID" },
@@ -125,7 +121,7 @@ function getSlashSuggestions(text: string, isDmWithBot?: boolean) {
 }
 
 // ── Bot channel button with badge ─────────────────────────────────────────────
-function ChannelButton({ channelId }: { channelId: 'bets' | 'trades' | 'sales' | 'predictions' }) {
+function ChannelButton({ channelId }: { channelId: 'trades' }) {
   const count = useAppStore((s) => s.botChannelCounts[channelId]);
   const muted = useAppStore((s) => s.mutedBotChannels[channelId]);
   const clearCount = useAppStore((s) => s.clearBotChannelCount);
@@ -314,7 +310,7 @@ export const ChatInput = memo(function ChatInput({
           as ChatHeader. Not in an RN <Modal>, so safe from the cross-window
           blur gap documented in glassTheme.ts. Blurs the message list
           scrolling behind the bottom toolbar, world-equipped or not. */}
-      <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} pointerEvents="none" />
+      <BlurView {...getBlurProps()} style={[StyleSheet.absoluteFill, { pointerEvents: "none" }]} />
       <View style={[StyleSheet.absoluteFill, { backgroundColor: inputBarBg }]} pointerEvents="none" />
       {/* Slash command suggestions */}
       {slashSuggestions.length > 0 && (
@@ -485,10 +481,7 @@ export const ChatInput = memo(function ChatInput({
           </Pressable>
         )}
 
-        <ChannelButton channelId="bets" />
         <ChannelButton channelId="trades" />
-        <ChannelButton channelId="sales" />
-        <ChannelButton channelId="predictions" />
       </View>
 
     </View>

@@ -1,7 +1,8 @@
 /**
  * BotChannelScreen
  *
- * Read-only bot alert feed for categorized channels (Bets, Trades, Sales).
+ * Read-only bot alert feed for the Trades channel (also carries NFT sale
+ * alerts, merged in from the retired MonkeSales channel 2026-08-13).
  * Same layout as DAppChatScreen but without ChatInput — users only read alerts.
  */
 
@@ -23,12 +24,11 @@ import { useAppStore } from "@/store/appStore";
 import { useGroupChat } from "@/hooks/useGroupChat";
 import { MessageBubble } from "@/components/MessageBubble";
 import { triggerProfileRebroadcast } from "@/hooks/useXmtp";
-import AutonoMonkeDisclaimerModal, { type AutonomyFeature } from "@/components/AutonoMonkeDisclaimerModal";
 import AutonoMonkeSetupWizard from "@/components/AutonoMonkeSetupWizard";
 import { getXmtpClient } from "@/hooks/useXmtp";
 import { sendDmMessage } from "@/lib/xmtp";
 import * as Haptics from "expo-haptics";
-import { BlurView } from "expo-blur";
+import { BlurView } from "@sbaiahmed1/react-native-blur";
 import { getBlurProps, GLASS_CHROME_BG } from "@/lib/glassTheme";
 import { WorldGlassFill } from "@/components/WorldGlassFill";
 import { THEME, FONTS, getWorldBarTint, getWorldAccent } from "@/lib/constants";
@@ -46,81 +46,40 @@ const BOT_INBOX_ID = "998001a498174b8a194110ee792b10f97de4965665eaf0d088ed2c71bd
 let _automonkeStatusCheckedThisSession = false;
 
 const AUTONOMY_CONFIG: Record<string, { command: string; storageKey: string }> = {
-  trades:      { command: "/automonke start",      storageKey: "automonke_enrolled" },
-  bets:        { command: "/monkebets start",      storageKey: "monkebets_enrolled" },
-  predictions: { command: "/monkepredictions start", storageKey: "monkepredictions_enrolled" },
+  trades: { command: "/automonke start", storageKey: "automonke_enrolled" },
 };
 
 // No-ops for read-only channel — users can't react or reply to bot alerts
 const noop = (..._args: any[]) => {};
 
-const SPORTS_LIST = [
-  { key: "nfl", label: "NFL 🏈" },
-  { key: "ncaaf", label: "NCAAF 🏈" },
-  { key: "nba", label: "NBA 🏀" },
-  { key: "ncaab", label: "NCAAB 🏀" },
-  { key: "mlb", label: "MLB ⚾" },
-  { key: "nhl", label: "NHL 🏒" },
-  { key: "epl", label: "EPL ⚽" },
-  { key: "ucl", label: "UCL ⚽" },
-  { key: "mma", label: "MMA 🥊" },
-] as const;
-
-// Map sport labels (as they appear in alert messages) → mute keys
-const SPORT_LABEL_TO_KEY: Record<string, string> = {};
-for (const s of SPORTS_LIST) {
-  // Extract text before emoji, e.g. "NFL 🏈" → "NFL"
-  const textOnly = s.label.replace(/\s*[\u{1F000}-\u{1FFFF}]/u, "").trim();
-  SPORT_LABEL_TO_KEY[textOnly.toUpperCase()] = s.key;
-  SPORT_LABEL_TO_KEY[s.label] = s.key; // full label match too
-}
-
 const CHANNEL_CONFIG = {
-  bets: {
-    name: "Monke Bets",
-    // (v30 2026-05-09) PNG icons retired in favor of BotChannelIcon
-    // (Skia vectors). The `banner` here is a separate larger artwork
-    // (Bets.png / Trade.png / etc.) used elsewhere on the screen.
-    banner: require("../../assets/Bets.png"),
-    emptyText: "No sports bet alerts yet.",
-  },
   trades: {
     name: "Monke Trades",
+    // (v30 2026-05-09) PNG icons retired in favor of BotChannelIcon
+    // (Skia vectors). The `banner` here is a separate larger artwork
+    // used elsewhere on the screen.
     banner: require("../../assets/Trade.png"),
-    emptyText: "No trade alerts yet.",
-  },
-  sales: {
-    name: "Monke Sales",
-    banner: require("../../assets/Sales.png"),
-    emptyText: "No sales alerts yet.",
-  },
-  predictions: {
-    name: "Monke Predictions",
-    banner: require("../../assets/Predictions.png"),
-    emptyText: "No prediction alerts yet.",
+    emptyText: "No trade or sale alerts yet.",
   },
 } as const;
 
 interface BotChannelScreenProps {
-  channelId: "bets" | "trades" | "sales" | "predictions";
+  channelId: "trades";
 }
 
 export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
   const insets = useSafeAreaInsets();
-  const { myInboxId, botChannelIds, mutedBotChannels, toggleBotChannelMute, mutedSports, toggleSportMute, mutedAlertSources, username } = useAppStore();
+  const { myInboxId, botChannelIds, mutedBotChannels, toggleBotChannelMute, username } = useAppStore();
   const groupId = botChannelIds[channelId];
   const isMuted = mutedBotChannels[channelId];
   const config = CHANNEL_CONFIG[channelId];
   const [showAutonoMonkeModal, setShowAutonoMonkeModal] = useState(false);
   const [autonomyEnrolled, setAutonomyEnrolled] = useState(false);
   // Per-user Limit Orders opt-in (T1/T2 as on-chain resting Jupiter orders).
-  // Only shown when channelId === "trades" AND user is already AutonoMonke-
-  // enrolled (Limit Orders are meaningless without it). Persisted to
-  // AsyncStorage so the pill reflects the right state on reopen without
-  // round-tripping the bot.
+  // Only shown when the user is already AutonoMonke-enrolled (Limit Orders
+  // are meaningless without it). Persisted to AsyncStorage so the pill
+  // reflects the right state on reopen without round-tripping the bot.
   const [limitOrdersEnabled, setLimitOrdersEnabled] = useState(false);
-  const [showAllOverride, setShowAllOverride] = useState(false);
-  const [openDropdown, setOpenDropdown] = useState<"sports" | "sources" | null>(null);
   const hasAutonomy = channelId in AUTONOMY_CONFIG;
   const LIMIT_ORDERS_STORAGE_KEY = "autonomonke_limit_orders_v1";
 
@@ -265,27 +224,6 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
   const flatListRef = useRef<FlashListRef<ChatMessage>>(null);
   const myAddress = myInboxId ?? "";
 
-  // Autonomy enrollment handler — works for trades, bets, predictions
-  const handleAutonomyEnroll = useCallback(async () => {
-    setShowAutonoMonkeModal(false);
-    if (!hasAutonomy) return;
-    const { command, storageKey } = AUTONOMY_CONFIG[channelId];
-    try {
-      const client = getXmtpClient();
-      if (!client) return;
-      const dm = await (client.conversations as any).findOrCreateDm(BOT_INBOX_ID);
-      if (dm) {
-        await sendDmMessage(dm, command, username);
-      }
-      await AsyncStorage.setItem(storageKey, "1");
-      setAutonomyEnrolled(true);
-      // Navigate to bot DM
-      router.push(`/dm/${BOT_INBOX_ID}` as any);
-    } catch (err) {
-      if (__DEV__) console.warn(`[Autonomy:${channelId}] Failed to send enrollment DM:`, (err as Error).message);
-    }
-  }, [username, channelId, hasAutonomy]);
-
   // Reverse messages for inverted FlatList (newest first in array = bottom of screen)
   // Security: only show messages from the bot — prevents spoofed alerts from other XMTP clients
   const reversedMessages = useMemo(() =>
@@ -293,38 +231,7 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
     [messages],
   );
 
-  // Client-side filter: hide alerts for muted sports in the Bets channel,
-  // AND hide alerts for muted sources (Polymarket / Drift / Kalshi) in either lane.
-  // Source label is appended to alert header line 1 as " · Polymarket",
-  // " · Drift", or " · Kalshi 🇺🇸" (see Monke_Eliza formatter.ts).
-  const filteredMessages = useMemo(() => {
-    if (showAllOverride) return reversedMessages;
-    const sportFilterActive = channelId === "bets" && mutedSports.length > 0;
-    const sourceFilterActive = mutedAlertSources.length > 0;
-    if (!sportFilterActive && !sourceFilterActive) return reversedMessages;
-    return reversedMessages.filter((msg) => {
-      const text = msg.content ?? "";
-      const firstLine = text.split("\n")[0] ?? "";
-
-      if (sourceFilterActive) {
-        const srcMatch = firstLine.match(/·\s*(Polymarket|Drift|Kalshi)\b/i);
-        if (srcMatch) {
-          const src = srcMatch[1].toLowerCase();
-          if (mutedAlertSources.includes(src)) return false;
-        }
-      }
-      if (sportFilterActive) {
-        const dashMatch = firstLine.match(/—\s*(.+)/);
-        if (dashMatch) {
-          // Sport label is the first segment after — and before any · source tag.
-          const sportPart = dashMatch[1].trim().split("·")[0].trim();
-          const key = SPORT_LABEL_TO_KEY[sportPart] ?? SPORT_LABEL_TO_KEY[sportPart.toUpperCase()];
-          if (key && mutedSports.includes(key)) return false;
-        }
-      }
-      return true;
-    });
-  }, [reversedMessages, mutedSports, mutedAlertSources, channelId, showAllOverride]);
+  const filteredMessages = reversedMessages;
 
   useEffect(() => {
     if (groupId) initialize().catch((err) => {
@@ -382,22 +289,17 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
       {/* Header — matches Main Chat header layout exactly. Status-bar safe-
           area lives inside so the bg extends edge-to-edge behind the
           status bar (no themeBg gap above the chrome). */}
-      <View style={[styles.header, { borderBottomColor: themeBorder, paddingTop: insets.top, height: 100 + insets.top, overflow: "hidden" }]}>
+      <View style={[styles.header, { borderBottomColor: themeBorder, paddingTop: insets.top }]}>
         {/* Same MonkeGlass as MainChat bubbles + light chrome bar tint */}
         {worldId ? <WorldGlassFill worldId={worldId} /> : (
           <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />
         )}
         <View style={[StyleSheet.absoluteFill, { backgroundColor: chromeBg }]} pointerEvents="none" />
+        <View style={styles.headerRow1}>
         <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={8}>
           <Text style={styles.backIcon}>{"\u2039"}</Text>
         </Pressable>
 
-        {/* Center: banner image — matches Main Chat header layout. Only the
-            back button and mute pill share the row with it now (both
-            content-hugging and present on every channel), so the banner
-            gets the same, generous available width everywhere — no more
-            reserving space for the Limit Orders / AutonoMonke pills, which
-            moved to their own row below. */}
         <ImageBackground
           source={config.banner}
           style={styles.headerCenter}
@@ -423,24 +325,15 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
             </Text>
           </Pressable>
         </View>
-      </View>
+        </View>
 
-      {/* Pill band — Limit Orders (trades only) + AutonoMonke (trades/bets/
-          predictions), relocated out of the header so they stop competing
-          with the banner for width. Solid chromeBg backing + each pill's
-          own opaque fill/border keeps them readable over the busy World
-          background instead of blending in; the active/enrolled state gets
-          a visibly heavier fill + border so "on" reads at a glance. Only
-          rendered when this channel actually has a pill to show. */}
-      {hasAutonomy && (
-        <View style={[styles.pillBand, { backgroundColor: worldId ? "transparent" : chromeBg, borderBottomColor: themeBorder, overflow: "hidden" }]}>
-          {worldId ? (
-            <>
-              <WorldGlassFill worldId={worldId} showHighlight={false} />
-              <View style={[StyleSheet.absoluteFill, { backgroundColor: chromeBg }]} pointerEvents="none" />
-            </>
-          ) : null}
-          {channelId === "trades" && (
+        {/* Pill row — Sports/Source filter (Bets only — Predictions' Source
+            Filter stays in its own filterBand below, not moved), Limit
+            Orders (Trades only), AutonoMonke (Trades/Bets/Predictions).
+            2026-08-08: moved from the separate pillBand bar into this same
+            header block so there's one glass surface, not a stack of bars. */}
+        {hasAutonomy && (
+          <View style={styles.headerPillRow}>
             <Pressable
               onPress={handleLimitOrdersToggle}
               style={[styles.limitOrdersBtn, limitOrdersEnabled && styles.limitOrdersBtnActive]}
@@ -453,55 +346,55 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
                 </Text>
               </View>
             </Pressable>
-          )}
 
-          <Pressable
-            onPress={async () => {
-              // 2026-08-07: enrolled users were dumped into bot DM, then typed
-              // /autonomonke start and the bot said "use MonkeTrades" — loop.
-              // Not enrolled → wizard. Enrolled + paused → resume. Enrolled +
-              // active → open DM. Long-press always reopens the wizard.
-              if (!autonomyEnrolled) {
-                setShowAutonoMonkeModal(true);
-                return;
-              }
-              // 2026-08-07: was sending /autonomonke status whenever
-              // automonkeStatus was null — every pill tap re-spammed Hermes.
-              // Only auto-DM when we KNOW they're paused (resume). Otherwise
-              // just open the bot DM; user can type /autonomonke status if needed.
-              const paused = automonkeStatus?.enrolled && !automonkeStatus?.active;
-              if (paused) {
-                try {
-                  const client = getXmtpClient();
-                  if (client) {
-                    const dm = await (client.conversations as any).findOrCreateDm(BOT_INBOX_ID);
-                    if (dm) await sendDmMessage(dm, "/autonomonke resume", username);
-                  }
-                } catch (err) {
-                  if (__DEV__) console.warn("[Autonomy:trades] resume DM failed:", (err as Error)?.message);
+            <Pressable
+              onPress={async () => {
+                // 2026-08-07: enrolled users were dumped into bot DM, then typed
+                // /autonomonke start and the bot said "use MonkeTrades" — loop.
+                // Not enrolled -> wizard. Enrolled + paused -> resume. Enrolled +
+                // active -> open DM. Long-press always reopens the wizard.
+                if (!autonomyEnrolled) {
+                  setShowAutonoMonkeModal(true);
+                  return;
                 }
-              }
-              router.push(`/dm/${BOT_INBOX_ID}` as any);
-            }}
-            onLongPress={() => {
-              // Always allow re-running the Activate wizard (reconfigure /
-              // re-enroll after a wipe / fix stale ✓ without DM limbo).
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-              setShowAutonoMonkeModal(true);
-            }}
-            delayLongPress={400}
-            style={[styles.autonomyBtn, autonomyEnrolled && styles.autonomyBtnActive]}
-            hitSlop={8}
-          >
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-              {autonomyEnrolled && <View style={styles.blueCheck}><Text style={styles.blueCheckText}>{"\u2713"}</Text></View>}
-              <Text style={[styles.autonomyBtnText, autonomyEnrolled && styles.autonomyBtnTextActive]}>
-                AutonoMonke
-              </Text>
-            </View>
-          </Pressable>
-        </View>
-      )}
+                // 2026-08-07: was sending /autonomonke status whenever
+                // automonkeStatus was null — every pill tap re-spammed Hermes.
+                // Only auto-DM when we KNOW they're paused (resume). Otherwise
+                // just open the bot DM; user can type /autonomonke status if needed.
+                const paused = automonkeStatus?.enrolled && !automonkeStatus?.active;
+                if (paused) {
+                  try {
+                    const client = getXmtpClient();
+                    if (client) {
+                      const dm = await (client.conversations as any).findOrCreateDm(BOT_INBOX_ID);
+                      if (dm) await sendDmMessage(dm, "/autonomonke resume", username);
+                    }
+                  } catch (err) {
+                    if (__DEV__) console.warn("[Autonomy:trades] resume DM failed:", (err as Error)?.message);
+                  }
+                }
+                router.push(`/dm/${BOT_INBOX_ID}` as any);
+              }}
+              onLongPress={() => {
+                // Always allow re-running the Activate wizard (reconfigure /
+                // re-enroll after a wipe / fix stale check without DM limbo).
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+                setShowAutonoMonkeModal(true);
+              }}
+              delayLongPress={400}
+              style={[styles.autonomyBtn, autonomyEnrolled && styles.autonomyBtnActive]}
+              hitSlop={8}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                {autonomyEnrolled && <View style={styles.blueCheck}><Text style={styles.blueCheckText}>{"\u2713"}</Text></View>}
+                <Text style={[styles.autonomyBtnText, autonomyEnrolled && styles.autonomyBtnTextActive]}>
+                  AutonoMonke
+                </Text>
+              </View>
+            </Pressable>
+          </View>
+        )}
+      </View>
 
       {/* Loading / connecting state */}
       {isLoading && (
@@ -521,96 +414,6 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
       {/* Main content */}
       {!isLoading && !error && (
         <>
-          {/* Filter band — two minimalist dropdown triggers (Sports + Source).
-              Tap either to open a text-list panel below. Tapping the open
-              one again closes it; tapping the other swaps content. Sports
-              shows for Bets only; Source shows for Bets + Predictions. */}
-          {(channelId === "bets" || channelId === "predictions") && (
-            <View style={[styles.filterBand, { borderBottomColor: themeBorder, overflow: "hidden" }]}>
-              {worldId ? <WorldGlassFill worldId={worldId} showHighlight={false} /> : (
-                <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />
-              )}
-              <View style={[StyleSheet.absoluteFill, { backgroundColor: chromeBg }]} pointerEvents="none" />
-              {channelId === "bets" && (
-                <Pressable
-                  onPress={() => setOpenDropdown(d => d === "sports" ? null : "sports")}
-                  style={[styles.filterTrigger, openDropdown === "sports" && styles.filterTriggerActive]}
-                >
-                  <Text style={styles.filterTriggerText}>Sports Filter</Text>
-                  <Text style={styles.filterCaret}>{openDropdown === "sports" ? "▴" : "▾"}</Text>
-                </Pressable>
-              )}
-              <Pressable
-                onPress={() => setOpenDropdown(d => d === "sources" ? null : "sources")}
-                style={[styles.filterTrigger, openDropdown === "sources" && styles.filterTriggerActive]}
-              >
-                <Text style={styles.filterTriggerText}>Source Filter</Text>
-                <Text style={styles.filterCaret}>{openDropdown === "sources" ? "▴" : "▾"}</Text>
-              </Pressable>
-            </View>
-          )}
-
-          {/* Sports dropdown panel */}
-          {openDropdown === "sports" && channelId === "bets" && (
-            <View style={[styles.dropdownPanel, { borderBottomColor: themeBorder, overflow: "hidden" }]}>
-              {worldId ? <WorldGlassFill worldId={worldId} showHighlight={false} /> : (
-                <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />
-              )}
-              <View style={[StyleSheet.absoluteFill, { backgroundColor: chromeBg }]} pointerEvents="none" />
-              {SPORTS_LIST.map(({ key, label }) => {
-                const muted = mutedSports.includes(key);
-                return (
-                  <Pressable
-                    key={key}
-                    onPress={() => {
-                      toggleSportMute(key);
-                      triggerProfileRebroadcast(useAppStore.getState().expoPushToken ?? "").catch(() => {});
-                    }}
-                    style={styles.dropdownRow}
-                  >
-                    <Text style={styles.dropdownDot}>{muted ? "○" : "●"}</Text>
-                    <Text style={[styles.dropdownLabel, muted && styles.dropdownLabelMuted]}>
-                      {label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          )}
-
-          {/* Source dropdown panel */}
-          {openDropdown === "sources" && (channelId === "bets" || channelId === "predictions") && (
-            <View style={[styles.dropdownPanel, { borderBottomColor: themeBorder, overflow: "hidden" }]}>
-              {worldId ? <WorldGlassFill worldId={worldId} showHighlight={false} /> : (
-                <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />
-              )}
-              <View style={[StyleSheet.absoluteFill, { backgroundColor: chromeBg }]} pointerEvents="none" />
-              {(["polymarket", "kalshi", "drift"] as const).map((src) => {
-                const muted = mutedAlertSources.includes(src);
-                const label = src === "drift" ? "Drift"
-                            : src === "kalshi" ? "Kalshi 🇺🇸"
-                            : "Polymarket";
-                return (
-                  <Pressable
-                    key={src}
-                    onPress={() => useAppStore.getState().toggleAlertSourceMute(src)}
-                    style={styles.dropdownRow}
-                  >
-                    <Text style={styles.dropdownDot}>{muted ? "○" : "●"}</Text>
-                    <Text style={[styles.dropdownLabel, muted && styles.dropdownLabelMuted]}>
-                      {label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-              {mutedAlertSources.includes("drift") && (
-                <Text style={styles.dropdownNote}>
-                  Drift Predictions UI is under construction — bot will announce here when it's back.
-                </Text>
-              )}
-            </View>
-          )}
-
           {/* Loading history banner */}
           {isLoadingHistory && (
             <View style={styles.historyLoading}>
@@ -619,21 +422,8 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
             </View>
           )}
 
-          {/* Filtered-out notice — all messages hidden by sport filters */}
-          {!isLoadingHistory && filteredMessages.length === 0 && messages.length > 0 && channelId === "bets" && (
-            <Pressable
-              style={styles.filteredNotice}
-              onPress={() => setShowAllOverride(true)}
-            >
-              <Text style={styles.filteredNoticeText}>
-                {messages.length} alerts hidden by sport filters
-              </Text>
-              <Text style={styles.filteredNoticeAction}>Tap to show all</Text>
-            </Pressable>
-          )}
-
           {/* Empty state */}
-          {!isLoadingHistory && filteredMessages.length === 0 && (messages.length === 0 || channelId !== "bets") && (
+          {!isLoadingHistory && filteredMessages.length === 0 && (
             <View style={styles.emptyState}>
               <BotChannelIcon channel={channelId} size={80} color={getWorldAccent(worldId)} />
               <Text style={styles.emptyTitle}>No alerts yet</Text>
@@ -657,20 +447,10 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
 
       <View style={{ height: insets.bottom }} />
 
-      {/* Autonomy entry — trades channel uses the new wizard, others still
-          use the legacy single-screen disclaimer + DM enrollment flow. */}
-      {hasAutonomy && channelId === "trades" && (
+      {hasAutonomy && (
         <AutonoMonkeSetupWizard
           visible={showAutonoMonkeModal}
           onClose={() => setShowAutonoMonkeModal(false)}
-        />
-      )}
-      {hasAutonomy && channelId !== "trades" && (
-        <AutonoMonkeDisclaimerModal
-          visible={showAutonoMonkeModal}
-          onClose={() => setShowAutonoMonkeModal(false)}
-          onConfirm={handleAutonomyEnroll}
-          feature={channelId as AutonomyFeature}
         />
       )}
     </View>
@@ -684,21 +464,33 @@ const styles = StyleSheet.create({
   },
   // Header geometry matched to ChatHeader.tsx (Main Chat) so the banner
   // image renders at the same visible size and is centered the same way.
-  // Only backBtn + the mute pill share the row with the banner now (both
-  // content-hugging, present on every channel) — the Limit Orders /
-  // AutonoMonke pills live in their own row below (pillBand) so they don't
-  // compete with the banner for width. That's what keeps headerCenter's
-  // flex:1 share, and the banner's rendered size, identical across every
-  // channel regardless of which pills that channel has.
+  // 2026-08-08: header is now a column of two rows (headerRow1 + optional
+  // headerPillRow) sharing ONE glass surface (BlurView/WorldGlassFill +
+  // chromeBg as absoluteFill children of THIS container), instead of the
+  // banner row plus separate bordered pillBand/filterBand bars underneath —
+  // those read as "extra headers" stacked on top of each other. Height is
+  // content-driven now (no fixed height) so it grows by exactly one pill
+  // row's worth when a channel has pills, nothing more.
   header: {
+    overflow: "hidden",
+    // No borderBottom — separator removed per design pass 2026-05-06.
+  },
+  headerRow1: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 8,
     height: 100,
-    overflow: "hidden",
-    // Background is now the BlurView + tint View layered as the first two
-    // children (MonkeGlass, 2026-08-03) instead of a static color here.
-    // No borderBottom — separator removed per design pass 2026-05-06.
+  },
+  // Pill row — Sports/Source filter (bets) + Limit Orders (trades) +
+  // AutonoMonke (trades/bets/predictions) all live here now, inside the
+  // same header block instead of a separate pillBand/filterBand bar below.
+  headerPillRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingBottom: 10,
   },
   headerCenter: {
     flex: 1,
@@ -841,28 +633,38 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     overflow: "hidden",
   },
-  filterTrigger: {
+  // Filter pills (Sports/Source) — restyled 2026-08-08 to match the
+  // AutonoMonke/Limit Orders pill language (colored fill + border) instead
+  // of the old thin-bordered dropdown-trigger look, per "match MonkeTrades
+  // style". Blue family distinguishes filter pills from action pills
+  // (purple = AutonoMonke, teal = Limit Orders).
+  filterPillBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
     paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingVertical: 5,
+    borderRadius: 8,
+    backgroundColor: "rgba(108, 180, 238, 0.22)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
+    borderColor: "rgba(108, 180, 238, 0.45)",
+    minWidth: 44,
+    elevation: 2,
   },
-  filterTriggerActive: {
-    backgroundColor: "rgba(108,180,238,0.12)",
-    borderColor: "rgba(108,180,238,0.30)",
+  filterPillBtnActive: {
+    backgroundColor: "rgba(108, 180, 238, 0.4)",
+    borderColor: "rgba(108, 180, 238, 0.8)",
   },
-  filterTriggerText: {
+  filterPillBtnText: {
     fontFamily: FONTS.bodyMed,
-    fontSize: 11,
-    color: THEME.text,
+    fontSize: 10,
+    color: "#BEE1FB",
   },
-  filterCaret: {
+  filterPillBtnTextActive: {
+    color: "#E4F2FD",
+  },
+  filterPillCaret: {
     fontSize: 9,
-    color: THEME.textMuted,
+    color: "#BEE1FB",
     marginTop: 1,
   },
   // Dropdown panel — minimalist text list of options with a leading
@@ -928,18 +730,6 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
 
-  // Pill band — Limit Orders + AutonoMonke live here now, below the
-  // header, instead of squeezed in beside the banner. Solid chromeBg
-  // backing (same pattern as filterBand above) so the row itself reads
-  // as a distinct toolbar strip over the World background.
-  pillBand: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-  },
   // Base fill bumped from 0.15→0.22 and a matching border added — at 0.15
   // with no border, the pills nearly disappeared against the busy World
   // background (grid lines, gradients). Active/enrolled state jumps to a

@@ -56,7 +56,7 @@ import { BananaShopModal } from "@/components/BananaShopModal";
 import { ReclaimModal } from "@/components/ReclaimModal";
 import type { ProfileTarget } from "@/components/UserProfileModal";
 import { LinearGradient } from "expo-linear-gradient";
-import { BlurView } from "expo-blur";
+import { BlurView } from "@sbaiahmed1/react-native-blur";
 import { GLASS_GRADIENT_COLORS, HIGHLIGHT, getBlurProps } from "@/lib/glassTheme";
 import { WorldGlassFill } from "@/components/WorldGlassFill";
 import { LeaderboardView } from "@/components/LeaderboardView";
@@ -71,11 +71,10 @@ const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const URL_REGEX = /https?:\/\/[^\s"'<>)]+/g;
 const BOT_USERNAME = "AI Agent #9385";
 
-type ActiveView = "list" | "messages" | "alerts" | "events" | "images" | "links" | "settings" | "tools" | "leaderboard";
+type ActiveView = "list" | "alerts" | "events" | "images" | "links" | "settings" | "tools" | "leaderboard";
 
 const VIEW_TITLES: Record<ActiveView, string> = {
   list:        "Community",
-  messages:    "Messages",
   alerts:      "AI Agent Alerts",
   events:      "Events",
   images:      "Shared Images",
@@ -110,30 +109,11 @@ interface MenuDrawerProps {
   onSwitchPfp?: () => void;
 }
 
-interface ActiveUser {
-  inboxId: string;
-  username?: string;
-  nftImage?: string | null;
-  lastSeen: Date;
-}
-
 interface SharedLink {
   url: string;
   senderUsername?: string;
   sentAt: Date;
 }
-
-const SPORTS_LIST = [
-  { key: "nfl", label: "NFL 🏈" },
-  { key: "ncaaf", label: "NCAAF 🏈" },
-  { key: "nba", label: "NBA 🏀" },
-  { key: "ncaab", label: "NCAAB 🏀" },
-  { key: "mlb", label: "MLB ⚾" },
-  { key: "nhl", label: "NHL 🏒" },
-  { key: "epl", label: "EPL ⚽" },
-  { key: "ucl", label: "UCL ⚽" },
-  { key: "mma", label: "MMA 🥊" },
-] as const;
 
 export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onStartVideo, onSearch, onPressUser, broadcastProfile, onDevTip, onEditProfile, onSwitchPfp }: MenuDrawerProps) {
   const { width: SCREEN_WIDTH } = useWindowDimensions();
@@ -158,8 +138,6 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
   const setLiveRoomNotificationsEnabled = useAppStore(s => s.setLiveRoomNotificationsEnabled);
   const mutedBotChannels = useAppStore(s => s.mutedBotChannels);
   const toggleBotChannelMute = useAppStore(s => s.toggleBotChannelMute);
-  const mutedSports = useAppStore(s => s.mutedSports);
-  const toggleSportMute = useAppStore(s => s.toggleSportMute);
   const expoPushToken = useAppStore(s => s.expoPushToken);
   const setExpoPushToken = useAppStore(s => s.setExpoPushToken);
   const communityBadges = useAppStore(s => s.communityBadges);
@@ -201,39 +179,6 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
   }, [visible]);
 
   // ── Derived data ──────────────────────────────────────────────────────────
-
-  const activeUsers = useMemo<ActiveUser[]>(() => {
-    const cutoff = Date.now() - ONE_DAY_MS;
-    // Dedup by username (same human can have multiple inboxIds after reinstalls)
-    const seen = new Map<string, ActiveUser>();
-    for (const msg of messages) {
-      if (msg.sentAt.getTime() < cutoff) continue;
-      const cached = getCachedProfile(msg.senderAddress);
-      const msgNft = cached?.nftImage ?? msg.senderNft?.image ?? null;
-      const msgUsername = cached?.username ?? msg.senderUsername;
-      // Key by username when available, fall back to inboxId
-      const key = msgUsername?.toLowerCase() || msg.senderAddress;
-      if (!seen.has(key)) {
-        seen.set(key, {
-          inboxId: msg.senderAddress,
-          username: msgUsername,
-          nftImage: msgNft,
-          lastSeen: msg.sentAt,
-        });
-      } else {
-        const ex = seen.get(key)!;
-        // Keep the most recent entry's inboxId
-        const isNewer = msg.sentAt > ex.lastSeen;
-        seen.set(key, {
-          inboxId: isNewer ? msg.senderAddress : ex.inboxId,
-          lastSeen: isNewer ? msg.sentAt : ex.lastSeen,
-          nftImage: msgNft ?? ex.nftImage,
-          username: ex.username ?? msgUsername,
-        });
-      }
-    }
-    return Array.from(seen.values()).sort((a, b) => b.lastSeen.getTime() - a.lastSeen.getTime());
-  }, [messages]);
 
   const sharedLinks = useMemo<SharedLink[]>(() => {
     const seen = new Set<string>();
@@ -344,44 +289,6 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
     } else {
       Alert.alert("Failed", "Could not get push token. Check notification permissions.");
     }
-  }
-
-  // ── User row helper ───────────────────────────────────────────────────────
-
-  function renderUserRow(user: ActiveUser, showDot = true) {
-    const cached = getCachedProfile(user.inboxId);
-    const name = cached?.username ?? user.username ?? 'Monke';
-    const avatarUri = cached?.nftImage ?? user.nftImage ?? null;
-    const isBot = name === 'AI Agent #9385';
-    return (
-      <Pressable
-        key={user.inboxId}
-        style={({ pressed }) => [styles.userRow, pressed && { opacity: 0.7 }]}
-        onPress={() => {
-          if (!onPressUser) return;
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          onPressUser({
-            senderAddress: user.inboxId,
-            senderUsername: name,
-            senderNft: avatarUri ? { mint: "", name: "", image: avatarUri } : null,
-          });
-        }}
-      >
-        {avatarUri ? (
-          <Image source={{ uri: avatarUri }} style={styles.userAvatar} />
-        ) : isBot ? (
-          // eslint-disable-next-line @typescript-eslint/no-require-imports
-          <Image source={require('../../assets/ai_agent_avatar.png')} style={styles.userAvatar} />
-        ) : (
-          <View style={styles.userAvatarFallback} />
-        )}
-        <View style={styles.userInfo}>
-          <Text style={styles.userName} numberOfLines={1}>{name}</Text>
-          <Text style={styles.userTime}>{formatRelative(user.lastSeen)}</Text>
-        </View>
-        {showDot && <View style={styles.onlineDot} />}
-      </Pressable>
-    );
   }
 
   // ── Menu list item helper ─────────────────────────────────────────────────
@@ -686,12 +593,6 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
               <Text style={[styles.navSectionLabel, worldId ? { color: iconAccent } : null]}>Menu</Text>
               <View style={styles.gridContainer}>
                 <GridButton
-                  iconName="messages"
-                  label="Messages"
-                  badge={communityBadges.dms || undefined}
-                  onPress={() => { clearCommunityBadge('dms'); markChannelRead('dms').catch(() => {}); onClose(); setTimeout(() => router.push('/dms'), 300); }}
-                />
-                <GridButton
                   iconName="leaderboard"
                   label="Leaderboard"
                   onPress={() => setActiveView("leaderboard")}
@@ -778,52 +679,6 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                   />
                 )}
               </View>
-            </>
-          )}
-
-          {/* ── Messages ───────────────────────────────────────────────────── */}
-          {activeView === "messages" && (
-            <>
-              <Text style={styles.sectionLabel}>
-                Tap a user to open a direct message
-              </Text>
-              {activeUsers.length === 0 ? (
-                <Text style={styles.emptyText}>No recent users to message.</Text>
-              ) : (
-                activeUsers
-                  .filter(u => u.inboxId !== myInboxId)
-                  .map((u) => {
-                    const cached = getCachedProfile(u.inboxId);
-                    const name = cached?.username ?? u.username ?? 'Monke';
-                    const avatarUri = cached?.nftImage ?? u.nftImage ?? null;
-                    const isBot = name === 'AI Agent #9385';
-                    return (
-                      <Pressable
-                        key={u.inboxId}
-                        style={({ pressed }) => [styles.userRow, pressed && { opacity: 0.7 }]}
-                        onPress={() => {
-                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                          onClose();
-                          router.push(`/dm/${u.inboxId}`);
-                        }}
-                      >
-                        {avatarUri ? (
-                          <Image source={{ uri: avatarUri }} style={styles.userAvatar} />
-                        ) : isBot ? (
-                          // eslint-disable-next-line @typescript-eslint/no-require-imports
-                          <Image source={require('../../assets/ai_agent_avatar.png')} style={styles.userAvatar} />
-                        ) : (
-                          <View style={styles.userAvatarFallback} />
-                        )}
-                        <View style={styles.userInfo}>
-                          <Text style={styles.userName} numberOfLines={1}>{name}</Text>
-                          <Text style={styles.userTime}>{formatRelative(u.lastSeen)}</Text>
-                        </View>
-                        <Text style={styles.dmIcon}>✉</Text>
-                      </Pressable>
-                    );
-                  })
-              )}
             </>
           )}
 
@@ -1130,7 +985,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
               {/* ── Per-Bot-Channel Mutes ──────────────────────────────── */}
               <Text style={[styles.sectionLabel, { marginTop: 20 }]}>Bot Channel Alerts</Text>
               <View style={styles.settingsCard}>
-                {(["bets", "trades", "sales", "predictions"] as const).map((ch, i) => (
+                {(["trades"] as const).map((ch, i) => (
                   <React.Fragment key={ch}>
                     {i > 0 && <View style={styles.settingDivider} />}
                     <View style={styles.settingRow}>
@@ -1149,28 +1004,6 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                     </View>
                   </React.Fragment>
                 ))}
-              </View>
-
-              {/* ── MonkeBets Sports Filter ────────────────────────────── */}
-              <Text style={[styles.sectionLabel, { marginTop: 20 }]}>MonkeBets Sports Filter</Text>
-              <Text style={[styles.settingDesc, { marginBottom: 8, paddingHorizontal: 4 }]}>
-                Tap to mute sports you don't want alerts for
-              </Text>
-              <View style={styles.sportsPillRow}>
-                {SPORTS_LIST.map(({ key, label }) => {
-                  const muted = mutedSports.includes(key);
-                  return (
-                    <Pressable
-                      key={key}
-                      style={[styles.sportPill, muted && styles.sportPillMuted]}
-                      onPress={() => { toggleSportMute(key); broadcastProfile?.(); }}
-                    >
-                      <Text style={[styles.sportPillText, muted && styles.sportPillTextMuted]}>
-                        {label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
               </View>
 
               {/* ── Chat Theme ────────────────────────────────────────── */}
@@ -1477,7 +1310,7 @@ const supportStyles = StyleSheet.create({
   sub: {
     fontFamily: FONTS.body,
     fontSize: 12,
-    color: THEME.textDim,
+    color: THEME.text,
     textAlign: "center",
     lineHeight: 17,
   },
@@ -1499,7 +1332,7 @@ const supportStyles = StyleSheet.create({
     borderColor: "#7C3AED",
     backgroundColor: "#7C3AED22",
   },
-  pillText: { fontFamily: FONTS.body, fontSize: 12, color: THEME.textDim },
+  pillText: { fontFamily: FONTS.body, fontSize: 12, color: THEME.text },
   pillTextActive: { color: "#A78BFA", fontFamily: FONTS.bodyMed },
   btn: {
     backgroundColor: "#7C3AED",
@@ -1509,11 +1342,11 @@ const supportStyles = StyleSheet.create({
   },
   btnText: { fontFamily: FONTS.heading, fontSize: 14, color: "#fff" },
   customBtn: { alignItems: "center", paddingVertical: 4 },
-  customBtnText: { fontFamily: FONTS.body, fontSize: 12, color: THEME.textDim },
+  customBtnText: { fontFamily: FONTS.body, fontSize: 12, color: THEME.text },
   wallet: {
     fontFamily: FONTS.mono ?? FONTS.body,
     fontSize: 10,
-    color: THEME.textFaint,
+    color: THEME.text,
     textAlign: "center",
   },
 });
@@ -1666,7 +1499,7 @@ const styles = StyleSheet.create({
   sectionLabel: {
     fontFamily: FONTS.mono,
     fontSize: 10,
-    color: THEME.textFaint,
+    color: THEME.text,
     letterSpacing: 2,
     textTransform: "uppercase",
     marginBottom: 10,
@@ -1684,7 +1517,7 @@ const styles = StyleSheet.create({
   emptyText: {
     fontFamily: FONTS.body,
     fontSize: 13,
-    color: THEME.textFaint,
+    color: THEME.text,
     textAlign: "center",
     marginTop: 24,
     lineHeight: 20,
@@ -1815,7 +1648,7 @@ const styles = StyleSheet.create({
   gridLabel: {
     fontFamily: FONTS.bodyMed,
     fontSize: 11,
-    color: THEME.textMuted,
+    color: THEME.text,
     textAlign: "center",
   },
   gridBadge: {
@@ -1862,7 +1695,7 @@ const styles = StyleSheet.create({
   menuItemSub: {
     fontFamily: FONTS.mono,
     fontSize: 10,
-    color: THEME.textFaint,
+    color: THEME.text,
   },
   menuBadge: {
     backgroundColor: "#6CB4EE",
@@ -1975,9 +1808,9 @@ const styles = StyleSheet.create({
   eventDateText: { fontFamily: FONTS.mono, fontSize: 10, color: THEME.accent, textAlign: "center" },
   eventInfo: { flex: 1, gap: 3 },
   eventTitle: { fontFamily: FONTS.displayMed, fontSize: 13, color: THEME.text },
-  eventMeta: { fontFamily: FONTS.mono, fontSize: 10, color: THEME.textMuted },
-  eventPurpose: { fontFamily: FONTS.body, fontSize: 12, color: THEME.textFaint, lineHeight: 17 },
-  eventCreator: { fontFamily: FONTS.mono, fontSize: 10, color: THEME.textFaint },
+  eventMeta: { fontFamily: FONTS.mono, fontSize: 10, color: THEME.text },
+  eventPurpose: { fontFamily: FONTS.body, fontSize: 12, color: THEME.text, lineHeight: 17 },
+  eventCreator: { fontFamily: FONTS.mono, fontSize: 10, color: THEME.text },
   startLiveBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -2011,7 +1844,7 @@ const styles = StyleSheet.create({
   linkDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: THEME.accent },
   linkInfo: { flex: 1, gap: 2 },
   linkUrl: { fontFamily: FONTS.mono, fontSize: 11, color: THEME.accent },
-  linkMeta: { fontFamily: FONTS.body, fontSize: 11, color: THEME.textFaint },
+  linkMeta: { fontFamily: FONTS.body, fontSize: 11, color: THEME.text },
   chevron: { fontSize: 18, color: THEME.textFaint },
 
   // Media
@@ -2035,7 +1868,7 @@ const styles = StyleSheet.create({
   },
   fixBannerIcon: { fontSize: 22 },
   fixBannerTitle: { fontFamily: FONTS.bodyMed, fontSize: 13, color: THEME.text, marginBottom: 2 },
-  fixBannerDesc: { fontFamily: FONTS.body, fontSize: 11, color: THEME.textMuted, lineHeight: 15 },
+  fixBannerDesc: { fontFamily: FONTS.body, fontSize: 11, color: THEME.text, lineHeight: 15 },
   settingsCard: {
     backgroundColor: "rgba(18,18,30,0.8)",
     borderRadius: 14,
@@ -2054,7 +1887,7 @@ const styles = StyleSheet.create({
   settingRowDisabled: { opacity: 0.4 },
   settingInfo: { flex: 1, gap: 3 },
   settingTitle: { fontFamily: FONTS.bodyMed, fontSize: 14, color: THEME.text },
-  settingDesc: { fontFamily: FONTS.body, fontSize: 12, color: THEME.textMuted, lineHeight: 16 },
+  settingDesc: { fontFamily: FONTS.body, fontSize: 12, color: THEME.text, lineHeight: 16 },
   settingDivider: { height: 0.75, backgroundColor: "rgba(255,255,255,0.06)", marginHorizontal: 16 },
   sportsPillRow: {
     flexDirection: "row",
@@ -2092,7 +1925,7 @@ const styles = StyleSheet.create({
     padding: 14,
     gap: 10,
   },
-  tokenText: { fontFamily: FONTS.mono, fontSize: 11, color: THEME.textMuted, lineHeight: 16 },
+  tokenText: { fontFamily: FONTS.mono, fontSize: 11, color: THEME.text, lineHeight: 16 },
   tokenButtons: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
   tokenBtn: {
     paddingVertical: 7,
@@ -2127,12 +1960,12 @@ const styles = StyleSheet.create({
   toolIcon: { fontSize: 20 },
   toolInfo: { flex: 1, gap: 2 },
   toolName: { fontFamily: FONTS.displayMed, fontSize: 14, color: THEME.text },
-  toolUrl: { fontFamily: FONTS.mono, fontSize: 10, color: THEME.textFaint },
+  toolUrl: { fontFamily: FONTS.mono, fontSize: 10, color: THEME.text },
 
   footerHint: {
     fontFamily: FONTS.body,
     fontSize: 11,
-    color: THEME.textFaint,
+    color: THEME.text,
     textAlign: "center",
     paddingVertical: 12,
     borderTopWidth: 1,
@@ -2217,7 +2050,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontFamily: FONTS.body,
     fontSize: 11,
-    color: THEME.textMuted,
+    color: THEME.text,
     lineHeight: 15,
   },
 });

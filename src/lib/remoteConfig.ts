@@ -17,10 +17,7 @@ export interface AppRemoteConfig {
   adminInboxId: string;
   botInboxId?: string;
   botChannels?: {
-    bets?: string;
     trades?: string;
-    sales?: string;
-    predictions?: string;
   };
 }
 
@@ -69,7 +66,7 @@ export async function saveAdminToken(token: string): Promise<void> {
 
 /**
  * Publish config to GitHub. By default, refuses to overwrite an existing valid
- * config (one with a non-empty globalGroupId AND all 4 bot channels populated).
+ * config (one with a non-empty globalGroupId AND the trades bot channel populated).
  * Pass `force: true` to bypass the guard — use only for intentional manual recovery.
  */
 export async function publishAppConfig(
@@ -83,11 +80,7 @@ export async function publishAppConfig(
   if (!opts?.force) {
     const existing = await fetchAppConfig();
     const hasGroup = !!existing.globalGroupId;
-    const hasAllChannels =
-      !!existing.botChannels?.bets &&
-      !!existing.botChannels?.trades &&
-      !!existing.botChannels?.sales &&
-      !!existing.botChannels?.predictions;
+    const hasAllChannels = !!existing.botChannels?.trades;
 
     if (hasGroup && hasAllChannels) {
       // Remote config is already complete — refuse silent overwrite.

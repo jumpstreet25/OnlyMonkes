@@ -31,7 +31,6 @@ const CHAT_COMMANDS: Command[] = [
   { cmd: "/hottest", desc: "Top 10 by score" },
   { cmd: "/coldest", desc: "Contrarian watch" },
   { cmd: "/alerts", desc: "Recent TA signals" },
-  { cmd: "/sports", desc: "Betting edges" },
   // Watchlist
   { cmd: "/watchlist", desc: "Group watchlist" },
   { cmd: "/watch $TOKEN", desc: "Add to your watchlist" },
@@ -97,9 +96,6 @@ const DM_COMMANDS: Command[] = [
   { cmd: "/hermes best", desc: "Your best tokens" },
   { cmd: "/hermes worst", desc: "Your worst tokens" },
   { cmd: "/hermes achievements", desc: "Badges & streaks" },
-  // Predictions & Bets
-  { cmd: "/predictions", desc: "Drift predictions" },
-  { cmd: "/bets", desc: "Sports betting" },
   // Recovery & meta
   { cmd: "/reclaim", desc: "Restore profile on a new device" },
   { cmd: "/myid", desc: "Your XMTP inbox ID" },
