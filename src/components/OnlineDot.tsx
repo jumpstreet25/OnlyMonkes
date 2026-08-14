@@ -1,6 +1,6 @@
 /**
  * OnlineDot — small green dot overlaid on avatars to indicate
- * a user is currently online (heartbeat < 2 min ago).
+ * a user is currently online (heartbeat < 7 min ago).
  */
 import React from 'react';
 import { View, StyleSheet } from 'react-native';

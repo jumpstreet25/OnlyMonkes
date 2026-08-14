@@ -272,7 +272,7 @@ export async function backfillProfileHistory(): Promise<{ scanned: number; newPr
     // once, near when they first joined, and never touch it again (nothing
     // in the app nudges a re-broadcast absent a profile edit/badge/shop
     // purchase/push-token registration). Newest-first from "30 days ago"
-    // means recent PRESENCE-heartbeat spam (every 60s per active member)
+    // means recent PRESENCE-heartbeat spam (every 3 min per active member)
     // crowds out those old one-time broadcasts before the scan ever reaches
     // them — this is why a device that wasn't around for the ORIGINAL live
     // broadcast can never recover it via a recent-window scan, causing a
@@ -2478,7 +2478,7 @@ export function useXmtp() {
     try {
       await (_group as any).sync();
       // Use time-based window instead of count limit — PRESENCE heartbeats
-      // flood the history (one per user per 60s), so { limit: 50 } can miss
+      // flood the history (one per user per 3 min), so { limit: 50 } can miss
       // all real chat messages if the group has active presence.
       const TWO_HOURS_NS = 2 * 60 * 60 * 1_000_000_000;
       const afterNs = (Date.now() * 1_000_000) - TWO_HOURS_NS;

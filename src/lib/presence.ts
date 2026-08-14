@@ -2,10 +2,12 @@
  * Presence / Online Indicators
  *
  * Message format: PRESENCE:<inboxId>:<timestamp>
- * Sent as a heartbeat every 60s while app is foregrounded.
+ * Sent as a heartbeat every 3 min while app is foregrounded.
+ * (Was 60s — each send is an MLS commit; N users × 60s flooded Main Chat
+ * history and Tokio on the bot.)
  *
- * "Online" = last heartbeat < 2 minutes ago.
- * "Last seen Xm ago" = last heartbeat > 2 min but tracked.
+ * "Online" = last heartbeat < 7 minutes ago (2 beats + 1 min slack).
+ * "Last seen Xm ago" = last heartbeat > 7 min but tracked.
  */
 import { AppState as RNAppState } from 'react-native';
 
@@ -14,8 +16,8 @@ export interface PresenceEntry {
   lastSeen: number; // unix ms
 }
 
-const HEARTBEAT_INTERVAL = 60_000;   // 60s
-const ONLINE_THRESHOLD = 2 * 60_000; // 2 min
+const HEARTBEAT_INTERVAL = 3 * 60_000; // 3 min
+const ONLINE_THRESHOLD = 7 * 60_000;   // 7 min — two missed beats + slack
 
 /** In-memory presence map: inboxId → lastSeen timestamp */
 const _presenceMap = new Map<string, number>();
@@ -72,7 +74,7 @@ export function startHeartbeat(sendPresence: () => void): void {
   // Send immediately
   sendPresence();
 
-  // Then every 60s while app is active
+  // Then every 3 min while app is active
   _heartbeatTimer = setInterval(() => {
     if (RNAppState.currentState === 'active') {
       sendPresence();
