@@ -23,7 +23,15 @@ import { Platform, NativeModules, AppState } from "react-native";
 const DirectNotif: {
   show: (t: string, b: string, ch: string) => void;
   showDelayed: (t: string, b: string, ch: string, ms: number) => void;
-  showWithReactions: (t: string, b: string, ch: string, messageId: string, conversationId: string) => void;
+  showWithReactions: (
+    t: string,
+    b: string,
+    ch: string,
+    messageId: string,
+    conversationId: string,
+    senderName: string,
+    avatarUrl: string,
+  ) => void;
   showWithJoinAction: (t: string, b: string, ch: string, roomType: string, roomId: string) => void;
 } | null =
   Platform.OS === "android" ? (NativeModules.DirectNotif ?? null) : null;
@@ -438,13 +446,19 @@ export async function showLocalNotification(
   }
 }
 
+/** Shade-friendly preview — don't dump IMAGE:/VIDEO: URLs into MessagingStyle. */
+export function notificationPreviewText(raw: string): string {
+  const t = raw.trim();
+  if (t.startsWith("IMAGE:")) return "📷 Photo";
+  if (t.startsWith("VIDEO:")) return "🎥 Video";
+  if (t.startsWith("GIF:")) return "GIF";
+  if (t.startsWith("STICKER:")) return "Sticker";
+  return t.length > 100 ? `${t.slice(0, 97)}…` : t;
+}
+
 /**
- * Chat-message local notification with quick-reaction action buttons that
- * send a real reaction WITHOUT opening the app — see ReactionActionReceiver
- * + ReactionHeadlessTaskService (native) and src/lib/headlessReaction.ts
- * (the actual send). Android only; falls back to a plain notification
- * (no reaction buttons) on iOS/if the native module isn't available, same
- * as showLocalNotification.
+ * Chat-message local notification: MessagingStyle thread + inline Reply +
+ * 🍌/👍. Reply and reacts send via headless XMTP (no UI). Android only.
  */
 export async function showLocalNotificationWithReactions(
   title: string,
@@ -452,13 +466,23 @@ export async function showLocalNotificationWithReactions(
   channelId: string,
   messageId: string,
   conversationId: string,
+  senderName?: string,
+  avatarUrl?: string | null,
 ): Promise<void> {
-  const truncated = body.length > 100 ? `${body.slice(0, 97)}…` : body;
+  const truncated = notificationPreviewText(body);
   if (DirectNotif) {
-    DirectNotif.showWithReactions(title, truncated, channelId, messageId, conversationId);
+    DirectNotif.showWithReactions(
+      title,
+      truncated,
+      channelId,
+      messageId,
+      conversationId,
+      senderName ?? "",
+      avatarUrl ?? "",
+    );
     return;
   }
-  await showLocalNotification(title, body, channelId);
+  await showLocalNotification(title, truncated, channelId);
 }
 
 /**

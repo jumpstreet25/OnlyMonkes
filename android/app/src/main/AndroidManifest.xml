@@ -41,9 +41,8 @@
         <data android:scheme="exp+monkesonly"/>
       </intent-filter>
     </activity>
-    <!-- 2026-07-23: zero-UI reaction-from-notification. Not exported — only
-         ever triggered by this app's own PendingIntents (DirectNotifModule),
-         never by another app or an external broadcast. -->
+    <!-- Zero-UI react + RemoteInput Reply from the notification shade.
+         Not exported — only our own PendingIntents (DirectNotifModule). -->
     <receiver android:name=".ReactionActionReceiver" android:exported="false"/>
     <service android:name=".ReactionHeadlessTaskService"/>
   </application>

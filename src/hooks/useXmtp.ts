@@ -1772,7 +1772,16 @@ export function useXmtp() {
 
         const mainGroupId = (_group as any)?.id;
         if (mainGroupId && msg.id) {
-          await showLocalNotificationWithReactions(title, msg.content, channelId, msg.id, mainGroupId);
+          const avatar = getCachedProfile(msg.senderAddress)?.nftImage ?? msg.senderNft?.image ?? null;
+          await showLocalNotificationWithReactions(
+            title,
+            msg.content,
+            channelId,
+            msg.id,
+            mainGroupId,
+            senderLabel,
+            typeof avatar === "string" ? avatar : null,
+          );
         } else {
           // Fallback — shouldn't happen once connected, but never block the
           // notification itself on missing reaction metadata.
