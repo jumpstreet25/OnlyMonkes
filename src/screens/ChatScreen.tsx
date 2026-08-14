@@ -172,11 +172,9 @@ export default function ChatScreen() {
   const avatarRoomToken    = useAppStore(s => s.avatarRoomToken);
   const setAvatarRoomToken = useAppStore(s => s.setAvatarRoomToken);
 
-  // Store keeps messages oldest-first. The chat uses an inverted FlashList
-  // (newest at the visual bottom + native pull-to-refresh-at-newest UX), so
-  // we feed it newest-first.
-  const messagesAsc      = useChatStore(s => s.messages);
-  const messages         = useMemo(() => messagesAsc.slice().reverse(), [messagesAsc]);
+  // Store is newest-first — same order inverted FlashList wants (index 0
+  // at the visual bottom). Do not reverse on every store tick.
+  const messages         = useChatStore(s => s.messages);
   // Bumped on every reaction/sticker update — passed to FlashList as
   // extraData so live reaction inserts re-render the visible cell.
   const reactionVersion  = useChatStore(s => s._reactionVersion);

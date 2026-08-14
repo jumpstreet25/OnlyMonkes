@@ -53,10 +53,7 @@ export function SearchModal({ visible, onClose }: SearchModalProps) {
     if (tab !== "messages") return [];
     const q = query.trim().toLowerCase();
     if (q.length < 2) return [];
-    return messages
-      .filter((m) => m.content.toLowerCase().includes(q))
-      .slice()
-      .reverse();
+    return messages.filter((m) => m.content.toLowerCase().includes(q));
   }, [query, messages, tab]);
 
   // User results

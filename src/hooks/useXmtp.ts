@@ -810,7 +810,10 @@ export function useXmtp() {
       // Load cached main chat messages immediately so Shared Images/Links are available
       try {
         const cached = await loadCachedMessages("main_chat");
-        if (cached.length > 0) setMessages(cached);
+        if (cached.length > 0) {
+          cached.sort((a, b) => b.sentAt.getTime() - a.sentAt.getTime());
+          setMessages(cached);
+        }
       } catch { /* non-critical */ }
       // First sync the group to pull its latest messages from the network.
       // Then syncAllConversations triggers the epoch update for fresh installs
@@ -1088,8 +1091,8 @@ export function useXmtp() {
         await Promise.all(pendingDeletes.map(id => markMessageDeleted(id))).catch(() => {});
       }
       const recentMessages = filterDeleted(decodeAndEnrich(rawHistory));
-      // Ensure oldest-first order for inverted FlatList (index 0 = top, last = bottom)
-      recentMessages.sort((a, b) => a.sentAt.getTime() - b.sentAt.getTime());
+      // Newest-first for inverted FlashList (index 0 = visual bottom)
+      recentMessages.sort((a, b) => b.sentAt.getTime() - a.sentAt.getTime());
 
       if (recentMessages.length > 0) {
         // Union-merge with everything already in the store. The store on entry
@@ -1125,10 +1128,10 @@ export function useXmtp() {
           return true;
         });
         let merged = [...preserved, ...recentMessages];
-        merged.sort((a, b) => a.sentAt.getTime() - b.sentAt.getTime());
+        merged.sort((a, b) => b.sentAt.getTime() - a.sentAt.getTime());
         // Cap at 300 to mirror chatStore.mergeMessage's cap and keep memory
         // bounded on 8GB devices — newest 300 wins.
-        if (merged.length > 300) merged = merged.slice(merged.length - 300);
+        if (merged.length > 300) merged = merged.slice(0, 300);
         setMessages(merged);
         // Persist the deduped set back to disk so future cold starts don't
         // re-resurrect the opt-* that already merged with the real ID. Skips
@@ -2644,7 +2647,7 @@ export function useXmtp() {
     useChatStore.getState().setLoadingHistory(true);
     try {
       // Oldest message timestamp → fetch before it
-      const oldest = existing[0]; // messagesAsc is oldest-first
+      const oldest = existing[existing.length - 1]; // store is newest-first
       const beforeNs = BigInt(oldest.sentAt.getTime()) * 1_000_000n;
       // Fetch a 24-hour window before the oldest message
       const ONE_DAY_NS = BigInt(24 * 60 * 60) * 1_000_000_000n;
@@ -2673,8 +2676,8 @@ export function useXmtp() {
         return;
       }
 
-      // Sort oldest-first, then prepend to existing messages
-      decoded.sort((a, b) => a.sentAt.getTime() - b.sentAt.getTime());
+      // Older page: newest-first so prependMessages can append at the tail
+      decoded.sort((a, b) => b.sentAt.getTime() - a.sentAt.getTime());
       // Enrich with NFT data
       const enriched = decoded.map(msg => enrichWithNft(msg));
       useChatStore.getState().prependMessages(enriched);

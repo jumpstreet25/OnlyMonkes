@@ -30,7 +30,7 @@ interface ChatActions {
   updateMessageContent: (id: string, newContent: string) => void;
   applyReactionUpdate: (messages: ChatMessage[]) => void;
   addThreadMessage: (parentId: string, message: ChatMessage) => void;
-  /** Prepend older messages to the beginning of the list (for load-more pagination). */
+  /** Append older messages to the end (store is newest-first). */
   prependMessages: (messages: ChatMessage[]) => void;
   setReplyingTo: (message: ChatMessage | null) => void;
   removeMessage: (id: string) => void;
@@ -62,7 +62,12 @@ export const useChatStore = create<ChatState & ChatActions>((set) => ({
     set((state) => {
       const _msgIdSet = new Set(state._msgIdSet);
       _msgIdSet.add(message.id);
-      return { messages: [...state.messages, message], _msgIdSet };
+      let next = [message, ...state.messages];
+      if (next.length > 300) {
+        const removed = next.splice(300);
+        for (const r of removed) _msgIdSet.delete(r.id);
+      }
+      return { messages: next, _msgIdSet };
     }),
 
   mergeMessage: (message) =>
@@ -95,12 +100,12 @@ export const useChatStore = create<ChatState & ChatActions>((set) => ({
         return { messages: next, _msgIdSet };
       }
 
-      // 3. Genuinely new message → append (cap at 300 for memory on 8GB devices)
+      // 3. Genuinely new message → front of newest-first list (cap 300)
       const _msgIdSet = new Set(state._msgIdSet);
       _msgIdSet.add(message.id);
-      let next = [...state.messages, message];
+      let next = [message, ...state.messages];
       if (next.length > 300) {
-        const removed = next.splice(0, next.length - 300);
+        const removed = next.splice(300);
         for (const r of removed) _msgIdSet.delete(r.id);
       }
       return { messages: next, _msgIdSet };
@@ -177,7 +182,7 @@ export const useChatStore = create<ChatState & ChatActions>((set) => ({
       const newMsgs = older.filter(m => !_msgIdSet.has(m.id));
       if (newMsgs.length === 0) return state;
       for (const m of newMsgs) _msgIdSet.add(m.id);
-      return { messages: [...newMsgs, ...state.messages], _msgIdSet };
+      return { messages: [...state.messages, ...newMsgs], _msgIdSet };
     }),
 
   removeMessage: (id) =>

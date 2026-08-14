@@ -40,6 +40,9 @@ const SOFT_THREATS = new Set<string>([
   'debug',
   'unofficialStore',
   'adbEnabled',
+  // 5.2.0 bootloader — unlocked bootloaders are common on Seeker / sideload.
+  // Log only; never block trading.
+  'bootloader',
 ]);
 
 export type ThreatSeverity = 'hard' | 'soft' | 'info';
@@ -147,3 +150,8 @@ export const THREAT_ACTIONS: ThreatEventActions = {
   devMode:          () => logThreat('devMode'),            // developer mode enabled
   adbEnabled:       () => logThreat('adbEnabled'),         // ADB debugging enabled
 };
+
+// 5.2.0 adds `bootloader`. 5.1.1 types omit it — extra key is ignored by
+// 5.1 native. Do not add to HARD_THREATS (unlocked bootloader ≠ compromised).
+(THREAT_ACTIONS as ThreatEventActions & { bootloader?: () => void }).bootloader =
+  () => logThreat('bootloader');

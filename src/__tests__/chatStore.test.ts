@@ -32,10 +32,12 @@ describe('chatStore', () => {
     expect(state._msgIdSet.has('b')).toBe(true);
   });
 
-  it('addMessage appends and updates ID set', () => {
+  it('addMessage prepends newest-first and updates ID set', () => {
     useChatStore.getState().addMessage(makeMsg('m1'));
     useChatStore.getState().addMessage(makeMsg('m2'));
     expect(useChatStore.getState().messages).toHaveLength(2);
+    expect(useChatStore.getState().messages[0].id).toBe('m2');
+    expect(useChatStore.getState().messages[1].id).toBe('m1');
     expect(useChatStore.getState()._msgIdSet.has('m1')).toBe(true);
     expect(useChatStore.getState()._msgIdSet.has('m2')).toBe(true);
   });
