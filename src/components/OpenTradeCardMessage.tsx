@@ -18,11 +18,15 @@ function formatElapsed(openedAt: number, now: number): string {
   return `${sec}s`;
 }
 
-function formatPrice(p: number): string {
-  if (!Number.isFinite(p)) return '—';
-  if (p >= 1) return `$${p.toFixed(2)}`;
-  if (p >= 0.01) return `$${p.toFixed(4)}`;
-  return `$${p.toFixed(6)}`;
+function quoteUnit(sym?: string): 'SOL' | 'SKR' {
+  return sym?.toUpperCase() === 'SKR' ? 'SKR' : 'SOL';
+}
+
+function formatQuotePrice(p: number, quote?: string): string {
+  if (!Number.isFinite(p) || !(p > 0)) return '—';
+  const q = quoteUnit(quote);
+  const body = p >= 1 ? p.toFixed(4) : p.toPrecision(6);
+  return `${body} ${q}`;
 }
 
 function formatPct(p: number | undefined): string {
@@ -60,11 +64,11 @@ export function OpenTradeCardMessage({ trade }: OpenTradeCardMessageProps) {
         </View>
         <View style={styles.middle}>
           <Text style={styles.token}>${trade.token.toUpperCase()}</Text>
-          <Text style={styles.entry}>entry {formatPrice(trade.entryPriceUsd)}</Text>
+          <Text style={styles.entry}>entry {formatQuotePrice(trade.entryPriceUsd, trade.baseSymbol)}</Text>
         </View>
         <View style={styles.metaRow}>
           <Text style={styles.meta}>
-            {trade.entrySolAmount.toFixed(3)} SOL in
+            {trade.entrySolAmount.toFixed(3)} {quoteUnit(trade.baseSymbol)} in
           </Text>
           {trade.taComposite != null && (
             <Text style={styles.meta}>· TA {trade.taComposite}/100</Text>
@@ -72,13 +76,13 @@ export function OpenTradeCardMessage({ trade }: OpenTradeCardMessageProps) {
         </View>
         <View style={styles.targetsRow}>
           <Text style={styles.stopText}>
-            stop {formatPrice(trade.stopPrice)}{stopPctStr ? ` (${stopPctStr})` : ''}
+            stop {formatQuotePrice(trade.stopPrice, trade.baseSymbol)}{stopPctStr ? ` (${stopPctStr})` : ''}
           </Text>
           {trade.target1 != null && (
-            <Text style={styles.targetText}>T1 {formatPrice(trade.target1)}</Text>
+            <Text style={styles.targetText}>T1 {formatQuotePrice(trade.target1, trade.baseSymbol)}</Text>
           )}
           {trade.target2 != null && (
-            <Text style={styles.targetText}>T2 {formatPrice(trade.target2)}</Text>
+            <Text style={styles.targetText}>T2 {formatQuotePrice(trade.target2, trade.baseSymbol)}</Text>
           )}
         </View>
         <View style={styles.footer}>

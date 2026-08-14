@@ -2140,6 +2140,7 @@ export function useXmtp() {
                   openClawConfidence: parsed.openClawConfidence,
                   txHash: parsed.txHash,
                   openedAt: parsed.ts,
+                  baseSymbol: parsed.baseSymbol,
                 });
                 return;
               }

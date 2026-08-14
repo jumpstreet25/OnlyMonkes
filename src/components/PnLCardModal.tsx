@@ -32,7 +32,10 @@ function formatTradeSummary(trade: ClosedTrade): string {
   const hours = Math.floor((sec % 86400) / 3600);
   const mins = Math.floor((sec % 3600) / 60);
   const dur = days > 0 ? `${days}d ${hours}h` : hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
-  return `${sign}${trade.pnlPct.toFixed(2)}% on $${trade.token.toUpperCase()} · ${dur} · entry ${trade.entrySolAmount.toFixed(4)} SOL → exit ${trade.exitSolAmount.toFixed(4)} SOL`;
+  const quote = trade.baseSymbol === 'SKR' ? 'SKR' : 'SOL';
+  const entryAmt = trade.entryBaseAmount ?? trade.entrySolAmount;
+  const exitAmt = trade.exitBaseAmount ?? trade.exitSolAmount;
+  return `${sign}${trade.pnlPct.toFixed(2)}% on $${trade.token.toUpperCase()} · ${dur} · entry ${entryAmt.toFixed(4)} ${quote} → exit ${exitAmt.toFixed(4)} ${quote}`;
 }
 
 export function PnLCardModal({ trade, visible, onClose }: PnLCardModalProps) {

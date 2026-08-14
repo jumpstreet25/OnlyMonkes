@@ -305,6 +305,7 @@ export function useDm(peerInboxId: string) {
                   openClawConfidence: parsed.openClawConfidence,
                   txHash: parsed.txHash,
                   openedAt: parsed.ts,
+                  baseSymbol: parsed.baseSymbol,
                 });
               } catch { /* swallow */ }
               return;

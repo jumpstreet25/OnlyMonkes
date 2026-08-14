@@ -143,6 +143,10 @@ export const PnLCard = forwardRef<View, PnLCardProps>(({ trade, width = 320, sho
   const glow = isWin ? WIN_COLOR : LOSS_COLOR;
   const wantsConfetti = showConfetti ?? isBigWin;
 
+  const quote = trade.baseSymbol === 'SKR' ? 'SKR' : 'SOL';
+  const entryAmt = trade.entryBaseAmount ?? trade.entrySolAmount;
+  const exitAmt = trade.exitBaseAmount ?? trade.exitSolAmount;
+  const pnlAmt = trade.pnlBase ?? trade.pnlSol;
   const height = Math.round(width * 1.0);
 
   return (
@@ -184,11 +188,11 @@ export const PnLCard = forwardRef<View, PnLCardProps>(({ trade, width = 320, sho
         <View style={styles.statsRow}>
           <View style={styles.statCol}>
             <Text style={styles.statLabel}>ENTRY</Text>
-            <Text style={styles.statValue}>{formatSol(trade.entrySolAmount)} SOL</Text>
+            <Text style={styles.statValue}>{formatSol(entryAmt)} {quote}</Text>
           </View>
           <View style={styles.statCol}>
             <Text style={styles.statLabel}>{isLive ? 'CURRENT' : 'EXIT'}</Text>
-            <Text style={styles.statValue}>{formatSol(trade.exitSolAmount)} SOL</Text>
+            <Text style={styles.statValue}>{formatSol(exitAmt)} {quote}</Text>
           </View>
           <View style={styles.statCol}>
             <Text style={styles.statLabel}>{isLive ? 'AGE' : 'DURATION'}</Text>
@@ -198,7 +202,7 @@ export const PnLCard = forwardRef<View, PnLCardProps>(({ trade, width = 320, sho
 
         <View style={styles.footerRow}>
           <Text style={styles.pnlSol}>
-            {trade.pnlSol >= 0 ? '+' : ''}{formatSol(trade.pnlSol)} SOL
+            {pnlAmt >= 0 ? '+' : ''}{formatSol(pnlAmt)} {quote}
           </Text>
         </View>
       </View>

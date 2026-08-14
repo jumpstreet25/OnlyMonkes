@@ -710,6 +710,8 @@ export interface ParsedTradeOpened {
   ts: number;
   /** Hot wallet pubkey that opened the position. Render on trade cards. */
   hotWalletAddress?: string;
+  baseMint?: string;
+  baseSymbol?: 'SOL' | 'USDC' | 'SKR';
 }
 
 export interface ParsedTradeClosed {
@@ -871,6 +873,11 @@ export function parseTradeOpened(raw: string): ParsedTradeOpened | null {
     txHash: strOrNull(data.txHash) ?? undefined,
     ts,
     hotWalletAddress: strOrNull(data.hotWalletAddress)?.slice(0, 80) ?? undefined,
+    baseMint: strOrNull(data.baseMint)?.slice(0, 80) ?? undefined,
+    baseSymbol: (() => {
+      const raw = typeof data.baseSymbol === 'string' ? data.baseSymbol.toUpperCase() : null;
+      return raw === 'SOL' || raw === 'USDC' || raw === 'SKR' ? raw : undefined;
+    })(),
   };
 }
 

@@ -48,6 +48,8 @@ export interface OpenTrade {
   openClawConfidence?: number;
   txHash?: string;
   openedAt: number;
+  /** Funding quote for entry/stop/T1/T2 marks. Missing on pre-quote bot builds. */
+  baseSymbol?: 'SOL' | 'USDC' | 'SKR';
 }
 
 interface OpenMeta {
