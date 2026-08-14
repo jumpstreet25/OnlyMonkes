@@ -18,6 +18,7 @@ import { FlashList } from "@shopify/flash-list";
 import { router } from "expo-router";
 import { THEME, FONTS } from "@/lib/constants";
 import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
+import { pickSolPair, solMarkFromPair, usdToSolScale, formatSolPx } from "@/lib/solQuote";
 import { ChartModal } from "@/components/ChartModal";
 import { MiniChart } from "@/components/MiniChart";
 import { showGlassAlert } from "@/lib/glassAlert";
@@ -40,17 +41,29 @@ async function fetchPrices(tokens: WatchlistToken[]): Promise<WatchlistToken[]> 
   const ids = tokens.map(t => t.address).join(",");
   try {
     const res = await fetchWithTimeout(
-      `https://api.jup.ag/price/v2?ids=${ids}`,
+      `https://api.dexscreener.com/tokens/v1/solana/${ids}`,
       { timeoutMs: 8000 },
     );
     if (!res.ok) return tokens;
-    const data = await res.json();
+    const pairs = (await res.json()) as Array<{
+      baseToken?: { address?: string };
+      quoteToken?: { symbol?: string };
+      priceNative?: string;
+      liquidity?: { usd?: number };
+    }>;
+    if (!Array.isArray(pairs)) return tokens;
+    const byMint = new Map<string, typeof pairs>();
+    for (const p of pairs) {
+      const mint = p.baseToken?.address;
+      if (!mint) continue;
+      const list = byMint.get(mint) ?? [];
+      list.push(p);
+      byMint.set(mint, list);
+    }
     return tokens.map(t => {
-      const p = data?.data?.[t.address];
-      return {
-        ...t,
-        price: p?.price ? parseFloat(p.price) : undefined,
-      };
+      const best = pickSolPair(byMint.get(t.address) ?? []);
+      const px = solMarkFromPair(best);
+      return { ...t, price: px > 0 ? px : undefined };
     });
   } catch {
     return tokens;
@@ -66,8 +79,9 @@ async function fetchSparkline(address: string): Promise<number[]> {
     );
     if (!searchRes.ok) return [];
     const searchData = await searchRes.json();
-    const pair = searchData?.pairs?.[0];
+    const pair = pickSolPair((searchData?.pairs ?? []).filter((p: any) => p.chainId === 'solana'));
     if (!pair?.pairAddress) return [];
+    const scale = usdToSolScale(pair);
 
     const start = Math.floor((Date.now() - 24 * 3600000) / 1000);
     const dpRes = await fetchWithTimeout(
@@ -77,7 +91,7 @@ async function fetchSparkline(address: string): Promise<number[]> {
     if (!dpRes.ok) return [];
     const dpData = await dpRes.json();
     if (!Array.isArray(dpData)) return [];
-    return dpData.map((c: any) => parseFloat(c.close)).filter(n => !isNaN(n) && n > 0);
+    return dpData.map((c: any) => parseFloat(c.close) * scale).filter(n => !isNaN(n) && n > 0);
   } catch {
     return [];
   }
@@ -138,12 +152,7 @@ export default function WatchlistScreen() {
     );
   }, []);
 
-  const formatPrice = (price?: number) => {
-    if (!price) return "—";
-    if (price < 0.01) return `$${price.toFixed(6)}`;
-    if (price < 1) return `$${price.toFixed(4)}`;
-    return `$${price.toFixed(2)}`;
-  };
+  const formatPrice = (price?: number) => formatSolPx(price ?? 0);
 
   const renderToken = useCallback(({ item }: { item: WatchlistToken }) => {
     const hasSparkline = item.sparkline && item.sparkline.length > 2;

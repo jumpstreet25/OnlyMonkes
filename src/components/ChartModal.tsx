@@ -19,6 +19,7 @@ import { THEME, FONTS } from '@/lib/constants';
 import { GlassBottomSheet } from '@/components/GlassBottomSheet';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { fetchRugCheckSummary, type RugCheckSummary } from '@/lib/rugCheck';
+import { pickSolPair, solMarkFromPair, usdToSolScale } from '@/lib/solQuote';
 
 interface ChartModalProps {
   visible: boolean;
@@ -46,19 +47,8 @@ async function fetchOHLCV(symbol: string): Promise<{ candles: TCandle[]; mint: s
   const solanaPairs = (searchData?.pairs ?? []).filter(
     (p: any) => p.chainId === 'solana' && p.baseToken?.symbol?.toUpperCase() === symbol.toUpperCase(),
   );
-  // Prefer the pool quoted in SOL (or SKR) — same unit AutonoMonke trades.
-  // USD/USDC pools made OPENAI look +49% while the SOL book was flat.
-  const quoteRank = (p: any) => {
-    const q = String(p.quoteToken?.symbol ?? '').toUpperCase();
-    if (q === 'SOL' || q === 'WSOL') return 0;
-    if (q === 'SKR') return 1;
-    return 2;
-  };
-  const pair = [...solanaPairs].sort((a: any, b: any) => {
-    const rq = quoteRank(a) - quoteRank(b);
-    if (rq !== 0) return rq;
-    return (b.liquidity?.usd ?? 0) - (a.liquidity?.usd ?? 0);
-  })[0];
+  // Prefer the pool quoted in SOL (or SKR) — same unit AutonoMonke / Monke Traders use.
+  const pair = pickSolPair(solanaPairs);
   if (!pair?.pairAddress) return { candles: [], mint: null };
   const mint: string | null = pair.baseToken?.address ?? null;
 
@@ -72,12 +62,13 @@ async function fetchOHLCV(symbol: string): Promise<{ candles: TCandle[]; mint: s
     if (dpRes.ok) {
       const dpData = await dpRes.json();
       if (Array.isArray(dpData) && dpData.length > 0) {
+        const scale = usdToSolScale(pair);
         const candles = dpData.map((c: any) => ({
           timestamp: new Date(c.time_open ?? c.time_close).getTime(),
-          open: parseFloat(c.open),
-          high: parseFloat(c.high),
-          low: parseFloat(c.low),
-          close: parseFloat(c.close),
+          open: parseFloat(c.open) * scale,
+          high: parseFloat(c.high) * scale,
+          low: parseFloat(c.low) * scale,
+          close: parseFloat(c.close) * scale,
         })).filter((c: TCandle) => !isNaN(c.open) && c.open > 0);
         return { candles, mint };
       }
@@ -85,7 +76,7 @@ async function fetchOHLCV(symbol: string): Promise<{ candles: TCandle[]; mint: s
   } catch { /* fall through to synthetic */ }
 
   // Step 3: Fallback — synthetic candles from DexScreener 24h change (better than nothing)
-  const price = parseFloat(pair.priceUsd) || 0;
+  const price = solMarkFromPair(pair) || parseFloat(pair.priceUsd) || 0;
   if (!price) return { candles: [], mint };
 
   const priceChange24h = parseFloat(pair.priceChange?.h24) || 0;
@@ -215,7 +206,8 @@ export function ChartModal({ visible, symbol, onClose }: ChartModalProps) {
                   'worklet';
                   const n = parseFloat(value);
                   if (isNaN(n)) return '';
-                  return n < 0.01 ? `$${n.toFixed(6)}` : `$${n.toFixed(4)}`;
+                  if (n >= 1) return `${n.toFixed(4)} SOL`;
+                  return `${n.toPrecision(6)} SOL`;
                 }}
               />
               <CandlestickChart.DatetimeText
