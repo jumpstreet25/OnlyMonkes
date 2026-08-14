@@ -43,9 +43,22 @@ async function fetchOHLCV(symbol: string): Promise<{ candles: TCandle[]; mint: s
   if (!searchRes.ok) return { candles: [], mint: null };
 
   const searchData = await searchRes.json();
-  const pair = searchData?.pairs?.find(
+  const solanaPairs = (searchData?.pairs ?? []).filter(
     (p: any) => p.chainId === 'solana' && p.baseToken?.symbol?.toUpperCase() === symbol.toUpperCase(),
   );
+  // Prefer the pool quoted in SOL (or SKR) — same unit AutonoMonke trades.
+  // USD/USDC pools made OPENAI look +49% while the SOL book was flat.
+  const quoteRank = (p: any) => {
+    const q = String(p.quoteToken?.symbol ?? '').toUpperCase();
+    if (q === 'SOL' || q === 'WSOL') return 0;
+    if (q === 'SKR') return 1;
+    return 2;
+  };
+  const pair = [...solanaPairs].sort((a: any, b: any) => {
+    const rq = quoteRank(a) - quoteRank(b);
+    if (rq !== 0) return rq;
+    return (b.liquidity?.usd ?? 0) - (a.liquidity?.usd ?? 0);
+  })[0];
   if (!pair?.pairAddress) return { candles: [], mint: null };
   const mint: string | null = pair.baseToken?.address ?? null;
 

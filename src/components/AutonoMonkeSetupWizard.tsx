@@ -27,10 +27,10 @@ import * as Haptics from 'expo-haptics';
 const BOT_INBOX_ID = '998001a498174b8a194110ee792b10f97de4965665eaf0d088ed2c71bdf62363';
 const STORAGE_KEY = 'automonke_enrolled';
 
-type BaseCurrency = 'SOL' | 'USDC' | 'SKR';
+type BaseCurrency = 'SOL' | 'SKR';
 
 const DEFAULTS = {
-  baseCurrency: 'SOL' as BaseCurrency,
+  baseCurrency: 'SKR' as BaseCurrency,
   perTradeSOL: 0.1,
   maxSOL: 2,
   minConfidence: 55,
@@ -289,18 +289,16 @@ function Step2Base({
     sub: string;
     badge?: string;
   }> = [
-    { sym: 'SOL',  title: 'SOL',  sub: "Solana's native token — most liquid base across memecoins." },
-    { sym: 'USDC', title: 'USDC', sub: 'Dollar-pegged. Removes SOL price exposure from your trade PnL.' },
-    { sym: 'SKR',  title: 'SKR',  sub: 'The Monke community token — pay 50% less in profit fees.', badge: 'SAVE 50%' },
+    { sym: 'SKR', title: 'SKR', sub: 'Preferred. Community token — 50% off fees on winning trades.', badge: 'SAVE 50%' },
+    { sym: 'SOL', title: 'SOL', sub: "Solana's native token — most liquid pair across memecoins." },
   ];
 
   return (
     <View style={s.step}>
       <Text style={s.stepTitle}>Funding Currency</Text>
       <Text style={s.stepHint}>
-        Pick the token you'll fund AutonoMonke with. Every trade round-trips
-        through this currency — fund with USDC, sell back to USDC. Fund with
-        SKR, sell back to SKR. Your PnL is denominated in this token.
+        Pick SOL or SKR. Every trade, chart, and TA mark uses this quote —
+        buy and sell back into the same token. SKR cuts profit fees in half.
       </Text>
 
       {options.map(opt => {
@@ -332,7 +330,7 @@ function Step2Base({
         <Text style={s.helperLabel}>You can change this later</Text>
         <Text style={s.helperText}>
           Switch the funding token any time with{' '}
-          <Text style={s.mono}>/autonomonke base SOL|USDC|SKR</Text> in the bot
+          <Text style={s.mono}>/autonomonke base SOL|SKR</Text> in the bot
           DM. Currently-open positions keep their original base until close.
         </Text>
       </View>
