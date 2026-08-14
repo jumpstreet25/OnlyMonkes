@@ -147,16 +147,33 @@ let _initRunning = false;
 // drop duplicate deliveries so one DM cannot fire N "DM'd you" banners.
 let _dmAllStreamInbox: string | null = null;
 const _seenDmStreamIds = new Set<string>();
+function dmFingerprint(raw: any): string {
+  const id = raw?.id ?? raw?.messageId;
+  if (typeof id === "string" && id.length > 0) return id;
+  const sender = typeof raw?.senderInboxId === "string" ? raw.senderInboxId : "";
+  const sent = raw?.sentAtNs ?? raw?.sentNs ?? raw?.sentAtMs ?? "";
+  return `${sender}:${String(sent)}`;
+}
 function alreadySawDm(raw: any): boolean {
-  const id = typeof raw?.id === "string" ? raw.id : "";
-  if (!id) return false;
-  if (_seenDmStreamIds.has(id)) return true;
-  _seenDmStreamIds.add(id);
+  const key = dmFingerprint(raw);
+  if (!key || key === ":") return false;
+  if (_seenDmStreamIds.has(key)) return true;
+  _seenDmStreamIds.add(key);
   if (_seenDmStreamIds.size > 300) {
     const oldest = _seenDmStreamIds.values().next().value;
     if (oldest) _seenDmStreamIds.delete(oldest);
   }
   return false;
+}
+function isStaleStreamMsg(raw: any): boolean {
+  const ns = raw?.sentAtNs ?? raw?.sentNs;
+  let ms = 0;
+  if (typeof ns === "bigint") ms = Number(ns / 1_000_000n);
+  else if (typeof ns === "number" && ns > 1e15) ms = ns / 1e6;
+  else if (typeof ns === "number" && ns > 1e12) ms = ns;
+  else if (raw?.sentAt instanceof Date) ms = raw.sentAt.getTime();
+  if (!ms) return false;
+  return Date.now() - ms > 15_000;
 }
 // Badge minting removed — badges now award bananas via _layout.tsx callback.
 // tryMintBadge kept as no-op for existing call sites.
@@ -1595,7 +1612,7 @@ export function useXmtp() {
           // up the same way.
           await (client.conversations as any).streamAllMessages(async (raw: any) => {
             try {
-              if (alreadySawDm(raw)) return;
+              if (alreadySawDm(raw) || isStaleStreamMsg(raw)) return;
               let content: unknown;
               try { content = raw.content(); } catch { return; }
               // Skip native reactions
@@ -1774,6 +1791,15 @@ export function useXmtp() {
                   const afterPrefix = content.slice('MSG:'.length);
                   const colonIdx = afterPrefix.indexOf(':');
                   if (colonIdx >= 0) displayBody = afterPrefix.slice(colonIdx + 1);
+                }
+                if (
+                  displayBody.startsWith("PORTFOLIO_RESPONSE:") ||
+                  displayBody.startsWith("TRADE_CLOSED:") ||
+                  displayBody.startsWith("TRADE_OPENED:") ||
+                  displayBody.startsWith("AUTOMONKE_STATUS:") ||
+                  displayBody.startsWith("IMAGE_CAPTION_")
+                ) {
+                  return;
                 }
                 showLocalNotification(
                   `${senderName} DM'd you 🍌`,

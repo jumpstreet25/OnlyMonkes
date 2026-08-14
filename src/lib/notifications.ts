@@ -296,12 +296,30 @@ export async function scheduleTestNotification(): Promise<void> {
  * bypassing expo-notifications' groupKey=silent interception.
  * On iOS: uses expo-notifications (required for foreground display).
  */
+const _recentLocalNotifs = new Map<string, number>();
+const LOCAL_NOTIF_DEBOUNCE_MS = 8_000;
+
+function isDuplicateLocalNotif(title: string, body: string): boolean {
+  const key = `${title}\n${body}`;
+  const now = Date.now();
+  const prev = _recentLocalNotifs.get(key) ?? 0;
+  if (now - prev < LOCAL_NOTIF_DEBOUNCE_MS) return true;
+  _recentLocalNotifs.set(key, now);
+  if (_recentLocalNotifs.size > 80) {
+    for (const [k, t] of _recentLocalNotifs) {
+      if (now - t > LOCAL_NOTIF_DEBOUNCE_MS) _recentLocalNotifs.delete(k);
+    }
+  }
+  return false;
+}
+
 export async function showLocalNotification(
   title: string,
   body: string,
   channelId: string = CH_ALL,
 ): Promise<void> {
   const truncated = body.length > 100 ? `${body.slice(0, 97)}…` : body;
+  if (isDuplicateLocalNotif(title, truncated)) return;
   if (DirectNotif) {
     DirectNotif.show(title, truncated, channelId);
     return;
