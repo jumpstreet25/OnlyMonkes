@@ -221,6 +221,10 @@ class DirectNotifModule(private val reactContext: ReactApplicationContext) :
         NotificationManagerCompat.from(ctx).notify(notificationId, notif)
     }
 
+    /** Installed applicationId (production vs canary). Used by Free-RASP. */
+    @ReactMethod(isBlockingSynchronousMethod = true)
+    fun getPackageName(): String = reactContext.packageName
+
     @ReactMethod
     fun show(title: String, body: String, channelId: String) {
         buildAndPost(title, body, channelId)

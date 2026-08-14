@@ -9,8 +9,13 @@
  * executing transactions.
  */
 
-import { Platform } from 'react-native';
+import { NativeModules, Platform } from 'react-native';
 import type { TalsecConfig, ThreatEventActions } from 'freerasp-react-native';
+
+const INSTALLED_PACKAGE: string =
+  Platform.OS === 'android'
+    ? (NativeModules.DirectNotif?.getPackageName?.() as string | undefined) ?? 'com.onlymonkes.app'
+    : 'com.onlymonkes.app';
 
 // ── Threat state ─────────────────────────────────────────────────────────────
 
@@ -92,7 +97,10 @@ const ANDROID_RELEASE_CERT_SHA256 = 'Li/uuBzPDeXRkfbhdBE7qYORgbHLdUCrbVyUqc/0h9g
 
 export const RASP_CONFIG: TalsecConfig = {
   androidConfig: {
-    packageName: 'com.onlymonkes.app',
+    // Must match the installed applicationId. Canary is
+    // com.onlymonkes.app.canary — a hard-coded production id fires
+    // appIntegrity on every canary launch.
+    packageName: INSTALLED_PACKAGE,
     certificateHashes: [ANDROID_RELEASE_CERT_SHA256],
   },
   // Android-only project per CLAUDE.md; iOS values are required by the type
@@ -149,9 +157,5 @@ export const THREAT_ACTIONS: ThreatEventActions = {
   passcode:         () => logThreat('passcode'),           // no screen lock set
   devMode:          () => logThreat('devMode'),            // developer mode enabled
   adbEnabled:       () => logThreat('adbEnabled'),         // ADB debugging enabled
+  bootloader:       () => logThreat('bootloader'),         // unlocked / compromised bootloader (soft)
 };
-
-// 5.2.0 adds `bootloader`. 5.1.1 types omit it — extra key is ignored by
-// 5.1 native. Do not add to HARD_THREATS (unlocked bootloader ≠ compromised).
-(THREAT_ACTIONS as ThreatEventActions & { bootloader?: () => void }).bootloader =
-  () => logThreat('bootloader');
