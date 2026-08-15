@@ -13,8 +13,10 @@ const DISC_BURN = "746e1d386bdb2a5d";
 const DISC_COMPRESS = "52c1b075b01573fd";
 
 const RPCS = [
-  "https://solana-rpc.publicnode.com",
+  // publicnode often returns a clean empty signature list (not an error).
+  // Official RPC first so we don't treat "no history" as inconclusive.
   "https://api.mainnet-beta.solana.com",
+  "https://solana-rpc.publicnode.com",
 ];
 
 const B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
