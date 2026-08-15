@@ -80,6 +80,9 @@ interface Env {
   // see that function's doc comment for why a single-provider check isn't
   // safe to use as the app's holder-gate fallback anymore.
   QUICKNODE_DAS_URL?: string;
+  // 2026-08-15: third DAS when Helius 429s and QuickNode's trial is dead.
+  // Secret is the raw Alchemy key; we build the Solana v2 URL ourselves.
+  ALCHEMY_API_KEY?: string;
   TIP_ESCROW: KVNamespace;
   FRAME_ALERTS: KVNamespace;
 }
@@ -1677,20 +1680,7 @@ async function fetchMonkeByMint(mint: string, env: Env): Promise<MonkeAsset | nu
  *  or null if the collection wasn't found in a CLEAN (HTTP ok) response.
  *  Throws on any transport/HTTP failure — callers must not treat a throw
  *  the same as a clean null, see fetchOwnedMonke below. */
-async function dasLookupOwnedMonke(url: string, wallet: string, timeoutMs: number): Promise<MonkeAsset | null> {
-  const res = await fetchWithTimeout(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: "owned-monkes",
-      method: "getAssetsByOwner",
-      params: { ownerAddress: wallet, page: 1, limit: 1000 },
-    }),
-  }, timeoutMs);
-  if (!res.ok) throw new Error(`DAS HTTP ${res.status}`);
-  const data = await res.json() as any;
-  const items = data?.result?.items ?? [];
+function pickOwnedMonke(items: any[]): MonkeAsset | null {
   const owned = items.find((item: any) =>
     Array.isArray(item?.grouping) &&
     item.grouping.some((g: any) => g?.group_key === "collection" && g?.group_value === SAGA_COLLECTION_MINT),
@@ -1702,6 +1692,63 @@ async function dasLookupOwnedMonke(url: string, wallet: string, timeoutMs: numbe
     image: owned?.content?.links?.image ?? owned?.content?.files?.[0]?.uri ?? null,
     traits: owned?.content?.metadata?.attributes ?? [],
   };
+}
+
+function dasParams(wallet: string, page: number, style: "helius" | "alchemy"): unknown {
+  const display = {
+    showCollectionMetadata: false,
+    showUnverifiedCollections: true,
+    showFungible: false,
+  };
+  if (style === "alchemy") {
+    return [wallet, { sortBy: "created", sortDirection: "asc" }, 1000, page, null, null, display];
+  }
+  return { ownerAddress: wallet, page, limit: 1000, displayOptions: display };
+}
+
+/** DAS getAssetsByOwner. Throws on transport / HTTP / JSON-RPC error.
+ *  Returns null only on a clean "this wallet has no Saga Monke in these pages." */
+async function dasLookupOwnedMonke(
+  url: string,
+  wallet: string,
+  timeoutMs: number,
+  style: "helius" | "alchemy" = "helius",
+): Promise<MonkeAsset | null> {
+  let lastErr: Error | null = null;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const MAX_PAGES = 5;
+      for (let page = 1; page <= MAX_PAGES; page++) {
+        const res = await fetchWithTimeout(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: "owned-monkes",
+            method: "getAssetsByOwner",
+            params: dasParams(wallet, page, style),
+          }),
+        }, timeoutMs);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json() as any;
+        if (data?.error) {
+          const msg = data.error.message ?? JSON.stringify(data.error);
+          throw new Error(`RPC ${msg}`.slice(0, 120));
+        }
+        const items = data?.result?.items ?? [];
+        const hit = pickOwnedMonke(items);
+        if (hit) return hit;
+        if (items.length < 1000) return null;
+      }
+      return null;
+    } catch (err) {
+      lastErr = err instanceof Error ? err : new Error(String(err));
+      const retryable = /HTTP 429|HTTP 5\d\d|abort/i.test(lastErr.message);
+      if (!retryable || attempt === 3) break;
+      await new Promise((r) => setTimeout(r, 400 * attempt));
+    }
+  }
+  throw lastErr ?? new Error("DAS lookup failed");
 }
 
 /** Helius (primary) -> QuickNode (fallback) -> uncertain.
@@ -1720,20 +1767,43 @@ async function dasLookupOwnedMonke(url: string, wallet: string, timeoutMs: numbe
  * quota) before ever reporting a negative, and a confirmed-clean "not
  * found" from either provider is the only thing that counts as a real
  * non-holder result. */
-async function fetchOwnedMonke(wallet: string, env: Env): Promise<{ monke: MonkeAsset | null; uncertain: boolean }> {
+async function fetchOwnedMonke(
+  wallet: string,
+  env: Env,
+): Promise<{ monke: MonkeAsset | null; uncertain: boolean; reasons: string[] }> {
+  const reasons: string[] = [];
+
   try {
-    const monke = await dasLookupOwnedMonke(rpcUrl(env), wallet, 15_000);
-    return { monke, uncertain: false };
-  } catch { /* fall through to QuickNode */ }
+    const monke = await dasLookupOwnedMonke(rpcUrl(env), wallet, 12_000, "helius");
+    return { monke, uncertain: false, reasons };
+  } catch (err) {
+    reasons.push(`helius:${(err as Error).message}`.slice(0, 80));
+  }
 
   if (env.QUICKNODE_DAS_URL) {
     try {
-      const monke = await dasLookupOwnedMonke(env.QUICKNODE_DAS_URL, wallet, 15_000);
-      return { monke, uncertain: false };
-    } catch { /* fall through to uncertain */ }
+      const monke = await dasLookupOwnedMonke(env.QUICKNODE_DAS_URL, wallet, 12_000, "helius");
+      return { monke, uncertain: false, reasons };
+    } catch (err) {
+      reasons.push(`quicknode:${(err as Error).message}`.slice(0, 80));
+    }
+  } else {
+    reasons.push("quicknode:unset");
   }
 
-  return { monke: null, uncertain: true };
+  if (env.ALCHEMY_API_KEY) {
+    try {
+      const alchemyUrl = `https://solana-mainnet.g.alchemy.com/v2/${env.ALCHEMY_API_KEY}`;
+      const monke = await dasLookupOwnedMonke(alchemyUrl, wallet, 12_000, "alchemy");
+      return { monke, uncertain: false, reasons };
+    } catch (err) {
+      reasons.push(`alchemy:${(err as Error).message}`.slice(0, 80));
+    }
+  } else {
+    reasons.push("alchemy:unset");
+  }
+
+  return { monke: null, uncertain: true, reasons };
 }
 
 function timeAgo(ts: number): string {
@@ -1984,8 +2054,8 @@ async function handleVerifyApi(url: URL, env: Env): Promise<Response> {
     return errorResponse("Invalid wallet address", 400);
   }
 
-  const { monke, uncertain } = await fetchOwnedMonke(wallet, env);
-  if (uncertain) return jsonResponse({ owned: false, uncertain: true }, 200);
+  const { monke, uncertain, reasons } = await fetchOwnedMonke(wallet, env);
+  if (uncertain) return jsonResponse({ owned: false, uncertain: true, reasons }, 200);
   if (!monke) return jsonResponse({ owned: false });
   return jsonResponse({ owned: true, mint: monke.mint, name: monke.name, image: monke.image, traits: monke.traits });
 }
