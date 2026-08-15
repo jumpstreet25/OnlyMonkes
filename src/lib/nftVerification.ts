@@ -11,6 +11,7 @@ import {
   HELIUS_API_KEY,
   NFT_COLLECTION_ADDRESS,
 } from "./constants";
+import { verifySagaMonkeOnChain } from "./onchainCnftVerify";
 import type { NFTVerificationResult, OwnedNFT } from "@/types";
 
 const TIMEOUT_MS = 15_000;
@@ -214,6 +215,28 @@ export async function verifyNFTOwnership(
     }
   } catch (err) {
     errors.push(`Worker fallback: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  try {
+    const onchain = await verifySagaMonkeOnChain(walletAddress);
+    if (onchain.verified) {
+      console.log("[NFTVerify] On-chain: confirmed current holder");
+      const nft: OwnedNFT = {
+        mint: onchain.assetId ?? walletAddress,
+        name: "Saga Monke",
+        symbol: "MONKE",
+        image: "",
+        collectionMint: NFT_COLLECTION_ADDRESS,
+      };
+      return { verified: true, nft, allNfts: [nft] };
+    }
+    if (onchain.inconclusive) {
+      errors.push(`On-chain: inconclusive${onchain.error ? ` (${onchain.error})` : ""}`);
+    } else {
+      errors.push("On-chain: confirmed not a current holder");
+    }
+  } catch (err) {
+    errors.push(`On-chain: ${err instanceof Error ? err.message : String(err)}`);
   }
 
   const allZero = errors.length > 0 && errors.every((e) => e.includes("0 collection NFTs"));
