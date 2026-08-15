@@ -1400,6 +1400,20 @@ const SAGA_CREATOR_WALLET = "8McVhmNjsYSkwQ34QXJb2ADgLWERcHcpqxSzRZUCRZfQ";
 const SKR_MINT = "SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3";
 const STATS_KV_KEY = "stats:latest";
 const TOP_TRADERS_KV_KEY = "top_traders:latest";
+/** Full-collection wallet → Monke map, built by the same getAssetsByGroup
+ *  indexer as fetchMonkeHolderCount / discover-saga-monke-holders. Last
+ *  resort for /api/verify when live getAssetsByOwner is 429/dead. */
+const HOLDERS_INDEX_KV_KEY = "holders:index:v1";
+
+interface HolderIndexEntry {
+  mint: string;
+  name: string;
+  image: string | null;
+}
+interface HolderIndexFile {
+  updatedAt: number;
+  owners: Record<string, HolderIndexEntry>;
+}
 // Same asset + bottom-right placement convention as ShareablePnLCard.tsx —
 // "Shot using OnlyMonkes" watermark, ~28% of the base image's width.
 const WATERMARK_URL = "https://raw.githubusercontent.com/jumpstreet25/OnlyMonkes/master/assets/watermark.png";
@@ -1433,10 +1447,11 @@ interface MonkeAsset {
   traits: Array<{ trait_type: string; value: string }>;
 }
 
-/** Holder count via Helius DAS getAssetsByGroup, cursor-paginated — same
- *  shape as the bot's fetchHolderData(), trimmed to just the count. */
-async function fetchMonkeHolderCount(env: Env): Promise<number> {
-  const url = rpcUrl(env);
+/** Full-collection getAssetsByGroup scan — same indexer as the bot's
+ *  discover-saga-monke-holders / holderSnapshot. Builds wallet → first
+ *  Monke so /api/verify can answer when getAssetsByOwner is down. */
+async function scanHolderIndexFrom(url: string): Promise<HolderIndexFile | null> {
+  const owners: Record<string, HolderIndexEntry> = {};
   const ownerCounts = new Map<string, number>();
   let cursor: string | undefined;
   let pages = 0;
@@ -1448,23 +1463,75 @@ async function fetchMonkeHolderCount(env: Env): Promise<number> {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ jsonrpc: "2.0", id: `holders-${pages}`, method: "getAssetsByGroup", params }),
     }, 20_000);
-    if (!res.ok) throw new Error(`Helius DAS error ${res.status}`);
+    if (!res.ok) return null;
     const data = await res.json() as any;
+    if (data?.error) return null;
     const items = data?.result?.items ?? [];
     for (const item of items) {
-      const owner = item?.ownership?.owner;
-      if (owner) ownerCounts.set(owner, (ownerCounts.get(owner) ?? 0) + 1);
+      const owner = item?.ownership?.owner as string | undefined;
+      if (!owner) continue;
+      ownerCounts.set(owner, (ownerCounts.get(owner) ?? 0) + 1);
+      if (owners[owner] || MARKETPLACE_ESCROWS.has(owner)) continue;
+      const image =
+        item?.content?.links?.image ??
+        item?.content?.files?.find((f: any) => f?.mime?.startsWith("image/"))?.cdn_uri ??
+        item?.content?.files?.find((f: any) => f?.mime?.startsWith("image/"))?.uri ??
+        null;
+      owners[owner] = {
+        mint: item.id,
+        name: item?.content?.metadata?.name ?? "Saga Monke",
+        image,
+      };
     }
     pages++;
     const nextCursor = data?.result?.cursor;
     if (!nextCursor || items.length === 0) break;
     cursor = nextCursor;
   }
-  let uniqueHolders = 0;
-  for (const owner of ownerCounts.keys()) {
-    if (!MARKETPLACE_ESCROWS.has(owner)) uniqueHolders++;
+  if (Object.keys(owners).length < 1000) return null;
+  return { updatedAt: Date.now(), owners };
+}
+
+async function persistHolderIndex(env: Env, file: HolderIndexFile): Promise<void> {
+  await env.FRAME_ALERTS.put(HOLDERS_INDEX_KV_KEY, JSON.stringify(file));
+}
+
+async function loadHolderIndex(env: Env): Promise<HolderIndexFile | null> {
+  const raw = await env.FRAME_ALERTS.get(HOLDERS_INDEX_KV_KEY);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as HolderIndexFile;
+    if (!parsed?.owners || typeof parsed.owners !== "object") return null;
+    return parsed;
+  } catch {
+    return null;
   }
-  return uniqueHolders;
+}
+
+async function refreshHolderIndex(env: Env): Promise<HolderIndexFile | null> {
+  const urls: string[] = [rpcUrl(env)];
+  if (env.QUICKNODE_DAS_URL) urls.push(env.QUICKNODE_DAS_URL);
+  for (const url of urls) {
+    const file = await scanHolderIndexFrom(url);
+    if (file) {
+      await persistHolderIndex(env, file);
+      return file;
+    }
+  }
+  return null;
+}
+
+/** Holder count via the collection indexer. Also refreshes the verify map. */
+async function fetchMonkeHolderCount(env: Env): Promise<number> {
+  const file = await refreshHolderIndex(env);
+  if (file) {
+    let unique = 0;
+    for (const owner of Object.keys(file.owners)) {
+      if (!MARKETPLACE_ESCROWS.has(owner)) unique++;
+    }
+    return unique;
+  }
+  throw new Error("holder indexer failed");
 }
 
 // TEMPORARY (2026-08-13): one-time full-collection mint→{name,image} dump
@@ -1509,6 +1576,15 @@ async function scanMonkeIndexFrom(url: string): Promise<Record<string, { name: s
 }
 
 async function handleBuildMonkeIndex(env: Env): Promise<Response> {
+  const file = await refreshHolderIndex(env);
+  if (file) {
+    return jsonResponse({
+      ok: true,
+      owners: Object.keys(file.owners).length,
+      updatedAt: file.updatedAt,
+    });
+  }
+
   const heliusResult = await scanMonkeIndexFrom(rpcUrl(env));
   if (heliusResult && Object.keys(heliusResult).length >= 5000) return jsonResponse(heliusResult);
 
@@ -1517,7 +1593,7 @@ async function handleBuildMonkeIndex(env: Env): Promise<Response> {
     if (qnResult && Object.keys(qnResult).length >= 5000) return jsonResponse(qnResult);
   }
 
-  return errorResponse("Both Helius and QuickNode failed or returned too few assets", 502);
+  return errorResponse("Holder indexer failed — Helius/QuickNode could not scan the collection", 502);
 }
 
 /** Floor price + 24h volume (CoinGecko) and $SKR price (DexScreener) —
@@ -1801,6 +1877,34 @@ async function fetchOwnedMonke(
     }
   } else {
     reasons.push("alchemy:unset");
+  }
+
+  // Last resort: cached full-collection holder index (getAssetsByGroup),
+  // same scan as discover-saga-monke-holders / noon holder snapshot.
+  try {
+    const index = await loadHolderIndex(env);
+    if (index) {
+      const hit = index.owners[wallet];
+      const ageMs = Date.now() - (index.updatedAt || 0);
+      if (hit) {
+        reasons.push("index:hit");
+        return {
+          monke: { mint: hit.mint, name: hit.name, image: hit.image, traits: [] },
+          uncertain: false,
+          reasons,
+        };
+      }
+      // Fresh miss = really not a holder. Stale miss stays uncertain so a
+      // recent buyer isn't locked out of a days-old snapshot.
+      if (ageMs < 48 * 60 * 60 * 1000) {
+        reasons.push("index:miss");
+        return { monke: null, uncertain: false, reasons };
+      }
+      reasons.push("index:stale-miss");
+    }
+    reasons.push("index:unavailable");
+  } catch (err) {
+    reasons.push(`index:${(err as Error).message}`.slice(0, 80));
   }
 
   return { monke: null, uncertain: true, reasons };
