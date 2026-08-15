@@ -1412,6 +1412,7 @@ interface HolderIndexEntry {
 }
 interface HolderIndexFile {
   updatedAt: number;
+  assets?: number;
   owners: Record<string, HolderIndexEntry>;
 }
 // Same asset + bottom-right placement convention as ShareablePnLCard.tsx —
@@ -1519,6 +1520,92 @@ async function refreshHolderIndex(env: Env): Promise<HolderIndexFile | null> {
     }
   }
   return null;
+}
+
+const MAX_INDEX_OWNERS = 20_000;
+const MIN_INDEX_OWNERS = 1_000;
+
+function isHttpsUrl(value: string): boolean {
+  try {
+    const u = new URL(value);
+    return u.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function isValidHolderIndexPayload(body: unknown): body is HolderIndexFile {
+  if (!body || typeof body !== "object") return false;
+  const rec = body as Record<string, unknown>;
+  if (rec.updatedAt != null && (typeof rec.updatedAt !== "number" || !Number.isFinite(rec.updatedAt))) return false;
+  if (rec.assets != null && (typeof rec.assets !== "number" || !Number.isFinite(rec.assets))) return false;
+  if (!rec.owners || typeof rec.owners !== "object" || Array.isArray(rec.owners)) return false;
+  const owners = rec.owners as Record<string, unknown>;
+  const keys = Object.keys(owners);
+  if (keys.length < MIN_INDEX_OWNERS || keys.length > MAX_INDEX_OWNERS) return false;
+  for (const wallet of keys) {
+    try { new PublicKey(wallet); } catch { return false; }
+    const entry = owners[wallet];
+    if (!entry || typeof entry !== "object") return false;
+    const e = entry as Record<string, unknown>;
+    if (typeof e.mint !== "string") return false;
+    try { new PublicKey(e.mint); } catch { return false; }
+    if (typeof e.name !== "string" || e.name.length === 0 || e.name.length > 80) return false;
+    if (e.image != null && (typeof e.image !== "string" || e.image.length > 500 || !isHttpsUrl(e.image))) return false;
+  }
+  return true;
+}
+
+function sanitizeHolderIndex(body: HolderIndexFile): HolderIndexFile {
+  const owners: Record<string, HolderIndexEntry> = {};
+  for (const [wallet, entry] of Object.entries(body.owners)) {
+    owners[wallet] = {
+      mint: entry.mint,
+      name: entry.name.slice(0, 80),
+      image: entry.image ?? null,
+    };
+  }
+  return {
+    updatedAt: typeof body.updatedAt === "number" ? body.updatedAt : Date.now(),
+    assets: typeof body.assets === "number" ? body.assets : Object.keys(owners).length,
+    owners,
+  };
+}
+
+/** POST /api/holders/index — bot-authenticated full-collection owner map. */
+async function handleHoldersIndexPost(request: Request, env: Env): Promise<Response> {
+  if (!checkBotAuth(request, env)) return errorResponse("Unauthorized", 401);
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return errorResponse("Invalid JSON body", 400);
+  }
+  if (!isValidHolderIndexPayload(body)) {
+    return errorResponse("Invalid holder index — expected { updatedAt, owners: { wallet: { mint, name, image } } } with 1000–20000 owners", 400);
+  }
+  const existing = await loadHolderIndex(env);
+  const incomingCount = Object.keys(body.owners).length;
+  const existingCount = existing ? Object.keys(existing.owners).length : 0;
+  if (existing && incomingCount < existingCount * 0.8) {
+    return errorResponse(`Rejected shrink ${existingCount} → ${incomingCount}`, 409);
+  }
+  const file = sanitizeHolderIndex(body);
+  await persistHolderIndex(env, file);
+  return jsonResponse({ ok: true, owners: incomingCount, updatedAt: file.updatedAt });
+}
+
+/** GET /api/holders/index — public counts only, never wallet list. */
+async function handleHoldersIndexGet(env: Env): Promise<Response> {
+  const index = await loadHolderIndex(env);
+  if (!index) return jsonResponse({ available: false });
+  return jsonResponse({
+    available: true,
+    owners: Object.keys(index.owners).length,
+    assets: index.assets ?? null,
+    updatedAt: index.updatedAt,
+    ageMs: Date.now() - (index.updatedAt || 0),
+  });
 }
 
 /** Holder count via the collection indexer. Also refreshes the verify map. */
@@ -3033,7 +3120,7 @@ export default {
 
     // Health check
     if (path === "/health") {
-      return jsonResponse({ status: "ok", version: "1.8.0", endpoints: ["/api/actions/swap", "/api/actions/tip", "/api/actions/predict", "/api/actions/bet", "/api/actions/kalshi-bet", "/escrow", "/claim", "/frames/alert", "/legal", "/terms", "/privacy", "/copyright", "/", "/api/stats", "/api/verify", "/api/top-traders", "/monke/:mint"] });
+      return jsonResponse({ status: "ok", version: "1.9.0", endpoints: ["/api/actions/swap", "/api/actions/tip", "/api/actions/predict", "/api/actions/bet", "/api/actions/kalshi-bet", "/escrow", "/claim", "/frames/alert", "/legal", "/terms", "/privacy", "/copyright", "/", "/api/stats", "/api/verify", "/api/holders/index", "/api/top-traders", "/monke/:mint"] });
     }
 
     // 2026-07-30: public "Check Your Monke" growth page — see the section
@@ -3053,6 +3140,11 @@ export default {
     }
     if (path === "/api/verify") {
       if (request.method === "GET") return handleVerifyApi(url, env);
+      return errorResponse("Method not allowed", 405);
+    }
+    if (path === "/api/holders/index") {
+      if (request.method === "GET") return handleHoldersIndexGet(env);
+      if (request.method === "POST") return handleHoldersIndexPost(request, env);
       return errorResponse("Method not allowed", 405);
     }
     if (path === "/api/top-traders") {
