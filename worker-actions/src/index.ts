@@ -19,7 +19,8 @@
  *   GET  /claim?token=T&wallet=W                                 → Claim a tip link
  *
  * Secrets (set via `wrangler secret put`):
- *   HELIUS_API_KEY     — Helius RPC API key
+ *   HELIUS_API_KEY     — Helius RPC API key (swaps, sales, stats)
+ *   HELIUS_NFT_API_KEY — Helius key used only by /api/verify wallet checks
  *   JUP_API_KEY        — Jupiter Swap API v2 key (get from portal.jup.ag)
  *   BOT_HTTP_SECRET    — Bearer token for authenticated bot endpoints
  *   ESCROW_ENCRYPT_KEY — 256-bit hex key for AES-GCM encryption of ephemeral secrets in KV
@@ -65,6 +66,7 @@ interface KVNamespace {
 
 interface Env {
   HELIUS_API_KEY: string;
+  HELIUS_NFT_API_KEY?: string;
   JUP_API_KEY: string;
   BOT_HTTP_SECRET: string;
   ESCROW_ENCRYPT_KEY: string;
@@ -137,6 +139,12 @@ function errorResponse(message: string, status = 400): Response {
 
 function rpcUrl(env: Env): string {
   return `https://mainnet.helius-rpc.com/?api-key=${env.HELIUS_API_KEY}`;
+}
+
+/** Wallet-ownership DAS only — isolated quota from swaps/sales/stats. */
+function verifyRpcUrl(env: Env): string {
+  const key = env.HELIUS_NFT_API_KEY || env.HELIUS_API_KEY;
+  return `https://mainnet.helius-rpc.com/?api-key=${key}`;
 }
 
 /** Fetch with timeout — prevents worker from hanging on slow upstream APIs. */
@@ -1972,7 +1980,7 @@ async function fetchOwnedMonke(
   const reasons: string[] = [];
 
   try {
-    const monke = await dasLookupOwnedMonke(rpcUrl(env), wallet, 12_000, "helius");
+    const monke = await dasLookupOwnedMonke(verifyRpcUrl(env), wallet, 12_000, "helius");
     return { monke, uncertain: false, reasons };
   } catch (err) {
     reasons.push(`helius:${(err as Error).message}`.slice(0, 80));

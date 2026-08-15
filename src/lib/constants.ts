@@ -51,18 +51,11 @@ const _extra = (Constants.expoConfig?.extra ?? {}) as Record<string, unknown>;
 const _str = (v: unknown): string => (typeof v === 'string' ? v : '');
 
 export const HELIUS_API_KEY: string = ENV_HELIUS || _str(_extra.heliusApiKey);
-// Dedicated key for NFT ownership verification only (Helius "Gatekeeper"
-// endpoint, beta.helius-rpc.com) — isolated from HELIUS_API_KEY's shared
-// quota with the bot's trading/scanner traffic, which was starving the
-// user-facing verification gate.
+// Dedicated key for wallet / Saga Monke ownership checks only.
+// Isolated from HELIUS_API_KEY (scanner, swaps, sales, general RPC).
 const _HELIUS_NFT_API_KEY_RAW: string = ENV_HELIUS_NFT || _str(_extra.heliusNftApiKey);
 export const HELIUS_NFT_API_KEY: string = _HELIUS_NFT_API_KEY_RAW || HELIUS_API_KEY;
-// Only route through the Gatekeeper host when the dedicated key is actually
-// configured — the shared HELIUS_API_KEY isn't provisioned for it, so
-// falling back to this host with that key would just fail differently.
-export const HELIUS_NFT_RPC_URL = _HELIUS_NFT_API_KEY_RAW
-  ? `https://beta.helius-rpc.com/?api-key=${_HELIUS_NFT_API_KEY_RAW}`
-  : `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`;
+export const HELIUS_NFT_RPC_URL = `https://mainnet.helius-rpc.com/?api-key=${HELIUS_NFT_API_KEY}`;
 export const GIPHY_API_KEY: string = ENV_GIPHY || _str(_extra.giphyApiKey);
 export const CLOUDINARY_CLOUD_NAME: string = ENV_CLOUD_NAME || _str(_extra.cloudinaryCloudName);
 export const CLOUDINARY_UPLOAD_PRESET: string = ENV_CLOUD_PRESET || _str(_extra.cloudinaryUploadPreset);
