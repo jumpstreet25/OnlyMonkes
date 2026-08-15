@@ -154,7 +154,10 @@ async function fetchAssetsViaHelius(walletAddress: string): Promise<OwnedNFT[]> 
           limit: 1000,
           displayOptions: {
             showCollectionMetadata: false,
-            showUnverifiedCollections: false,
+            // Match the worker /api/verify DAS call — hiding unverified
+            // collections dropped real Saga Monkes (cNFT grouping is often
+            // unverified) and then skipped the worker as "confirmed 0".
+            showUnverifiedCollections: true,
             showFungible: false,
           },
         },
@@ -227,7 +230,10 @@ async function fetchAssetsViaQuickNode(walletAddress: string): Promise<OwnedNFT[
           limit: 1000,
           displayOptions: {
             showCollectionMetadata: false,
-            showUnverifiedCollections: false,
+            // Match the worker /api/verify DAS call — hiding unverified
+            // collections dropped real Saga Monkes (cNFT grouping is often
+            // unverified) and then skipped the worker as "confirmed 0".
+            showUnverifiedCollections: true,
             showFungible: false,
           },
         },
@@ -304,7 +310,7 @@ async function fetchAssetsViaAlchemy(walletAddress: string): Promise<OwnedNFT[]>
           null,
           {
             showCollectionMetadata: false,
-            showUnverifiedCollections: false,
+            showUnverifiedCollections: true,
             showFungible: false,
           },
         ],
@@ -381,10 +387,10 @@ export async function verifyNFTOwnership(
         cacheVerifiedNft(walletAddress, nfts[0]).catch(() => {});
         return { verified: true, nft: nfts[0], allNfts: nfts };
       }
-      // Helius is DAS-capable (sees compressed NFTs) — a clean "0 found"
-      // from it is authoritative.
+      // Clean 0 is NOT final — worker /api/verify uses a separate Helius
+      // key/quota and has confirmed holders this local DAS missed. Keep
+      // walking the chain + worker.
       errors.push("Helius: 0 collection NFTs found");
-      confirmedNonHolder = true;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       errors.push(`Helius: ${msg}`);
@@ -406,7 +412,6 @@ export async function verifyNFTOwnership(
         return { verified: true, nft: nfts[0], allNfts: nfts };
       }
       errors.push("QuickNode: 0 collection NFTs found");
-      confirmedNonHolder = true;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       errors.push(`QuickNode: ${msg}`);
@@ -430,7 +435,6 @@ export async function verifyNFTOwnership(
         return { verified: true, nft: nfts[0], allNfts: nfts };
       }
       errors.push("Alchemy: 0 collection NFTs found");
-      confirmedNonHolder = true;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       errors.push(`Alchemy: ${msg}`);
@@ -444,7 +448,9 @@ export async function verifyNFTOwnership(
   // authoritative answer. Shyft used to sit here as an extra fallback —
   // removed 2026-07-15, confirmed unusable (403, wrong plan tier) and even
   // when it worked it had no cNFT support for this collection anyway.
-  if (!confirmedNonHolder) {
+  // Always try on-chain unless a later source already confirmed a holder.
+  // Indexed "0 found" must not skip this — same class of false negative.
+  {
     try {
       const onchain = await verifySagaMonkeOnChain(walletAddress);
       if (onchain.verified) {
@@ -504,7 +510,9 @@ export async function verifyNFTOwnership(
   // this function's git history. Tried last (after the faster/richer
   // indexed + on-chain checks above) since it only returns a bare
   // owned/not-owned, no NFT metadata for the picker.
-  if (!confirmedNonHolder) {
+  // Always ask the worker — even after a local DAS/on-chain "0". Worker
+  // keys have independently confirmed holders the app-side chain missed.
+  {
     try {
       const res = await fetchWithAbort(
         `https://onlymonkes-actions.jumpstreet25.workers.dev/api/verify?wallet=${encodeURIComponent(walletAddress)}`,
