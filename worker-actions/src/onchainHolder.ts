@@ -96,7 +96,8 @@ export async function verifySagaOnChain(wallet: string): Promise<{
       if (before) opts.before = before;
       const sigs = await rpc<Sig[]>("getSignaturesForAddress", [wallet, opts]);
       if (!sigs?.length) {
-        return { verified: false, mint: null, inconclusive: false };
+        // Empty page after the first means history is exhausted, not "no NFTs".
+        return { verified: false, mint: null, inconclusive: page === 0 };
       }
       before = sigs[sigs.length - 1].signature;
       const wanted = sigs.filter((s) => !s.err).map((s) => s.signature);
