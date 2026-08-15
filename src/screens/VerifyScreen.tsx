@@ -31,8 +31,6 @@ import { shortenAddress } from "@/lib/nftVerification";
 import { loadListings, getActiveListings } from "@/lib/marketplace";
 import type { OwnedNFT } from "@/types";
 
-const MAGIC_EDEN_URL = "https://magiceden.us/marketplace/sagamonkes";
-
 type VerifyState = "idle" | "checking-nft" | "nft-fail" | "nft-ok" | "pick-nft" | "ready";
 
 // Fun Monke-themed loading texts — rotate every 1.8 s
@@ -47,11 +45,6 @@ const LOADING_TEXTS = [
 ];
 
 const MARKETPLACES = [
-  {
-    label: "Buy on Magic Eden",
-    emoji: "🪄",
-    url: "https://magiceden.io/marketplace/sagamonkes",
-  },
   {
     label: "Buy on Tensor",
     emoji: "⚡",

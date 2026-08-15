@@ -133,8 +133,8 @@ export default function ConnectScreen() {
             Holder-only global chat for Saga Monkes.
           </Text>
           <Pressable
-            onPress={() => Linking.openURL("https://magiceden.us/marketplace/sagamonkes")}
-            accessibilityLabel="What are Saga Monkes? Opens Magic Eden"
+            onPress={() => Linking.openURL("https://www.tensor.trade/trade/sagamonkes")}
+            accessibilityLabel="What are Saga Monkes? Opens Tensor"
             accessibilityRole="link"
           >
             <Text style={styles.sagaLink}>What are Saga Monkes?</Text>

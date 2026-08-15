@@ -563,12 +563,13 @@ export default function ChatScreen() {
           if (p) setSkrPrice(Number(p) < 0.01 ? `$${Number(p).toFixed(6)}` : `$${Number(p).toFixed(4)}`);
         })
         .catch(() => {});
-      fetchAbortable('https://api-mainnet.magiceden.dev/v2/collections/sagamonkes/stats')
+      fetchAbortable('https://api.coingecko.com/api/v3/nfts/saga-monkes')
         .then(r => r.json())
         .then(d => {
           if (!mounted) return;
-          if (d?.floorPrice) {
-            const fp = `${(d.floorPrice / 1e9).toFixed(2)} SOL`;
+          const fpNum = d?.floor_price?.native_currency;
+          if (typeof fpNum === 'number') {
+            const fp = `${fpNum.toFixed(2)} SOL`;
             setFloorPrice(fp);
             AsyncStorage.setItem('cached_floor_price', fp).catch(() => {});
           }
