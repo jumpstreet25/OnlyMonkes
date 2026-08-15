@@ -1930,6 +1930,41 @@ async function dasLookupOwnedMonke(
  * quota) before ever reporting a negative, and a confirmed-clean "not
  * found" from either provider is the only thing that counts as a real
  * non-holder result. */
+async function lookupHolderIndex(
+  wallet: string,
+  env: Env,
+  reasons: string[],
+): Promise<{ monke: MonkeAsset | null; uncertain: boolean; reasons: string[] } | null> {
+  try {
+    const index = await loadHolderIndex(env);
+    if (!index) {
+      reasons.push("index:unavailable");
+      return null;
+    }
+    const hit = index.owners[wallet];
+    const ageMs = Date.now() - (index.updatedAt || 0);
+    if (hit) {
+      reasons.push("index:hit");
+      return {
+        monke: { mint: hit.mint, name: hit.name, image: hit.image, traits: [] },
+        uncertain: false,
+        reasons,
+      };
+    }
+    // Fresh miss = really not a holder. Stale miss stays uncertain so a
+    // recent buyer isn't locked out of a days-old snapshot.
+    if (ageMs < 48 * 60 * 60 * 1000) {
+      reasons.push("index:miss");
+      return { monke: null, uncertain: false, reasons };
+    }
+    reasons.push("index:stale-miss");
+    return null;
+  } catch (err) {
+    reasons.push(`index:${(err as Error).message}`.slice(0, 80));
+    return null;
+  }
+}
+
 async function fetchOwnedMonke(
   wallet: string,
   env: Env,
@@ -1941,6 +1976,14 @@ async function fetchOwnedMonke(
     return { monke, uncertain: false, reasons };
   } catch (err) {
     reasons.push(`helius:${(err as Error).message}`.slice(0, 80));
+  }
+
+  // Published 3.3 aborts /api/verify at 15s. Helius+QuickNode+Alchemy+
+  // on-chain each take up to 12s, so the holder index never ran in time.
+  // After live DAS fails, admit known holders from KV immediately.
+  {
+    const indexed = await lookupHolderIndex(wallet, env, reasons);
+    if (indexed) return indexed;
   }
 
   if (env.QUICKNODE_DAS_URL) {
@@ -1989,34 +2032,6 @@ async function fetchOwnedMonke(
     }
   } catch (err) {
     reasons.push(`onchain:${(err as Error).message}`.slice(0, 80));
-  }
-
-  // Last resort: cached full-collection holder index (getAssetsByGroup),
-  // same scan as discover-saga-monke-holders / noon holder snapshot.
-  try {
-    const index = await loadHolderIndex(env);
-    if (index) {
-      const hit = index.owners[wallet];
-      const ageMs = Date.now() - (index.updatedAt || 0);
-      if (hit) {
-        reasons.push("index:hit");
-        return {
-          monke: { mint: hit.mint, name: hit.name, image: hit.image, traits: [] },
-          uncertain: false,
-          reasons,
-        };
-      }
-      // Fresh miss = really not a holder. Stale miss stays uncertain so a
-      // recent buyer isn't locked out of a days-old snapshot.
-      if (ageMs < 48 * 60 * 60 * 1000) {
-        reasons.push("index:miss");
-        return { monke: null, uncertain: false, reasons };
-      }
-      reasons.push("index:stale-miss");
-    }
-    reasons.push("index:unavailable");
-  } catch (err) {
-    reasons.push(`index:${(err as Error).message}`.slice(0, 80));
   }
 
   return { monke: null, uncertain: true, reasons };
@@ -3120,7 +3135,7 @@ export default {
 
     // Health check
     if (path === "/health") {
-      return jsonResponse({ status: "ok", version: "1.9.0", endpoints: ["/api/actions/swap", "/api/actions/tip", "/api/actions/predict", "/api/actions/bet", "/api/actions/kalshi-bet", "/escrow", "/claim", "/frames/alert", "/legal", "/terms", "/privacy", "/copyright", "/", "/api/stats", "/api/verify", "/api/holders/index", "/api/top-traders", "/monke/:mint"] });
+      return jsonResponse({ status: "ok", version: "1.9.1", endpoints: ["/api/actions/swap", "/api/actions/tip", "/api/actions/predict", "/api/actions/bet", "/api/actions/kalshi-bet", "/escrow", "/claim", "/frames/alert", "/legal", "/terms", "/privacy", "/copyright", "/", "/api/stats", "/api/verify", "/api/holders/index", "/api/top-traders", "/monke/:mint"] });
     }
 
     // 2026-07-30: public "Check Your Monke" growth page — see the section
