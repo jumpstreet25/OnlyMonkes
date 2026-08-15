@@ -1,5 +1,6 @@
 declare module '@env' {
   export const HELIUS_API_KEY: string;
+  export const HELIUS_NFT_API_KEY: string;
   export const GIPHY_API_KEY: string;
   export const CLOUDINARY_CLOUD_NAME: string;
   export const CLOUDINARY_UPLOAD_PRESET: string;

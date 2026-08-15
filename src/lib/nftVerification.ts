@@ -8,7 +8,8 @@
  */
 
 import {
-  HELIUS_API_KEY,
+  HELIUS_NFT_API_KEY,
+  HELIUS_NFT_RPC_URL,
   NFT_COLLECTION_ADDRESS,
 } from "./constants";
 import { verifySagaMonkeOnChain } from "./onchainCnftVerify";
@@ -100,7 +101,7 @@ function mapDasAsset(asset: DASAsset): OwnedNFT {
 }
 
 async function fetchAssetsViaHelius(walletAddress: string): Promise<OwnedNFT[]> {
-  const url = `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`;
+  const url = HELIUS_NFT_RPC_URL;
 
   let page = 1;
   const MAX_PAGES = 10;
@@ -187,7 +188,7 @@ export async function verifyNFTOwnership(
 
   const errors: string[] = [];
 
-  if (HELIUS_API_KEY) {
+  if (HELIUS_NFT_API_KEY) {
     try {
       const nfts = await withRetry("Helius", () =>
         fetchAssetsViaHelius(walletAddress),
@@ -261,10 +262,10 @@ export async function verifyNFTOwnership(
 export async function verifyNftMintInCollection(nftMint: string): Promise<boolean> {
   if (!NFT_COLLECTION_ADDRESS || !nftMint) return false;
 
-  if (HELIUS_API_KEY) {
+  if (HELIUS_NFT_API_KEY) {
     try {
       const res = await fetchWithAbort(
-        `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`,
+        HELIUS_NFT_RPC_URL,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },

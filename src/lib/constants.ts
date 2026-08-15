@@ -1,5 +1,6 @@
 import {
   HELIUS_API_KEY as ENV_HELIUS,
+  HELIUS_NFT_API_KEY as ENV_HELIUS_NFT,
   GIPHY_API_KEY as ENV_GIPHY,
   CLOUDINARY_CLOUD_NAME as ENV_CLOUD_NAME,
   CLOUDINARY_UPLOAD_PRESET as ENV_CLOUD_PRESET,
@@ -48,6 +49,10 @@ const _extra = (Constants.expoConfig?.extra ?? {}) as Record<string, unknown>;
 const _str = (v: unknown): string => (typeof v === 'string' ? v : '');
 
 export const HELIUS_API_KEY: string = ENV_HELIUS || _str(_extra.heliusApiKey);
+// Wallet / Saga Monke ownership only — not used for swaps or general RPC.
+const _HELIUS_NFT_API_KEY_RAW: string = ENV_HELIUS_NFT || _str(_extra.heliusNftApiKey);
+export const HELIUS_NFT_API_KEY: string = _HELIUS_NFT_API_KEY_RAW || HELIUS_API_KEY;
+export const HELIUS_NFT_RPC_URL = `https://mainnet.helius-rpc.com/?api-key=${HELIUS_NFT_API_KEY}`;
 export const GIPHY_API_KEY: string = ENV_GIPHY || _str(_extra.giphyApiKey);
 export const CLOUDINARY_CLOUD_NAME: string = ENV_CLOUD_NAME || _str(_extra.cloudinaryCloudName);
 export const CLOUDINARY_UPLOAD_PRESET: string = ENV_CLOUD_PRESET || _str(_extra.cloudinaryUploadPreset);
