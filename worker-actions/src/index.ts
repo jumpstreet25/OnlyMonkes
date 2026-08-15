@@ -1879,6 +1879,31 @@ async function fetchOwnedMonke(
     reasons.push("alchemy:unset");
   }
 
+  try {
+    const { verifySagaOnChain } = await import("./onchainHolder.js");
+    const onchain = await verifySagaOnChain(wallet);
+    if (onchain.verified) {
+      reasons.push("onchain:hit");
+      return {
+        monke: {
+          mint: onchain.mint ?? wallet,
+          name: "Saga Monke",
+          image: null,
+          traits: [],
+        },
+        uncertain: false,
+        reasons,
+      };
+    }
+    if (onchain.inconclusive) {
+      reasons.push(`onchain:inconclusive${onchain.error ? `:${onchain.error.slice(0, 40)}` : ""}`);
+    } else {
+      reasons.push("onchain:not-holder");
+    }
+  } catch (err) {
+    reasons.push(`onchain:${(err as Error).message}`.slice(0, 80));
+  }
+
   // Last resort: cached full-collection holder index (getAssetsByGroup),
   // same scan as discover-saga-monke-holders / noon holder snapshot.
   try {
