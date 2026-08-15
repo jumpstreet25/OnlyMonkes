@@ -242,16 +242,24 @@ export async function sendJoinRequestDM(
 ): Promise<void> {
   const payload = `${JOIN_REQUEST_PREFIX}${myInboxId}:${username ?? ""}:${nftMint ?? ""}`;
 
-  // Send to admin (so their panel still works when app is open)
-  const adminDm = await client.conversations.findOrCreateDm(adminInboxId as any);
-  await (adminDm as any).send(payload);
-
-  // Also send to bot so it can auto-approve + notify admin via DM
-  if (botInboxId && botInboxId !== adminInboxId && botInboxId !== myInboxId) {
+  // Bot first — it auto-adds to Main + Trades. Admin DM is only a notify.
+  let botSent = false;
+  if (botInboxId && botInboxId !== myInboxId) {
     try {
       const botDm = await client.conversations.findOrCreateDm(botInboxId as any);
       await (botDm as any).send(payload);
-    } catch { /* non-critical — admin DM already sent */ }
+      botSent = true;
+    } catch (err) {
+      console.warn("[XMTP] JOIN_REQUEST to bot failed:", err);
+    }
+  }
+
+  try {
+    const adminDm = await client.conversations.findOrCreateDm(adminInboxId as any);
+    await (adminDm as any).send(payload);
+  } catch (err) {
+    console.warn("[XMTP] JOIN_REQUEST to admin failed:", err);
+    if (!botSent) throw err;
   }
 }
 
