@@ -1,8 +1,10 @@
 /**
- * traitFloor.ts — Fetch trait floor prices from Magic Eden for Saga Monkes
+ * traitFloor.ts — Trait floor prices for Saga Monkes.
  *
- * Uses ME's public API to get floor prices per trait attribute.
- * Caches results for 10 minutes to avoid rate limiting.
+ * Magic Eden dropped cNFT collections (including Saga Monkes). Their
+ * /attributes endpoint returns empty. Tensor is the live marketplace but
+ * has no public unauthenticated trait-floor API, so this is best-effort
+ * and may stay empty. Listing still works without it.
  */
 
 import type { NftTrait } from '@/types';
@@ -23,9 +25,8 @@ let _traitFloorsAt = 0;
 let _allTraitTypes: string[] = [];
 
 /**
- * Fetch trait floor prices from Magic Eden.
- * ME endpoint: GET /v2/collections/{symbol}/attributes
- * Returns all attribute categories with their values and floor prices.
+ * Best-effort trait floors. ME cNFT API is retired; keep the call only
+ * so a future provider can be dropped in without changing callers.
  */
 export async function fetchTraitFloors(): Promise<TraitFloor[]> {
   if (_traitFloors.length && Date.now() - _traitFloorsAt < CACHE_TTL) {

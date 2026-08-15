@@ -1,5 +1,6 @@
 /**
- * MarketplaceScreen — Magic Eden-style P2P NFT marketplace for Saga Monkes.
+ * MarketplaceScreen — in-app P2P NFT marketplace for Saga Monkes.
+ * External buy links go to Tensor — ME dropped cNFT / Saga Monkes.
  *
  * 2-column grid of NFT cards. Tap → detail sheet with Buy Now / Place Bid /
  * Offer Monke Swap. All offers/bids are private — only the seller sees them
@@ -29,7 +30,7 @@ import { router } from 'expo-router';
 import { THEME, FONTS, NFT_SALE_FEE_PCT } from '@/lib/constants';
 import { ErrorMessage } from '@/components/ErrorMessage';
 
-const MAGIC_EDEN_URL = "https://magiceden.us/marketplace/sagamonkes";
+const TENSOR_SAGA_URL = "https://www.tensor.trade/trade/sagamonkes";
 import { useAppStore } from '@/store/appStore';
 import {
   getActiveListings,
@@ -121,7 +122,7 @@ export default function MarketplaceScreen() {
   const [traitFloorsLoaded, setTraitFloorsLoaded] = useState(false);
   const [listTopTrait, setListTopTrait] = useState<{ name: string; value: string; floor: number } | null>(null);
 
-  // ── Magic Eden collection floor ─────────────────────────────────────────
+  // Collection floor — CoinGecko (ME no longer lists this cNFT collection).
   const [meFloor, setMeFloor] = useState<number | null>(null);
 
   // Pending atomic swap (buyer flow — driven by appStore)
@@ -158,9 +159,12 @@ export default function MarketplaceScreen() {
       setTraitFloorsLoaded(true);
     }).catch(() => {});
     hasAcceptedMarketplaceFee().then(setFeeAccepted).catch(() => {});
-    fetch('https://api-mainnet.magiceden.dev/v2/collections/sagamonkes/stats')
+    fetch('https://api.coingecko.com/api/v3/nfts/saga-monkes')
       .then(r => r.json())
-      .then(d => { if (d?.floorPrice) setMeFloor(d.floorPrice / 1e9); })
+      .then(d => {
+        const floor = d?.floor_price?.native_currency;
+        if (typeof floor === 'number') setMeFloor(floor);
+      })
       .catch(() => {});
   }, [refresh]);
 
@@ -776,9 +780,9 @@ export default function MarketplaceScreen() {
             {isGuest && (
               <Pressable
                 style={s.meLink}
-                onPress={() => Linking.openURL(MAGIC_EDEN_URL)}
+                onPress={() => Linking.openURL(TENSOR_SAGA_URL)}
               >
-                <Text style={s.meLinkText}>Buy on Magic Eden →</Text>
+                <Text style={s.meLinkText}>Buy on Tensor →</Text>
               </Pressable>
             )}
               </>
@@ -845,12 +849,12 @@ export default function MarketplaceScreen() {
                   <View style={s.actionSection}>
                     {isGuest ? (
                       <>
-                        {/* Guest: link to Magic Eden for this specific NFT */}
+                        {/* Guest: Tensor is the only remaining cNFT marketplace */}
                         <Pressable
                           style={s.buyNowBtn}
-                          onPress={() => Linking.openURL(`https://magiceden.us/item-details/solana/${selectedListing.mint}`)}
+                          onPress={() => Linking.openURL(`https://www.tensor.trade/item/${selectedListing.mint}`)}
                         >
-                          <Text style={s.buyNowText}>Buy on Magic Eden — {selectedListing.askPrice} SOL</Text>
+                          <Text style={s.buyNowText}>Buy on Tensor — {selectedListing.askPrice} SOL</Text>
                         </Pressable>
                         <Text style={s.guestHint}>
                           Get a Saga Monke to unlock in-app trading, chat, signals & more
