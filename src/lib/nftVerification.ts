@@ -15,6 +15,7 @@ import { verifySagaMonkeOnChain } from "./onchainCnftVerify";
 import type { NFTVerificationResult, OwnedNFT } from "@/types";
 
 const TIMEOUT_MS = 15_000;
+const WORKER_TIMEOUT_MS = 25_000;
 const RETRY_DELAY_MS = 2_000;
 const MAX_RETRIES = 2;
 const WORKER_VERIFY =
@@ -150,6 +151,7 @@ async function fetchViaWorker(walletAddress: string): Promise<OwnedNFT | null | 
   const res = await fetchWithAbort(
     `${WORKER_VERIFY}?wallet=${encodeURIComponent(walletAddress)}`,
     { method: "GET" },
+    WORKER_TIMEOUT_MS,
   );
   if (!res.ok) throw new Error(`Worker API error: ${res.status}`);
   const data = await res.json() as {
@@ -252,6 +254,7 @@ export async function verifyNFTOwnership(
     verified: false,
     nft: null,
     error: `Verification failed after retries: ${errors.join("; ")}`,
+    providerError: true,
   };
 }
 

@@ -199,6 +199,10 @@ export function startNftOwnershipGuard(onForceLogout: () => void): void {
       const result = await verifyNFTOwnership(wallet.address);
 
       if (!result.verified) {
+        if (result.providerError) {
+          console.warn("[NFTGuard] provider error — not logging out");
+          return;
+        }
         console.log("[NFTGuard] User no longer owns a collection NFT — forcing logout");
         await clearSession();
         await clearVerifiedNft();

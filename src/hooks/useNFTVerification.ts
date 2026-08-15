@@ -3,13 +3,18 @@ import { verifyNFTOwnership } from '@/lib/nftVerification';
 import { loadSelectedNftMint } from '@/lib/userProfile';
 import { useAppStore } from '@/store/appStore';
 
+export interface VerifyResult {
+  verified: boolean;
+  providerError: boolean;
+}
+
 export function useNFTVerification() {
   const { wallet, setVerified, setAllNfts, setError } = useAppStore();
 
-  const verify = useCallback(async (): Promise<boolean> => {
+  const verify = useCallback(async (): Promise<VerifyResult> => {
     if (!wallet?.address) {
       setError('No wallet connected');
-      return false;
+      return { verified: false, providerError: true };
     }
 
     try {
@@ -18,23 +23,22 @@ export function useNFTVerification() {
         const allNfts = result.allNfts ?? [result.nft];
         setAllNfts(allNfts);
 
-        // Restore previously chosen NFT if available
         const savedMint = await loadSelectedNftMint();
         const chosen = savedMint
           ? (allNfts.find((n) => n.mint === savedMint) ?? allNfts[0])
           : allNfts[0];
 
         setVerified(true, chosen);
-        return true;
+        return { verified: true, providerError: false };
       } else {
         setError(result.error ?? 'NFT verification failed');
         setVerified(false, null);
-        return false;
+        return { verified: false, providerError: !!result.providerError };
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Verification error';
       setError(message);
-      return false;
+      return { verified: false, providerError: true };
     }
   }, [wallet, setVerified, setAllNfts, setError]);
 

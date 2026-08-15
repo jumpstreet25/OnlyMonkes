@@ -28,6 +28,12 @@ export interface NFTVerificationResult {
   nft: OwnedNFT | null;
   allNfts?: OwnedNFT[];   // all collection NFTs found in wallet
   error?: string;
+  /**
+   * True when `verified: false` is an outage (Helius 429, worker timeout,
+   * on-chain inconclusive) — NOT a confirmed non-holder. Callers must not
+   * send the user to guest/marketplace on this.
+   */
+  providerError?: boolean;
 }
 
 // ─── Messaging ────────────────────────────────────────────────────────────────
