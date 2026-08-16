@@ -38,6 +38,7 @@
     "@react-native-community/slider": "5.0.1",
     "@react-native-firebase/analytics": "^23.8.8",
     "@react-native-firebase/app": "^23.8.8",
+    "@sbaiahmed1/react-native-blur": "^5.0.0",
     "@sentry/react-native": "^8.22.0",
     "@shopify/flash-list": "2.3.2",
     "@shopify/react-native-skia": "2.11.0",

@@ -70,6 +70,17 @@ if [ -d "$APP_BUILD/intermediates" ]; then
   echo "  ✅ App build intermediates ($SIZE MB)"
 fi
 
+# 7. App module's own CMake/ninja cache — must go with app/build/generated above,
+# otherwise its fingerprint sees no change, skips reconfiguring, and does an
+# incremental build against the now-deleted generated/autolinking headers.
+APP_CXX="$PROJECT_ROOT/android/app/.cxx"
+if [ -d "$APP_CXX" ]; then
+  SIZE=$(du -sm "$APP_CXX" 2>/dev/null | cut -f1)
+  rm -rf "$APP_CXX"
+  SAVED=$((SAVED + SIZE))
+  echo "  ✅ App .cxx cache ($SIZE MB)"
+fi
+
 echo ""
 echo "🎯 Freed ~${SAVED} MB of disk space"
 echo "💾 Free: $(df -h / | tail -1 | awk '{print $4}')"
