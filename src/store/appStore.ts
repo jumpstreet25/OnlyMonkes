@@ -40,6 +40,7 @@ const AK_MUTED_CHANNELS = 'om_muted_channels';
 const AK_MUTED_ALERT_SOURCES = 'om_muted_alert_sources';
 const AK_NOTIF_PREFS = 'om_notif_prefs';
 const SK_MWA_TOKEN = 'om_mwa_auth_token';
+const AK_SENTIMENT_OPT_IN = 'om_sentiment_oracle_opt_in';
 
 // Note (2026-05-01): the previous _botChannelCleared session-flag was removed
 // — it was over-aggressive. The flag was set true on user clear and only
@@ -88,6 +89,10 @@ interface UserAuthState {
   xmtpClient: unknown;
   myInboxId: string | null;
   mwaAuthToken: string | null;
+  /** Timestamp of the last entitlement re-check (any outcome, not just success) — see
+   *  useEntitlementSync.ts. Was one-shot-at-login before Data Oracle Phase 1; now re-run
+   *  periodically so entitlement is live derived state, not a stored permanent grant. */
+  verifiedAt: number | null;
 }
 
 interface UserAuthActions {
@@ -98,6 +103,7 @@ interface UserAuthActions {
   setXmtpClient: (client: unknown) => void;
   setMyInboxId: (inboxId: string | null) => void;
   setMwaAuthToken: (token: string | null) => void;
+  setVerifiedAt: (verifiedAt: number | null) => void;
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -176,6 +182,12 @@ interface AppSettingsState {
    *  read as OFF on a fresh app install/build even when the bot never
    *  stopped trading. Null until the first status DM arrives this session. */
   automonkeStatus: { enrolled: boolean; active: boolean; limitOrdersEnabled: boolean } | null;
+  /** Data Oracle Phase 1 — opted into contributing app-usage/attention signal (which
+   *  tokens viewed, dwell time) toward the sentiment oracle. Off by default; toggling off
+   *  immediately stops local collection and cancels the periodic upload — see
+   *  useSentimentOptIn.ts. No payout logic exists yet (Phase 4, pending legal review). */
+  sentimentOracleOptIn: boolean;
+  sentimentOracleOptInAt: number | null;
 }
 
 interface AppSettingsActions {
@@ -210,6 +222,7 @@ interface AppSettingsActions {
   incrementDmUnread: (peerInboxId: string) => void;
   clearDmUnread: (peerInboxId: string) => void;
   setAutomonkeStatus: (status: { enrolled: boolean; active: boolean; limitOrdersEnabled: boolean }) => void;
+  setSentimentOracleOptIn: (optIn: boolean) => void;
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -272,6 +285,7 @@ const initialState: AppState = {
   xmtpClient: null,
   myInboxId: null,
   mwaAuthToken: null,
+  verifiedAt: null,
 
   // Slice 2: User Profile
   username: null,
@@ -313,6 +327,8 @@ const initialState: AppState = {
   communityBadges: { dms: 0, events: 0, links: 0 },
   dmUnreadCounts: {},
   automonkeStatus: null,
+  sentimentOracleOptIn: false,
+  sentimentOracleOptInAt: null,
 
   // Slice 4: Live Features
   activeLiveRoom: null,
@@ -346,6 +362,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   setAllNfts: (allNfts) => set({ allNfts }),
   setXmtpClient: (client) => set({ xmtpClient: client }),
   setMyInboxId: (myInboxId) => set({ myInboxId }),
+  setVerifiedAt: (verifiedAt) => set({ verifiedAt }),
   setMwaAuthToken: (mwaAuthToken) => {
     set({ mwaAuthToken });
     if (mwaAuthToken) {
@@ -491,6 +508,13 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
     return { dmUnreadCounts: next };
   }),
   setAutomonkeStatus: (automonkeStatus) => set({ automonkeStatus }),
+  setSentimentOracleOptIn: (sentimentOracleOptIn) => {
+    set({ sentimentOracleOptIn, sentimentOracleOptInAt: sentimentOracleOptIn ? Date.now() : null });
+    AsyncStorage.setItem(AK_SENTIMENT_OPT_IN, JSON.stringify({
+      optIn: sentimentOracleOptIn,
+      optInAt: sentimentOracleOptIn ? Date.now() : null,
+    })).catch(() => {});
+  },
 
   // ── Slice 4: Live Features actions ─────────────────────────────────────────
 
@@ -558,12 +582,13 @@ function _persistNotifPrefs() {
  */
 export async function loadPersistedPrefs(): Promise<void> {
   try {
-    const [sportsRaw, channelsRaw, notifRaw, sourcesRaw, hiddenBetsRaw] = await Promise.all([
+    const [sportsRaw, channelsRaw, notifRaw, sourcesRaw, hiddenBetsRaw, sentimentOptInRaw] = await Promise.all([
       AsyncStorage.getItem(AK_MUTED_SPORTS),
       AsyncStorage.getItem(AK_MUTED_CHANNELS),
       AsyncStorage.getItem(AK_NOTIF_PREFS),
       AsyncStorage.getItem(AK_MUTED_ALERT_SOURCES),
       AsyncStorage.getItem(AK_HIDDEN_BANANA_BETS),
+      AsyncStorage.getItem(AK_SENTIMENT_OPT_IN),
     ]);
     const state: Record<string, unknown> = {};
     if (sportsRaw) {
@@ -590,6 +615,13 @@ export async function loadPersistedPrefs(): Promise<void> {
         if (typeof parsed.bot === 'boolean') state.botNotificationsEnabled = parsed.bot;
         if (typeof parsed.dm === 'boolean') state.dmNotificationsEnabled = parsed.dm;
         if (typeof parsed.live === 'boolean') state.liveRoomNotificationsEnabled = parsed.live;
+      }
+    }
+    if (sentimentOptInRaw) {
+      const parsed = JSON.parse(sentimentOptInRaw);
+      if (parsed && typeof parsed.optIn === 'boolean') {
+        state.sentimentOracleOptIn = parsed.optIn;
+        state.sentimentOracleOptInAt = typeof parsed.optInAt === 'number' ? parsed.optInAt : null;
       }
     }
     // Load text scale

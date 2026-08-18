@@ -243,6 +243,12 @@ dependencies {
     } else {
         implementation jscFlavor
     }
+
+    // Data Oracle Phase 1 — periodic signed-batch upload (SentimentWorkScheduler.kt /
+    // SentimentSyncWorker.kt). WorkManager, not a foreground service — see the plan doc:
+    // Android 15+ caps dataSync foreground services at 6h/24h and blocks background
+    // self-launch, WorkManager's 15-min floor is fine for a ~30-min upload cadence.
+    implementation("androidx.work:work-runtime-ktx:2.9.1")
 }
 
 // 2026-07-10: NECESSARY BUT NOT SUFFICIENT fix for a still-unresolved native

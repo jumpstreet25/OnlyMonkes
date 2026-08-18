@@ -45,6 +45,13 @@ import {
 } from "@solana/web3.js";
 import bs58 from "bs58";
 import { PhotonImage, SamplingFilter, resize, watermark } from "@cf-wasm/photon/workerd";
+import {
+  handleSentimentRegisterDevice,
+  handleSentimentUnregisterDevice,
+  handleSentimentIngest,
+  handleSentimentScore,
+  closeSentimentEpoch,
+} from "./sentimentOracle";
 
 // Cloudflare Workers KV namespace binding (declared locally to avoid @cloudflare/workers-types dependency)
 interface KVListOptions {
@@ -57,14 +64,14 @@ interface KVListResult {
   list_complete?: boolean;
   cursor?: string;
 }
-interface KVNamespace {
+export interface KVNamespace {
   get(key: string, options?: { type?: string }): Promise<string | null>;
   put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>;
   delete(key: string): Promise<void>;
   list(options?: KVListOptions): Promise<KVListResult>;
 }
 
-interface Env {
+export interface Env {
   HELIUS_API_KEY: string;
   HELIUS_NFT_API_KEY?: string;
   JUP_API_KEY: string;
@@ -87,6 +94,9 @@ interface Env {
   ALCHEMY_API_KEY?: string;
   TIP_ESCROW: KVNamespace;
   FRAME_ALERTS: KVNamespace;
+  // Data Oracle Phase 1 (device attestation + sentiment aggregation) — see
+  // sentimentOracle.ts. Create via `wrangler kv:namespace create SENTIMENT_ORACLE`.
+  SENTIMENT_ORACLE: KVNamespace;
 }
 
 // Cron Trigger types (declared locally, same reasoning as KVNamespace above —
@@ -1449,7 +1459,7 @@ interface StatsSnapshot {
   updatedAt: number;
 }
 
-interface MonkeAsset {
+export interface MonkeAsset {
   mint: string;
   name: string;
   image: string | null;
@@ -1973,7 +1983,7 @@ async function lookupHolderIndex(
   }
 }
 
-async function fetchOwnedMonke(
+export async function fetchOwnedMonke(
   wallet: string,
   env: Env,
 ): Promise<{ monke: MonkeAsset | null; uncertain: boolean; reasons: string[] }> {
@@ -3143,7 +3153,7 @@ export default {
 
     // Health check
     if (path === "/health") {
-      return jsonResponse({ status: "ok", version: "1.9.1", endpoints: ["/api/actions/swap", "/api/actions/tip", "/api/actions/predict", "/api/actions/bet", "/api/actions/kalshi-bet", "/escrow", "/claim", "/frames/alert", "/legal", "/terms", "/privacy", "/copyright", "/", "/api/stats", "/api/verify", "/api/holders/index", "/api/top-traders", "/monke/:mint"] });
+      return jsonResponse({ status: "ok", version: "1.9.1", endpoints: ["/api/actions/swap", "/api/actions/tip", "/api/actions/predict", "/api/actions/bet", "/api/actions/kalshi-bet", "/escrow", "/claim", "/frames/alert", "/legal", "/terms", "/privacy", "/copyright", "/", "/api/stats", "/api/verify", "/api/holders/index", "/api/top-traders", "/monke/:mint", "/api/sentiment/register-device", "/api/sentiment/unregister-device", "/api/sentiment/ingest", "/api/sentiment/score"] });
     }
 
     // 2026-07-30: public "Check Your Monke" growth page — see the section
@@ -3173,6 +3183,25 @@ export default {
     if (path === "/api/top-traders") {
       if (request.method === "GET") return handleTopTradersGet(env);
       if (request.method === "POST") return handleTopTradersPost(request, env);
+      return errorResponse("Method not allowed", 405);
+    }
+    // Data Oracle Phase 1 — attestation + collection + aggregation only, no payouts.
+    // See sentimentOracle.ts for the full design (device→wallet binding, batch signature
+    // verification, anonymized epoch aggregation).
+    if (path === "/api/sentiment/register-device") {
+      if (request.method === "POST") return handleSentimentRegisterDevice(request, env);
+      return errorResponse("Method not allowed", 405);
+    }
+    if (path === "/api/sentiment/unregister-device") {
+      if (request.method === "POST") return handleSentimentUnregisterDevice(request, env);
+      return errorResponse("Method not allowed", 405);
+    }
+    if (path === "/api/sentiment/ingest") {
+      if (request.method === "POST") return handleSentimentIngest(request, env);
+      return errorResponse("Method not allowed", 405);
+    }
+    if (path === "/api/sentiment/score") {
+      if (request.method === "GET") return handleSentimentScore(url, env);
       return errorResponse("Method not allowed", 405);
     }
     if (path === "/download/apk") {
@@ -3331,7 +3360,15 @@ export default {
   // a fast KV read instead of making live Helius/CoinGecko calls per page
   // view. Runs independently of the bot process — see the section comment
   // above SAGA_COLLECTION_MINT for why that matters.
-  async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+    if (event.cron === "0 * * * *") {
+      // Hourly: close the previous hour's sentiment epoch (Data Oracle Phase 1).
+      ctx.waitUntil(
+        closeSentimentEpoch(env, new Date(event.scheduledTime))
+          .catch(err => console.error("[scheduled] sentiment epoch close failed:", err)),
+      );
+      return;
+    }
     ctx.waitUntil(
       computeStatsSnapshot(env)
         .then(snapshot => env.FRAME_ALERTS.put(STATS_KV_KEY, JSON.stringify(snapshot)))

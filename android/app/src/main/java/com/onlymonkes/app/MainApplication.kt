@@ -25,6 +25,8 @@ class MainApplication : Application(), ReactApplication {
           override fun getPackages(): List<ReactPackage> {
             val packages = PackageList(this).packages
             packages.add(DirectNotifPackage())
+            packages.add(DeviceAttestPackage())
+            packages.add(SentimentWorkPackage())
             return packages
           }
 

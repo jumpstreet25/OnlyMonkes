@@ -20,6 +20,7 @@ import { GlassBottomSheet } from '@/components/GlassBottomSheet';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { fetchRugCheckSummary, type RugCheckSummary } from '@/lib/rugCheck';
 import { pickSolPair, solMarkFromPair, usdToSolScale } from '@/lib/solQuote';
+import { recordTokenView, recordEngagementEnd } from '@/lib/sentimentSignal';
 
 interface ChartModalProps {
   visible: boolean;
@@ -127,6 +128,14 @@ export function ChartModal({ visible, symbol, onClose }: ChartModalProps) {
       .finally(() => { if (alive) setLoading(false); });
 
     return () => { alive = false; };
+  }, [visible, symbol]);
+
+  // Data Oracle Phase 1 signal — only records while the user has opted in
+  // (sentimentSignal.ts's own gate); this component doesn't need to know that state.
+  useEffect(() => {
+    if (!visible || !symbol) return;
+    recordTokenView(symbol);
+    return () => { void recordEngagementEnd(symbol); };
   }, [visible, symbol]);
 
   const chartWidth = SCREEN_W - 32;

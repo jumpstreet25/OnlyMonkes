@@ -2,6 +2,7 @@ import '../global';
 import 'react-native-get-random-values';
 import '../src/lib/backgroundSync'; // registers the TaskManager task definition at module level
 import '../src/lib/headlessReaction'; // registers the Headless JS reaction task at module level — must run on every JS context creation, including headless ones with no UI
+import '../src/lib/sentimentUploadTask'; // registers the Data Oracle Phase 1 Headless JS upload task — same reasoning as headlessReaction above
 import { useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Stack } from 'expo-router';
@@ -21,6 +22,7 @@ import { useThemeColor } from '../src/lib/shopTheme';
 import { registerForPushNotifications } from '../src/lib/notifications';
 import { triggerProfileRebroadcast } from '../src/hooks/useXmtp';
 import { useAppStore, loadPersistedPrefs } from '../src/store/appStore';
+import { useEntitlementSync } from '../src/hooks/useEntitlementSync';
 import { getEquippedStyles, type ShopState } from '../src/lib/bananaShop';
 import { applyThemeFromShop } from '../src/lib/shopTheme';
 import { clearLegacyKeys, startNftOwnershipGuard } from '../src/lib/session';
@@ -46,6 +48,9 @@ const queryClient = new QueryClient();
 
 export default function RootLayout() {
   useFreeRasp(RASP_CONFIG, THREAT_ACTIONS);
+  // Data Oracle Phase 1 — re-verifies SagaMonkes ownership periodically (app-foreground,
+  // TTL'd) instead of only once at login. No-ops until a wallet is connected.
+  useEntitlementSync();
 
   // (v35 2026-05-09) Load Fredoka-Bold for Banana Grove carved text via
   // expo-font. RN <Text> automatically falls back to system emoji font

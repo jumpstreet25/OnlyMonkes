@@ -30,8 +30,17 @@ id = "ca7310b8736a44f4bb2fe8576e482ce7"
 binding = "TIP_ESCROW"
 id = "bc8a253f9eb44a7f9e4841fa96014c66"
 
+# Data Oracle Phase 1 (sentimentOracle.ts) — device registration, epoch aggregates, closed
+# epoch scores. NOT YET CREATED — run `wrangler kv:namespace create SENTIMENT_ORACLE` and
+# paste the returned id below before deploying, same as the TIP_ESCROW note above documents.
+[[kv_namespaces]]
+binding = "SENTIMENT_ORACLE"
+id = "c9d1b341ee9445868909ebbb57000758"
+
 # 2026-07-30: refreshes the public stats:latest KV cache every 4h so the
 # "Check Your Monke" growth page (GET /, /monke/:mint) never makes a live
 # Helius/CoinGecko call per page view. See scheduled() in src/index.ts.
+# "0 * * * *" (added for Data Oracle Phase 1): hourly close of the previous
+# sentiment epoch — see closeSentimentEpoch() in src/sentimentOracle.ts.
 [triggers]
-crons = ["0 */4 * * *"]
+crons = ["0 */4 * * *", "0 * * * *"]

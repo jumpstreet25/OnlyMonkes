@@ -45,5 +45,9 @@
          Not exported — only our own PendingIntents (DirectNotifModule). -->
     <receiver android:name=".ReactionActionReceiver" android:exported="false"/>
     <service android:name=".ReactionHeadlessTaskService"/>
+    <!-- Data Oracle Phase 1 — plain (non-foreground) headless service, triggered by
+         SentimentSyncWorker (WorkManager), same pattern as ReactionHeadlessTaskService
+         above. No foregroundServiceType / FOREGROUND_SERVICE permission needed. -->
+    <service android:name=".SentimentHeadlessTaskService"/>
   </application>
 </manifest>

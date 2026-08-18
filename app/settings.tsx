@@ -7,6 +7,7 @@ import { useAppStore } from "@/store/appStore";
 import { getActiveThreats, getThreatSeverity } from "@/lib/security";
 import { showGlassAlert } from "@/lib/glassAlert";
 import { WorldScreenShell, useWorldGlassCardStyle } from "@/components/worlds/WorldScreenShell";
+import { useSentimentOptIn } from "@/hooks/useSentimentOptIn";
 
 export default function SettingsScreen() {
   const {
@@ -16,10 +17,29 @@ export default function SettingsScreen() {
     dmNotificationsEnabled, setDmNotificationsEnabled,
     liveRoomNotificationsEnabled, setLiveRoomNotificationsEnabled,
     textScale, setTextScale,
+    sentimentOracleOptIn,
   } = useAppStore();
 
   const [clearing, setClearing] = useState(false);
+  const [oracleBusy, setOracleBusy] = useState(false);
   const cardStyle = useWorldGlassCardStyle();
+  const { optIn: optInOracle, optOut: optOutOracle } = useSentimentOptIn();
+
+  const handleOracleToggle = async (next: boolean) => {
+    setOracleBusy(true);
+    try {
+      if (next) {
+        const result = await optInOracle();
+        if (!result.ok) {
+          showGlassAlert("Couldn't enable Data Oracle", result.error ?? "Try again in a moment.");
+        }
+      } else {
+        await optOutOracle();
+      }
+    } finally {
+      setOracleBusy(false);
+    }
+  };
 
   const handleClearCache = async () => {
     showGlassAlert(
@@ -82,6 +102,27 @@ export default function SettingsScreen() {
           <Text style={styles.actionText}>{clearing ? "Clearing..." : "Clear Cache"}</Text>
           <Text style={styles.actionDesc}>Clears profile and geocode caches</Text>
         </Pressable>
+
+        {/* Data Oracle — Phase 1: attestation + collection only, no payouts yet */}
+        <Text style={[styles.sectionTitle, { marginTop: 24 }]}>Data Oracle</Text>
+        <View style={[styles.row, cardStyle]}>
+          <View style={{ flex: 1, marginRight: 12 }}>
+            <Text style={styles.rowLabel}>Contribute Sentiment Signal</Text>
+            <Text style={styles.actionDesc}>
+              Shares which tokens you view in-app and for how long — nothing else — toward a
+              market-sentiment signal for OnlyMonkes' trading agents. Batches are signed with
+              this device's hardware-backed key. No payouts exist yet. Turning this off stops
+              collection immediately.
+            </Text>
+          </View>
+          <Switch
+            value={sentimentOracleOptIn}
+            onValueChange={handleOracleToggle}
+            disabled={oracleBusy}
+            trackColor={{ false: THEME.border, true: "rgba(124,58,237,0.5)" }}
+            thumbColor={sentimentOracleOptIn ? "#7C3AED" : THEME.textMuted}
+          />
+        </View>
 
         {/* Device Security */}
         <Text style={[styles.sectionTitle, { marginTop: 24 }]}>Device Security</Text>
