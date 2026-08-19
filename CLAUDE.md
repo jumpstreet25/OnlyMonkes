@@ -3,7 +3,7 @@
 This file stores all rules and constraints so **Claude and Grok** never make the same mistakes twice.
 Rules are added over time as issues arise.
 
-**Bot host (VPS, no GPU):** keep `Monke_Eliza/VPS.md` in lockstep with this file. Any change to where the bot runs, the LLM chain, Ollama, or Helius webhooks must update `VPS.md` + `Monke_Eliza/README.md` + this Architecture section **in the same commit**. After push: `git pull` on `monke@157.173.192.39:/home/monke/Monke_Eliza`.
+**Bot host (VPS, no GPU):** keep `Monke_Eliza/VPS.md` and `Monke_Eliza/CLAUDE.md` in lockstep with this file. The bot repo has its own `CLAUDE.md` — AIs working in `Monke_Eliza` will not see this app file. Any change to where the bot runs, the LLM chain, Ollama, or Helius webhooks must update `VPS.md` + both `CLAUDE.md` files + both READMEs **in the same commit**. After push: `git pull` on `monke@157.173.192.39:/home/monke/Monke_Eliza`.
 
 ---
 
