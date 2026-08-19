@@ -263,7 +263,11 @@ fi
 SECURITY_REPORT="/tmp/security-report.md"
 SECURITY_AGE=999
 if [ -f "$SECURITY_REPORT" ]; then
-  SECURITY_AGE=$(( ($(date +%s) - $(stat -f %m "$SECURITY_REPORT" 2>/dev/null || echo "0")) / 3600 ))
+  # BSD `stat -f %m` is macOS. GNU `stat -f` means --file-system and prints
+  # `File: "path"`, which `set -u` then treats as unbound `$File` (VPS failure
+  # since 2026-08-16). Prefer GNU -c %Y, fall back to BSD -f %m.
+  _mtime=$(stat -c %Y "$SECURITY_REPORT" 2>/dev/null || stat -f %m "$SECURITY_REPORT" 2>/dev/null || echo 0)
+  SECURITY_AGE=$(( ($(date +%s) - _mtime) / 3600 ))
 fi
 
 # Run security scan if report is older than 24h or doesn't exist
