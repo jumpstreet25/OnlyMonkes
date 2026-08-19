@@ -18,14 +18,45 @@ export interface GiphyItem {
   displayUrl: string;
 }
 
+function firstUrl(...candidates: unknown[]): string {
+  for (const c of candidates) {
+    if (typeof c === "string" && c.startsWith("http")) return c;
+  }
+  return "";
+}
+
 function parseItems(data: any[]): GiphyItem[] {
   return data
-    .map((gif: any) => ({
-      id: gif.id as string,
-      previewUrl: (gif.images?.fixed_width_still?.url ?? "") as string,
-      displayUrl: (gif.images?.downsized?.url ?? "") as string,
-    }))
-    .filter((g) => g.previewUrl && g.displayUrl);
+    .map((gif: any) => {
+      const imgs = gif?.images ?? {};
+      return {
+        id: gif.id as string,
+        previewUrl: firstUrl(
+          imgs.fixed_width_still?.url,
+          imgs.fixed_width_small_still?.url,
+          imgs.original_still?.url,
+          imgs.preview_gif?.url,
+        ),
+        displayUrl: firstUrl(
+          imgs.downsized?.url,
+          imgs.fixed_width?.url,
+          imgs.original?.url,
+          imgs.preview_gif?.url,
+        ),
+      };
+    })
+    .filter((g) => g.id && g.previewUrl && g.displayUrl);
+}
+
+const SAGA_GIPHY_USER = "sagamonkes";
+
+function giphyUrl(kind: "gifs" | "stickers", path: "search" | "trending", extra: Record<string, string>): string {
+  const params = new URLSearchParams({
+    api_key: API_KEY,
+    rating: "g",
+    ...extra,
+  });
+  return `${BASE_URL}/${kind}/${path}?${params.toString()}`;
 }
 
 const GIPHY_TIMEOUT_MS = 8_000;
@@ -80,22 +111,35 @@ async function fetchGiphy(label: string, url: string): Promise<GiphyItem[]> {
 }
 
 export async function searchGifs(query: string, limit = 20): Promise<GiphyItem[]> {
-  return fetchGiphy(
-    `searchGifs(${query})`,
-    `${BASE_URL}/gifs/search?api_key=${API_KEY}&q=${encodeURIComponent(query)}&limit=${limit}&rating=g`,
-  );
+  const q = query.trim() || "monke";
+  const extra: Record<string, string> = { q, limit: String(limit) };
+  if (/saga\s*monke/i.test(q) || q.toLowerCase() === "sagamonkes") {
+    extra.username = SAGA_GIPHY_USER;
+    extra.q = extra.q.replace(/saga\s*monkes?/i, "monke").trim() || "monke";
+  }
+  return fetchGiphy(`searchGifs(${query})`, giphyUrl("gifs", "search", extra));
 }
 
 export async function trendingGifs(limit = 20): Promise<GiphyItem[]> {
-  return fetchGiphy(
-    `trendingGifs`,
-    `${BASE_URL}/gifs/trending?api_key=${API_KEY}&limit=${limit}&rating=g`,
-  );
+  return fetchGiphy("trendingGifs", giphyUrl("gifs", "trending", { limit: String(limit) }));
 }
 
 export async function searchStickers(query: string, limit = 18): Promise<GiphyItem[]> {
-  return fetchGiphy(
-    `searchStickers(${query})`,
-    `${BASE_URL}/stickers/search?api_key=${API_KEY}&q=${encodeURIComponent(query)}&limit=${limit}&rating=g`,
-  );
+  const q = query.trim() || "monke";
+  const extra: Record<string, string> = { q, limit: String(limit) };
+  // Official pack lives on Giphy user `sagamonkes`. A plain q=SagaMonkes
+  // search mixed in unrelated results and returned empty when the channel
+  // pack was the only thing the UI wanted.
+  if (/saga\s*monke/i.test(q) || q.toLowerCase() === "sagamonkes") {
+    extra.username = SAGA_GIPHY_USER;
+    extra.q = "monke";
+  }
+  let items = await fetchGiphy(`searchStickers(${query})`, giphyUrl("stickers", "search", extra));
+  if (items.length === 0 && extra.username) {
+    items = await fetchGiphy(
+      `searchStickers(${query})-nouser`,
+      giphyUrl("stickers", "search", { q, limit: String(limit) }),
+    );
+  }
+  return items;
 }

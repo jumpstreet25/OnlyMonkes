@@ -1268,12 +1268,10 @@ async function handleClaim(url: URL, request: Request, env: Env): Promise<Respon
 //
 // Architecture:
 //   Helius webhook delivers parsed tx batches → POST /helius-webhook (this).
-//   We write each tx to FRAME_ALERTS KV under a lex-sortable key:
-//
-//     helius:<13-digit-padded-epoch-ms>:<signature>
-//
-//   With TTL 10 min. Bot polls GET /helius-events?since=<epoch-ms> to drain
-//   the queue (cursor-style — bot remembers the highest ts it's seen).
+//   We append each tx to a single FRAME_ALERTS key `helius:queue` (ring of
+//   200, TTL 10 min). Bot polls GET /helius-events?since=<epoch-ms> to drain.
+//   A per-event-key + KV list() scan blew Cloudflare's daily list cap and
+//   surfaced as error 1101 — do not go back to list().
 //
 // Auth:
 //   Helius → us: validate `Authorization` header matches HELIUS_WEBHOOK_SECRET.
@@ -1283,12 +1281,10 @@ async function handleClaim(url: URL, request: Request, env: Env): Promise<Respon
 // a new binding. The `helius:` key prefix isolates this traffic from frames.
 
 const HELIUS_EVENT_TTL = 10 * 60; // 10 minutes
-const HELIUS_KEY_PREFIX = "helius:";
+const HELIUS_QUEUE_KEY = "helius:queue";
+const HELIUS_QUEUE_CAP = 200;
 
-function padTs(ms: number): string {
-  // 13-digit epoch-ms — gives lex-sortable keys up through Sat Nov 20 2286.
-  return ms.toString().padStart(13, "0");
-}
+type QueuedHeliusEvent = { ts: number; event: Record<string, unknown> };
 
 async function handleHeliusWebhook(request: Request, env: Env): Promise<Response> {
   // Validate Helius's outbound auth header. If HELIUS_WEBHOOK_SECRET isn't
@@ -1302,6 +1298,9 @@ async function handleHeliusWebhook(request: Request, env: Env): Promise<Response
   if (auth !== secret) {
     return errorResponse("Unauthorized", 401);
   }
+  if (!env.FRAME_ALERTS) {
+    return errorResponse("FRAME_ALERTS unbound", 503);
+  }
 
   let body: unknown;
   try { body = await request.json(); } catch {
@@ -1313,18 +1312,28 @@ async function handleHeliusWebhook(request: Request, env: Env): Promise<Response
     ? body as Array<Record<string, unknown>>
     : [body as Record<string, unknown>];
 
+  let queue: QueuedHeliusEvent[] = [];
+  try {
+    const raw = await env.FRAME_ALERTS.get(HELIUS_QUEUE_KEY);
+    if (raw) queue = JSON.parse(raw) as QueuedHeliusEvent[];
+    if (!Array.isArray(queue)) queue = [];
+  } catch {
+    queue = [];
+  }
+
   let written = 0;
   for (const event of events) {
     const sig = typeof event.signature === "string" ? event.signature : null;
     if (!sig) continue;
-    // Use the webhook's `timestamp` field when present (seconds), else now.
     const tsSec = typeof event.timestamp === "number" ? event.timestamp : Math.floor(Date.now() / 1000);
-    const tsMs = tsSec * 1000;
-    const key = `${HELIUS_KEY_PREFIX}${padTs(tsMs)}:${sig}`;
-    try {
-      await env.FRAME_ALERTS.put(key, JSON.stringify(event), { expirationTtl: HELIUS_EVENT_TTL });
-      written++;
-    } catch { /* per-event write failure — skip but don't fail the whole batch */ }
+    queue.push({ ts: tsSec * 1000, event });
+    written++;
+  }
+  if (queue.length > HELIUS_QUEUE_CAP) queue = queue.slice(-HELIUS_QUEUE_CAP);
+  try {
+    await env.FRAME_ALERTS.put(HELIUS_QUEUE_KEY, JSON.stringify(queue), { expirationTtl: HELIUS_EVENT_TTL });
+  } catch (err) {
+    return errorResponse(`KV put failed: ${(err as Error).message}`, 500);
   }
   return jsonResponse({ ok: true, written, received: events.length });
 }
@@ -1333,47 +1342,37 @@ async function handleHeliusEvents(url: URL, request: Request, env: Env): Promise
   if (!checkBotAuth(request, env)) {
     return errorResponse("Unauthorized", 401);
   }
-  const sinceParam = url.searchParams.get("since") ?? "0";
-  const since = parseInt(sinceParam, 10) || 0;
-  const limitParam = url.searchParams.get("limit") ?? "100";
-  const limit = Math.max(1, Math.min(parseInt(limitParam, 10) || 100, 500));
-
-  // KV list returns keys sorted lexically — same as chronological because
-  // we 0-padded the epoch-ms. Use a start prefix that includes the `since`
-  // cursor; KV doesn't natively support startKey, so we list with the
-  // base prefix and filter.
-  let cursor: string | undefined = undefined;
-  const collected: Array<{ key: string; ts: number; event: unknown }> = [];
-  // Cap list iterations so a runaway scan can't blow the request time budget.
-  for (let i = 0; i < 5; i++) {
-    const listOpts: KVListOptions = { prefix: HELIUS_KEY_PREFIX, limit: 1000 };
-    if (cursor) listOpts.cursor = cursor;
-    const result = await env.FRAME_ALERTS.list(listOpts);
-    for (const k of result.keys) {
-      // key shape: helius:<13-digit ts>:<sig>
-      const tsStr = k.name.slice(HELIUS_KEY_PREFIX.length, HELIUS_KEY_PREFIX.length + 13);
-      const ts = parseInt(tsStr, 10);
-      if (!Number.isFinite(ts) || ts <= since) continue;
-      const raw = await env.FRAME_ALERTS.get(k.name);
-      if (!raw) continue;
-      try {
-        collected.push({ key: k.name, ts, event: JSON.parse(raw) });
-      } catch { /* malformed entry — skip */ }
-      if (collected.length >= limit) break;
-    }
-    if (collected.length >= limit) break;
-    if (result.list_complete) break;
-    cursor = result.cursor;
-    if (!cursor) break;
+  if (!env.FRAME_ALERTS) {
+    return errorResponse("FRAME_ALERTS unbound", 503);
   }
-  // Sort ascending by ts so the bot processes in chronological order.
-  collected.sort((a, b) => a.ts - b.ts);
-  const nextCursor = collected.length > 0 ? collected[collected.length - 1].ts : since;
-  return jsonResponse({
-    events: collected.map(c => c.event),
-    count: collected.length,
-    nextCursor,
-  });
+  try {
+    const sinceParam = url.searchParams.get("since") ?? "0";
+    const since = parseInt(sinceParam, 10) || 0;
+    const limitParam = url.searchParams.get("limit") ?? "100";
+    const limit = Math.max(1, Math.min(parseInt(limitParam, 10) || 100, 500));
+
+    // Single-key ring buffer — Workers KV `list()` has a daily op cap that
+    // the previous per-event-key scan blew every 10s (CF 1101 / "list()
+    // limit exceeded for the day"). GET of one key is the allowed hot path.
+    const raw = await env.FRAME_ALERTS.get(HELIUS_QUEUE_KEY);
+    let queue: QueuedHeliusEvent[] = [];
+    if (raw) {
+      try { queue = JSON.parse(raw) as QueuedHeliusEvent[]; } catch { queue = []; }
+    }
+    if (!Array.isArray(queue)) queue = [];
+    const collected = queue
+      .filter((row) => row && typeof row.ts === "number" && row.ts > since && row.event)
+      .sort((a, b) => a.ts - b.ts)
+      .slice(0, limit);
+    const nextCursor = collected.length > 0 ? collected[collected.length - 1].ts : since;
+    return jsonResponse({
+      events: collected.map((c) => c.event),
+      count: collected.length,
+      nextCursor,
+    });
+  } catch (err) {
+    return errorResponse(`helius-events: ${(err as Error).message ?? "unknown"}`, 500);
+  }
 }
 
 // ─── Farcaster Frames — Trade Alert Frames ──────────────────────────────────
