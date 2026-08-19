@@ -1982,11 +1982,44 @@ async function lookupHolderIndex(
   }
 }
 
+async function searchOwnedMonke(url: string, wallet: string, timeoutMs: number): Promise<MonkeAsset | null> {
+  const res = await fetchWithTimeout(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: "search-owned-monke",
+      method: "searchAssets",
+      params: {
+        ownerAddress: wallet,
+        grouping: ["collection", SAGA_COLLECTION_MINT],
+        page: 1,
+        limit: 10,
+      },
+    }),
+  }, timeoutMs);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json() as any;
+  if (data?.error) throw new Error(`RPC ${String(data.error.message ?? data.error).slice(0, 120)}`);
+  const items = data?.result?.items ?? [];
+  return pickOwnedMonke(items);
+}
+
 export async function fetchOwnedMonke(
   wallet: string,
   env: Env,
 ): Promise<{ monke: MonkeAsset | null; uncertain: boolean; reasons: string[] }> {
   const reasons: string[] = [];
+
+  // searchAssets(owner + collection) is one RPC vs paging getAssetsByOwner
+  // (whales with 1000+ assets used to miss their Monke past page 5).
+  try {
+    const monke = await searchOwnedMonke(verifyRpcUrl(env), wallet, 12_000);
+    if (monke) return { monke, uncertain: false, reasons };
+    reasons.push("helius-search:0");
+  } catch (err) {
+    reasons.push(`helius-search:${(err as Error).message}`.slice(0, 80));
+  }
 
   try {
     const monke = await dasLookupOwnedMonke(verifyRpcUrl(env), wallet, 12_000, "helius");
