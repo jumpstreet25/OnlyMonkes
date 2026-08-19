@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -82,11 +82,22 @@ export function ChatHeader({
   // Keep profileVersion in the dependency path so React treats it as used
   // (getLocatedUserCount re-reads the cache after each notify).
   void profileVersion;
+  // @sbaiahmed1/react-native-blur's native view snapshots its target
+  // synchronously on the very first Fabric layout commit — on cold start
+  // that fires before the view tree is stable and crashes with
+  // IndexOutOfBoundsException in eightbitlab.com.blurview.PreDrawBlurController
+  // (upstream-documented: Dimezis/BlurView#176, "crashes on first launch,
+  // fine on restart"). Skipping the BlurView for one render defers its
+  // mount past that unstable first commit.
+  const [blurReady, setBlurReady] = useState(false);
+  useEffect(() => { setBlurReady(true); }, []);
   return (
     <View style={[styles.header, { borderBottomColor: themeBorder, paddingTop: insets.top }]}>
       {/* 2026-07-24: always-on glass — blurs the message list scrolling
           behind the header, world-equipped or not. */}
-      <BlurView {...getBlurProps()} style={[StyleSheet.absoluteFill, { pointerEvents: "none" }]} />
+      {blurReady && (
+        <BlurView {...getBlurProps()} style={[StyleSheet.absoluteFill, { pointerEvents: "none" }]} />
+      )}
       <View style={[StyleSheet.absoluteFill, { backgroundColor: headerBg }]} pointerEvents="none" />
       {/* Left: Globe with monke count */}
       <View style={styles.headerLeft}>

@@ -401,6 +401,18 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
   const [isClosing, setIsClosing] = useState(false);
   const shouldRender = visible || isClosing;
   const fadeAnim = useRef(new Animated.Value(visible ? 1 : 0)).current;
+  // @sbaiahmed1/react-native-blur's native view snapshots its target
+  // synchronously on the very first Fabric layout commit — since this
+  // drawer fully unmounts on close (shouldRender above), every open is a
+  // fresh first-mount for its BlurViews, and the unstable first commit can
+  // crash with IndexOutOfBoundsException in
+  // eightbitlab.com.blurview.PreDrawBlurController (upstream-documented:
+  // Dimezis/BlurView#176; same fix as ChatHeader/ChatInput). Skipping the
+  // BlurViews for one render defers their mount past that unstable commit.
+  const [blurReady, setBlurReady] = useState(false);
+  useEffect(() => {
+    if (visible) setBlurReady(true);
+  }, [visible]);
 
   useEffect(() => {
     if (visible) {
@@ -432,7 +444,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
       pointerEvents={visible ? "auto" : "none"}
     >
       <Pressable style={StyleSheet.absoluteFill} onPress={onClose}>
-        <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />
+        {blurReady && <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />}
         <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.55)' }]} />
         <View style={styles.overlay} />
       </Pressable>
@@ -454,7 +466,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
           </View>
         ) : (
           <>
-            <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />
+            {blurReady && <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />}
             <LinearGradient
               colors={GLASS_GRADIENT_COLORS}
               start={{ x: 0.5, y: 0 }}

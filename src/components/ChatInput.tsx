@@ -8,7 +8,7 @@
  *  - Send button (gradient, disabled when empty)
  */
 
-import React, { memo, useRef, useCallback, useEffect, useMemo } from "react";
+import React, { memo, useRef, useCallback, useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -212,6 +212,15 @@ export const ChatInput = memo(function ChatInput({
   const bounceAnim = useRef(new Animated.Value(0)).current;
   const hasTypers = !!(typingUsers && typingUsers.length > 0);
   const myInboxId = useAppStore(s => s.myInboxId);
+  // @sbaiahmed1/react-native-blur's native view snapshots its target
+  // synchronously on the very first Fabric layout commit — on cold start
+  // that fires before the view tree is stable and crashes with
+  // IndexOutOfBoundsException in eightbitlab.com.blurview.PreDrawBlurController
+  // (upstream-documented: Dimezis/BlurView#176, "crashes on first launch,
+  // fine on restart"; same fix as ChatHeader). Skipping the BlurView for one
+  // render defers its mount past that unstable first commit.
+  const [blurReady, setBlurReady] = useState(false);
+  useEffect(() => { setBlurReady(true); }, []);
 
   // Theme overrides for Banana Shop Tier 4 themes
   const themeBorder = useThemeColor('border');
@@ -310,7 +319,9 @@ export const ChatInput = memo(function ChatInput({
           as ChatHeader. Not in an RN <Modal>, so safe from the cross-window
           blur gap documented in glassTheme.ts. Blurs the message list
           scrolling behind the bottom toolbar, world-equipped or not. */}
-      <BlurView {...getBlurProps()} style={[StyleSheet.absoluteFill, { pointerEvents: "none" }]} />
+      {blurReady && (
+        <BlurView {...getBlurProps()} style={[StyleSheet.absoluteFill, { pointerEvents: "none" }]} />
+      )}
       <View style={[StyleSheet.absoluteFill, { backgroundColor: inputBarBg }]} pointerEvents="none" />
       {/* Slash command suggestions */}
       {slashSuggestions.length > 0 && (

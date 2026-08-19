@@ -69,6 +69,14 @@ interface BotChannelScreenProps {
 
 export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
   const insets = useSafeAreaInsets();
+  // @sbaiahmed1/react-native-blur's native view snapshots its target
+  // synchronously on the very first Fabric layout commit — that unstable
+  // first commit can crash with IndexOutOfBoundsException in
+  // eightbitlab.com.blurview.PreDrawBlurController (upstream-documented:
+  // Dimezis/BlurView#176; same fix as ChatHeader/ChatInput/MenuDrawer).
+  // Skipping the BlurView for one render defers its mount past that.
+  const [blurReady, setBlurReady] = useState(false);
+  useEffect(() => { setBlurReady(true); }, []);
   const { myInboxId, botChannelIds, mutedBotChannels, toggleBotChannelMute, username } = useAppStore();
   const groupId = botChannelIds[channelId];
   const isMuted = mutedBotChannels[channelId];
@@ -292,7 +300,7 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
       <View style={[styles.header, { borderBottomColor: themeBorder, paddingTop: insets.top }]}>
         {/* Same MonkeGlass as MainChat bubbles + light chrome bar tint */}
         {worldId ? <WorldGlassFill worldId={worldId} /> : (
-          <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />
+          blurReady && <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />
         )}
         <View style={[StyleSheet.absoluteFill, { backgroundColor: chromeBg }]} pointerEvents="none" />
         <View style={styles.headerRow1}>
