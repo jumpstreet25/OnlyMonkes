@@ -1,7 +1,9 @@
-# OnlyMonkes — Rules for Claude
+# OnlyMonkes — Rules for Claude and Grok
 
-This file stores all rules and constraints so Claude never makes the same mistakes twice.
+This file stores all rules and constraints so **Claude and Grok** never make the same mistakes twice.
 Rules are added over time as issues arise.
+
+**Bot host (VPS, no GPU):** keep `Monke_Eliza/VPS.md` in lockstep with this file. Any change to where the bot runs, the LLM chain, Ollama, or Helius webhooks must update `VPS.md` + `Monke_Eliza/README.md` + this Architecture section **in the same commit**. After push: `git pull` on `monke@157.173.192.39:/home/monke/Monke_Eliza`.
 
 ---
 
@@ -49,6 +51,7 @@ Rules are added over time as issues arise.
 - **Chat LLM chain**: Groq direct (`openai/gpt-oss-120b`) → Gemini 3.6 Flash → OpenRouter (Llama 3.3 70B aggregator) → Ollama local (DeepSeek R1 1.5B + Qwen 3 1.7B). Cerebras is opt-in (`CEREBRAS_ENABLED=true`) — the account is paid-quota (HTTP 402). Model IDs live in `src/lib/llm/models.ts`. Anthropic SDK has been removed from the chain — circuit breaker (2 failures = 5min cooldown per provider) defined in `src/lib/llm/fallbackChain.ts`. Groq retired `llama-3.3-70b-versatile` / `llama-3.1-8b-instant` on 2026-08-16.
 - **Trade confidence**: Multi-perspective analysis (Bull/Bear/Risk) via Groq + Gemini (Cerebras only if `CEREBRAS_ENABLED=true`) + Ollama in parallel — replaced OpenClaw gate in engine.ts. Synthesis: `bull*0.4 + (100-bear)*0.3 + risk*0.3`.
 - **Production bot is VPS-only**: `systemd` unit `monketrader.service` on `monke@157.173.192.39` (`/home/monke/Monke_Eliza/agents/monke-trader`). Logs: `/home/monke/monke-bot.log`. **Never start** `com.onlymonkes.monketrader` on the Mac — a second bun process locks the XMTP DB. Mac LaunchAgent plist is leftover, not production.
+- **VPS has no GPU** (KVM AMD EPYC). Ollama there is CPU-only (`deepseek-r1:1.5b`, `qwen3:1.7b`) and last-resort. Do not pull GPU models. Do not route chat through the Mac Ollama tunnel. Full host notes: `Monke_Eliza/VPS.md`.
 - **Solana Agent Kit** (`src/lib/sak/`): DM commands `/limit`, `/stake`, `/unstake` via `solana-agent-kit@2.0.10`. Borrow-and-return keypair pattern via `withSAK()`. Risk-gated through existing `riskManager.ts`.
 - **Bot persona**: "Monke" — ball-busting, banana-obsessed, confident. Defined in `~/.hermes/SOUL.md` + `buildSystemPrompt()`.
 - Data files (`.xmtp_bot_key`, `.xmtp_welcomed.json`, `.xmtp_stale_tokens.json`) live in `~/Monke_Eliza/agents/monke-trader/`, NOT in `~/solana-alert-bot/`.
