@@ -275,7 +275,30 @@ export function useDm(peerInboxId: string) {
                   entryBaseAmount: parsed.entryBaseAmount,
                   exitBaseAmount: parsed.exitBaseAmount,
                   pnlBase: parsed.pnlBase,
+                  copySourceLabel: parsed.copySourceLabel,
                 });
+              } catch { /* swallow */ }
+              return;
+            }
+
+            // COPY_TRADE_STATUS: ground truth for copy-trade slot bindings,
+            // sent by the bot after every /copy enable|disable and after a
+            // weekly rebind. Reconciles the app's optimistic toggle state.
+            if (innerContent.startsWith('COPY_TRADE_STATUS:')) {
+              try {
+                const { BOT_INBOX_IDS } = await import('@/lib/constants');
+                const sender = raw.senderInboxId ?? '';
+                if (!BOT_INBOX_IDS.includes(sender)) return;
+                const { parseCopyTradeStatus } = await import('@/lib/xmtp');
+                const parsed = parseCopyTradeStatus(innerContent);
+                if (!parsed) return;
+                for (const s of parsed.slots) {
+                  useAppStore.getState().setCopyTradeSlot(s.slot, {
+                    enabled: s.enabled,
+                    perTradeSOL: s.perTradeSOL,
+                    boundAt: Date.now(),
+                  });
+                }
               } catch { /* swallow */ }
               return;
             }
@@ -306,6 +329,7 @@ export function useDm(peerInboxId: string) {
                   txHash: parsed.txHash,
                   openedAt: parsed.ts,
                   baseSymbol: parsed.baseSymbol,
+                  copySourceLabel: parsed.copySourceLabel,
                 });
               } catch { /* swallow */ }
               return;

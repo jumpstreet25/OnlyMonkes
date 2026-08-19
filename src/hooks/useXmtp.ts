@@ -2034,6 +2034,7 @@ export function useXmtp() {
                   entryBaseAmount: parsed.entryBaseAmount,
                   exitBaseAmount: parsed.exitBaseAmount,
                   pnlBase: parsed.pnlBase,
+                  copySourceLabel: parsed.copySourceLabel,
                 });
                 return;
               }
@@ -2053,6 +2054,25 @@ export function useXmtp() {
                 const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
                 await AsyncStorage.setItem('automonke_enrolled', parsed.enrolled ? '1' : '0').catch(() => {});
                 await AsyncStorage.setItem('autonomonke_limit_orders_v1', parsed.limitOrdersEnabled ? '1' : '0').catch(() => {});
+                return;
+              }
+
+              // COPY_TRADE_STATUS: ground truth for copy-trade slot bindings,
+              // sent by the bot after every /copy enable|disable and after a
+              // weekly rebind. Reconciles the app's optimistic toggle state.
+              if (inner.startsWith('COPY_TRADE_STATUS:')) {
+                const { BOT_INBOX_IDS } = await import('@/lib/constants');
+                if (!BOT_INBOX_IDS.includes(senderInboxId)) return;
+                const { parseCopyTradeStatus } = await import('@/lib/xmtp');
+                const parsed = parseCopyTradeStatus(inner);
+                if (!parsed) return;
+                for (const s of parsed.slots) {
+                  useAppStore.getState().setCopyTradeSlot(s.slot, {
+                    enabled: s.enabled,
+                    perTradeSOL: s.perTradeSOL,
+                    boundAt: Date.now(),
+                  });
+                }
                 return;
               }
 
@@ -2141,6 +2161,7 @@ export function useXmtp() {
                   txHash: parsed.txHash,
                   openedAt: parsed.ts,
                   baseSymbol: parsed.baseSymbol,
+                  copySourceLabel: parsed.copySourceLabel,
                 });
                 return;
               }
@@ -2172,6 +2193,7 @@ export function useXmtp() {
                   displayBody.startsWith("TRADE_CLOSED:") ||
                   displayBody.startsWith("TRADE_OPENED:") ||
                   displayBody.startsWith("AUTOMONKE_STATUS:") ||
+                  displayBody.startsWith("COPY_TRADE_STATUS:") ||
                   displayBody.startsWith("IMAGE_CAPTION_")
                 ) {
                   return;

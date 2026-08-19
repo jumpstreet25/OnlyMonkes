@@ -59,7 +59,9 @@ export function OpenTradeCardMessage({ trade }: OpenTradeCardMessageProps) {
     <View style={styles.row}>
       <View style={[styles.bubble, { borderColor: accent + '55' }]}>
         <View style={styles.header}>
-          <Text style={[styles.label, { color: accent }]}>🤖 AUTONOMONKE OPEN</Text>
+          <Text style={[styles.label, { color: accent }]}>
+            {trade.copySourceLabel ? `🐒 ${trade.copySourceLabel.toUpperCase()}` : '🤖 AUTONOMONKE OPEN'}
+          </Text>
           <Text style={styles.live}>● LIVE</Text>
         </View>
         <View style={styles.middle}>

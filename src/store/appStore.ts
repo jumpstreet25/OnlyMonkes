@@ -41,6 +41,7 @@ const AK_MUTED_ALERT_SOURCES = 'om_muted_alert_sources';
 const AK_NOTIF_PREFS = 'om_notif_prefs';
 const SK_MWA_TOKEN = 'om_mwa_auth_token';
 const AK_SENTIMENT_OPT_IN = 'om_sentiment_oracle_opt_in';
+const AK_COPY_TRADE_SLOTS = 'om_copy_trade_slots';
 
 // Note (2026-05-01): the previous _botChannelCleared session-flag was removed
 // — it was over-aggressive. The flag was set true on user clear and only
@@ -188,6 +189,10 @@ interface AppSettingsState {
    *  useSentimentOptIn.ts. No payout logic exists yet (Phase 4, pending legal review). */
   sentimentOracleOptIn: boolean;
   sentimentOracleOptInAt: number | null;
+  /** Slot-keyed copy-trade follow state (Monke Trader #1/#3), reconciled by the
+   *  bot's COPY_TRADE_STATUS: DM. Slot number only — the app never learns the
+   *  followed wallet address, per the bot's privacy invariant. */
+  copyTradeSlots: Partial<Record<1 | 3, { enabled: boolean; perTradeSOL: number; boundAt: number | null }>>;
 }
 
 interface AppSettingsActions {
@@ -223,6 +228,7 @@ interface AppSettingsActions {
   clearDmUnread: (peerInboxId: string) => void;
   setAutomonkeStatus: (status: { enrolled: boolean; active: boolean; limitOrdersEnabled: boolean }) => void;
   setSentimentOracleOptIn: (optIn: boolean) => void;
+  setCopyTradeSlot: (slot: 1 | 3, patch: Partial<{ enabled: boolean; perTradeSOL: number; boundAt: number | null }>) => void;
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -329,6 +335,7 @@ const initialState: AppState = {
   automonkeStatus: null,
   sentimentOracleOptIn: false,
   sentimentOracleOptInAt: null,
+  copyTradeSlots: {},
 
   // Slice 4: Live Features
   activeLiveRoom: null,
@@ -515,6 +522,14 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
       optInAt: sentimentOracleOptIn ? Date.now() : null,
     })).catch(() => {});
   },
+  setCopyTradeSlot: (slot, patch) => {
+    const next = {
+      ...get().copyTradeSlots,
+      [slot]: { enabled: false, perTradeSOL: 0, boundAt: null, ...get().copyTradeSlots[slot], ...patch },
+    };
+    set({ copyTradeSlots: next });
+    AsyncStorage.setItem(AK_COPY_TRADE_SLOTS, JSON.stringify(next)).catch(() => {});
+  },
 
   // ── Slice 4: Live Features actions ─────────────────────────────────────────
 
@@ -582,13 +597,14 @@ function _persistNotifPrefs() {
  */
 export async function loadPersistedPrefs(): Promise<void> {
   try {
-    const [sportsRaw, channelsRaw, notifRaw, sourcesRaw, hiddenBetsRaw, sentimentOptInRaw] = await Promise.all([
+    const [sportsRaw, channelsRaw, notifRaw, sourcesRaw, hiddenBetsRaw, sentimentOptInRaw, copyTradeSlotsRaw] = await Promise.all([
       AsyncStorage.getItem(AK_MUTED_SPORTS),
       AsyncStorage.getItem(AK_MUTED_CHANNELS),
       AsyncStorage.getItem(AK_NOTIF_PREFS),
       AsyncStorage.getItem(AK_MUTED_ALERT_SOURCES),
       AsyncStorage.getItem(AK_HIDDEN_BANANA_BETS),
       AsyncStorage.getItem(AK_SENTIMENT_OPT_IN),
+      AsyncStorage.getItem(AK_COPY_TRADE_SLOTS),
     ]);
     const state: Record<string, unknown> = {};
     if (sportsRaw) {
@@ -623,6 +639,10 @@ export async function loadPersistedPrefs(): Promise<void> {
         state.sentimentOracleOptIn = parsed.optIn;
         state.sentimentOracleOptInAt = typeof parsed.optInAt === 'number' ? parsed.optInAt : null;
       }
+    }
+    if (copyTradeSlotsRaw) {
+      const parsed = JSON.parse(copyTradeSlotsRaw);
+      if (parsed && typeof parsed === 'object') state.copyTradeSlots = parsed;
     }
     // Load text scale
     const scaleRaw = await AsyncStorage.getItem("om_text_scale");

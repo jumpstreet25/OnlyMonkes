@@ -31,7 +31,9 @@ export function PnLCardMessage({ trade, onPress }: PnLCardMessageProps) {
       <View style={[styles.bubble, { borderColor: accent + '55' }]}>
         <View style={styles.header}>
           <Text style={[styles.label, { color: accent }]}>
-            {trade.source === 'autonomonke' ? '🤖 AUTONOMONKE CLOSED' : '🍌 TRADE CLOSED'}
+            {trade.copySourceLabel
+              ? `🐒 ${trade.copySourceLabel.toUpperCase()}`
+              : trade.source === 'autonomonke' ? '🤖 AUTONOMONKE CLOSED' : '🍌 TRADE CLOSED'}
           </Text>
         </View>
         <View style={styles.middle}>

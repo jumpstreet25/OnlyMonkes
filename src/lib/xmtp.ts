@@ -373,7 +373,7 @@ function decodeStringMessage(raw: any, rawContent: string, myInboxId: string): C
     "BANANA_GRANT:", "BANANA_BET_OPEN:", "BANANA_BET_SETTLED:", "HEALTH:", "DELETE:",
     "IMAGE_CAPTION_REQUEST:", "IMAGE_CAPTION_RESPONSE:", "POLL_OPEN:", "POLL_RESULT:",
     "STREAK_CAPTION_REQUEST:", "STREAK_CAPTION_RESPONSE:", "JOIN_REQUEST:",
-    "BADGE_GRANT:",
+    "BADGE_GRANT:", "COPY_TRADE_STATUS:",
   ];
   for (const p of STRUCTURED_PREFIXES) {
     // LOCATION_SYNC_REQUEST is a bare token (optionally with trailing :payload)
@@ -722,6 +722,9 @@ export interface ParsedTradeOpened {
   hotWalletAddress?: string;
   baseMint?: string;
   baseSymbol?: 'SOL' | 'USDC' | 'SKR';
+  /** Set when this position was opened by copy-trade mirroring, e.g.
+   *  "Copied from Monke Trader #3". Takes header priority over autonomonke/manual. */
+  copySourceLabel?: string;
 }
 
 export interface ParsedTradeClosed {
@@ -749,6 +752,9 @@ export interface ParsedTradeClosed {
   entryBaseAmount?: number;
   exitBaseAmount?: number;
   pnlBase?: number;
+  /** Set when this trade was closed by copy-trade mirroring, e.g.
+   *  "Copied from Monke Trader #3". Takes header priority over autonomonke/manual. */
+  copySourceLabel?: string;
 }
 
 export function parseTradeClosed(raw: string): ParsedTradeClosed | null {
@@ -805,6 +811,7 @@ export function parseTradeClosed(raw: string): ParsedTradeClosed | null {
     entryBaseAmount: numOrNull(data.entryBaseAmount) ?? undefined,
     exitBaseAmount: numOrNull(data.exitBaseAmount) ?? undefined,
     pnlBase: numOrNull(data.pnlBase) ?? undefined,
+    copySourceLabel: strOrNull(data.copySourceLabel) ?? undefined,
   };
 }
 
@@ -834,6 +841,45 @@ export function parseAutomonkeStatus(raw: string): ParsedAutomonkeStatus | null 
     active: data.active === true,
     limitOrdersEnabled: data.limitOrdersEnabled === true,
   };
+}
+
+export interface ParsedCopyTradeStatus {
+  slots: Array<{ slot: 1 | 3; enabled: boolean; perTradeSOL: number }>;
+  ts: number;
+}
+
+/**
+ * Parse a COPY_TRADE_STATUS: structured DM — the bot's ground truth for
+ * copy-trade slot bindings, sent after every /copy enable|disable and after
+ * a weekly rebind. Allowlists slot/enabled/perTradeSOL only — the wallet
+ * address is intentionally never sent by the bot and is never trusted here
+ * even if present (sender must be in BOT_INBOX_IDS at the call site — same
+ * spoof guard as parseTradeClosed).
+ */
+export function parseCopyTradeStatus(raw: string): ParsedCopyTradeStatus | null {
+  if (!raw.startsWith("COPY_TRADE_STATUS:")) return null;
+  const jsonStr = raw.slice("COPY_TRADE_STATUS:".length);
+  if (jsonStr.length > 1_000) return null;
+  let data: any;
+  try { data = JSON.parse(jsonStr); } catch { return null; }
+  if (!data || typeof data !== "object" || !Array.isArray(data.slots)) return null;
+
+  const numOrNull = (v: unknown): number | null =>
+    typeof v === 'number' && Number.isFinite(v) ? v : null;
+
+  const slots: Array<{ slot: 1 | 3; enabled: boolean; perTradeSOL: number }> = [];
+  for (const entry of data.slots.slice(0, 4)) {
+    if (!entry || typeof entry !== 'object') continue;
+    if (entry.slot !== 1 && entry.slot !== 3) continue;
+    const perTradeSOL = numOrNull(entry.perTradeSOL);
+    if (perTradeSOL === null) continue;
+    slots.push({ slot: entry.slot, enabled: entry.enabled === true, perTradeSOL });
+  }
+
+  const ts = numOrNull(data.ts);
+  if (ts === null) return null;
+
+  return { slots, ts };
 }
 
 /**
@@ -888,6 +934,7 @@ export function parseTradeOpened(raw: string): ParsedTradeOpened | null {
       const raw = typeof data.baseSymbol === 'string' ? data.baseSymbol.toUpperCase() : null;
       return raw === 'SOL' || raw === 'USDC' || raw === 'SKR' ? raw : undefined;
     })(),
+    copySourceLabel: strOrNull(data.copySourceLabel) ?? undefined,
   };
 }
 

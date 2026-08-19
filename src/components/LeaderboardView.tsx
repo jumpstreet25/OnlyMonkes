@@ -20,6 +20,7 @@ import {
 import { useWorldGlassCardStyle } from "@/components/worlds/WorldScreenShell";
 import { WorldGlassFill } from "@/components/WorldGlassFill";
 import { useAppStore } from "@/store/appStore";
+import { CopyTradeToggle } from "@/components/CopyTradeToggle";
 
 const MEDALS = ["🥇", "🥈", "🥉"];
 const PODIUM_BORDER = ["#FFD700", "#C0C0C0", "#CD7F32"]; // gold, silver, bronze
@@ -98,6 +99,8 @@ function HolderRow({
 }) {
   const rankLabel = t.rank <= 3 && t.rank >= 1 ? MEDALS[t.rank - 1] : `${t.rank}.`;
   const podium = t.rank >= 1 && t.rank <= 3 ? PODIUM_BORDER[t.rank - 1] : undefined;
+  const isCopySlot = t.rank === 1 || t.rank === 3;
+  const copyEnabled = useAppStore((s) => s.copyTradeSlots?.[t.rank as 1 | 3]?.enabled ?? false);
 
   return (
     <View
@@ -129,6 +132,11 @@ function HolderRow({
         {t.weeklyGainPct >= 0 ? "+" : ""}
         {t.weeklyGainPct}%
       </Text>
+      {isCopySlot ? (
+        <View style={styles.copyToggleCol}>
+          <CopyTradeToggle slot={t.rank as 1 | 3} enabled={copyEnabled} />
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -360,6 +368,11 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   scoreNegative: { color: "#FF6B6B" },
+  copyToggleCol: {
+    marginLeft: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   formula: {
     fontFamily: FONTS.mono,
     fontSize: 9,

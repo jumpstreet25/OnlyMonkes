@@ -25,6 +25,9 @@ export interface ClosedTrade {
   entryBaseAmount?: number;      // cost basis in baseSymbol units
   exitBaseAmount?: number;       // exit proceeds in baseSymbol units
   pnlBase?: number;              // PnL in baseSymbol units
+  /** Set when this trade was closed by copy-trade mirroring, e.g.
+   *  "Copied from Monke Trader #3". Takes header priority over source. */
+  copySourceLabel?: string;
 }
 
 /**
@@ -50,6 +53,9 @@ export interface OpenTrade {
   openedAt: number;
   /** Funding quote for entry/stop/T1/T2 marks. Missing on pre-quote bot builds. */
   baseSymbol?: 'SOL' | 'USDC' | 'SKR';
+  /** Set when this position was opened by copy-trade mirroring, e.g.
+   *  "Copied from Monke Trader #3". Takes header priority over source. */
+  copySourceLabel?: string;
 }
 
 interface OpenMeta {
