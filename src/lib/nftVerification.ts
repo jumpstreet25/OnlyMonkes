@@ -103,6 +103,42 @@ function mapDasAsset(asset: DASAsset): OwnedNFT {
 async function fetchAssetsViaHelius(walletAddress: string): Promise<OwnedNFT[]> {
   const url = HELIUS_NFT_RPC_URL;
 
+  // One-shot collection filter — avoids paging 1000-asset wallets and missing
+  // the Saga Monke past page N (worker /api/verify uses the same call).
+  try {
+    const res = await fetchWithAbort(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "nft-gate-search",
+        method: "searchAssets",
+        params: {
+          ownerAddress: walletAddress,
+          grouping: ["collection", NFT_COLLECTION_ADDRESS],
+          page: 1,
+          limit: 50,
+        },
+      }),
+    });
+    if (res.ok) {
+      const json = await res.json();
+      const items: DASAsset[] = json?.result?.items ?? [];
+      const mapped = items
+        .filter((asset) =>
+          asset.grouping?.some(
+            (g) =>
+              g.group_key === "collection" &&
+              g.group_value === NFT_COLLECTION_ADDRESS,
+          ),
+        )
+        .map(mapDasAsset);
+      if (mapped.length > 0) return mapped;
+    }
+  } catch {
+    /* fall through to getAssetsByOwner */
+  }
+
   let page = 1;
   const MAX_PAGES = 10;
   const assets: DASAsset[] = [];
