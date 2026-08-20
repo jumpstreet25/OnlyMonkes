@@ -19,7 +19,7 @@ import {
 import { PublicKey } from "@solana/web3.js";
 import { Linking } from "react-native";
 import { useAppStore } from "@/store/appStore";
-import { bindXmtpToWallet } from "@/lib/xmtp";
+import { bindXmtpToWallet, prepareWalletBoundXmtp } from "@/lib/xmtp";
 import { rehydrateForWallet } from "@/lib/walletIdentity";
 import { assertDeviceTrusted } from "@/lib/security";
 import type { WalletAccount } from "@/types";
@@ -29,6 +29,67 @@ const APP_IDENTITY = {
   uri: "https://onlymonkes.com",  // Update to your app's URI
   icon: "favicon.ico",
 };
+
+async function signMessageWithAuth(
+  messageBytes: Uint8Array,
+  auth: { walletAddress: string; authToken: string; rawAddress: string | null },
+): Promise<Uint8Array> {
+  assertDeviceTrusted("Identity sign");
+  const addressForMwa = auth.rawAddress ?? auth.walletAddress;
+  return transact(async (mobileWallet: Web3MobileWallet) => {
+    await mobileWallet.authorize({
+      cluster: "mainnet-beta",
+      identity: APP_IDENTITY,
+      auth_token: auth.authToken,
+    } as Parameters<typeof mobileWallet.authorize>[0]);
+    const [sig] = await mobileWallet.signMessages({
+      addresses: [addressForMwa],
+      payloads: [messageBytes],
+    });
+    return sig;
+  });
+}
+
+export async function signBytesWithMwa(
+  walletAddress: string,
+  messageBytes: Uint8Array,
+): Promise<Uint8Array> {
+  assertDeviceTrusted("Identity sign");
+  const cachedToken = useAppStore.getState().mwaAuthToken;
+  return transact(async (mobileWallet: Web3MobileWallet) => {
+    let addrRaw: string;
+    if (cachedToken) {
+      try {
+        const result = await mobileWallet.authorize({
+          cluster: "mainnet-beta",
+          identity: APP_IDENTITY,
+          auth_token: cachedToken,
+        } as Parameters<typeof mobileWallet.authorize>[0]);
+        useAppStore.getState().setMwaAuthToken(result.auth_token);
+        addrRaw = result.accounts[0].address as string;
+      } catch {
+        const result = await mobileWallet.authorize({
+          cluster: "mainnet-beta",
+          identity: APP_IDENTITY,
+        });
+        useAppStore.getState().setMwaAuthToken(result.auth_token);
+        addrRaw = result.accounts[0].address as string;
+      }
+    } else {
+      const result = await mobileWallet.authorize({
+        cluster: "mainnet-beta",
+        identity: APP_IDENTITY,
+      });
+      useAppStore.getState().setMwaAuthToken(result.auth_token);
+      addrRaw = result.accounts[0].address as string;
+    }
+    const [sig] = await mobileWallet.signMessages({
+      addresses: [addrRaw],
+      payloads: [messageBytes],
+    });
+    return sig;
+  });
+}
 
 export function useMobileWallet() {
   const { setWallet, setLoading, setError, setMwaAuthToken, wallet, reset } = useAppStore();
@@ -59,6 +120,8 @@ export function useMobileWallet() {
         } catch { /* wallet not installed — fall through to system chooser */ }
       }
 
+      let freshAuth: { authToken: string; rawAddress: string } | null = null;
+
       const account = await transact(async (mobileWallet: Web3MobileWallet) => {
         const authResult = await mobileWallet.authorize({
           cluster: "mainnet-beta",
@@ -72,6 +135,7 @@ export function useMobileWallet() {
         // We must decode it to bytes before passing to PublicKey constructor.
         const addrRaw = authResult.accounts[0].address;
         setRawAddress(addrRaw as string);
+        freshAuth = { authToken: authResult.auth_token, rawAddress: addrRaw as string };
         const pubkeyBytes =
           typeof addrRaw === "string"
             ? Buffer.from(addrRaw, "base64")
@@ -91,6 +155,21 @@ export function useMobileWallet() {
       setWallet(account);
       await rehydrateForWallet(account.address);
       bindXmtpToWallet(account.address);
+
+      if (freshAuth) {
+        const auth = freshAuth as { authToken: string; rawAddress: string };
+        try {
+          await prepareWalletBoundXmtp(account.address, (messageBytes) =>
+            signMessageWithAuth(messageBytes, {
+              walletAddress: account.address,
+              authToken: auth.authToken,
+              rawAddress: auth.rawAddress,
+            }),
+          );
+        } catch (e) {
+          console.warn("[XMTP] wallet-bound identity sign skipped:", (e as Error)?.message);
+        }
+      }
       return account;
     } catch (err) {
       const message =

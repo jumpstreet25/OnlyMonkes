@@ -6,12 +6,23 @@
  *   Reply:    Native ReplyCodec { reply: { reference, content: { text } } } (legacy: REPLYv2: string still decoded)
  *   Reaction: Native ReactionCodec { reaction: { reference, action, schema, content } } (legacy: REACT: string still decoded)
  *
- * Uses createRandom() — no Ethereum signer needed (Solana compatible).
- * XMTP identity is persisted in SecureStore across sessions.
+ * Wallet-stable identity: a secp256k1 EOA is derived from a Solana wallet
+ * signature (see xmtpIdentity.ts). Same wallet => same inboxId on every device.
+ * Group / channel IDs come from remote app-config.json and are never minted here.
+ * Local dbEncryptionKey stays per-device (installation), not per-inbox.
  */
 
 import { Client, Group, PublicIdentity, ReactionCodec, ReactionV2Codec, ReplyCodec, RemoteAttachmentCodec } from "@xmtp/react-native-sdk";
-import type { ReactionContent, ReplyContent, RemoteAttachmentContent } from "@xmtp/react-native-sdk";
+import type { ReactionContent, ReplyContent, RemoteAttachmentContent, Signer } from "@xmtp/react-native-sdk";
+import {
+  deriveXmtpEoa,
+  hasDerivedXmtpEoa,
+  loadDerivedXmtpEoa,
+  makeXmtpEoaSigner,
+  saveDerivedXmtpEoa,
+  xmtpIdentityMessageBytes,
+} from "@/lib/xmtpIdentity";
+import { rememberLocalInboxId, loadLocalInboxIds } from "@/lib/localInboxes";
 
 const NATIVE_CODECS = [new ReactionCodec(), new ReactionV2Codec(), new ReplyCodec(), new RemoteAttachmentCodec()];
 import type { ChatMessage, MessageReaction, ReactionEmoji, StickerReaction } from "@/types";
@@ -37,11 +48,38 @@ const SK_IDENTITY_ID_LEGACY = "xmtp_v5_identity_id";
 const SK_IDENTITY_KIND_LEGACY = "xmtp_v5_identity_kind";
 
 let _boundWalletAddress: string | null = null;
+let _eoaSigner: Signer | null = null;
+let _prefetchPromise: Promise<Client> | null = null;
 
 /** Bind the XMTP identity to a specific wallet address. Call before initXmtpClient(). */
 export function bindXmtpToWallet(walletAddress: string): void {
   _boundWalletAddress = walletAddress;
+  void loadLocalInboxIds(walletAddress);
 }
+
+/**
+ * Derive (or restore) the wallet-bound XMTP EOA. Must run before init/prefetch
+ * on a device that does not already have this wallet's identity in SecureStore.
+ * One Solana signature; XMTP registration then uses the derived EOA locally.
+ */
+export async function prepareWalletBoundXmtp(
+  walletAddress: string,
+  signMessage: (bytes: Uint8Array) => Promise<Uint8Array>,
+): Promise<void> {
+  bindXmtpToWallet(walletAddress);
+  const existing = await loadDerivedXmtpEoa(walletAddress);
+  if (existing) {
+    _eoaSigner = makeXmtpEoaSigner(existing);
+    return;
+  }
+  const sig = await signMessage(xmtpIdentityMessageBytes(walletAddress));
+  const derived = deriveXmtpEoa(sig, walletAddress);
+  await saveDerivedXmtpEoa(walletAddress, derived);
+  _eoaSigner = makeXmtpEoaSigner(derived);
+  _prefetchPromise = null;
+}
+
+export { hasDerivedXmtpEoa };
 
 function skKey(prefix: string): string {
   const addr = _boundWalletAddress;
@@ -70,11 +108,27 @@ async function getOrCreateEncryptionKey(): Promise<Uint8Array> {
 
 // ─── Client Init ────────────────────────────────────────────��────────────────
 
-export async function initXmtpClient(): Promise<Client> {
-  const dbEncryptionKey = await getOrCreateEncryptionKey();
-  const opts = { env: "production" as const, dbEncryptionKey, codecs: NATIVE_CODECS };
+type ClientOpts = { env: "production"; dbEncryptionKey: Uint8Array; codecs: typeof NATIVE_CODECS };
 
-  // Try wallet-scoped identity first
+async function persistIdentity(client: Client, identifier?: string, kind?: string): Promise<void> {
+  const id = identifier ?? client.publicIdentity.identifier;
+  const k = kind ?? client.publicIdentity.kind;
+  await SecureStore.setItemAsync(skKey(SK_INBOX_ID_PREFIX), client.inboxId);
+  await SecureStore.setItemAsync(skKey(SK_IDENTITY_ID_PREFIX), id);
+  await SecureStore.setItemAsync(skKey(SK_IDENTITY_KIND_PREFIX), k);
+  await SecureStore.setItemAsync(SK_INBOX_ID_LEGACY, client.inboxId);
+  await SecureStore.setItemAsync(SK_IDENTITY_ID_LEGACY, id);
+  await SecureStore.setItemAsync(SK_IDENTITY_KIND_LEGACY, k);
+  if (_boundWalletAddress) {
+    await rememberLocalInboxId(_boundWalletAddress, client.inboxId);
+  }
+}
+
+function kickHistorySync(client: Client): void {
+  (client as any).sendSyncRequest?.().catch(() => { /* no other device, network, etc. */ });
+}
+
+async function tryBuildStored(opts: ClientOpts): Promise<Client | null> {
   const storedInboxId = await SecureStore.getItemAsync(skKey(SK_INBOX_ID_PREFIX))
     || await SecureStore.getItemAsync(SK_INBOX_ID_LEGACY);
   const storedIdentifier = await SecureStore.getItemAsync(skKey(SK_IDENTITY_ID_PREFIX))
@@ -82,50 +136,90 @@ export async function initXmtpClient(): Promise<Client> {
   const storedKind = await SecureStore.getItemAsync(skKey(SK_IDENTITY_KIND_PREFIX))
     || await SecureStore.getItemAsync(SK_IDENTITY_KIND_LEGACY);
 
-  if (storedInboxId && storedIdentifier && storedKind) {
-    try {
-      const identity = new PublicIdentity(
-        storedIdentifier,
-        storedKind as "ETHEREUM" | "PASSKEY"
-      );
-      const client = await Client.build(identity, opts, storedInboxId as any);
-      // Migrate legacy keys to wallet-scoped if needed
-      if (_boundWalletAddress) {
-        await SecureStore.setItemAsync(skKey(SK_INBOX_ID_PREFIX), client.inboxId);
-        await SecureStore.setItemAsync(skKey(SK_IDENTITY_ID_PREFIX), client.publicIdentity.identifier);
-        await SecureStore.setItemAsync(skKey(SK_IDENTITY_KIND_PREFIX), client.publicIdentity.kind);
+  if (!storedInboxId || !storedIdentifier || !storedKind) return null;
+
+  try {
+    const identity = new PublicIdentity(
+      storedIdentifier,
+      storedKind as "ETHEREUM" | "PASSKEY",
+    );
+    const client = await Client.build(identity, opts, storedInboxId as any);
+    if (_boundWalletAddress) {
+      await persistIdentity(client);
+    }
+    kickHistorySync(client);
+    return client;
+  } catch {
+    return null;
+  }
+}
+
+async function initWithWalletSigner(signer: Signer, opts: ClientOpts): Promise<Client> {
+  const derived = await signer.getIdentifier();
+  const derivedAddr = derived.identifier.toLowerCase();
+
+  const storedIdentifier = (
+    await SecureStore.getItemAsync(skKey(SK_IDENTITY_ID_PREFIX))
+    || await SecureStore.getItemAsync(SK_IDENTITY_ID_LEGACY)
+    || ""
+  ).toLowerCase();
+
+  if (storedIdentifier === derivedAddr) {
+    const built = await tryBuildStored(opts);
+    if (built) return built;
+  }
+
+  // Existing random inbox on this phone: attach the derived EOA so this
+  // inbox becomes the canonical one for the wallet (keeps group memberships).
+  // If the EOA is already registered to another inbox (the other phone won
+  // the race), addAccount fails and we Client.create into that inbox instead.
+  if (storedIdentifier && storedIdentifier !== derivedAddr) {
+    const local = await tryBuildStored(opts);
+    if (local) {
+      try {
+        await local.addAccount(signer, false);
+        await persistIdentity(local, derived.identifier, "ETHEREUM");
+        kickHistorySync(local);
+        return local;
+      } catch {
+        if (_boundWalletAddress) {
+          await rememberLocalInboxId(_boundWalletAddress, local.inboxId);
+        }
+        try {
+          await Client.dropClient(local.installationId);
+        } catch { /* abandoned local installation */ }
       }
-      // History sync is manual as of @xmtp/react-native-sdk v5.7. Pull records
-      // from other active devices on this inbox. Fire-and-forget — do not block init.
-      (client as any).sendSyncRequest?.().catch(() => { /* no other device, network, etc. */ });
-      return client;
-    } catch {
-      // Corrupt state — fall through to create a fresh identity
     }
   }
 
-  const client = await Client.createRandom(opts);
-
-  // Store wallet-scoped (survives reinstall if SecureStore persists, or restore from backup)
-  const inboxKey = skKey(SK_INBOX_ID_PREFIX);
-  const idKey = skKey(SK_IDENTITY_ID_PREFIX);
-  const kindKey = skKey(SK_IDENTITY_KIND_PREFIX);
-  await SecureStore.setItemAsync(inboxKey, client.inboxId);
-  await SecureStore.setItemAsync(idKey, client.publicIdentity.identifier);
-  await SecureStore.setItemAsync(kindKey, client.publicIdentity.kind);
-  // Also store in legacy keys for backward compat
-  await SecureStore.setItemAsync(SK_INBOX_ID_LEGACY, client.inboxId);
-  await SecureStore.setItemAsync(SK_IDENTITY_ID_LEGACY, client.publicIdentity.identifier);
-  await SecureStore.setItemAsync(SK_IDENTITY_KIND_LEGACY, client.publicIdentity.kind);
-
+  const client = await Client.create(signer, opts);
+  await persistIdentity(client, derived.identifier, "ETHEREUM");
+  kickHistorySync(client);
   return client;
+}
+
+export async function initXmtpClient(): Promise<Client> {
+  const dbEncryptionKey = await getOrCreateEncryptionKey();
+  const opts: ClientOpts = { env: "production", dbEncryptionKey, codecs: NATIVE_CODECS };
+
+  if (!_eoaSigner && _boundWalletAddress) {
+    const stored = await loadDerivedXmtpEoa(_boundWalletAddress);
+    if (stored) _eoaSigner = makeXmtpEoaSigner(stored);
+  }
+
+  if (_eoaSigner) {
+    return initWithWalletSigner(_eoaSigner, opts);
+  }
+
+  const built = await tryBuildStored(opts);
+  if (built) return built;
+
+  throw new Error("XMTP identity requires a wallet signature. Reconnect wallet.");
 }
 
 // ─── Client Prefetch ─────────────────────────────────────────────────────────
 // Fire-and-forget during ConnectScreen fast path so the client is already booted
 // by the time ChatScreen mounts.
-
-let _prefetchPromise: Promise<Client> | null = null;
 
 /**
  * Start booting the XMTP client in the background.
@@ -1142,46 +1236,14 @@ export function parseProfileUpdate(raw: string): ParsedProfileUpdate | null {
   };
 }
 
-// ─── PROFILE_SNAPSHOT (cross-device reclaim payload from the bot) ───────────
-
-export interface ParsedProfileSnapshot {
-  wallet: string;
-  bananaBalance?: number;
-  shopOwned?: string[];
-  pfpBindings?: Record<string, string[]>;
-  username?: string;
-  legendary?: boolean;
-  badges?: string[];
-  marketplaceHistory?: unknown[];
-  updatedAt?: number;
-}
-
-/**
- * Parse a PROFILE_SNAPSHOT: payload returned by the bot after a successful
- * /reclaim handshake. Returns null on malformed input or missing wallet field.
- */
-export function parseProfileSnapshot(raw: string): ParsedProfileSnapshot | null {
-  if (!raw.startsWith("PROFILE_SNAPSHOT:")) return null;
-  const jsonStr = raw.slice("PROFILE_SNAPSHOT:".length);
-  if (jsonStr.length > 200_000) return null;
-
-  let data: any;
-  try { data = JSON.parse(jsonStr); } catch { return null; }
-  if (!data || typeof data !== "object" || Array.isArray(data)) return null;
-  if (typeof data.wallet !== "string" || !data.wallet) return null;
-
-  return {
-    wallet: data.wallet,
-    bananaBalance: typeof data.bb === "number" ? data.bb : undefined,
-    shopOwned: Array.isArray(data.so) ? data.so.filter((s: unknown) => typeof s === "string") : undefined,
-    pfpBindings: data.pb && typeof data.pb === "object" && !Array.isArray(data.pb) ? data.pb : undefined,
-    username: typeof data.u === "string" ? data.u : undefined,
-    legendary: data.lg === 1 || data.lg === true,
-    badges: Array.isArray(data.bd) ? data.bd.filter((b: unknown) => typeof b === "string") : undefined,
-    marketplaceHistory: Array.isArray(data.mh) ? data.mh : undefined,
-    updatedAt: typeof data.updatedAt === "number" ? data.updatedAt : undefined,
-  };
-}
+export {
+  parseMyInboxes,
+  parseProfileSnapshot,
+  snapshotWalletAllowed,
+  unwrapBotEnvelope,
+  type ParsedMyInboxes,
+  type ParsedProfileSnapshot,
+} from "@/lib/profileSnapshot";
 
 // ─── Generic dApp Group ───────────────────────────────────────────────────────
 

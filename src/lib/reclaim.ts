@@ -19,17 +19,18 @@
  */
 
 import { getXmtpClient } from '@/hooks/useXmtp';
+import { openOrCreateDm, sendDmMessage } from '@/lib/xmtp';
 import {
-  openOrCreateDm,
-  sendDmMessage,
   parseProfileSnapshot,
+  snapshotWalletAllowed,
   type ParsedProfileSnapshot,
-} from '@/lib/xmtp';
+} from '@/lib/profileSnapshot';
 import { useAppStore } from '@/store/appStore';
 import { mergeBananaBalance, loadBananaState, saveBananaState } from '@/lib/bananaRewards';
-import { mergeOwnedItems } from '@/lib/bananaShop';
+import { mergeOwnedItems, getEquippedStyles } from '@/lib/bananaShop';
 import { mergeHistoryEntries, loadHistory } from '@/lib/marketplace';
 import { rehydrateForWallet } from '@/lib/walletIdentity';
+import { applyThemeFromShop } from '@/lib/shopTheme';
 
 const BOT_INBOX_ID = '998001a498174b8a194110ee792b10f97de4965665eaf0d088ed2c71bdf62363';
 
@@ -71,7 +72,7 @@ export async function runReclaim({ signChallenge, onStatus }: RunReclaimArgs): P
   const snapshot = await handshake(dm, username, signChallenge, onStatus);
 
   onStatus?.('Merging profile…');
-  return mergeSnapshot(snapshot);
+  return applyProfileSnapshot(snapshot);
 }
 
 async function handshake(
@@ -147,14 +148,24 @@ async function handshake(
   });
 }
 
+export { snapshotWalletAllowed };
+
 /**
  * Merge a verified snapshot into local state. Non-destructive:
  *   - Banana balance: MAX(local, remote) — never decreases.
  *   - Shop ownership + PFP bindings: union union union.
  *   - Marketplace history: deduped merge, capped to last 200.
  * All writes land on the wallet-keyed storage row.
+ *
+ * Used by manual `/reclaim` and by auto-restore when the bot pushes
+ * PROFILE_SNAPSHOT after wallet connect / XMTP ready.
  */
-async function mergeSnapshot(snap: ParsedProfileSnapshot): Promise<ReclaimSummary> {
+export async function applyProfileSnapshot(snap: ParsedProfileSnapshot): Promise<ReclaimSummary> {
+  const connected = useAppStore.getState().wallet?.address ?? null;
+  if (!snapshotWalletAllowed(snap.wallet, connected)) {
+    throw new Error('Snapshot wallet does not match the connected wallet');
+  }
+
   await rehydrateForWallet(snap.wallet);
 
   let finalBalance = 0;
@@ -178,6 +189,11 @@ async function mergeSnapshot(snap: ParsedProfileSnapshot): Promise<ReclaimSummar
   const app = useAppStore.getState();
   app.setBananaBalance(finalBalance);
   if (snap.username && !app.username) app.setUsername(snap.username);
+  try {
+    const styles = await getEquippedStyles();
+    app.setShopStyles(styles);
+    applyThemeFromShop(styles);
+  } catch { /* shop styles are best-effort */ }
 
   // totalEarned is a lifetime counter — if the reclaimed balance is higher than
   // local totalEarned, bump totalEarned too so the "lifetime earned" UI stays
