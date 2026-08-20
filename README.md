@@ -174,11 +174,12 @@ An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect yo
 - **Reuses AutonoMonke wallet** — same encrypted hot wallet
 - **5% profit fee** — fee only on winning bets; no fee on losses
 - **Combined TA** — sports alerts cross-reference both SharpAPI edge detection and TA scoring for higher-confidence signals
-- **NFT sale images** — Saga Monkes sales alerts include the actual NFT artwork fetched via Helius DAS API, displayed in the MonkeSales channel and as a big-picture push notification
+- **NFT sale images** — Saga Monkes sales alerts include the actual NFT artwork fetched via Helius DAS API, posted to **MonkeTrades** (Sales merged into Trades 2026-08-13) and as a big-picture push notification. Composer bar shows **one** channel button on 3.3 and 3.4.
+- **Saga Monkes floor TA** — `/ta sagamonkes`, `/chart sagamonkes`, or `@9385 sagamonkes chart` use collection **floor** (CoinGecko, ~0.61 SOL), not a Birdeye SPL token. Bot: `Monke_Eliza/agents/monke-trader/src/lib/nft/sagaMonkesFloor.ts`.
 - **Unified push notifications** — all bot alerts (TA signals, NFT sales, sports bets, predictions, GMonke, PNL reports) route through a single FCM v1 + Expo push pipeline with user preference filtering, per-channel muting, stale token pruning, and big-picture image support
 - **NFT ownership gate** — AI Agent #9385 verifies Saga Monke NFT ownership via Helius DAS before processing any DM command; cached 24 hours per user, checked lazily on first interaction; users who sold their Monke get troll responses instead of bot services; fail-open on API errors to avoid false lockouts
 - **Cross-app inbox portability** — XMTP is a decentralized protocol: your inbox is tied to your wallet identity, not to any specific app. Users can DM the bot from any XMTP-compatible app (Converse, Coinbase Wallet, etc.) and the same NFT gate applies — the verification happens bot-side, so selling your Saga Monke blocks access everywhere, not just in OnlyMonkes
-- **LLM chain** — OpenClaw (local, persistent memory) → Ollama → Anthropic; all app users can DM the bot for free AI chat
+- **LLM chain** — Groq `openai/gpt-oss-120b` → Gemini 3.6 Flash → OpenRouter Llama 3.3 70B → CPU Ollama last-resort on the VPS. Cerebras opt-in. See `Monke_Eliza/agents/monke-trader/VPS.md`.
 - **Support OnlyMonkes button** — in the Tools drawer; quick-tip 5/10/25/50 $SKR to the dev wallet via in-app MWA biometric (no app switch)
 - **Per-type push titles** — 🐒 MONKE #1234 Sold! / 🐒 TA Signal: $TOKEN / 🔮 Prediction Alert per alert type
 - **Rich push images** — TA trade alerts include the candlestick chart as a big-picture notification; NFT sales include the Monke artwork
@@ -203,7 +204,7 @@ An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect yo
 - **Glassmorphism modals** — all 13+ popups use shared GlassModal with BlurView backdrop
 
 ### Infrastructure & Quality
-- **EAS Update (OTA)** — over-the-air updates via `expo-updates`; silent download on launch, prompt to restart; avoids full dApp Store resubmission for minor fixes
+- **EAS Update (OTA)** — over-the-air updates via `expo-updates`; silent download on launch, prompt to restart; avoids full dApp Store resubmission for minor fixes. **Published store = runtime 3.3 (no native rebuild).** New native / next store ship = runtime 3.4. Never OTA a 3.4 (Reanimated 4) bundle onto 3.3.
 - **cNFT Badges** — compressed NFT badges minted via Helius Mint API for community milestones (first message, 100 messages, 50 reactions, 7-day streak, 30-day streak, leaderboard win, and more); 9 badge types with automatic progress tracking; badges appear as on-chain cNFTs in the user's wallet
 - **TipLink** — claimable SOL links in chat; `/tiplink <amount>` generates an ephemeral Solana keypair, funds it via MWA, and sends a green-themed claim link in chat; recipients tap to sweep SOL to their wallet
 - **File sharing** — native XMTP RemoteAttachment support; share files from the camera action sheet via `expo-document-picker`; files uploaded to Cloudinary and rendered as tappable attachment bubbles in chat
