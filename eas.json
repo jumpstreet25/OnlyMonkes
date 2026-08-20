@@ -6,6 +6,7 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
+      "channel": "preview",
       "android": {
         "gradleCommand": ":app:assembleProductionDebug"
       }

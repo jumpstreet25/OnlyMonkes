@@ -32,6 +32,7 @@ import { getCachedProfile, searchUsersByPrefix } from "@/lib/userProfile";
 import { useAppStore } from "@/store/appStore";
 import { markChannelRead } from "@/lib/messageCache";
 import { BotChannelIcon } from "@/components/BotChannelIcon";
+import { MenuIcon } from "@/components/MenuIcon";
 import type { ChatMessage } from "@/types";
 
 function getActiveMention(text: string): { start: number; query: string } | null {
@@ -163,6 +164,40 @@ function ChannelButton({ channelId }: { channelId: 'trades' }) {
       {!muted && count > 0 && (
         <View style={styles.badge}>
           <Text style={[styles.badgeText, pfpTint ? { color: pfpTint } : null]}>{count > 99 ? '99+' : count}</Text>
+        </View>
+      )}
+    </Pressable>
+  );
+}
+
+function MessagesButton() {
+  const dmUnread = useAppStore((s) =>
+    Object.values(s.dmUnreadCounts ?? {}).reduce((a, b) => a + (typeof b === "number" ? b : 0), 0),
+  );
+  const clearCommunityBadge = useAppStore((s) => s.clearCommunityBadge);
+  const shopStyles = useAppStore((s) => s.shopStyles);
+  const nftDominantColor = useAppStore((s) => s.nftDominantColor);
+  const iconColor = chromeAccentColor(
+    !!shopStyles?.pfpFullTheme,
+    nftDominantColor,
+    shopStyles?.worldId as string | undefined,
+  );
+  return (
+    <Pressable
+      onPress={() => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        clearCommunityBadge("dms");
+        markChannelRead("dms").catch(() => {});
+        router.push("/dms" as any);
+      }}
+      accessibilityLabel={dmUnread > 0 ? `${dmUnread} unread messages` : "Messages"}
+      accessibilityRole="button"
+      style={({ pressed }) => [styles.toolbarBtn, styles.toolbarChannel, pressed && { opacity: 0.7 }]}
+    >
+      <MenuIcon name="messages" size={32} color={iconColor} />
+      {dmUnread > 0 && (
+        <View style={styles.badge}>
+          <Text style={styles.badgeText}>{dmUnread > 99 ? "99+" : dmUnread}</Text>
         </View>
       )}
     </Pressable>
@@ -456,43 +491,46 @@ export const ChatInput = memo(function ChatInput({
         </Pressable>
       </View>
 
-      {/* Toolbar row — Camera, Live, GIF + Bot channels */}
+      {/* Left: CAM / LIVE / GIF packed like pre-4-channel layout.
+          Right: Messages + MonkeTrades (sales merged). */}
       <View style={styles.toolbarRow}>
-        {onCamera && (
-          <Pressable
-            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onCamera(); }}
-            accessibilityLabel="Open camera"
-            accessibilityRole="button"
-            style={({ pressed }) => [styles.toolbarBtn, styles.toolbarCamera, toolbarColor !== "#6CB4EE" && { borderColor: toolbarColor + "1F" }, pressed && { opacity: 0.7 }]}
-          >
-            <Text style={[styles.toolbarCamText, { color: toolbarColor }]}>CAM</Text>
-          </Pressable>
-        )}
-
-        {(onLiveVideo || onAvatarRoom) && (
-          <Pressable
-            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onOpenLivePicker?.(); }}
-            accessibilityLabel="Go live"
-            accessibilityRole="button"
-            style={({ pressed }) => [styles.toolbarBtn, styles.toolbarLive, toolbarColor !== "#6CB4EE" && { borderColor: toolbarColor + "1F" }, pressed && { opacity: 0.7 }]}
-          >
-            <View style={[styles.liveDot, { backgroundColor: toolbarColor }]} />
-            <Text style={[styles.toolbarLiveText, { color: toolbarColor }]}>LIVE</Text>
-          </Pressable>
-        )}
-
-        {onGifPicker && (
-          <Pressable
-            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onGifPicker(); }}
-            accessibilityLabel="Open GIF picker"
-            accessibilityRole="button"
-            style={({ pressed }) => [styles.toolbarBtn, styles.toolbarGif, toolbarColor !== "#6CB4EE" && { borderColor: toolbarColor + "1F" }, pressed && { opacity: 0.7 }]}
-          >
-            <Text style={[styles.toolbarGifText, { color: toolbarColor }]}>GIF</Text>
-          </Pressable>
-        )}
-
-        <ChannelButton channelId="trades" />
+        <View style={styles.toolbarLeft}>
+          {onCamera && (
+            <Pressable
+              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onCamera(); }}
+              accessibilityLabel="Open camera"
+              accessibilityRole="button"
+              style={({ pressed }) => [styles.toolbarBtn, styles.toolbarCamera, toolbarColor !== "#6CB4EE" && { borderColor: toolbarColor + "1F" }, pressed && { opacity: 0.7 }]}
+            >
+              <Text style={[styles.toolbarCamText, { color: toolbarColor }]}>CAM</Text>
+            </Pressable>
+          )}
+          {(onLiveVideo || onAvatarRoom) && (
+            <Pressable
+              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onOpenLivePicker?.(); }}
+              accessibilityLabel="Go live"
+              accessibilityRole="button"
+              style={({ pressed }) => [styles.toolbarBtn, styles.toolbarLive, toolbarColor !== "#6CB4EE" && { borderColor: toolbarColor + "1F" }, pressed && { opacity: 0.7 }]}
+            >
+              <View style={[styles.liveDot, { backgroundColor: toolbarColor }]} />
+              <Text style={[styles.toolbarLiveText, { color: toolbarColor }]}>LIVE</Text>
+            </Pressable>
+          )}
+          {onGifPicker && (
+            <Pressable
+              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onGifPicker(); }}
+              accessibilityLabel="Open GIF picker"
+              accessibilityRole="button"
+              style={({ pressed }) => [styles.toolbarBtn, styles.toolbarGif, toolbarColor !== "#6CB4EE" && { borderColor: toolbarColor + "1F" }, pressed && { opacity: 0.7 }]}
+            >
+              <Text style={[styles.toolbarGifText, { color: toolbarColor }]}>GIF</Text>
+            </Pressable>
+          )}
+        </View>
+        <View style={styles.toolbarRight}>
+          <MessagesButton />
+          <ChannelButton channelId="trades" />
+        </View>
       </View>
 
     </View>
@@ -652,9 +690,19 @@ const styles = StyleSheet.create({
   toolbarRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-evenly",
+    justifyContent: "space-between",
     paddingHorizontal: 8,
     paddingTop: 2,
+  },
+  toolbarLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  toolbarRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
   },
   toolbarBtn: {
     height: 31,

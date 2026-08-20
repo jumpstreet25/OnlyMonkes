@@ -120,29 +120,9 @@ export function ChatHeader({
         resizeMode="contain"
       />
 
-      {/* Right: Message pill (always opens DMs, World/BananaShop-colored,
-          carries the DM-unread badge) + banana pill (always opens the
-          menu drawer — no more DM dual-purpose behavior). Split 2026-08-13
-          so DMs get their own dedicated, themed entry point instead of
-          fighting the banana pill for the same badge slot. */}
+      {/* Right: banana pill opens the menu. DMs live next to MonkeTrades
+          in the composer (Messages envelope). */}
       <View style={styles.headerRight}>
-        <Pressable
-          style={[styles.messageHeaderPill, { backgroundColor: messagePillColor + "1A", borderColor: messagePillColor + "26" }]}
-          onPress={onDmNavigation}
-          hitSlop={6}
-          accessibilityLabel={totalDmUnread > 0 ? `${totalDmUnread} unread messages` : "Open messages"}
-          accessibilityRole="button"
-        >
-          <Text style={[styles.messageHeaderText, { color: messagePillColor }]}>✉️</Text>
-          {totalDmUnread > 0 && (
-            <View style={styles.communityBadge}>
-              <Text style={styles.communityBadgeText}>
-                {totalDmUnread > 99 ? "99+" : totalDmUnread}
-              </Text>
-            </View>
-          )}
-        </Pressable>
-
         <Pressable
           style={styles.bananaHeaderPill}
           onPress={onOpenDrawer}
