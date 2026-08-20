@@ -25,9 +25,9 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getXmtpClient } from '@/hooks/useXmtp';
-import { openOrCreateDm, sendDmMessage, parseMyInboxes } from '@/lib/xmtp';
+import { openOrCreateDm, sendDmMessage, parseMyInboxes, parseProfileSnapshot } from '@/lib/xmtp';
 import { useAppStore } from '@/store/appStore';
-import type { SignChallengeFn } from '@/lib/reclaim';
+import { applyProfileSnapshot, type SignChallengeFn } from '@/lib/reclaim';
 
 const BOT_INBOX_ID = '998001a498174b8a194110ee792b10f97de4965665eaf0d088ed2c71bdf62363';
 const CACHE_KEY_PREFIX = 'inbox_links_';
@@ -137,10 +137,19 @@ function handshake(
           const senderInboxId: string = raw.senderInboxId ?? '';
           if (senderInboxId !== BOT_INBOX_ID) return; // only trust bot's messages
 
+          const snap = parseProfileSnapshot(content);
+          if (snap) {
+            void applyProfileSnapshot(snap).catch(() => {});
+            return;
+          }
+
+          const parsedInboxes = parseMyInboxes(content);
+          if (parsedInboxes) {
+            finish(null, parsedInboxes);
+            return;
+          }
           if (content.startsWith('MY_INBOXES:')) {
-            const parsed = parseMyInboxes(content);
-            if (parsed) finish(null, parsed);
-            else finish(new Error('Received malformed MY_INBOXES'));
+            finish(new Error('Received malformed MY_INBOXES'));
             return;
           }
 

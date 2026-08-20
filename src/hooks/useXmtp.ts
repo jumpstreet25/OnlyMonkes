@@ -2032,6 +2032,21 @@ export function useXmtp() {
                 return;
               }
 
+              // PROFILE_SNAPSHOT: wallet-keyed bananas / shop / marketplace
+              // restore from the bot (silent auto-restore or /reclaim).
+              if (inner.startsWith('PROFILE_SNAPSHOT:') || content.startsWith('PROFILE_SNAPSHOT:')) {
+                const { BOT_INBOX_IDS } = await import('@/lib/constants');
+                if (!BOT_INBOX_IDS.includes(senderInboxId)) return;
+                try {
+                  const { parseProfileSnapshot } = await import('@/lib/xmtp');
+                  const parsed = parseProfileSnapshot(inner.startsWith('PROFILE_SNAPSHOT:') ? inner : content);
+                  if (!parsed) return;
+                  const { applyProfileSnapshot } = await import('@/lib/reclaim');
+                  await applyProfileSnapshot(parsed);
+                } catch { /* non-fatal — local wallet-keyed storage still stands */ }
+                return;
+              }
+
               // AUTOMONKE_STATUS: ground truth for AutonoMonke enrollment,
               // sent by the bot after every /autonomonke command. Corrects
               // BotChannelScreen's AsyncStorage-only flag, which has no link

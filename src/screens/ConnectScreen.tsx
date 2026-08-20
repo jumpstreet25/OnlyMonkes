@@ -30,14 +30,14 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
-import { useMobileWallet } from "@/hooks/useMobileWallet";
+import { useMobileWallet, signBytesWithMwa } from "@/hooks/useMobileWallet";
 import { useAppStore, loadMwaAuthToken } from "@/store/appStore";
 import {
   loadSession,
   saveSession,
   loadVerifiedNft,
 } from "@/lib/session";
-import { prefetchXmtpClient, bindXmtpToWallet } from "@/lib/xmtp";
+import { prefetchXmtpClient, bindXmtpToWallet, prepareWalletBoundXmtp } from "@/lib/xmtp";
 import { loadCachedInboxLinks } from "@/lib/inboxLinking";
 import { rehydrateForWallet } from "@/lib/walletIdentity";
 import { THEME, FONTS } from "@/lib/constants";
@@ -64,6 +64,13 @@ export default function ConnectScreen() {
         setWallet(wallet);
         await rehydrateForWallet(wallet.address);
         bindXmtpToWallet(wallet.address);
+        try {
+          await prepareWalletBoundXmtp(wallet.address, (bytes) =>
+            signBytesWithMwa(wallet.address, bytes),
+          );
+        } catch (e) {
+          console.warn("[XMTP] wallet-bound identity sign skipped:", (e as Error)?.message);
+        }
         void loadCachedInboxLinks(wallet.address); // best-effort, no live signing on this path
         const nft = await loadVerifiedNft();
         if (nft) {
