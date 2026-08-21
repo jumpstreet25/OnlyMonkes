@@ -20,10 +20,11 @@ import { PublicKey } from "@solana/web3.js";
 import { Linking } from "react-native";
 import bs58 from "bs58";
 import { useAppStore } from "@/store/appStore";
-import { bindXmtpToWallet } from "@/lib/xmtp";
+import { bindXmtpToWallet, prepareWalletBoundXmtp } from "@/lib/xmtp";
 import { rehydrateForWallet } from "@/lib/walletIdentity";
 import { assertDeviceTrusted } from "@/lib/security";
 import { refreshInboxLinks } from "@/lib/inboxLinking";
+import { toast } from "sonner-native";
 import type { WalletAccount } from "@/types";
 
 const APP_IDENTITY = {
@@ -52,6 +53,51 @@ async function signMessageWithAuth(
     } as Parameters<typeof mobileWallet.authorize>[0]);
     const [sig] = await mobileWallet.signMessages({
       addresses: [addressForMwa],
+      payloads: [messageBytes],
+    });
+    return sig;
+  });
+}
+
+/**
+ * Sign arbitrary bytes with the connected wallet. Re-authorizes via the
+ * cached MWA token when the hook's in-memory session is gone (app relaunch).
+ */
+export async function signBytesWithMwa(
+  walletAddress: string,
+  messageBytes: Uint8Array,
+): Promise<Uint8Array> {
+  assertDeviceTrusted("Identity sign");
+  const cachedToken = useAppStore.getState().mwaAuthToken;
+  return transact(async (mobileWallet: Web3MobileWallet) => {
+    let addrRaw: string;
+    if (cachedToken) {
+      try {
+        const result = await mobileWallet.authorize({
+          cluster: "mainnet-beta",
+          identity: APP_IDENTITY,
+          auth_token: cachedToken,
+        } as Parameters<typeof mobileWallet.authorize>[0]);
+        useAppStore.getState().setMwaAuthToken(result.auth_token);
+        addrRaw = result.accounts[0].address as string;
+      } catch {
+        const result = await mobileWallet.authorize({
+          cluster: "mainnet-beta",
+          identity: APP_IDENTITY,
+        });
+        useAppStore.getState().setMwaAuthToken(result.auth_token);
+        addrRaw = result.accounts[0].address as string;
+      }
+    } else {
+      const result = await mobileWallet.authorize({
+        cluster: "mainnet-beta",
+        identity: APP_IDENTITY,
+      });
+      useAppStore.getState().setMwaAuthToken(result.auth_token);
+      addrRaw = result.accounts[0].address as string;
+    }
+    const [sig] = await mobileWallet.signMessages({
+      addresses: [addrRaw],
       payloads: [messageBytes],
     });
     return sig;
@@ -126,11 +172,29 @@ export function useMobileWallet() {
       await rehydrateForWallet(account.address);
       bindXmtpToWallet(account.address);
 
+      // Bind XMTP inbox to this Solana wallet (one identity sign). Must finish
+      // before ChatScreen boots the client or this phone mints a random inbox.
+      if (freshAuth) {
+        const auth = freshAuth as { authToken: string; rawAddress: string };
+        try {
+          await prepareWalletBoundXmtp(account.address, (messageBytes) =>
+            signMessageWithAuth(messageBytes, {
+              walletAddress: account.address,
+              authToken: auth.authToken,
+              rawAddress: auth.rawAddress,
+            }),
+          );
+        } catch (e) {
+          console.warn("[XMTP] wallet-bound identity sign skipped:", (e as Error)?.message);
+          // Not fatal here — ChatScreen surfaces a "Sign & Retry" prompt if
+          // the client actually needs the signature to boot.
+          toast.error("Chat needs a signature to unlock — you'll be prompted again shortly.");
+        }
+      }
+
       // Best-effort, fire-and-forget: learn every other inboxId already known
-      // for this wallet (e.g. a different app install/device) so messages
-      // from them render as "own" instead of a stranger's. Only safe to do
-      // here — this is the one call site with a live signing session; the
-      // fast session-restore and headless paths have none.
+      // for this wallet (e.g. a leftover random inbox from before this bind)
+      // so messages from them render as "own" instead of a stranger's.
       if (freshAuth) {
         const auth = freshAuth as { authToken: string; rawAddress: string };
         refreshInboxLinks(account.address, async (message: string) => {

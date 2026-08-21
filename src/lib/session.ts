@@ -125,6 +125,53 @@ export async function clearVerifiedNft(): Promise<void> {
   await SecureStore.deleteItemAsync(SK_WALLET_BINDING);
 }
 
+// ─── Genesis token cache ───────────────────────────────────────────────────────
+// Mirrors the verified-NFT cache above, so ConnectScreen's fast session-restore
+// path (which skips VerifyScreen entirely on a cached Monke NFT hit) can still
+// know a wallet is ALSO a Genesis holder without waiting on a live re-check —
+// otherwise a Monke+Genesis dual holder wouldn't see the Genesis tab bar until
+// their next full /verify pass (7-day session expiry or 24h re-check).
+
+const SK_GENESIS_KIND = "session_genesis_kind";
+const SK_GENESIS_WALLET = "session_genesis_wallet";
+const SK_GENESIS_CHECKED = "session_genesis_checked";
+/** Seeker Genesis Token is soulbound to the device; this TTL is for wallet-switch / stale cache, not resale. */
+const GENESIS_FLAG_TTL_MS = 6 * 60 * 60 * 1000;
+
+export async function saveGenesisFlag(kind: "saga" | "seeker", walletAddress?: string): Promise<void> {
+  await Promise.all([
+    SecureStore.setItemAsync(SK_GENESIS_KIND, kind),
+    walletAddress
+      ? SecureStore.setItemAsync(SK_GENESIS_WALLET, walletAddress)
+      : Promise.resolve(),
+    SecureStore.setItemAsync(SK_GENESIS_CHECKED, String(Date.now())),
+  ]);
+}
+
+export async function loadGenesisFlag(walletAddress?: string): Promise<"saga" | "seeker" | null> {
+  try {
+    const [raw, storedWallet, ts] = await Promise.all([
+      SecureStore.getItemAsync(SK_GENESIS_KIND),
+      SecureStore.getItemAsync(SK_GENESIS_WALLET),
+      SecureStore.getItemAsync(SK_GENESIS_CHECKED),
+    ]);
+    if (raw !== "saga" && raw !== "seeker") return null;
+    if (walletAddress && storedWallet && storedWallet !== walletAddress) return null;
+    if (ts && Date.now() - Number(ts) >= GENESIS_FLAG_TTL_MS) return null;
+    return raw;
+  } catch {
+    return null;
+  }
+}
+
+export async function clearGenesisFlag(): Promise<void> {
+  await Promise.all([
+    SecureStore.deleteItemAsync(SK_GENESIS_KIND),
+    SecureStore.deleteItemAsync(SK_GENESIS_WALLET),
+    SecureStore.deleteItemAsync(SK_GENESIS_CHECKED),
+  ]);
+}
+
 // ─── Wallet ↔ Chat ID ↔ NFT Binding ──────────────────────────────────────────
 // Unified identity record linking the user's Solana wallet, XMTP inbox, and
 // verified Saga Monkes NFT. Persisted in SecureStore so subsequent launches

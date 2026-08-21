@@ -16,6 +16,8 @@ import { useEffect, useRef } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 import { useAppStore } from '@/store/appStore';
 import { useNFTVerification } from './useNFTVerification';
+import { verifyGenesisTokenOwnership } from '@/lib/genesisTokenVerification';
+import { saveGenesisFlag, clearGenesisFlag } from '@/lib/session';
 
 const RECHECK_TTL_MS = 6 * 3600 * 1000; // 6h
 
@@ -29,7 +31,7 @@ export function useEntitlementSync(): void {
     if (!walletAddress) return;
 
     async function maybeRecheck() {
-      if (inFlight.current) return;
+      if (!walletAddress || inFlight.current) return;
       const { verifiedAt } = useAppStore.getState();
       const stale = !verifiedAt || Date.now() - verifiedAt > RECHECK_TTL_MS;
       if (!stale) return;
@@ -41,6 +43,15 @@ export function useEntitlementSync(): void {
         // provider failed, so nothing was actually re-confirmed and the stale timestamp
         // should keep prompting a retry on the next foreground return.
         if (!result.providerError) setVerifiedAt(Date.now());
+
+        const genesis = await verifyGenesisTokenOwnership(walletAddress);
+        if (genesis.verified && genesis.kind) {
+          useAppStore.getState().setIsGenesisHolder(true, genesis.kind);
+          await saveGenesisFlag(genesis.kind, walletAddress);
+        } else {
+          useAppStore.getState().setIsGenesisHolder(false, null);
+          await clearGenesisFlag();
+        }
       } finally {
         inFlight.current = false;
       }

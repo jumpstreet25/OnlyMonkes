@@ -178,7 +178,9 @@ An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect yo
 - **Saga Monkes floor TA** — `/ta sagamonkes`, `/chart sagamonkes`, or `@9385 sagamonkes chart` use collection **floor** (CoinGecko, ~0.61 SOL), not a Birdeye SPL token. Bot: `Monke_Eliza/agents/monke-trader/src/lib/nft/sagaMonkesFloor.ts`.
 - **Unified push notifications** — all bot alerts (TA signals, NFT sales, sports bets, predictions, GMonke, PNL reports) route through a single FCM v1 + Expo push pipeline with user preference filtering, per-channel muting, stale token pruning, and big-picture image support
 - **NFT ownership gate** — AI Agent #9385 verifies Saga Monke NFT ownership via Helius DAS before processing any DM command; cached 24 hours per user, checked lazily on first interaction; users who sold their Monke get troll responses instead of bot services; fail-open on API errors to avoid false lockouts
+- **Wallet-stable XMTP inbox** — inboxId is derived from the connected Solana wallet (`src/lib/xmtpIdentity.ts`), not from `createRandom()` + per-phone SecureStore. Same wallet on Saga 3.3 and Seeker 3.4 (or after an OTA) is one inbox; group IDs stay the ones in remote `app-config.json`. A one-time wallet signature on first bind after this change attaches the derived identity (or joins the inbox the other phone already bound). Leftover inboxes from older APKs are **linked by wallet** (bot `knownInboxIds` + on-device `rememberLocalInboxId`) so they count as one holder and render as you — we do not delete them from the MLS group.
 - **Cross-app inbox portability** — XMTP is a decentralized protocol: your inbox is tied to your wallet identity, not to any specific app. Users can DM the bot from any XMTP-compatible app (Converse, Coinbase Wallet, etc.) and the same NFT gate applies — the verification happens bot-side, so selling your Saga Monke blocks access everywhere, not just in OnlyMonkes
+- **Genesis Chat** — restricted read-only tier for wallets holding a Saga Genesis Token or a soulbound Seeker Genesis Token but no Saga Monke: BananaShop + Leaderboard + a bot-only message feed, no compose. Gate is real wallet-ownership DAS verification (`src/lib/genesisTokenVerification.ts`), never a claimed mint string or inboxId. Join request (`GENESIS_JOIN_REQUEST:<wallet>`) binds to XMTP `senderInboxId` and is verified bot-side before the wallet is ever added to the Genesis MLS group — it never grants Main Chat/Trades. Dual holders (also own a Saga Monke) get a swipeable Main/Genesis switch (`src/components/ChatModeSwitch.tsx`). 3.4-only; do not OTA onto runtime 3.3.
 - **LLM chain** — Groq `openai/gpt-oss-120b` → Gemini 3.6 Flash → OpenRouter Llama 3.3 70B → CPU Ollama last-resort on the VPS. Cerebras opt-in. See `Monke_Eliza/agents/monke-trader/VPS.md`.
 - **Support OnlyMonkes button** — in the Tools drawer; quick-tip 5/10/25/50 $SKR to the dev wallet via in-app MWA biometric (no app switch)
 - **Per-type push titles** — 🐒 MONKE #1234 Sold! / 🐒 TA Signal: $TOKEN / 🔮 Prediction Alert per alert type
@@ -456,7 +458,7 @@ Fetch NFTs via Helius DAS API
         ├── No Saga Monkes found → Branded gate screen (Magic Eden / Tensor CTAs)
         │
         ▼
-Create XMTP identity (persisted forever in SecureStore — no manual ID sharing)
+Create wallet-bound XMTP identity (MWA sign → derived EOA; same wallet = same inboxId on every device)
         │
         ▼
 Auto-send JOIN_REQUEST DM to bot → bot adds to group + all channels (3s retry)

@@ -19,6 +19,10 @@ export interface AppRemoteConfig {
   botChannels?: {
     trades?: string;
   };
+  /** Genesis Chat's XMTP group ID. Not part of botChannels — Genesis is its own
+   *  group with a separate, genesis-token-gated join flow, never auto-joined
+   *  alongside Main Chat/Trades. */
+  genesisGroupId?: string;
 }
 
 const REPO   = 'jumpstreet25/OnlyMonkes';
@@ -42,10 +46,11 @@ export async function fetchAppConfig(): Promise<AppRemoteConfig> {
     if (!res.ok) return EMPTY;
     const json = await res.json();
     return {
-      globalGroupId: json.globalGroupId ?? '',
-      adminInboxId:  json.adminInboxId  ?? '',
-      botInboxId:    json.botInboxId    ?? undefined,
-      botChannels:   json.botChannels   ?? undefined,
+      globalGroupId:  json.globalGroupId  ?? '',
+      adminInboxId:   json.adminInboxId   ?? '',
+      botInboxId:     json.botInboxId     ?? undefined,
+      botChannels:    json.botChannels    ?? undefined,
+      genesisGroupId: json.genesisGroupId ?? undefined,
     };
   } catch {
     return EMPTY;

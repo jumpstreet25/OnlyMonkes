@@ -132,9 +132,20 @@ class DeviceAttestModule(private val reactContext: ReactApplicationContext) :
             val result: WritableMap = Arguments.createMap()
             result.putBoolean("insideSecureHardware", info.isInsideSecureHardware)
             // KeyInfo.isStrongBoxBacked() requires API 28 — this module's minSdk is 26
-            // (see android/gradle.properties), so guard rather than assume.
+            // (see android/gradle.properties). A direct `info.isStrongBoxBacked` reference
+            // failed to resolve at compile time against the EAS remote build image's
+            // compileSdk 36 stubs (2026-08-21) despite the SDK_INT guard — reflection
+            // sidesteps compile-time symbol resolution entirely, same reasoning as
+            // ensureKey()'s NoSuchMethodError note above for the Builder-side call.
             val strongBox = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                info.isStrongBoxBacked
+                try {
+                    val method = KeyInfo::class.java.getMethod("isStrongBoxBacked")
+                    method.invoke(info) as? Boolean ?: false
+                } catch (e: Exception) {
+                    false
+                } catch (e: NoSuchMethodError) {
+                    false
+                }
             } else {
                 false
             }

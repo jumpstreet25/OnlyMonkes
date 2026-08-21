@@ -25,9 +25,10 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getXmtpClient } from '@/hooks/useXmtp';
-import { openOrCreateDm, sendDmMessage, parseMyInboxes } from '@/lib/xmtp';
+import { openOrCreateDm, sendDmMessage, parseMyInboxes, parseProfileSnapshot } from '@/lib/xmtp';
 import { useAppStore } from '@/store/appStore';
-import type { SignChallengeFn } from '@/lib/reclaim';
+import { applyProfileSnapshot, type SignChallengeFn } from '@/lib/reclaim';
+import { getRememberedInboxIds, loadLocalInboxIds } from '@/lib/localInboxes';
 
 const BOT_INBOX_ID = '998001a498174b8a194110ee792b10f97de4965665eaf0d088ed2c71bdf62363';
 const CACHE_KEY_PREFIX = 'inbox_links_';
@@ -65,20 +66,30 @@ function cacheKey(walletAddress: string): string {
 
 /** Load any previously-cached inbox links for this wallet into memory. Call at boot. */
 export async function loadCachedInboxLinks(walletAddress: string): Promise<void> {
+  await loadLocalInboxIds(walletAddress);
+  for (const id of getRememberedInboxIds()) _linkedInboxIds.add(id);
   try {
     const raw = await AsyncStorage.getItem(cacheKey(walletAddress));
     if (!raw) return;
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed?.inboxIds)) {
-      _linkedInboxIds = new Set(parsed.inboxIds.filter((id: unknown) => typeof id === 'string'));
+      for (const id of parsed.inboxIds) {
+        if (typeof id === "string" && id) _linkedInboxIds.add(id);
+      }
     }
   } catch { /* best-effort */ }
 }
 
 async function cacheInboxIds(walletAddress: string, inboxIds: string[]): Promise<void> {
-  _linkedInboxIds = new Set(inboxIds);
+  for (const id of inboxIds) {
+    if (id) _linkedInboxIds.add(id);
+  }
+  for (const id of getRememberedInboxIds()) _linkedInboxIds.add(id);
   try {
-    await AsyncStorage.setItem(cacheKey(walletAddress), JSON.stringify({ inboxIds, fetchedAt: Date.now() }));
+    await AsyncStorage.setItem(
+      cacheKey(walletAddress),
+      JSON.stringify({ inboxIds: [..._linkedInboxIds], fetchedAt: Date.now() }),
+    );
   } catch { /* best-effort */ }
 }
 
@@ -103,7 +114,8 @@ export function refreshInboxLinks(walletAddress: string, signChallenge: SignChal
 /** Does `senderAddress` belong to the same wallet as the local client's own inbox? */
 export function isMineInbox(senderAddress: string, myInboxId: string): boolean {
   if (senderAddress === myInboxId) return true;
-  return _linkedInboxIds.has(senderAddress);
+  if (_linkedInboxIds.has(senderAddress)) return true;
+  return getRememberedInboxIds().has(senderAddress);
 }
 
 function handshake(
@@ -137,10 +149,19 @@ function handshake(
           const senderInboxId: string = raw.senderInboxId ?? '';
           if (senderInboxId !== BOT_INBOX_ID) return; // only trust bot's messages
 
+          const snap = parseProfileSnapshot(content);
+          if (snap) {
+            void applyProfileSnapshot(snap).catch(() => {});
+            return;
+          }
+
+          const parsedInboxes = parseMyInboxes(content);
+          if (parsedInboxes) {
+            finish(null, parsedInboxes);
+            return;
+          }
           if (content.startsWith('MY_INBOXES:')) {
-            const parsed = parseMyInboxes(content);
-            if (parsed) finish(null, parsed);
-            else finish(new Error('Received malformed MY_INBOXES'));
+            finish(new Error('Received malformed MY_INBOXES'));
             return;
           }
 

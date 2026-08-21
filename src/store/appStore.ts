@@ -74,6 +74,7 @@ export interface JoinRequest {
   inboxId: string;
   username?: string;
   nftMint?: string;
+  walletAddress?: string;
   requestedAt: Date;
 }
 
@@ -94,6 +95,15 @@ interface UserAuthState {
    *  useEntitlementSync.ts. Was one-shot-at-login before Data Oracle Phase 1; now re-run
    *  periodically so entitlement is live derived state, not a stored permanent grant. */
   verifiedAt: number | null;
+  /** Holds a Saga Genesis Token or Seeker Genesis Token — Genesis Chat tier. A wallet
+   *  can be both `verified` (Saga Monke) AND `isGenesisHolder` — see genesis-chat plan. */
+  isGenesisHolder: boolean;
+  genesisTokenKind: "saga" | "seeker" | null;
+  verifiedGenesisAt: number | null;
+  /** Genesis Chat's XMTP group ID, from remote config — mirrors how the Trades bot
+   *  channel's group ID lives in botChannelIds, but Genesis is its own group, not a
+   *  bot channel (Genesis holders must never be auto-joined to Main Chat/Trades). */
+  genesisGroupId: string | null;
 }
 
 interface UserAuthActions {
@@ -105,6 +115,9 @@ interface UserAuthActions {
   setMyInboxId: (inboxId: string | null) => void;
   setMwaAuthToken: (token: string | null) => void;
   setVerifiedAt: (verifiedAt: number | null) => void;
+  setIsGenesisHolder: (isGenesisHolder: boolean, kind?: "saga" | "seeker" | null) => void;
+  setVerifiedGenesisAt: (verifiedGenesisAt: number | null) => void;
+  setGenesisGroupId: (genesisGroupId: string | null) => void;
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -292,6 +305,10 @@ const initialState: AppState = {
   myInboxId: null,
   mwaAuthToken: null,
   verifiedAt: null,
+  isGenesisHolder: false,
+  genesisTokenKind: null,
+  verifiedGenesisAt: null,
+  genesisGroupId: null,
 
   // Slice 2: User Profile
   username: null,
@@ -370,6 +387,9 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   setXmtpClient: (client) => set({ xmtpClient: client }),
   setMyInboxId: (myInboxId) => set({ myInboxId }),
   setVerifiedAt: (verifiedAt) => set({ verifiedAt }),
+  setIsGenesisHolder: (isGenesisHolder, kind = null) => set({ isGenesisHolder, genesisTokenKind: isGenesisHolder ? kind : null }),
+  setVerifiedGenesisAt: (verifiedGenesisAt) => set({ verifiedGenesisAt }),
+  setGenesisGroupId: (genesisGroupId) => set({ genesisGroupId }),
   setMwaAuthToken: (mwaAuthToken) => {
     set({ mwaAuthToken });
     if (mwaAuthToken) {

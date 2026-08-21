@@ -5,7 +5,7 @@ import '../src/lib/headlessReaction'; // registers the Headless JS reaction task
 import '../src/lib/sentimentUploadTask'; // registers the Data Oracle Phase 1 Headless JS upload task — same reasoning as headlessReaction above
 import { useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Stack } from 'expo-router';
+import { Stack, usePathname } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { IS_IMMERSIVE_SHELL } from '../src/lib/immersiveStatusBar';
@@ -51,6 +51,20 @@ export default function RootLayout() {
   // Data Oracle Phase 1 — re-verifies SagaMonkes ownership periodically (app-foreground,
   // TTL'd) instead of only once at login. No-ops until a wallet is connected.
   useEntitlementSync();
+
+  // Genesis Chat access guard — single chokepoint stopping a Genesis-only
+  // holder (no Saga Monke) from reaching Main Chat, DMs, bot channels, or
+  // any other gated route, including via deep link (the deep-link handler
+  // below funnels into router.push, so it's caught here too). Dual holders
+  // (also verified as a Saga Monke) and Monke-only holders are unrestricted.
+  const _isGenesisHolder = useAppStore(s => s.isGenesisHolder);
+  const _isFullMonkeHolder = useAppStore(s => s.verified);
+  const _pathname = usePathname();
+  useEffect(() => {
+    if (!_isGenesisHolder || _isFullMonkeHolder) return;
+    const allowed = _pathname === '/genesis-chat' || _pathname === '/verify' || _pathname === '/';
+    if (!allowed) router.replace('/genesis-chat');
+  }, [_pathname, _isGenesisHolder, _isFullMonkeHolder]);
 
   // (v35 2026-05-09) Load Fredoka-Bold for Banana Grove carved text via
   // expo-font. RN <Text> automatically falls back to system emoji font

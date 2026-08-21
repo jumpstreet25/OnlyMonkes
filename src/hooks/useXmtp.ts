@@ -16,7 +16,7 @@
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useCallback } from "react";
-import { clearSession, clearMatricaSession, clearVerifiedNft, saveWalletBinding } from "@/lib/session";
+import { clearSession, clearMatricaSession, clearVerifiedNft, clearGenesisFlag, saveWalletBinding } from "@/lib/session";
 import type { WalletBinding } from "@/lib/session";
 import {
   getOrInitXmtpClient,
@@ -596,6 +596,9 @@ export function useXmtp() {
           trades: config.botChannels.trades ?? '',
         });
       }
+      if (config.genesisGroupId) {
+        useAppStore.getState().setGenesisGroupId(config.genesisGroupId);
+      }
       if (__DEV__) console.log("[XMTP] remote config:", config);
 
       // ── 3. Join the published global group (never create) ──────────────────
@@ -721,14 +724,21 @@ export function useXmtp() {
               for (const req of newRequests) {
                 try {
                   // NFT gate: verify the mint belongs to the Saga Monkes collection.
-                  if (req.nftMint) {
-                    const validNft = await verifyNftMintInCollection(req.nftMint);
-                    if (!validNft) {
-                      if (__DEV__) console.log("[XMTP] NFT verification failed for", req.inboxId, "— skipping auto-approve");
-                      continue;
-                    }
-                    if (__DEV__) console.log("[XMTP] NFT verified for", req.inboxId, "— auto-admitting");
+                  // 2026-08-20: was `if (req.nftMint) { verify... }` — a request with
+                  // NO mint field skipped verification entirely and fell through to an
+                  // unconditional approve. Required and verified now, matching the
+                  // bot-side handleJoinRequest fix (xmtpOnlyMonkes.ts) — this closes the
+                  // bypass that let a Genesis-only wallet join Main Chat by omitting the mint.
+                  if (!req.walletAddress) {
+                    if (__DEV__) console.log("[XMTP] No wallet on join request from", req.inboxId, "— skipping auto-approve");
+                    continue;
                   }
+                  const owns = await verifyNFTOwnership(req.walletAddress);
+                  if (!owns.verified) {
+                    if (__DEV__) console.log("[XMTP] Wallet does not hold a Saga Monke", req.inboxId, "— skipping auto-approve");
+                    continue;
+                  }
+                  if (__DEV__) console.log("[XMTP] Wallet holds Saga Monke for", req.inboxId, "— auto-admitting");
                   await addMemberToGroup(group as XmtpGroup, req.inboxId);
 
                   // Also add to all bot channels
@@ -780,7 +790,7 @@ export function useXmtp() {
           // Re-send every 30s to handle bot restarts / missed DMs
           if (elapsed > 30_000) {
             try {
-              const { username, verifiedNft } = useAppStore.getState();
+              const { username, verifiedNft, wallet } = useAppStore.getState();
               await sendJoinRequestDM(
                 client,
                 config.adminInboxId,
@@ -788,6 +798,7 @@ export function useXmtp() {
                 username,
                 verifiedNft?.mint ?? null,
                 config.botInboxId ?? null,
+                wallet?.address ?? null,
               );
               await AsyncStorage.setItem(AK_JOIN_REQUEST_SENT, String(Date.now()));
               if (__DEV__) console.log("[XMTP] Join request DM sent to bot (nft:", verifiedNft?.mint ?? "none", ")");
@@ -2039,6 +2050,21 @@ export function useXmtp() {
                 return;
               }
 
+              // PROFILE_SNAPSHOT: wallet-keyed bananas / shop / marketplace
+              // restore from the bot (silent auto-restore or /reclaim).
+              if (inner.startsWith('PROFILE_SNAPSHOT:') || content.startsWith('PROFILE_SNAPSHOT:')) {
+                const { BOT_INBOX_IDS } = await import('@/lib/constants');
+                if (!BOT_INBOX_IDS.includes(senderInboxId)) return;
+                try {
+                  const { parseProfileSnapshot } = await import('@/lib/xmtp');
+                  const parsed = parseProfileSnapshot(inner.startsWith('PROFILE_SNAPSHOT:') ? inner : content);
+                  if (!parsed) return;
+                  const { applyProfileSnapshot } = await import('@/lib/reclaim');
+                  await applyProfileSnapshot(parsed);
+                } catch { /* non-fatal — local wallet-keyed storage still stands */ }
+                return;
+              }
+
               // AUTOMONKE_STATUS: ground truth for AutonoMonke enrollment,
               // sent by the bot after every /autonomonke command. Corrects
               // BotChannelScreen's AsyncStorage-only flag, which has no link
@@ -2167,7 +2193,7 @@ export function useXmtp() {
               }
 
               // Skip protocol messages
-              if (content.startsWith('TYPING:') || content.startsWith('PROFILE_UPDATE:') || content.startsWith('READ:') || content.startsWith('GIFT_ITEM:')) return;
+              if (content.startsWith('TYPING:') || content.startsWith('PROFILE_UPDATE:') || content.startsWith('PROFILE_SNAPSHOT:') || content.startsWith('READ:') || content.startsWith('GIFT_ITEM:')) return;
               useAppStore.getState().incrementCommunityBadge('dms');
               // Per-DM unread — sender IS the peer in a 1:1 DM
               useAppStore.getState().incrementDmUnread(senderInboxId);
@@ -2263,6 +2289,7 @@ export function useXmtp() {
     await clearSession();
     await clearMatricaSession();
     await clearVerifiedNft();
+    await clearGenesisFlag();
     await AsyncStorage.removeItem(AK_JOIN_REQUEST_SENT);
     useAppStore.getState().reset();
   }, []);

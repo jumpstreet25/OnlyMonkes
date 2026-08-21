@@ -30,27 +30,29 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
-import { useMobileWallet } from "@/hooks/useMobileWallet";
+import { useMobileWallet, signBytesWithMwa } from "@/hooks/useMobileWallet";
 import { useAppStore, loadMwaAuthToken } from "@/store/appStore";
 import {
   loadSession,
   saveSession,
   loadVerifiedNft,
+  loadGenesisFlag,
 } from "@/lib/session";
-import { prefetchXmtpClient, bindXmtpToWallet } from "@/lib/xmtp";
+import { prefetchXmtpClient, bindXmtpToWallet, prepareWalletBoundXmtp } from "@/lib/xmtp";
 import { loadCachedInboxLinks } from "@/lib/inboxLinking";
 import { rehydrateForWallet } from "@/lib/walletIdentity";
 import { THEME, FONTS } from "@/lib/constants";
 import { MonkeGlass } from "@/components/MonkeGlass";
 import { OnboardingCarousel, ONBOARDING_KEY } from "@/components/OnboardingCarousel";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { toast } from "sonner-native";
 
 export default function ConnectScreen() {
   const insets = useSafeAreaInsets();
   const { width: SCREEN_W, height: SCREEN_H } = useWindowDimensions();
   const HEADER_HEIGHT = Math.round(SCREEN_H * 0.30);
   const { connect } = useMobileWallet();
-  const { isLoading, error, setError, setWallet, setVerified, setAllNfts } = useAppStore();
+  const { isLoading, error, setError, setWallet, setVerified, setAllNfts, setIsGenesisHolder } = useAppStore();
   const [checkingSession, setCheckingSession] = useState(true);
   const [walletSheetOpen, setWalletSheetOpen] = useState(false);
   const [showCarousel, setShowCarousel] = useState(false);
@@ -64,8 +66,20 @@ export default function ConnectScreen() {
         setWallet(wallet);
         await rehydrateForWallet(wallet.address);
         bindXmtpToWallet(wallet.address);
+        try {
+          await prepareWalletBoundXmtp(wallet.address, (bytes) =>
+            signBytesWithMwa(wallet.address, bytes),
+          );
+        } catch (e) {
+          console.warn("[XMTP] wallet-bound identity sign skipped:", (e as Error)?.message);
+          // Not fatal here — ChatScreen/GenesisChatScreen surface a "Sign &
+          // Retry" prompt if the client actually needs the signature to boot.
+          toast.error("Chat needs a signature to unlock — you'll be prompted again shortly.");
+        }
         void loadCachedInboxLinks(wallet.address); // best-effort, no live signing on this path
         const nft = await loadVerifiedNft();
+        const genesisKind = await loadGenesisFlag(wallet.address);
+        if (genesisKind) setIsGenesisHolder(true, genesisKind);
         if (nft) {
           setVerified(true, nft);
           setAllNfts([nft]); // seed with verified NFT; Marketplace re-fetches full list
@@ -79,6 +93,12 @@ export default function ConnectScreen() {
           applyThemeFromShop(useAppStore.getState().shopStyles);
           prefetchXmtpClient(); // start XMTP boot while navigating — saves 2-5s
           router.replace("/chat");
+        } else if (genesisKind) {
+          // Genesis-only fast path — cached flag lets us skip straight to
+          // Genesis Chat instead of re-running full verification every launch.
+          // A live re-check still happens periodically (session guard).
+          prefetchXmtpClient();
+          router.replace("/genesis-chat");
         } else {
           router.replace("/verify");
         }

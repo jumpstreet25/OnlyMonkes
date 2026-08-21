@@ -26,8 +26,8 @@ describe('badges', () => {
     resetBadgeState();
   });
 
-  it('defines 9 badge types', () => {
-    expect(BADGE_DEFS).toHaveLength(9);
+  it('defines 12 badge types', () => {
+    expect(BADGE_DEFS).toHaveLength(12);
     expect(BADGE_DEFS.map(b => b.id)).toContain('first_message');
     expect(BADGE_DEFS.map(b => b.id)).toContain('streak_7');
     expect(BADGE_DEFS.map(b => b.id)).toContain('top_monke');

@@ -1,16 +1,18 @@
 /**
- * seekerGenesisToken.ts — best-effort "this wallet is associated with a genuine Seeker
- * device" signal, based on ownership of a Seeker Genesis Token (SGT).
+ * seekerGenesisToken.ts — ownership check for the Seeker Genesis Token (SGT).
  *
- * NOT a hard gate, and never used to block entitlement or batch acceptance. SGTs are
- * transferable Token-2022 NFTs, so holding one only proves the connected wallet holds a
- * token that was minted to *some* genuine Seeker at some point — not that THIS specific
- * device is that Seeker. Informational only, surfaced in the Data Oracle consent copy.
+ * Two callers, two trust levels:
+ *  - Data Oracle consent copy (original use): informational only, NOT a hard gate —
+ *    SGTs are transferable Token-2022 NFTs, so holding one only proves the connected
+ *    wallet holds a token that was minted to *some* genuine Seeker at some point, not
+ *    that THIS specific device is that Seeker.
+ *  - genesisTokenVerification.ts's Genesis Chat gate (added 2026-08-20): SGT is
+ *    soulbound to the Seeker (not sold on markets). The gate checks that THIS
+ *    connected wallet currently holds it. Periodic re-check is for wallet-switch
+ *    / stale session flags, not for a resale path.
  *
- * SGT mint authority per public research (Aug 2026):
- * GT2zuHVaZQYZSyQMgJPLzvkmyztfyXg2NJunqFp4p3A4 — reconfirm against
- * docs.solanamobile.com/solana-mobile-stack/seeker-genesis-token before relying on this for
- * anything beyond an informational badge.
+ * SGT mint authority confirmed against docs.solanamobile.com/marketing/engaging-seeker-users
+ * (2026-08-20): GT2zuHVaZQYZSyQMgJPLzvkmyztfyXg2NJunqFp4p3A4.
  */
 
 import { Connection, PublicKey } from "@solana/web3.js";

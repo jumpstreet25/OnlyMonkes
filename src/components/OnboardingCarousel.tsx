@@ -30,7 +30,7 @@ import { THEME, FONTS } from "@/lib/constants";
 
 export const ONBOARDING_KEY = "onboarding_carousel_seen_v1";
 
-interface Slide {
+export interface Slide {
   emoji: string;
   emojiBg: string;
   accentClr: string;
@@ -115,9 +115,14 @@ const SLIDES: Slide[] = [
 interface Props {
   onDone: () => void;
   onLoginNow: () => void;
+  /** Defaults to the pre-login SLIDES above — pass a different set (e.g.
+   *  Genesis Chat's FOMO slides) to reuse this same carousel shell. */
+  slides?: Slide[];
+  /** Text for the CTA button on the final slide. Defaults to "Login now". */
+  finalCtaLabel?: string;
 }
 
-export function OnboardingCarousel({ onDone, onLoginNow }: Props) {
+export function OnboardingCarousel({ onDone, onLoginNow, slides = SLIDES, finalCtaLabel }: Props) {
   const { width } = useWindowDimensions();
   const flatListRef = useRef<FlatList<Slide>>(null);
   const [index, setIndex] = useState(0);
@@ -154,7 +159,7 @@ export function OnboardingCarousel({ onDone, onLoginNow }: Props) {
   const viewabilityConfig = useRef({ viewAreaCoveragePercentThreshold: 50 }).current;
 
   const handleNext = () => {
-    if (index < SLIDES.length - 1) {
+    if (index < slides.length - 1) {
       const next = index + 1;
       flatListRef.current?.scrollToIndex({ index: next, animated: true });
     } else {
@@ -172,8 +177,8 @@ export function OnboardingCarousel({ onDone, onLoginNow }: Props) {
     onLoginNow();
   };
 
-  const slide = SLIDES[index];
-  const isLast = index === SLIDES.length - 1;
+  const slide = slides[index];
+  const isLast = index === slides.length - 1;
 
   const renderItem = ({ item, index: i }: { item: Slide; index: number }) => (
     <View style={[styles.slide, { width }]}>
@@ -215,7 +220,7 @@ export function OnboardingCarousel({ onDone, onLoginNow }: Props) {
       {/* Slides */}
       <FlatList
         ref={flatListRef}
-        data={SLIDES}
+        data={slides}
         renderItem={renderItem}
         keyExtractor={(_, i) => String(i)}
         horizontal
@@ -236,7 +241,7 @@ export function OnboardingCarousel({ onDone, onLoginNow }: Props) {
       <View style={styles.footer}>
         {/* Dot indicators */}
         <View style={styles.dots}>
-          {SLIDES.map((_, i) => (
+          {slides.map((_, i) => (
             <View
               key={i}
               style={[
@@ -274,7 +279,7 @@ export function OnboardingCarousel({ onDone, onLoginNow }: Props) {
             style={({ pressed }) => [styles.loginNowBtn, pressed && { opacity: 0.7 }]}
             onPress={handleLoginNow}
           >
-            <Text style={styles.loginNowText}>🍌 Login now — claim your welcome bonus</Text>
+            <Text style={styles.loginNowText}>{finalCtaLabel ?? "🍌 Login now — claim your welcome bonus"}</Text>
           </Pressable>
         )}
       </View>

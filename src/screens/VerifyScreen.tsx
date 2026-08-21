@@ -25,13 +25,14 @@ import { router } from "expo-router";
 import { useNFTVerification } from "@/hooks/useNFTVerification";
 import { useMobileWallet } from "@/hooks/useMobileWallet";
 import { useAppStore } from "@/store/appStore";
-import { saveVerifiedNft, stampNftCheck } from "@/lib/session";
+import { saveVerifiedNft, stampNftCheck, saveGenesisFlag, clearGenesisFlag } from "@/lib/session";
 import { NftPickerModal } from "@/components/NftPickerModal";
 import { SetMonkeImageModal } from "@/components/SetMonkeImageModal";
 import { THEME, FONTS } from "@/lib/constants";
 import { shortenAddress, setUserChosenNftImage } from "@/lib/nftVerification";
 import { loadListings, getActiveListings } from "@/lib/marketplace";
 import { grantFirstLoginBonusIfEligible } from "@/lib/firstLoginBonus";
+import { verifyGenesisTokenOwnership } from "@/lib/genesisTokenVerification";
 import type { OwnedNFT } from "@/types";
 
 type VerifyState = "idle" | "checking-nft" | "nft-fail" | "verify-error" | "nft-ok" | "pick-nft" | "set-pfp" | "ready";
@@ -58,7 +59,7 @@ const MARKETPLACES = [
 ];
 
 export default function VerifyScreen() {
-  const { wallet, verifiedNft, allNfts, error, setVerified, setIsGuest } = useAppStore();
+  const { wallet, verifiedNft, allNfts, error, setVerified, setIsGuest, setIsGenesisHolder, setVerifiedGenesisAt } = useAppStore();
   const { verify } = useNFTVerification();
   const { disconnect } = useMobileWallet();
 
@@ -126,6 +127,17 @@ export default function VerifyScreen() {
       // Fire-and-forget — wallet-scoped one-time flag makes this safe against
       // re-verification (e.g. 7-day session expiry re-running this screen).
       grantFirstLoginBonusIfEligible(wallet.address).catch(() => {});
+      // Also check Genesis token ownership — a Saga Monke holder who ALSO holds
+      // a Saga/Seeker Genesis Token gets dual access (Main Chat + Genesis Chat,
+      // switchable via the tab bar in ChatScreen). Non-blocking: Main Chat access
+      // doesn't wait on this, the tab bar just appears once it resolves.
+      verifyGenesisTokenOwnership(wallet.address).then((genesis) => {
+        if (genesis.verified) {
+          setIsGenesisHolder(true, genesis.kind);
+          setVerifiedGenesisAt(Date.now());
+          if (genesis.kind) saveGenesisFlag(genesis.kind, wallet.address).catch(() => {});
+        }
+      }).catch(() => {});
     }
     await new Promise((r) => setTimeout(r, 500));
     router.replace("/chat");
@@ -144,6 +156,23 @@ export default function VerifyScreen() {
       if (result.providerError) {
         setPhase("verify-error");
         return;
+      }
+      // Confirmed not a Saga Monke holder — check Genesis Token eligibility
+      // (Saga Genesis or Seeker Genesis, soulbound proof of a Solana phone)
+      // before falling to guest/marketplace-only or a hard block. Genesis-only
+      // holders get a permanently restricted tier: Genesis Chat (read-only) +
+      // BananaShop + Leaderboard, nothing else.
+      if (wallet?.address) {
+        const genesis = await verifyGenesisTokenOwnership(wallet.address);
+        if (genesis.verified) {
+          setIsGenesisHolder(true, genesis.kind);
+          setVerifiedGenesisAt(Date.now());
+          if (genesis.kind) saveGenesisFlag(genesis.kind, wallet.address).catch(() => {});
+          router.replace("/genesis-chat");
+          return;
+        }
+        setIsGenesisHolder(false, null);
+        clearGenesisFlag().catch(() => {});
       }
       // Confirmed not a holder — check if MonkeMarkets has any listed for sale
       await loadListings();

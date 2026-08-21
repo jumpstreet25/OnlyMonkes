@@ -41,6 +41,8 @@ import { useAppStore } from "@/store/appStore";
 import { useChatStore } from "@/store/chatStore";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useXmtp, triggerProfileRebroadcast, _streamHealth, getXmtpClient } from "@/hooks/useXmtp";
+import { prepareWalletBoundXmtp, XMTP_SIGNATURE_REQUIRED_ERROR } from "@/lib/xmtp";
+import { signBytesWithMwa } from "@/hooks/useMobileWallet";
 import { startHealthBeacon, stopHealthBeacon } from "@/lib/healthBeacon";
 import { BOT_INBOX_IDS } from "@/lib/constants";
 import { useAbortableFetch } from "@/hooks/useAbortableFetch";
@@ -112,6 +114,10 @@ import type { TipAmount } from "@/lib/constants";
 
 // ── Extracted sub-components ────────────────────────────────────────────────
 import { ChatHeader, CHAT_HEADER_HEIGHT } from "@/components/ChatHeader";
+import { ChatModeTabs, SwipeToSwitchChat } from "@/components/ChatModeSwitch";
+
+/** Extra header headroom for dual holders' Main/Genesis tab bar — see ChatModeSwitch.tsx. */
+const GENESIS_TAB_BAR_HEIGHT = 34;
 import { ChatModals } from "@/components/ChatModals";
 import { MonkeGlass, MonkeGlassActionButton } from "@/components/MonkeGlass";
 import { GoLivePicker } from "@/components/GoLivePicker";
@@ -140,6 +146,7 @@ export default function ChatScreen() {
   const setTipWallet     = useAppStore(s => s.setTipWallet);
   const setVerified      = useAppStore(s => s.setVerified);
   const isGroupMember    = useAppStore(s => s.isGroupMember);
+  const isGenesisHolder  = useAppStore(s => s.isGenesisHolder);
   const isGroupAdmin     = useAppStore(s => s.isGroupAdmin);
   const remoteGroupId    = useAppStore(s => s.remoteGroupId);
   const setThemeId       = useAppStore(s => s.setThemeId);
@@ -183,6 +190,23 @@ export default function ChatScreen() {
   const setReplyingTo    = useChatStore(s => s.setReplyingTo);
   const typingUsers      = useChatStore(s => s.typingUsers);
   const { initialize, disconnect, logout, streamAlive, send, reply, react, edit, deleteMessage, stickerReact, sendFile, sendTyping, broadcastProfile, broadcastEvent, broadcastVideoRoom, broadcastAvatarRoom, syncMessages, checkStreamLiveness, loadOlderMessages } = useXmtp();
+
+  // Plain initialize() retries against the same missing signer and fails
+  // identically — the wallet-bound identity signature has to be re-prompted
+  // first, or the user is stuck tapping Retry forever.
+  const handleConnectionRetry = useCallback(async () => {
+    if (error !== XMTP_SIGNATURE_REQUIRED_ERROR) { initialize(); return; }
+    const walletAddress = useAppStore.getState().wallet?.address;
+    if (!walletAddress) { initialize(); return; }
+    try {
+      await prepareWalletBoundXmtp(walletAddress, (bytes) => signBytesWithMwa(walletAddress, bytes));
+    } catch (e) {
+      toast.error("Signature declined — approve it in your wallet app to continue.");
+      if (__DEV__) console.warn("[ChatScreen] identity re-sign failed:", (e as Error)?.message);
+      return;
+    }
+    initialize();
+  }, [initialize]);
   const [inputText, setInputTextRaw] = useState("");
   // Draft auto-save — persist input text so it survives navigation/restart
   const _draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1365,6 +1389,7 @@ export default function ChatScreen() {
 
   return (
     <ErrorBoundary fallbackMessage="Chat hit an error. Tap below to reload.">
+    <SwipeToSwitchChat from="main" enabled={isGenesisHolder}>
       <KeyboardAvoidingView
         // 2026-08-06: when a Chat World is equipped the solid themeBg fill
         // sat UNDER WorldLayer but still showed through any translucent
@@ -1404,14 +1429,18 @@ export default function ChatScreen() {
               router.push("/dms" as any);
             }}
           />
+          {/* Only shown for dual holders (Saga Monke + Genesis Token) — lets
+              them switch to Genesis Chat without a settings menu. */}
+          {isGenesisHolder && <ChatModeTabs active="main" />}
         </View>
 
         {/* 2026-07-24: everything below is normal flex flow again, just
             pushed down by CHAT_HEADER_HEIGHT since the header itself no
             longer takes flex space (it's the absolute overlay above).
             box-none so empty space here (e.g. no banners active) doesn't
-            block scroll/taps on the full-bleed message list underneath. */}
-        <View style={{ flex: 1, marginTop: CHAT_HEADER_HEIGHT, zIndex: 50 }} pointerEvents="box-none">
+            block scroll/taps on the full-bleed message list underneath.
+            Dual holders get extra headroom for the ChatModeTabs bar. */}
+        <View style={{ flex: 1, marginTop: CHAT_HEADER_HEIGHT + (isGenesisHolder ? GENESIS_TAB_BAR_HEIGHT : 0), zIndex: 50 }} pointerEvents="box-none">
         {/* Offline indicator */}
         {isOffline && (
           <View style={{ backgroundColor: '#EF4444', paddingVertical: 6, alignItems: 'center' }}>
@@ -1436,8 +1465,10 @@ export default function ChatScreen() {
             <Text style={styles.pendingIcon}>⚠️</Text>
             <Text style={styles.pendingTitle}>Connection Failed</Text>
             <Text style={[styles.pendingSubtitle, { color: THEME.error }]}>{error}</Text>
-            <Pressable style={styles.retryBtn} onPress={() => initialize()}>
-              <Text style={styles.retryBtnText}>↻ Retry</Text>
+            <Pressable style={styles.retryBtn} onPress={handleConnectionRetry}>
+              <Text style={styles.retryBtnText}>
+                {error === XMTP_SIGNATURE_REQUIRED_ERROR ? "✍️ Sign & Retry" : "↻ Retry"}
+              </Text>
             </Pressable>
             <Pressable onPress={async () => { await logout(); router.replace("/"); }} hitSlop={8}>
               <Text style={styles.pendingLogoutLink}>Log out</Text>
@@ -1596,7 +1627,7 @@ export default function ChatScreen() {
               setShowScrollFab={setShowScrollFab}
               setUnreadWhileScrolled={setUnreadWhileScrolled}
               isNearBottomRef={isNearBottomRef}
-              topInset={CHAT_HEADER_HEIGHT}
+              topInset={CHAT_HEADER_HEIGHT + (isGenesisHolder ? GENESIS_TAB_BAR_HEIGHT : 0)}
               bottomInset={bottomBarHeight + keyboardHeight}
             />
           </View>
@@ -1719,6 +1750,7 @@ export default function ChatScreen() {
             mower isn't active. */}
         <BananaMowerOverlay />
       </KeyboardAvoidingView>
+    </SwipeToSwitchChat>
       <MonkeGlass
         visible={shareMediaSheetOpen}
         onClose={() => setShareMediaSheetOpen(false)}
