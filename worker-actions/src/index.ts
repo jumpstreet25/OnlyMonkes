@@ -1638,68 +1638,6 @@ async function fetchMonkeHolderCount(env: Env): Promise<number> {
   throw new Error("holder indexer failed");
 }
 
-// TEMPORARY (2026-08-13): one-time full-collection mint→{name,image} dump
-// for scripts/build-saga-monkes-index.ts. The app's local .env DAS keys
-// (Helius/QuickNode/Alchemy) were all simultaneously dead when this was
-// needed — Helius quota-maxed, QuickNode's 30-day trial expired the same
-// day, Alchemy erroring on every DAS method — but this worker's separately-
-// provisioned HELIUS_API_KEY secret was still healthy. Remove this handler
-// + its route registration once the index has been pulled and committed;
-// it's an unauthenticated bulk scan and shouldn't stay live longer than
-// needed. Same getAssetsByGroup/cursor pattern as fetchMonkeHolderCount above.
-async function scanMonkeIndexFrom(url: string): Promise<Record<string, { name: string; image: string | null }> | null> {
-  const index: Record<string, { name: string; image: string | null }> = {};
-  let cursor: string | undefined;
-  let pages = 0;
-  while (pages < 20) {
-    const params: Record<string, any> = { groupKey: "collection", groupValue: SAGA_COLLECTION_MINT, limit: 1000 };
-    if (cursor) params.cursor = cursor;
-    const res = await fetchWithTimeout(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jsonrpc: "2.0", id: `index-${pages}`, method: "getAssetsByGroup", params }),
-    }, 20_000);
-    if (!res.ok) return null;
-    const data = await res.json() as any;
-    if (data?.error) return null;
-    const items = data?.result?.items ?? [];
-    for (const item of items) {
-      const image =
-        item?.content?.links?.image ??
-        item?.content?.files?.find((f: any) => f?.mime?.startsWith("image/"))?.cdn_uri ??
-        item?.content?.files?.find((f: any) => f?.mime?.startsWith("image/"))?.uri ??
-        null;
-      index[item.id] = { name: item?.content?.metadata?.name ?? "Saga Monke", image };
-    }
-    pages++;
-    const nextCursor = data?.result?.cursor;
-    if (!nextCursor || items.length === 0) break;
-    cursor = nextCursor;
-  }
-  return index;
-}
-
-async function handleBuildMonkeIndex(env: Env): Promise<Response> {
-  const file = await refreshHolderIndex(env);
-  if (file) {
-    return jsonResponse({
-      ok: true,
-      owners: Object.keys(file.owners).length,
-      updatedAt: file.updatedAt,
-    });
-  }
-
-  const heliusResult = await scanMonkeIndexFrom(rpcUrl(env));
-  if (heliusResult && Object.keys(heliusResult).length >= 5000) return jsonResponse(heliusResult);
-
-  if (env.QUICKNODE_DAS_URL) {
-    const qnResult = await scanMonkeIndexFrom(env.QUICKNODE_DAS_URL);
-    if (qnResult && Object.keys(qnResult).length >= 5000) return jsonResponse(qnResult);
-  }
-
-  return errorResponse("Holder indexer failed — Helius/QuickNode could not scan the collection", 502);
-}
-
 /** Floor price + 24h volume (CoinGecko) and $SKR price (DexScreener) —
  *  same endpoints/field mapping as the bot's fetchSagaMonkes() in
  *  overnightSnapshot.ts and ChatScreen.tsx's support-banner fetch. */
@@ -3196,11 +3134,6 @@ export default {
     }
     if (path === "/api/stats") {
       if (request.method === "GET") return handleStatsApi(env);
-      return errorResponse("Method not allowed", 405);
-    }
-    // TEMPORARY — see handleBuildMonkeIndex doc comment. Remove after use.
-    if (path === "/api/build-monke-index") {
-      if (request.method === "GET") return handleBuildMonkeIndex(env);
       return errorResponse("Method not allowed", 405);
     }
     if (path === "/api/verify") {
