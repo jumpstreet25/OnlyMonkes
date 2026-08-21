@@ -1625,6 +1625,41 @@ async function handleHoldersIndexGet(env: Env): Promise<Response> {
   });
 }
 
+/**
+ * GET /api/holders/lookup?wallet=X — single-wallet check against the KV
+ * holder index, no live Helius/QuickNode call at all. Same privacy footprint
+ * as /api/verify (reveals ownership only for the one wallet the caller
+ * already controls/queried) — not the "public counts only" restriction on
+ * /api/holders/index above, which exists to avoid exposing the full owner list.
+ *
+ * Reuses lookupHolderIndex's existing freshness policy (fresh miss = real
+ * negative, stale miss = null/uncertain) unchanged. Callers should treat
+ * anything other than `owned: true` as "no answer" and fall through to their
+ * own live verification chain — this endpoint only exists to short-circuit
+ * the common case (an already-indexed returning holder) fast, never to deny.
+ */
+async function handleHoldersLookup(url: URL, env: Env): Promise<Response> {
+  const wallet = url.searchParams.get("wallet");
+  if (!wallet || wallet.length < 32 || wallet.length > 48) {
+    return errorResponse("Missing or invalid wallet address", 400);
+  }
+  try {
+    new PublicKey(wallet);
+  } catch {
+    return errorResponse("Invalid wallet address", 400);
+  }
+
+  const result = await lookupHolderIndex(wallet, env, []);
+  if (!result || !result.monke) return jsonResponse({ owned: false });
+  return jsonResponse({
+    owned: true,
+    mint: result.monke.mint,
+    name: result.monke.name,
+    image: result.monke.image,
+    traits: result.monke.traits,
+  });
+}
+
 /** Holder count via the collection indexer. Also refreshes the verify map. */
 async function fetchMonkeHolderCount(env: Env): Promise<number> {
   const file = await refreshHolderIndex(env);
@@ -3143,6 +3178,10 @@ export default {
     if (path === "/api/holders/index") {
       if (request.method === "GET") return handleHoldersIndexGet(env);
       if (request.method === "POST") return handleHoldersIndexPost(request, env);
+      return errorResponse("Method not allowed", 405);
+    }
+    if (path === "/api/holders/lookup") {
+      if (request.method === "GET") return handleHoldersLookup(url, env);
       return errorResponse("Method not allowed", 405);
     }
     if (path === "/api/top-traders") {

@@ -410,6 +410,38 @@ export async function verifyNFTOwnership(
   const errors: string[] = [];
   let confirmedNonHolder = false;
 
+  // ── 0. Holder-index fast path — pure KV read on the worker, no live
+  // Helius/QuickNode/Alchemy call at all. The worker refreshes this index
+  // from a full collection scan every ~4h (see fetchMonkeHolderCount), so
+  // this covers the common case (an already-holding, returning user) at
+  // near-zero cost instead of burning a live DAS call on every login.
+  // Additive only: a miss or failure here changes nothing — falls straight
+  // through to the full chain below exactly as before. Never used to deny.
+  try {
+    const res = await fetchWithAbort(
+      `https://onlymonkes-actions.jumpstreet25.workers.dev/api/holders/lookup?wallet=${encodeURIComponent(walletAddress)}`,
+      { method: "GET" },
+      5_000,
+    );
+    if (res.ok) {
+      const data = await res.json() as { owned?: boolean; mint?: string; name?: string; image?: string | null; traits?: Array<{ trait_type: string; value: string }> };
+      if (data.owned && data.mint) {
+        console.log("[NFTVerify] Holder-index fast path: confirmed current holder");
+        const cached = await getCachedVerifiedNft(walletAddress);
+        const nft: OwnedNFT = cached ?? {
+          mint: data.mint,
+          name: data.name ?? "Saga Monke",
+          symbol: "MONKE",
+          image: data.image ?? null,
+          collectionMint: NFT_COLLECTION_ADDRESS,
+          traits: data.traits,
+        };
+        cacheVerifiedNft(walletAddress, nft).catch(() => {});
+        return { verified: true, nft, allNfts: [nft] };
+      }
+    }
+  } catch { /* index unavailable/slow — fall through, no error recorded */ }
+
   // ── 1. Helius DAS (primary) ─────────────────────────────────────────────
   if (HELIUS_NFT_API_KEY) {
     try {
