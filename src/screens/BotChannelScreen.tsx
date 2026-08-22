@@ -29,9 +29,9 @@ import { getXmtpClient } from "@/hooks/useXmtp";
 import { sendDmMessage } from "@/lib/xmtp";
 import * as Haptics from "expo-haptics";
 import { BlurView } from "@sbaiahmed1/react-native-blur";
-import { getBlurProps, GLASS_CHROME_BG } from "@/lib/glassTheme";
+import { getBlurProps } from "@/lib/glassTheme";
 import { WorldGlassFill } from "@/components/WorldGlassFill";
-import { THEME, FONTS, getWorldBarTint, getWorldAccent } from "@/lib/constants";
+import { THEME, FONTS, getWorldBarTint, getWorldAccent, surfaceToBarTint } from "@/lib/constants";
 import { BotChannelIcon } from "@/components/BotChannelIcon";
 import { ErrorMessage } from "@/components/ErrorMessage";
 import { useThemeColor } from "@/lib/shopTheme";
@@ -108,7 +108,7 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
   // the same WORLD_BAR_BG translucent treatment as the main chat so the
   // world reads through them.
   const worldId = useAppStore((s) => s.shopStyles?.worldId) as string | undefined;
-  const chromeBg = worldId ? getWorldBarTint(worldId) : GLASS_CHROME_BG;
+  const chromeBg = worldId ? getWorldBarTint(worldId) : surfaceToBarTint(themeSurface, 0.20);
   const hasThemeOverride = useAppStore(s => !!s.themeOverrides);
 
   // PFP Full Theme: tint channel headers with NFT color

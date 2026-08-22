@@ -31,10 +31,11 @@ import { OnboardingCarousel } from "@/components/OnboardingCarousel";
 import { GENESIS_CAROUSEL_KEY, GENESIS_CAROUSEL_SLIDES } from "@/lib/genesisCarouselSlides";
 import { ChatModeTabs, SwipeToSwitchChat } from "@/components/ChatModeSwitch";
 import { BlurView } from "@sbaiahmed1/react-native-blur";
-import { getBlurProps, GLASS_CHROME_BG } from "@/lib/glassTheme";
+import { getBlurProps } from "@/lib/glassTheme";
 import { WorldGlassFill } from "@/components/WorldGlassFill";
 import { WorldLayer } from "@/components/worlds/WorldLayer";
-import { THEME, FONTS, getWorldBarTint, BOT_INBOX_IDS } from "@/lib/constants";
+import { THEME, FONTS, getWorldBarTint, BOT_INBOX_IDS, surfaceToBarTint } from "@/lib/constants";
+import { useThemeColor } from "@/lib/shopTheme";
 import { markChannelRead } from "@/lib/messageCache";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { ChatMessage } from "@/types";
@@ -84,7 +85,8 @@ export default function GenesisChatScreen() {
   }, []);
 
   const worldId = useAppStore((s) => s.shopStyles?.worldId) as string | undefined;
-  const chromeBg = worldId ? getWorldBarTint(worldId) : GLASS_CHROME_BG;
+  const themeSurface = useThemeColor('surface');
+  const chromeBg = worldId ? getWorldBarTint(worldId) : surfaceToBarTint(themeSurface, 0.20);
 
   const groupId = genesisGroupId ?? "";
   const { messages, isLoading, initialize, disconnect: disconnectGroup } = useGroupChat(groupId, "Genesis Chat");

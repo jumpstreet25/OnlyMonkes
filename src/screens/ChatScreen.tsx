@@ -54,8 +54,8 @@ import type { ProfileTarget } from "@/components/UserProfileModal";
 import { router } from "expo-router";
 import { useIsFocused } from "@react-navigation/native";
 import { BlurView } from "expo-blur";
-import { getBlurProps, GLASS_CHROME_BG } from "@/lib/glassTheme";
-import { THEME, FONTS, SKR_MINT, getWorldBarTint, getWorldAccent, chromeAccentColor } from "@/lib/constants";
+import { getBlurProps } from "@/lib/glassTheme";
+import { THEME, FONTS, SKR_MINT, getWorldBarTint, getWorldAccent, chromeAccentColor, surfaceToBarTint } from "@/lib/constants";
 import { loadUserProfile, getCachedProfile, getDeduplicatedUsers, cacheProfile } from "@/lib/userProfile";
 import { checkAndUpdateStreak } from "@/lib/streaks";
 import { claimDailyBananas, type ClaimResult } from "@/lib/bananaRewards";
@@ -1695,7 +1695,7 @@ export default function ChatScreen() {
                 opaque world tint with no blur behind it at all before. */}
             <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} pointerEvents="none" />
             <View
-              style={[StyleSheet.absoluteFill, { backgroundColor: worldId ? getWorldBarTint(worldId) : GLASS_CHROME_BG }]}
+              style={[StyleSheet.absoluteFill, { backgroundColor: worldId ? getWorldBarTint(worldId) : surfaceToBarTint(themeSurface, 0.20) }]}
               pointerEvents="none"
             />
             <View style={{ minWidth: 70, alignItems: 'flex-start' }}>

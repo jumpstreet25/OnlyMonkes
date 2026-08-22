@@ -4,9 +4,9 @@ import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { THEME, FONTS, BOT_INBOX_IDS, getWorldBarTint, getWorldAccent } from '@/lib/constants';
+import { THEME, FONTS, BOT_INBOX_IDS, getWorldBarTint, getWorldAccent, surfaceToBarTint } from '@/lib/constants';
 import { useThemeColor } from '@/lib/shopTheme';
-import { getBlurProps, GLASS_CHROME_BG } from '@/lib/glassTheme';
+import { getBlurProps } from '@/lib/glassTheme';
 import { WorldLayer } from '@/components/worlds/WorldLayer';
 import { BotCommandTicker } from '@/components/BotCommandTicker';
 import { getCachedProfile, useProfileVersion } from '@/lib/userProfile';
@@ -164,7 +164,7 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
           every screen, not just world-equipped ones. */}
       <View style={styles.header}>
         <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} pointerEvents="none" />
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: worldId ? getWorldBarTint(worldId) : GLASS_CHROME_BG, borderBottomWidth: worldId ? 0 : 1, borderBottomColor: themeBorder }]} pointerEvents="none" />
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: worldId ? getWorldBarTint(worldId) : surfaceToBarTint(themeSurface, 0.20), borderBottomWidth: worldId ? 0 : 1, borderBottomColor: themeBorder }]} pointerEvents="none" />
         <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={8}>
           <Text style={[styles.backArrow, worldId ? { color: getWorldAccent(worldId) } : null]}>←</Text>
         </Pressable>

@@ -189,6 +189,35 @@ export function colorLuminance(hex: string): number {
 }
 
 /**
+ * Translucent chrome-bar tint derived from the currently effective THEME
+ * surface color — Tier 4 Banana Shop app themes (static hex like
+ * "#0a1225") and PFP Full Theme (rgb(...) from shopTheme.ts's
+ * buildPfpTheme) both flow through useThemeColor('surface'), same as the
+ * rest of the app's background. Chrome bars (header/toolbar) previously
+ * ignored that override entirely and stayed hardcoded to the *default*
+ * surface color forever, even when a theme was equipped — this is the
+ * general-purpose fix, applied everywhere the World-tint/neutral-tint
+ * chrome-bar pattern appears. World tint (Tier 5) still wins when equipped;
+ * this only fills the "no world" fallback slot.
+ */
+export function surfaceToBarTint(surfaceColor: string, alpha: number): string {
+  const rgbMatch = surfaceColor.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+  if (rgbMatch) {
+    const [, r, g, b] = rgbMatch;
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+  const hex = surfaceColor.replace('#', '').trim();
+  if (hex.length >= 6) {
+    const n = parseInt(hex.slice(0, 6), 16);
+    if (Number.isFinite(n)) {
+      const r = (n >> 16) & 0xff, g = (n >> 8) & 0xff, b = n & 0xff;
+      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
+  }
+  return `rgba(18, 18, 26, ${alpha})`;
+}
+
+/**
  * Chrome accent for CAM/LIVE/GIF, channel icons, support banner, etc.
  *
  * Priority (2026-08-06):

@@ -24,8 +24,8 @@ import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "@sbaiahmed1/react-native-blur";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
-import { THEME, FONTS, MAX_MESSAGE_LENGTH, getWorldBarTint, chromeAccentColor } from "@/lib/constants";
-import { getBlurProps, GLASS_CHROME_BG } from "@/lib/glassTheme";
+import { THEME, FONTS, MAX_MESSAGE_LENGTH, getWorldBarTint, chromeAccentColor, surfaceToBarTint } from "@/lib/constants";
+import { getBlurProps } from "@/lib/glassTheme";
 import { useThemeColor } from "@/lib/shopTheme";
 import { shortenAddress } from "@/lib/nftVerification";
 import { getCachedProfile, searchUsersByPrefix } from "@/lib/userProfile";
@@ -266,6 +266,7 @@ export const ChatInput = memo(function ChatInput({
 
   // Theme overrides for Banana Shop Tier 4 themes
   const themeBorder = useThemeColor('border');
+  const themeSurface = useThemeColor('surface');
 
   // Toolbar (CAM / LIVE / GIF): World owns chrome when equipped — same
   // Tech Noir cyan for every monke on that world. PFP Full Theme only
@@ -281,8 +282,11 @@ export const ChatInput = memo(function ChatInput({
   // bar background so falling bananas / candles can be seen piling up behind
   // it. 2026-07-24: always-on glass — was opaque themeSurface when no world
   // is set, which fully hid the BlurView now rendered behind this bar.
+  // 2026-08-22: was a flat GLASS_CHROME_BG regardless of an equipped Tier 4
+  // theme — surfaceToBarTint keeps this bar in sync with the rest of the
+  // app's background while staying just as translucent.
   const worldId = shopStyles?.worldId as string | undefined;
-  const inputBarBg = worldId ? getWorldBarTint(worldId) : GLASS_CHROME_BG;
+  const inputBarBg = worldId ? getWorldBarTint(worldId) : surfaceToBarTint(themeSurface, 0.20);
 
   const slashSuggestions = useMemo(() => getSlashSuggestions(value, isDmWithBot), [value, isDmWithBot]);
 

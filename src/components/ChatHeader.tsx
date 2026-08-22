@@ -9,7 +9,7 @@ import {
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BlurView } from "@sbaiahmed1/react-native-blur";
-import { THEME, FONTS, getWorldBarTint, chromeAccentColor } from "@/lib/constants";
+import { THEME, FONTS, getWorldBarTint, chromeAccentColor, surfaceToBarTint } from "@/lib/constants";
 import { getBlurProps } from "@/lib/glassTheme";
 import { getLocatedUserCount, useProfileVersion } from "@/lib/userProfile";
 import { markOnboardingStep } from "@/components/OnboardingChecklist";
@@ -21,7 +21,12 @@ import { useAppStore } from "@/store/appStore";
 // World tints (getWorldBarTint) were already translucent (0.30-0.38) and
 // didn't need this treatment.
 // 2026-08-07: 0.19 → 0.12 — slightly more transparent over chat (not much).
-const HEADER_BG_NO_WORLD = "rgba(18, 18, 26, 0.12)";
+// 2026-08-22: this alpha level is still right, but the base color is now
+// derived from the live theme surface (surfaceToBarTint) instead of being
+// hardcoded — a Tier 4 Banana Shop theme (or PFP Full Theme) equipped with
+// no World active previously left the header stuck on this default color
+// forever, out of sync with the rest of the app's background.
+const HEADER_BG_ALPHA = 0.12;
 
 // Exported so ChatScreen can position the header as an absolute overlay
 // and pad the message list's scroll content to clear it — must match
@@ -57,7 +62,7 @@ export function ChatHeader({
   // flat dark band on top of it. Falls back to themeSurface when no
   // world is set.
   const worldId = useAppStore((s) => s.shopStyles?.worldId) as string | undefined;
-  const headerBg = worldId ? getWorldBarTint(worldId) : HEADER_BG_NO_WORLD;
+  const headerBg = worldId ? getWorldBarTint(worldId) : surfaceToBarTint(themeSurface, HEADER_BG_ALPHA);
   // Message pill color — same World/BananaShop precedence as every other
   // piece of chrome (ChatInput toolbar icons, bot channel icons): World
   // wins when equipped, else PFP Full Theme's NFT color, else default blue.

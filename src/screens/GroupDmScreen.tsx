@@ -3,9 +3,9 @@ import { View, FlatList, StyleSheet, Text, Pressable, ActivityIndicator, Keyboar
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { THEME, FONTS, getWorldBarTint, getWorldAccent } from '@/lib/constants';
+import { THEME, FONTS, getWorldBarTint, getWorldAccent, surfaceToBarTint } from '@/lib/constants';
 import { useThemeColor } from '@/lib/shopTheme';
-import { getBlurProps, GLASS_CHROME_BG } from '@/lib/glassTheme';
+import { getBlurProps } from '@/lib/glassTheme';
 import { WorldLayer } from '@/components/worlds/WorldLayer';
 import { getCachedProfile, useProfileVersion } from '@/lib/userProfile';
 import { useGroupDm } from '@/hooks/useGroupDm';
@@ -50,6 +50,7 @@ export default function GroupDmScreen({ groupId }: { groupId: string }) {
   const flatListRef = useRef<FlatList>(null);
   useProfileVersion();
   const themeBg = useThemeColor('bg');
+  const themeSurface = useThemeColor('surface');
   const themeBorder = useThemeColor('border');
 
   // Derive group name from members
@@ -93,7 +94,7 @@ export default function GroupDmScreen({ groupId }: { groupId: string }) {
           ChatInput instead of only blurring when a world is equipped. */}
       <View style={styles.header}>
         <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} pointerEvents="none" />
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: worldId ? getWorldBarTint(worldId) : GLASS_CHROME_BG, borderBottomWidth: worldId ? 0 : 1, borderBottomColor: themeBorder }]} pointerEvents="none" />
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: worldId ? getWorldBarTint(worldId) : surfaceToBarTint(themeSurface, 0.20), borderBottomWidth: worldId ? 0 : 1, borderBottomColor: themeBorder }]} pointerEvents="none" />
         <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={8}>
           <Text style={[styles.backArrow, worldId ? { color: getWorldAccent(worldId) } : null]}>←</Text>
         </Pressable>

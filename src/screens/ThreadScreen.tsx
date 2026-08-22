@@ -18,10 +18,11 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
 import { router, useLocalSearchParams } from 'expo-router';
-import { THEME, FONTS, getWorldBarTint, getWorldAccent } from '@/lib/constants';
+import { THEME, FONTS, getWorldBarTint, getWorldAccent, surfaceToBarTint } from '@/lib/constants';
 import { useAppStore } from '@/store/appStore';
 import { useChatStore } from '@/store/chatStore';
-import { getBlurProps, GLASS_CHROME_BG } from '@/lib/glassTheme';
+import { useThemeColor } from '@/lib/shopTheme';
+import { getBlurProps } from '@/lib/glassTheme';
 import { WorldLayer } from '@/components/worlds/WorldLayer';
 import { ChatInput } from '@/components/ChatInput';
 import { MessageBubble } from '@/components/MessageBubble';
@@ -44,6 +45,7 @@ export default function ThreadScreen() {
   const username = useAppStore(s => s.username) ?? 'Anon';
   const verifiedNft = useAppStore(s => s.verifiedNft);
   const worldId = useAppStore(s => s.shopStyles?.worldId) as string | undefined;
+  const themeSurface = useThemeColor('surface');
 
   // Thread replies from dedicated store (populated by useXmtp on THREAD: receipt)
   const threadReplies = useChatStore(s => s.threadMessages[parentId ?? ''] ?? []);
@@ -123,7 +125,7 @@ export default function ThreadScreen() {
           BotChannelScreen/ChatInput/DmScreen/GroupDmScreen. */}
       <View style={[styles.header, { paddingTop: insets.top + 8 }, worldId ? { borderBottomWidth: 0 } : null]}>
         <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} pointerEvents="none" />
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: worldId ? getWorldBarTint(worldId) : GLASS_CHROME_BG }]} pointerEvents="none" />
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: worldId ? getWorldBarTint(worldId) : surfaceToBarTint(themeSurface, 0.20) }]} pointerEvents="none" />
         <Pressable onPress={() => router.back()} hitSlop={12}>
           <Text style={[styles.backBtn, worldId ? { color: getWorldAccent(worldId) } : null]}>← Back</Text>
         </Pressable>
