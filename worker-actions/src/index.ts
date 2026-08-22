@@ -57,6 +57,13 @@ import {
   handleDeviceIntegrityIssue,
   handleDeviceIntegrityStatus,
 } from "./deviceIntegrity";
+import {
+  handleTreasuryStatus,
+  handleTreasurySwapGet,
+  handleTreasurySwapPost,
+  handleTreasuryStakeGet,
+  handleTreasuryStakePost,
+} from "./treasury";
 
 // Cloudflare Workers KV namespace binding (declared locally to avoid @cloudflare/workers-types dependency)
 interface KVListOptions {
@@ -124,17 +131,17 @@ type ExportedHandler<E = unknown> = {
   scheduled?: (event: ScheduledEvent, env: E, ctx: ExecutionContext) => Promise<void>;
 };
 
-const CORS_HEADERS: Record<string, string> = {
+export const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Accept, Authorization, Content-Encoding, Accept-Encoding",
 };
 
-const SOL_MINT = "So11111111111111111111111111111111111111112";
+export const SOL_MINT = "So11111111111111111111111111111111111111112";
 const FETCH_TIMEOUT = 8_000; // 8s timeout for external API calls
 const RPC_TIMEOUT = 10_000;  // 10s for RPC calls
 
-const ACTION_ICON = "https://raw.githubusercontent.com/jumpstreet25/OnlyMonkes/master/assets/icon.png";
+export const ACTION_ICON = "https://raw.githubusercontent.com/jumpstreet25/OnlyMonkes/master/assets/icon.png";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -184,7 +191,7 @@ interface JupBuildInstruction {
   data: string; // base64
 }
 
-interface JupBuildResponse {
+export interface JupBuildResponse {
   setupInstructions: JupBuildInstruction[];
   swapInstruction: JupBuildInstruction;
   cleanupInstruction: JupBuildInstruction | null;
@@ -228,7 +235,7 @@ function toInstruction(ix: JupBuildInstruction): TransactionInstruction {
  * This is fee-free (no Jupiter platform fee) and returns raw instructions
  * we assemble into a VersionedTransaction for the user to sign.
  */
-async function getJupiterBuild(
+export async function getJupiterBuild(
   inputMint: string,
   outputMint: string,
   amountLamports: string,
@@ -278,7 +285,7 @@ async function getJupiterBuild(
  * Assemble Jupiter /build instructions into a VersionedTransaction (v0).
  * The user's wallet will sign this — we don't need any keypair here.
  */
-async function buildSwapTransaction(
+export async function buildSwapTransaction(
   build: JupBuildResponse,
   taker: string,
   env: Env,
@@ -3166,7 +3173,7 @@ export default {
 
     // Health check
     if (path === "/health") {
-      return jsonResponse({ status: "ok", version: "1.9.1", endpoints: ["/api/actions/swap", "/api/actions/tip", "/api/actions/predict", "/api/actions/bet", "/api/actions/kalshi-bet", "/escrow", "/claim", "/frames/alert", "/legal", "/terms", "/privacy", "/copyright", "/", "/api/stats", "/api/verify", "/api/holders/index", "/api/top-traders", "/monke/:mint", "/api/sentiment/register-device", "/api/sentiment/unregister-device", "/api/sentiment/ingest", "/api/sentiment/score"] });
+      return jsonResponse({ status: "ok", version: "1.10.0", endpoints: ["/api/actions/swap", "/api/actions/tip", "/api/actions/predict", "/api/actions/bet", "/api/actions/kalshi-bet", "/api/actions/treasury-swap", "/api/actions/treasury-stake", "/api/treasury/status", "/escrow", "/claim", "/frames/alert", "/legal", "/terms", "/privacy", "/copyright", "/", "/api/stats", "/api/verify", "/api/holders/index", "/api/top-traders", "/monke/:mint", "/api/sentiment/register-device", "/api/sentiment/unregister-device", "/api/sentiment/ingest", "/api/sentiment/score"] });
     }
 
     // 2026-07-30: public "Check Your Monke" growth page — see the section
@@ -3280,6 +3287,40 @@ export default {
           return errorResponse("Invalid JSON body");
         }
         return handleSwapPost(url, body, env);
+      }
+      return errorResponse("Method not allowed", 405);
+    }
+
+    // Treasury: sweep publisher-wallet SOL → SKR, then stake with the Guardian.
+    // Read-only status + two tap-to-sign Blinks — see treasury.ts's doc
+    // comment for why this never touches a private key.
+    if (path === "/api/treasury/status") {
+      if (request.method === "GET") return handleTreasuryStatus(env);
+      return errorResponse("Method not allowed", 405);
+    }
+    if (path === "/api/actions/treasury-swap") {
+      if (request.method === "GET") return handleTreasurySwapGet(url);
+      if (request.method === "POST") {
+        let body: any;
+        try {
+          body = await request.json();
+        } catch {
+          return errorResponse("Invalid JSON body");
+        }
+        return handleTreasurySwapPost(url, body, env);
+      }
+      return errorResponse("Method not allowed", 405);
+    }
+    if (path === "/api/actions/treasury-stake") {
+      if (request.method === "GET") return handleTreasuryStakeGet(url, env);
+      if (request.method === "POST") {
+        let body: any;
+        try {
+          body = await request.json();
+        } catch {
+          return errorResponse("Invalid JSON body");
+        }
+        return handleTreasuryStakePost(url, body, env);
       }
       return errorResponse("Method not allowed", 405);
     }

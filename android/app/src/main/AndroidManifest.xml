@@ -25,6 +25,12 @@
     <meta-data android:name="expo.modules.updates.EXPO_UPDATES_CHECK_ON_LAUNCH" android:value="ALWAYS"/>
     <meta-data android:name="expo.modules.updates.EXPO_UPDATES_LAUNCH_WAIT_MS" android:value="5000"/>
     <meta-data android:name="expo.modules.updates.EXPO_UPDATE_URL" android:value="https://u.expo.dev/e669ee53-de73-4dfb-9a36-5c22de29c67e"/>
+    <!-- 2026-08-22: Google's official public TEST App ID — safe to ship, serves
+         only test ads, never real ones. Swap for the real AdMob App ID
+         (ca-app-pub-5684183956469893~XXXXXXXXXX, from the app entry under
+         publisher account pub-5684183956469893) once it exists, then remove
+         this comment. -->
+    <meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" android:value="ca-app-pub-3940256099942544~3347511713"/>
     <activity android:name=".MainActivity" android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|uiMode" android:launchMode="singleTask" android:windowSoftInputMode="adjustResize" android:theme="@style/Theme.App.SplashScreen" android:exported="true" android:screenOrientation="portrait">
       <intent-filter>
         <action android:name="android.intent.action.MAIN"/>

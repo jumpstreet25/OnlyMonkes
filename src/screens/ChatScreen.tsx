@@ -122,6 +122,7 @@ import { ChatModals } from "@/components/ChatModals";
 import { MonkeGlass, MonkeGlassActionButton } from "@/components/MonkeGlass";
 import { GoLivePicker } from "@/components/GoLivePicker";
 import { ChatMessageList } from "@/components/ChatMessageList";
+import { RewardedAdPill } from "@/components/RewardedAdPill";
 
 export default function ChatScreen() {
   const insets = useSafeAreaInsets();
@@ -1661,6 +1662,13 @@ export default function ChatScreen() {
           onAvatarRoom={!activeAvatarRoom ? handleStartAvatarRoom : undefined}
           onOpenLivePicker={() => setLivePickerOpen(true)}
         />
+
+        {/* Rewarded ad — own row above the support banner so it never
+            disturbs that bar's tuned 3-column layout. Renders nothing when
+            no ad is loaded, so it doesn't reserve dead space. */}
+        <View style={{ alignItems: "center", paddingTop: 4 }}>
+          <RewardedAdPill />
+        </View>
 
         {/* Support banner — 3-column: [SKR] [Support] [Floor] */}
         {/* Match the chat header / input bar bg when a Chat World is equipped

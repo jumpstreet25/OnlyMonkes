@@ -40,6 +40,8 @@ import { markChannelRead } from "@/lib/messageCache";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { ChatMessage } from "@/types";
 import { isMineInbox } from "@/lib/inboxLinking";
+import { RewardedAdPill } from "@/components/RewardedAdPill";
+import { AD_UNIT_IDS, AD_REWARD_BANANAS } from "@/lib/ads";
 
 const noop = (..._args: any[]) => {};
 
@@ -245,6 +247,12 @@ export default function GenesisChatScreen() {
           contentContainerStyle={{ paddingTop: 12, paddingBottom: 12 }}
         />
       )}
+
+      {/* Genesis gets the higher-reward slot — no ChatInput on this screen
+          to share a row with, so this is its own bottom-safe-area bar. */}
+      <View style={{ alignItems: "center", paddingTop: 6, paddingBottom: 6 + insets.bottom }}>
+        <RewardedAdPill adUnitId={AD_UNIT_IDS.rewardedGenesis} rewardBananas={AD_REWARD_BANANAS.genesis} />
+      </View>
 
       {showCarousel && (
         <OnboardingCarousel

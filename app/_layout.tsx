@@ -38,9 +38,15 @@ import { router } from 'expo-router';
 import { useFreeRasp } from 'freerasp-react-native';
 import { useFonts } from 'expo-font';
 import { RASP_CONFIG, THREAT_ACTIONS } from '../src/lib/security';
+import mobileAds from 'react-native-google-mobile-ads';
 
 // Initialize Sentry crash reporting (no-op if SENTRY_DSN not set)
 initSentry();
+
+// Google Mobile Ads — must init before any RewardedAdPill tries to load.
+// Currently only Google's public TEST ad unit IDs are wired (src/lib/ads.ts),
+// so this only ever requests test creatives until real AdMob IDs land.
+mobileAds().initialize().catch(() => {});
 
 SplashScreen.preventAutoHideAsync();
 
