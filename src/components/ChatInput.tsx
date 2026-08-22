@@ -19,7 +19,6 @@ import {
   Image,
   Alert,
   Animated,
-  InteractionManager,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "@sbaiahmed1/react-native-blur";
@@ -254,15 +253,15 @@ export const ChatInput = memo(function ChatInput({
   // IndexOutOfBoundsException in eightbitlab.com.blurview.PreDrawBlurController
   // (upstream-documented: Dimezis/BlurView#176, "crashes on first launch,
   // fine on restart"; same fix as ChatHeader). A bare useEffect(() =>
-  // setBlurReady(true), []) still crashed on real hardware (2026-08-22) — see
-  // ChatHeader.tsx's fuller note. InteractionManager.runAfterInteractions()
-  // waits for the in-flight navigation transition to actually finish first.
+  // setBlurReady(true), []) still crashed on real hardware (2026-08-22), and
+  // so did InteractionManager.runAfterInteractions() (it only waits for
+  // JS-scheduled interaction handles, which this native screen transition
+  // never registers) — see ChatHeader.tsx's fuller note. A fixed delay past
+  // the native transition's known duration is the reliable defer.
   const [blurReady, setBlurReady] = useState(false);
   useEffect(() => {
-    const handle = InteractionManager.runAfterInteractions(() => {
-      requestAnimationFrame(() => setBlurReady(true));
-    });
-    return () => handle.cancel();
+    const timer = setTimeout(() => setBlurReady(true), 350);
+    return () => clearTimeout(timer);
   }, []);
 
   // Theme overrides for Banana Shop Tier 4 themes

@@ -14,7 +14,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { View, Text, StyleSheet, Pressable, ActivityIndicator, Linking, InteractionManager } from "react-native";
+import { View, Text, StyleSheet, Pressable, ActivityIndicator, Linking } from "react-native";
 import { FlashList, type FlashListRef, type ListRenderItem } from "@shopify/flash-list";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -48,15 +48,15 @@ export default function GenesisChatScreen() {
   // synchronously on the very first Fabric layout commit — a bare
   // useEffect(() => setBlurReady(true), []) crashed on real hardware
   // (2026-08-22, same root cause as ChatHeader.tsx/ChatInput.tsx — see that
-  // file's fuller note) during a full-screen router.replace() navigation.
-  // InteractionManager.runAfterInteractions() waits for the transition to
-  // actually finish first.
+  // file's fuller note) during a full-screen router.replace() navigation, and
+  // so did InteractionManager.runAfterInteractions() (it only waits for
+  // JS-scheduled interaction handles, which this native screen transition
+  // never registers). A fixed delay past the native transition's known
+  // duration is the reliable defer.
   const [blurReady, setBlurReady] = useState(false);
   useEffect(() => {
-    const handle = InteractionManager.runAfterInteractions(() => {
-      requestAnimationFrame(() => setBlurReady(true));
-    });
-    return () => handle.cancel();
+    const timer = setTimeout(() => setBlurReady(true), 350);
+    return () => clearTimeout(timer);
   }, []);
 
   const { myInboxId, genesisGroupId, verified: isDualHolder, wallet, username, setGenesisGroupId } = useAppStore();

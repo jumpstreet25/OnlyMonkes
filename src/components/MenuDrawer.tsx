@@ -32,7 +32,6 @@ import {
   Alert,
   Platform,
   ActivityIndicator,
-  InteractionManager,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Slider from "@react-native-community/slider";
@@ -410,24 +409,24 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
   // eightbitlab.com.blurview.PreDrawBlurController (upstream-documented:
   // Dimezis/BlurView#176; same fix as ChatHeader/ChatInput). Skipping the
   // BlurViews for one render defers their mount past that unstable commit.
-  // 2026-08-22: a bare `if (visible) setBlurReady(true)` still crashed on real
-  // hardware — see ChatHeader.tsx's fuller note on why the one-tick defer isn't
-  // enough during a busy screen transition. InteractionManager.runAfterInteractions()
-  // waits for any in-flight animation (the drawer's own slide-in included) to finish.
+  // 2026-08-22: InteractionManager.runAfterInteractions() still crashed on
+  // real hardware — it only waits for JS-scheduled interaction handles, and
+  // this drawer's fadeAnim runs with useNativeDriver:true, which never
+  // registers one. The callback was firing almost immediately while the
+  // 200ms native fade-in was still actively mutating the view tree under
+  // PreDrawBlurController's snapshot. Tying blurReady to the fade
+  // animation's own completion callback waits for the actual thing that
+  // was still moving, not a proxy for it.
   const [blurReady, setBlurReady] = useState(false);
-  useEffect(() => {
-    if (!visible) return;
-    const handle = InteractionManager.runAfterInteractions(() => {
-      requestAnimationFrame(() => setBlurReady(true));
-    });
-    return () => handle.cancel();
-  }, [visible]);
 
   useEffect(() => {
     if (visible) {
       setIsClosing(false);
-      Animated.timing(fadeAnim, { toValue: 1, duration: 200, useNativeDriver: true }).start();
+      Animated.timing(fadeAnim, { toValue: 1, duration: 200, useNativeDriver: true }).start(() => {
+        setBlurReady(true);
+      });
     } else {
+      setBlurReady(false);
       setIsClosing(true);
       Animated.timing(fadeAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
         setIsClosing(false);

@@ -5,7 +5,6 @@ import {
   StyleSheet,
   Pressable,
   ImageBackground,
-  InteractionManager,
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -94,14 +93,17 @@ export function ChatHeader({
   // WHILE the screen transition animation and several sibling BlurViews
   // (ChatInput, MenuDrawer) are all still committing at once, not the
   // "settled, second-launch" state the original one-tick defer assumed.
-  // InteractionManager.runAfterInteractions() waits for the in-flight
-  // navigation transition to actually finish first.
+  // 2026-08-22: InteractionManager.runAfterInteractions() ALSO still crashed
+  // (MenuDrawer's identical pattern crashed on a real device) — it only waits
+  // for JS-scheduled interaction handles, and this navigation transition is a
+  // native react-native-screens Fragment transition that never registers one,
+  // so the callback fired almost immediately either way. A fixed delay past
+  // the native transition's known duration is the reliable defer here since
+  // there's no owned animation/handle to await.
   const [blurReady, setBlurReady] = useState(false);
   useEffect(() => {
-    const handle = InteractionManager.runAfterInteractions(() => {
-      requestAnimationFrame(() => setBlurReady(true));
-    });
-    return () => handle.cancel();
+    const timer = setTimeout(() => setBlurReady(true), 350);
+    return () => clearTimeout(timer);
   }, []);
   return (
     <View style={[styles.header, { borderBottomColor: themeBorder, paddingTop: insets.top }]}>

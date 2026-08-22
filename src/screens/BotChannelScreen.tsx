@@ -16,7 +16,6 @@ import {
   ActivityIndicator,
   Image,
   ImageBackground,
-  InteractionManager,
 } from "react-native";
 import { FlashList, type FlashListRef, type ListRenderItem } from "@shopify/flash-list";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -76,15 +75,15 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
   // eightbitlab.com.blurview.PreDrawBlurController (upstream-documented:
   // Dimezis/BlurView#176; same fix as ChatHeader/ChatInput/MenuDrawer). A
   // bare useEffect(() => setBlurReady(true), []) still crashed on real
-  // hardware (2026-08-22) — see ChatHeader.tsx's fuller note.
-  // InteractionManager.runAfterInteractions() waits for the in-flight
-  // navigation transition to actually finish first.
+  // hardware (2026-08-22), and so did InteractionManager.runAfterInteractions()
+  // (it only waits for JS-scheduled interaction handles, which this native
+  // screen transition never registers) — see ChatHeader.tsx's fuller note.
+  // A fixed delay past the native transition's known duration is the
+  // reliable defer.
   const [blurReady, setBlurReady] = useState(false);
   useEffect(() => {
-    const handle = InteractionManager.runAfterInteractions(() => {
-      requestAnimationFrame(() => setBlurReady(true));
-    });
-    return () => handle.cancel();
+    const timer = setTimeout(() => setBlurReady(true), 350);
+    return () => clearTimeout(timer);
   }, []);
   const { myInboxId, botChannelIds, mutedBotChannels, toggleBotChannelMute, username } = useAppStore();
   const groupId = botChannelIds[channelId];
