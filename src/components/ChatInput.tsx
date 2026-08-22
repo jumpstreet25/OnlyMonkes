@@ -19,6 +19,7 @@ import {
   Image,
   Alert,
   Animated,
+  InteractionManager,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "@sbaiahmed1/react-native-blur";
@@ -252,10 +253,17 @@ export const ChatInput = memo(function ChatInput({
   // that fires before the view tree is stable and crashes with
   // IndexOutOfBoundsException in eightbitlab.com.blurview.PreDrawBlurController
   // (upstream-documented: Dimezis/BlurView#176, "crashes on first launch,
-  // fine on restart"; same fix as ChatHeader). Skipping the BlurView for one
-  // render defers its mount past that unstable first commit.
+  // fine on restart"; same fix as ChatHeader). A bare useEffect(() =>
+  // setBlurReady(true), []) still crashed on real hardware (2026-08-22) — see
+  // ChatHeader.tsx's fuller note. InteractionManager.runAfterInteractions()
+  // waits for the in-flight navigation transition to actually finish first.
   const [blurReady, setBlurReady] = useState(false);
-  useEffect(() => { setBlurReady(true); }, []);
+  useEffect(() => {
+    const handle = InteractionManager.runAfterInteractions(() => {
+      requestAnimationFrame(() => setBlurReady(true));
+    });
+    return () => handle.cancel();
+  }, []);
 
   // Theme overrides for Banana Shop Tier 4 themes
   const themeBorder = useThemeColor('border');

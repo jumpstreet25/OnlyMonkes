@@ -32,6 +32,7 @@ import {
   Alert,
   Platform,
   ActivityIndicator,
+  InteractionManager,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Slider from "@react-native-community/slider";
@@ -409,9 +410,17 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
   // eightbitlab.com.blurview.PreDrawBlurController (upstream-documented:
   // Dimezis/BlurView#176; same fix as ChatHeader/ChatInput). Skipping the
   // BlurViews for one render defers their mount past that unstable commit.
+  // 2026-08-22: a bare `if (visible) setBlurReady(true)` still crashed on real
+  // hardware — see ChatHeader.tsx's fuller note on why the one-tick defer isn't
+  // enough during a busy screen transition. InteractionManager.runAfterInteractions()
+  // waits for any in-flight animation (the drawer's own slide-in included) to finish.
   const [blurReady, setBlurReady] = useState(false);
   useEffect(() => {
-    if (visible) setBlurReady(true);
+    if (!visible) return;
+    const handle = InteractionManager.runAfterInteractions(() => {
+      requestAnimationFrame(() => setBlurReady(true));
+    });
+    return () => handle.cancel();
   }, [visible]);
 
   useEffect(() => {

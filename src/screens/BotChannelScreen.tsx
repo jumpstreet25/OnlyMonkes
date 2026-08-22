@@ -16,6 +16,7 @@ import {
   ActivityIndicator,
   Image,
   ImageBackground,
+  InteractionManager,
 } from "react-native";
 import { FlashList, type FlashListRef, type ListRenderItem } from "@shopify/flash-list";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -73,10 +74,18 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
   // synchronously on the very first Fabric layout commit — that unstable
   // first commit can crash with IndexOutOfBoundsException in
   // eightbitlab.com.blurview.PreDrawBlurController (upstream-documented:
-  // Dimezis/BlurView#176; same fix as ChatHeader/ChatInput/MenuDrawer).
-  // Skipping the BlurView for one render defers its mount past that.
+  // Dimezis/BlurView#176; same fix as ChatHeader/ChatInput/MenuDrawer). A
+  // bare useEffect(() => setBlurReady(true), []) still crashed on real
+  // hardware (2026-08-22) — see ChatHeader.tsx's fuller note.
+  // InteractionManager.runAfterInteractions() waits for the in-flight
+  // navigation transition to actually finish first.
   const [blurReady, setBlurReady] = useState(false);
-  useEffect(() => { setBlurReady(true); }, []);
+  useEffect(() => {
+    const handle = InteractionManager.runAfterInteractions(() => {
+      requestAnimationFrame(() => setBlurReady(true));
+    });
+    return () => handle.cancel();
+  }, []);
   const { myInboxId, botChannelIds, mutedBotChannels, toggleBotChannelMute, username } = useAppStore();
   const groupId = botChannelIds[channelId];
   const isMuted = mutedBotChannels[channelId];

@@ -14,7 +14,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { View, Text, StyleSheet, Pressable, ActivityIndicator, Linking } from "react-native";
+import { View, Text, StyleSheet, Pressable, ActivityIndicator, Linking, InteractionManager } from "react-native";
 import { FlashList, type FlashListRef, type ListRenderItem } from "@shopify/flash-list";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -44,8 +44,20 @@ const noop = (..._args: any[]) => {};
 
 export default function GenesisChatScreen() {
   const insets = useSafeAreaInsets();
+  // @sbaiahmed1/react-native-blur's native view snapshots its target
+  // synchronously on the very first Fabric layout commit — a bare
+  // useEffect(() => setBlurReady(true), []) crashed on real hardware
+  // (2026-08-22, same root cause as ChatHeader.tsx/ChatInput.tsx — see that
+  // file's fuller note) during a full-screen router.replace() navigation.
+  // InteractionManager.runAfterInteractions() waits for the transition to
+  // actually finish first.
   const [blurReady, setBlurReady] = useState(false);
-  useEffect(() => { setBlurReady(true); }, []);
+  useEffect(() => {
+    const handle = InteractionManager.runAfterInteractions(() => {
+      requestAnimationFrame(() => setBlurReady(true));
+    });
+    return () => handle.cancel();
+  }, []);
 
   const { myInboxId, genesisGroupId, verified: isDualHolder, wallet, username, setGenesisGroupId } = useAppStore();
   const { disconnect } = useMobileWallet();

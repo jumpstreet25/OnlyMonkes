@@ -5,6 +5,7 @@ import {
   StyleSheet,
   Pressable,
   ImageBackground,
+  InteractionManager,
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -87,10 +88,21 @@ export function ChatHeader({
   // that fires before the view tree is stable and crashes with
   // IndexOutOfBoundsException in eightbitlab.com.blurview.PreDrawBlurController
   // (upstream-documented: Dimezis/BlurView#176, "crashes on first launch,
-  // fine on restart"). Skipping the BlurView for one render defers its
-  // mount past that unstable first commit.
+  // fine on restart"). A bare useEffect(() => setBlurReady(true), []) still
+  // crashed on real hardware (2026-08-22) — it fires the same tick ChatHeader
+  // mounts, which for a full-screen router.replace("/chat") navigation is
+  // WHILE the screen transition animation and several sibling BlurViews
+  // (ChatInput, MenuDrawer) are all still committing at once, not the
+  // "settled, second-launch" state the original one-tick defer assumed.
+  // InteractionManager.runAfterInteractions() waits for the in-flight
+  // navigation transition to actually finish first.
   const [blurReady, setBlurReady] = useState(false);
-  useEffect(() => { setBlurReady(true); }, []);
+  useEffect(() => {
+    const handle = InteractionManager.runAfterInteractions(() => {
+      requestAnimationFrame(() => setBlurReady(true));
+    });
+    return () => handle.cancel();
+  }, []);
   return (
     <View style={[styles.header, { borderBottomColor: themeBorder, paddingTop: insets.top }]}>
       {/* 2026-07-24: always-on glass — blurs the message list scrolling
