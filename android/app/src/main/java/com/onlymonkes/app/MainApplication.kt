@@ -11,7 +11,6 @@ import com.facebook.react.ReactHost
 import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint
 import com.facebook.react.defaults.DefaultReactNativeHost
 import com.facebook.react.internal.featureflags.ReactNativeFeatureFlags
-import com.facebook.react.internal.featureflags.ReactNativeFeatureFlagsProvider
 import com.facebook.react.soloader.OpenSourceMergedSoMapping
 import com.facebook.soloader.SoLoader
 
@@ -47,48 +46,49 @@ class MainApplication : Application(), ReactApplication {
     super.onCreate()
     SoLoader.init(this, OpenSourceMergedSoMapping)
     if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
-      // Expo/SoLoader can set RN feature flags before this line. Both
-      // load() and loadWithFeatureFlags() call override() and crash with
-      // "Feature flags cannot be overridden more than once" if we don't
-      // reset first (the 3.0.0 vc39 store/EAS binary dies here).
-      try {
-        ReactNativeFeatureFlags.dangerouslyReset()
-      } catch (_: Exception) { /* already default */ }
-
-      // loadWithFeatureFlags is `internal` — reflect by prefix + param type
-      // because Kotlin mangles the JVM name (`loadWithFeatureFlags$…`).
-      try {
-        val method = DefaultNewArchitectureEntryPoint::class.java.declaredMethods.firstOrNull {
-          it.name.startsWith("loadWithFeatureFlags") &&
-            it.parameterTypes.size == 1 &&
-            it.parameterTypes[0] == ReactNativeFeatureFlagsProvider::class.java
-        }
-        if (method != null) {
-          method.isAccessible = true
-          method.invoke(null, AppFeatureFlags())
-        } else {
-          DefaultNewArchitectureEntryPoint.load()
-        }
-      } catch (_: Exception) {
-        try {
-          DefaultNewArchitectureEntryPoint.load()
-        } catch (_: Exception) {
-          // Flags were already set and reset failed — still enable Fabric
-          // fields MainActivity reads, then load the new-arch SO.
-          try {
-            val ep = DefaultNewArchitectureEntryPoint::class.java
-            for (name in arrayOf("privateFabricEnabled", "privateTurboModulesEnabled", "privateConcurrentReactEnabled", "privateBridgelessEnabled")) {
-              val f = ep.getDeclaredField(name)
-              f.isAccessible = true
-              f.setBoolean(DefaultNewArchitectureEntryPoint, true)
-            }
-            val so = Class.forName("com.facebook.react.defaults.DefaultSoLoader")
-            so.getDeclaredMethod("maybeLoadSoLibrary").apply { isAccessible = true }.invoke(null)
-          } catch (_: Exception) { /* continue; host may already be loaded */ }
-        }
-      }
+      initNewArchitecture()
     }
     ApplicationLifecycleDispatcher.onApplicationCreate(this)
+  }
+
+  // 2026-08-22: replaces a two-deep reflection/retry chain that reflected into RN's
+  // internal, Kotlin-name-mangled loadWithFeatureFlags() and, on failure, fell back to
+  // DefaultNewArchitectureEntryPoint.load() — which calls override() again and can throw
+  // the exact same "Feature flags cannot be overridden more than once" error a second
+  // time, landing in a last-resort branch that could silently skip loading the new-arch
+  // SO entirely (still no crash, but a half-initialized Fabric/TurboModules runtime —
+  // indistinguishable from "still crashes at launch" to a user). That prior version was
+  // itself already a fix for the 3.0.0 vc39 store/EAS binary dying on this exact line.
+  // This version calls override() exactly once via RN's stable PUBLIC API (no reflection
+  // into an internal, mangled method name), and always sets the Fabric/TurboModules
+  // fields + loads the SO regardless of whether override() itself succeeded, so a lost
+  // race against anything else touching feature flags degrades to "wrong flags" rather
+  // than "native library never loaded."
+  private fun initNewArchitecture() {
+    try {
+      ReactNativeFeatureFlags.dangerouslyReset()
+    } catch (_: Throwable) { /* already at defaults */ }
+
+    try {
+      ReactNativeFeatureFlags.override(AppFeatureFlags())
+    } catch (_: Throwable) {
+      // Something else in-process already overrode (or read) the flags first —
+      // leave its values in place rather than risk throwing a second time.
+    }
+
+    try {
+      val ep = DefaultNewArchitectureEntryPoint::class.java
+      for (name in arrayOf("privateFabricEnabled", "privateTurboModulesEnabled", "privateConcurrentReactEnabled", "privateBridgelessEnabled")) {
+        val f = ep.getDeclaredField(name)
+        f.isAccessible = true
+        f.setBoolean(DefaultNewArchitectureEntryPoint, true)
+      }
+    } catch (_: Throwable) { /* MainActivity reads these; harmless if unset */ }
+
+    try {
+      val so = Class.forName("com.facebook.react.defaults.DefaultSoLoader")
+      so.getDeclaredMethod("maybeLoadSoLibrary").apply { isAccessible = true }.invoke(null)
+    } catch (_: Throwable) { /* appmodules SO may already be loaded */ }
   }
 
   override fun onConfigurationChanged(newConfig: Configuration) {
