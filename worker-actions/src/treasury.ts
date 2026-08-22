@@ -11,9 +11,13 @@
  * whenever a human taps through, on whatever cadence they choose. No cron,
  * no hot key in Cloudflare.
  *
- * Flow: tap /api/actions/treasury-swap (SOL sitting in the publisher
- * wallet → SKR), then tap /api/actions/treasury-stake (that SKR → staked
- * with the sole listed guardian, "Solana Mobile Guardian").
+ * Flow: tap /api/actions/treasury-swap (SOL or USDC sitting in the
+ * publisher wallet → SKR — the ?inputMint= param picks which; both land
+ * here, since AutonoMonke's 5%/2.5% realized-profit fee (Monke_Eliza's
+ * DEV_WALLET, same address as PUBLISHER_WALLET below) pays out in
+ * whichever currency the closed position was denominated in), then tap
+ * /api/actions/treasury-stake (that SKR → staked with the sole listed
+ * guardian, "Solana Mobile Guardian").
  *
  * Guardian staking program spec below was reverse-engineered from
  * stake.solanamobile.com's own JS bundle + its on-chain Anchor IDL
@@ -48,7 +52,16 @@ function errorResponse(message: string, status = 400): Response {
 
 // ─── Confirmed on-chain addresses (2026-08-22) ─────────────────────────────────
 export const SKR_MINT = new PublicKey("SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3");
+export const USDC_MINT = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
 export const PUBLISHER_WALLET = new PublicKey("BzyaYyd7ew7SRqC1P9Q6z61ebfYmdXRFU6UfKjHzcQ2o");
+
+// Per-input-mint config for the swap Action — decimals for raw-amount math,
+// a sensible per-tap safety cap, and the "not worth it yet" advisory floor
+// (gas + Jupiter slippage eat a fixed-ish cost regardless of swap size).
+const SWAP_INPUTS: Record<string, { mint: string; decimals: number; maxPerTx: number; minRecommended: number; symbol: string }> = {
+  sol: { mint: SOL_MINT, decimals: 9, maxPerTx: 5, minRecommended: 0.03, symbol: "SOL" },
+  usdc: { mint: USDC_MINT.toBase58(), decimals: 6, maxPerTx: 500, minRecommended: 5, symbol: "USDC" },
+};
 const STAKING_PROGRAM_ID = new PublicKey("SKRskrmtL83pcL4YqLWt6iPefDqwXQWHSw9S9vz94BZ");
 // The only Guardian currently listed by stake.solanamobile.com — "Solana Mobile Guardian", 0% commission.
 const GUARDIAN = new PublicKey("SKRGdBwzb1AtFW2chhBnZpGFnFLj6Mi7HM7iwjXALvw");
@@ -105,11 +118,13 @@ function buildStakeInstruction(staker: PublicKey, amountRaw: bigint): Transactio
 // ─── GET /api/treasury/status — read-only balances, no Action envelope ────────
 export async function handleTreasuryStatus(env: Env): Promise<Response> {
   const connection = new Connection(rpcUrl(env), "confirmed");
-  const [solLamports, skrAccounts] = await Promise.all([
+  const [solLamports, skrAccounts, usdcAccounts] = await Promise.all([
     connection.getBalance(PUBLISHER_WALLET),
     connection.getParsedTokenAccountsByOwner(PUBLISHER_WALLET, { mint: SKR_MINT }),
+    connection.getParsedTokenAccountsByOwner(PUBLISHER_WALLET, { mint: USDC_MINT }),
   ]);
   const skrUi = skrAccounts.value[0]?.account.data.parsed.info.tokenAmount.uiAmount ?? 0;
+  const usdcUi = usdcAccounts.value[0]?.account.data.parsed.info.tokenAmount.uiAmount ?? 0;
 
   let stakedShares = "0";
   try {
@@ -130,44 +145,56 @@ export async function handleTreasuryStatus(env: Env): Promise<Response> {
   return jsonResponse({
     wallet: PUBLISHER_WALLET.toBase58(),
     sol: solUi,
+    usdc: usdcUi,
     skr: skrUi,
     stakedShares,
-    minRecommendedSolSwap: MIN_RECOMMENDED_SOL_SWAP,
+    minRecommendedSwap: { sol: SWAP_INPUTS.sol.minRecommended, usdc: SWAP_INPUTS.usdc.minRecommended },
     // "Has enough to sign for at all" (rent + fees) vs. "worth signing for" —
     // gas + Jupiter slippage eat a fixed-ish cost regardless of swap size,
     // so converting dribbles wastes a bigger proportion of them. Nothing
     // fires automatically here (every conversion is a human tap), so this
     // is guidance, not an enforced gate — see handleTreasurySwapPost for
     // where a hard floor would go if that ever changes.
-    readyToConvert: solUi > 0.005,
-    worthConvertingNow: solUi >= MIN_RECOMMENDED_SOL_SWAP,
+    readyToConvert: solUi > 0.005 || usdcUi > 0.5,
+    worthConvertingNow: {
+      sol: solUi >= SWAP_INPUTS.sol.minRecommended,
+      usdc: usdcUi >= SWAP_INPUTS.usdc.minRecommended,
+    },
     readyToStake: skrUi >= 1, // on-chain min_stake_amount
   });
 }
 
-// ─── /api/actions/treasury-swap — sweep publisher-wallet SOL into SKR ─────────
-// Below this, Solana tx fees + Jupiter slippage start eating a disproportionate
-// share of the swap — worth waiting for more to accumulate. Purely advisory:
-// nothing here fires on its own, so this only ever informs a human's tap.
-const MIN_RECOMMENDED_SOL_SWAP = 0.03; // ≈$5-8 depending on SOL price
+// ─── /api/actions/treasury-swap — sweep publisher-wallet SOL or USDC into SKR ──
+// AutonoMonke's realized-profit fee (Monke_Eliza's DEV_WALLET = this same
+// PUBLISHER_WALLET) pays out in whatever the closed position's base currency
+// was — SOL, USDC, or SKR. SKR needs no swap; this endpoint covers the other
+// two. ?inputMint= picks which ("sol" default, or "usdc").
+function resolveSwapInput(url: URL): { key: string; cfg: typeof SWAP_INPUTS[string] } | null {
+  const key = (url.searchParams.get("inputMint") || "sol").toLowerCase();
+  const cfg = SWAP_INPUTS[key];
+  return cfg ? { key, cfg } : null;
+}
 
 export function handleTreasurySwapGet(url: URL): Response {
-  const amount = url.searchParams.get("amount") || "0.1";
+  const resolved = resolveSwapInput(url);
+  if (!resolved) return errorResponse(`Unknown inputMint — use "sol" or "usdc"`);
+  const { cfg } = resolved;
+  const amount = url.searchParams.get("amount") || (cfg.symbol === "SOL" ? "0.1" : "10");
   const amountNum = parseFloat(amount);
-  const belowThreshold = Number.isFinite(amountNum) && amountNum < MIN_RECOMMENDED_SOL_SWAP;
+  const belowThreshold = Number.isFinite(amountNum) && amountNum < cfg.minRecommended;
   const description = belowThreshold
-    ? `Swap ${amount} SOL from the OnlyMonkes publisher wallet into SKR via Jupiter. Heads up: below ${MIN_RECOMMENDED_SOL_SWAP} SOL, network fees + slippage eat a disproportionate share — worth letting more accumulate unless you're deliberately sweeping dust.`
-    : `Swap ${amount} SOL from the OnlyMonkes publisher wallet into SKR via Jupiter, ready to stake with the Guardian.`;
+    ? `Swap ${amount} ${cfg.symbol} from the OnlyMonkes publisher wallet into SKR via Jupiter. Heads up: below ${cfg.minRecommended} ${cfg.symbol}, network fees + slippage eat a disproportionate share — worth letting more accumulate unless you're deliberately sweeping dust.`
+    : `Swap ${amount} ${cfg.symbol} from the OnlyMonkes publisher wallet into SKR via Jupiter, ready to stake with the Guardian.`;
   return jsonResponse(
     {
       type: "action",
       icon: ACTION_ICON,
-      title: "Convert treasury SOL to SKR",
+      title: `Convert treasury ${cfg.symbol} to SKR`,
       description,
-      label: `Swap ${amount} SOL → SKR`,
+      label: `Swap ${amount} ${cfg.symbol} → SKR`,
       links: {
         actions: [
-          { label: `Swap ${amount} SOL → SKR`, href: `/api/actions/treasury-swap?amount=${amount}` },
+          { label: `Swap ${amount} ${cfg.symbol} → SKR`, href: `/api/actions/treasury-swap?inputMint=${resolved.key}&amount=${amount}` },
         ],
       },
     },
@@ -183,19 +210,23 @@ export async function handleTreasurySwapPost(url: URL, body: any, env: Env): Pro
     return errorResponse("This action only builds transactions for the OnlyMonkes publisher wallet");
   }
 
+  const resolved = resolveSwapInput(url);
+  if (!resolved) return errorResponse(`Unknown inputMint — use "sol" or "usdc"`);
+  const { cfg } = resolved;
+
   const amount = parseFloat(url.searchParams.get("amount") || "0");
-  if (!Number.isFinite(amount) || amount <= 0 || amount > 5) {
-    return errorResponse("Invalid amount (max 5 SOL)");
+  if (!Number.isFinite(amount) || amount <= 0 || amount > cfg.maxPerTx) {
+    return errorResponse(`Invalid amount (max ${cfg.maxPerTx} ${cfg.symbol})`);
   }
 
   try {
-    const amountLamports = String(Math.round(amount * 1e9));
-    const build = await getJupiterBuild(SOL_MINT, SKR_MINT.toBase58(), amountLamports, account, 100, env);
+    const amountRawUnits = String(Math.round(amount * 10 ** cfg.decimals));
+    const build = await getJupiterBuild(cfg.mint, SKR_MINT.toBase58(), amountRawUnits, account, 100, env);
     const priceImpact = parseFloat(build.priceImpactPct || "0");
     if (priceImpact > 15) return errorResponse("Price impact too high (>15%)");
 
     const swapTransaction = await buildSwapTransaction(build, account, env);
-    return jsonResponse({ type: "transaction", transaction: swapTransaction, message: `Swapping ${amount} SOL → SKR` });
+    return jsonResponse({ type: "transaction", transaction: swapTransaction, message: `Swapping ${amount} ${cfg.symbol} → SKR` });
   } catch (err) {
     return errorResponse(`Treasury swap failed: ${(err as Error).message}`, 500);
   }
