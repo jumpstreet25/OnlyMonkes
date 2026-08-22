@@ -104,6 +104,14 @@ interface UserAuthState {
    *  channel's group ID lives in botChannelIds, but Genesis is its own group, not a
    *  bot channel (Genesis holders must never be auto-joined to Main Chat/Trades). */
   genesisGroupId: string | null;
+  /** Device Integrity Attestation verdict — backend-verified (Android Key Attestation chain +
+   *  RASP + Saga/Genesis ownership), cached per wallet server-side with a 7-day TTL; this is
+   *  the client-side mirror of that cached verdict, refreshed on login and periodically in the
+   *  background. 'unverified' covers both "never checked" and "RASP/transient failure" (soft
+   *  gate — only blocks sensitive actions); 'hardware_failed' is a confirmed hardware-chain
+   *  failure (hard gate — blocks chat access, same severity as failing NFT ownership). */
+  deviceIntegrityStatus: "clean" | "unverified" | "hardware_failed" | null;
+  deviceIntegrityVerifiedAt: number | null;
 }
 
 interface UserAuthActions {
@@ -118,6 +126,7 @@ interface UserAuthActions {
   setIsGenesisHolder: (isGenesisHolder: boolean, kind?: "saga" | "seeker" | null) => void;
   setVerifiedGenesisAt: (verifiedGenesisAt: number | null) => void;
   setGenesisGroupId: (genesisGroupId: string | null) => void;
+  setDeviceIntegrityStatus: (status: "clean" | "unverified" | "hardware_failed" | null, verifiedAt?: number | null) => void;
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -309,6 +318,8 @@ const initialState: AppState = {
   genesisTokenKind: null,
   verifiedGenesisAt: null,
   genesisGroupId: null,
+  deviceIntegrityStatus: null,
+  deviceIntegrityVerifiedAt: null,
 
   // Slice 2: User Profile
   username: null,
@@ -390,6 +401,8 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   setIsGenesisHolder: (isGenesisHolder, kind = null) => set({ isGenesisHolder, genesisTokenKind: isGenesisHolder ? kind : null }),
   setVerifiedGenesisAt: (verifiedGenesisAt) => set({ verifiedGenesisAt }),
   setGenesisGroupId: (genesisGroupId) => set({ genesisGroupId }),
+  setDeviceIntegrityStatus: (deviceIntegrityStatus, verifiedAt = Date.now()) =>
+    set({ deviceIntegrityStatus, deviceIntegrityVerifiedAt: deviceIntegrityStatus ? verifiedAt : null }),
   setMwaAuthToken: (mwaAuthToken) => {
     set({ mwaAuthToken });
     if (mwaAuthToken) {

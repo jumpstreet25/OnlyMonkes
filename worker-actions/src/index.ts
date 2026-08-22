@@ -52,6 +52,11 @@ import {
   handleSentimentScore,
   closeSentimentEpoch,
 } from "./sentimentOracle";
+import {
+  handleDeviceIntegrityChallenge,
+  handleDeviceIntegrityIssue,
+  handleDeviceIntegrityStatus,
+} from "./deviceIntegrity";
 
 // Cloudflare Workers KV namespace binding (declared locally to avoid @cloudflare/workers-types dependency)
 interface KVListOptions {
@@ -97,6 +102,9 @@ export interface Env {
   // Data Oracle Phase 1 (device attestation + sentiment aggregation) — see
   // sentimentOracle.ts. Create via `wrangler kv:namespace create SENTIMENT_ORACLE`.
   SENTIMENT_ORACLE: KVNamespace;
+  // Device Integrity Attestation — see deviceIntegrity.ts. Backend-verified
+  // (Key Attestation chain + RASP + Saga/Genesis ownership), no on-chain write.
+  DEVICE_INTEGRITY: KVNamespace;
 }
 
 // Cron Trigger types (declared locally, same reasoning as KVNamespace above —
@@ -147,18 +155,18 @@ function errorResponse(message: string, status = 400): Response {
   return jsonResponse({ error: message }, status);
 }
 
-function rpcUrl(env: Env): string {
+export function rpcUrl(env: Env): string {
   return `https://mainnet.helius-rpc.com/?api-key=${env.HELIUS_API_KEY}`;
 }
 
 /** Wallet-ownership DAS only — isolated quota from swaps/sales/stats. */
-function verifyRpcUrl(env: Env): string {
+export function verifyRpcUrl(env: Env): string {
   const key = env.HELIUS_NFT_API_KEY || env.HELIUS_API_KEY;
   return `https://mainnet.helius-rpc.com/?api-key=${key}`;
 }
 
 /** Fetch with timeout — prevents worker from hanging on slow upstream APIs. */
-async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = FETCH_TIMEOUT): Promise<Response> {
+export async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = FETCH_TIMEOUT): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -3206,6 +3214,21 @@ export default {
     }
     if (path === "/api/sentiment/score") {
       if (request.method === "GET") return handleSentimentScore(url, env);
+      return errorResponse("Method not allowed", 405);
+    }
+
+    // Device Integrity Attestation — backend-verified (Key Attestation cert chain + RASP +
+    // Saga/Genesis ownership), cached per wallet, no on-chain write. See deviceIntegrity.ts.
+    if (path === "/api/device-integrity/challenge") {
+      if (request.method === "POST") return handleDeviceIntegrityChallenge(env);
+      return errorResponse("Method not allowed", 405);
+    }
+    if (path === "/api/device-integrity/issue") {
+      if (request.method === "POST") return handleDeviceIntegrityIssue(request, env);
+      return errorResponse("Method not allowed", 405);
+    }
+    if (path === "/api/device-integrity/status") {
+      if (request.method === "GET") return handleDeviceIntegrityStatus(url, env);
       return errorResponse("Method not allowed", 405);
     }
     if (path === "/download/apk") {

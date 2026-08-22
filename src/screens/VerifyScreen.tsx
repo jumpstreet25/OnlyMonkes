@@ -33,9 +33,10 @@ import { shortenAddress, setUserChosenNftImage } from "@/lib/nftVerification";
 import { loadListings, getActiveListings } from "@/lib/marketplace";
 import { grantFirstLoginBonusIfEligible } from "@/lib/firstLoginBonus";
 import { verifyGenesisTokenOwnership } from "@/lib/genesisTokenVerification";
+import { useDeviceIntegrity } from "@/hooks/useDeviceIntegrity";
 import type { OwnedNFT } from "@/types";
 
-type VerifyState = "idle" | "checking-nft" | "nft-fail" | "verify-error" | "nft-ok" | "pick-nft" | "set-pfp" | "ready";
+type VerifyState = "idle" | "checking-nft" | "nft-fail" | "verify-error" | "nft-ok" | "pick-nft" | "set-pfp" | "ready" | "device-fail";
 
 // Fun Monke-themed loading texts — rotate every 1.8 s
 const LOADING_TEXTS = [
@@ -62,6 +63,8 @@ export default function VerifyScreen() {
   const { wallet, verifiedNft, allNfts, error, setVerified, setIsGuest, setIsGenesisHolder, setVerifiedGenesisAt } = useAppStore();
   const { verify } = useNFTVerification();
   const { disconnect } = useMobileWallet();
+  const { checkDeviceIntegrity } = useDeviceIntegrity();
+  const [deviceFailReason, setDeviceFailReason] = useState<string | null>(null);
 
   const [phase, setPhase] = useState<VerifyState>("idle");
   const [loadingTextIdx, setLoadingTextIdx] = useState(0);
@@ -110,7 +113,21 @@ export default function VerifyScreen() {
     if (wallet?.address) runVerification();
   }, [wallet?.address]);
 
+  // Confirmed hardware-chain failure only — RASP/transient issues degrade silently
+  // (deviceIntegrityStatus is still recorded as "unverified" and gates sensitive actions
+  // later, but never blocks chat access itself; see useDeviceIntegrity.ts's doc comment).
+  const runDeviceIntegrityGate = async (): Promise<boolean> => {
+    const result = await checkDeviceIntegrity();
+    if (result.status === "hardware_failed") {
+      setDeviceFailReason(result.error ?? null);
+      setPhase("device-fail");
+      return false;
+    }
+    return true;
+  };
+
   const goToChat = async (nftOverride?: OwnedNFT) => {
+    if (!(await runDeviceIntegrityGate())) return;
     setPhase("ready");
     const nftToSave = nftOverride ?? verifiedNft;
     if (nftToSave) {
@@ -168,6 +185,7 @@ export default function VerifyScreen() {
           setIsGenesisHolder(true, genesis.kind);
           setVerifiedGenesisAt(Date.now());
           if (genesis.kind) saveGenesisFlag(genesis.kind, wallet.address).catch(() => {});
+          if (!(await runDeviceIntegrityGate())) return;
           router.replace("/genesis-chat");
           return;
         }
@@ -378,8 +396,30 @@ export default function VerifyScreen() {
           </View>
         )}
 
+        {/* ── DEVICE INTEGRITY CHECK FAILED (confirmed, not RASP/transient) ── */}
+        {phase === "device-fail" && (
+          <View style={styles.notHolderBlock}>
+            <Text style={styles.notHolderEmoji}>🛡️</Text>
+            <Text style={styles.notHolderTitle}>Device Check Failed</Text>
+            <Text style={styles.notHolderBody}>
+              We couldn't confirm this device's hardware security — this usually means an
+              unsupported device, a modified OS, or an app store copy that isn't genuine.
+              {deviceFailReason ? `\n\n(${deviceFailReason})` : ""}
+            </Text>
+            <Pressable
+              style={({ pressed }) => [styles.retryNowButton, pressed && { opacity: 0.7 }]}
+              onPress={runVerification}
+            >
+              <Text style={styles.retryNowButtonText}>Retry Verification</Text>
+            </Pressable>
+            <Pressable style={styles.retryButton} onPress={handleDisconnect}>
+              <Text style={styles.retryButtonText}>← Try a Different Wallet</Text>
+            </Pressable>
+          </View>
+        )}
+
         {/* Step indicator (checking-nft / ok states) */}
-        {phase !== "nft-fail" && phase !== "verify-error" && (
+        {phase !== "nft-fail" && phase !== "verify-error" && phase !== "device-fail" && (
           <View style={styles.steps}>
             <StepRow
               done={["nft-ok", "pick-nft", "ready"].includes(phase)}

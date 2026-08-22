@@ -12,8 +12,12 @@
   },
   "dependencies": {
     "@cf-wasm/photon": "^0.3.7",
+    "@peculiar/asn1-android": "^2.9.4",
+    "@peculiar/asn1-schema": "^2.9.4",
+    "@peculiar/x509": "^2.0.0",
     "@solana/spl-token": "^0.4.0",
     "@solana/web3.js": "^1.95.0",
-    "bs58": "^6.0.0"
+    "bs58": "^6.0.0",
+    "reflect-metadata": "^0.2.2"
   }
 }

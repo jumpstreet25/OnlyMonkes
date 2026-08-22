@@ -37,6 +37,13 @@ id = "bc8a253f9eb44a7f9e4841fa96014c66"
 binding = "SENTIMENT_ORACLE"
 id = "c9d1b341ee9445868909ebbb57000758"
 
+# Device Integrity Attestation — backend-verified (Android Key Attestation +
+# RASP + Saga/Genesis ownership) verdicts, cached per wallet. No on-chain
+# write (see deviceIntegrity.ts doc comment for the cost rationale).
+[[kv_namespaces]]
+binding = "DEVICE_INTEGRITY"
+id = "b0b8d8e361a749d28074f32134fe4fbf"
+
 # 2026-07-30: refreshes the public stats:latest KV cache every 4h so the
 # "Check Your Monke" growth page (GET /, /monke/:mint) never makes a live
 # Helius/CoinGecko call per page view. See scheduled() in src/index.ts.

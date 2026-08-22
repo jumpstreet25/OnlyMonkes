@@ -41,6 +41,7 @@ import {
 import { prefetchXmtpClient, bindXmtpToWallet, prepareWalletBoundXmtp } from "@/lib/xmtp";
 import { loadCachedInboxLinks } from "@/lib/inboxLinking";
 import { rehydrateForWallet } from "@/lib/walletIdentity";
+import { useDeviceIntegrity } from "@/hooks/useDeviceIntegrity";
 import { THEME, FONTS } from "@/lib/constants";
 import { MonkeGlass } from "@/components/MonkeGlass";
 import { OnboardingCarousel, ONBOARDING_KEY } from "@/components/OnboardingCarousel";
@@ -53,7 +54,19 @@ export default function ConnectScreen() {
   const HEADER_HEIGHT = Math.round(SCREEN_H * 0.30);
   const { connect } = useMobileWallet();
   const { isLoading, error, setError, setWallet, setVerified, setAllNfts, setIsGenesisHolder } = useAppStore();
+  const { checkDeviceIntegrity } = useDeviceIntegrity();
   const [checkingSession, setCheckingSession] = useState(true);
+  const DEVICE_INTEGRITY_TTL_MS = 7 * 24 * 3600 * 1000; // matches the worker's 7-day verdict TTL
+
+  // Fire-and-forget — the fast session-restore path never blocks navigation on this. A
+  // confirmed hardware-chain failure here just leaves deviceIntegrityStatus stale/unverified
+  // until the next full VerifyScreen run (which DOES hard-gate) catches it; this path only
+  // exists to keep the cached verdict fresh for sensitive-action gating in between full runs.
+  const refreshDeviceIntegrityInBackground = () => {
+    const { deviceIntegrityVerifiedAt } = useAppStore.getState();
+    const isStale = !deviceIntegrityVerifiedAt || Date.now() - deviceIntegrityVerifiedAt > DEVICE_INTEGRITY_TTL_MS;
+    if (isStale) void checkDeviceIntegrity();
+  };
   const [walletSheetOpen, setWalletSheetOpen] = useState(false);
   const [showCarousel, setShowCarousel] = useState(false);
 
@@ -93,12 +106,14 @@ export default function ConnectScreen() {
           applyThemeFromShop(useAppStore.getState().shopStyles);
           prefetchXmtpClient(); // start XMTP boot while navigating — saves 2-5s
           router.replace("/chat");
+          refreshDeviceIntegrityInBackground();
         } else if (genesisKind) {
           // Genesis-only fast path — cached flag lets us skip straight to
           // Genesis Chat instead of re-running full verification every launch.
           // A live re-check still happens periodically (session guard).
           prefetchXmtpClient();
           router.replace("/genesis-chat");
+          refreshDeviceIntegrityInBackground();
         } else {
           router.replace("/verify");
         }
