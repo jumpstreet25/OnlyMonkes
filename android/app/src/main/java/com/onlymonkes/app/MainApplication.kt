@@ -17,6 +17,8 @@ import com.facebook.soloader.SoLoader
 import expo.modules.ApplicationLifecycleDispatcher
 import expo.modules.ReactNativeHostWrapper
 
+import io.sentry.react.RNSentrySDK
+
 class MainApplication : Application(), ReactApplication {
 
   override val reactNativeHost: ReactNativeHost = ReactNativeHostWrapper(
@@ -44,6 +46,17 @@ class MainApplication : Application(), ReactApplication {
 
   override fun onCreate() {
     super.onCreate()
+    // 2026-08-22: must run before anything else in this method. initSentry() in JS
+    // (app/_layout.tsx) only starts once the JS bundle has loaded and executed — which
+    // is *after* SoLoader.init/new-arch bring-up below — so it can never see a crash in
+    // this method. This native init (reads android/app/src/main/assets/sentry.options.json,
+    // same DSN as the JS init) closes that blind spot: it was the reason the actual
+    // v3.0.1/v3.0.2 splash crash (a "react"/"react-native-renderer" version mismatch —
+    // see package.json) had to be root-caused via a physically connected device's logcat
+    // instead of a Sentry report.
+    try {
+      RNSentrySDK.init(this)
+    } catch (_: Throwable) { /* sentry.options.json missing/invalid — don't block startup */ }
     SoLoader.init(this, OpenSourceMergedSoMapping)
     if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
       initNewArchitecture()

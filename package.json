@@ -81,7 +81,7 @@
     "freerasp-react-native": "^5.2.0",
     "livekit-client": "^2.21.0",
     "nativewind": "^4.2.6",
-    "react": "19.1.5",
+    "react": "19.1.0",
     "react-native": "0.81.5",
     "react-native-gesture-handler": "~2.28.0",
     "react-native-get-random-values": "^1.11.0",

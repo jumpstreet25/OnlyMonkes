@@ -10,7 +10,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   name: 'OnlyMonkes',
   slug: 'monkesonly',
   owner: process.env.EXPO_OWNER ?? undefined,
-  version: '3.0.2',
+  version: '3.0.3',
   orientation: 'portrait',
   icon: './assets/icon.png',
   userInterfaceStyle: 'dark',
@@ -70,6 +70,12 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       {
         organization: process.env.SENTRY_ORG ?? 'onlymonkes',
         project: process.env.SENTRY_PROJECT ?? 'onlymonkes',
+        // 2026-08-22: documents intent for any future prebuild — the actual native wiring
+        // (RNSentrySDK.init(this) call + android/app/src/main/assets/sentry.options.json)
+        // is committed by hand in this bare-workflow checkout since `expo prebuild` is not
+        // run here. Without native init, a crash before the JS bundle loads (like the
+        // v3.0.1/v3.0.2 splash crash) is invisible to Sentry.
+        useNativeInit: true,
       },
     ],
     [

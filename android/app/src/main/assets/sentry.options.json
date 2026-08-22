@@ -1,0 +1,8 @@
+{
+  "dsn": "https://ae7c3217550a4ad1227579b813cee4ea@o4511089484038144.ingest.us.sentry.io/4511089486594048",
+  "environment": "production",
+  "debug": false,
+  "enableNativeCrashHandling": true,
+  "enableAutoSessionTracking": true,
+  "attachStacktrace": true
+}
