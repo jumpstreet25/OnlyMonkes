@@ -39,7 +39,7 @@ import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
 import * as Clipboard from "expo-clipboard";
 import { toast } from "sonner-native";
-import { THEME, FONTS, SKR_MINT, JUP_API_KEY, getWorldBarTint, getWorldAccent } from "@/lib/constants";
+import { THEME, FONTS, SKR_MINT, JUP_API_KEY, getWorldBarTint, getWorldAccent, surfaceToBarTint } from "@/lib/constants";
 import { MenuIcon, type MenuIconName } from "@/components/MenuIcon";
 import { WorldLayer } from "@/components/worlds/WorldLayer";
 import { useThemeColor } from "@/lib/shopTheme";
@@ -156,9 +156,19 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
   // and accent so it feels like part of the same world layer instead
   // of a separate dark slab. Falls back to themeSurface / themeAccent
   // when no world is equipped.
+  // 2026-08-22: was raw themeSurface — a fully OPAQUE hex fill sitting on
+  // the same card as the card's own BlurView (line ~477 below). Individual
+  // grid tiles are deliberately NOT blurred (per-tile blur was the main
+  // scroll-lag source — see gridBtn comment), so this one card-level blur
+  // is 100% of the drawer's "glass" look; an opaque fill here collapsed the
+  // whole drawer to flat grey regardless of whether the blur itself was
+  // rendering correctly. surfaceToBarTint matches the translucency every
+  // other chrome surface already uses (same alpha as glassTheme.ts's
+  // GLASS_BG, the documented recipe for "visible card surface layered on
+  // top of a BlurView").
   const shopStyles = useAppStore(s => s.shopStyles);
   const worldId = shopStyles?.worldId as string | undefined;
-  const drawerBg = worldId ? getWorldBarTint(worldId) : themeSurface;
+  const drawerBg = worldId ? getWorldBarTint(worldId) : surfaceToBarTint(themeSurface, 0.30);
   const iconAccent = themeOverrides ? themeAccent : (worldId ? getWorldAccent(worldId) : '#6CB4EE');
   // (v40 2026-05-09) Hex → rgba helper so per-world chrome (search bar
   // border, etc.) can tint at low alpha without hardcoding rgba per world.
