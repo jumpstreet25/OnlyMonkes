@@ -23,6 +23,7 @@ import { registerForPushNotifications } from '../src/lib/notifications';
 import { triggerProfileRebroadcast } from '../src/hooks/useXmtp';
 import { useAppStore, loadPersistedPrefs } from '../src/store/appStore';
 import { useEntitlementSync } from '../src/hooks/useEntitlementSync';
+import { useAppOpenAdGate } from '../src/hooks/useAppOpenAdGate';
 import { getEquippedStyles, type ShopState } from '../src/lib/bananaShop';
 import { applyThemeFromShop } from '../src/lib/shopTheme';
 import { clearLegacyKeys, startNftOwnershipGuard } from '../src/lib/session';
@@ -54,6 +55,9 @@ const queryClient = new QueryClient();
 
 export default function RootLayout() {
   useFreeRasp(RASP_CONFIG, THREAT_ACTIONS);
+  // Automatic App Open ad — no tap needed, shows once per cold start
+  // (force-close + reopen), rate-limited. See useAppOpenAdGate.ts.
+  useAppOpenAdGate();
   // Data Oracle Phase 1 — re-verifies SagaMonkes ownership periodically (app-foreground,
   // TTL'd) instead of only once at login. No-ops until a wallet is connected.
   useEntitlementSync();

@@ -1,3 +1,25 @@
+/**
+ * Shape of one DexScreener `/latest/dex/search` or `/latest/dex/tokens/:id`
+ * pair result — the fields this module's helpers and their callers
+ * (ChartModal, WatchlistScreen) actually read. Give raw `res.json()` results
+ * this type (or `{ pairs?: DexScreenerPair[] }`) at the fetch boundary —
+ * leaving them as `any` collapses `pickSolPair<T>`'s inferred `T` down to
+ * its bare structural constraint (quoteToken/liquidity only), silently
+ * stripping pairAddress/baseToken/priceUsd/priceChange from every caller's
+ * view of the return value (TS falls back to the generic's constraint when
+ * it can't extract a real element type from an `any[]` argument).
+ */
+export interface DexScreenerPair {
+  chainId?: string;
+  pairAddress?: string;
+  baseToken?: { address?: string; symbol?: string };
+  quoteToken?: { symbol?: string };
+  liquidity?: { usd?: number };
+  priceNative?: string | number;
+  priceUsd?: string | number;
+  priceChange?: { h24?: string | number };
+}
+
 /** TOKEN/SOL mark from a DexScreener pair. Never a leftover USD print. */
 export function isSolQuote(pair: { quoteToken?: { symbol?: string } } | null | undefined): boolean {
   const q = String(pair?.quoteToken?.symbol ?? '').toUpperCase();

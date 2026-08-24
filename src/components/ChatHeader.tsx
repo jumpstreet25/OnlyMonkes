@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import {
   View,
   Text,
@@ -8,8 +8,8 @@ import {
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { BlurView } from "@sbaiahmed1/react-native-blur";
-import { THEME, FONTS, getWorldBarTint, chromeAccentColor, surfaceToBarTint } from "@/lib/constants";
+import { LiquidGlass as BlurView } from "@/components/LiquidGlass";
+import { THEME, FONTS, getWorldBarTint, chromeAccentColor, surfaceToBarTint, resolveBarTint } from "@/lib/constants";
 import { getBlurProps } from "@/lib/glassTheme";
 import { getLocatedUserCount, useProfileVersion } from "@/lib/userProfile";
 import { markOnboardingStep } from "@/components/OnboardingChecklist";
@@ -62,7 +62,8 @@ export function ChatHeader({
   // flat dark band on top of it. Falls back to themeSurface when no
   // world is set.
   const worldId = useAppStore((s) => s.shopStyles?.worldId) as string | undefined;
-  const headerBg = worldId ? getWorldBarTint(worldId) : surfaceToBarTint(themeSurface, HEADER_BG_ALPHA);
+  const hasThemeOverride = useAppStore((s) => !!s.themeOverrides);
+  const headerBg = resolveBarTint(worldId, hasThemeOverride, themeSurface, HEADER_BG_ALPHA);
   // Message pill color — same World/BananaShop precedence as every other
   // piece of chrome (ChatInput toolbar icons, bot channel icons): World
   // wins when equipped, else PFP Full Theme's NFT color, else default blue.
@@ -87,36 +88,11 @@ export function ChatHeader({
   // Keep profileVersion in the dependency path so React treats it as used
   // (getLocatedUserCount re-reads the cache after each notify).
   void profileVersion;
-  // @sbaiahmed1/react-native-blur's native view snapshots its target
-  // synchronously on the very first Fabric layout commit — on cold start
-  // that fires before the view tree is stable and crashes with
-  // IndexOutOfBoundsException in eightbitlab.com.blurview.PreDrawBlurController
-  // (upstream-documented: Dimezis/BlurView#176, "crashes on first launch,
-  // fine on restart"). A bare useEffect(() => setBlurReady(true), []) still
-  // crashed on real hardware (2026-08-22) — it fires the same tick ChatHeader
-  // mounts, which for a full-screen router.replace("/chat") navigation is
-  // WHILE the screen transition animation and several sibling BlurViews
-  // (ChatInput, MenuDrawer) are all still committing at once, not the
-  // "settled, second-launch" state the original one-tick defer assumed.
-  // 2026-08-22: InteractionManager.runAfterInteractions() ALSO still crashed
-  // (MenuDrawer's identical pattern crashed on a real device) — it only waits
-  // for JS-scheduled interaction handles, and this navigation transition is a
-  // native react-native-screens Fragment transition that never registers one,
-  // so the callback fired almost immediately either way. A fixed delay past
-  // the native transition's known duration is the reliable defer here since
-  // there's no owned animation/handle to await.
-  const [blurReady, setBlurReady] = useState(false);
-  useEffect(() => {
-    const timer = setTimeout(() => setBlurReady(true), 350);
-    return () => clearTimeout(timer);
-  }, []);
   return (
     <View style={[styles.header, { borderBottomColor: themeBorder, paddingTop: insets.top }]}>
-      {/* 2026-07-24: always-on glass — blurs the message list scrolling
+      {/* 2026-07-24: always-on glass — softens the message list scrolling
           behind the header, world-equipped or not. */}
-      {blurReady && (
-        <BlurView {...getBlurProps()} style={[StyleSheet.absoluteFill, { pointerEvents: "none" }]} />
-      )}
+      <BlurView {...getBlurProps()} style={[StyleSheet.absoluteFill, { pointerEvents: "none" }]} />
       <View style={[StyleSheet.absoluteFill, { backgroundColor: headerBg }]} pointerEvents="none" />
       {/* Left: Globe with monke count */}
       <View style={styles.headerLeft}>

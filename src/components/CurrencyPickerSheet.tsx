@@ -24,7 +24,7 @@ import {
 } from "react-native";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
-import { BlurView } from "expo-blur";
+import { LiquidGlass as BlurView } from "@/components/LiquidGlass";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { getAssociatedTokenAddressSync } from "@solana/spl-token";
 import { GLASS_BG, GLASS_BORDER, getBlurProps } from "@/lib/glassTheme";

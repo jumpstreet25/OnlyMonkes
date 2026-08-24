@@ -106,7 +106,7 @@ android {
         applicationId 'com.onlymonkes.app'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 42
+        versionCode 44
         versionName "3.0.3"
         // English-only — strips non-English resources from native libs (livekit,
         // xmtp, skia, vision-camera). ~2-5 MB savings depending on dep verbosity.

@@ -4,7 +4,7 @@ import {
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
-import { BlurView } from 'expo-blur';
+import { LiquidGlass as BlurView } from '@/components/LiquidGlass';
 import { toast } from 'sonner-native';
 import { THEME, FONTS } from '@/lib/constants';
 import { getBlurProps, GLASS_CHROME_BG } from '@/lib/glassTheme';

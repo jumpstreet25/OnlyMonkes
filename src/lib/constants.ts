@@ -163,6 +163,42 @@ export const THEME = {
 // the world.
 export const WORLD_BAR_BG = 'rgba(10,10,20,0.22)';
 
+// MonkeBlue — the app's own default brand tint for chrome bars (header/
+// toolbar/support-banner/BananaMenu drawer) whenever NO Chat World and NO
+// Banana Shop theme (Tier 4 static theme or PFP Full Theme) is equipped.
+// Built on the light-blue accent (#6CB4EE) already used app-wide for the
+// globe pill and default chrome-icon color — not a new, disconnected color.
+// 2026-08-23: replaces falling through to surfaceToBarTint(THEME.surface,
+// ...) for the no-override case — THEME.surface is near-black (#12121A),
+// so with no real blur behind it any more (see LiquidGlass.tsx) that path
+// read as flat grey bars with zero brand identity, not "glass."
+export const MONKE_BLUE = '#6CB4EE';
+// 2026-08-23: 0.34 -> 0.62, and richened the navy itself (16,34,56 ->
+// 20,52,92) — confirmed on-device (Seeker screenshot) that the original
+// value was dominated by LiquidGlass's own neutral dark scrim underneath
+// it and read as "slightly less black," not blue. This value needs to be
+// strong enough to visibly win against LiquidGlass's ~0.5-opacity neutral
+// gradient, not just tint it.
+export const MONKE_BLUE_BAR_BG = 'rgba(20, 52, 92, 0.62)';
+
+/**
+ * Resolves the translucent tint for a chrome bar (header, toolbar, support
+ * banner, chat/DM headers, BananaMenu drawer): World tint wins when a Chat
+ * World is equipped; an equipped Banana Shop theme's own surface color wins
+ * next (a user's explicit customization); MonkeBlue is the default brand
+ * fallback when neither is set — never a hardcoded neutral dark tint.
+ */
+export function resolveBarTint(
+  worldId: string | undefined | null,
+  hasThemeOverride: boolean,
+  themeSurface: string,
+  alpha: number,
+): string {
+  if (worldId) return getWorldBarTint(worldId);
+  if (hasThemeOverride) return surfaceToBarTint(themeSurface, alpha);
+  return MONKE_BLUE_BAR_BG;
+}
+
 /**
  * Per-world ACCENT color for tappable chrome elements (toolbar labels:
  * CAM/LIVE/GIF, $SKR price button, Saga Monkes Floor, Help Support

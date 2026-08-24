@@ -1,10 +1,10 @@
 import React, { useRef, useCallback, useState, useEffect, useMemo } from 'react';
 import { View, StyleSheet, Text, Pressable, ActivityIndicator, Keyboard } from 'react-native';
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
-import { BlurView } from 'expo-blur';
+import { LiquidGlass as BlurView } from '@/components/LiquidGlass';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { THEME, FONTS, BOT_INBOX_IDS, getWorldBarTint, getWorldAccent, surfaceToBarTint } from '@/lib/constants';
+import { THEME, FONTS, BOT_INBOX_IDS, getWorldBarTint, getWorldAccent, surfaceToBarTint, resolveBarTint } from '@/lib/constants';
 import { useThemeColor } from '@/lib/shopTheme';
 import { getBlurProps } from '@/lib/glassTheme';
 import { WorldLayer } from '@/components/worlds/WorldLayer';
@@ -37,8 +37,9 @@ type FeedItem =
 
 export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
   const insets = useSafeAreaInsets();
-  const { myInboxId, shopStyles } = useAppStore();
+  const { myInboxId, shopStyles, themeOverrides } = useAppStore();
   const worldId = shopStyles?.worldId as string | undefined;
+  const hasThemeOverride = !!themeOverrides;
   const [retryKey, setRetryKey] = useState(0);
   const { messages, loading, error, sending, send, react, sendTyping, typingUsers } = useDm(peerInboxId);
   const [inputText, setInputText] = useState('');
@@ -164,7 +165,7 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
           every screen, not just world-equipped ones. */}
       <View style={styles.header}>
         <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} pointerEvents="none" />
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: worldId ? getWorldBarTint(worldId) : surfaceToBarTint(themeSurface, 0.20), borderBottomWidth: worldId ? 0 : 1, borderBottomColor: themeBorder }]} pointerEvents="none" />
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: resolveBarTint(worldId, hasThemeOverride, themeSurface, 0.20), borderBottomWidth: worldId ? 0 : 1, borderBottomColor: themeBorder }]} pointerEvents="none" />
         <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={8}>
           <Text style={[styles.backArrow, worldId ? { color: getWorldAccent(worldId) } : null]}>←</Text>
         </Pressable>

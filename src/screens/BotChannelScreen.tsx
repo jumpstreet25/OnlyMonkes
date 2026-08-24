@@ -28,10 +28,10 @@ import AutonoMonkeSetupWizard from "@/components/AutonoMonkeSetupWizard";
 import { getXmtpClient } from "@/hooks/useXmtp";
 import { sendDmMessage } from "@/lib/xmtp";
 import * as Haptics from "expo-haptics";
-import { BlurView } from "@sbaiahmed1/react-native-blur";
+import { LiquidGlass as BlurView } from "@/components/LiquidGlass";
 import { getBlurProps } from "@/lib/glassTheme";
 import { WorldGlassFill } from "@/components/WorldGlassFill";
-import { THEME, FONTS, getWorldBarTint, getWorldAccent, surfaceToBarTint } from "@/lib/constants";
+import { THEME, FONTS, getWorldBarTint, getWorldAccent, surfaceToBarTint, resolveBarTint } from "@/lib/constants";
 import { BotChannelIcon } from "@/components/BotChannelIcon";
 import { ErrorMessage } from "@/components/ErrorMessage";
 import { useThemeColor } from "@/lib/shopTheme";
@@ -69,22 +69,6 @@ interface BotChannelScreenProps {
 
 export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
   const insets = useSafeAreaInsets();
-  // @sbaiahmed1/react-native-blur's native view snapshots its target
-  // synchronously on the very first Fabric layout commit — that unstable
-  // first commit can crash with IndexOutOfBoundsException in
-  // eightbitlab.com.blurview.PreDrawBlurController (upstream-documented:
-  // Dimezis/BlurView#176; same fix as ChatHeader/ChatInput/MenuDrawer). A
-  // bare useEffect(() => setBlurReady(true), []) still crashed on real
-  // hardware (2026-08-22), and so did InteractionManager.runAfterInteractions()
-  // (it only waits for JS-scheduled interaction handles, which this native
-  // screen transition never registers) — see ChatHeader.tsx's fuller note.
-  // A fixed delay past the native transition's known duration is the
-  // reliable defer.
-  const [blurReady, setBlurReady] = useState(false);
-  useEffect(() => {
-    const timer = setTimeout(() => setBlurReady(true), 350);
-    return () => clearTimeout(timer);
-  }, []);
   const { myInboxId, botChannelIds, mutedBotChannels, toggleBotChannelMute, username } = useAppStore();
   const groupId = botChannelIds[channelId];
   const isMuted = mutedBotChannels[channelId];
@@ -108,8 +92,8 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
   // the same WORLD_BAR_BG translucent treatment as the main chat so the
   // world reads through them.
   const worldId = useAppStore((s) => s.shopStyles?.worldId) as string | undefined;
-  const chromeBg = worldId ? getWorldBarTint(worldId) : surfaceToBarTint(themeSurface, 0.20);
   const hasThemeOverride = useAppStore(s => !!s.themeOverrides);
+  const chromeBg = resolveBarTint(worldId, hasThemeOverride, themeSurface, 0.20);
 
   // PFP Full Theme: tint channel headers with NFT color
   const shopStyles = useAppStore(s => s.shopStyles);
@@ -308,7 +292,7 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
       <View style={[styles.header, { borderBottomColor: themeBorder, paddingTop: insets.top }]}>
         {/* Same MonkeGlass as MainChat bubbles + light chrome bar tint */}
         {worldId ? <WorldGlassFill worldId={worldId} /> : (
-          blurReady && <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />
+          <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />
         )}
         <View style={[StyleSheet.absoluteFill, { backgroundColor: chromeBg }]} pointerEvents="none" />
         <View style={styles.headerRow1}>

@@ -14,7 +14,7 @@
 
 import React from "react";
 import { View, StyleSheet, type StyleProp, type ViewStyle } from "react-native";
-import { BlurView } from "expo-blur";
+import { LiquidGlass as BlurView } from "@/components/LiquidGlass";
 import { LinearGradient } from "expo-linear-gradient";
 import {
   BUBBLE_GLASS_FILL,

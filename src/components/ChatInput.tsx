@@ -21,10 +21,10 @@ import {
   Animated,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { BlurView } from "@sbaiahmed1/react-native-blur";
+import { LiquidGlass as BlurView } from "@/components/LiquidGlass";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
-import { THEME, FONTS, MAX_MESSAGE_LENGTH, getWorldBarTint, chromeAccentColor, surfaceToBarTint } from "@/lib/constants";
+import { THEME, FONTS, MAX_MESSAGE_LENGTH, getWorldBarTint, chromeAccentColor, surfaceToBarTint, resolveBarTint } from "@/lib/constants";
 import { getBlurProps } from "@/lib/glassTheme";
 import { useThemeColor } from "@/lib/shopTheme";
 import { shortenAddress } from "@/lib/nftVerification";
@@ -223,6 +223,12 @@ interface ChatInputProps {
   onAvatarRoom?: () => void;
   onOpenLivePicker?: () => void;
   isDmWithBot?: boolean;
+  /** Main Chat only, dual (Saga Monke + Genesis Token) holders — the Main/
+   *  Genesis switcher, centered in the toolbar between CAM/LIVE/GIF and the
+   *  Messages/MonkeTrades icons. Pass `<ChatModeTabs active="main" />` or
+   *  omit entirely (no other screen using ChatInput has anywhere to switch
+   *  to, so this stays undefined there). */
+  chatModeTabs?: React.ReactNode;
 }
 
 export const ChatInput = memo(function ChatInput({
@@ -242,27 +248,12 @@ export const ChatInput = memo(function ChatInput({
   onAvatarRoom,
   onOpenLivePicker,
   isDmWithBot,
+  chatModeTabs,
 }: ChatInputProps) {
   const inputRef = useRef<TextInput>(null);
   const bounceAnim = useRef(new Animated.Value(0)).current;
   const hasTypers = !!(typingUsers && typingUsers.length > 0);
   const myInboxId = useAppStore(s => s.myInboxId);
-  // @sbaiahmed1/react-native-blur's native view snapshots its target
-  // synchronously on the very first Fabric layout commit — on cold start
-  // that fires before the view tree is stable and crashes with
-  // IndexOutOfBoundsException in eightbitlab.com.blurview.PreDrawBlurController
-  // (upstream-documented: Dimezis/BlurView#176, "crashes on first launch,
-  // fine on restart"; same fix as ChatHeader). A bare useEffect(() =>
-  // setBlurReady(true), []) still crashed on real hardware (2026-08-22), and
-  // so did InteractionManager.runAfterInteractions() (it only waits for
-  // JS-scheduled interaction handles, which this native screen transition
-  // never registers) — see ChatHeader.tsx's fuller note. A fixed delay past
-  // the native transition's known duration is the reliable defer.
-  const [blurReady, setBlurReady] = useState(false);
-  useEffect(() => {
-    const timer = setTimeout(() => setBlurReady(true), 350);
-    return () => clearTimeout(timer);
-  }, []);
 
   // Theme overrides for Banana Shop Tier 4 themes
   const themeBorder = useThemeColor('border');
@@ -286,7 +277,8 @@ export const ChatInput = memo(function ChatInput({
   // theme — surfaceToBarTint keeps this bar in sync with the rest of the
   // app's background while staying just as translucent.
   const worldId = shopStyles?.worldId as string | undefined;
-  const inputBarBg = worldId ? getWorldBarTint(worldId) : surfaceToBarTint(themeSurface, 0.20);
+  const hasThemeOverride = useAppStore(s => !!s.themeOverrides);
+  const inputBarBg = resolveBarTint(worldId, hasThemeOverride, themeSurface, 0.20);
 
   const slashSuggestions = useMemo(() => getSlashSuggestions(value, isDmWithBot), [value, isDmWithBot]);
 
@@ -365,9 +357,7 @@ export const ChatInput = memo(function ChatInput({
           as ChatHeader. Not in an RN <Modal>, so safe from the cross-window
           blur gap documented in glassTheme.ts. Blurs the message list
           scrolling behind the bottom toolbar, world-equipped or not. */}
-      {blurReady && (
-        <BlurView {...getBlurProps()} style={[StyleSheet.absoluteFill, { pointerEvents: "none" }]} />
-      )}
+      <BlurView {...getBlurProps()} style={[StyleSheet.absoluteFill, { pointerEvents: "none" }]} />
       <View style={[StyleSheet.absoluteFill, { backgroundColor: inputBarBg }]} pointerEvents="none" />
       {/* Slash command suggestions */}
       {slashSuggestions.length > 0 && (
@@ -503,8 +493,20 @@ export const ChatInput = memo(function ChatInput({
       </View>
 
       {/* Left: CAM / LIVE / GIF packed like pre-4-channel layout.
-          Right: Messages + MonkeTrades (sales merged). */}
+          Right: Messages + MonkeTrades (sales merged). Center: Main/Genesis
+          switcher (dual holders only) — absolutely positioned so it's truly
+          centered on the bar regardless of the left/right groups' widths,
+          rather than "space-between"'s uneven middle gap. box-none so the
+          empty space on either side of the pill (when present) or the full
+          row (when absent) doesn't block CAM/LIVE/GIF or Messages/Trades
+          underneath. 2026-08-24: moved down from the header per explicit
+          request — was ChatHeader's own row before this. */}
       <View style={styles.toolbarRow}>
+        {chatModeTabs && (
+          <View style={styles.toolbarCenter} pointerEvents="box-none">
+            {chatModeTabs}
+          </View>
+        )}
         <View style={styles.toolbarLeft}>
           {onCamera && (
             <Pressable
@@ -704,6 +706,15 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: 8,
     paddingTop: 2,
+  },
+  toolbarCenter: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    alignItems: "center",
+    justifyContent: "center",
   },
   toolbarLeft: {
     flexDirection: "row",

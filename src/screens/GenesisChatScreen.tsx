@@ -1,20 +1,22 @@
 /**
  * GenesisChatScreen
  *
- * Read-only home screen for Saga/Seeker Genesis Token holders. Same shape as
- * BotChannelScreen (Trades channel): FlashList of bot-authored messages,
- * NO ChatInput — that omission is the entire enforcement mechanism for
- * "only the bot can post here" (XMTP has no protocol-level send-policy to
- * lean on; see genesis-chat plan). No reactions, no replies, no drawer.
+ * Home screen for Saga/Seeker Genesis Token holders. Same shape as
+ * BotChannelScreen (Trades channel): FlashList of messages, BananaShop,
+ * Leaderboard. No reactions, no replies, no drawer, no CAM/GIF — a plain
+ * text-only message bar (2026-08-23: Genesis holders can post here now;
+ * previously omitting ChatInput entirely was the enforcement mechanism for
+ * "only the bot can post," per explicit product decision that Genesis
+ * holders need to actually be able to chat, not just read the bot's posts).
  *
  * Entry point for the Genesis tier — reachable via app/genesis-chat.tsx.
- * Exposes exactly three things: the message feed, BananaShop, Leaderboard.
  * Dual holders (also hold a Saga Monke) additionally get a Main/Genesis tab
  * bar + swipe gesture (ChatModeSwitch) to move to Main Chat.
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { View, Text, StyleSheet, Pressable, ActivityIndicator, Linking } from "react-native";
+import { View, Text, StyleSheet, Pressable, ActivityIndicator, Linking, TextInput, Keyboard } from "react-native";
+import { toast } from "sonner-native";
 import { FlashList, type FlashListRef, type ListRenderItem } from "@shopify/flash-list";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -30,11 +32,11 @@ import { LeaderboardView } from "@/components/LeaderboardView";
 import { OnboardingCarousel } from "@/components/OnboardingCarousel";
 import { GENESIS_CAROUSEL_KEY, GENESIS_CAROUSEL_SLIDES } from "@/lib/genesisCarouselSlides";
 import { ChatModeTabs, SwipeToSwitchChat } from "@/components/ChatModeSwitch";
-import { BlurView } from "@sbaiahmed1/react-native-blur";
+import { LiquidGlass as BlurView } from "@/components/LiquidGlass";
 import { getBlurProps } from "@/lib/glassTheme";
 import { WorldGlassFill } from "@/components/WorldGlassFill";
 import { WorldLayer } from "@/components/worlds/WorldLayer";
-import { THEME, FONTS, getWorldBarTint, BOT_INBOX_IDS, surfaceToBarTint } from "@/lib/constants";
+import { THEME, FONTS, resolveBarTint, MAX_MESSAGE_LENGTH } from "@/lib/constants";
 import { useThemeColor } from "@/lib/shopTheme";
 import { markChannelRead } from "@/lib/messageCache";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -47,20 +49,6 @@ const noop = (..._args: any[]) => {};
 
 export default function GenesisChatScreen() {
   const insets = useSafeAreaInsets();
-  // @sbaiahmed1/react-native-blur's native view snapshots its target
-  // synchronously on the very first Fabric layout commit — a bare
-  // useEffect(() => setBlurReady(true), []) crashed on real hardware
-  // (2026-08-22, same root cause as ChatHeader.tsx/ChatInput.tsx — see that
-  // file's fuller note) during a full-screen router.replace() navigation, and
-  // so did InteractionManager.runAfterInteractions() (it only waits for
-  // JS-scheduled interaction handles, which this native screen transition
-  // never registers). A fixed delay past the native transition's known
-  // duration is the reliable defer.
-  const [blurReady, setBlurReady] = useState(false);
-  useEffect(() => {
-    const timer = setTimeout(() => setBlurReady(true), 350);
-    return () => clearTimeout(timer);
-  }, []);
 
   const { myInboxId, genesisGroupId, verified: isDualHolder, wallet, username, setGenesisGroupId } = useAppStore();
   const { disconnect } = useMobileWallet();
@@ -87,11 +75,36 @@ export default function GenesisChatScreen() {
   }, []);
 
   const worldId = useAppStore((s) => s.shopStyles?.worldId) as string | undefined;
+  const hasThemeOverride = useAppStore((s) => !!s.themeOverrides);
   const themeSurface = useThemeColor('surface');
-  const chromeBg = worldId ? getWorldBarTint(worldId) : surfaceToBarTint(themeSurface, 0.20);
+  const chromeBg = resolveBarTint(worldId, hasThemeOverride, themeSurface, 0.20);
 
   const groupId = genesisGroupId ?? "";
-  const { messages, isLoading, initialize, disconnect: disconnectGroup } = useGroupChat(groupId, "Genesis Chat");
+  const { messages, isLoading, initialize, disconnect: disconnectGroup, send } = useGroupChat(groupId, "Genesis Chat");
+
+  const [inputText, setInputText] = useState("");
+  const [isSending, setIsSending] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  useEffect(() => {
+    const showSub = Keyboard.addListener("keyboardDidShow", (e) => setKeyboardHeight(e.endCoordinates?.height ?? 0));
+    const hideSub = Keyboard.addListener("keyboardDidHide", () => setKeyboardHeight(0));
+    return () => { showSub.remove(); hideSub.remove(); };
+  }, []);
+
+  const handleSend = useCallback(async () => {
+    const text = inputText.trim();
+    if (!text || isSending) return;
+    setInputText("");
+    setIsSending(true);
+    try {
+      await send(text);
+    } catch (err) {
+      toast.error("Message didn't send — try again");
+      if (__DEV__) console.warn("[GenesisChat] send failed:", (err as Error)?.message);
+    } finally {
+      setIsSending(false);
+    }
+  }, [inputText, isSending, send]);
 
   useEffect(() => {
     markChannelRead("genesis").catch(() => {});
@@ -155,13 +168,7 @@ export default function GenesisChatScreen() {
 
   const myAddress = myInboxId ?? "";
 
-  // Defense-in-depth: only ever render bot-authored messages. There's no UI
-  // to send into this group, but a raw SDK message from anyone else should
-  // never render as if it belongs here.
-  const reversedMessages = useMemo(
-    () => [...messages].filter((m) => m.senderAddress === BOT_INBOX_IDS[0]).reverse(),
-    [messages],
-  );
+  const reversedMessages = useMemo(() => [...messages].reverse(), [messages]);
 
   const flatListRef = useRef<FlashListRef<ChatMessage>>(null);
 
@@ -198,7 +205,7 @@ export default function GenesisChatScreen() {
 
       <View style={[styles.header, { borderBottomColor: THEME.border, paddingTop: insets.top }]}>
         {worldId ? <WorldGlassFill worldId={worldId} /> : (
-          blurReady && <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />
+          <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />
         )}
         <View style={[StyleSheet.absoluteFill, { backgroundColor: chromeBg }]} pointerEvents="none" />
 
@@ -208,6 +215,7 @@ export default function GenesisChatScreen() {
           </Pressable>
           <Text style={styles.headerTitle}>🐒 Genesis Chat</Text>
           <View style={styles.headerRightBtns}>
+            <RewardedAdPill adUnitId={AD_UNIT_IDS.rewardedGenesis} rewardBananas={AD_REWARD_BANANAS.genesis} />
             <Pressable onPress={() => setLeaderboardOpen(true)} style={styles.iconBtn} hitSlop={8}>
               <Text style={styles.iconTxt}>📈</Text>
             </Pressable>
@@ -248,10 +256,28 @@ export default function GenesisChatScreen() {
         />
       )}
 
-      {/* Genesis gets the higher-reward slot — no ChatInput on this screen
-          to share a row with, so this is its own bottom-safe-area bar. */}
-      <View style={{ alignItems: "center", paddingTop: 6, paddingBottom: 6 + insets.bottom }}>
-        <RewardedAdPill adUnitId={AD_UNIT_IDS.rewardedGenesis} rewardBananas={AD_REWARD_BANANAS.genesis} />
+      {/* Plain text-only message bar — no CAM/GIF, no slash commands. */}
+      <View style={[styles.inputBar, { paddingBottom: 8 + insets.bottom + keyboardHeight }]}>
+        <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} pointerEvents="none" />
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: chromeBg }]} pointerEvents="none" />
+        <TextInput
+          style={styles.textInput}
+          value={inputText}
+          onChangeText={setInputText}
+          placeholder="Message Genesis Chat…"
+          placeholderTextColor={THEME.textMuted}
+          maxLength={MAX_MESSAGE_LENGTH}
+          multiline
+          editable={!isSending}
+        />
+        <Pressable
+          onPress={handleSend}
+          disabled={!inputText.trim() || isSending}
+          style={[styles.sendBtn, (!inputText.trim() || isSending) && styles.sendBtnDisabled]}
+          hitSlop={8}
+        >
+          <Text style={styles.sendBtnText}>➤</Text>
+        </Pressable>
       </View>
 
       {showCarousel && (
@@ -305,6 +331,45 @@ const styles = StyleSheet.create({
   headerTitle: { fontFamily: FONTS.displayMed, fontSize: 17, color: THEME.text },
   iconBtn: { padding: 6 },
   iconTxt: { fontSize: 18, color: THEME.text },
+
+  inputBar: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: THEME.border,
+    overflow: "hidden",
+  },
+  textInput: {
+    flex: 1,
+    fontFamily: FONTS.body,
+    fontSize: 15,
+    color: THEME.text,
+    maxHeight: 100,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderRadius: 18,
+  },
+  sendBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: THEME.accent,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 2,
+  },
+  sendBtnDisabled: {
+    opacity: 0.4,
+  },
+  sendBtnText: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "700",
+  },
 
   leaderboardHeader: {
     backgroundColor: THEME.bg,

@@ -133,6 +133,35 @@ interface DASAsset {
   ownership: { owner: string };
 }
 
+/**
+ * DAS asset → OwnedNFT. Was duplicated verbatim across the Helius, QuickNode,
+ * and Alchemy fetch functions below (three copies, one at each provider's
+ * `collectionNFTs.map(...)`), plus one broken call site (Helius's
+ * searchAssets fast-path) referencing this exact name without it existing
+ * anywhere — a `Cannot find name 'mapDasAsset'` compile error, presumably
+ * from an incomplete extraction. Extracted once here as the real fix.
+ */
+function mapDasAsset(asset: DASAsset): OwnedNFT {
+  const image =
+    asset.content?.links?.image ??
+    asset.content?.files?.find((f) => f.mime?.startsWith("image/"))?.cdn_uri ??
+    asset.content?.files?.find((f) => f.mime?.startsWith("image/"))?.uri ??
+    "";
+
+  const traits = (asset.content?.metadata?.attributes ?? [])
+    .filter((a) => a.trait_type && a.value)
+    .map((a) => ({ trait_type: a.trait_type, value: a.value }));
+
+  return {
+    mint: asset.id,
+    name: asset.content?.metadata?.name ?? "Unknown NFT",
+    symbol: asset.content?.metadata?.symbol ?? "",
+    image,
+    collectionMint: NFT_COLLECTION_ADDRESS,
+    traits: traits.length > 0 ? traits : undefined,
+  };
+}
+
 async function fetchAssetsViaHelius(walletAddress: string): Promise<OwnedNFT[]> {
   const url = HELIUS_NFT_RPC_URL;
 
@@ -216,26 +245,7 @@ async function fetchAssetsViaHelius(walletAddress: string): Promise<OwnedNFT[]> 
     ),
   );
 
-  return collectionNFTs.map((asset) => {
-    const image =
-      asset.content?.links?.image ??
-      asset.content?.files?.find((f) => f.mime?.startsWith("image/"))?.cdn_uri ??
-      asset.content?.files?.find((f) => f.mime?.startsWith("image/"))?.uri ??
-      "";
-
-    const traits = (asset.content?.metadata?.attributes ?? [])
-      .filter((a) => a.trait_type && a.value)
-      .map((a) => ({ trait_type: a.trait_type, value: a.value }));
-
-    return {
-      mint: asset.id,
-      name: asset.content?.metadata?.name ?? "Unknown NFT",
-      symbol: asset.content?.metadata?.symbol ?? "",
-      image,
-      collectionMint: NFT_COLLECTION_ADDRESS,
-      traits: traits.length > 0 ? traits : undefined,
-    };
-  });
+  return collectionNFTs.map(mapDasAsset);
 }
 
 // ─── QuickNode DAS Provider (fallback, 30-day trial) ──────────────────────────
@@ -290,26 +300,7 @@ async function fetchAssetsViaQuickNode(walletAddress: string): Promise<OwnedNFT[
     ),
   );
 
-  return collectionNFTs.map((asset) => {
-    const image =
-      asset.content?.links?.image ??
-      asset.content?.files?.find((f) => f.mime?.startsWith("image/"))?.cdn_uri ??
-      asset.content?.files?.find((f) => f.mime?.startsWith("image/"))?.uri ??
-      "";
-
-    const traits = (asset.content?.metadata?.attributes ?? [])
-      .filter((a) => a.trait_type && a.value)
-      .map((a) => ({ trait_type: a.trait_type, value: a.value }));
-
-    return {
-      mint: asset.id,
-      name: asset.content?.metadata?.name ?? "Unknown NFT",
-      symbol: asset.content?.metadata?.symbol ?? "",
-      image,
-      collectionMint: NFT_COLLECTION_ADDRESS,
-      traits: traits.length > 0 ? traits : undefined,
-    };
-  });
+  return collectionNFTs.map(mapDasAsset);
 }
 
 // ─── Alchemy DAS Provider (fallback, added 2026-08-10) ────────────────────────
@@ -367,26 +358,7 @@ async function fetchAssetsViaAlchemy(walletAddress: string): Promise<OwnedNFT[]>
     ),
   );
 
-  return collectionNFTs.map((asset) => {
-    const image =
-      asset.content?.links?.image ??
-      asset.content?.files?.find((f) => f.mime?.startsWith("image/"))?.cdn_uri ??
-      asset.content?.files?.find((f) => f.mime?.startsWith("image/"))?.uri ??
-      "";
-
-    const traits = (asset.content?.metadata?.attributes ?? [])
-      .filter((a) => a.trait_type && a.value)
-      .map((a) => ({ trait_type: a.trait_type, value: a.value }));
-
-    return {
-      mint: asset.id,
-      name: asset.content?.metadata?.name ?? "Unknown NFT",
-      symbol: asset.content?.metadata?.symbol ?? "",
-      image,
-      collectionMint: NFT_COLLECTION_ADDRESS,
-      traits: traits.length > 0 ? traits : undefined,
-    };
-  });
+  return collectionNFTs.map(mapDasAsset);
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────

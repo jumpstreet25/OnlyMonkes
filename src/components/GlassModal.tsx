@@ -26,7 +26,7 @@ import {
   Dimensions,
   type ViewStyle,
 } from "react-native";
-import { BlurView } from "expo-blur";
+import { LiquidGlass as BlurView } from "@/components/LiquidGlass";
 import { LinearGradient } from "expo-linear-gradient";
 import { GLASS_BG, GLASS_BORDER, HIGHLIGHT, GLASS_GRADIENT_COLORS, getBlurProps } from "@/lib/glassTheme";
 

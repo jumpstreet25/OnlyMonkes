@@ -18,7 +18,7 @@ import BottomSheet, {
   type BottomSheetBackdropProps,
 } from '@gorhom/bottom-sheet';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
+import { LiquidGlass as BlurView } from '@/components/LiquidGlass';
 import { GLASS_BG, GLASS_BORDER, HIGHLIGHT, GLASS_GRADIENT_COLORS, GLASS_RADIUS, getBlurProps } from '@/lib/glassTheme';
 
 interface GlassBottomSheetProps {

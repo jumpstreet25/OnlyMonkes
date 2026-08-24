@@ -29,7 +29,7 @@ import { router } from "expo-router";
 import { THEME, FONTS, BOT_INBOX_IDS, BOT_DISPLAY_NAME, BOT_PFP_URL, getWorldBarTint, getWorldAccent } from "@/lib/constants";
 import { IS_IMMERSIVE_SHELL } from "@/lib/immersiveStatusBar";
 import { MonkeGlass } from "@/components/MonkeGlass";
-import { BlurView } from "expo-blur";
+import { LiquidGlass as BlurView } from "@/components/LiquidGlass";
 import { getBlurProps } from "@/lib/glassTheme";
 import { useAppStore } from "@/store/appStore";
 import { getCachedProfile, getPersistedLocation, useProfileVersion } from "@/lib/userProfile";

@@ -19,7 +19,7 @@ import { THEME, FONTS } from '@/lib/constants';
 import { GlassBottomSheet } from '@/components/GlassBottomSheet';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { fetchRugCheckSummary, type RugCheckSummary } from '@/lib/rugCheck';
-import { pickSolPair, solMarkFromPair, usdToSolScale } from '@/lib/solQuote';
+import { pickSolPair, solMarkFromPair, usdToSolScale, type DexScreenerPair } from '@/lib/solQuote';
 import { recordTokenView, recordEngagementEnd } from '@/lib/sentimentSignal';
 
 interface ChartModalProps {
@@ -44,9 +44,9 @@ async function fetchOHLCV(symbol: string): Promise<{ candles: TCandle[]; mint: s
   );
   if (!searchRes.ok) return { candles: [], mint: null };
 
-  const searchData = await searchRes.json();
+  const searchData = (await searchRes.json()) as { pairs?: DexScreenerPair[] };
   const solanaPairs = (searchData?.pairs ?? []).filter(
-    (p: any) => p.chainId === 'solana' && p.baseToken?.symbol?.toUpperCase() === symbol.toUpperCase(),
+    (p) => p.chainId === 'solana' && p.baseToken?.symbol?.toUpperCase() === symbol.toUpperCase(),
   );
   // Prefer the pool quoted in SOL (or SKR) — same unit AutonoMonke / Monke Traders use.
   const pair = pickSolPair(solanaPairs);
@@ -77,10 +77,10 @@ async function fetchOHLCV(symbol: string): Promise<{ candles: TCandle[]; mint: s
   } catch { /* fall through to synthetic */ }
 
   // Step 3: Fallback — synthetic candles from DexScreener 24h change (better than nothing)
-  const price = solMarkFromPair(pair) || parseFloat(pair.priceUsd) || 0;
+  const price = solMarkFromPair(pair) || parseFloat(String(pair.priceUsd ?? '0')) || 0;
   if (!price) return { candles: [], mint };
 
-  const priceChange24h = parseFloat(pair.priceChange?.h24) || 0;
+  const priceChange24h = parseFloat(String(pair.priceChange?.h24 ?? '0')) || 0;
   const startPrice = price / (1 + priceChange24h / 100);
   const candles: TCandle[] = [];
   const now = Date.now();

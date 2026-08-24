@@ -39,7 +39,7 @@ import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
 import * as Clipboard from "expo-clipboard";
 import { toast } from "sonner-native";
-import { THEME, FONTS, SKR_MINT, JUP_API_KEY, getWorldBarTint, getWorldAccent, surfaceToBarTint } from "@/lib/constants";
+import { THEME, FONTS, SKR_MINT, JUP_API_KEY, getWorldBarTint, getWorldAccent, surfaceToBarTint, resolveBarTint } from "@/lib/constants";
 import { MenuIcon, type MenuIconName } from "@/components/MenuIcon";
 import { WorldLayer } from "@/components/worlds/WorldLayer";
 import { useThemeColor } from "@/lib/shopTheme";
@@ -56,7 +56,7 @@ import { BananaShopModal } from "@/components/BananaShopModal";
 import { ReclaimModal } from "@/components/ReclaimModal";
 import type { ProfileTarget } from "@/components/UserProfileModal";
 import { LinearGradient } from "expo-linear-gradient";
-import { BlurView } from "@sbaiahmed1/react-native-blur";
+import { LiquidGlass as BlurView } from "@/components/LiquidGlass";
 import { GLASS_GRADIENT_COLORS, HIGHLIGHT, getBlurProps } from "@/lib/glassTheme";
 import { WorldGlassFill } from "@/components/WorldGlassFill";
 import { LeaderboardView } from "@/components/LeaderboardView";
@@ -168,7 +168,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
   // top of a BlurView").
   const shopStyles = useAppStore(s => s.shopStyles);
   const worldId = shopStyles?.worldId as string | undefined;
-  const drawerBg = worldId ? getWorldBarTint(worldId) : surfaceToBarTint(themeSurface, 0.30);
+  const drawerBg = resolveBarTint(worldId, !!themeOverrides, themeSurface, 0.30);
   const iconAccent = themeOverrides ? themeAccent : (worldId ? getWorldAccent(worldId) : '#6CB4EE');
   // (v40 2026-05-09) Hex → rgba helper so per-world chrome (search bar
   // border, etc.) can tint at low alpha without hardcoding rgba per world.
@@ -411,32 +411,12 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
   const [isClosing, setIsClosing] = useState(false);
   const shouldRender = visible || isClosing;
   const fadeAnim = useRef(new Animated.Value(visible ? 1 : 0)).current;
-  // @sbaiahmed1/react-native-blur's native view snapshots its target
-  // synchronously on the very first Fabric layout commit — since this
-  // drawer fully unmounts on close (shouldRender above), every open is a
-  // fresh first-mount for its BlurViews, and the unstable first commit can
-  // crash with IndexOutOfBoundsException in
-  // eightbitlab.com.blurview.PreDrawBlurController (upstream-documented:
-  // Dimezis/BlurView#176; same fix as ChatHeader/ChatInput). Skipping the
-  // BlurViews for one render defers their mount past that unstable commit.
-  // 2026-08-22: InteractionManager.runAfterInteractions() still crashed on
-  // real hardware — it only waits for JS-scheduled interaction handles, and
-  // this drawer's fadeAnim runs with useNativeDriver:true, which never
-  // registers one. The callback was firing almost immediately while the
-  // 200ms native fade-in was still actively mutating the view tree under
-  // PreDrawBlurController's snapshot. Tying blurReady to the fade
-  // animation's own completion callback waits for the actual thing that
-  // was still moving, not a proxy for it.
-  const [blurReady, setBlurReady] = useState(false);
 
   useEffect(() => {
     if (visible) {
       setIsClosing(false);
-      Animated.timing(fadeAnim, { toValue: 1, duration: 200, useNativeDriver: true }).start(() => {
-        setBlurReady(true);
-      });
+      Animated.timing(fadeAnim, { toValue: 1, duration: 200, useNativeDriver: true }).start();
     } else {
-      setBlurReady(false);
       setIsClosing(true);
       Animated.timing(fadeAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
         setIsClosing(false);
@@ -462,7 +442,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
       pointerEvents={visible ? "auto" : "none"}
     >
       <Pressable style={StyleSheet.absoluteFill} onPress={onClose}>
-        {blurReady && <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />}
+        <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.55)' }]} />
         <View style={styles.overlay} />
       </Pressable>
@@ -484,7 +464,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
           </View>
         ) : (
           <>
-            {blurReady && <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />}
+            <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />
             <LinearGradient
               colors={GLASS_GRADIENT_COLORS}
               start={{ x: 0.5, y: 0 }}

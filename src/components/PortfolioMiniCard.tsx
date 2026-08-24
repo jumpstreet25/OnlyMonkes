@@ -11,7 +11,7 @@
 
 import React from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
-import { BlurView } from 'expo-blur';
+import { LiquidGlass as BlurView } from '@/components/LiquidGlass';
 import { THEME, FONTS } from '@/lib/constants';
 import { getBlurProps, GLASS_CHROME_BG } from '@/lib/glassTheme';
 import type { PortfolioCard } from '@/store/tradesStore';

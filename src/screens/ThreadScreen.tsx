@@ -16,9 +16,9 @@ import {
   Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BlurView } from 'expo-blur';
+import { LiquidGlass as BlurView } from '@/components/LiquidGlass';
 import { router, useLocalSearchParams } from 'expo-router';
-import { THEME, FONTS, getWorldBarTint, getWorldAccent, surfaceToBarTint } from '@/lib/constants';
+import { THEME, FONTS, getWorldBarTint, getWorldAccent, surfaceToBarTint, resolveBarTint } from '@/lib/constants';
 import { useAppStore } from '@/store/appStore';
 import { useChatStore } from '@/store/chatStore';
 import { useThemeColor } from '@/lib/shopTheme';
@@ -45,6 +45,7 @@ export default function ThreadScreen() {
   const username = useAppStore(s => s.username) ?? 'Anon';
   const verifiedNft = useAppStore(s => s.verifiedNft);
   const worldId = useAppStore(s => s.shopStyles?.worldId) as string | undefined;
+  const hasThemeOverride = useAppStore((s) => !!s.themeOverrides);
   const themeSurface = useThemeColor('surface');
 
   // Thread replies from dedicated store (populated by useXmtp on THREAD: receipt)
@@ -125,7 +126,7 @@ export default function ThreadScreen() {
           BotChannelScreen/ChatInput/DmScreen/GroupDmScreen. */}
       <View style={[styles.header, { paddingTop: insets.top + 8 }, worldId ? { borderBottomWidth: 0 } : null]}>
         <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} pointerEvents="none" />
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: worldId ? getWorldBarTint(worldId) : surfaceToBarTint(themeSurface, 0.20) }]} pointerEvents="none" />
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: resolveBarTint(worldId, hasThemeOverride, themeSurface, 0.20) }]} pointerEvents="none" />
         <Pressable onPress={() => router.back()} hitSlop={12}>
           <Text style={[styles.backBtn, worldId ? { color: getWorldAccent(worldId) } : null]}>← Back</Text>
         </Pressable>

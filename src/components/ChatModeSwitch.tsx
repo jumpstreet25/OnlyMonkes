@@ -94,12 +94,10 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.06)",
     borderRadius: 20,
     padding: 3,
-    marginTop: 4,
-    marginBottom: 6,
   },
   tab: {
-    paddingHorizontal: 18,
-    paddingVertical: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 5,
     borderRadius: 17,
   },
   tabActive: {

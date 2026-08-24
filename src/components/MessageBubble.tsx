@@ -109,7 +109,7 @@ function PulseRing({ color }: { color: string }) {
 }
 import { hasThread, getThreadMeta } from "@/lib/threads";
 import { router } from "expo-router";
-import { BlurView } from "expo-blur";
+import { LiquidGlass as BlurView } from "@/components/LiquidGlass";
 import { getBlurProps } from "@/lib/glassTheme";
 
 // ─── Glassmorphism constants ─────────────────────────────────────────────────

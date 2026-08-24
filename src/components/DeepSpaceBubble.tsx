@@ -8,7 +8,7 @@
 
 import React, { useMemo } from "react";
 import { View, StyleSheet } from "react-native";
-import { BlurView } from "expo-blur";
+import { LiquidGlass as BlurView } from "@/components/LiquidGlass";
 import { LinearGradient } from "expo-linear-gradient";
 import {
   Canvas,

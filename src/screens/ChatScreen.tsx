@@ -53,9 +53,9 @@ import { ChatSkeleton } from "@/components/SkeletonLoader";
 import type { ProfileTarget } from "@/components/UserProfileModal";
 import { router } from "expo-router";
 import { useIsFocused } from "@react-navigation/native";
-import { BlurView } from "expo-blur";
+import { LiquidGlass as BlurView } from "@/components/LiquidGlass";
 import { getBlurProps } from "@/lib/glassTheme";
-import { THEME, FONTS, SKR_MINT, getWorldBarTint, getWorldAccent, chromeAccentColor, surfaceToBarTint } from "@/lib/constants";
+import { THEME, FONTS, SKR_MINT, getWorldBarTint, getWorldAccent, chromeAccentColor, surfaceToBarTint, resolveBarTint } from "@/lib/constants";
 import { loadUserProfile, getCachedProfile, getDeduplicatedUsers, cacheProfile } from "@/lib/userProfile";
 import { checkAndUpdateStreak } from "@/lib/streaks";
 import { claimDailyBananas, type ClaimResult } from "@/lib/bananaRewards";
@@ -115,9 +115,6 @@ import type { TipAmount } from "@/lib/constants";
 // ── Extracted sub-components ────────────────────────────────────────────────
 import { ChatHeader, CHAT_HEADER_HEIGHT } from "@/components/ChatHeader";
 import { ChatModeTabs, SwipeToSwitchChat } from "@/components/ChatModeSwitch";
-
-/** Extra header headroom for dual holders' Main/Genesis tab bar — see ChatModeSwitch.tsx. */
-const GENESIS_TAB_BAR_HEIGHT = 34;
 import { ChatModals } from "@/components/ChatModals";
 import { MonkeGlass, MonkeGlassActionButton } from "@/components/MonkeGlass";
 import { GoLivePicker } from "@/components/GoLivePicker";
@@ -1430,18 +1427,14 @@ export default function ChatScreen() {
               router.push("/dms" as any);
             }}
           />
-          {/* Only shown for dual holders (Saga Monke + Genesis Token) — lets
-              them switch to Genesis Chat without a settings menu. */}
-          {isGenesisHolder && <ChatModeTabs active="main" />}
         </View>
 
         {/* 2026-07-24: everything below is normal flex flow again, just
             pushed down by CHAT_HEADER_HEIGHT since the header itself no
             longer takes flex space (it's the absolute overlay above).
             box-none so empty space here (e.g. no banners active) doesn't
-            block scroll/taps on the full-bleed message list underneath.
-            Dual holders get extra headroom for the ChatModeTabs bar. */}
-        <View style={{ flex: 1, marginTop: CHAT_HEADER_HEIGHT + (isGenesisHolder ? GENESIS_TAB_BAR_HEIGHT : 0), zIndex: 50 }} pointerEvents="box-none">
+            block scroll/taps on the full-bleed message list underneath. */}
+        <View style={{ flex: 1, marginTop: CHAT_HEADER_HEIGHT, zIndex: 50 }} pointerEvents="box-none">
         {/* Offline indicator */}
         {isOffline && (
           <View style={{ backgroundColor: '#EF4444', paddingVertical: 6, alignItems: 'center' }}>
@@ -1628,7 +1621,7 @@ export default function ChatScreen() {
               setShowScrollFab={setShowScrollFab}
               setUnreadWhileScrolled={setUnreadWhileScrolled}
               isNearBottomRef={isNearBottomRef}
-              topInset={CHAT_HEADER_HEIGHT + (isGenesisHolder ? GENESIS_TAB_BAR_HEIGHT : 0)}
+              topInset={CHAT_HEADER_HEIGHT}
               bottomInset={bottomBarHeight + keyboardHeight}
             />
           </View>
@@ -1661,6 +1654,7 @@ export default function ChatScreen() {
           onLiveVideo={!activeVideoRoom ? handleStartVideoCall : undefined}
           onAvatarRoom={!activeAvatarRoom ? handleStartAvatarRoom : undefined}
           onOpenLivePicker={() => setLivePickerOpen(true)}
+          chatModeTabs={isGenesisHolder ? <ChatModeTabs active="main" /> : undefined}
         />
 
         {/* Rewarded ad — own row above the support banner so it never
@@ -1703,7 +1697,7 @@ export default function ChatScreen() {
                 opaque world tint with no blur behind it at all before. */}
             <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} pointerEvents="none" />
             <View
-              style={[StyleSheet.absoluteFill, { backgroundColor: worldId ? getWorldBarTint(worldId) : surfaceToBarTint(themeSurface, 0.20) }]}
+              style={[StyleSheet.absoluteFill, { backgroundColor: resolveBarTint(worldId, hasThemeOverride, themeSurface, 0.20) }]}
               pointerEvents="none"
             />
             <View style={{ minWidth: 70, alignItems: 'flex-start' }}>

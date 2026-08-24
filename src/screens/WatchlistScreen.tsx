@@ -18,7 +18,7 @@ import { FlashList } from "@shopify/flash-list";
 import { router } from "expo-router";
 import { THEME, FONTS } from "@/lib/constants";
 import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
-import { pickSolPair, solMarkFromPair, usdToSolScale, formatSolPx } from "@/lib/solQuote";
+import { pickSolPair, solMarkFromPair, usdToSolScale, formatSolPx, type DexScreenerPair } from "@/lib/solQuote";
 import { ChartModal } from "@/components/ChartModal";
 import { MiniChart } from "@/components/MiniChart";
 import { showGlassAlert } from "@/lib/glassAlert";
@@ -78,8 +78,8 @@ async function fetchSparkline(address: string): Promise<number[]> {
       { timeoutMs: 6000 },
     );
     if (!searchRes.ok) return [];
-    const searchData = await searchRes.json();
-    const pair = pickSolPair((searchData?.pairs ?? []).filter((p: any) => p.chainId === 'solana'));
+    const searchData = (await searchRes.json()) as { pairs?: DexScreenerPair[] };
+    const pair = pickSolPair((searchData?.pairs ?? []).filter((p) => p.chainId === 'solana'));
     if (!pair?.pairAddress) return [];
     const scale = usdToSolScale(pair);
 
