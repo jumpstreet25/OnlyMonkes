@@ -389,7 +389,7 @@ OnlyMonkes/
 │   └── livekit.yaml                  # LiveKit server config (TURN, simulcast, room defaults)
 │
 ├── worker-actions/
-│   ├── src/index.ts                  # Cloudflare Worker — Solana Actions server (swap + tip endpoints via Jupiter v2 /build)
+│   ├── src/index.ts                  # Cloudflare Worker — Solana Actions server (swap + tip via Jupiter v2 /build) + free AutonoMonke Signals API (GET /api/signals)
 │   └── src/lightrag-pipeline.ts      # LightRAG ingestion + query pipeline (canonical module)
 │
 ├── app.config.ts                     # Expo config + env vars (Helius, GIPHY, Cloudinary, LiveKit, Sentry)
@@ -581,6 +581,14 @@ Worker: `https://onlymonkes-actions.jumpstreet25.workers.dev`
 Source: `worker-actions/src/index.ts`
 Deploy: `cd worker-actions && npx wrangler deploy`
 Secrets: `wrangler secret put HELIUS_API_KEY` / `wrangler secret put JUP_API_KEY`
+
+---
+
+## AutonoMonke Signals API
+
+Free, public, read-only feed of the scanner's per-token snapshot — `GET https://onlymonkes-actions.jumpstreet25.workers.dev/api/signals` (full list) or `?mint=<address>` (single token). Each entry: `mint`, `symbol`, `composite` (-100..100, MTF-weighted), `regime`, `price`, `liquidity`, `alignedTFs`. Refreshed once per ~10 min scan cycle by `signalsPublisher.ts` in Monke_Eliza (`POST /api/signals`, Bearer `BOT_HTTP_SECRET`, same auth as `/api/top-traders`), stored in the `FRAME_ALERTS` KV under `signals:latest` — no dedicated KV namespace needed. Never carries wallet addresses, inbox IDs, open positions, or stop-loss levels.
+
+A metered/x402-paid version of this endpoint (2026-08-25) was designed and built against PayAI's Solana facilitator, then deliberately reverted before shipping: PayAI's own materials cap their free tier at 1,000 settlements/month with no confirmed answer on cost above that, which is exactly the open-ended paid-dependency risk this project avoids. The endpoint stays free until a facilitator has a confirmed, bounded cost.
 
 ---
 

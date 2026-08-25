@@ -1440,6 +1440,11 @@ const SAGA_CREATOR_WALLET = "8McVhmNjsYSkwQ34QXJb2ADgLWERcHcpqxSzRZUCRZfQ";
 const SKR_MINT = "SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3";
 const STATS_KV_KEY = "stats:latest";
 const TOP_TRADERS_KV_KEY = "top_traders:latest";
+// AutonoMonke Signals API, Phase 1 (2026-08-25 research digest). Free/
+// unauthenticated GET for now — no x402 gate yet, see handleSignalsGet's
+// doc comment. Reuses FRAME_ALERTS rather than a dedicated KV namespace,
+// same reasoning as the other keys on this binding.
+const SIGNALS_KV_KEY = "signals:latest";
 /** Full-collection wallet → Monke map, built by the same getAssetsByGroup
  *  indexer as fetchMonkeHolderCount / discover-saga-monke-holders. Last
  *  resort for /api/verify when live getAssetsByOwner is 429/dead. */
@@ -2309,6 +2314,98 @@ async function handleTopTradersPost(request: Request, env: Env): Promise<Respons
   }
   await env.FRAME_ALERTS.put(TOP_TRADERS_KV_KEY, JSON.stringify(body));
   return jsonResponse({ ok: true, count: body.traders.length });
+}
+
+// ── AutonoMonke Signals API, Phase 1 (2026-08-25) ────────────────────────────
+//
+// Read-only scanner snapshot (composite score, regime, reference price) for
+// every token in AutonoMonke's scan universe, pushed once per ~10 min scan
+// cycle from signalsPublisher.ts. Free and unauthenticated GET.
+//
+// A Phase 2 x402 payment gate (facilitator: PayAI) was built and reviewed
+// 2026-08-25 but deliberately NOT shipped: PayAI's own materials mention a
+// free tier capped at 1,000 settlements/month, with no confirmed answer on
+// what happens above that (paid tier? per-call fee? unclear) — exactly the
+// open-ended paid-API-dependency risk this project avoids by standing rule.
+// Nothing here pays out under Phase 1 (no facilitator, no gas, no external
+// dependency at all) — reintroduce Phase 2 only once that facilitator-fee
+// question has a real, confirmed answer, not before.
+//
+// Never carries: wallet addresses, inbox IDs, open positions, stop-loss
+// levels, Bull/Bear/Risk breakdowns, or recent-alerts (those need more
+// wiring — deferred to a follow-up once this pipeline is proven live).
+interface SignalSnapshotEntry {
+  mint: string;
+  symbol: string;
+  composite: number;
+  regime: string;
+  price: number;
+  liquidity: number;
+  alignedTFs: number;
+}
+interface SignalsSnapshot {
+  updatedAt: number;
+  tokens: SignalSnapshotEntry[];
+}
+
+function isValidSignalsPayload(v: unknown): v is SignalsSnapshot {
+  if (!v || typeof v !== "object") return false;
+  const obj = v as Record<string, unknown>;
+  if (typeof obj.updatedAt !== "number") return false;
+  if (!Array.isArray(obj.tokens) || obj.tokens.length > 200) return false;
+  const ALLOWED = new Set(["mint", "symbol", "composite", "regime", "price", "liquidity", "alignedTFs"]);
+  return obj.tokens.every((t: unknown) => {
+    if (!t || typeof t !== "object") return false;
+    const e = t as Record<string, unknown>;
+    // Reject wallet/position fields and anything else not on the allowlist —
+    // same defensive shape-lock as isValidTopTradersPayload above.
+    for (const k of Object.keys(e)) {
+      if (!ALLOWED.has(k)) return false;
+    }
+    if (typeof e.mint !== "string" || e.mint.length < 32 || e.mint.length > 44) return false;
+    if (typeof e.symbol !== "string" || e.symbol.length > 20) return false;
+    if (typeof e.composite !== "number" || e.composite < -100 || e.composite > 100) return false;
+    if (typeof e.regime !== "string" || e.regime.length > 20) return false;
+    if (typeof e.price !== "number" || e.price < 0) return false;
+    if (typeof e.liquidity !== "number" || e.liquidity < 0) return false;
+    if (typeof e.alignedTFs !== "number") return false;
+    return true;
+  });
+}
+
+/** GET /api/signals — full snapshot, public, no auth (Phase 1).
+ *  GET /api/signals?mint=X — single token, 404 if not in the current
+ *  scan universe. */
+async function handleSignalsGet(url: URL, env: Env): Promise<Response> {
+  const raw = await env.FRAME_ALERTS.get(SIGNALS_KV_KEY);
+  if (!raw) return jsonResponse({ error: "Not available yet" }, 503);
+  const snapshot = JSON.parse(raw) as SignalsSnapshot;
+  const mint = url.searchParams.get("mint");
+  if (!mint) return jsonResponse(snapshot);
+  const entry = snapshot.tokens.find(t => t.mint === mint);
+  if (!entry) return jsonResponse({ error: "Not in current scan universe" }, 404);
+  return jsonResponse({ updatedAt: snapshot.updatedAt, ...entry });
+}
+
+/** POST /api/signals — bot-authenticated (same Bearer gate as /escrow and
+ *  /api/top-traders). Validates shape strictly, same reasoning as
+ *  isValidTopTradersPayload's doc comment. */
+async function handleSignalsPost(request: Request, env: Env): Promise<Response> {
+  if (!checkBotAuth(request, env)) return errorResponse("Unauthorized", 401);
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return errorResponse("Invalid JSON body", 400);
+  }
+  if (!isValidSignalsPayload(body)) {
+    return errorResponse(
+      "Invalid payload shape — expected { updatedAt, tokens: [{mint, symbol, composite, regime, price, liquidity, alignedTFs}] }",
+      400,
+    );
+  }
+  await env.FRAME_ALERTS.put(SIGNALS_KV_KEY, JSON.stringify(body));
+  return jsonResponse({ ok: true, count: body.tokens.length });
 }
 
 /** GET /api/verify?wallet=<address> — public JSON.
@@ -3181,7 +3278,7 @@ export default {
 
     // Health check
     if (path === "/health") {
-      return jsonResponse({ status: "ok", version: "1.10.0", endpoints: ["/api/actions/swap", "/api/actions/tip", "/api/actions/predict", "/api/actions/bet", "/api/actions/kalshi-bet", "/api/actions/treasury-swap", "/api/actions/treasury-stake", "/api/treasury/status", "/api/actions/ad-skip", "/api/ad-skip/status", "/api/ad-skip/verify", "/escrow", "/claim", "/frames/alert", "/legal", "/terms", "/privacy", "/copyright", "/", "/api/stats", "/api/verify", "/api/holders/index", "/api/top-traders", "/monke/:mint", "/api/sentiment/register-device", "/api/sentiment/unregister-device", "/api/sentiment/ingest", "/api/sentiment/score"] });
+      return jsonResponse({ status: "ok", version: "1.10.0", endpoints: ["/api/actions/swap", "/api/actions/tip", "/api/actions/predict", "/api/actions/bet", "/api/actions/kalshi-bet", "/api/actions/treasury-swap", "/api/actions/treasury-stake", "/api/treasury/status", "/api/actions/ad-skip", "/api/ad-skip/status", "/api/ad-skip/verify", "/escrow", "/claim", "/frames/alert", "/legal", "/terms", "/privacy", "/copyright", "/", "/api/stats", "/api/verify", "/api/holders/index", "/api/top-traders", "/api/signals", "/monke/:mint", "/api/sentiment/register-device", "/api/sentiment/unregister-device", "/api/sentiment/ingest", "/api/sentiment/score"] });
     }
 
     // 2026-07-30: public "Check Your Monke" growth page — see the section
@@ -3210,6 +3307,11 @@ export default {
     if (path === "/api/top-traders") {
       if (request.method === "GET") return handleTopTradersGet(env);
       if (request.method === "POST") return handleTopTradersPost(request, env);
+      return errorResponse("Method not allowed", 405);
+    }
+    if (path === "/api/signals") {
+      if (request.method === "GET") return handleSignalsGet(url, env);
+      if (request.method === "POST") return handleSignalsPost(request, env);
       return errorResponse("Method not allowed", 405);
     }
     // Data Oracle Phase 1 — attestation + collection + aggregation only, no payouts.
