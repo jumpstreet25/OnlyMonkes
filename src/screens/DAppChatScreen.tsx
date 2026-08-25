@@ -62,7 +62,11 @@ export default function DAppChatScreen({ dappId }: DAppChatScreenProps) {
   const myAddress = myInboxId ?? "";
 
   useEffect(() => {
-    initialize();
+    // initialize() now rejects on failure (see useGroupChat.ts) — this screen
+    // has no retry/join-request loop like GenesisChatScreen, so just swallow
+    // it here to avoid an unhandled promise rejection; useGroupChat's own
+    // `error` state already drives this screen's error UI.
+    initialize().catch(() => {});
     return () => disconnect();
   }, []);
 

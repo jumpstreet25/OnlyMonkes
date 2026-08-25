@@ -270,6 +270,13 @@ export default function ChatScreen() {
   const [videoLightboxUrl, setVideoLightboxUrl] = useState<string | null>(null);
   const [chartSymbol, setChartSymbol] = useState<string | null>(null);
   const [adminRecoveryOpen, setAdminRecoveryOpen] = useState(false);
+  // A real user got permanently stuck here on a stale APK build whose join
+  // request the bot could never approve (confirmed 2026-08-25 via VPS bot
+  // logs — a legacy payload format only resolvable for an inbox the bot had
+  // already seen, which a fresh install can never be). The retry loop itself
+  // was silent about this, so surface a "still stuck?" hint pointing at the
+  // latest release after a while, rather than looping forever with no signal.
+  const [joinTakingAWhile, setJoinTakingAWhile] = useState(false);
   const [videoCallToken, setVideoCallToken] = useState<string | null>(null);
   const [swapQuote, setSwapQuote] = useState<SwapQuote | null>(null);
   const [swapConfirmOpen, setSwapConfirmOpen] = useState(false);
@@ -563,6 +570,16 @@ export default function ChatScreen() {
     retry();
     return () => clearTimeout(timer);
   }, [isGroupMember, remoteGroupId]);
+
+  // ─── Flag a stuck "Joining OnlyMonkes…" screen after a while ─────────────────
+  useEffect(() => {
+    if (isGroupMember || error) {
+      setJoinTakingAWhile(false);
+      return;
+    }
+    const timer = setTimeout(() => setJoinTakingAWhile(true), 45_000);
+    return () => clearTimeout(timer);
+  }, [isGroupMember, error]);
 
   // ─── Register for push notifications once member is confirmed ────────────────
   useEffect(() => {
@@ -1488,6 +1505,17 @@ export default function ChatScreen() {
             <Pressable onPress={async () => { await logout(); router.replace("/"); }} hitSlop={8}>
               <Text style={styles.pendingLogoutLink}>Log out</Text>
             </Pressable>
+
+            {joinTakingAWhile && (
+              <Pressable
+                onPress={() => Linking.openURL("https://github.com/jumpstreet25/OnlyMonkes/releases/latest")}
+                hitSlop={8}
+              >
+                <Text style={styles.adminRecoveryLink}>
+                  Taking a while? Make sure you have the latest app version →
+                </Text>
+              </Pressable>
+            )}
 
             {/* Admin recovery — shown after tapping "Are you the admin?" */}
             {!adminRecoveryOpen ? (

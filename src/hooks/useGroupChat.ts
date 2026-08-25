@@ -25,6 +25,7 @@ import {
   sendMessage,
   sendReply,
   sendReaction,
+  reconcileStructuredHistory,
 } from "@/lib/xmtp";
 import { getXmtpClient } from "@/hooks/useXmtp";
 import { useAppStore } from "@/store/appStore";
@@ -104,6 +105,7 @@ export function useGroupChat(groupId: string, groupName: string) {
         try {
           await (warm.group as any).sync();
           const rawHistory: any[] = await (warm.group as any).messages({ limit: 50 });
+          await reconcileStructuredHistory(rawHistory, warm.client.inboxId);
           let decoded = rawHistory
             .map((m: any) => decodeMessage(m, warm.client.inboxId))
             .filter(Boolean) as ChatMessage[];
@@ -198,6 +200,7 @@ export function useGroupChat(groupId: string, groupName: string) {
       setIsLoadingHistory(true);
       await (group as any).sync();
       const rawHistory: any[] = await (group as any).messages({ limit: 500 });
+      await reconcileStructuredHistory(rawHistory, client.inboxId);
       if (__DEV__) console.log(`[useGroupChat] ${groupName}: ${rawHistory.length} raw, decoding…`);
       // Debug: log raw content of first 5 messages
       for (const raw of rawHistory.slice(0, 5)) {
@@ -295,7 +298,16 @@ export function useGroupChat(groupId: string, groupName: string) {
         unsub,
       });
     } catch (err) {
+      // Re-throw (not just setError) — GenesisChatScreen's join-request retry
+      // loop does `try { await initialize(); ... } catch { send join request }`
+      // and needs the rejection to know initialization actually failed.
+      // Swallowing it here previously made that loop believe every attempt
+      // succeeded on the first try, so a fresh installation that isn't yet an
+      // MLS member of the group (getOrCreateDAppGroup finds nothing) never
+      // got a join request sent — permanently stuck with a null group ref,
+      // so every send() threw "Not connected" with "Message didn't send".
       setError(err instanceof Error ? err.message : "Chat initialization failed");
+      throw err;
     } finally {
       setIsLoading(false);
     }

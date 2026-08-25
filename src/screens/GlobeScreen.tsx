@@ -25,6 +25,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
 import { router } from "expo-router";
+import { toast } from "sonner-native";
 // date-fns format removed — event formatting moved to EventRsvpModal
 import { THEME, FONTS, BOT_INBOX_IDS, BOT_DISPLAY_NAME, BOT_PFP_URL, getWorldBarTint, getWorldAccent } from "@/lib/constants";
 import { IS_IMMERSIVE_SHELL } from "@/lib/immersiveStatusBar";
@@ -531,7 +532,15 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
         const m = data.marker;
         const full = markers.find(mk => mk.id === m.id);
 
-        if (m.type === "user" && m.inboxId && onPressUser) {
+        if (m.type === "user" && m.inboxId && (BOT_INBOX_IDS as string[]).includes(m.inboxId)) {
+          // The bot is pinned at a hardcoded location (see BOT_LOCATION above)
+          // so the 🌍 header count/marker list stay populated even before any
+          // real PROFILE_UPDATE arrives — but it's not a real holder, so
+          // tapping it shouldn't open a normal UserProfileModal (a real user
+          // reported this reading as "AI Agent #9385" showing up as if it
+          // were another Saga Monke on the globe, confirmed 2026-08-25).
+          toast.info(`🐒 That's ${BOT_DISPLAY_NAME} — always pinned here, not a real Monke location.`);
+        } else if (m.type === "user" && m.inboxId && onPressUser) {
           const profile = getCachedProfile(m.inboxId);
           onPressUser({
             senderAddress: m.inboxId,
@@ -704,7 +713,9 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
               style={styles.clusterUser}
               onPress={() => {
                 setClusterUsers([]);
-                if (m.inboxId && onPressUser) {
+                if (m.inboxId && (BOT_INBOX_IDS as string[]).includes(m.inboxId)) {
+                  toast.info(`🐒 That's ${BOT_DISPLAY_NAME} — always pinned here, not a real Monke location.`);
+                } else if (m.inboxId && onPressUser) {
                   const profile = getCachedProfile(m.inboxId);
                   onPressUser({
                     senderAddress: m.inboxId,

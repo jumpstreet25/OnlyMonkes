@@ -476,9 +476,23 @@ const previewStyles = StyleSheet.create({
 interface BananaShopModalProps {
   visible: boolean;
   onClose: () => void;
+  /** Genesis Chat: renders a small trophy button next to the balance pill
+   *  since Genesis has no dedicated header icon for it (leaderboard access
+   *  now lives inside the shop). Omitted everywhere else — unaffected. */
+  onLeaderboardPress?: () => void;
+  /** Genesis Chat: same idea, for SupportOptionsModal (watch ad / pay SKR
+   *  to skip ads / tip) — its dedicated header icon was dropped when
+   *  Genesis's header was rebuilt to match ChatHeader's layout. */
+  onSupportPress?: () => void;
+  /** Genesis-only holders (no Saga Monke, so no Main Chat / MenuDrawer to
+   *  disconnect from) — Genesis's own header dropped its dedicated
+   *  disconnect icon to match ChatHeader's layout, so this is their only
+   *  remaining way to log out. Dual holders never need this (they can
+   *  disconnect from Main Chat's MenuDrawer), so it's still opt-in. */
+  onDisconnectPress?: () => void;
 }
 
-export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
+export function BananaShopModal({ visible, onClose, onLeaderboardPress, onSupportPress, onDisconnectPress }: BananaShopModalProps) {
   const bananaBalance = useAppStore(s => s.bananaBalance);
   const worldId = useAppStore(s => s.shopStyles?.worldId) as string | undefined;
   const [shopState, setShopState] = useState<ShopState | null>(null);
@@ -659,6 +673,21 @@ export function BananaShopModal({ visible, onClose }: BananaShopModalProps) {
           <View style={styles.balancePill}>
             <Text style={styles.balanceText}>{bananaBalance} 🍌</Text>
           </View>
+          {onLeaderboardPress && (
+            <Pressable onPress={onLeaderboardPress} hitSlop={12} style={[styles.backBtn, worldId ? { backgroundColor: "rgba(255,255,255,0.08)" } : null]}>
+              <Text style={styles.backText}>🏆</Text>
+            </Pressable>
+          )}
+          {onSupportPress && (
+            <Pressable onPress={onSupportPress} hitSlop={12} style={[styles.backBtn, worldId ? { backgroundColor: "rgba(255,255,255,0.08)" } : null]}>
+              <Text style={styles.backText}>🎬</Text>
+            </Pressable>
+          )}
+          {onDisconnectPress && (
+            <Pressable onPress={onDisconnectPress} hitSlop={12} style={[styles.backBtn, worldId ? { backgroundColor: "rgba(255,255,255,0.08)" } : null]}>
+              <Text style={styles.backText}>⏻</Text>
+            </Pressable>
+          )}
           {useAppStore.getState().wallet?.address === DEV_WALLET && (
             <View style={styles.devPill}>
               <Text style={styles.devPillText}>DEV</Text>

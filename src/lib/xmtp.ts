@@ -1372,6 +1372,146 @@ export function parsePortfolioResponse(raw: string): ParsedPortfolioResponse | n
 }
 
 /**
+ * Catch-up reconciliation for structured bot payloads (TRADE_CLOSED,
+ * TRADE_OPENED, PORTFOLIO_RESPONSE, COPY_TRADE_STATUS,
+ * STREAK_CAPTION_RESPONSE, AUTOMONKE_STATUS) found in a batch of raw XMTP
+ * messages — same prefixes decodeMessage() silently drops via
+ * STRUCTURED_PREFIXES (by design, they're never meant to render as chat
+ * bubbles).
+ *
+ * Historically, these were ONLY ever applied to app state (trades store,
+ * portfolio, copy-trade slots, automonke status) from inside a LIVE
+ * `streamMessages`/`streamAllMessages` callback — useDm.ts and useXmtp.ts
+ * each have their own inline copy of this same prefix-matching chain. That
+ * meant any structured message that arrived while the app was killed,
+ * backgrounded past the stream's lifetime, or simply not on that screen was
+ * PERMANENTLY lost: decodeMessage() nulls it out of history, nothing else
+ * ever reprocesses it. Confirmed on-device 2026-08-25 — a Seeker install's
+ * bot DM correctly showed every `/portfolio` the user sent, but only the
+ * very first reply (the one that happened to render while the screen was
+ * live); every reply after that had simply vanished from history, with no
+ * error anywhere.
+ *
+ * This function is the fix: call it against the raw message batch every
+ * time DM/group history is (re)loaded — mount, reopen, or the AppState
+ * foreground catch-up refresh — so anything missed by the live stream gets
+ * reconciled into state from history instead. Iterates oldest→newest so
+ * "latest wins" for the snapshot-style payloads (AUTOMONKE_STATUS,
+ * COPY_TRADE_STATUS, PORTFOLIO_RESPONSE) — see addClosedTrade/addOpenTrade
+ * in tradesStore.ts for the id-based dedup that makes this safe to call
+ * repeatedly over overlapping history windows (e.g. every foreground
+ * resume) without producing duplicate trade-list entries.
+ *
+ * Deliberately NOT timestamp-guarded against a live update that landed a
+ * moment before this ran — the failure mode of "briefly re-applies a few-
+ * seconds-stale snapshot" is far preferable to the permanent loss this
+ * replaces, and the snapshot types (automonke/copy-trade/portfolio) are
+ * idempotent sets, not additive, so the next real update corrects it anyway.
+ */
+export async function reconcileStructuredHistory(rawMessages: any[], myInboxId: string): Promise<void> {
+  if (!rawMessages || rawMessages.length === 0) return;
+  try {
+    const [{ BOT_INBOX_IDS }, { useTradesStore }, { useAppStore }, { storeStreakCaptionResponse }] =
+      await Promise.all([
+        import('@/lib/constants'),
+        import('@/store/tradesStore'),
+        import('@/store/appStore'),
+        import('@/lib/imageCaption'),
+      ]);
+
+    // Raw XMTP history is newest-first; process oldest-first so "latest
+    // wins" naturally falls out of iteration order for snapshot payloads.
+    const ordered = [...rawMessages].reverse();
+
+    for (const raw of ordered) {
+      try {
+        const sender: string = raw.senderInboxId ?? '';
+        if (sender === myInboxId || !BOT_INBOX_IDS.includes(sender)) continue;
+
+        const rawContent = typeof raw.content === 'function' ? raw.content() : raw.content;
+        if (typeof rawContent !== 'string') continue;
+        const inner = rawContent.startsWith('MSG:')
+          ? rawContent.slice(4).split(':').slice(1).join(':')
+          : rawContent;
+
+        if (inner.startsWith('TRADE_CLOSED:')) {
+          const parsed = parseTradeClosed(inner);
+          if (!parsed) continue;
+          useTradesStore.getState().addClosedTrade({
+            id: `${parsed.mint}-${parsed.ts}`,
+            source: parsed.source,
+            token: parsed.token,
+            mint: parsed.mint,
+            entrySolAmount: parsed.entrySolAmount,
+            exitSolAmount: parsed.exitSolAmount,
+            pnlSol: parsed.pnlSol,
+            pnlPct: parsed.pnlPct,
+            durationMs: parsed.durationMs,
+            openedAt: parsed.ts - parsed.durationMs,
+            closedAt: parsed.ts,
+            reason: parsed.reason,
+            signature: parsed.signature,
+            baseMint: parsed.baseMint,
+            baseSymbol: parsed.baseSymbol,
+            entryBaseAmount: parsed.entryBaseAmount,
+            exitBaseAmount: parsed.exitBaseAmount,
+            pnlBase: parsed.pnlBase,
+            copySourceLabel: parsed.copySourceLabel,
+          });
+        } else if (inner.startsWith('TRADE_OPENED:')) {
+          const parsed = parseTradeOpened(inner);
+          if (!parsed) continue;
+          useTradesStore.getState().addOpenTrade({
+            id: parsed.positionId,
+            source: parsed.source,
+            token: parsed.token,
+            mint: parsed.mint,
+            entryPriceUsd: parsed.entryPriceUsd,
+            entrySolAmount: parsed.entrySolAmount,
+            tokenAmount: parsed.tokenAmount,
+            stopPrice: parsed.stopPrice,
+            stopPct: parsed.stopPct,
+            target1: parsed.target1,
+            target2: parsed.target2,
+            taComposite: parsed.taComposite,
+            openClawConfidence: parsed.openClawConfidence,
+            txHash: parsed.txHash,
+            openedAt: parsed.ts,
+            baseSymbol: parsed.baseSymbol,
+            copySourceLabel: parsed.copySourceLabel,
+          });
+        } else if (inner.startsWith('PORTFOLIO_RESPONSE:')) {
+          const parsed = parsePortfolioResponse(inner);
+          if (parsed) useTradesStore.getState().setPortfolioResponse(parsed);
+        } else if (inner.startsWith('COPY_TRADE_STATUS:')) {
+          const parsed = parseCopyTradeStatus(inner);
+          if (!parsed) continue;
+          for (const s of parsed.slots) {
+            useAppStore.getState().setCopyTradeSlot(s.slot, {
+              enabled: s.enabled,
+              perTradeSOL: s.perTradeSOL,
+              boundAt: parsed.ts,
+            });
+          }
+        } else if (inner.startsWith('AUTOMONKE_STATUS:')) {
+          const parsed = parseAutomonkeStatus(inner);
+          if (!parsed) continue;
+          useAppStore.getState().setAutomonkeStatus(parsed);
+          try {
+            const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+            await AsyncStorage.setItem('automonke_enrolled', parsed.enrolled ? '1' : '0');
+            await AsyncStorage.setItem('autonomonke_limit_orders_v1', parsed.limitOrdersEnabled ? '1' : '0');
+          } catch { /* non-critical */ }
+        } else if (inner.startsWith('STREAK_CAPTION_RESPONSE:')) {
+          const caption = inner.slice('STREAK_CAPTION_RESPONSE:'.length);
+          if (caption) await storeStreakCaptionResponse(caption).catch(() => {});
+        }
+      } catch { /* skip this one message, keep reconciling the rest */ }
+    }
+  } catch { /* non-critical — worst case this pass is a no-op */ }
+}
+
+/**
  * Parse and validate a PROFILE_UPDATE: message payload.
  * Returns null if the JSON is malformed or missing required fields.
  * Sanitizes all string fields to prevent injection.
@@ -1866,6 +2006,10 @@ export async function loadDmMessages(dm: any, myInboxId: string): Promise<ChatMe
   await dm.sync();
   await dm.sync(); // second pass ensures bot replies committed before fetching
   const raw: any[] = await dm.messages({ limit: 200 });
+  // Catch-up pass for TRADE_CLOSED/PORTFOLIO_RESPONSE/etc. — see
+  // reconcileStructuredHistory's doc comment. Runs on every call site
+  // (mount and the AppState foreground refresh), not just once.
+  await reconcileStructuredHistory(raw, myInboxId);
   const decoded = raw.map(r => decodeMessage(r, myInboxId)).filter(Boolean) as ChatMessage[];
   return decoded.reverse(); // XMTP returns newest-first; reverse to oldest-first for FlatList
 }

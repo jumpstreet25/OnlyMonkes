@@ -33,6 +33,7 @@ import { useAppStore } from "@/store/appStore";
 import { markChannelRead } from "@/lib/messageCache";
 import { BotChannelIcon } from "@/components/BotChannelIcon";
 import { MenuIcon } from "@/components/MenuIcon";
+import { toast } from "sonner-native";
 import type { ChatMessage } from "@/types";
 
 function getActiveMention(text: string): { start: number; query: string } | null {
@@ -122,7 +123,7 @@ function getSlashSuggestions(text: string, isDmWithBot?: boolean) {
 }
 
 // ── Bot channel button with badge ─────────────────────────────────────────────
-function ChannelButton({ channelId }: { channelId: 'trades' }) {
+function ChannelButton({ channelId, disabled, disabledMessage }: { channelId: 'trades'; disabled?: boolean; disabledMessage?: string }) {
   const count = useAppStore((s) => s.botChannelCounts[channelId]);
   const muted = useAppStore((s) => s.mutedBotChannels[channelId]);
   const clearCount = useAppStore((s) => s.clearBotChannelCount);
@@ -139,6 +140,19 @@ function ChannelButton({ channelId }: { channelId: 'trades' }) {
   const pfpTint = shopStyles?.pfpFullTheme && nftDominantColor && iconColor === nftDominantColor
     ? nftDominantColor
     : null;
+
+  if (disabled) {
+    return (
+      <Pressable
+        onPress={() => toast.info(disabledMessage ?? "Not available here")}
+        accessibilityLabel={`${channelId} channel (unavailable)`}
+        accessibilityRole="button"
+        style={[styles.toolbarBtn, styles.toolbarChannel, styles.toolbarBtnDisabled]}
+      >
+        <BotChannelIcon channel={channelId} size={49} color={THEME.textFaint} />
+      </Pressable>
+    );
+  }
 
   return (
     <Pressable
@@ -229,6 +243,13 @@ interface ChatInputProps {
    *  omit entirely (no other screen using ChatInput has anywhere to switch
    *  to, so this stays undefined there). */
   chatModeTabs?: React.ReactNode;
+  /** Genesis Chat: renders CAM/LIVE/GIF/MonkeTrades greyed-out and
+   *  non-functional instead of omitting them, so the toolbar visually
+   *  matches Main Chat's — those features just aren't part of the Genesis
+   *  tier. Tapping one shows `disabledMessage`. Main Chat and every other
+   *  screen omit this (features stay fully hidden/functional as before). */
+  disabledButtons?: { cam?: boolean; live?: boolean; gif?: boolean; trades?: boolean };
+  disabledMessage?: string;
 }
 
 export const ChatInput = memo(function ChatInput({
@@ -249,6 +270,8 @@ export const ChatInput = memo(function ChatInput({
   onOpenLivePicker,
   isDmWithBot,
   chatModeTabs,
+  disabledButtons,
+  disabledMessage,
 }: ChatInputProps) {
   const inputRef = useRef<TextInput>(null);
   const bounceAnim = useRef(new Animated.Value(0)).current;
@@ -506,35 +529,59 @@ export const ChatInput = memo(function ChatInput({
           per explicit request — was ChatHeader's own row before this. */}
       <View style={styles.toolbarRow}>
         <View style={styles.toolbarLeft}>
-          {onCamera && (
+          {(onCamera || disabledButtons?.cam) && (
             <Pressable
-              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onCamera(); }}
-              accessibilityLabel="Open camera"
+              onPress={() => {
+                if (disabledButtons?.cam) { toast.info(disabledMessage ?? "Not available here"); return; }
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onCamera?.();
+              }}
+              accessibilityLabel={disabledButtons?.cam ? "Open camera (unavailable)" : "Open camera"}
               accessibilityRole="button"
-              style={({ pressed }) => [styles.toolbarBtn, styles.toolbarCamera, toolbarColor !== "#6CB4EE" && { borderColor: toolbarColor + "1F" }, pressed && { opacity: 0.7 }]}
+              style={({ pressed }) => [
+                styles.toolbarBtn, styles.toolbarCamera,
+                toolbarColor !== "#6CB4EE" && !disabledButtons?.cam && { borderColor: toolbarColor + "1F" },
+                disabledButtons?.cam && styles.toolbarBtnDisabled,
+                pressed && { opacity: 0.7 },
+              ]}
             >
-              <Text style={[styles.toolbarCamText, { color: toolbarColor }]}>CAM</Text>
+              <Text style={[styles.toolbarCamText, { color: disabledButtons?.cam ? THEME.textFaint : toolbarColor }]}>CAM</Text>
             </Pressable>
           )}
-          {(onLiveVideo || onAvatarRoom) && (
+          {(onLiveVideo || onAvatarRoom || disabledButtons?.live) && (
             <Pressable
-              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onOpenLivePicker?.(); }}
-              accessibilityLabel="Go live"
+              onPress={() => {
+                if (disabledButtons?.live) { toast.info(disabledMessage ?? "Not available here"); return; }
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onOpenLivePicker?.();
+              }}
+              accessibilityLabel={disabledButtons?.live ? "Go live (unavailable)" : "Go live"}
               accessibilityRole="button"
-              style={({ pressed }) => [styles.toolbarBtn, styles.toolbarLive, toolbarColor !== "#6CB4EE" && { borderColor: toolbarColor + "1F" }, pressed && { opacity: 0.7 }]}
+              style={({ pressed }) => [
+                styles.toolbarBtn, styles.toolbarLive,
+                toolbarColor !== "#6CB4EE" && !disabledButtons?.live && { borderColor: toolbarColor + "1F" },
+                disabledButtons?.live && styles.toolbarBtnDisabled,
+                pressed && { opacity: 0.7 },
+              ]}
             >
-              <View style={[styles.liveDot, { backgroundColor: toolbarColor }]} />
-              <Text style={[styles.toolbarLiveText, { color: toolbarColor }]}>LIVE</Text>
+              <View style={[styles.liveDot, { backgroundColor: disabledButtons?.live ? THEME.textFaint : toolbarColor }]} />
+              <Text style={[styles.toolbarLiveText, { color: disabledButtons?.live ? THEME.textFaint : toolbarColor }]}>LIVE</Text>
             </Pressable>
           )}
-          {onGifPicker && (
+          {(onGifPicker || disabledButtons?.gif) && (
             <Pressable
-              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onGifPicker(); }}
-              accessibilityLabel="Open GIF picker"
+              onPress={() => {
+                if (disabledButtons?.gif) { toast.info(disabledMessage ?? "Not available here"); return; }
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onGifPicker?.();
+              }}
+              accessibilityLabel={disabledButtons?.gif ? "Open GIF picker (unavailable)" : "Open GIF picker"}
               accessibilityRole="button"
-              style={({ pressed }) => [styles.toolbarBtn, styles.toolbarGif, toolbarColor !== "#6CB4EE" && { borderColor: toolbarColor + "1F" }, pressed && { opacity: 0.7 }]}
+              style={({ pressed }) => [
+                styles.toolbarBtn, styles.toolbarGif,
+                toolbarColor !== "#6CB4EE" && !disabledButtons?.gif && { borderColor: toolbarColor + "1F" },
+                disabledButtons?.gif && styles.toolbarBtnDisabled,
+                pressed && { opacity: 0.7 },
+              ]}
             >
-              <Text style={[styles.toolbarGifText, { color: toolbarColor }]}>GIF</Text>
+              <Text style={[styles.toolbarGifText, { color: disabledButtons?.gif ? THEME.textFaint : toolbarColor }]}>GIF</Text>
             </Pressable>
           )}
         </View>
@@ -543,7 +590,7 @@ export const ChatInput = memo(function ChatInput({
         </View>
         <View style={styles.toolbarRight}>
           <MessagesButton />
-          <ChannelButton channelId="trades" />
+          <ChannelButton channelId="trades" disabled={disabledButtons?.trades} disabledMessage={disabledMessage} />
         </View>
       </View>
 
@@ -727,6 +774,11 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: "center",
     justifyContent: "center",
+  },
+  toolbarBtnDisabled: {
+    backgroundColor: "rgba(255,255,255,0.03)",
+    borderColor: "rgba(255,255,255,0.06)",
+    opacity: 0.45,
   },
   toolbarCamera: {
     backgroundColor: "rgba(10, 10, 15, 0.8)",

@@ -25,6 +25,8 @@ import { useAppStore, loadPersistedPrefs } from '../src/store/appStore';
 import { useEntitlementSync } from '../src/hooks/useEntitlementSync';
 import { useAppOpenAdGate } from '../src/hooks/useAppOpenAdGate';
 import { AdDisclosureModal } from '../src/components/AdDisclosureModal';
+import { useUpdatePrompt } from '../src/hooks/useUpdatePrompt';
+import { UpdateAvailableModal } from '../src/components/UpdateAvailableModal';
 import { getEquippedStyles, type ShopState } from '../src/lib/bananaShop';
 import { applyThemeFromShop } from '../src/lib/shopTheme';
 import { clearLegacyKeys, startNftOwnershipGuard } from '../src/lib/session';
@@ -62,6 +64,9 @@ export default function RootLayout() {
   // the ad and surfaces pendingDisclosure the very first time, ever — see
   // <AdDisclosureModal> below.
   const { pendingDisclosure, acknowledgeDisclosure } = useAppOpenAdGate();
+  // In-app "Update ready" prompt — lets a downloaded OTA be applied with a
+  // tap instead of requiring a force-close + reopen. See useUpdatePrompt.ts.
+  const { visible: updatePromptVisible, applyUpdate, dismiss: dismissUpdatePrompt } = useUpdatePrompt();
   // Data Oracle Phase 1 — re-verifies SagaMonkes ownership periodically (app-foreground,
   // TTL'd) instead of only once at login. No-ops until a wallet is connected.
   useEntitlementSync();
@@ -270,6 +275,7 @@ export default function RootLayout() {
           <OtaUpdateIndicator />
           <GlassAlertRoot />
           <AdDisclosureModal visible={pendingDisclosure} onAcknowledge={acknowledgeDisclosure} />
+          <UpdateAvailableModal visible={updatePromptVisible} onUpdate={applyUpdate} onDismiss={dismissUpdatePrompt} />
         </GestureHandlerRootView>
       </SafeAreaProvider>
     </QueryClientProvider>

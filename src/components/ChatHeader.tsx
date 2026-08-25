@@ -42,6 +42,18 @@ export interface ChatHeaderProps {
   isGroupMember: boolean;
   onOpenDrawer: () => void;
   onDmNavigation: () => void;
+  /** Genesis Chat: its own wordmark image instead of the default OnlyMonkes
+   *  header.png. Omitted everywhere else. */
+  logoSource?: number;
+  /** The 1.35 default below was tuned for header.png's roughly-square
+   *  (2084x2084) aspect ratio — applying the same multiplier to a wide
+   *  banner-shaped logoSource blows it up disproportionately (confirmed
+   *  on-device 2026-08-25 with GenesisChatHeader.png, 2173x724). Pass 1 (or
+   *  tune per-image) alongside a non-default logoSource. */
+  logoScale?: number;
+  /** Genesis Chat: hides the bot-command ticker — those slash commands
+   *  aren't usable there. Defaults true (every other screen unaffected). */
+  showTicker?: boolean;
 }
 
 export function ChatHeader({
@@ -53,6 +65,12 @@ export function ChatHeader({
   isGroupMember,
   onOpenDrawer,
   onDmNavigation,
+  logoSource,
+  // 1.35 → 1.55 (+15%), per explicit request 2026-08-25 — the default
+  // header.png (Main Chat) "could be 15% larger". Genesis Chat passes its
+  // own logoScale={0.8} explicitly, so this default only affects Main.
+  logoScale = 1.55,
+  showTicker = true,
 }: ChatHeaderProps) {
   // World-aware transparency + per-world tint (v25 2026-05-08). When a
   // Chat World is equipped, header bg becomes a low-alpha tint matching
@@ -110,8 +128,8 @@ export function ChatHeader({
       {/* Center: decorative banner image */}
       <ImageBackground
         // eslint-disable-next-line @typescript-eslint/no-require-imports
-        source={require("../../assets/header.png")}
-        style={styles.headerCenter}
+        source={logoSource ?? require("../../assets/header.png")}
+        style={[styles.headerCenter, { transform: [{ scale: logoScale }] }]}
         resizeMode="contain"
       />
 
@@ -137,7 +155,7 @@ export function ChatHeader({
       </View>
 
       {/* Bot command ticker — overlaid at bottom of header, under the logo */}
-      {isGroupMember && (
+      {isGroupMember && showTicker && (
         <View style={styles.tickerWrap} pointerEvents="none">
           <BotCommandTicker />
         </View>
@@ -174,7 +192,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginHorizontal: -8,
-    transform: [{ scale: 1.35 }],
+    // logoScale transform applied inline per-instance now — see ChatHeader's
+    // logoScale prop (default 1.35, same as this used to be hardcoded here).
   },
   headerLeft: {
     flexDirection: "row",

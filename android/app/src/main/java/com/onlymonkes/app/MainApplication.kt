@@ -19,6 +19,9 @@ import expo.modules.ReactNativeHostWrapper
 
 import io.sentry.react.RNSentrySDK
 
+import com.livekit.reactnative.LiveKitReactNative
+import com.livekit.reactnative.audio.AudioType
+
 class MainApplication : Application(), ReactApplication {
 
   override val reactNativeHost: ReactNativeHost = ReactNativeHostWrapper(
@@ -46,6 +49,18 @@ class MainApplication : Application(), ReactApplication {
 
   override fun onCreate() {
     super.onCreate()
+    // 2026-08-25: was never called anywhere in this file — LiveKit's own
+    // teardown path (LiveKitReactNative.invalidate(), fired on every
+    // ReactInstance.destroy(), including an expo-updates Updates.reloadAsync()
+    // reload — see useUpdatePrompt.ts) unconditionally reads
+    // audioRecordSamplesDispatcher and throws IllegalStateException if
+    // setup() was never called, crashing the ENTIRE app on any JS reload
+    // regardless of whether LiveKit/Avatar Room was ever actually used this
+    // session. Per LiveKit's own docs, must run "above any other RN related
+    // initialization" — hence directly after super.onCreate(), before
+    // Sentry/SoLoader below. CommunicationAudioType (not MediaAudioType) —
+    // Avatar Room both publishes (mic) and consumes (speaker) audio.
+    LiveKitReactNative.setup(this, AudioType.CommunicationAudioType())
     // 2026-08-22: must run before anything else in this method. initSentry() in JS
     // (app/_layout.tsx) only starts once the JS bundle has loaded and executed — which
     // is *after* SoLoader.init/new-arch bring-up below — so it can never see a crash in

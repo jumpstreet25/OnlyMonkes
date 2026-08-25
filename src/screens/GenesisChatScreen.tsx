@@ -1,13 +1,22 @@
 /**
  * GenesisChatScreen
  *
- * Home screen for Saga/Seeker Genesis Token holders. Same shape as
- * BotChannelScreen (Trades channel): FlashList of messages, BananaShop,
- * Leaderboard. No reactions, no replies, no drawer, no CAM/GIF — a plain
- * text-only message bar (2026-08-23: Genesis holders can post here now;
- * previously omitting ChatInput entirely was the enforcement mechanism for
- * "only the bot can post," per explicit product decision that Genesis
- * holders need to actually be able to chat, not just read the bot's posts).
+ * Home screen for Saga/Seeker Genesis Token holders. FlashList of messages,
+ * BananaShop, Leaderboard. No reactions, no replies (2026-08-23: Genesis
+ * holders can post here now; previously omitting ChatInput entirely was the
+ * enforcement mechanism for "only the bot can post," per explicit product
+ * decision that Genesis holders need to actually be able to chat, not just
+ * read the bot's posts).
+ *
+ * 2026-08-25: header and toolbar rebuilt to reuse the exact same
+ * ChatHeader/ChatInput components Main Chat uses (own logo via
+ * GenesisChatHeader.png, no bot-command ticker) instead of a bespoke
+ * layout — CAM/LIVE/GIF/MonkeTrades render greyed-out and inert
+ * (ChatInput's `disabledButtons` prop) rather than omitted, so the chrome
+ * visually matches Main Chat throughout, not just the parts Genesis
+ * supports. No dedicated header icons anymore for support/leaderboard/
+ * disconnect — those moved inside BananaShopModal (opened by the banana
+ * pill, same as Main Chat's menu drawer does for that content).
  *
  * Entry point for the Genesis tier — reachable via app/genesis-chat.tsx.
  * Dual holders (also hold a Saga Monke) additionally get a Main/Genesis tab
@@ -15,7 +24,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { View, Text, StyleSheet, Pressable, ActivityIndicator, Linking, TextInput, Keyboard } from "react-native";
+import { View, Text, StyleSheet, Pressable, ActivityIndicator, Linking, Keyboard } from "react-native";
 import { toast } from "sonner-native";
 import { FlashList, type FlashListRef, type ListRenderItem } from "@shopify/flash-list";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -32,11 +41,10 @@ import { LeaderboardView } from "@/components/LeaderboardView";
 import { OnboardingCarousel } from "@/components/OnboardingCarousel";
 import { GENESIS_CAROUSEL_KEY, GENESIS_CAROUSEL_SLIDES } from "@/lib/genesisCarouselSlides";
 import { ChatModeTabs, SwipeToSwitchChat } from "@/components/ChatModeSwitch";
-import { LiquidGlass as BlurView } from "@/components/LiquidGlass";
-import { getBlurProps } from "@/lib/glassTheme";
-import { WorldGlassFill } from "@/components/WorldGlassFill";
+import { ChatHeader, CHAT_HEADER_HEIGHT } from "@/components/ChatHeader";
+import { ChatInput } from "@/components/ChatInput";
 import { WorldLayer } from "@/components/worlds/WorldLayer";
-import { THEME, FONTS, SKR_MINT, DEV_WALLET, resolveBarTint, MAX_MESSAGE_LENGTH } from "@/lib/constants";
+import { THEME, FONTS, SKR_MINT, DEV_WALLET } from "@/lib/constants";
 import { useThemeColor } from "@/lib/shopTheme";
 import { markChannelRead } from "@/lib/messageCache";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -44,6 +52,8 @@ import type { ChatMessage } from "@/types";
 import { isMineInbox } from "@/lib/inboxLinking";
 import { SupportOptionsModal } from "@/components/SupportOptionsModal";
 import { captureError } from "@/lib/sentry";
+
+const GENESIS_DISABLED_MESSAGE = "Not available in Genesis Chat";
 
 const noop = (..._args: any[]) => {};
 
@@ -75,10 +85,16 @@ export default function GenesisChatScreen() {
     }).catch(() => {});
   }, []);
 
-  const worldId = useAppStore((s) => s.shopStyles?.worldId) as string | undefined;
-  const hasThemeOverride = useAppStore((s) => !!s.themeOverrides);
   const themeSurface = useThemeColor('surface');
-  const chromeBg = resolveBarTint(worldId, hasThemeOverride, themeSurface, 0.20);
+  const themeBorder = useThemeColor('border');
+  const bananaBalance = useAppStore((s) => s.bananaBalance);
+  // Measured via onLayout below — the FlashList is `inverted`, so clearing
+  // the absolutely-positioned ChatInput at the visual bottom means padding
+  // the list's paddingTop (see ChatMessageList.tsx's bottomInset for the
+  // same established pattern — inverted flips which side paddingTop lands
+  // on). Without this, the newest message renders underneath the input bar
+  // instead of above it (confirmed on-device 2026-08-25).
+  const [bottomBarHeight, setBottomBarHeight] = useState(0);
 
   const groupId = genesisGroupId ?? "";
   const { messages, isLoading, initialize, disconnect: disconnectGroup, send, addMessageLocal } = useGroupChat(groupId, "Genesis Chat");
@@ -231,48 +247,55 @@ export default function GenesisChatScreen() {
     <View style={[styles.container, { backgroundColor: THEME.bg }]}>
       <WorldLayer active={!isLoading} />
 
-      <View style={[styles.header, { borderBottomColor: THEME.border, paddingTop: insets.top }]}>
-        {worldId ? <WorldGlassFill worldId={worldId} /> : (
-          <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />
-        )}
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: chromeBg }]} pointerEvents="none" />
-
-        <View style={styles.headerRow}>
-          <Pressable onPress={handleDisconnect} style={styles.iconBtn} hitSlop={8}>
-            <Text style={styles.iconTxt}>⏻</Text>
-          </Pressable>
-          <Text style={styles.headerTitle}>🐒 Genesis Chat</Text>
-          <View style={styles.headerRightBtns}>
-            <Pressable onPress={() => setSupportOptionsOpen(true)} style={styles.iconBtn} hitSlop={8}>
-              <Text style={styles.iconTxt}>🎬</Text>
-            </Pressable>
-            <Pressable onPress={() => setLeaderboardOpen(true)} style={styles.iconBtn} hitSlop={8}>
-              <Text style={styles.iconTxt}>📈</Text>
-            </Pressable>
-            <Pressable onPress={() => setShopOpen(true)} style={styles.iconBtn} hitSlop={8}>
-              <Text style={styles.iconTxt}>🍌</Text>
-            </Pressable>
-          </View>
-        </View>
-
-        {isDualHolder && <ChatModeTabs active="genesis" />}
+      {/* Header — matches Main Chat's ChatHeader exactly (globe / logo /
+          banana pill), just with Genesis's own wordmark and no bot-command
+          ticker (Genesis has no slash commands). Absolute overlay so the
+          message list can extend full-bleed behind it, same as Main. */}
+      <View style={{ position: "absolute", top: 0, left: 0, right: 0, zIndex: 100, elevation: 100 }}>
+        <ChatHeader
+          themeSurface={themeSurface}
+          themeBorder={themeBorder}
+          bananaBalance={bananaBalance}
+          totalDmUnread={0}
+          communityBadges={{ events: 0, links: 0 }}
+          isGroupMember
+          onOpenDrawer={() => setShopOpen(true)}
+          onDmNavigation={() => router.push("/dms" as any)}
+          // eslint-disable-next-line @typescript-eslint/no-require-imports
+          logoSource={require("../../assets/GenesisChatHeader.png")}
+          // header.png's 1.35 default is tuned for its square aspect ratio —
+          // GenesisChatHeader.png is a wide banner (2173x724), which the
+          // same multiplier blew up disproportionately (confirmed on-device
+          // 2026-08-25). Plain "contain" (scale 1) was still ~20% too large
+          // per on-device feedback — 0.8 is the user-calibrated size to
+          // visually match Main Chat's header.png. Main's own 1.35 is
+          // untouched (a separate "could be 15% bigger" note, deferred).
+          logoScale={0.8}
+          showTicker={false}
+        />
       </View>
 
+      <View style={{ flex: 1, marginTop: CHAT_HEADER_HEIGHT, zIndex: 50 }} pointerEvents="box-none">
       {!groupId ? (
-        <View style={[styles.container, styles.centerState]}>
+        // pointerEvents="none" on every center-state below: these are plain
+        // non-interactive Views but without this they still absorb taps
+        // meant for the elevated ChatInput underneath them (confirmed
+        // on-device 2026-08-25 — this was the actual cause of the message
+        // input not focusing during testing, not a coordinate issue).
+        <View style={[styles.container, styles.centerState]} pointerEvents="none">
           <Text style={styles.centerText}>Genesis Chat isn't set up yet — check back soon 🐒</Text>
         </View>
       ) : awaitingApproval && reversedMessages.length === 0 ? (
-        <View style={[styles.container, styles.centerState]}>
+        <View style={[styles.container, styles.centerState]} pointerEvents="none">
           <ActivityIndicator color={THEME.accent} style={{ marginBottom: 12 }} />
           <Text style={styles.centerText}>Verifying your Genesis Token and requesting access…</Text>
         </View>
       ) : isLoading && reversedMessages.length === 0 ? (
-        <View style={[styles.container, styles.centerState]}>
+        <View style={[styles.container, styles.centerState]} pointerEvents="none">
           <ActivityIndicator color={THEME.accent} />
         </View>
       ) : reversedMessages.length === 0 ? (
-        <View style={[styles.container, styles.centerState]}>
+        <View style={[styles.container, styles.centerState]} pointerEvents="none">
           <Text style={styles.centerText}>No messages yet — the bot posts a daily update here 🐒</Text>
         </View>
       ) : (
@@ -282,32 +305,43 @@ export default function GenesisChatScreen() {
           renderItem={renderMessage}
           keyExtractor={keyExtractor}
           inverted
-          contentContainerStyle={{ paddingTop: 12, paddingBottom: 12 }}
+          // Inverted flips which side paddingTop lands on — this clears the
+          // visual BOTTOM (the ChatInput bar) so the newest message renders
+          // above it instead of hidden underneath (see ChatMessageList.tsx's
+          // bottomInset for the same established pattern; that's the shared
+          // wrapper Main Chat uses, this screen uses FlashList directly).
+          contentContainerStyle={{
+            paddingTop: 12 + bottomBarHeight + (keyboardHeight > 0 ? keyboardHeight : insets.bottom),
+            paddingBottom: 12,
+          }}
         />
       )}
+      </View>
 
-      {/* Plain text-only message bar — no CAM/GIF, no slash commands. */}
-      <View style={[styles.inputBar, { paddingBottom: 8 + insets.bottom + keyboardHeight }]}>
-        <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} pointerEvents="none" />
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: chromeBg }]} pointerEvents="none" />
-        <TextInput
-          style={styles.textInput}
+      {/* Toolbar — same ChatInput Main Chat uses, so the bottom bar matches
+          exactly. CAM/LIVE/GIF/MonkeTrades render greyed-out and inert
+          (Genesis doesn't have those) instead of being hidden; Messages and
+          the Main/Genesis switcher stay fully functional. */}
+      <View
+        // ChatInput has no built-in safe-area handling (Main Chat's support
+        // banner normally carries that padding below it) — Genesis has no
+        // equivalent banner, so fall back to insets.bottom directly when the
+        // keyboard isn't up (the keyboard itself already clears that area
+        // when it is).
+        style={{ position: "absolute", bottom: keyboardHeight > 0 ? keyboardHeight : insets.bottom, left: 0, right: 0, zIndex: 100, elevation: 100 }}
+        onLayout={(e) => setBottomBarHeight(e.nativeEvent.layout.height)}
+      >
+        <ChatInput
           value={inputText}
           onChangeText={setInputText}
-          placeholder="Message Genesis Chat…"
-          placeholderTextColor={THEME.textMuted}
-          maxLength={MAX_MESSAGE_LENGTH}
-          multiline
-          editable={!isSending}
+          onSend={handleSend}
+          replyingTo={null}
+          onCancelReply={noop}
+          isSending={isSending}
+          disabledButtons={{ cam: true, live: true, gif: true, trades: true }}
+          disabledMessage={GENESIS_DISABLED_MESSAGE}
+          chatModeTabs={isDualHolder ? <ChatModeTabs active="genesis" /> : undefined}
         />
-        <Pressable
-          onPress={handleSend}
-          disabled={!inputText.trim() || isSending}
-          style={[styles.sendBtn, (!inputText.trim() || isSending) && styles.sendBtnDisabled]}
-          hitSlop={8}
-        >
-          <Text style={styles.sendBtnText}>➤</Text>
-        </Pressable>
       </View>
 
       {showCarousel && (
@@ -326,7 +360,13 @@ export default function GenesisChatScreen() {
         />
       )}
 
-      <BananaShopModal visible={shopOpen} onClose={() => setShopOpen(false)} />
+      <BananaShopModal
+        visible={shopOpen}
+        onClose={() => setShopOpen(false)}
+        onLeaderboardPress={() => { setShopOpen(false); setLeaderboardOpen(true); }}
+        onSupportPress={() => { setShopOpen(false); setSupportOptionsOpen(true); }}
+        onDisconnectPress={isDualHolder ? undefined : handleDisconnect}
+      />
 
       <SupportOptionsModal
         visible={supportOptionsOpen}
@@ -361,57 +401,8 @@ const styles = StyleSheet.create({
   centerState: { alignItems: "center", justifyContent: "center", padding: 40 },
   centerText: { fontFamily: FONTS.body, fontSize: 14, color: THEME.textMuted, textAlign: "center" },
 
-  header: { borderBottomWidth: StyleSheet.hairlineWidth, paddingBottom: 6 },
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-  },
-  headerRightBtns: { flexDirection: "row", gap: 4 },
-  headerTitle: { fontFamily: FONTS.displayMed, fontSize: 17, color: THEME.text },
   iconBtn: { padding: 6 },
   iconTxt: { fontSize: 18, color: THEME.text },
-
-  inputBar: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingTop: 8,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: THEME.border,
-    overflow: "hidden",
-  },
-  textInput: {
-    flex: 1,
-    fontFamily: FONTS.body,
-    fontSize: 15,
-    color: THEME.text,
-    maxHeight: 100,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    backgroundColor: "rgba(255,255,255,0.06)",
-    borderRadius: 18,
-  },
-  sendBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: THEME.accent,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 2,
-  },
-  sendBtnDisabled: {
-    opacity: 0.4,
-  },
-  sendBtnText: {
-    color: "#fff",
-    fontSize: 15,
-    fontWeight: "700",
-  },
 
   leaderboardHeader: {
     backgroundColor: THEME.bg,

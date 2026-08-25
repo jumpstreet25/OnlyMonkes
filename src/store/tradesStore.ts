@@ -66,6 +66,11 @@ export const useTradesStore = create<TradesState>((set, get) => ({
   },
 
   addClosedTrade: (trade) => {
+    // Dedup by id — reconcileStructuredHistory() (xmtp.ts) can reprocess the
+    // same historical TRADE_CLOSED across overlapping windows (every DM
+    // reopen / foreground resume), and without this it would duplicate the
+    // entry each time. Mirrors addOpenTrade's existing dedup below.
+    if (get().closedTrades.some((t) => t.id === trade.id)) return;
     const next = [trade, ...get().closedTrades].slice(0, MAX_TRADES);
     // Auto-prune the matching open position (by mint) if present — the bot
     // restarts could orphan opens that never get a close DM, so this keeps
