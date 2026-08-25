@@ -1,8 +1,24 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
 
     <!-- 2026-07-23: see android/app/src/canary/AndroidManifest.xml for why
          this exists. Production's channel is "production" per eas.json,
          distinct from canary/preview's "preview".
+
+         2026-08-24: this flavor's own manifest can only hardcode ONE
+         literal value, but the "production" Gradle flavor is built by BOTH
+         the "production" EAS profile (channel production, runtime 3.3
+         frozen Saga binary) AND the "preview" profile (channel preview,
+         runtime 3.4 active track) — same `:app:assembleProductionRelease`
+         gradle task either way, per eas.json. expo-updates' own plugin
+         injects its own meta-data for this same key reflecting whichever
+         profile actually invoked the build, which collided with the
+         hardcoded "production" literal below the first time this flavor
+         was built via the "preview" profile (manifest merger error).
+         tools:replace lets the invoking build's real channel win instead
+         of a stale hardcoded one — correct for whichever profile builds it,
+         not just "production". -->
+    <!-- Original 2026-08-05 note, still true for WHY this key/value shape
+         is needed at all (just no longer hardcoded to always "production"):
 
          2026-08-05: the meta-data name below was "EXPO_UPDATE_REQUEST_HEADERS"
          — that key is NEVER read by the installed expo-updates ~29.0.18 native
@@ -24,6 +40,6 @@
          upstream — check whether the old proper-looking key name works
          again before removing this one. -->
     <application>
-        <meta-data android:name="expo.modules.updates.UPDATES_CONFIGURATION_REQUEST_HEADERS_KEY" android:value="{&quot;expo-channel-name&quot;:&quot;production&quot;}"/>
+        <meta-data android:name="expo.modules.updates.UPDATES_CONFIGURATION_REQUEST_HEADERS_KEY" android:value="{&quot;expo-channel-name&quot;:&quot;production&quot;}" tools:replace="android:value"/>
     </application>
 </manifest>

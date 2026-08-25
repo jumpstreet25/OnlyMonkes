@@ -39,7 +39,7 @@ import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
 import * as Clipboard from "expo-clipboard";
 import { toast } from "sonner-native";
-import { THEME, FONTS, SKR_MINT, JUP_API_KEY, getWorldBarTint, getWorldAccent, surfaceToBarTint, resolveBarTint } from "@/lib/constants";
+import { THEME, FONTS, SKR_MINT, JUP_API_KEY, DEV_WALLET, getWorldBarTint, getWorldAccent, surfaceToBarTint, resolveBarTint } from "@/lib/constants";
 import { MenuIcon, type MenuIconName } from "@/components/MenuIcon";
 import { WorldLayer } from "@/components/worlds/WorldLayer";
 import { useThemeColor } from "@/lib/shopTheme";
@@ -1224,8 +1224,6 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
 }
 
 // ─── Support OnlyMonkes card ──────────────────────────────────────────────────
-
-const DEV_WALLET = "7tLrnPvgcR5mLtyUcVwvmhAD1wXbAKgWcLBPWxpwyZ1J";
 
 function buildSupportLink(amount?: number): string {
   const skrMint = SKR_MINT;

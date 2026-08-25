@@ -119,7 +119,7 @@ import { ChatModals } from "@/components/ChatModals";
 import { MonkeGlass, MonkeGlassActionButton } from "@/components/MonkeGlass";
 import { GoLivePicker } from "@/components/GoLivePicker";
 import { ChatMessageList } from "@/components/ChatMessageList";
-import { RewardedAdPill } from "@/components/RewardedAdPill";
+import { SupportOptionsModal } from "@/components/SupportOptionsModal";
 
 export default function ChatScreen() {
   const insets = useSafeAreaInsets();
@@ -223,6 +223,7 @@ export default function ChatScreen() {
   const [tipTarget, setTipTarget] = useState<ChatMessage | null>(null);
   const [tipSending, setTipSending] = useState(false);
   const [devTipOpen, setDevTipOpen] = useState(false);
+  const [supportOptionsOpen, setSupportOptionsOpen] = useState(false);
   const [pfpPickerOpen, setPfpPickerOpen] = useState(false);
   const [pfpImagePickerOpen, setPfpImagePickerOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -628,11 +629,16 @@ export default function ChatScreen() {
       if (mounted && cached) setFloorPrice(cached);
     }).catch(() => {});
     const fetchPrices = () => {
-      fetchAbortable(`https://api.dexscreener.com/latest/dex/tokens/${SKR_MINT}`)
+      // /tokens/{address} returns pairs:null for SKR as of 2026-08-24 (confirmed
+      // live) — /search still indexes it. Filter to this exact Solana mint and
+      // take the highest-liquidity pair so a thin listing can't skew the price.
+      fetchAbortable(`https://api.dexscreener.com/latest/dex/search?q=${SKR_MINT}`)
         .then(r => r.json())
         .then(d => {
           if (!mounted) return;
-          const p = d?.pairs?.[0]?.priceUsd;
+          const skrPairs = (d?.pairs ?? []).filter((p: any) => p.chainId === 'solana' && p.baseToken?.address === SKR_MINT);
+          skrPairs.sort((a: any, b: any) => (b.liquidity?.usd ?? 0) - (a.liquidity?.usd ?? 0));
+          const p = skrPairs[0]?.priceUsd;
           if (p) setSkrPrice(Number(p) < 0.01 ? `$${Number(p).toFixed(6)}` : `$${Number(p).toFixed(4)}`);
         })
         .catch(() => {});
@@ -1657,13 +1663,6 @@ export default function ChatScreen() {
           chatModeTabs={isGenesisHolder ? <ChatModeTabs active="main" /> : undefined}
         />
 
-        {/* Rewarded ad — own row above the support banner so it never
-            disturbs that bar's tuned 3-column layout. Renders nothing when
-            no ad is loaded, so it doesn't reserve dead space. */}
-        <View style={{ alignItems: "center", paddingTop: 4 }}>
-          <RewardedAdPill />
-        </View>
-
         {/* Support banner — 3-column: [SKR] [Support] [Floor] */}
         {/* Match the chat header / input bar bg when a Chat World is equipped
             so all three bars read as one unified frame around the world.
@@ -1712,7 +1711,7 @@ export default function ChatScreen() {
               )}
             </View>
             <Pressable
-              onPress={() => setDevTipOpen(true)}
+              onPress={() => setSupportOptionsOpen(true)}
               style={({ pressed }) => [{ flex: 1, alignItems: 'center' }, pressed && { opacity: 0.6 }]}
             >
               <Text style={[styles.supportBannerText, accentSupportTextStyle]} numberOfLines={1}>
@@ -1877,6 +1876,12 @@ export default function ChatScreen() {
         handlePin={handlePin}
         handleThread={handleThread}
         handleStickerReact={handleStickerReact}
+      />
+      <SupportOptionsModal
+        visible={supportOptionsOpen}
+        onClose={() => setSupportOptionsOpen(false)}
+        onOpenTip={() => setDevTipOpen(true)}
+        variant="main"
       />
     </ErrorBoundary>
   );

@@ -494,19 +494,17 @@ export const ChatInput = memo(function ChatInput({
 
       {/* Left: CAM / LIVE / GIF packed like pre-4-channel layout.
           Right: Messages + MonkeTrades (sales merged). Center: Main/Genesis
-          switcher (dual holders only) — absolutely positioned so it's truly
-          centered on the bar regardless of the left/right groups' widths,
-          rather than "space-between"'s uneven middle gap. box-none so the
-          empty space on either side of the pill (when present) or the full
-          row (when absent) doesn't block CAM/LIVE/GIF or Messages/Trades
-          underneath. 2026-08-24: moved down from the header per explicit
-          request — was ChatHeader's own row before this. */}
+          switcher (dual holders only) — a real flex sibling between left
+          and right (NOT absolutely centered on the whole row), since
+          toolbarLeft (3 buttons) and toolbarRight (2 icons) are different
+          widths — centering on the full row put the switcher pill
+          overlapping the wider CAM/LIVE/GIF group instead of sitting in
+          the actual gap between them (confirmed via on-device screenshot,
+          2026-08-24). flex:1 on this middle column claims exactly
+          whatever space toolbarLeft/toolbarRight don't, then centers its
+          own content within that. 2026-08-24: moved down from the header
+          per explicit request — was ChatHeader's own row before this. */}
       <View style={styles.toolbarRow}>
-        {chatModeTabs && (
-          <View style={styles.toolbarCenter} pointerEvents="box-none">
-            {chatModeTabs}
-          </View>
-        )}
         <View style={styles.toolbarLeft}>
           {onCamera && (
             <Pressable
@@ -539,6 +537,9 @@ export const ChatInput = memo(function ChatInput({
               <Text style={[styles.toolbarGifText, { color: toolbarColor }]}>GIF</Text>
             </Pressable>
           )}
+        </View>
+        <View style={styles.toolbarCenter} pointerEvents={chatModeTabs ? "auto" : "none"}>
+          {chatModeTabs}
         </View>
         <View style={styles.toolbarRight}>
           <MessagesButton />
@@ -703,16 +704,11 @@ const styles = StyleSheet.create({
   toolbarRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
     paddingHorizontal: 8,
     paddingTop: 2,
   },
   toolbarCenter: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    top: 0,
-    bottom: 0,
+    flex: 1,
     alignItems: "center",
     justifyContent: "center",
   },

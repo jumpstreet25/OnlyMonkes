@@ -128,7 +128,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     livekitTokenUrl: process.env.LIVEKIT_TOKEN_URL ?? '',
     jupApiKey: process.env.JUP_API_KEY ?? '',
     skrMint: process.env.SKR_MINT ?? '',
-    devWallet: process.env.DEV_WALLET ?? '7tLrnPvgcR5mLtyUcVwvmhAD1wXbAKgWcLBPWxpwyZ1J',
+    devWallet: process.env.DEV_WALLET ?? 'BzyaYyd7ew7SRqC1P9Q6z61ebfYmdXRFU6UfKjHzcQ2o',
     sentryDsn: process.env.SENTRY_DSN ?? '',
     eas: {
       projectId: 'e669ee53-de73-4dfb-9a36-5c22de29c67e',

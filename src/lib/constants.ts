@@ -20,8 +20,16 @@ export const APP_NAME = 'OnlyMonkes';
 
 // ─── SKR Token ────────────────────────────────────────────────────────────────
 export const SKR_MINT = ENV_SKR || 'SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3';
-// Jump.skr developer wallet — receives tips + trading fees
-export const DEV_WALLET = ENV_DEV || '7tLrnPvgcR5mLtyUcVwvmhAD1wXbAKgWcLBPWxpwyZ1J';
+// OnlyMonkes publisher wallet — the same keypair that published the app to
+// the Solana Mobile dApp Store (~/onlymonkes-publisher-keypair.json).
+// Receives tips, Banana Shop purchases, trading fees, AND ad-skip $SKR
+// payments — one wallet, matches worker-actions' treasury.ts PUBLISHER_WALLET
+// and the bot's DEV_WALLET (Monke_Eliza/agents/monke-trader/.env). Fixed
+// 2026-08-24: this app's own .env DEV_WALLET had drifted to a different,
+// stale address (7tLrnPvgcR5mLtyUcVwvmhAD1wXbAKgWcLBPWxpwyZ1J) — tips/
+// purchases/fees were landing there instead of the real publisher wallet
+// while the bot and treasury Blinks were already correct.
+export const DEV_WALLET = ENV_DEV || 'BzyaYyd7ew7SRqC1P9Q6z61ebfYmdXRFU6UfKjHzcQ2o';
 // USDC mainnet mint (Circle)
 export const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 // SKR holders get a 10% discount on banana shop purchases

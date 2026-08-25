@@ -21,7 +21,8 @@ import React from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { router } from "expo-router";
-import { THEME, FONTS } from "@/lib/constants";
+import { THEME, FONTS, MONKE_BLUE } from "@/lib/constants";
+import { useAppStore } from "@/store/appStore";
 
 export type ChatMode = "main" | "genesis";
 
@@ -37,21 +38,29 @@ interface TabsProps {
 }
 
 export function ChatModeTabs({ active }: TabsProps) {
+  // Default is OnlyMonkes blue, same as every other bar in the app
+  // (resolveBarTint()'s default) — NOT the static THEME.accent purple, which
+  // is a generic UI-chrome accent unrelated to a user's equipped Banana Shop
+  // theme. A Tier 4 static theme (or PFP Full Theme) sets accent via
+  // themeOverrides (shopTheme.ts); read it directly here since this pill is
+  // a plain StyleSheet.create, not a hook-driven component.
+  const overrideAccent = useAppStore((s) => s.themeOverrides?.accent);
+  const accent = overrideAccent ?? MONKE_BLUE;
   return (
     <View style={styles.tabRow}>
       <Pressable
         onPress={() => active !== "main" && switchChatMode("main")}
-        style={[styles.tab, active === "main" && styles.tabActive]}
+        style={[styles.tab, active === "main" && { backgroundColor: accent }]}
         hitSlop={6}
       >
-        <Text style={[styles.tabText, active === "main" && styles.tabTextActive]}>Main</Text>
+        <Text numberOfLines={1} style={[styles.tabText, active === "main" && styles.tabTextActive]}>Main</Text>
       </Pressable>
       <Pressable
         onPress={() => active !== "genesis" && switchChatMode("genesis")}
-        style={[styles.tab, active === "genesis" && styles.tabActive]}
+        style={[styles.tab, active === "genesis" && { backgroundColor: accent }]}
         hitSlop={6}
       >
-        <Text style={[styles.tabText, active === "genesis" && styles.tabTextActive]}>Genesis</Text>
+        <Text numberOfLines={1} style={[styles.tabText, active === "genesis" && styles.tabTextActive]}>Genesis</Text>
       </Pressable>
     </View>
   );
@@ -96,16 +105,13 @@ const styles = StyleSheet.create({
     padding: 3,
   },
   tab: {
-    paddingHorizontal: 14,
-    paddingVertical: 5,
+    paddingHorizontal: 11,
+    paddingVertical: 4,
     borderRadius: 17,
-  },
-  tabActive: {
-    backgroundColor: THEME.accent,
   },
   tabText: {
     fontFamily: FONTS.bodyMed,
-    fontSize: 13,
+    fontSize: 12,
     color: THEME.textMuted,
   },
   tabTextActive: {

@@ -56,7 +56,7 @@ const SOL_MINT = "So11111111111111111111111111111111111111112";
  * Falls back to full authorize if the token is missing or expired.
  * Returns the sender's PublicKey derived from the auth result.
  */
-async function mwaAuthorize(mobileWallet: Web3MobileWallet): Promise<PublicKey> {
+export async function mwaAuthorize(mobileWallet: Web3MobileWallet): Promise<PublicKey> {
   const cachedToken = useAppStore.getState().mwaAuthToken;
 
   let addrRaw: string | Uint8Array;

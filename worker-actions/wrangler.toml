@@ -44,6 +44,13 @@ id = "c9d1b341ee9445868909ebbb57000758"
 binding = "DEVICE_INTEGRITY"
 id = "b0b8d8e361a749d28074f32134fe4fbf"
 
+# 2026-08-24: pay-$SKR-to-skip-ads entitlements (adSkip.ts). Key = wallet
+# address, value = { expiresAt, txSig }. Written by /api/ad-skip/verify
+# after confirming the payment tx on-chain; read by /api/ad-skip/status.
+[[kv_namespaces]]
+binding = "AD_ENTITLEMENTS"
+id = "6bb8296444af405185b354424bb150a7"
+
 # 2026-07-30: refreshes the public stats:latest KV cache every 4h so the
 # "Check Your Monke" growth page (GET /, /monke/:mint) never makes a live
 # Helius/CoinGecko call per page view. See scheduled() in src/index.ts.

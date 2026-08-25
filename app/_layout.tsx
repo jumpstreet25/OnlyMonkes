@@ -24,6 +24,7 @@ import { triggerProfileRebroadcast } from '../src/hooks/useXmtp';
 import { useAppStore, loadPersistedPrefs } from '../src/store/appStore';
 import { useEntitlementSync } from '../src/hooks/useEntitlementSync';
 import { useAppOpenAdGate } from '../src/hooks/useAppOpenAdGate';
+import { AdDisclosureModal } from '../src/components/AdDisclosureModal';
 import { getEquippedStyles, type ShopState } from '../src/lib/bananaShop';
 import { applyThemeFromShop } from '../src/lib/shopTheme';
 import { clearLegacyKeys, startNftOwnershipGuard } from '../src/lib/session';
@@ -44,7 +45,8 @@ import mobileAds from 'react-native-google-mobile-ads';
 // Initialize Sentry crash reporting (no-op if SENTRY_DSN not set)
 initSentry();
 
-// Google Mobile Ads — must init before any RewardedAdPill tries to load.
+// Google Mobile Ads — must init before SupportOptionsModal's rewarded-ad
+// or useAppOpenAdGate's app-open ad tries to load.
 // Currently only Google's public TEST ad unit IDs are wired (src/lib/ads.ts),
 // so this only ever requests test creatives until real AdMob IDs land.
 mobileAds().initialize().catch(() => {});
@@ -56,8 +58,10 @@ const queryClient = new QueryClient();
 export default function RootLayout() {
   useFreeRasp(RASP_CONFIG, THREAT_ACTIONS);
   // Automatic App Open ad — no tap needed, shows once per cold start
-  // (force-close + reopen), rate-limited. See useAppOpenAdGate.ts.
-  useAppOpenAdGate();
+  // (force-close + reopen), rate-limited. See useAppOpenAdGate.ts. Holds
+  // the ad and surfaces pendingDisclosure the very first time, ever — see
+  // <AdDisclosureModal> below.
+  const { pendingDisclosure, acknowledgeDisclosure } = useAppOpenAdGate();
   // Data Oracle Phase 1 — re-verifies SagaMonkes ownership periodically (app-foreground,
   // TTL'd) instead of only once at login. No-ops until a wallet is connected.
   useEntitlementSync();
@@ -265,6 +269,7 @@ export default function RootLayout() {
           <PollResultPopup />
           <OtaUpdateIndicator />
           <GlassAlertRoot />
+          <AdDisclosureModal visible={pendingDisclosure} onAcknowledge={acknowledgeDisclosure} />
         </GestureHandlerRootView>
       </SafeAreaProvider>
     </QueryClientProvider>

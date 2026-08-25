@@ -36,14 +36,14 @@ import { LiquidGlass as BlurView } from "@/components/LiquidGlass";
 import { getBlurProps } from "@/lib/glassTheme";
 import { WorldGlassFill } from "@/components/WorldGlassFill";
 import { WorldLayer } from "@/components/worlds/WorldLayer";
-import { THEME, FONTS, resolveBarTint, MAX_MESSAGE_LENGTH } from "@/lib/constants";
+import { THEME, FONTS, SKR_MINT, DEV_WALLET, resolveBarTint, MAX_MESSAGE_LENGTH } from "@/lib/constants";
 import { useThemeColor } from "@/lib/shopTheme";
 import { markChannelRead } from "@/lib/messageCache";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { ChatMessage } from "@/types";
 import { isMineInbox } from "@/lib/inboxLinking";
-import { RewardedAdPill } from "@/components/RewardedAdPill";
-import { AD_UNIT_IDS, AD_REWARD_BANANAS } from "@/lib/ads";
+import { SupportOptionsModal } from "@/components/SupportOptionsModal";
+import { captureError } from "@/lib/sentry";
 
 const noop = (..._args: any[]) => {};
 
@@ -65,6 +65,7 @@ export default function GenesisChatScreen() {
 
   const [shopOpen, setShopOpen] = useState(false);
   const [leaderboardOpen, setLeaderboardOpen] = useState(false);
+  const [supportOptionsOpen, setSupportOptionsOpen] = useState(false);
   const [showCarousel, setShowCarousel] = useState(false);
   const [awaitingApproval, setAwaitingApproval] = useState(false);
 
@@ -80,7 +81,7 @@ export default function GenesisChatScreen() {
   const chromeBg = resolveBarTint(worldId, hasThemeOverride, themeSurface, 0.20);
 
   const groupId = genesisGroupId ?? "";
-  const { messages, isLoading, initialize, disconnect: disconnectGroup, send } = useGroupChat(groupId, "Genesis Chat");
+  const { messages, isLoading, initialize, disconnect: disconnectGroup, send, addMessageLocal } = useGroupChat(groupId, "Genesis Chat");
 
   const [inputText, setInputText] = useState("");
   const [isSending, setIsSending] = useState(false);
@@ -98,13 +99,40 @@ export default function GenesisChatScreen() {
     setIsSending(true);
     try {
       await send(text);
+      // 2026-08-24: real bug, confirmed via live device logcat — the
+      // native XMTP send genuinely succeeds (own envelope processed,
+      // "Application message published successfully"), but the message
+      // never appeared in Genesis Chat's UI. Root cause: this screen
+      // relied entirely on the live message-subscription stream echoing
+      // the send back before it'd show up, and that stream visibly gets
+      // torn down and restarted around navigation/foreground events
+      // (JobCancellationException on the messages subscription, seen in
+      // the same logcat window) — a locally-sent message published during
+      // that gap is genuinely on the network but never reaches this
+      // screen's React state. useDm.ts already solves this correctly for
+      // DMs with an optimistic local insert; useGroupChat.ts's
+      // addMessageLocal exists for exactly this but was never wired up
+      // here (or anywhere — first real caller).
+      addMessageLocal({
+        id: `optimistic-${Date.now()}`,
+        senderAddress: myInboxId ?? "",
+        senderUsername: username ?? "",
+        content: text,
+        sentAt: new Date(),
+        reactions: {},
+        status: "sent",
+      });
     } catch (err) {
       toast.error("Message didn't send — try again");
-      if (__DEV__) console.warn("[GenesisChat] send failed:", (err as Error)?.message);
+      // 2026-08-24: was `if (__DEV__) console.warn(...)` — invisible in a
+      // release build, so a real reported send failure had zero trace
+      // anywhere to diagnose from. captureError runs in production
+      // (sentry.ts's `enabled: !__DEV__`) and dev alike.
+      captureError(err, { screen: "GenesisChat", action: "send" });
     } finally {
       setIsSending(false);
     }
-  }, [inputText, isSending, send]);
+  }, [inputText, isSending, send, addMessageLocal, myInboxId, username]);
 
   useEffect(() => {
     markChannelRead("genesis").catch(() => {});
@@ -215,7 +243,9 @@ export default function GenesisChatScreen() {
           </Pressable>
           <Text style={styles.headerTitle}>🐒 Genesis Chat</Text>
           <View style={styles.headerRightBtns}>
-            <RewardedAdPill adUnitId={AD_UNIT_IDS.rewardedGenesis} rewardBananas={AD_REWARD_BANANAS.genesis} />
+            <Pressable onPress={() => setSupportOptionsOpen(true)} style={styles.iconBtn} hitSlop={8}>
+              <Text style={styles.iconTxt}>🎬</Text>
+            </Pressable>
             <Pressable onPress={() => setLeaderboardOpen(true)} style={styles.iconBtn} hitSlop={8}>
               <Text style={styles.iconTxt}>📈</Text>
             </Pressable>
@@ -297,6 +327,18 @@ export default function GenesisChatScreen() {
       )}
 
       <BananaShopModal visible={shopOpen} onClose={() => setShopOpen(false)} />
+
+      <SupportOptionsModal
+        visible={supportOptionsOpen}
+        onClose={() => setSupportOptionsOpen(false)}
+        onOpenTip={() => {
+          // No dedicated tip flow in Genesis Chat — open the same Solana
+          // Pay SKR link MenuDrawer's "Support OnlyMonkes" card uses.
+          const uri = `solana:${DEV_WALLET}?spl-token=${SKR_MINT}&label=${encodeURIComponent("Support OnlyMonkes")}&message=${encodeURIComponent("Help build the future of OnlyMonkes 🐒")}`;
+          Linking.openURL(uri).catch(() => toast.error("No Solana wallet found to handle this link"));
+        }}
+        variant="genesis"
+      />
 
       {leaderboardOpen && (
         <View style={StyleSheet.absoluteFill}>

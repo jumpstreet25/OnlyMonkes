@@ -1,15 +1,24 @@
 /**
- * Rewarded-ad configuration for the SKR treasury pipeline (see the SKR
- * Rewards Pool memo). Ad payouts from AdMob land in the OnlyMonkes
- * publisher wallet and get converted to staked SKR via the treasury Blinks
- * — see worker-actions/src/treasury.ts. This file is purely the client-side
- * ad-unit config, unrelated to that server-side piece.
+ * Ad configuration (rewarded pill + automatic App Open, see
+ * useAppOpenAdGate.ts) for the SKR treasury pipeline. Real fund flow,
+ * confirmed 2026-08-24: **AdMob cannot pay out to a crypto wallet** —
+ * Google settles ad revenue to the publisher account's linked bank account
+ * via Google Payments (fiat, monthly, threshold-based), full stop, no API
+ * or setting changes that. The bridge from there to the OnlyMonkes
+ * publisher wallet is a manual step (withdraw from Google Payments, buy
+ * SOL/USDC, send to the wallet) — once it lands there, THAT'S when the
+ * treasury Blinks (worker-actions/src/treasury.ts) pick it up: swapped to
+ * $SKR, staked, used to pay OnlyMonkes' server/API costs, and the rest
+ * builds a standing $SKR Vault. Eventually: community giveaways + buying
+ * Saga Monkes to add to the Vault. See AdDisclosureModal.tsx for the
+ * user-facing version of this — keep both in sync if the policy changes.
  *
- * AD_UNIT_IDS.rewardedMain/rewardedGenesis currently point at Google's
- * public TEST ad unit IDs — safe to ship, serve only test creatives, never
- * real ones, never earn real revenue. Swap for real AdMob unit IDs (under
- * publisher account pub-5684183956469893) once they exist; nothing else in
- * the integration needs to change.
+ * AD_UNIT_IDS.rewardedMain/rewardedGenesis/appOpenMain/appOpenGenesis all
+ * currently point at Google's public TEST ad unit IDs — safe to ship,
+ * serve only test creatives, never real ones, never earn real revenue.
+ * Swap for real AdMob unit IDs (under publisher account
+ * pub-5684183956469893) once they exist; nothing else in the integration
+ * needs to change.
  */
 import { TestIds } from "react-native-google-mobile-ads";
 
