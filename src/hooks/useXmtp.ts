@@ -613,20 +613,29 @@ export function useXmtp() {
             const elapsed = Date.now() - lastSent;
             // Re-send every 30s to handle bot restarts / missed DMs
             if (elapsed > 30_000) {
-              try {
-                const { username, verifiedNft } = useAppStore.getState();
-                await sendJoinRequestDM(
-                  client,
-                  config.adminInboxId,
-                  client.inboxId,
-                  username,
-                  verifiedNft?.mint ?? null,
-                  config.botInboxId ?? null,
-                );
-                await AsyncStorage.setItem(AK_JOIN_REQUEST_SENT, String(Date.now()));
-                if (__DEV__) console.log("[XMTP] Join request DM sent to bot (nft:", verifiedNft?.mint ?? "none", ")");
-              } catch (err) {
-                if (__DEV__) console.warn("[XMTP] Could not send join request DM:", err);
+              const { username, verifiedNft, wallet } = useAppStore.getState();
+              if (!wallet?.address) {
+                // The bot denies JOIN_REQUEST with no wallet outright — sending
+                // it anyway just burns the 30s retry window on a request that
+                // can never succeed. Wait for the wallet to sync instead.
+                if (__DEV__) console.warn("[XMTP] Skipping join request — wallet not synced yet");
+              } else {
+                try {
+                  await sendJoinRequestDM(
+                    client,
+                    config.adminInboxId,
+                    client.inboxId,
+                    username,
+                    verifiedNft?.mint ?? null,
+                    config.botInboxId ?? null,
+                    wallet.address,
+                  );
+                  await AsyncStorage.setItem(AK_JOIN_REQUEST_SENT, String(Date.now()));
+                  if (__DEV__) console.log("[XMTP] Join request DM sent to bot (nft:", verifiedNft?.mint ?? "none", ")");
+                } catch (err) {
+                  if (__DEV__) console.warn("[XMTP] Could not send join request DM:", err);
+                  toast.error("Couldn't reach the bot to join — retrying automatically.");
+                }
               }
             }
           }

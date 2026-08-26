@@ -322,9 +322,19 @@ const JOIN_REQUEST_PREFIX = "JOIN_REQUEST:";
 
 /**
  * Tester sends a DM to the admin's inboxId (and optionally the bot) to request group membership.
- * Format: JOIN_REQUEST:<myInboxId>:<username>:<nftMint>
- * nftMint is included so the admin can verify NFT ownership without needing the wallet address.
- * Sending to the bot allows it to auto-approve and notify the admin even when the admin app is closed.
+ * Format: JOIN_REQUEST:<walletAddress>
+ * Bot/admin bind membership to the XMTP DM sender, then verify THIS wallet
+ * currently holds a Saga Monke. InboxId and username are not in the payload
+ * (colon-safe; cannot spoof another inbox).
+ *
+ * 2026-08-25: this line (ota-3.3, the published dApp Store binary) had drifted
+ * behind master — it was still sending the old
+ * JOIN_REQUEST:<inboxId>:<username>:<nftMint> format, which the bot's
+ * legacy-format fallback can only resolve for an inbox it has already seen a
+ * wallet for. A brand-new install could retry forever and never get approved
+ * (confirmed live against a real holder — see project_livekit_crash_krtv_join_fix_2026_08_25
+ * memory). Ported the wallet-only format master already had so new 3.3
+ * installs actually work.
  */
 export async function sendJoinRequestDM(
   client: XmtpClient,
@@ -333,8 +343,9 @@ export async function sendJoinRequestDM(
   username?: string | null,
   nftMint?: string | null,
   botInboxId?: string | null,
+  walletAddress?: string | null,
 ): Promise<void> {
-  const payload = `${JOIN_REQUEST_PREFIX}${myInboxId}:${username ?? ""}:${nftMint ?? ""}`;
+  const payload = `${JOIN_REQUEST_PREFIX}${walletAddress ?? ""}`;
 
   // Bot first — it auto-adds to Main + Trades. Admin DM is only a notify.
   let botSent = false;
