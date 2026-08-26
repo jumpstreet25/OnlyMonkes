@@ -70,6 +70,15 @@ import {
   handleAdSkipVerify,
   handleAdSkipStatus,
 } from "./adSkip";
+import {
+  handleGetLocations,
+  handleSetLocation,
+  handleGetEvents,
+  handleGetEvent,
+  handleCreateEvent,
+  handleRsvp,
+  handleGetRsvps,
+} from "./community";
 
 // Cloudflare Workers KV namespace binding (declared locally to avoid @cloudflare/workers-types dependency)
 interface KVListOptions {
@@ -120,6 +129,8 @@ export interface Env {
   DEVICE_INTEGRITY: KVNamespace;
   // Pay-$SKR-to-skip-ads entitlements — see adSkip.ts.
   AD_ENTITLEMENTS: KVNamespace;
+  // MonkeGlobe/MonkeEvents public web repo backend — see community.ts.
+  COMMUNITY_DATA: KVNamespace;
 }
 
 // Cron Trigger types (declared locally, same reasoning as KVNamespace above —
@@ -3278,7 +3289,7 @@ export default {
 
     // Health check
     if (path === "/health") {
-      return jsonResponse({ status: "ok", version: "1.10.0", endpoints: ["/api/actions/swap", "/api/actions/tip", "/api/actions/predict", "/api/actions/bet", "/api/actions/kalshi-bet", "/api/actions/treasury-swap", "/api/actions/treasury-stake", "/api/treasury/status", "/api/actions/ad-skip", "/api/ad-skip/status", "/api/ad-skip/verify", "/escrow", "/claim", "/frames/alert", "/legal", "/terms", "/privacy", "/copyright", "/", "/api/stats", "/api/verify", "/api/holders/index", "/api/top-traders", "/api/signals", "/monke/:mint", "/api/sentiment/register-device", "/api/sentiment/unregister-device", "/api/sentiment/ingest", "/api/sentiment/score"] });
+      return jsonResponse({ status: "ok", version: "1.10.0", endpoints: ["/api/actions/swap", "/api/actions/tip", "/api/actions/predict", "/api/actions/bet", "/api/actions/kalshi-bet", "/api/actions/treasury-swap", "/api/actions/treasury-stake", "/api/treasury/status", "/api/actions/ad-skip", "/api/ad-skip/status", "/api/ad-skip/verify", "/escrow", "/claim", "/frames/alert", "/legal", "/terms", "/privacy", "/copyright", "/", "/api/stats", "/api/verify", "/api/holders/index", "/api/top-traders", "/api/signals", "/monke/:mint", "/api/sentiment/register-device", "/api/sentiment/unregister-device", "/api/sentiment/ingest", "/api/sentiment/score", "/api/community/locations", "/api/community/location", "/api/community/events", "/api/community/events/:id", "/api/community/events/:id/rsvp", "/api/community/events/:id/rsvps"] });
     }
 
     // 2026-07-30: public "Check Your Monke" growth page — see the section
@@ -3302,6 +3313,36 @@ export default {
     }
     if (path === "/api/holders/lookup") {
       if (request.method === "GET") return handleHoldersLookup(url, env);
+      return errorResponse("Method not allowed", 405);
+    }
+
+    // MonkeGlobe/MonkeEvents — public web repo backend, see community.ts.
+    if (path === "/api/community/locations") {
+      if (request.method === "GET") return handleGetLocations(env);
+      return errorResponse("Method not allowed", 405);
+    }
+    if (path === "/api/community/location") {
+      if (request.method === "POST") return handleSetLocation(request, env);
+      return errorResponse("Method not allowed", 405);
+    }
+    if (path === "/api/community/events") {
+      if (request.method === "GET") return handleGetEvents(env);
+      if (request.method === "POST") return handleCreateEvent(request, env);
+      return errorResponse("Method not allowed", 405);
+    }
+    const eventRsvpsMatch = path.match(/^\/api\/community\/events\/([^/]+)\/rsvps$/);
+    if (eventRsvpsMatch) {
+      if (request.method === "GET") return handleGetRsvps(decodeURIComponent(eventRsvpsMatch[1]), env);
+      return errorResponse("Method not allowed", 405);
+    }
+    const eventRsvpMatch = path.match(/^\/api\/community\/events\/([^/]+)\/rsvp$/);
+    if (eventRsvpMatch) {
+      if (request.method === "POST") return handleRsvp(decodeURIComponent(eventRsvpMatch[1]), request, env);
+      return errorResponse("Method not allowed", 405);
+    }
+    const eventMatch = path.match(/^\/api\/community\/events\/([^/]+)$/);
+    if (eventMatch) {
+      if (request.method === "GET") return handleGetEvent(decodeURIComponent(eventMatch[1]), env);
       return errorResponse("Method not allowed", 405);
     }
     if (path === "/api/top-traders") {

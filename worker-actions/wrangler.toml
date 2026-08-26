@@ -51,6 +51,16 @@ id = "b0b8d8e361a749d28074f32134fe4fbf"
 binding = "AD_ENTITLEMENTS"
 id = "6bb8296444af405185b354424bb150a7"
 
+# 2026-08-26: MonkeGlobe/MonkeEvents public web repo (jumpstreet25/monke-globe)
+# backend. Key = "locations:latest" (single aggregate JSON array, holder-
+# opted-in-by-default per user decision 2026-08-26) and "event:<id>" /
+# "rsvp:<eventId>:<wallet>" for the community events calendar. Locations and
+# events are separate keys from onchainHolder.ts's own KV — this is
+# community-contributed/self-reported data, not verified NFT ownership state.
+[[kv_namespaces]]
+binding = "COMMUNITY_DATA"
+id = "272632d79eb043a69586f7cb4013c080"
+
 # 2026-07-30: refreshes the public stats:latest KV cache every 4h so the
 # "Check Your Monke" growth page (GET /, /monke/:mint) never makes a live
 # Helius/CoinGecko call per page view. See scheduled() in src/index.ts.
