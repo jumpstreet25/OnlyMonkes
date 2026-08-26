@@ -44,17 +44,23 @@ release:
       name: >-
         OnlyMonkes
       short_description: >-
-        NFT-gated Monkes social app with AI trading, avatar rooms & P2P marketplace
+        Saga Monkes social + AI trading app — free Genesis Chat for Genesis Token holders
       long_description: >-
-        OnlyMonkes is the exclusive social hub for verified Saga Monkes NFT holders on Solana Mobile.
+        OnlyMonkes is the social and trading hub for the Saga Monkes community on Solana Mobile, with two tiers of access:
 
-        Connect your Seeker wallet to prove ownership of your Saga Monkes NFT and unlock:
+        GENESIS CHAT — free for any Solana Mobile Genesis Token holder (Saga Genesis Token or Seeker Genesis Token). Connect your wallet to join a read-only community feed with Banana Shop and Leaderboard access — no Saga Monkes NFT required.
+
+        FULL ACCESS — connect a wallet holding a Saga Monkes NFT to unlock every premium feature below: real-time encrypted messaging, AI-powered trading signals, avatar rooms, video calls, tipping, swaps, and the peer-to-peer NFT marketplace.
+
+        Both tiers verify ownership on-chain automatically — no manual approval, no waiting.
+
+        PREMIUM FEATURES (Saga Monkes NFT required):
 
         🐒 GROUP CHAT — Real-time encrypted group messaging powered by XMTP v5 MLS protocol. Send text, GIFs, images, videos, stickers and reactions. Reply to messages, mention users with @username, and track $TOKEN prices inline.
 
         💬 DIRECT MESSAGES — Private 1-on-1 encrypted DMs and DM groups with any verified holder. Full message history, typing indicators, read receipts, and push notifications.
 
-        🎭 AVATAR ROOMS & VIDEO CALLS — Animated NFT PFP avatar rooms with MediaPipe face tracking, plus multi-person video calls built on LiveKit WebRTC. Sticker reactions via data channel, PiP mode, Krisp AI noise filter, and speaking indicators.
+        🎭 AVATAR ROOMS & VIDEO CALLS — Animated NFT PFP avatar rooms with Google ML Kit face tracking, plus multi-person video calls built on LiveKit WebRTC. Sticker reactions via data channel, PiP mode, Krisp AI noise filter, and speaking indicators.
 
         💸 TIPPING & SWAPS — Send $SKR tokens with /tip (100% to recipient, no platform fee). Trade any Solana token via /buy /sell /swap: in DM with an enrolled hot wallet the bot signs and submits the swap on-chain with a 3% fee on realized gains only (no fee on losses); without an enrolled hot wallet the same commands generate a fee-free Jupiter web URL. One-tap Solana Actions (Blinks) render interactive swap cards directly in chat — fee-free. In-app token swap UI takes a 3% fee on realized gains only.
 
@@ -64,7 +70,7 @@ release:
 
         🍌 BANANA SHOP — Earn bananas daily and spend them on chat cosmetics: neon bubble glows, gold names, PFP auras, pulse frames, and full app themes. Balance and purchases stored locally per wallet, with manual restore from previous device available in Settings.
 
-        🌍 MONKE GLOBE — Interactive 3D globe showing where fellow Monkes are located worldwide, plus Solana ecosystem events from Lu.ma.
+        🌍 MONKE GLOBE — Interactive 3D globe showing where fellow Monkes are located worldwide, plus Solana ecosystem events with RSVP. Also mirrored to a public companion site at monke-globe.pages.dev.
 
         🖼 FARCASTER FRAMES — Share OnlyMonkes trading alerts as interactive Farcaster Frames; community gets a tappable view of TA setups outside the app.
 
@@ -80,9 +86,9 @@ release:
 
         🌟 ACCESSIBILITY — Screen reader support, dynamic type sizing, and high-contrast mode.
 
-        REQUIREMENTS: Saga Monkes NFT + compatible Solana wallet (Phantom, Solflare) on Seeker or Saga device. Users must be 18+. Full legal terms at https://onlymonkes-actions.jumpstreet25.workers.dev/legal
+        REQUIREMENTS: Compatible Solana wallet (Phantom, Solflare) on Seeker or Saga device. A Solana Mobile Genesis Token unlocks Genesis Chat; a Saga Monkes NFT unlocks full premium access. Users must be 18+. Full legal terms at https://onlymonkes-actions.jumpstreet25.workers.dev/legal
       new_in_version: >-
-        v3.0.1: Genesis Chat — a new tier for Saga Genesis Token or Seeker Genesis Token holders who don't yet hold a Saga Monke: a read-only community feed plus Banana Shop and Leaderboard access, with a one-tap switch for holders who have both. Wallet-bound messaging identity — your encrypted inbox is now tied to your connected wallet instead of your device, so the same wallet sees the same conversations and group membership across phones and reinstalls. Faster sign-in — returning holders verify against a pre-built holder index instead of a live NFT lookup on every login. Fixed a launch crash some users hit on the previous build. New arm64-v8a native stack (Reanimated 4, updated camera/face-tracking pipeline) carried forward from recent releases. Previous: v2.37 bot-executed /buy /sell /swap with atomic on-chain fees, multi-device hot wallet support, encrypted nightly trading backups, DM groups, read receipts, marketplace history. v2.36 message deletion, Jupiter DCA + Limit V2 + Ultra V3, cNFT purchase receipts, Hermes intelligence. v2.35 cross-device account sync. v2.34 Banana Shop cosmetics. v2.33 Avatar Rooms with face tracking + Free-RASP security.
+        v3.0.3: Major stability fix for a native crash that could occur during app updates and Avatar Room use. New: MonkeGlobe now has a public companion site (monke-globe.pages.dev) showing real Saga Monkes community locations and events with RSVP — share your location or post an event in-app and it appears there too. In-app "Update Ready" prompt — apply a downloaded update with a tap, no more force-closing the app. More reliable group join for new installs. Genesis Chat layout and header fixes. Previous: v3.0.1 introduced Genesis Chat — a new tier for Saga Genesis Token or Seeker Genesis Token holders who don't yet hold a Saga Monke: a read-only community feed plus Banana Shop and Leaderboard access, with a one-tap switch for holders who have both. Wallet-bound messaging identity — your encrypted inbox is now tied to your connected wallet instead of your device, so the same wallet sees the same conversations and group membership across phones and reinstalls. Faster sign-in — returning holders verify against a pre-built holder index instead of a live NFT lookup on every login. New arm64-v8a native stack (Reanimated 4, updated camera/face-tracking pipeline) carried forward from recent releases. Earlier: v2.37 bot-executed /buy /sell /swap with atomic on-chain fees, multi-device hot wallet support, encrypted nightly trading backups, DM groups, read receipts, marketplace history. v2.36 message deletion, Jupiter DCA + Limit V2 + Ultra V3, cNFT purchase receipts, Hermes intelligence. v2.35 cross-device account sync. v2.34 Banana Shop cosmetics. v2.33 Avatar Rooms with face tracking + Free-RASP security.
       saga_features: >-
         Optimized for Seeker — arm64-v8a only build with minSdk 24. Avatar Rooms and video calls use LiveKit WebRTC with full Bluetooth headset support, PiP mode, and Krisp AI noise filter. Mobile Wallet Adapter biometric prompt for tips, swaps, and Blink Actions (no app switching). Solana Actions server returns serialized transactions signed directly via MWA. Hot wallet vault keyed to your wallet address — switching between Seeker devices preserves your AutonoMonke positions.
   android_details:
@@ -101,5 +107,5 @@ solana_mobile_dapp_publisher_portal:
     8. Type /ta $SOL in chat to test the AI trading agent TA command.
     9. Open a bot channel (MonkeTrades) from the drawer to see live trade alerts with Blink Action cards.
     10. Tap any Blink card "Buy" button to test the one-tap swap flow via MWA.
-    NOTE: NFT ownership is required to access the app. If you do not own a Saga Monkes NFT, the app will show a gate screen. Please contact Jumpstreet25@icloud.com to arrange a test account.
+    NOTE: A wallet holding a Solana Mobile Genesis Token (Saga or Seeker) enters Genesis Chat (read-only feed, Banana Shop, Leaderboard). A wallet holding a Saga Monkes NFT unlocks full premium access. A wallet with neither sees a gate screen. Please contact Jumpstreet25@icloud.com to arrange a test account for either tier.
   alpha_testers: []
