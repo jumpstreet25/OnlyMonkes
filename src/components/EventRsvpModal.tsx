@@ -17,6 +17,7 @@ import {
   buildRsvpMessage, loadRsvps,
 } from "@/lib/eventRsvp";
 import { getCachedProfile, getDeduplicatedUsers } from "@/lib/userProfile";
+import { syncRsvpToCommunity } from "@/lib/communitySync";
 import type { CalendarEvent } from "@/store/appStore";
 import type { LumaEvent } from "@/lib/lumaEvents";
 
@@ -90,6 +91,15 @@ export function EventRsvpModal({ visible, event, onClose, onSendRsvp }: EventRsv
     // Broadcast to group
     if (onSendRsvp) {
       onSendRsvp(buildRsvpMessage(eid, yes, myInboxId));
+    }
+
+    // Public MonkeGlobe/MonkeEvents mirror — only for events that actually
+    // exist on that backend (i.e. app-created CalendarEvents synced via
+    // syncEventToCommunity; a Lu.ma event's id was never posted there and
+    // would just 404 after an unnecessary signing prompt). Best-effort,
+    // never blocks the RSVP above, which already fully succeeded.
+    if (!isLuma(event)) {
+      void syncRsvpToCommunity(eid, yes);
     }
   }, [event, myInboxId, onSendRsvp]);
 

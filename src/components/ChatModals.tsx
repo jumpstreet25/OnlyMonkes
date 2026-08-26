@@ -36,6 +36,7 @@ import { GlassBottomSheet } from "@/components/GlassBottomSheet";
 import { MonkeGlass } from "@/components/MonkeGlass";
 import { MessageActionSheet } from "@/components/MessageActionSheet";
 import { useAppStore } from "@/store/appStore";
+import { syncLocationToCommunity } from "@/lib/communitySync";
 import { addBananas } from "@/lib/bananaRewards";
 import { saveSelectedNftMint } from "@/lib/userProfile";
 import type { ChatMessage, ReactionEmoji } from "@/types";
@@ -272,6 +273,10 @@ export function ChatModals(props: ChatModalsProps) {
           setShowUsernameModal(false);
           setEditingProfile(false);
           await broadcastProfile();
+          // Public MonkeGlobe mirror — best-effort, never blocks the modal
+          // closing or the (already-succeeded) in-app profile save above.
+          const savedLocation = useAppStore.getState().location;
+          if (savedLocation) void syncLocationToCommunity(savedLocation);
         }}
         editMode={editingProfile}
         initialUsername={editingProfile ? (username ?? "") : ""}

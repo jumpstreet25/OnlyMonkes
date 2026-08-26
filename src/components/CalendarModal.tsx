@@ -24,6 +24,7 @@ import { GlassModal } from "@/components/GlassModal";
 import { THEME, FONTS } from "@/lib/constants";
 import { saveEvent, buildEventMessage } from "@/lib/calendar";
 import { useAppStore, type CalendarEvent } from "@/store/appStore";
+import { syncEventToCommunity } from "@/lib/communitySync";
 
 interface CalendarModalProps {
   visible: boolean;
@@ -67,6 +68,9 @@ export function CalendarModal({ visible, onClose, onBroadcast }: CalendarModalPr
       await saveEvent(event);
       useAppStore.getState().addCalendarEvent(event);
       await onBroadcast(JSON.stringify(event));
+      // Public MonkeGlobe/MonkeEvents mirror — best-effort, never blocks
+      // event creation (which already fully succeeded above).
+      void syncEventToCommunity(event);
       reset();
       onClose();
     } catch (err: any) {

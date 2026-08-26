@@ -170,7 +170,7 @@ export async function handleGetEvent(id: string, env: Env): Promise<Response> {
 export async function handleCreateEvent(request: Request, env: Env): Promise<Response> {
   let body: any;
   try { body = await request.json(); } catch { return errorResponse("Invalid JSON body"); }
-  const { wallet, title, description, lat, lng, label, startTime, endTime, username, ts, signature } = body ?? {};
+  const { wallet, title, description, lat, lng, label, startTime, endTime, username, ts, signature, id: clientId } = body ?? {};
   if (!wallet || !signature || !ts) return errorResponse("Missing wallet/signature/ts");
   if (!title || typeof title !== "string" || title.length > 120) return errorResponse("Invalid title");
   if (typeof lat !== "number" || typeof lng !== "number" || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
@@ -181,7 +181,18 @@ export async function handleCreateEvent(request: Request, env: Env): Promise<Res
   const auth = await verifyCommunityAuth("create-event", wallet, ts, signature);
   if (!auth.ok) return errorResponse(auth.error, 401);
 
-  const id = crypto.randomUUID();
+  // The OnlyMonkes app already generates its own event id (evt-<ts>-<rand>)
+  // when a user creates an event in-app — accepting it here (instead of
+  // always minting a fresh crypto.randomUUID()) keeps the app's local
+  // CalendarEvent.id and this backend's event:<id> the same record, so a
+  // later RSVP from either the app or the web site targets the same event
+  // without needing a separate id-mapping table. Guard against hijacking an
+  // existing event by only honoring a client id that isn't already taken.
+  let id: string = crypto.randomUUID();
+  if (typeof clientId === "string" && /^[A-Za-z0-9_-]{1,100}$/.test(clientId)) {
+    const existing = await env.COMMUNITY_DATA.get(`event:${clientId}`);
+    if (!existing) id = clientId;
+  }
   const createdByName = typeof username === "string" ? username.slice(0, 40) : wallet.slice(0, 8);
   const event: CommunityEvent = {
     id,
