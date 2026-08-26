@@ -254,7 +254,7 @@ export function UsernameModal({
           <View style={styles.fieldGroup}>
             <Text style={styles.label}>Location  (optional)</Text>
             <Text style={styles.fieldHint}>
-              City, country, or anywhere you call home
+              City, country, or anywhere you call home — shown to other Monkes in-app and pinned publicly on monke-globe.pages.dev
             </Text>
             <View style={styles.inputWrap}>
               <TextInput
