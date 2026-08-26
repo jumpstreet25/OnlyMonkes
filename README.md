@@ -462,7 +462,15 @@ Fetch NFTs via Helius DAS API
 Create wallet-bound XMTP identity (MWA sign → derived EOA; same wallet = same inboxId on every device)
         │
         ▼
-Auto-send JOIN_REQUEST DM to bot → bot adds to group + all channels (3s retry)
+Auto-send JOIN_REQUEST:<walletAddress> DM to bot → bot adds to group + all channels
+(30s retry while ungrouped, exponential backoff up to 30s cap in ChatScreen's
+watchdog). If the bot can't resolve a wallet for the request (e.g. an older
+client still on a legacy payload format), it asks the user to reply with their
+wallet address directly in the same DM as a fallback — verified the same way
+via on-chain Saga Monke ownership before adding. Both runtimes (master/3.4 and
+the ota-3.3 dApp-Store line) must send the same JOIN_REQUEST:<wallet> format —
+this drifted out of sync once already (2026-08-25) and left new joins broken
+on the published dApp Store binary.
         │
         ▼
 Broadcast PROFILE_UPDATE (username, NFT avatar, push token, notif prefs)

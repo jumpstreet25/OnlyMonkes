@@ -250,6 +250,20 @@ export async function handleRsvp(id: string, request: Request, env: Env): Promis
   return jsonResponse({ ok: true, going });
 }
 
+// ─── GET /api/community/events/:id/rsvp-status?wallet= — is THIS wallet going? ──
+// Separate from handleGetRsvps (which only ever returns usernames, never
+// wallets, to the public) — the caller already knows their own wallet, so
+// there's no exposure here, just a yes/no for their own RSVP state.
+export async function handleGetRsvpStatus(id: string, wallet: string, env: Env): Promise<Response> {
+  try {
+    new PublicKey(wallet);
+  } catch {
+    return errorResponse("Invalid wallet address");
+  }
+  const raw = await env.COMMUNITY_DATA.get(`rsvp:${id}:${wallet}`);
+  return jsonResponse({ going: !!raw });
+}
+
 // ─── GET /api/community/events/:id/rsvps — public attendee list (usernames only) ──
 export async function handleGetRsvps(id: string, env: Env): Promise<Response> {
   const list = await env.COMMUNITY_DATA.list({ prefix: `rsvp:${id}:` });

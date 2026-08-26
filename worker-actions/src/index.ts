@@ -78,6 +78,7 @@ import {
   handleCreateEvent,
   handleRsvp,
   handleGetRsvps,
+  handleGetRsvpStatus,
 } from "./community";
 
 // Cloudflare Workers KV namespace binding (declared locally to avoid @cloudflare/workers-types dependency)
@@ -3333,6 +3334,15 @@ export default {
     const eventRsvpsMatch = path.match(/^\/api\/community\/events\/([^/]+)\/rsvps$/);
     if (eventRsvpsMatch) {
       if (request.method === "GET") return handleGetRsvps(decodeURIComponent(eventRsvpsMatch[1]), env);
+      return errorResponse("Method not allowed", 405);
+    }
+    const eventRsvpStatusMatch = path.match(/^\/api\/community\/events\/([^/]+)\/rsvp-status$/);
+    if (eventRsvpStatusMatch) {
+      if (request.method === "GET") {
+        const wallet = url.searchParams.get("wallet");
+        if (!wallet) return errorResponse("Missing wallet");
+        return handleGetRsvpStatus(decodeURIComponent(eventRsvpStatusMatch[1]), wallet, env);
+      }
       return errorResponse("Method not allowed", 405);
     }
     const eventRsvpMatch = path.match(/^\/api\/community\/events\/([^/]+)\/rsvp$/);
