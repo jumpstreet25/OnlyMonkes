@@ -43,6 +43,7 @@ import { useFreeRasp } from 'freerasp-react-native';
 import { useFonts } from 'expo-font';
 import { RASP_CONFIG, THREAT_ACTIONS } from '../src/lib/security';
 import mobileAds from 'react-native-google-mobile-ads';
+import { captureError } from '../src/lib/sentry';
 
 // Initialize Sentry crash reporting (no-op if SENTRY_DSN not set)
 initSentry();
@@ -51,7 +52,15 @@ initSentry();
 // or useAppOpenAdGate's app-open ad tries to load.
 // Currently only Google's public TEST ad unit IDs are wired (src/lib/ads.ts),
 // so this only ever requests test creatives until real AdMob IDs land.
-mobileAds().initialize().catch(() => {});
+// 2026-08-27: this was a silent .catch(() => {}) — if native init actually
+// fails (this feature was shipped 2026-08-24 and never on-device verified
+// until real usage surfaced "no ad ever shows, no error either"), every
+// downstream .load() call would also silently never resolve, with zero
+// signal anywhere as to why. Surfacing the failure now so it's diagnosable.
+mobileAds().initialize().catch((err) => {
+  if (__DEV__) console.warn('[ads] mobileAds().initialize() failed:', err);
+  captureError(err, { context: 'mobileAds.initialize' });
+});
 
 SplashScreen.preventAutoHideAsync();
 

@@ -35,6 +35,7 @@ import { useAppOpenAd } from "react-native-google-mobile-ads";
 import { useAppStore } from "@/store/appStore";
 import { AD_UNIT_IDS, APP_OPEN_MIN_INTERVAL_MS } from "@/lib/ads";
 import { getAdSkipStatus } from "@/lib/adSkip";
+import { addBreadcrumb } from "@/lib/sentry";
 
 const LAST_SHOWN_KEY = "app_open_ad_last_shown_v1";
 const DISCLOSURE_SEEN_KEY = "app_open_ad_disclosure_seen_v1";
@@ -50,13 +51,25 @@ export function useAppOpenAdGate(): { pendingDisclosure: boolean; acknowledgeDis
       ? AD_UNIT_IDS.appOpenGenesis
       : null;
 
-  const { isLoaded, load, show } = useAppOpenAd(adUnitId);
+  const { isLoaded, load, show, error } = useAppOpenAd(adUnitId);
   const attemptedRef = useRef(false);
   const [pendingDisclosure, setPendingDisclosure] = useState(false);
 
   useEffect(() => {
     if (adUnitId) load();
   }, [adUnitId, load]);
+
+  // 2026-08-27: this hook previously never looked at `error` at all — an
+  // ad ERROR event (no-fill, network failure, misconfigured/uninitialized
+  // SDK) left `isLoaded` false forever with zero signal anywhere as to why
+  // no ad ever showed. Just logging for now (ad-load failures like no-fill
+  // are routine, not something to alert-fatigue Sentry over) so this is at
+  // least diagnosable via logcat/breadcrumbs next time it's reported.
+  useEffect(() => {
+    if (!error) return;
+    if (__DEV__) console.warn("[ads] App Open ad failed to load:", error);
+    addBreadcrumb("ads", "App Open ad load error", { message: String(error) });
+  }, [error]);
 
   useEffect(() => {
     if (!isLoaded || attemptedRef.current) return;
