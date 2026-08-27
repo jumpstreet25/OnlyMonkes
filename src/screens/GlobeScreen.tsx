@@ -27,7 +27,7 @@ import { WebView } from "react-native-webview";
 import { router } from "expo-router";
 import { toast } from "sonner-native";
 // date-fns format removed — event formatting moved to EventRsvpModal
-import { THEME, FONTS, BOT_INBOX_IDS, BOT_DISPLAY_NAME, BOT_PFP_URL, getWorldBarTint, getWorldAccent } from "@/lib/constants";
+import { THEME, FONTS, BOT_INBOX_IDS, BOT_DISPLAY_NAME, BOT_PFP_URL, TREASURY_BOT_INBOX_IDS, TREASURY_BOT_DISPLAY_NAME, TREASURY_BOT_PFP_URL, getWorldBarTint, getWorldAccent } from "@/lib/constants";
 import { IS_IMMERSIVE_SHELL } from "@/lib/immersiveStatusBar";
 import { MonkeGlass } from "@/components/MonkeGlass";
 import { LiquidGlass as BlurView } from "@/components/LiquidGlass";
@@ -260,6 +260,29 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
           inboxId: botInboxId,
           username: botProfile?.username ?? BOT_DISPLAY_NAME,
           nftImage: botImage,
+        });
+      }
+
+      // "OnlyTreasury" — Dev/Treasury wallet's bot identity, pinned at Fort
+      // Knox per user decision 2026-08-27. Same hardcoded-pin + PFP-fallback
+      // reasoning as the AI Agent #9385 block above.
+      const TREASURY_LOCATION = { lat: 37.8919, lng: -85.9636, label: "Fort Knox, KY" };
+      for (const treasuryInboxId of TREASURY_BOT_INBOX_IDS) {
+        if (seenInboxIds.has(treasuryInboxId)) continue;
+        seenInboxIds.add(treasuryInboxId);
+        const treasuryProfile = getCachedProfile(treasuryInboxId);
+        const treasuryImage = treasuryProfile?.nftImage
+          ?? botPfpFromMessages(treasuryInboxId)
+          ?? TREASURY_BOT_PFP_URL;
+        allMarkers.push({
+          id: `user-${treasuryInboxId}`,
+          lat: TREASURY_LOCATION.lat,
+          lng: TREASURY_LOCATION.lng,
+          type: "user",
+          label: treasuryProfile?.username ?? TREASURY_BOT_DISPLAY_NAME,
+          inboxId: treasuryInboxId,
+          username: treasuryProfile?.username ?? TREASURY_BOT_DISPLAY_NAME,
+          nftImage: treasuryImage,
         });
       }
 
@@ -540,6 +563,8 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
           // reported this reading as "AI Agent #9385" showing up as if it
           // were another Saga Monke on the globe, confirmed 2026-08-25).
           toast.info(`🐒 That's ${BOT_DISPLAY_NAME} — always pinned here, not a real Monke location.`);
+        } else if (m.type === "user" && m.inboxId && (TREASURY_BOT_INBOX_IDS as string[]).includes(m.inboxId)) {
+          toast.info(`🏦 That's ${TREASURY_BOT_DISPLAY_NAME} — the Dev/Treasury wallet's bot account, always pinned here.`);
         } else if (m.type === "user" && m.inboxId && onPressUser) {
           const profile = getCachedProfile(m.inboxId);
           onPressUser({
@@ -715,6 +740,8 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
                 setClusterUsers([]);
                 if (m.inboxId && (BOT_INBOX_IDS as string[]).includes(m.inboxId)) {
                   toast.info(`🐒 That's ${BOT_DISPLAY_NAME} — always pinned here, not a real Monke location.`);
+                } else if (m.inboxId && (TREASURY_BOT_INBOX_IDS as string[]).includes(m.inboxId)) {
+                  toast.info(`🏦 That's ${TREASURY_BOT_DISPLAY_NAME} — the Dev/Treasury wallet's bot account, always pinned here.`);
                 } else if (m.inboxId && onPressUser) {
                   const profile = getCachedProfile(m.inboxId);
                   onPressUser({

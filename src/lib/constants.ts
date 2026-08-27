@@ -161,6 +161,20 @@ export const BOT_INBOX_IDS = [
 export const BOT_DISPLAY_NAME = 'AI Agent #9385';
 export const BOT_PFP_URL = 'https://i.imgur.com/Igyhf3p.jpeg';
 
+// "OnlyTreasury" — second, independent bot identity for the Dev/Treasury
+// wallet (see Monke_Eliza's treasuryBot.ts). Never an interactive login,
+// posts a weekly digest + $20-sweep alerts only. Mirrors the BOT_INBOX_IDS
+// pattern above so message rendering, PFP fallback, and the MonkeGlobe pin
+// all recognize it the same way. Its PFP is dynamically resolved from
+// whatever Saga Monke DEV_WALLET holds (broadcast via PROFILE_UPDATE on
+// every bot startup) — this constant is only the last-resort fallback for
+// before that broadcast is received/cached, same role BOT_PFP_URL plays.
+export const TREASURY_BOT_INBOX_IDS = [
+  '05ba24130d6ca6ba5bc9314455dac5f67e16b3a198a02f00ed136b4ecf6a3e34', // OnlyTreasury
+];
+export const TREASURY_BOT_DISPLAY_NAME = 'OnlyTreasury';
+export const TREASURY_BOT_PFP_URL = 'https://i.imgur.com/Igyhf3p.jpeg';
+
 export const REACTIONS = ['👍', '❤️', '😂', '🔥', '🍌', '🐒', '💎', '🚀'] as const;
 
 export const THEME = {
