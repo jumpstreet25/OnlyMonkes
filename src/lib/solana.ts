@@ -149,18 +149,35 @@ export async function sendShopPayment(
 
 export type ShopCurrency = "SOL" | "USDC" | "SKR";
 
-/** Fetch USD price of a Solana SPL token via Jupiter price API v2. */
-async function fetchTokenPriceUsd(mint: string): Promise<number> {
-  const TIMEOUT = 6000;
+/**
+ * Fetch USD price of a Solana SPL token via a live Jupiter swap quote
+ * (mint -> USDC). api.jup.ag/price/v2 is dead — confirmed 404 on every call
+ * 2026-08-27, same failure found and fixed in worker-actions/treasury.ts.
+ * This was silently breaking both Banana Shop multi-currency payments and
+ * the pay-$SKR-to-skip-ads flow (both call this via the two exported
+ * wrappers below) until caught in a pre-publish audit.
+ *
+ * `amountRaw` should be a reasonably-sized quote amount in the input mint's
+ * own base units — big enough that the quote isn't dust-noise, small enough
+ * to avoid meaningful price impact skewing the result.
+ */
+async function fetchUsdPriceViaJupiterQuote(mint: string, amountRaw: string, decimals: number): Promise<number> {
+  const TIMEOUT = 8000;
   const c = new AbortController();
   const t = setTimeout(() => c.abort(), TIMEOUT);
   try {
-    const r = await fetch(`https://api.jup.ag/price/v2?ids=${mint}`, { signal: c.signal });
-    if (!r.ok) throw new Error(`Jupiter price ${r.status}`);
+    const headers: Record<string, string> = JUP_API_KEY ? { "x-api-key": JUP_API_KEY } : {};
+    const r = await fetch(
+      `https://api.jup.ag/swap/v2/quote?inputMint=${mint}&outputMint=${USDC_MINT}&amount=${amountRaw}&slippageBps=50`,
+      { signal: c.signal, headers },
+    );
+    if (!r.ok) throw new Error(`Jupiter quote ${r.status}`);
     const d = await r.json() as any;
-    const p = parseFloat(d?.data?.[mint]?.price ?? "0");
-    if (!Number.isFinite(p) || p <= 0) throw new Error("invalid price");
-    return p;
+    const outUsdc = Number(d?.outAmount) / 1e6; // USDC is always 6 decimals
+    const inputUnits = Number(amountRaw) / 10 ** decimals;
+    const price = outUsdc / inputUnits;
+    if (!Number.isFinite(price) || price <= 0) throw new Error("invalid price");
+    return price;
   } finally {
     clearTimeout(t);
   }
@@ -168,13 +185,13 @@ async function fetchTokenPriceUsd(mint: string): Promise<number> {
 
 /** Fetch SKR/USD price. Throws on failure — caller should disable SKR payment. */
 export async function fetchSkrPriceUsd(): Promise<number> {
-  return fetchTokenPriceUsd(SKR_MINT);
+  return fetchUsdPriceViaJupiterQuote(SKR_MINT, "1000000000", 6); // quote 1,000 SKR for stable depth
 }
 
-/** Fetch SOL/USD via Jupiter v2 (CoinGecko fallback handled by caller if needed). */
+/** Fetch SOL/USD via a live Jupiter quote (CoinGecko fallback handled by caller if needed). */
 export async function fetchSolPriceUsd(): Promise<number> {
   const SOL_MINT = "So11111111111111111111111111111111111111112";
-  return fetchTokenPriceUsd(SOL_MINT);
+  return fetchUsdPriceViaJupiterQuote(SOL_MINT, "1000000000", 9); // quote 1 SOL
 }
 
 /** Compute the effective USD cost after applying any currency-specific discount. */

@@ -45,7 +45,21 @@ export function useSentimentOptIn() {
     }
 
     const reg = await registerDevice(wallet.address, signMessage);
-    if (!reg.ok) return { ok: false, error: reg.error };
+    if (!reg.ok) {
+      // "Wallet not connected" here specifically means useMobileWallet's
+      // live MWA authToken is missing — not the same thing as wallet.address
+      // being empty (already checked above). This is the common case for a
+      // session restored from a persisted store on cold start: `wallet` and
+      // `verified` survive restart, but the MWA authorization token doesn't,
+      // so the very first signMessage() call after reopening the app throws
+      // this even though the user looks fully connected everywhere else in
+      // the UI. Found 2026-08-27 — the raw string was confusing users who
+      // had just tapped this toggle from a normal-looking Settings screen.
+      const error = reg.error === "Wallet not connected"
+        ? "Your wallet session needs a quick refresh — reconnect from the Connect screen, then try again."
+        : reg.error;
+      return { ok: false, error };
+    }
 
     try {
       await SentimentWorkScheduler.schedulePeriodicUpload();

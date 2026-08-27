@@ -5,7 +5,7 @@ import {
 } from "react-native";
 import { router } from "expo-router";
 import { Connection, PublicKey, LAMPORTS_PER_SOL } from "@solana/web3.js";
-import { THEME, FONTS, SOLANA_RPC_URL, SKR_MINT } from "@/lib/constants";
+import { THEME, FONTS, SOLANA_RPC_URL, SKR_MINT, USDC_MINT } from "@/lib/constants";
 import { useAppStore } from "@/store/appStore";
 import { MiniChart } from "@/components/MiniChart";
 import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
@@ -45,22 +45,33 @@ async function getJupTokenMap(): Promise<Map<string, { symbol: string; name: str
 
 // ─── Price + sparkline fetching ─────────────────────────────────────────────
 
-async function fetchPrices(mints: string[]): Promise<Record<string, number>> {
-  if (!mints.length) return {};
+// api.jup.ag/price/v2 is dead (confirmed 404, 2026-08-27) — same fix as
+// worker-actions/treasury.ts and src/lib/solana.ts: a live per-mint Jupiter
+// swap quote (1 whole token -> USDC) instead of the retired price endpoint.
+async function fetchTokenPriceViaQuote(mint: string, decimals: number): Promise<number | null> {
   try {
-    const ids = mints.join(",");
-    const res = await fetchWithTimeout(`https://api.jup.ag/price/v2?ids=${ids}`, { timeoutMs: 8000 });
-    if (!res.ok) return {};
+    const amountRaw = String(10 ** decimals); // quote 1 whole token
+    const res = await fetchWithTimeout(
+      `https://api.jup.ag/swap/v2/quote?inputMint=${mint}&outputMint=${USDC_MINT}&amount=${amountRaw}&slippageBps=50`,
+      { timeoutMs: 8000 },
+    );
+    if (!res.ok) return null;
     const data = await res.json();
-    const out: Record<string, number> = {};
-    for (const mint of mints) {
-      const p = data?.data?.[mint]?.price;
-      if (p) out[mint] = parseFloat(p);
-    }
-    return out;
+    const outUsdc = Number(data?.outAmount) / 1e6; // USDC is always 6 decimals
+    return Number.isFinite(outUsdc) && outUsdc > 0 ? outUsdc : null;
   } catch {
-    return {};
+    return null;
   }
+}
+
+async function fetchPrices(tokens: { mint: string; decimals: number }[]): Promise<Record<string, number>> {
+  if (!tokens.length) return {};
+  const out: Record<string, number> = {};
+  await Promise.all(tokens.map(async ({ mint, decimals }) => {
+    const p = await fetchTokenPriceViaQuote(mint, decimals);
+    if (p !== null) out[mint] = p;
+  }));
+  return out;
 }
 
 async function fetchSparkline(mint: string): Promise<number[]> {
@@ -134,7 +145,7 @@ export default function PortfolioScreen() {
       // Parse token accounts
       const accounts = tokenRes?.result?.value ?? [];
       const holdings: TokenHolding[] = [];
-      const mints: string[] = [];
+      const mintDecimals: { mint: string; decimals: number }[] = [];
 
       for (const acct of accounts) {
         const info = acct.account?.data?.parsed?.info;
@@ -142,16 +153,16 @@ export default function PortfolioScreen() {
         const balance = parseFloat(info.tokenAmount?.uiAmountString ?? "0");
         if (balance <= 0) continue;
         const mint = info.mint ?? "";
+        const decimals = info.tokenAmount?.decimals ?? 0;
         const jupToken = jupMap.get(mint);
         const symbol = mint === SKR_MINT ? "SKR" : jupToken?.symbol ?? `${mint.slice(0, 4)}...${mint.slice(-4)}`;
         holdings.push({ mint, symbol, balance });
-        mints.push(mint);
+        mintDecimals.push({ mint, decimals });
       }
 
       // Fetch prices for all tokens + SOL
       const solMint = "So11111111111111111111111111111111111111112";
-      const allMints = [solMint, ...mints];
-      const prices = await fetchPrices(allMints);
+      const prices = await fetchPrices([{ mint: solMint, decimals: 9 }, ...mintDecimals]);
 
       const sp = prices[solMint];
       if (sp) setSolPrice(sp);

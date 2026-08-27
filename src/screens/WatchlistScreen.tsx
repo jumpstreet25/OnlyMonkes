@@ -99,22 +99,25 @@ async function fetchSparkline(address: string): Promise<number[]> {
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
-// Demo watchlist — in production, this would sync via bot DM
-const DEMO_TOKENS: WatchlistToken[] = [
-  { symbol: "SOL", address: "So11111111111111111111111111111111111111112" },
-  { symbol: "BONK", address: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263" },
-  { symbol: "WIF", address: "EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm" },
-];
-
+// The real watchlist lives per-user in the bot's local storage (added via
+// DM `/watch $TOKEN`) — there's no live read API for it yet (would need a
+// new authenticated bot/worker endpoint, out of scope for this fix). This
+// screen used to seed itself with hardcoded SOL/BONK/WIF "demo" entries
+// that were never actually the user's real list — confirmed misleading
+// 2026-08-27 when a user's real `/unwatch $WIF` correctly reported "not on
+// your watchlist" while this screen kept showing WIF regardless. Starting
+// empty is honest; the hint text below already points at the real DM flow.
 export default function WatchlistScreen() {
-  const [tokens, setTokens] = useState<WatchlistToken[]>(DEMO_TOKENS);
-  const [loading, setLoading] = useState(true);
+  const [tokens, setTokens] = useState<WatchlistToken[]>([]);
+  const [loading, setLoading] = useState(false);
   const [addText, setAddText] = useState("");
   const [chartSymbol, setChartSymbol] = useState("");
   const cardStyle = useWorldGlassCardStyle();
 
-  // Fetch prices on mount
+  // Fetch prices on mount — no-op while the list is empty (nothing real to
+  // sync until there's a live watchlist-read API; see the doc comment above).
   useEffect(() => {
+    if (!tokens.length) return;
     (async () => {
       setLoading(true);
       const withPrices = await fetchPrices(tokens);
