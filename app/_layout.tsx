@@ -23,8 +23,7 @@ import { registerForPushNotifications } from '../src/lib/notifications';
 import { triggerProfileRebroadcast } from '../src/hooks/useXmtp';
 import { useAppStore, loadPersistedPrefs } from '../src/store/appStore';
 import { useEntitlementSync } from '../src/hooks/useEntitlementSync';
-import { useAppOpenAdGate } from '../src/hooks/useAppOpenAdGate';
-import { AdDisclosureModal } from '../src/components/AdDisclosureModal';
+import { AdGate } from '../src/components/AdGate';
 import { useUpdatePrompt } from '../src/hooks/useUpdatePrompt';
 import { UpdateAvailableModal } from '../src/components/UpdateAvailableModal';
 import { getEquippedStyles, type ShopState } from '../src/lib/bananaShop';
@@ -42,25 +41,16 @@ import { router } from 'expo-router';
 import { useFreeRasp } from 'freerasp-react-native';
 import { useFonts } from 'expo-font';
 import { RASP_CONFIG, THREAT_ACTIONS } from '../src/lib/security';
-import mobileAds from 'react-native-google-mobile-ads';
-import { captureError } from '../src/lib/sentry';
 
 // Initialize Sentry crash reporting (no-op if SENTRY_DSN not set)
 initSentry();
 
-// Google Mobile Ads — must init before SupportOptionsModal's rewarded-ad
-// or useAppOpenAdGate's app-open ad tries to load.
-// Currently only Google's public TEST ad unit IDs are wired (src/lib/ads.ts),
-// so this only ever requests test creatives until real AdMob IDs land.
-// 2026-08-27: this was a silent .catch(() => {}) — if native init actually
-// fails (this feature was shipped 2026-08-24 and never on-device verified
-// until real usage surfaced "no ad ever shows, no error either"), every
-// downstream .load() call would also silently never resolve, with zero
-// signal anywhere as to why. Surfacing the failure now so it's diagnosable.
-mobileAds().initialize().catch((err) => {
-  if (__DEV__) console.warn('[ads] mobileAds().initialize() failed:', err);
-  captureError(err, { context: 'mobileAds.initialize' });
-});
+// Google Mobile Ads init + the whole app-open ad flow now lives in
+// <AdGate>, rendered below — moved out of this module's top level
+// (2026-08-27: a real crash-on-every-launch report surfaced that this used
+// to run here, unconditionally, before React even started rendering, with
+// no protection against a synchronous throw. See AdGate.tsx's doc comment
+// for the full story).
 
 SplashScreen.preventAutoHideAsync();
 
@@ -68,11 +58,6 @@ const queryClient = new QueryClient();
 
 export default function RootLayout() {
   useFreeRasp(RASP_CONFIG, THREAT_ACTIONS);
-  // Automatic App Open ad — no tap needed, shows once per cold start
-  // (force-close + reopen), rate-limited. See useAppOpenAdGate.ts. Holds
-  // the ad and surfaces pendingDisclosure the very first time, ever — see
-  // <AdDisclosureModal> below.
-  const { pendingDisclosure, acknowledgeDisclosure } = useAppOpenAdGate();
   // In-app "Update ready" prompt — lets a downloaded OTA be applied with a
   // tap instead of requiring a force-close + reopen. See useUpdatePrompt.ts.
   const { visible: updatePromptVisible, applyUpdate, dismiss: dismissUpdatePrompt } = useUpdatePrompt();
@@ -283,7 +268,7 @@ export default function RootLayout() {
           <PollResultPopup />
           <OtaUpdateIndicator />
           <GlassAlertRoot />
-          <AdDisclosureModal visible={pendingDisclosure} onAcknowledge={acknowledgeDisclosure} />
+          <AdGate />
           <UpdateAvailableModal visible={updatePromptVisible} onUpdate={applyUpdate} onDismiss={dismissUpdatePrompt} />
         </GestureHandlerRootView>
       </SafeAreaProvider>

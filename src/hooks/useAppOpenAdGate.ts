@@ -33,7 +33,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAppOpenAd } from "react-native-google-mobile-ads";
 import { useAppStore } from "@/store/appStore";
-import { AD_UNIT_IDS, APP_OPEN_MIN_INTERVAL_MS } from "@/lib/ads";
+import { AD_UNIT_IDS, APP_OPEN_MIN_INTERVAL_MS, resolveAdUnitId } from "@/lib/ads";
 import { getAdSkipStatus } from "@/lib/adSkip";
 import { addBreadcrumb } from "@/lib/sentry";
 
@@ -46,9 +46,9 @@ export function useAppOpenAdGate(): { pendingDisclosure: boolean; acknowledgeDis
   const wallet = useAppStore((s) => s.wallet?.address);
 
   const adUnitId = verified
-    ? AD_UNIT_IDS.appOpenMain
+    ? resolveAdUnitId(AD_UNIT_IDS.appOpenMain)
     : isGenesisHolder
-      ? AD_UNIT_IDS.appOpenGenesis
+      ? resolveAdUnitId(AD_UNIT_IDS.appOpenGenesis)
       : null;
 
   const { isLoaded, load, show, error } = useAppOpenAd(adUnitId);

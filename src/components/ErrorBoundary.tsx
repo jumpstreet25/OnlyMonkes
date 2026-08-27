@@ -5,6 +5,10 @@ import { THEME, FONTS } from "@/lib/constants";
 interface Props {
   children: React.ReactNode;
   fallbackMessage?: string;
+  /** For a non-critical feature (e.g. an ad SDK) where a visible "Something
+   *  went wrong" screen would be worse than the feature just silently not
+   *  working — renders nothing instead of the fallback UI on error. */
+  silent?: boolean;
 }
 
 interface State {
@@ -25,6 +29,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
 
   render() {
     if (this.state.hasError) {
+      if (this.props.silent) return null;
       return (
         <View style={styles.container}>
           <Text style={styles.emoji}>🐒</Text>

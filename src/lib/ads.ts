@@ -47,6 +47,25 @@ export const AD_REWARD_BANANAS = {
   genesis: 25,
 } as const;
 
+// 2026-08-27: real ad unit IDs still don't exist (AdMob account verification
+// needs real payout activity — a chicken-and-egg problem, already deferred).
+// A "Test Ad" watermark visible in a Solana dApp Store submission would be
+// grounds for rejection. Rather than hold the whole submission on the AdMob
+// account, gate ad DISPLAY off entirely while still using Google's test IDs
+// under the hood (still safe/required for the SDK itself) — every ad
+// call site should resolve its unit ID through this and treat null as "no
+// ad, ever" (the same inert contract useAppOpenAdGate already had for an
+// unverified user). Flip TEST_ADS_LIVE back on (or just delete this gate)
+// once real AdMob unit IDs land in the constants above.
+const TEST_ADS_LIVE = false;
+
+/** Resolves an AD_UNIT_IDS.* value to itself, or null if ads are gated off
+ *  (see TEST_ADS_LIVE above). Every ad-consuming hook call site should pass
+ *  its adUnitId through this rather than using AD_UNIT_IDS directly. */
+export function resolveAdUnitId(id: string): string | null {
+  return TEST_ADS_LIVE ? id : null;
+}
+
 /** Minimum gap between automatic App Open ad displays, even across repeated
  *  cold starts — "every couple hours," not every single force-close+reopen. */
 export const APP_OPEN_MIN_INTERVAL_MS = 2 * 60 * 60 * 1000;

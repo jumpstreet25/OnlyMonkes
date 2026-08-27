@@ -19,7 +19,7 @@ import { useRewardedAd } from "react-native-google-mobile-ads";
 import { toast } from "sonner-native";
 import { GlassModal } from "@/components/GlassModal";
 import { THEME, FONTS } from "@/lib/constants";
-import { AD_UNIT_IDS, AD_REWARD_BANANAS } from "@/lib/ads";
+import { AD_UNIT_IDS, AD_REWARD_BANANAS, resolveAdUnitId } from "@/lib/ads";
 import { addBananas } from "@/lib/bananaRewards";
 import { useAppStore } from "@/store/appStore";
 import { getAdSkipStatus, payToSkipAds } from "@/lib/adSkip";
@@ -33,7 +33,7 @@ interface SupportOptionsModalProps {
 }
 
 export function SupportOptionsModal({ visible, onClose, onOpenTip, variant = "main" }: SupportOptionsModalProps) {
-  const adUnitId = variant === "genesis" ? AD_UNIT_IDS.rewardedGenesis : AD_UNIT_IDS.rewardedMain;
+  const adUnitId = resolveAdUnitId(variant === "genesis" ? AD_UNIT_IDS.rewardedGenesis : AD_UNIT_IDS.rewardedMain);
   const rewardBananas = variant === "genesis" ? AD_REWARD_BANANAS.genesis : AD_REWARD_BANANAS.main;
   const { isLoaded, isEarnedReward, isClosed, load, show } = useRewardedAd(adUnitId);
   const wallet = useAppStore((s) => s.wallet?.address);
@@ -115,18 +115,24 @@ export function SupportOptionsModal({ visible, onClose, onOpenTip, variant = "ma
         </View>
       )}
 
-      <Pressable
-        onPress={handleWatchAd}
-        disabled={!isLoaded}
-        style={({ pressed }) => [styles.row, (pressed || !isLoaded) && styles.rowPressed]}
-      >
-        <Text style={styles.rowEmoji}>🎬</Text>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.rowTitle}>Watch an ad</Text>
-          <Text style={styles.rowSubtitle}>{isLoaded ? `+${rewardBananas} bananas` : "Loading ad…"}</Text>
-        </View>
-        {!isLoaded && <ActivityIndicator size="small" color={THEME.accent} />}
-      </Pressable>
+      {adUnitId && (
+        // 2026-08-27: real ad unit IDs don't exist yet (see resolveAdUnitId
+        // in ads.ts) — adUnitId is null until they land, and this row would
+        // otherwise show "Loading ad…" with a spinner forever, which reads
+        // as a broken button rather than a temporarily-unavailable feature.
+        <Pressable
+          onPress={handleWatchAd}
+          disabled={!isLoaded}
+          style={({ pressed }) => [styles.row, (pressed || !isLoaded) && styles.rowPressed]}
+        >
+          <Text style={styles.rowEmoji}>🎬</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.rowTitle}>Watch an ad</Text>
+            <Text style={styles.rowSubtitle}>{isLoaded ? `+${rewardBananas} bananas` : "Loading ad…"}</Text>
+          </View>
+          {!isLoaded && <ActivityIndicator size="small" color={THEME.accent} />}
+        </Pressable>
+      )}
 
       <Pressable
         onPress={handlePaySkip}
