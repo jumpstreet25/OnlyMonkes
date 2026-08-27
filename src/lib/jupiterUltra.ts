@@ -91,6 +91,13 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = ULTR
  * Returns an UltraQuote with the unsigned transaction ready to sign.
  *
  * Throws on failure — caller should catch and fall back to regular swap.
+ *
+ * 2026-08-27: deliberately does NOT send platformFeeBps/feeAccount (see
+ * JUP_PLATFORM_FEE_BPS in constants.ts) — Ultra is a separate Jupiter
+ * product (RFQ-based, gasless) from /build, and whether/how it supports an
+ * integrator fee wasn't verified. Don't add this without actually
+ * confirming Ultra's own fee mechanism first; sending unverified params to
+ * a real-money endpoint is worse than skipping the fee on this path.
  */
 export async function getUltraQuote(
   inputMint: string,

@@ -39,6 +39,22 @@ export const SKR_DISCOUNT_PCT = 0.10;
 export const NFT_SALE_FEE_PCT = 0.02;   // 2% on NFT sales
 export const TOKEN_TRADE_FEE_PCT = 0.03; // 3% on token trades
 export const AUTO_TRADE_FEE_PCT = 0.05;  // 5% on autonomous trades
+// 2026-08-27: flat swap-notional fee via Jupiter's own platformFeeBps —
+// separate dimension from TOKEN_TRADE_FEE_PCT/AUTO_TRADE_FEE_PCT above
+// (those are realized-profit-only, charged at position close, never on a
+// loss or an entry). This one is small and applies to every swap regardless
+// of outcome — deliberate policy change, see project memory before touching.
+// Only takes effect when one leg of the swap is SOL (Jupiter requires the
+// feeAccount's mint to match an actual leg of the swap) — the fee account
+// is DEV_WALLET's wrapped-SOL Associated Token Account, derived at each
+// call site via getAssociatedTokenAddressSync(SOL_MINT, DEV_WALLET) rather
+// than hardcoded here (deterministic, no risk of a copy-paste mismatch
+// across the app/bot/worker call sites). That account MUST be created
+// on-chain before this ships — unverified whether Jupiter degrades
+// gracefully (ignores the fee) or rejects the whole /build request if it
+// doesn't exist yet, so treat creation as a hard prerequisite, not a
+// nice-to-have.
+export const JUP_PLATFORM_FEE_BPS = 10; // 0.10%
 // Tip slider range (in whole SKR units)
 export type TipAmount = number;
 export const TIP_MIN = 1;

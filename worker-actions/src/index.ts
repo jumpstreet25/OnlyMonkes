@@ -63,7 +63,9 @@ import {
   handleTreasurySwapPost,
   handleTreasuryStakeGet,
   handleTreasuryStakePost,
+  PUBLISHER_WALLET,
 } from "./treasury";
+import { getAssociatedTokenAddressSync } from "@solana/spl-token";
 import {
   handleAdSkipGet,
   handleAdSkipPost,
@@ -159,6 +161,30 @@ export const CORS_HEADERS: Record<string, string> = {
 
 export const SOL_MINT = "So11111111111111111111111111111111111111112";
 const FETCH_TIMEOUT = 8_000; // 8s timeout for external API calls
+
+// 2026-08-27: flat swap-notional fee via Jupiter's own platformFeeBps —
+// separate dimension from the app/bot's existing realized-profit-only fees
+// (see JUP_PLATFORM_FEE_BPS's comment in the app repo's src/lib/constants.ts
+// for the full policy context). PUBLISHER_WALLET's wrapped-SOL ATA MUST be
+// created on-chain before this has any effect — unverified whether Jupiter
+// degrades gracefully or rejects the whole /build request if it doesn't
+// exist yet, treat creation as a hard prerequisite.
+const JUP_PLATFORM_FEE_BPS = 10; // 0.10%
+const JUP_FEE_ACCOUNT_SOL = getAssociatedTokenAddressSync(
+  new PublicKey(SOL_MINT),
+  PUBLISHER_WALLET,
+).toBase58();
+
+/** Jupiter requires feeAccount's mint to match a leg of the swap — only
+ *  apply when one side is SOL, {} (no fee) otherwise. Mirrors the app
+ *  repo's identical helper in src/lib/jupiterSwap.ts. */
+function getPlatformFeeParams(inputMint: string, outputMint: string): Record<string, string> {
+  if (inputMint !== SOL_MINT && outputMint !== SOL_MINT) return {};
+  return {
+    platformFeeBps: String(JUP_PLATFORM_FEE_BPS),
+    feeAccount: JUP_FEE_ACCOUNT_SOL,
+  };
+}
 const RPC_TIMEOUT = 10_000;  // 10s for RPC calls
 
 export const ACTION_ICON = "https://raw.githubusercontent.com/jumpstreet25/OnlyMonkes/master/assets/icon.png";
@@ -252,8 +278,14 @@ function toInstruction(ix: JupBuildInstruction): TransactionInstruction {
 
 /**
  * Fetch swap instructions from Jupiter Swap v2 /build endpoint.
- * This is fee-free (no Jupiter platform fee) and returns raw instructions
- * we assemble into a VersionedTransaction for the user to sign.
+ * Shared by two very different callers — applyPlatformFee (default false,
+ * existing callers unaffected) exists so ONLY the intended caller opts in:
+ *   - Blink swap action (/api/actions/swap): a real user trade, fee-free
+ *     was an explicit design choice until 2026-08-27 — see
+ *     getPlatformFeeParams's comment for why that changed.
+ *   - treasury.ts's SOL→SKR pipeline: OnlyMonkes converting its OWN
+ *     revenue — there's no other party to charge, applying a fee here
+ *     would just be self-dealing. MUST stay false for this caller.
  */
 export async function getJupiterBuild(
   inputMint: string,
@@ -262,6 +294,7 @@ export async function getJupiterBuild(
   taker: string,
   slippageBps: number,
   env: Env,
+  applyPlatformFee = false,
 ): Promise<JupBuildResponse> {
   const params = new URLSearchParams({
     inputMint,
@@ -272,6 +305,7 @@ export async function getJupiterBuild(
     dynamicSlippage: "true",
     prioritizationFeeLamports: "auto",
     wrapAndUnwrapSol: "true",
+    ...(applyPlatformFee ? getPlatformFeeParams(inputMint, outputMint) : {}),
   });
 
   const headers: Record<string, string> = {};
@@ -493,8 +527,10 @@ async function handleSwapPost(url: URL, body: any, env: Env): Promise<Response> 
     // Convert SOL amount to lamports
     const amountLamports = String(Math.round(amount * LAMPORTS_PER_SOL));
 
-    // 1. Get swap instructions from Jupiter v2 /build (fee-free)
-    const build = await getJupiterBuild(inputMint, outputMint, amountLamports, account, 50, env);
+    // 1. Get swap instructions from Jupiter v2 /build
+    // 2026-08-27: applyPlatformFee=true — see getJupiterBuild's doc comment
+    // for why Blinks moved off "fee-free" and what stays unaffected.
+    const build = await getJupiterBuild(inputMint, outputMint, amountLamports, account, 50, env, true);
 
     // Validate price impact
     const priceImpact = parseFloat(build.priceImpactPct || "0");
@@ -2958,18 +2994,19 @@ function handleTerms(): Response {
     <p>OnlyMonkes charges a platform fee only on specific trading surfaces. All fees are injected atomically into the same transaction as the swap &mdash; if the swap fails, the fee transfer cannot fire. Fees are sent to the OnlyMonkes development wallet to support ongoing development, infrastructure, and maintenance.</p>
     <ul>
       <li><strong>NFT Sales (MonkeMarkets):</strong> A <strong>2% fee</strong> is deducted from the sale price of every NFT sold through MonkeMarkets. The fee is built into the atomic swap transaction &mdash; the buyer pays the listed price, the seller receives 98%. Applies to all sales regardless of profit or loss.</li>
-      <li><strong>In-App Token Swap UI:</strong> A <strong>3% fee on realized profits only</strong> when selling tokens back to SOL via the in-app Jupiter swap interface. If a trade results in a loss, no fee is charged. Profit is calculated as: sell proceeds minus proportional cost basis (SOL spent buying those units, tracked locally on your device).</li>
-      <li><strong>Bot-Executed Trades (DM <code>/buy</code> <code>/sell</code> <code>/swap</code> with enrolled hot wallet):</strong> A <strong>3% fee on realized profits only</strong> when the bot executes a sell back to SOL on your behalf from your encrypted hot wallet. The bot DMs you a quote and waits for an explicit <code>YES</code> reply (30-second window) before signing. If you have no enrolled hot wallet, these commands instead generate a fee-free Jupiter web URL (see 6b). Cost basis is tracked server-side per-wallet, AES-256-GCM encrypted at rest.</li>
-      <li><strong>Autonomous Trades (AutonoMonke):</strong> A <strong>5% fee on realized profits only</strong> on positions closed by the AutonoMonke autonomous trading engine. If a position closes at a loss, no fee is charged.</li>
+      <li><strong>In-App Token Swap UI:</strong> A <strong>0.10% fee on every swap</strong> (via Jupiter's own platform fee mechanism, deducted automatically as part of the swap), plus a <strong>3% fee on realized profits only</strong> when selling tokens back to SOL. The profit-based fee is never charged on a loss; the 0.10% applies to both buys and sells. Profit is calculated as: sell proceeds minus proportional cost basis (SOL spent buying those units, tracked locally on your device).</li>
+      <li><strong>Bot-Executed Trades (DM <code>/buy</code> <code>/sell</code> <code>/swap</code> with enrolled hot wallet):</strong> A <strong>0.10% fee on every swap</strong> (Jupiter platform fee), plus a <strong>3% fee on realized profits only</strong> when the bot executes a sell back to SOL on your behalf from your encrypted hot wallet. The bot DMs you a quote and waits for an explicit <code>YES</code> reply (30-second window) before signing. If you have no enrolled hot wallet, these commands instead generate a fee-free Jupiter web URL (see 6b). Cost basis is tracked server-side per-wallet, AES-256-GCM encrypted at rest.</li>
+      <li><strong>Autonomous Trades (AutonoMonke):</strong> A <strong>0.10% fee on every swap</strong> (Jupiter platform fee), plus a <strong>5% fee on realized profits only</strong> on positions closed by the AutonoMonke autonomous trading engine. The 5% is never charged on a loss.</li>
+      <li><strong>Solana Actions / Blinks:</strong> A <strong>0.10% fee on every swap</strong> executed via a one-tap swap card rendered in chat, taken automatically as part of the same transaction via Jupiter's platform fee mechanism.</li>
     </ul>
-    <p>You will be presented with a fee agreement before your first use of each trading feature. By tapping "I Understand" you acknowledge and accept the applicable fees.</p>
+    <p>The 0.10% swap fee (added 2026-08-27) is a flat fee on swap volume, separate from the profit-based fees above &mdash; it applies regardless of whether the trade is a win or a loss. You will be presented with a fee agreement before your first use of each trading feature. By tapping "I Understand" you acknowledge and accept the applicable fees.</p>
 
     <h2>6b. Fee-Free Surfaces</h2>
     <p>These features do <strong>not</strong> incur an OnlyMonkes platform fee. Standard Solana network fees and third-party routing fees may still apply.</p>
     <ul>
       <li><strong>SKR Tips and SOL Tips</strong> &mdash; <strong>100% to the recipient</strong>. The <code>/tip</code> command and tip-link claims do not skim a platform fee. (As of v2.37; earlier versions of the App applied a 5% dev fee on SKR tips &mdash; that fee has been removed.)</li>
-      <li><strong>Solana Actions / Blinks</strong> &mdash; one-tap swap, tip, predict, and bet cards rendered in chat. The transactions returned by our Actions server are routed through Jupiter's fee-free <code>/build</code> endpoint with no platform fee added.</li>
       <li><strong>Bot swap commands without an enrolled hot wallet</strong> &mdash; <code>/buy</code>, <code>/sell</code>, and <code>/swap</code> sent in group chat, or in DM by users who have not enrolled an AutonoMonke hot wallet, generate a Jupiter web URL that you click to execute on Jupiter's web interface. OnlyMonkes does not take a platform fee or referral fee on these external links. (Same commands sent in DM with an enrolled hot wallet are bot-executed; see 6a.)</li>
+      <li><strong>Treasury operations</strong> &mdash; OnlyMonkes' own conversion of ad/tip revenue to $SKR for staking does not charge itself a fee.</li>
       <li><strong>Non-trading bot commands</strong> &mdash; <code>/risk</code>, <code>/limit</code>, <code>/dca</code>, <code>/stake</code>, <code>/unstake</code>, <code>/hermes</code>, <code>/portfolio</code>, and informational commands.</li>
       <li><strong>Predictions and Sports Bets</strong> &mdash; routed through the Jupiter Prediction API. Jupiter's own fee structure applies, but OnlyMonkes adds no platform fee.</li>
     </ul>

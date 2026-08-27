@@ -39,7 +39,7 @@ import {
   transact,
   Web3MobileWallet,
 } from "@solana-mobile/mobile-wallet-adapter-protocol-web3js";
-import { HELIUS_RPC_URL, DEV_WALLET, TOKEN_TRADE_FEE_PCT, JUP_API_KEY } from "./constants";
+import { HELIUS_RPC_URL, DEV_WALLET, TOKEN_TRADE_FEE_PCT, JUP_API_KEY, JUP_PLATFORM_FEE_BPS } from "./constants";
 import { useAppStore } from "@/store/appStore";
 import { loadCostBasis, recordBuy, getCostBasis, recordSell } from "./costBasis";
 import { onBuy as positionOnBuy, onSell as positionOnSell } from "./positions";
@@ -59,6 +59,29 @@ const JUP_SEARCH_URL = "https://lite-api.jup.ag/tokens/v2/search";
 
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 const SOL_DECIMALS = 9;
+
+// DEV_WALLET's wrapped-SOL ATA — deterministic, derived not hardcoded (see
+// JUP_PLATFORM_FEE_BPS's comment in constants.ts). Computed once at module
+// load since neither input ever changes at runtime.
+const JUP_FEE_ACCOUNT_SOL = getAssociatedTokenAddressSync(
+  new PublicKey(SOL_MINT),
+  new PublicKey(DEV_WALLET),
+).toBase58();
+
+/**
+ * Jupiter requires feeAccount's mint to be either the input or output mint
+ * of the swap (see JUP_PLATFORM_FEE_BPS's comment in constants.ts) — this
+ * app's swaps are always SOL-paired in practice (/buy, /sell), so fee only
+ * when one leg actually is SOL; returns {} (no fee params at all) otherwise
+ * rather than sending a feeAccount Jupiter would reject as mismatched.
+ */
+function getPlatformFeeParams(inputMint: string, outputMint: string): Record<string, string> {
+  if (inputMint !== SOL_MINT && outputMint !== SOL_MINT) return {};
+  return {
+    platformFeeBps: String(JUP_PLATFORM_FEE_BPS),
+    feeAccount: JUP_FEE_ACCOUNT_SOL,
+  };
+}
 
 const APP_IDENTITY = {
   name: "OnlyMonkes",
@@ -212,6 +235,7 @@ export async function getSwapQuote(
     // client-typed swaps could go out with no priority fee at all while
     // Blinks and AutonoMonke both already set one.
     prioritizationFeeLamports: "auto",
+    ...getPlatformFeeParams(inputMint, outputMint),
   });
 
   const headers: Record<string, string> = {};
@@ -392,6 +416,7 @@ export async function executeSwap(quote: SwapQuote): Promise<SwapResult> {
         slippageBps: String(quote.slippageBps),
         wrapAndUnwrapSol: "true",
         prioritizationFeeLamports: "auto",
+        ...getPlatformFeeParams(quote.inputMint, quote.outputMint),
       });
       const rebuildRes = await fetch(`${JUP_BUILD_URL}?${params}`, { headers: rebuildHeaders });
       if (rebuildRes.ok) {
