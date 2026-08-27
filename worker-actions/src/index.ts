@@ -63,6 +63,8 @@ import {
   handleTreasurySwapPost,
   handleTreasuryStakeGet,
   handleTreasuryStakePost,
+  handleTreasuryThreshold,
+  handleTreasuryWeeklySummary,
   PUBLISHER_WALLET,
 } from "./treasury";
 import { getAssociatedTokenAddressSync } from "@solana/spl-token";
@@ -3327,7 +3329,7 @@ export default {
 
     // Health check
     if (path === "/health") {
-      return jsonResponse({ status: "ok", version: "1.10.0", endpoints: ["/api/actions/swap", "/api/actions/tip", "/api/actions/predict", "/api/actions/bet", "/api/actions/kalshi-bet", "/api/actions/treasury-swap", "/api/actions/treasury-stake", "/api/treasury/status", "/api/actions/ad-skip", "/api/ad-skip/status", "/api/ad-skip/verify", "/escrow", "/claim", "/frames/alert", "/legal", "/terms", "/privacy", "/copyright", "/", "/api/stats", "/api/verify", "/api/holders/index", "/api/top-traders", "/api/signals", "/monke/:mint", "/api/sentiment/register-device", "/api/sentiment/unregister-device", "/api/sentiment/ingest", "/api/sentiment/score", "/api/community/locations", "/api/community/location", "/api/community/events", "/api/community/events/:id", "/api/community/events/:id/rsvp", "/api/community/events/:id/rsvps"] });
+      return jsonResponse({ status: "ok", version: "1.10.0", endpoints: ["/api/actions/swap", "/api/actions/tip", "/api/actions/predict", "/api/actions/bet", "/api/actions/kalshi-bet", "/api/actions/treasury-swap", "/api/actions/treasury-stake", "/api/treasury/status", "/api/treasury/threshold-check", "/api/treasury/weekly-summary", "/api/actions/ad-skip", "/api/ad-skip/status", "/api/ad-skip/verify", "/escrow", "/claim", "/frames/alert", "/legal", "/terms", "/privacy", "/copyright", "/", "/api/stats", "/api/verify", "/api/holders/index", "/api/top-traders", "/api/signals", "/monke/:mint", "/api/sentiment/register-device", "/api/sentiment/unregister-device", "/api/sentiment/ingest", "/api/sentiment/score", "/api/community/locations", "/api/community/location", "/api/community/events", "/api/community/events/:id", "/api/community/events/:id/rsvp", "/api/community/events/:id/rsvps"] });
     }
 
     // 2026-07-30: public "Check Your Monke" growth page — see the section
@@ -3494,6 +3496,17 @@ export default {
     // comment for why this never touches a private key.
     if (path === "/api/treasury/status") {
       if (request.method === "GET") return handleTreasuryStatus(env);
+      return errorResponse("Method not allowed", 405);
+    }
+    // 2026-08-27: $20-of-income sweep alert (bot polls this, DMs the admin a
+    // tap-to-sign link — no hot key involved) + the Treasury bot's weekly
+    // digest source. See treasury.ts doc comments on each handler.
+    if (path === "/api/treasury/threshold-check") {
+      if (request.method === "GET") return handleTreasuryThreshold(env);
+      return errorResponse("Method not allowed", 405);
+    }
+    if (path === "/api/treasury/weekly-summary") {
+      if (request.method === "GET") return handleTreasuryWeeklySummary(url, env);
       return errorResponse("Method not allowed", 405);
     }
     if (path === "/api/actions/treasury-swap") {

@@ -35,7 +35,7 @@ import {
 } from "@solana/web3.js";
 import { getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import type { Env } from "./index";
-import { rpcUrl, getJupiterBuild, buildSwapTransaction, SOL_MINT, ACTION_ICON, CORS_HEADERS } from "./index";
+import { rpcUrl, getJupiterBuild, buildSwapTransaction, fetchWithTimeout, SOL_MINT, ACTION_ICON, CORS_HEADERS } from "./index";
 
 // ─── Local response helpers (mirrors index.ts's, kept local to avoid a churny export) ──────
 function jsonResponse(data: unknown, status = 200, actionHeaders = false): Response {
@@ -86,6 +86,65 @@ function encodeU64LE(n: bigint): Buffer {
   return buf;
 }
 
+// ─── Prices + share value (added 2026-08-27 for the treasury transparency UI + $20 auto-sweep alert) ──
+// SOL/USD: no Jupiter Price API endpoint responds anymore (api.jup.ag/price/v2
+// and lite-api.jup.ag both 404 as of this date) and DexScreener's token-address
+// lookup collides with an unrelated same-address token on another chain
+// ("Wrapped FOGO" on Fogo shares So111...112 byte-for-byte with Solana's
+// native mint) — confirmed by direct curl before writing this. A real
+// same-domain Jupiter quote (1 SOL -> USDC) sidesteps both problems.
+async function fetchSolUsdPrice(env: Env): Promise<number | null> {
+  try {
+    const res = await fetchWithTimeout(
+      `https://api.jup.ag/swap/v2/quote?inputMint=${SOL_MINT}&outputMint=${USDC_MINT.toBase58()}&amount=1000000000&slippageBps=50`,
+      { headers: env.JUP_API_KEY ? { "x-api-key": env.JUP_API_KEY } : {} },
+      8_000,
+    );
+    if (!res.ok) return null;
+    const d = await res.json() as any;
+    const out = Number(d?.outAmount);
+    return Number.isFinite(out) && out > 0 ? out / 1e6 : null;
+  } catch { return null; }
+}
+
+// SKR/USD — same DexScreener token-lookup pattern already proven live in
+// index.ts's fetchFloorAndMarket() for this exact mint.
+async function fetchSkrUsdPrice(): Promise<number | null> {
+  try {
+    const res = await fetchWithTimeout(`https://api.dexscreener.com/latest/dex/tokens/${SKR_MINT.toBase58()}`, {}, 8_000);
+    if (!res.ok) return null;
+    const d = await res.json() as any;
+    const price = d?.pairs?.[0]?.priceUsd;
+    return price ? parseFloat(price) : null;
+  } catch { return null; }
+}
+
+// stake_config.share_price — u64 LE, 9-decimal fixed point, at byte offset
+// 137 in the account. Not documented anywhere (no IDL type export for this
+// account was captured) — empirically located 2026-08-27 by scanning the
+// live account for a u64 that (a) matches a plausible 1.0-2.0x range at
+// either 6 or 9 decimals and (b) is consistent with organic growth from the
+// known 2026-08-22 reading of ~1.126 at ~26.5% APY (1.126 * 1.0036 over 5
+// days ≈ 1.130 — the 9-decimal candidate at this offset read 1.1293, the
+// 6-decimal candidate at another offset read 1.0623 and doesn't fit). If
+// this ever reads obviously wrong (e.g. 0, or wildly outside a slow-APY
+// growth curve from the last known value), the program was likely upgraded
+// and this offset needs re-deriving the same way — see
+// reference_skr_guardian_staking_program.md for the re-derivation method.
+const SHARE_PRICE_OFFSET = 137;
+async function readSharePrice(connection: Connection): Promise<number | null> {
+  try {
+    const { stakeConfig } = derivePdas();
+    const info = await connection.getAccountInfo(stakeConfig);
+    if (!info || info.data.length < SHARE_PRICE_OFFSET + 8) return null;
+    const raw = info.data.readBigUInt64LE(SHARE_PRICE_OFFSET);
+    const price = Number(raw) / 1e9;
+    return price > 0.5 && price < 10 ? price : null; // sanity bound, not a real ceiling
+  } catch { return null; }
+}
+
+const TREASURY_KV_PREFIX = "treasury:";
+
 /** Builds the stake() instruction — deposits `amountRaw` (SKR base units, 6dp) with the Guardian. */
 function buildStakeInstruction(staker: PublicKey, amountRaw: bigint): TransactionInstruction {
   const { stakeConfig, stakeVault, guardianPool, eventAuthority } = derivePdas();
@@ -115,18 +174,24 @@ function buildStakeInstruction(staker: PublicKey, amountRaw: bigint): Transactio
   });
 }
 
-// ─── GET /api/treasury/status — read-only balances, no Action envelope ────────
-export async function handleTreasuryStatus(env: Env): Promise<Response> {
+/** Shared balance+price read, used by /status, /threshold-check, and /weekly-summary
+ *  so all three agree on the same numbers instead of three slightly-different reads. */
+async function readTreasurySnapshot(env: Env) {
   const connection = new Connection(rpcUrl(env), "confirmed");
-  const [solLamports, skrAccounts, usdcAccounts] = await Promise.all([
+  const [solLamports, skrAccounts, usdcAccounts, solUsdPrice, skrUsdPrice, sharePrice] = await Promise.all([
     connection.getBalance(PUBLISHER_WALLET),
     connection.getParsedTokenAccountsByOwner(PUBLISHER_WALLET, { mint: SKR_MINT }),
     connection.getParsedTokenAccountsByOwner(PUBLISHER_WALLET, { mint: USDC_MINT }),
+    fetchSolUsdPrice(env),
+    fetchSkrUsdPrice(),
+    readSharePrice(connection),
   ]);
   const skrUi = skrAccounts.value[0]?.account.data.parsed.info.tokenAmount.uiAmount ?? 0;
   const usdcUi = usdcAccounts.value[0]?.account.data.parsed.info.tokenAmount.uiAmount ?? 0;
+  const solUi = solLamports / 1e9;
 
   let stakedShares = "0";
+  let stakedSkr = 0;
   try {
     const { stakeConfig, guardianPool } = derivePdas();
     const [userStake] = PublicKey.findProgramAddressSync(
@@ -137,17 +202,36 @@ export async function handleTreasuryStatus(env: Env): Promise<Response> {
     if (info) {
       // UserStake layout: 8 disc + 1 bump + 32 stake_config + 32 user + 32 guardian_pool + 16 shares (u128 LE) ...
       const sharesOffset = 8 + 1 + 32 + 32 + 32;
-      stakedShares = info.data.readBigUInt64LE(sharesOffset).toString(); // lower 8 bytes suffice at current scale
+      const rawShares = info.data.readBigUInt64LE(sharesOffset); // lower 8 bytes suffice at current scale
+      stakedShares = rawShares.toString();
+      if (sharePrice) stakedSkr = (Number(rawShares) / 1e6) * sharePrice;
     }
-  } catch { /* no stake account yet — fine, defaults to "0" */ }
+  } catch { /* no stake account yet — fine, defaults to 0 */ }
 
-  const solUi = solLamports / 1e9;
+  const skrPortionUsd = skrUsdPrice ? (skrUi + stakedSkr) * skrUsdPrice : null;
+  const totalUsd =
+    (solUsdPrice ? solUi * solUsdPrice : 0) +
+    usdcUi + // stablecoin, 1:1
+    (skrPortionUsd ?? 0);
+  const sweepableUsd = (solUsdPrice ? solUi * solUsdPrice : 0) + usdcUi; // not-yet-swapped income only
+
+  return { connection, solUi, usdcUi, skrUi, stakedShares, stakedSkr, solUsdPrice, skrUsdPrice, sharePrice, totalUsd, sweepableUsd };
+}
+
+// ─── GET /api/treasury/status — read-only balances, no Action envelope ────────
+export async function handleTreasuryStatus(env: Env): Promise<Response> {
+  const snap = await readTreasurySnapshot(env);
   return jsonResponse({
     wallet: PUBLISHER_WALLET.toBase58(),
-    sol: solUi,
-    usdc: usdcUi,
-    skr: skrUi,
-    stakedShares,
+    sol: snap.solUi,
+    usdc: snap.usdcUi,
+    skr: snap.skrUi,
+    stakedShares: snap.stakedShares,
+    stakedSkr: snap.stakedSkr,
+    sharePrice: snap.sharePrice,
+    solUsdPrice: snap.solUsdPrice,
+    skrUsdPrice: snap.skrUsdPrice,
+    totalUsd: snap.totalUsd,
     minRecommendedSwap: { sol: SWAP_INPUTS.sol.minRecommended, usdc: SWAP_INPUTS.usdc.minRecommended },
     // "Has enough to sign for at all" (rent + fees) vs. "worth signing for" —
     // gas + Jupiter slippage eat a fixed-ish cost regardless of swap size,
@@ -155,12 +239,95 @@ export async function handleTreasuryStatus(env: Env): Promise<Response> {
     // fires automatically here (every conversion is a human tap), so this
     // is guidance, not an enforced gate — see handleTreasurySwapPost for
     // where a hard floor would go if that ever changes.
-    readyToConvert: solUi > 0.005 || usdcUi > 0.5,
+    readyToConvert: snap.solUi > 0.005 || snap.usdcUi > 0.5,
     worthConvertingNow: {
-      sol: solUi >= SWAP_INPUTS.sol.minRecommended,
-      usdc: usdcUi >= SWAP_INPUTS.usdc.minRecommended,
+      sol: snap.solUi >= SWAP_INPUTS.sol.minRecommended,
+      usdc: snap.usdcUi >= SWAP_INPUTS.usdc.minRecommended,
     },
-    readyToStake: skrUi >= 1, // on-chain min_stake_amount
+    readyToStake: snap.skrUi >= 1, // on-chain min_stake_amount
+  });
+}
+
+// ─── GET /api/treasury/threshold-check — "$20 of dApp income accrued" alert ──
+// Per user decision 2026-08-27: no hot key anywhere for this, so this never
+// signs or moves funds itself — it only tells the caller (the bot, on a
+// polling interval) when the publisher wallet's un-swapped SOL+USDC has
+// grown by $20+ since the last time this fired, so the bot can DM the admin
+// a one-tap Blink link (the existing /api/actions/treasury-swap flow,
+// unchanged) to approve via Solflare. Baseline is stored in FRAME_ALERTS KV
+// (same namespace already used for the "stats:latest" single-object
+// pattern) under "treasury:sweepBaselineUsd" — reusing it rather than
+// standing up a whole new KV namespace for one small JSON blob.
+const SWEEP_ALERT_THRESHOLD_USD = 20;
+
+export async function handleTreasuryThreshold(env: Env): Promise<Response> {
+  const snap = await readTreasurySnapshot(env);
+  const key = `${TREASURY_KV_PREFIX}sweepBaselineUsd`;
+  let baseline = 0;
+  try {
+    const raw = await env.FRAME_ALERTS.get(key);
+    if (raw) baseline = JSON.parse(raw)?.baselineUsd ?? 0;
+  } catch { /* treat as first-ever check */ }
+
+  const deltaUsd = snap.sweepableUsd - baseline;
+  const crossed = snap.solUsdPrice !== null && deltaUsd >= SWEEP_ALERT_THRESHOLD_USD;
+
+  if (crossed) {
+    await env.FRAME_ALERTS.put(key, JSON.stringify({ baselineUsd: snap.sweepableUsd, updatedAt: Date.now() }));
+  }
+
+  return jsonResponse({
+    crossed,
+    deltaUsd: Math.round(deltaUsd * 100) / 100,
+    sweepableUsd: Math.round(snap.sweepableUsd * 100) / 100,
+    sol: snap.solUi,
+    usdc: snap.usdcUi,
+    // Points straight at the existing tap-to-sign swap Blink for whichever
+    // currency dominates the sweepable balance — human still taps Confirm.
+    blinkAction: (() => {
+      const solUsdValue = snap.solUi * (snap.solUsdPrice ?? 0);
+      return snap.usdcUi > solUsdValue
+        ? `https://onlymonkes-actions.jumpstreet25.workers.dev/api/actions/treasury-swap?inputMint=usdc&amount=${snap.usdcUi.toFixed(2)}`
+        : `https://onlymonkes-actions.jumpstreet25.workers.dev/api/actions/treasury-swap?inputMint=sol&amount=${snap.solUi.toFixed(4)}`;
+    })(),
+  });
+}
+
+// ─── GET /api/treasury/weekly-summary — feeds the Treasury bot's weekly digest post ──
+// Read-only by default (safe to poll from the app too); pass ?rollover=true
+// (only the bot's weekly cron job does this) to also reset the week-start
+// baseline to right now, so next week's delta starts from today's total.
+export async function handleTreasuryWeeklySummary(url: URL, env: Env): Promise<Response> {
+  const snap = await readTreasurySnapshot(env);
+  const key = `${TREASURY_KV_PREFIX}weekBaseline`;
+  let weekBaselineUsd = snap.totalUsd;
+  let weekStartTs = Date.now();
+  try {
+    const raw = await env.FRAME_ALERTS.get(key);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      weekBaselineUsd = parsed?.totalUsd ?? snap.totalUsd;
+      weekStartTs = parsed?.ts ?? Date.now();
+    }
+  } catch { /* first-ever call — baseline defaults to current total, weekIncomeUsd will read 0 */ }
+
+  const weekIncomeUsd = snap.totalUsd - weekBaselineUsd;
+
+  if (url.searchParams.get("rollover") === "true") {
+    await env.FRAME_ALERTS.put(key, JSON.stringify({ totalUsd: snap.totalUsd, ts: Date.now() }));
+  }
+
+  return jsonResponse({
+    wallet: PUBLISHER_WALLET.toBase58(),
+    sol: snap.solUi,
+    usdc: snap.usdcUi,
+    skr: snap.skrUi,
+    stakedSkr: snap.stakedSkr,
+    solUsdPrice: snap.solUsdPrice,
+    skrUsdPrice: snap.skrUsdPrice,
+    totalUsd: Math.round(snap.totalUsd * 100) / 100,
+    weekIncomeUsd: Math.round(weekIncomeUsd * 100) / 100,
+    weekStartTs,
   });
 }
 
