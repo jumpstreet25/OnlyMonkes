@@ -30,9 +30,18 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AdDisclosureModal } from "@/components/AdDisclosureModal";
 import { useAppOpenAdGate } from "@/hooks/useAppOpenAdGate";
 import { captureError } from "@/lib/sentry";
+import { ADS_ENABLED } from "@/lib/ads";
 
 function AdGateInner() {
   useEffect(() => {
+    // 2026-08-27: with ads gated off (ADS_ENABLED, see ads.ts) no ad will
+    // ever be requested — don't even touch the native Google Mobile Ads
+    // module. A real user's Seeker reported a launch crash right after
+    // this SDK was first wired in; root cause unconfirmed (a device-side
+    // Play Services gap is plausible, but unverified), so until that's
+    // actually understood, the safest thing is to give this native module
+    // zero surface area to fail on when there's nothing for it to do anyway.
+    if (!ADS_ENABLED) return;
     try {
       mobileAds()
         .initialize()

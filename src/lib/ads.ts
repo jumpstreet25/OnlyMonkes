@@ -59,6 +59,13 @@ export const AD_REWARD_BANANAS = {
 // once real AdMob unit IDs land in the constants above.
 const TEST_ADS_LIVE = false;
 
+/** Whether anything should touch the Google Mobile Ads native SDK at all
+ *  right now — mobileAds().initialize() included. With ads gated off, no ad
+ *  will ever be requested, so there's no reason to initialize (and no
+ *  reason to give that native module any surface area to fail on, on a
+ *  device where it might not behave — e.g. incomplete Play Services). */
+export const ADS_ENABLED = TEST_ADS_LIVE;
+
 /** Resolves an AD_UNIT_IDS.* value to itself, or null if ads are gated off
  *  (see TEST_ADS_LIVE above). Every ad-consuming hook call site should pass
  *  its adUnitId through this rather than using AD_UNIT_IDS directly. */
