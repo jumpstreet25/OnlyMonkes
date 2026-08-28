@@ -19,7 +19,7 @@ export const APP_NAME = 'OnlyMonkes';
 // ─── SKR Token ────────────────────────────────────────────────────────────────
 export const SKR_MINT = ENV_SKR || 'SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3';
 // Jump.skr developer wallet — receives tips + trading fees
-export const DEV_WALLET = ENV_DEV || '7tLrnPvgcR5mLtyUcVwvmhAD1wXbAKgWcLBPWxpwyZ1J';
+export const DEV_WALLET = ENV_DEV || 'BzyaYyd7ew7SRqC1P9Q6z61ebfYmdXRFU6UfKjHzcQ2o';
 // USDC mainnet mint (Circle)
 export const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 // SKR holders get a 10% discount on banana shop purchases
