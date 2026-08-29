@@ -164,9 +164,9 @@ android {
         }
         release {
             storeFile file('onlymonkes-release.keystore')
-            storePassword 'onlymonkes2026'
-            keyAlias 'onlymonkes-release'
-            keyPassword 'onlymonkes2026'
+            storePassword project.findProperty('RELEASE_STORE_PASSWORD') ?: System.getenv('RELEASE_STORE_PASSWORD')
+            keyAlias project.findProperty('RELEASE_KEY_ALIAS') ?: System.getenv('RELEASE_KEY_ALIAS')
+            keyPassword project.findProperty('RELEASE_KEY_PASSWORD') ?: System.getenv('RELEASE_KEY_PASSWORD')
         }
     }
     buildTypes {
