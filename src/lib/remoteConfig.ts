@@ -6,11 +6,13 @@
  * group without rebuilding the APK.
  *
  * Reads:  raw.githubusercontent.com — no auth, always fast.
- * Writes: GitHub Contents API — requires a classic PAT (repo scope).
- *         The admin enters their PAT once in-app; it's saved to SecureStore.
+ * Writes: routed through the Cloudflare Worker (POST /api/admin/publish-app-config).
+ *         The admin's wallet signs a domain-separated message proving identity;
+ *         the worker verifies it against ADMIN_WALLET_PUBKEY and holds the
+ *         actual GitHub credential — no GitHub token ever touches the phone.
  */
 
-import * as SecureStore from 'expo-secure-store';
+const WORKER_BASE = 'https://onlymonkes-actions.jumpstreet25.workers.dev';
 
 export interface AppRemoteConfig {
   globalGroupId: string;
@@ -29,8 +31,6 @@ const REPO   = 'jumpstreet25/OnlyMonkes';
 const BRANCH = 'master';
 const FILE   = 'config/app-config.json';
 const RAW    = `https://raw.githubusercontent.com/${REPO}/${BRANCH}/${FILE}`;
-const API    = `https://api.github.com/repos/${REPO}/contents/${FILE}`;
-const SK_TOKEN = 'admin_gh_token';
 
 const EMPTY: AppRemoteConfig = { globalGroupId: '', adminInboxId: '' };
 
@@ -57,79 +57,37 @@ export async function fetchAppConfig(): Promise<AppRemoteConfig> {
   }
 }
 
-// ─── Admin token (stored in SecureStore, never in source code) ────────────────
-
-export async function getAdminToken(): Promise<string | null> {
-  return SecureStore.getItemAsync(SK_TOKEN);
-}
-
-export async function saveAdminToken(token: string): Promise<void> {
-  await SecureStore.setItemAsync(SK_TOKEN, token.trim());
-}
-
 // ─── Write ────────────────────────────────────────────────────────────────────
 
 /**
- * Publish config to GitHub. By default, refuses to overwrite an existing valid
- * config (one with a non-empty globalGroupId AND the trades bot channel populated).
- * Pass `force: true` to bypass the guard — use only for intentional manual recovery.
+ * Publish config via the worker. By default, the worker refuses to overwrite
+ * an existing valid config (one with a non-empty globalGroupId AND the trades
+ * bot channel populated). Pass `force: true` to bypass — manual recovery only.
+ *
+ * `signMessage` is the admin's wallet signer (e.g. from useMobileWallet) — it
+ * signs the exact same domain-separated message the worker reconstructs and
+ * verifies, so the config payload itself is bound into the signature.
  */
 export async function publishAppConfig(
   config: AppRemoteConfig,
+  wallet: string,
+  signMessage: (bytes: Uint8Array) => Promise<Uint8Array>,
   opts?: { force?: boolean },
 ): Promise<void> {
-  const token = await getAdminToken();
-  if (!token) throw new Error('No admin token — enter your GitHub PAT in Admin Settings.');
+  const ts = Date.now();
+  const configJson = JSON.stringify(config, null, 2);
+  const message = `OnlyMonkes Admin Publish\n${wallet}\n${ts}\n${configJson}`;
+  const sigBytes = await signMessage(new TextEncoder().encode(message));
+  const signature = btoa(String.fromCharCode(...sigBytes));
 
-  // ── Safety guard: don't overwrite a working config ────────────────────────
-  if (!opts?.force) {
-    const existing = await fetchAppConfig();
-    const hasGroup = !!existing.globalGroupId;
-    const hasAllChannels = !!existing.botChannels?.trades;
-
-    if (hasGroup && hasAllChannels) {
-      // Remote config is already complete — refuse silent overwrite.
-      // This prevents admin self-heal from clobbering the bot's working group IDs
-      // when the admin's local XMTP DB is wiped but everyone else is fine.
-      console.warn(
-        '[remoteConfig] BLOCKED auto-publish — remote config already has valid group IDs.',
-        'Existing:', existing.globalGroupId.slice(0, 8) + '…',
-        'Attempted:', config.globalGroupId.slice(0, 8) + '…',
-        'Use force:true to override.',
-      );
-      return;
-    }
-  }
-
-  // Fetch current SHA (required by GitHub API to update a file).
-  const infoRes = await fetch(API, {
-    headers: {
-      Authorization: `token ${token}`,
-      'User-Agent': 'OnlyMonkes-App',
-    },
-  });
-  if (!infoRes.ok) throw new Error(`GitHub API error ${infoRes.status} — check your PAT.`);
-  const info = await infoRes.json() as { sha?: string };
-  if (!info.sha) throw new Error('GitHub API response missing SHA — cannot update config.');
-
-  const content = Buffer.from(JSON.stringify(config, null, 2), 'utf8').toString('base64');
-
-  const putRes = await fetch(API, {
-    method: 'PUT',
-    headers: {
-      Authorization: `token ${token}`,
-      'Content-Type': 'application/json',
-      'User-Agent': 'OnlyMonkes-App',
-    },
-    body: JSON.stringify({
-      message: 'chore: update app config [skip ci]',
-      content,
-      sha: info.sha,
-    }),
+  const res = await fetch(`${WORKER_BASE}/api/admin/publish-app-config`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ config, wallet, ts, signature, force: opts?.force ?? false }),
   });
 
-  if (!putRes.ok) {
-    const err = await putRes.json().catch(() => ({}));
-    throw new Error((err as any).message ?? `Publish failed: ${putRes.status}`);
+  const body = await res.json().catch(() => ({})) as { ok?: boolean; error?: string };
+  if (!res.ok || !body.ok) {
+    throw new Error(body.error ?? `Publish failed: ${res.status}`);
   }
 }

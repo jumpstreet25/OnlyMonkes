@@ -65,7 +65,6 @@ import { parseEventMessage, saveEvent } from "@/lib/calendar";
 import {
   fetchAppConfig,
   publishAppConfig,
-  saveAdminToken,
 } from "@/lib/remoteConfig";
 import { toast } from "sonner-native";
 import { useAppStore } from "@/store/appStore";
@@ -2689,15 +2688,17 @@ export function useXmtp() {
     }
   }, []);
 
-  // ── Admin: publish group ID to GitHub config ───────────────────────────────
-  const publishGroupId = useCallback(async (githubPat: string) => {
+  // ── Admin: publish group ID to remote config (wallet-signed, via worker) ───
+  const publishGroupId = useCallback(async (
+    wallet: string,
+    signMessage: (bytes: Uint8Array) => Promise<Uint8Array>,
+  ) => {
     if (!_client) throw new Error("XMTP client not ready");
     const groupId = (_group as any)?.id;
     if (!groupId) throw new Error("No group created yet — initialize the app first.");
 
-    await saveAdminToken(githubPat);
-    await publishAppConfig({ globalGroupId: groupId, adminInboxId: _client.inboxId });
-    if (__DEV__) console.log("[XMTP] Group config published to GitHub.");
+    await publishAppConfig({ globalGroupId: groupId, adminInboxId: _client.inboxId }, wallet, signMessage);
+    if (__DEV__) console.log("[XMTP] Group config published.");
   }, []);
 
   // ── Admin recovery: minting is disabled. Join the published rooms only. ─────

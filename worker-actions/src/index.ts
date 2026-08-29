@@ -24,6 +24,8 @@
  *   JUP_API_KEY        — Jupiter Swap API v2 key (get from portal.jup.ag)
  *   BOT_HTTP_SECRET    — Bearer token for authenticated bot endpoints
  *   ESCROW_ENCRYPT_KEY — 256-bit hex key for AES-GCM encryption of ephemeral secrets in KV
+ *   ADMIN_WALLET_PUBKEY — admin's Solana wallet base58 address (see adminConfig.ts)
+ *   ADMIN_GITHUB_PAT     — fine-grained GitHub PAT, scoped to this repo's Contents only
  *
  * KV Namespaces (create via `wrangler kv:namespace create TIP_ESCROW`):
  *   TIP_ESCROW — stores encrypted ephemeral keypairs for tip links (72h TTL)
@@ -84,6 +86,7 @@ import {
   handleGetRsvps,
   handleGetRsvpStatus,
 } from "./community";
+import { handlePublishAppConfig } from "./adminConfig";
 
 // Cloudflare Workers KV namespace binding (declared locally to avoid @cloudflare/workers-types dependency)
 interface KVListOptions {
@@ -136,6 +139,13 @@ export interface Env {
   AD_ENTITLEMENTS: KVNamespace;
   // MonkeGlobe/MonkeEvents public web repo backend — see community.ts.
   COMMUNITY_DATA: KVNamespace;
+  // Admin config publish (see adminConfig.ts) — replaces the old app-side
+  // classic-PAT-in-SecureStore flow. ADMIN_WALLET_PUBKEY is the admin's
+  // Solana wallet base58 address (not the XMTP inboxId); ADMIN_GITHUB_PAT
+  // should be a fine-grained PAT scoped to just this one repo, Contents:
+  // read/write, nothing else.
+  ADMIN_WALLET_PUBKEY?: string;
+  ADMIN_GITHUB_PAT?: string;
 }
 
 // Cron Trigger types (declared locally, same reasoning as KVNamespace above —
@@ -3329,7 +3339,7 @@ export default {
 
     // Health check
     if (path === "/health") {
-      return jsonResponse({ status: "ok", version: "1.10.0", endpoints: ["/api/actions/swap", "/api/actions/tip", "/api/actions/predict", "/api/actions/bet", "/api/actions/kalshi-bet", "/api/actions/treasury-swap", "/api/actions/treasury-stake", "/api/treasury/status", "/api/treasury/threshold-check", "/api/treasury/weekly-summary", "/api/actions/ad-skip", "/api/ad-skip/status", "/api/ad-skip/verify", "/escrow", "/claim", "/frames/alert", "/legal", "/terms", "/privacy", "/copyright", "/", "/api/stats", "/api/verify", "/api/holders/index", "/api/top-traders", "/api/signals", "/monke/:mint", "/api/sentiment/register-device", "/api/sentiment/unregister-device", "/api/sentiment/ingest", "/api/sentiment/score", "/api/community/locations", "/api/community/location", "/api/community/events", "/api/community/events/:id", "/api/community/events/:id/rsvp", "/api/community/events/:id/rsvps"] });
+      return jsonResponse({ status: "ok", version: "1.10.0", endpoints: ["/api/actions/swap", "/api/actions/tip", "/api/actions/predict", "/api/actions/bet", "/api/actions/kalshi-bet", "/api/actions/treasury-swap", "/api/actions/treasury-stake", "/api/treasury/status", "/api/treasury/threshold-check", "/api/treasury/weekly-summary", "/api/actions/ad-skip", "/api/ad-skip/status", "/api/ad-skip/verify", "/escrow", "/claim", "/frames/alert", "/legal", "/terms", "/privacy", "/copyright", "/", "/api/stats", "/api/verify", "/api/holders/index", "/api/top-traders", "/api/signals", "/monke/:mint", "/api/sentiment/register-device", "/api/sentiment/unregister-device", "/api/sentiment/ingest", "/api/sentiment/score", "/api/community/locations", "/api/community/location", "/api/community/events", "/api/community/events/:id", "/api/community/events/:id/rsvp", "/api/community/events/:id/rsvps", "/api/admin/publish-app-config"] });
     }
 
     // 2026-07-30: public "Check Your Monke" growth page — see the section
@@ -3353,6 +3363,13 @@ export default {
     }
     if (path === "/api/holders/lookup") {
       if (request.method === "GET") return handleHoldersLookup(url, env);
+      return errorResponse("Method not allowed", 405);
+    }
+
+    // Admin config publish — see adminConfig.ts. Wallet-signed, no GitHub
+    // credential ever leaves this worker.
+    if (path === "/api/admin/publish-app-config") {
+      if (request.method === "POST") return handlePublishAppConfig(request, env);
       return errorResponse("Method not allowed", 405);
     }
 
