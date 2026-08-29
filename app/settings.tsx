@@ -154,7 +154,9 @@ const THREAT_LABELS: Record<string, string> = {
 };
 
 function SecurityPanel({ cardStyle }: { cardStyle: object }) {
-  const threats = getActiveThreats();
+  // "info" threats (e.g. devMode) are tracked for future gating but never
+  // shown — only "hard"/"soft" are actionable enough to surface to the user.
+  const threats = getActiveThreats().filter((t) => getThreatSeverity(t) !== "info");
   if (threats.length === 0) {
     return (
       <View style={[styles.actionRow, cardStyle]}>
