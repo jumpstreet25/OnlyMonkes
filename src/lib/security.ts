@@ -43,15 +43,18 @@ const HARD_THREATS = new Set<string>([
 const SOFT_THREATS = new Set<string>([
   'simulator',
   'debug',
-  'unofficialStore',
-  // 5.2.0 bootloader — unlocked bootloaders are common on Seeker / sideload.
-  // Log only; never block trading.
-  'bootloader',
 ]);
 // adbEnabled: not surfaced in production — USB/wireless debugging is a normal
 // dev/reviewer device state (sideloading itself requires it), not a real
-// threat signal. Falls through to 'info' severity, same as devMode, so
-// SecurityPanel filters it out.
+// threat signal.
+// unofficialStore: this app's ONLY distribution channels are the Solana dApp
+// Store, GitHub Releases, and direct sideload — none of which register as an
+// "official store" to Talsec's Play-Store-oriented check. It would fire for
+// every single legitimate install, not just compromised ones.
+// bootloader (5.2.0): unlocked bootloaders are the norm on Seeker / sideload
+// devices — the exact hardware this app targets.
+// All three fall through to 'info' severity, same as devMode, so
+// SecurityPanel filters them out. Never block trading on any of them.
 
 export type ThreatSeverity = 'hard' | 'soft' | 'info';
 
