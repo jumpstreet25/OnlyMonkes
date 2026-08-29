@@ -225,14 +225,20 @@ export function useMobileWallet() {
    */
   const signMessage = useCallback(
     async (messageBytes: Uint8Array): Promise<Uint8Array> => {
-      if (!wallet || !authToken) {
+      if (!wallet) {
         throw new Error("Wallet not connected");
       }
-      return signMessageWithAuth(messageBytes, {
-        walletAddress: wallet.address,
-        authToken,
-        rawAddress,
-      });
+      if (authToken) {
+        return signMessageWithAuth(messageBytes, {
+          walletAddress: wallet.address,
+          authToken,
+          rawAddress,
+        });
+      }
+      // This hook instance never ran its own connect() (e.g. mounted fresh on
+      // a screen reached after a session restore) — fall back to the token
+      // cached in the store, same as signBytesWithMwa's re-authorize path.
+      return signBytesWithMwa(wallet.address, messageBytes);
     },
     [wallet, authToken, rawAddress]
   );
