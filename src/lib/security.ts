@@ -44,11 +44,14 @@ const SOFT_THREATS = new Set<string>([
   'simulator',
   'debug',
   'unofficialStore',
-  'adbEnabled',
   // 5.2.0 bootloader — unlocked bootloaders are common on Seeker / sideload.
   // Log only; never block trading.
   'bootloader',
 ]);
+// adbEnabled: not surfaced in production — USB/wireless debugging is a normal
+// dev/reviewer device state (sideloading itself requires it), not a real
+// threat signal. Falls through to 'info' severity, same as devMode, so
+// SecurityPanel filters it out.
 
 export type ThreatSeverity = 'hard' | 'soft' | 'info';
 
