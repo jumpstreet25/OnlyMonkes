@@ -636,7 +636,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                 />
                 <GridButton
                   iconName="portfolio"
-                  label="Treasury"
+                  label="OnlyTreasury"
                   onPress={() => { onClose(); setTimeout(() => router.push('/treasury' as any), 300); }}
                 />
                 <GridButton

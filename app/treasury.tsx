@@ -62,7 +62,7 @@ export default function TreasuryScreen() {
   const solValue = status?.solUsdPrice ? status.sol * status.solUsdPrice : null;
 
   return (
-    <WorldScreenShell title="Treasury" onBack={() => router.back()}>
+    <WorldScreenShell title="OnlyTreasury" onBack={() => router.back()}>
       <ScrollView
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={THEME.accent} />}
