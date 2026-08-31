@@ -107,15 +107,64 @@ async function fetchSolUsdPrice(env: Env): Promise<number | null> {
   } catch { return null; }
 }
 
-// SKR/USD — same DexScreener token-lookup pattern already proven live in
-// index.ts's fetchFloorAndMarket() for this exact mint.
-async function fetchSkrUsdPrice(): Promise<number | null> {
+// SKR/USD. 2026-08-31: this used to be DexScreener-only with no fallback —
+// a single transient timeout/rate-limit here silently zeroed the ENTIRE SKR
+// contribution to totalUsd (both staked and unstaked), which is normally
+// the majority of the treasury's real value vs. the SOL/USDC portions.
+// Confirmed live: a Treasury screen capture showed totalUsd exactly equal
+// to the SOL-only amount while stakedSkr displayed correctly alongside it
+// (stakedSkr comes from a separate on-chain read, unaffected by this price
+// fetch) — the only way that combination happens is skrUsdPrice having come
+// back null for that one request. Direct curl afterward showed DexScreener
+// healthy again, consistent with a transient blip, not a dead endpoint.
+// Layered now: DexScreener (picking the highest-liquidity pair, not just
+// pairs[0], in case a second SKR pool ever appears) -> a real Jupiter swap
+// quote (1 SKR -> USDC, the same same-domain-quote workaround already
+// proven for SOL/USD above — Jupiter's actual Price API is dead, confirmed
+// elsewhere in this codebase) -> last-known-good price cached in KV, so a
+// full outage of both live sources degrades to a slightly-stale number
+// instead of silently dropping most of the treasury's displayed value.
+async function fetchSkrUsdPrice(env: Env): Promise<number | null> {
+  const KV_KEY = `${TREASURY_KV_PREFIX}lastSkrPriceUsd`;
+  const remember = async (price: number) => {
+    try { await env.FRAME_ALERTS.put(KV_KEY, String(price)); } catch { /* non-fatal */ }
+  };
+
   try {
-    const res = await fetchWithTimeout(`https://api.dexscreener.com/latest/dex/tokens/${SKR_MINT.toBase58()}`, {}, 8_000);
-    if (!res.ok) return null;
-    const d = await res.json() as any;
-    const price = d?.pairs?.[0]?.priceUsd;
-    return price ? parseFloat(price) : null;
+    const res = await fetchWithTimeout(`https://api.dexscreener.com/tokens/v1/solana/${SKR_MINT.toBase58()}`, {}, 8_000);
+    if (res.ok) {
+      const pairs = await res.json() as Array<{ priceUsd?: string; liquidity?: { usd?: number } }>;
+      const best = (pairs ?? []).reduce<{ priceUsd?: string; liquidity?: { usd?: number } } | null>(
+        (a, b) => ((b.liquidity?.usd ?? 0) > (a?.liquidity?.usd ?? -1) ? b : a), null,
+      );
+      const price = best?.priceUsd ? parseFloat(best.priceUsd) : null;
+      if (price && Number.isFinite(price) && price > 0) {
+        await remember(price);
+        return price;
+      }
+    }
+  } catch { /* fall through */ }
+
+  try {
+    const res = await fetchWithTimeout(
+      `https://api.jup.ag/swap/v2/quote?inputMint=${SKR_MINT.toBase58()}&outputMint=${USDC_MINT.toBase58()}&amount=1000000&slippageBps=50`,
+      { headers: env.JUP_API_KEY ? { "x-api-key": env.JUP_API_KEY } : {} },
+      8_000,
+    );
+    if (res.ok) {
+      const d = await res.json() as any;
+      const out = Number(d?.outAmount);
+      if (Number.isFinite(out) && out > 0) {
+        const price = out / 1e6;
+        await remember(price);
+        return price;
+      }
+    }
+  } catch { /* fall through */ }
+
+  try {
+    const cached = await env.FRAME_ALERTS.get(KV_KEY);
+    return cached ? parseFloat(cached) : null;
   } catch { return null; }
 }
 
@@ -183,7 +232,7 @@ async function readTreasurySnapshot(env: Env) {
     connection.getParsedTokenAccountsByOwner(PUBLISHER_WALLET, { mint: SKR_MINT }),
     connection.getParsedTokenAccountsByOwner(PUBLISHER_WALLET, { mint: USDC_MINT }),
     fetchSolUsdPrice(env),
-    fetchSkrUsdPrice(),
+    fetchSkrUsdPrice(env),
     readSharePrice(connection),
   ]);
   const skrUi = skrAccounts.value[0]?.account.data.parsed.info.tokenAmount.uiAmount ?? 0;
