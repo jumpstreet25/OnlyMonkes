@@ -180,6 +180,12 @@ git diff --cached | grep -inE '(eval\(|Function\(|dangerouslySet|\.env\.|process
 
 If ANY check fails, fix the issue before committing. No exceptions.
 
+## Remote code-fix via bot DM (2026-09-01)
+
+- **`/claude [app|bot] <task>` DM command** (`xmtpOnlyMonkes.ts`, admin-only via `isAdmin()` — silent no-op for anyone else, not listed in `/help`): lets the dev file a Claude Code fix request from inside the OnlyMonkes app itself, away from their own machine. Opens a GitHub issue labeled `claude-fix` in `OnlyMonkes` or `Monke_Eliza` (`src/lib/claudeFixIssue.ts` in the bot repo, via `GITHUB_ISSUES_TOKEN` — a fine-grained PAT scoped to Issues-write only, **not set yet**, command fails gracefully with a clear DM error until it is).
+- **Claude Code side**: a routine (`trig_011XPmixSD6PRc1MZjdPAA5h`, env `env_01MBYqS7JRRaEgQtaFKS9NGa`, full `Read/Edit/Write/Bash/Grep/Glob` access) is created and ready — instructed to investigate, fix, **always open a PR, never push directly to develop/master**, and comment the result back on the issue. The GitHub webhook trigger (`hook_type=app`, `source=github`, `scope_id=jumpstreet25/OnlyMonkes`, `events=[issues]`) is fully shaped and ready to create but blocked on **connecting the GitHub account to Claude Code** (claude.ai/code settings → connections) — a one-time authorization only the account owner can grant. Monke_Eliza needs its own separate routine+trigger once OnlyMonkes is proven out (routine environments are one-repo-scoped).
+- This is a convenience/backup layer, not the primary remote-fix path — claude.ai/code from a phone browser (full interactive Claude Code, no bot/GitHub relay) is the more direct option for anything needing back-and-forth debugging.
+
 ## Solana Actions / Blinks
 
 - **Actions worker**: `https://onlymonkes-actions.jumpstreet25.workers.dev` (Cloudflare Worker)
