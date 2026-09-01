@@ -30,6 +30,18 @@ export const SKR_MINT = ENV_SKR || 'SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3'
 // purchases/fees were landing there instead of the real publisher wallet
 // while the bot and treasury Blinks were already correct.
 export const DEV_WALLET = ENV_DEV || 'BzyaYyd7ew7SRqC1P9Q6z61ebfYmdXRFU6UfKjHzcQ2o';
+// 2026-09-02: the dev's own personal wallet — for "is the person using the
+// app right now the dev" identity checks (admin-gated UI, gift-shop-item
+// picker, dev-self-purchase detection). Distinct from DEV_WALLET above
+// (the publisher/treasury wallet money flows TO) — before the Aug 24 fix
+// they were the same value by coincidence, so every isDevAdmin-style check
+// silently broke the moment DEV_WALLET was corrected to the real publisher
+// wallet. Found via a real report: dev lost the ability to gift Banana Shop
+// items to a new member. Matches the AutonoMonke-enrolled wallet tied to
+// the bot's admin inbox (ab90147fcca3…) — see Monke_Eliza's
+// .automonke_wallets.json. Never repoint this at a payment-destination
+// wallet again — it answers "who is logged in", not "where does money go".
+export const DEV_ADMIN_WALLET = '7tLrnPvgcR5mLtyUcVwvmhAD1wXbAKgWcLBPWxpwyZ1J';
 // USDC mainnet mint (Circle)
 export const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 // SKR holders get a 10% discount on banana shop purchases

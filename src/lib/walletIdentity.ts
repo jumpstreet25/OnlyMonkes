@@ -21,17 +21,16 @@ import { loadShopState, getEquippedStyles, setShopWalletContext, mergeOwnedItems
 import { loadHistory, setMarketplaceWalletContext } from '@/lib/marketplace';
 import { applyThemeFromShop } from '@/lib/shopTheme';
 import { fetchPurchaseReceiptsFromChain, isReceiptMintingAvailable } from '@/lib/cnftReceipts';
-import { DEV_WALLET } from '@/lib/constants';
+import { DEV_ADMIN_WALLET } from '@/lib/constants';
 
-// Hardcoded list of known dev/test wallet addresses that get auto-topped-up
-// to a testing balance when their banana count drops below the threshold.
-// Includes both the env-driven DEV_WALLET (might be a custom value in .env)
-// and the canonical Saga Monkes dev wallet, so the bypass works regardless
-// of how the app was built.
-const DEV_TEST_WALLETS = new Set<string>([
-  DEV_WALLET,
-  '7tLrnPvgcR5mLtyUcVwvmhAD1wXbAKgWcLBPWxpwyZ1J',
-]);
+// Known dev/test wallet addresses that get auto-topped-up to a testing
+// balance when their banana count drops below the threshold. Was a
+// two-entry Set (DEV_WALLET + a hardcoded duplicate of the same address)
+// from before DEV_WALLET and DEV_ADMIN_WALLET were split apart 2026-09-02 —
+// DEV_WALLET is now the publisher/treasury wallet, a different address, so
+// this only ever worked because of the hardcoded duplicate. Consolidated
+// onto the one real constant.
+const DEV_TEST_WALLETS = new Set<string>([DEV_ADMIN_WALLET]);
 const DEV_BANANA_FLOOR = 1000;
 const DEV_BANANA_GRANT = 5000;
 

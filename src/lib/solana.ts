@@ -37,7 +37,7 @@ import {
   transact,
   Web3MobileWallet,
 } from "@solana-mobile/mobile-wallet-adapter-protocol-web3js";
-import { HELIUS_RPC_URL, SKR_MINT, DEV_WALLET, JUP_API_KEY, USDC_MINT, SKR_DISCOUNT_PCT } from "./constants";
+import { HELIUS_RPC_URL, SKR_MINT, DEV_WALLET, DEV_ADMIN_WALLET, JUP_API_KEY, USDC_MINT, SKR_DISCOUNT_PCT } from "./constants";
 import { useAppStore } from "@/store/appStore";
 import { assertDeviceTrusted } from "./security";
 import bs58 from "bs58";
@@ -113,7 +113,7 @@ export async function sendShopPayment(
 
   // Skip payment if buyer IS the dev wallet (self-transfer is pointless)
   const myWallet = useAppStore.getState().wallet?.address;
-  if (myWallet && myWallet === DEV_WALLET) {
+  if (myWallet && myWallet === DEV_ADMIN_WALLET) {
     return "dev-self-purchase";
   }
 
@@ -121,7 +121,7 @@ export async function sendShopPayment(
     const senderPubkey = await mwaAuthorize(mobileWallet);
 
     // Skip if authorized wallet matches dev wallet
-    if (senderPubkey.toBase58() === DEV_WALLET) return "dev-self-purchase";
+    if (senderPubkey.toBase58() === DEV_ADMIN_WALLET) return "dev-self-purchase";
 
     const { blockhash } = await connection.getLatestBlockhash("confirmed");
 
@@ -217,7 +217,7 @@ async function getSkrDecimals(connection: Connection): Promise<number> {
  *
  * @param usdCost  Item's USD price (e.g. 4.99 for a Tier 5 World)
  * @param currency Payment currency
- * @returns transaction signature, or "dev-self-purchase" if buyer is DEV_WALLET
+ * @returns transaction signature, or "dev-self-purchase" if buyer is DEV_ADMIN_WALLET
  */
 export async function sendShopPaymentMulti(
   usdCost: number,
@@ -229,7 +229,7 @@ export async function sendShopPaymentMulti(
   }
 
   const myWallet = useAppStore.getState().wallet?.address;
-  if (myWallet && myWallet === DEV_WALLET) return "dev-self-purchase";
+  if (myWallet && myWallet === DEV_ADMIN_WALLET) return "dev-self-purchase";
 
   const connection = new Connection(HELIUS_RPC_URL, "confirmed");
   const devPubkey = new PublicKey(DEV_WALLET);
@@ -255,7 +255,7 @@ export async function sendShopPaymentMulti(
 
     const sig = await transact(async (mobileWallet: Web3MobileWallet) => {
       const senderPubkey = await mwaAuthorize(mobileWallet);
-      if (senderPubkey.toBase58() === DEV_WALLET) return "dev-self-purchase";
+      if (senderPubkey.toBase58() === DEV_ADMIN_WALLET) return "dev-self-purchase";
       const { blockhash } = await connection.getLatestBlockhash("confirmed");
       const tx = new Transaction({ recentBlockhash: blockhash, feePayer: senderPubkey }).add(
         SystemProgram.transfer({ fromPubkey: senderPubkey, toPubkey: devPubkey, lamports }),
@@ -301,7 +301,7 @@ export async function sendShopPaymentMulti(
 
   const sig = await transact(async (mobileWallet: Web3MobileWallet) => {
     const senderPubkey = await mwaAuthorize(mobileWallet);
-    if (senderPubkey.toBase58() === DEV_WALLET) return "dev-self-purchase";
+    if (senderPubkey.toBase58() === DEV_ADMIN_WALLET) return "dev-self-purchase";
 
     const minContextSlot = await connection.getSlot();
     const senderATA = getAssociatedTokenAddressSync(mintPubkey, senderPubkey);

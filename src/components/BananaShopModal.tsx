@@ -22,7 +22,7 @@ import * as Haptics from "expo-haptics";
 import { toast } from "sonner-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { playSound } from "@/lib/sounds";
-import { THEME, FONTS, DEV_WALLET, getWorldBarTint, getWorldAccent } from "@/lib/constants";
+import { THEME, FONTS, DEV_ADMIN_WALLET, getWorldBarTint, getWorldAccent } from "@/lib/constants";
 import { GLASS_BORDER } from "@/lib/glassTheme";
 import { WorldGlassFill } from "@/components/WorldGlassFill";
 import { IS_IMMERSIVE_SHELL } from "@/lib/immersiveStatusBar";
@@ -570,7 +570,7 @@ export function BananaShopModal({ visible, onClose, onLeaderboardPress, onSuppor
     // Dev wallet bypasses both banana check and crypto payment — for testing.
     // Production users still hit the full balance check below.
     const myWalletForCheck = useAppStore.getState().wallet?.address;
-    const isDevForBananaCheck = myWalletForCheck === DEV_WALLET;
+    const isDevForBananaCheck = myWalletForCheck === DEV_ADMIN_WALLET;
 
     if (!isDevForBananaCheck && bananaBalance < item.bananaCost) {
       showGlassAlert("Not enough bananas", `You need ${item.bananaCost} 🍌 but have ${bananaBalance}. Keep logging in daily!`);
@@ -688,7 +688,7 @@ export function BananaShopModal({ visible, onClose, onLeaderboardPress, onSuppor
               <Text style={styles.backText}>⏻</Text>
             </Pressable>
           )}
-          {useAppStore.getState().wallet?.address === DEV_WALLET && (
+          {useAppStore.getState().wallet?.address === DEV_ADMIN_WALLET && (
             <View style={styles.devPill}>
               <Text style={styles.devPillText}>DEV</Text>
             </View>
@@ -743,7 +743,7 @@ export function BananaShopModal({ visible, onClose, onLeaderboardPress, onSuppor
                 if (spinningCrate) return;
                 const cost = getCrateCost();
                 const crateWallet = useAppStore.getState().wallet?.address;
-                const isDevCrate = crateWallet === DEV_WALLET;
+                const isDevCrate = crateWallet === DEV_ADMIN_WALLET;
                 if (!isDevCrate && bananaBalance < cost) {
                   showGlassAlert("Not enough bananas", `You need ${cost} 🍌 to open a Banana Chest.`);
                   return;
@@ -995,7 +995,7 @@ export function BananaShopModal({ visible, onClose, onLeaderboardPress, onSuppor
           setPurchasing(item.id);
           try {
             const myWallet = useAppStore.getState().wallet?.address;
-            const isDevWallet = myWallet && myWallet === DEV_WALLET;
+            const isDevWallet = myWallet && myWallet === DEV_ADMIN_WALLET;
 
             // Dev wallet skips banana spend AND crypto payment (test path).
             if (!isDevWallet) {

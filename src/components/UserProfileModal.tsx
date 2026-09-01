@@ -20,7 +20,7 @@ import {
 import { GlassBottomSheet } from "@/components/GlassBottomSheet";
 import { MonkeGlass, MonkeGlassActionButton } from "@/components/MonkeGlass";
 import { useAppStore } from "@/store/appStore";
-import { THEME, FONTS, DEV_WALLET } from "@/lib/constants";
+import { THEME, FONTS, DEV_ADMIN_WALLET } from "@/lib/constants";
 import { shortenAddress } from "@/lib/nftVerification";
 import { getCachedProfile } from "@/lib/userProfile";
 import { getLastSeenText, isUserOnline } from "@/lib/presence";
@@ -52,7 +52,7 @@ interface UserProfileModalProps {
 
 export function UserProfileModal({ visible, target, onClose, onEditProfile, onChangePfp, onSwitchWallet, onLogout, onMessage }: UserProfileModalProps) {
   const { myInboxId, username: myUsername, bio: myBio, xAccount: myXAccount, tipWallet: myTipWallet, verifiedNft, wallet } = useAppStore();
-  const isDevAdmin = wallet?.address === DEV_WALLET;
+  const isDevAdmin = wallet?.address === DEV_ADMIN_WALLET;
   const [showTipQr, setShowTipQr] = useState(false);
   // Admin gift picker: null (closed) → "categories" → a specific category name.
   const [giftPickerStep, setGiftPickerStep] = useState<string | null>(null);
@@ -226,7 +226,7 @@ export function UserProfileModal({ visible, target, onClose, onEditProfile, onCh
             </Pressable>
           )}
 
-          {/* Admin: Gift Shop Item (DEV_WALLET only, other profiles only).
+          {/* Admin: Gift Shop Item (DEV_ADMIN_WALLET only, other profiles only).
               2026-07-26: was silently restricted to 7 hardcoded item IDs —
               a full "all items" list (`items`) was already being built but
               never actually used, the Alert below re-filtered from it

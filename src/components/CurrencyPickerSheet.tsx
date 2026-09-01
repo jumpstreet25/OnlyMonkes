@@ -28,7 +28,7 @@ import { LiquidGlass as BlurView } from "@/components/LiquidGlass";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { getAssociatedTokenAddressSync } from "@solana/spl-token";
 import { GLASS_BG, GLASS_BORDER, getBlurProps } from "@/lib/glassTheme";
-import { THEME, FONTS, SKR_MINT, USDC_MINT, SOLANA_RPC_URL, DEV_WALLET } from "@/lib/constants";
+import { THEME, FONTS, SKR_MINT, USDC_MINT, SOLANA_RPC_URL, DEV_ADMIN_WALLET } from "@/lib/constants";
 import { useAppStore } from "@/store/appStore";
 import {
   fetchSkrPriceUsd,
@@ -266,7 +266,7 @@ export function CurrencyPickerSheet({
                   row.balance !== null && row.balance < row.tokenAmount;
                 // Dev wallet bypasses every check (matches the dev short-circuit
                 // in BananaShopModal.onChoose).
-                const isDev = wallet?.address === DEV_WALLET;
+                const isDev = wallet?.address === DEV_ADMIN_WALLET;
                 const disabled = isDev ? false : (priceUnavailable || knownInsufficient);
                 const sufficient =
                   row.balance !== null && row.balance >= row.tokenAmount;
