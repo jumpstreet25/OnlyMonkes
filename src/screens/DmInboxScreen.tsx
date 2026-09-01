@@ -35,6 +35,10 @@ import { listGroupDmThreads, createGroupDm, type GroupDmThread } from '@/lib/xmt
 import { getXmtpClient } from '@/hooks/useXmtp';
 import { markChannelRead } from '@/lib/messageCache';
 import { DmInboxSkeleton } from '@/components/SkeletonLoader';
+import { GlassModal } from '@/components/GlassModal';
+import * as Clipboard from 'expo-clipboard';
+import { toast } from 'sonner-native';
+import { getHiddenDmMap, hideDmThread, isDmStillHidden } from '@/lib/dmHidden';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -45,7 +49,7 @@ function relativeTime(date: Date | null): string {
 
 // ─── Thread Row ───────────────────────────────────────────────────────────────
 
-function ThreadRow({ thread, myInboxId, unread }: { thread: DmThread; myInboxId: string; unread: number }) {
+function ThreadRow({ thread, myInboxId, unread, onLongPress }: { thread: DmThread; myInboxId: string; unread: number; onLongPress: (thread: DmThread) => void }) {
   if (thread.peerInboxId === myInboxId) return null;
 
   let profile: any = null;
@@ -83,6 +87,8 @@ function ThreadRow({ thread, myInboxId, unread }: { thread: DmThread; myInboxId:
     <Pressable
       style={styles.threadRow}
       onPress={() => router.push(`/dm/${thread.peerInboxId}` as any)}
+      onLongPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onLongPress(thread); }}
+      delayLongPress={350}
     >
       {avatarUri ? (
         <Image source={{ uri: avatarUri }} style={styles.avatar} />
@@ -111,6 +117,121 @@ function ThreadRow({ thread, myInboxId, unread }: { thread: DmThread; myInboxId:
     </Pressable>
   );
 }
+
+// ─── Thread Action Sheet — long-press: view sender info / delete conversation ──
+
+function ThreadActionSheet({ thread, onClose, onDelete, onViewInfo }: {
+  thread: DmThread | null;
+  onClose: () => void;
+  onDelete: (thread: DmThread) => void;
+  onViewInfo: (thread: DmThread) => void;
+}) {
+  if (!thread) return null;
+  let profile: any = null;
+  try { profile = getCachedProfile(thread.peerInboxId); } catch { /* ignore */ }
+  const name: string = profile?.username ?? 'Monke';
+  return (
+    <GlassModal visible={!!thread} onClose={onClose} position="bottom">
+      <View style={sheetStyles.container}>
+        <Text style={sheetStyles.title} numberOfLines={1}>{name}</Text>
+        <Pressable style={sheetStyles.action} onPress={() => onViewInfo(thread)}>
+          <Text style={sheetStyles.actionText}>🔎 View Sender Info</Text>
+        </Pressable>
+        <Pressable style={sheetStyles.action} onPress={() => onDelete(thread)}>
+          <Text style={[sheetStyles.actionText, sheetStyles.actionDanger]}>🗑 Delete Conversation</Text>
+        </Pressable>
+        <Pressable style={sheetStyles.cancel} onPress={onClose}>
+          <Text style={sheetStyles.cancelText}>Cancel</Text>
+        </Pressable>
+      </View>
+    </GlassModal>
+  );
+}
+
+const sheetStyles = StyleSheet.create({
+  container: { paddingVertical: 8, gap: 4 },
+  title: { fontFamily: FONTS.displayMed, fontSize: 15, color: THEME.text, textAlign: 'center', marginBottom: 8, paddingHorizontal: 16 },
+  action: { paddingVertical: 14, paddingHorizontal: 16 },
+  actionText: { fontFamily: FONTS.body, fontSize: 15, color: THEME.text },
+  actionDanger: { color: '#FF6B6B' },
+  cancel: { paddingVertical: 14, paddingHorizontal: 16, marginTop: 6, borderTopWidth: 1, borderTopColor: THEME.border },
+  cancelText: { fontFamily: FONTS.body, fontSize: 15, color: THEME.textFaint, textAlign: 'center' },
+});
+
+// ─── Sender Info Modal — anti-scam identity verification ───────────────────────
+// 2026-09-02: deliberate, narrow exception to "never expose inboxId/wallet in
+// UI" — this is opt-in (long-press → View Sender Info, never shown by
+// default) and exists specifically so a user can verify who they're actually
+// talking to in a 1:1 DM before trusting it, since a PFP + display name alone
+// can look identical for two different real identities. See CLAUDE.md.
+
+function SenderInfoModal({ thread, onClose }: { thread: DmThread | null; onClose: () => void }) {
+  if (!thread) return null;
+  let profile: any = null;
+  try { profile = getCachedProfile(thread.peerInboxId); } catch { /* ignore */ }
+  const name: string = profile?.username ?? 'Monke';
+  const avatarUri: string | null = profile?.nftImage ?? null;
+  const walletAddress: string | undefined = profile?.walletAddress;
+
+  const copy = async (label: string, value: string) => {
+    await Clipboard.setStringAsync(value);
+    toast.success(`${label} copied`);
+  };
+
+  return (
+    <GlassModal visible={!!thread} onClose={onClose} position="center">
+      <View style={infoStyles.container}>
+        {avatarUri ? (
+          <Image source={{ uri: avatarUri }} style={infoStyles.avatar} />
+        ) : (
+          <View style={infoStyles.avatarFallback}>
+            <Text style={infoStyles.avatarGlyph}>🐒</Text>
+          </View>
+        )}
+        <Text style={infoStyles.name}>{name}</Text>
+        <Text style={infoStyles.warning}>
+          Verify this matches who you expect before trusting this chat — a name and photo alone can be copied.
+        </Text>
+
+        <Pressable style={infoStyles.field} onPress={() => copy('Inbox ID', thread.peerInboxId)}>
+          <Text style={infoStyles.fieldLabel}>Inbox ID (tap to copy)</Text>
+          <Text style={infoStyles.fieldValue} numberOfLines={1}>{thread.peerInboxId}</Text>
+        </Pressable>
+
+        {walletAddress ? (
+          <Pressable style={infoStyles.field} onPress={() => copy('Wallet address', walletAddress)}>
+            <Text style={infoStyles.fieldLabel}>Wallet address (tap to copy)</Text>
+            <Text style={infoStyles.fieldValue} numberOfLines={1}>{walletAddress}</Text>
+          </Pressable>
+        ) : (
+          <View style={infoStyles.field}>
+            <Text style={infoStyles.fieldLabel}>Wallet address</Text>
+            <Text style={infoStyles.fieldValueMuted}>Not verified yet — this sender hasn't broadcast a signed wallet proof.</Text>
+          </View>
+        )}
+
+        <Pressable style={infoStyles.closeBtn} onPress={onClose}>
+          <Text style={infoStyles.closeBtnText}>Close</Text>
+        </Pressable>
+      </View>
+    </GlassModal>
+  );
+}
+
+const infoStyles = StyleSheet.create({
+  container: { alignItems: 'center', paddingVertical: 8, gap: 10, minWidth: 280 },
+  avatar: { width: 72, height: 72, borderRadius: 36, marginBottom: 4 },
+  avatarFallback: { width: 72, height: 72, borderRadius: 36, backgroundColor: THEME.accentSoft, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
+  avatarGlyph: { fontSize: 32 },
+  name: { fontFamily: FONTS.displayMed, fontSize: 17, color: THEME.text },
+  warning: { fontFamily: FONTS.body, fontSize: 12, color: THEME.textFaint, textAlign: 'center', paddingHorizontal: 8, lineHeight: 16 },
+  field: { alignSelf: 'stretch', backgroundColor: THEME.surfaceHigh, borderRadius: 12, padding: 12, gap: 4 },
+  fieldLabel: { fontFamily: FONTS.mono, fontSize: 10, color: THEME.textFaint, textTransform: 'uppercase' },
+  fieldValue: { fontFamily: FONTS.mono, fontSize: 12, color: THEME.text },
+  fieldValueMuted: { fontFamily: FONTS.body, fontSize: 12, color: THEME.textFaint, lineHeight: 16 },
+  closeBtn: { alignSelf: 'stretch', paddingVertical: 12, alignItems: 'center', marginTop: 4 },
+  closeBtnText: { fontFamily: FONTS.body, fontSize: 14, color: THEME.accent },
+});
 
 // ─���─ Group Thread Row ────────────────────────────────────────────────────────
 
@@ -407,6 +528,9 @@ export default function DmInboxScreen() {
   const [composeOpen, setComposeOpen] = useState(false);
   const [newGroupOpen, setNewGroupOpen] = useState(false);
   const [groupThreads, setGroupThreads] = useState<GroupDmThread[]>([]);
+  const [hiddenMap, setHiddenMap] = useState<Record<string, number>>({});
+  const [actionSheetThread, setActionSheetThread] = useState<DmThread | null>(null);
+  const [infoModalThread, setInfoModalThread] = useState<DmThread | null>(null);
   useProfileVersion();
   const themeBg = useThemeColor('bg');
   const themeBorder = useThemeColor('border');
@@ -415,6 +539,27 @@ export default function DmInboxScreen() {
   useEffect(() => {
     markChannelRead('dms').catch(() => {});
     useAppStore.getState().clearCommunityBadge('dms');
+  }, []);
+
+  // Load per-device hidden-DM set (local "delete conversation")
+  useEffect(() => {
+    getHiddenDmMap().then(setHiddenMap).catch(() => {});
+  }, []);
+
+  const handleLongPressThread = useCallback((thread: DmThread) => {
+    setActionSheetThread(thread);
+  }, []);
+
+  const handleDeleteThread = useCallback(async (thread: DmThread) => {
+    setActionSheetThread(null);
+    await hideDmThread(thread.peerInboxId);
+    setHiddenMap(prev => ({ ...prev, [thread.peerInboxId]: Date.now() }));
+    toast.success('Conversation removed');
+  }, []);
+
+  const handleViewInfo = useCallback((thread: DmThread) => {
+    setActionSheetThread(null);
+    setInfoModalThread(thread);
   }, []);
 
   // Load group DM threads
@@ -436,7 +581,9 @@ export default function DmInboxScreen() {
       | { kind: 'dm'; thread: DmThread }
       | { kind: 'group'; thread: GroupDmThread };
     const items: MergedItem[] = [
-      ...threads.map(t => ({ kind: 'dm' as const, thread: t })),
+      ...threads
+        .filter(t => !isDmStillHidden(hiddenMap, t.peerInboxId, t.lastMessageAt))
+        .map(t => ({ kind: 'dm' as const, thread: t })),
       ...groupThreads.map(t => ({ kind: 'group' as const, thread: t })),
     ];
     items.sort((a, b) => {
@@ -445,7 +592,7 @@ export default function DmInboxScreen() {
       return bTime - aTime;
     });
     return items;
-  }, [threads, groupThreads]);
+  }, [threads, groupThreads, hiddenMap]);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top, backgroundColor: themeBg }]}>
@@ -483,7 +630,7 @@ export default function DmInboxScreen() {
             if (item.kind === 'group') {
               return <GroupThreadRow thread={item.thread} myInboxId={myInboxId ?? ''} />;
             }
-            return <ThreadRow thread={item.thread} myInboxId={myInboxId ?? ''} unread={dmUnreadCounts[item.thread.peerInboxId] ?? 0} />;
+            return <ThreadRow thread={item.thread} myInboxId={myInboxId ?? ''} unread={dmUnreadCounts[item.thread.peerInboxId] ?? 0} onLongPress={handleLongPressThread} />;
           }}
           refreshControl={
             <RefreshControl
@@ -517,6 +664,16 @@ export default function DmInboxScreen() {
         visible={newGroupOpen}
         onClose={() => setNewGroupOpen(false)}
         myInboxId={myInboxId ?? ''}
+      />
+      <ThreadActionSheet
+        thread={actionSheetThread}
+        onClose={() => setActionSheetThread(null)}
+        onDelete={handleDeleteThread}
+        onViewInfo={handleViewInfo}
+      />
+      <SenderInfoModal
+        thread={infoModalThread}
+        onClose={() => setInfoModalThread(null)}
       />
     </View>
   );

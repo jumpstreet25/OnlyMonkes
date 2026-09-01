@@ -12,7 +12,7 @@ Rules are added over time as issues arise.
 ## Security & Privacy
 
 - **NEVER store keys or sensitive data from any users.** No private keys, seed phrases, wallet secrets, or authentication tokens are persisted in code, logs, or state.
-- **NEVER log or expose** XMTP inbox IDs, wallet addresses, or push tokens in user-visible UI. Internal debug logs only.
+- **NEVER log or expose** XMTP inbox IDs, wallet addresses, or push tokens in user-visible UI. Internal debug logs only. **One deliberate, narrow exception (2026-09-02)**: `DmInboxScreen`'s long-press → "View Sender Info" modal shows the peer's inboxId + wallet address (if known) for anti-scam identity verification in 1:1 DMs — opt-in only, never shown by default, requested explicitly to stop a PFP+name-only DM from being spoofable/ambiguous. Do not extend this pattern to any always-visible UI (chat bubbles, profile cards, etc.) without the same explicit reasoning.
 - **NEVER commit** `.env`, `.xmtp_bot_key`, `credentials.json`, keystore files, or any file containing secrets to git.
 - **NEVER hardcode** API keys, private keys, or secrets in source code. Always use environment variables.
 
