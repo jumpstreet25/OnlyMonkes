@@ -218,7 +218,18 @@ export function MessageActionSheet({
                         onPress={() => {
                           onClose();
                           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                          onStickerReact(item.displayUrl, target.id);
+                          // 2026-09-02: was item.displayUrl — GIPHY's "downsized"
+                          // rendition is a full animated GIF (can be hundreds of
+                          // KB to a few MB), rendered at 26x26 in the reaction
+                          // pill on the message. A slow/stalled first fetch of
+                          // that large file (vs. the tiny static previewUrl the
+                          // picker grid itself already uses) reads as "doesn't
+                          // render until you force-close and reopen" — by then
+                          // it's finished downloading in the background and is
+                          // disk-cached. previewUrl is a static single-frame
+                          // thumbnail, same sticker, tiny payload, no visible
+                          // quality loss at reaction-pill size.
+                          onStickerReact(item.previewUrl, target.id);
                         }}
                         style={({ pressed }) => [styles.stickerGridCell, pressed && { opacity: 0.7 }]}
                       >
