@@ -98,6 +98,40 @@ async function handleBananaBetNotificationData(data: Record<string, unknown> | u
       myBet: myBetSide ? { side: myBetSide as "yes" | "no", amount: Number(myBetAmount ?? 0) } : null,
       ...(shareCaption ? { shareCaption } : {}),
     });
+  } else if (data.type === "autonomonke_trade_closed") {
+    // 2026-09-02: "Post this win" deep-link — same cold-start reconstruction
+    // reasoning as banana_bet_settled above. Only ever sent for wins
+    // (bot-side gate in engine.ts), so no isWin check needed here.
+    const {
+      source, token, mint, entrySolAmount, exitSolAmount, pnlSol, pnlPct,
+      durationMs, reason, baseMint, baseSymbol, entryBaseAmount, exitBaseAmount, ts,
+    } = data as Record<string, string>;
+    if (!token || !mint || !entrySolAmount || !exitSolAmount || !pnlPct || !durationMs || !ts) return;
+    const { useTradesStore } = await import("@/store/tradesStore");
+    const closedAt = Number(ts);
+    const openedAt = closedAt - Number(durationMs);
+    const trade = {
+      // Same id scheme as the real TRADE_CLOSED DM path (useXmtp.ts) —
+      // required so addClosedTrade's id-based dedup collapses this
+      // push-reconstructed entry with the DM's own entry once it syncs,
+      // instead of leaving two rows for the same trade.
+      id: `${mint}-${ts}`,
+      source: source === "autonomonke" ? "autonomonke" as const : "manual" as const,
+      token, mint,
+      entrySolAmount: Number(entrySolAmount),
+      exitSolAmount: Number(exitSolAmount),
+      pnlSol: Number(pnlSol ?? 0),
+      pnlPct: Number(pnlPct),
+      durationMs: Number(durationMs),
+      openedAt, closedAt,
+      reason: reason || undefined,
+      baseMint: baseMint || undefined,
+      baseSymbol: (baseSymbol === "USDC" || baseSymbol === "SKR" ? baseSymbol : "SOL") as "SOL" | "USDC" | "SKR",
+      entryBaseAmount: entryBaseAmount ? Number(entryBaseAmount) : undefined,
+      exitBaseAmount: exitBaseAmount ? Number(exitBaseAmount) : undefined,
+    };
+    useTradesStore.getState().addClosedTrade?.(trade);
+    useAppStore.getState().setActiveTradeCloseCard(trade);
   } else if (data.type === "poll_result") {
     // 2026-07-20: same cold-start reconstruction pattern as banana_bet_settled
     // above. winningOption/tally arrive as JSON strings, not objects — FCM

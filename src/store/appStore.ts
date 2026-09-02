@@ -23,6 +23,7 @@ import type { LiveRoomData } from '../lib/livekit';
 import type { VideoRoomData } from '../lib/liveVideo';
 import type { AvatarRoomData } from '../lib/avatarRoom';
 import type { BananaBetOpenData, BananaBetSettledData, MyBetRecord } from '../lib/bananaBet';
+import type { ClosedTrade } from '../lib/positions';
 import type { PollOpenData, PollResultData } from '../lib/poll';
 
 /** Settlement popup state, enriched client-side with this device's own bet
@@ -272,6 +273,12 @@ interface LiveFeaturesState {
   activeBananaBetResult: BananaBetResultDisplay | null;
   activePoll: PollOpenData | null;
   activePollResult: PollResultDisplay | null;
+  /** 2026-09-02: cold-start-safe reconstruction of a winning AutonoMonke
+   *  close's share card, same pattern as activeBananaBetResult — the push
+   *  notification embeds the full trade fields since a killed-app tap
+   *  can't rely on the matching TRADE_CLOSED DM having synced into
+   *  tradesStore yet. Losses never populate this (no "post this loss"). */
+  activeTradeCloseCard: ClosedTrade | null;
 }
 
 interface LiveFeaturesActions {
@@ -290,6 +297,7 @@ interface LiveFeaturesActions {
   setActiveBananaBetResult: (result: BananaBetResultDisplay | null) => void;
   setActivePoll: (poll: PollOpenData | null) => void;
   setActivePollResult: (result: PollResultDisplay | null) => void;
+  setActiveTradeCloseCard: (trade: ClosedTrade | null) => void;
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -380,6 +388,7 @@ const initialState: AppState = {
   activeBananaBetResult: null,
   activePoll: null,
   activePollResult: null,
+  activeTradeCloseCard: null,
 };
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -580,6 +589,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   setPendingNftSwap: (pendingNftSwap) => set({ pendingNftSwap }),
   setActiveBananaBet: (activeBananaBet) => set({ activeBananaBet }),
   setActiveBananaBetResult: (activeBananaBetResult) => set({ activeBananaBetResult }),
+  setActiveTradeCloseCard: (activeTradeCloseCard) => set({ activeTradeCloseCard }),
   setActivePoll: (activePoll) => set({ activePoll }),
   setActivePollResult: (activePollResult) => set({ activePollResult }),
 

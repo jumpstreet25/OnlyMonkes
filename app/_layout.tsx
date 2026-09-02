@@ -14,6 +14,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'sonner-native';
 import { BananaBetPopup } from '../src/components/BananaBetPopup';
+import { TradeCloseSharePrompt } from '../src/components/TradeCloseSharePrompt';
 import { BananaBetResultPopup } from '../src/components/BananaBetResultPopup';
 import { PollPopup } from '../src/components/PollPopup';
 import { PollResultPopup } from '../src/components/PollResultPopup';
@@ -266,6 +267,7 @@ export default function RootLayout() {
           <BananaBetResultPopup />
           <PollPopup />
           <PollResultPopup />
+          <TradeCloseSharePrompt />
           <OtaUpdateIndicator />
           <GlassAlertRoot />
           <AdGate />
