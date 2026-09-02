@@ -1,6 +1,6 @@
 # OnlyMonkes
 
-An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect your wallet, prove ownership, and chat with other verified holders — group chat, live audio rooms, live video calls, direct messages, GIFs, video, reactions, tipping, community events, and an AI trading agent — all powered by on-chain identity and decentralized messaging via XMTP.
+An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect your wallet, prove ownership, and chat with other verified holders — group chat, Avatar Rooms, live video calls, direct messages, GIFs, video, reactions, tipping, community events, and an AI trading agent — all powered by on-chain identity and decentralized messaging via XMTP.
 
 ---
 
@@ -33,7 +33,7 @@ An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect yo
 - **Direct Messages** — 1-on-1 encrypted DMs with any Monkes holder; inbox screen with compose modal, searchable user directory, message preview and timestamps; cross-app portable via XMTP (conversations accessible from any XMTP-compatible wallet app)
 - **Rich text links** — `@username` mentions render blue and are tappable (opens PFP modal); `$TOKEN` symbols render gold
 - **Inline sender labels** — sender name + timestamp rendered inside every chat bubble (bottom-aligned); own messages right-aligned, others left-aligned
-- **OnlyMonkes blue branding** — all blues unified to the signature sky blue (`#6CB4EE`) from the header logo: sender names, @mention links, toolbar labels (CAM/LIVE/GIF), live audio pill, default chat bubble theme, Community drawer title, and badge numbers
+- **OnlyMonkes blue branding** — all blues unified to the signature sky blue (`#6CB4EE`) from the header logo: sender names, @mention links, toolbar labels (CAM/LIVE/GIF), default chat bubble theme, Community drawer title, and badge numbers
 - **Bot command ticker** — continuously scrolling horizontal ticker in the Main Chat header showing all bot commands (white text, blue dot separators); DM with bot shows DM-only commands (Ask anything, APPROVE, REJECT, etc.)
 - **Bot slash commands** — type `/` to autocomplete 10 bot commands: `/price`, `/ta`, `/watchlist`, `/alerts`, `/sports`, `/tip`, `/buy`, `/sell`, `/swap`, `/help`
 - **Message search** — search through chat history
@@ -49,10 +49,9 @@ An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect yo
 - **SOL → SKR swap tips** — users without $SKR can tip using SOL; Jupiter swap + SPL transfer chained in a single `transact()` session (one biometric prompt)
 
 ### Community
-- **Bot alert channels** — four dedicated read-only feeds for categorized bot alerts: Monke Bets, Monke Trades, Monke Sales, Monke Predictions; each backed by a separate XMTP group configured via remote app config; channel icons in the toolbar below the message bar with white badge bubbles showing blue unread counts (tap to navigate + clear, long-press to clear); mute/unmute button in each channel header; warm cache with 60s TTL for instant re-opens without reload; real-time badge count streaming from background XMTP listeners; branded banner headers per channel (Bets.png, Trade.png, Sales.png, Predictions.png)
-- **Sports filter** — per-sport mute toggles in Monke Bets channel; persisted to AsyncStorage and broadcast in PROFILE_UPDATE so the bot filters server-side; client-side filtering hides muted sport alerts in the Bets feed in real time; survives app restarts
+- **Bot alert channel (MonkeTrades)** — one dedicated read-only feed for bot alerts (TA signals, NFT sales — Sales merged into Trades 2026-08-13); backed by a single XMTP group configured via remote app config; channel icon in the toolbar below the message bar with a white badge bubble showing blue unread count (tap to navigate + clear, long-press to clear); mute/unmute button in the channel header; warm cache with 60s TTL for instant re-opens without reload; real-time badge count streaming from background XMTP listeners; branded Trade.png banner header
 - **dApp side chats** — per-dApp community channels (hamburger menu)
-- **Community events calendar** — schedule, view, and RSVP to events; OnlyMonkes-tagged events support "Start Live Audio Chat" and "Start Video Call" when time arrives
+- **Community events calendar** — schedule, view, and RSVP to events; OnlyMonkes-tagged events support "Start Video Call" when time arrives
 - **Community badges** — white pill badges with OnlyMonkes blue count on hamburger menu items (DMs, Events, Links); total badge count on hamburger button; auto-clear on view
 - **Support banner** — live $SKR token price (DexScreener) and Saga Monkes floor price (Magic Eden) flanking the "Help Support OnlyMonkes" banner; auto-refresh every 60s; floor price is a tappable blue pill that navigates to the in-app Marketplace
 - **NFT Marketplace (MonkeMarkets)** — peer-to-peer Saga Monkes trading inside the app; list, bid, accept, delist — all via XMTP protocol messages; dedicated Marketplace screen with branded MonkeMarkets banner header; accessible from menu and from the tappable floor price button in the chat footer
@@ -60,8 +59,7 @@ An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect yo
   - **Trait floor pricing** — when listing an NFT, the top trait's Magic Eden floor price is shown with a one-click "Set price" button for instant pricing; floor data fetched from Magic Eden Attributes API
   - **Guest access** — non-holders can browse MonkeMarkets listings (read-only); bidding and listing require NFT ownership
   - **2% sale fee** — a 2% fee is deducted from the sale price and sent to the dev wallet; injected atomically into the swap transaction (buyer pays listed price, seller receives 98%); fee agreement modal shown once before first listing
-- **Live Audio Rooms** — Twitter Spaces-style voice chat via LiveKit WebRTC; host/listener grid with speaking-highlight rings, mute toggle, live participant count, pinned banner in main chat
-  - **Minimize to chat** — tap ⌄ to collapse the audio room back to the chat without disconnecting; a floating blue pill stays pinned at the top of the chat showing `@host · N Monkes`, a live mute/unmute button, and an expand arrow to return to the full room
+- **Avatar Rooms** — animated NFT PFP avatars in a shared room via LiveKit WebRTC; mouth-sprite overlay driven by Google ML Kit face tracking (jaw openness) or an audio-energy fallback, head tilt/nod/turn from face rotation; minimizes to a pill in Main Chat; sticker reactions broadcast via LiveKit data channel. Replaced Live Audio Rooms (discontinued v2.33).
 - **Live Video Calls** — multi-person video group calls (3–15 participants) via LiveKit WebRTC SFU with 720p simulcast; native camera rendering via `@livekit/react-native` VideoView (RTCView); adaptive grid layout (1→full, 2→1x2, 3-4→2x2, 5-6→2x3, 7-9→3x3, 10-15→3x5 scroll); controls for mic, camera, flip camera, screen share, leave; embedded TURN for NAT traversal; DTLS/SRTP media encryption; runtime camera + mic permission requests on Android
   - **iOS-style PiP bubble** — minimize the video call to a floating picture-in-picture bubble overlaid on the ChatScreen header; shows the active speaker's NFT avatar with animated speaking ring, pulsing LIVE badge, participant count; tap to expand back to full-screen
   - **Real-time sticker reactions** — send SagaMonkes GIPHY stickers during video calls; reactions float up from the bottom-right with scale + fade animations; broadcast to all participants in real time via LiveKit data channel; horizontal sticker tray toggled by the 🐵 button in controls
@@ -112,8 +110,6 @@ An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect yo
 - **Smart notification timing** — learns each user's historically active hours from message timestamps; high-priority alerts push during active hours, medium batch during inactive, low-priority deliver in-app only; batched notifications summarized and flushed when user comes online
 
 ### Intelligence & Monitoring
-- **Prediction accuracy tracking** — MonkePredictions (Drift) outcomes tracked separately from trade accuracy; per-user win rate feeds into MonkeClout scoring
-- **Sports bet accuracy tracking** — MonkeBets outcomes tracked per user and per sport; feeds into CloutScore
 - **Community Alpha** — users whose CONFIRM commands precede winning trades get bonus Clout; "Community Alpha" flair for 60%+ WR on 5+ confirms; leaderboard of top alpha callers
 - **Alert auto-tuning** — rolling 7-day accuracy tracking per market condition (trending_bull/bear, ranging, volatile); dynamic threshold adjustment based on win rate; posts to MonkeTrades: "🧠 Hermes Confidence Adjustment: raised threshold from 45 → 48 (last 20 signals hit 54% WR)"
 - **Token auto-blacklist** — 3 consecutive losses = blacklisted (skipped for signals); auto-whitelisted after 48h or market condition change
@@ -130,14 +126,14 @@ An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect yo
 - **MWA biometric re-auth** — cached wallet adapter auth tokens for silent re-authentication with biometric prompt; no app-switch needed after first connect
 
 ### AI Agent & TA Scanner
-- **AI Agent #9385 (Monke)** — unified XMTP bot identity with a confident, ball-busting, banana-obsessed persona; powers all features: TA scanning, trade alerts, NFT sales, sports betting, prediction markets, DM commands, and LLM chat; built on ElizaOS v2 with plugin-solana for trade execution; Pyth Hermes SSE streaming for sub-second price feeds
-- **Multi-LLM brain chain** — Groq `openai/gpt-oss-20b` (`GROQ_FAST_MODEL`, TPD 200k) → xAI Grok 4.1 Fast only (`grok-4-1-fast`) → Gemini 3.6 Flash → OpenRouter (Llama 3.3 70B) → Ollama **CPU-only last resort** on the VPS (DeepSeek R1 1.5B + Qwen 3 1.7B). **The VPS has no GPU** — see `Monke_Eliza/agents/monke-trader/VPS.md` (keep that file updated; Claude and Grok both read it). Model IDs live in `Monke_Eliza/agents/monke-trader/src/lib/llm/models.ts`. Hermes *memory* (`hermesMemory.ts`) is injected into the prompt; the Hermes CLI is **not** in the per-message chain. Cerebras is opt-in only (`CEREBRAS_ENABLED=true` on the VPS) — that account is paid-quota (HTTP 402). Groq retired `llama-3.3-70b-versatile` / `llama-3.1-8b-instant` on 2026-08-16. Anthropic is removed. Circuit breaker: 2 failures → 5 min cooldown per provider (`fallbackChain.ts`). **Production bot is VPS-only** (`systemd` `monketrader.service` on `monke@157.173.192.39`). Do not start the Mac LaunchAgent — a second process locks the XMTP DB.
-- **Multi-timeframe TA scanner** — professional-grade scanner covering 100+ Solana SPL tokens (53 watchlist + Birdeye discovery + Hermes Solana Toolkit discoveries) every 10 min across 15m/1H/4H/daily candles; OHLCV from GeckoTerminal → DexPaprika → Birdeye fallback chain; posts confluence alerts to Monke Trades channel when signal score ≥50 (bipolar scale) with medium+ conviction; sentiment gate on ALL alert types (TA, sports, predictions, Drift); whale and chat sentiment gates; low-conviction signals and bad Fib data alerts automatically filtered
+- **AI Agent #9385 (Monke)** — unified XMTP bot identity with a confident, ball-busting, banana-obsessed persona; powers all features: TA scanning, trade alerts, NFT sales, DM commands, and LLM chat; built on ElizaOS v2 with plugin-solana for trade execution; Pyth Hermes SSE streaming for sub-second price feeds
+- **Multi-LLM brain chain** — Groq `openai/gpt-oss-20b` (`GROQ_FAST_MODEL`, TPD 200k) → Gemini 3.6 Flash → OpenRouter (Llama 3.3 70B) → Ollama **CPU-only last resort** on the VPS (DeepSeek R1 1.5B + Qwen 3 1.7B) → xAI `grok-4.20-0309-non-reasoning` **last, on purpose** (the only paid-per-token step — every free/local option is tried first). **The VPS has no GPU** — see `Monke_Eliza/agents/monke-trader/VPS.md` (keep that file updated; Claude and Grok both read it). Model IDs live in `Monke_Eliza/agents/monke-trader/src/lib/llm/models.ts`. Hermes *memory* (`hermesMemory.ts`) is injected into the prompt; the Hermes CLI is **not** in the per-message chain. Cerebras is opt-in only (`CEREBRAS_ENABLED=true` on the VPS) — that account is paid-quota (HTTP 402). Groq retired `llama-3.3-70b-versatile` / `llama-3.1-8b-instant` on 2026-08-16. Anthropic is removed. Circuit breaker: 2 failures → 5 min cooldown per provider (`fallbackChain.ts`). **Production bot is VPS-only** (`systemd` `monketrader.service` on `monke@157.173.192.39`). Do not start the Mac LaunchAgent — a second process locks the XMTP DB.
+- **Multi-timeframe TA scanner** — professional-grade scanner covering 100+ Solana SPL tokens (53 watchlist + Birdeye discovery + Hermes Solana Toolkit discoveries) every 10 min across 15m/1H/4H/daily candles; OHLCV from GeckoTerminal → DexPaprika → Birdeye fallback chain; posts confluence alerts to Monke Trades channel when signal score ≥50 (bipolar scale) with medium+ conviction; sentiment gate on all alert types; whale and chat sentiment gates; low-conviction signals and bad Fib data alerts automatically filtered
 - **Hermes Alert Quality Badge** — every TA alert includes a Hermes confidence overlay: "🧠 Hermes: 🟢 72% — similar setups: 8/11 hit T1 in ~3.8h | $NOS: 3W/1L"; scores each signal against historical outcomes by matching confluence bracket + TF alignment + token track record
 - **TA candle charts** — every bullish TA alert includes a generated candlestick chart image (with Fibonacci levels, entry/stop/targets overlaid, EMA12/26, Bollinger Bands, volume bars) sent to the Monke Trades channel
 - **AutonoMonke / MonkeBrain** — live book is **MonkeBrain** (same name, three universes: NEW TOKEN <7d at **0.05 SOL HQ+ only**, MEME flow, ESTABLISHED HTF). Classic TA composite still scores every cycle so Hermes can compare (`brainVsTa`); it does **not** open fills. Execution still uses AutonoMonke wallets, Jupiter, stops, drawdown halt. Pump.fun 0–10m sniper is a third lane. Sunday Hermes 7-day tune.
 - **Slash commands** — `/tip @Username [amt]` (send $SKR), `/buy $TOKEN`, `/sell $TOKEN`, `/swap $A for $B` — all execute in-app via MWA biometric sign + Jupiter aggregator
-- **DM slash commands** — DM the bot for 40+ commands: `/automonke`, `/risk`, `/predictions`, `/bets`, `/price`, `/ta`, `/buy`, `/portfolio`, `/hermes`, `/backtest`
+- **DM slash commands** — DM the bot for 40+ commands: `/automonke`, `/risk`, `/limit`, `/price`, `/ta`, `/buy`, `/portfolio`, `/hermes`, `/backtest`
 - **Color-coded risk alerts** — 🟢 Low Risk, 🟡 Medium, 🔴 High Risk dots on all TA alerts; compact confluence tags (RSI + MACD Cross + BB Squeeze); inline chart links (DEXScreener, Birdeye, Jupiter); Solana Actions Blink cards for one-tap execution
 - **Per-user TA risk settings** — DM the bot `/risk` to set position size, stop-loss %, conviction threshold, blacklist, mute, and more
 - **Backtesting** — DM `/backtest $TOKEN [days]` for historical signal replay with win/loss stats, Sharpe ratio, max drawdown
@@ -156,35 +152,17 @@ An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect yo
 - **`/hermes` DM command** — users query their own memory: `/hermes stats`, `/hermes best`, `/hermes worst`, `/hermes history`, `/hermes achievements`
 - **Hermes Solana Toolkit** — OpenClaw extension with `solana_trending` (discover trending SPL tokens) and `solana_token_chart` (OHLCV + EMA + RSI + Fib for any token); discoveries auto-feed into the bot's scanner universe
 
-### MonkePredictions (Drift BET)
-- **Autonomous prediction markets** — AI-powered prediction market engine on Drift Protocol (Solana); scans active BET markets with full TA analysis (MACD, RSI, EMA, Ichimoku, Bollinger, Fibonacci, candlestick patterns); fires alerts to Monke Predictions channel when signal score ≥65/100
-- **DM commands** — `/predictions start` to enroll (separate risk disclaimer), `/predictions stop|resume` to pause/resume, `/predictions confidence <50-100>` to set AI confidence threshold, `/predictions size <1-500>` max USDC per position, `/predictions max <1-10>` max concurrent positions, `/predictions positions` to view open, `/predictions history` for closed P&L, `/predictions markets` to browse active Drift BET markets, `/predictions withdraw` to close all, `/predictions delete` to full opt-out
-- **9-gate decision engine** — disclaimer check → wallet check → drawdown halt ($50 max) → TA score gate (65) → cooldown (4hr) → max positions → already-in-market → position sizing → OpenClaw AI confidence; every gate must pass before any autonomous trade executes
-- **Position management** — real-time position monitoring with stop-loss enforcement, Fibonacci target notifications (T1 alert, T2 auto-close), persistent position tracking across bot restarts
-- **Drift Protocol** — BET markets are PerpMarkets with ContractType.PREDICTION; LONG = YES, SHORT = NO; price 0-1 represents probability; collateral is USDC; all on Solana mainnet
-- **Reuses AutonoMonke wallet** — same encrypted hot wallet; no separate wallet setup needed
-- **5% profit fee** — fee only on winning predictions; no fee on losses
-
-### MonkeBets (Monaco Protocol)
-- **Autonomous sports betting** — AI-powered sports betting engine on Monaco Protocol (Solana); value edge detection via SharpAPI + OddsAPI fed through TA analysis; fires alerts to Monke Bets channel with Monaco market links
-- **DM commands** — `/bets start` to enroll (separate risk disclaimer), `/bets stop|resume` to pause/resume, `/bets edge <3-25>` to set minimum value edge %, `/bets confidence <50-100>` for AI confidence threshold, `/bets size <1-200>` max USDT per bet, `/bets max <1-20>` max concurrent bets, `/bets sports NBA,NFL,MLB` to filter by sport (or `all`), `/bets positions` to view open bets, `/bets history` for closed P&L, `/bets markets` to browse active Monaco markets, `/bets cancel` to cancel all open + pause, `/bets delete` to full opt-out
-- **9-gate decision engine** — enrolled/active → wallet check → drawdown halt ($50) → edge threshold → sport filter → cooldown → max open bets → already-bet-on-game → stake sizing → OpenClaw AI confidence
-- **Edge-based sizing** — bets placed only when algorithmic value edge exceeds user-configured threshold (default 7%); BACK (bet FOR) and LAY (bet AGAINST) support
-- **Monaco Protocol** — exchange-style sports betting on Solana; orders placed on-chain via `createOrderUiStake()`; collateral is USDT; supports NFL, NBA, MLB, NHL, EPL, UCL, UFC, NCAAF, NCAAB
-- **Reuses AutonoMonke wallet** — same encrypted hot wallet
-- **5% profit fee** — fee only on winning bets; no fee on losses
-- **Combined TA** — sports alerts cross-reference both SharpAPI edge detection and TA scoring for higher-confidence signals
+### Bot Platform Notes
 - **NFT sale images** — Saga Monkes sales alerts include the actual NFT artwork fetched via Helius DAS API, posted to **MonkeTrades** (Sales merged into Trades 2026-08-13) and as a big-picture push notification. Composer bar shows **one** channel button on 3.3 and 3.4.
 - **Saga Monkes floor TA** — `/ta sagamonkes`, `/chart sagamonkes`, or `@9385 sagamonkes chart` use collection **floor** (CoinGecko, ~0.61 SOL), not a Birdeye SPL token. Bot: `Monke_Eliza/agents/monke-trader/src/lib/nft/sagaMonkesFloor.ts`.
-- **Unified push notifications** — all bot alerts (TA signals, NFT sales, sports bets, predictions, GMonke, PNL reports) route through a single FCM v1 + Expo push pipeline with user preference filtering, per-channel muting, stale token pruning, and big-picture image support
+- **Unified push notifications** — all bot alerts (TA signals, NFT sales, GMonke, PNL reports) route through a single FCM v1 + Expo push pipeline with user preference filtering, per-channel muting, stale token pruning, and big-picture image support
 - **NFT ownership gate** — AI Agent #9385 verifies Saga Monke NFT ownership via Helius DAS before processing any DM command; cached 24 hours per user, checked lazily on first interaction; users who sold their Monke get troll responses instead of bot services; fail-open on API errors to avoid false lockouts
 - **Wallet-stable XMTP inbox** — inboxId is derived from the connected Solana wallet (`src/lib/xmtpIdentity.ts`), not from `createRandom()` + per-phone SecureStore. Same wallet on Saga 3.3 and Seeker 3.4 (or after an OTA) is one inbox; group IDs stay the ones in remote `app-config.json`. A one-time wallet signature on first bind after this change attaches the derived identity (or joins the inbox the other phone already bound). Leftover inboxes from older APKs are **linked by wallet** (bot `knownInboxIds` + on-device `rememberLocalInboxId`) so they count as one holder and render as you — we do not delete them from the MLS group.
 - **Cross-app inbox portability** — XMTP is a decentralized protocol: your inbox is tied to your wallet identity, not to any specific app. Users can DM the bot from any XMTP-compatible app (Converse, Coinbase Wallet, etc.) and the same NFT gate applies — the verification happens bot-side, so selling your Saga Monke blocks access everywhere, not just in OnlyMonkes
 - **Genesis Chat** — restricted read-only tier for wallets holding a Saga Genesis Token or a soulbound Seeker Genesis Token but no Saga Monke: BananaShop + Leaderboard + a bot-only message feed, no compose. Gate is real wallet-ownership DAS verification (`src/lib/genesisTokenVerification.ts`), never a claimed mint string or inboxId. Join request (`GENESIS_JOIN_REQUEST:<wallet>`) binds to XMTP `senderInboxId` and is verified bot-side before the wallet is ever added to the Genesis MLS group — it never grants Main Chat/Trades. Dual holders (also own a Saga Monke) get a swipeable Main/Genesis switch (`src/components/ChatModeSwitch.tsx`). 3.4-only; do not OTA onto runtime 3.3.
-- **Device Integrity Attestation** — real, hardware-rooted device verification at login and before sensitive wallet actions (bet placement), built because no public Solana Mobile TEEPIN SDK exists yet. Server-side parses and chain-verifies the Android Key Attestation certificate chain your device's Keystore already produces (`src/lib/deviceIntegrity.ts` + `worker-actions/src/deviceIntegrity.ts`), pinned against Google's published hardware attestation roots, combined with Free-RASP threat state and live Saga Monke/Genesis ownership. A confirmed hardware-attestation failure blocks chat access the same way failing NFT ownership does; a RASP or transient failure degrades gracefully instead. Backend-verified and cached, not on-chain — a real Solana Attestation Service integration was priced out and shelved as not worth the recurring SOL cost while nothing on-chain needs to read the credential.
-- **LLM chain** — Groq `openai/gpt-oss-20b` (`GROQ_FAST_MODEL`) → xAI Grok 4.1 Fast (`grok-4-1-fast`) → Gemini 3.6 Flash → OpenRouter Llama 3.3 70B → CPU Ollama last-resort on the VPS. Cerebras opt-in. See `Monke_Eliza/agents/monke-trader/VPS.md`.
+- **Device Integrity Attestation** — real, hardware-rooted device verification at login and before sensitive wallet actions, built because no public Solana Mobile TEEPIN SDK exists yet. Server-side parses and chain-verifies the Android Key Attestation certificate chain your device's Keystore already produces (`src/lib/deviceIntegrity.ts` + `worker-actions/src/deviceIntegrity.ts`), pinned against Google's published hardware attestation roots, combined with Free-RASP threat state and live Saga Monke/Genesis ownership. A confirmed hardware-attestation failure blocks chat access the same way failing NFT ownership does; a RASP or transient failure degrades gracefully instead. Backend-verified and cached, not on-chain — a real Solana Attestation Service integration was priced out and shelved as not worth the recurring SOL cost while nothing on-chain needs to read the credential.
 - **Support OnlyMonkes button** — in the Tools drawer; quick-tip 5/10/25/50 $SKR to the dev wallet via in-app MWA biometric (no app switch)
-- **Per-type push titles** — 🐒 MONKE #1234 Sold! / 🐒 TA Signal: $TOKEN / 🔮 Prediction Alert per alert type
+- **Per-type push titles** — 🐒 MONKE #1234 Sold! / 🐒 TA Signal: $TOKEN per alert type
 - **Rich push images** — TA trade alerts include the candlestick chart as a big-picture notification; NFT sales include the Monke artwork
 
 ### Reliability & Hardening (31-point audit, 2026-03-28)
@@ -217,7 +195,7 @@ An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect yo
 - **Crash reporting** — Sentry integration (`@sentry/react-native`) with PII scrubbing; captures errors, breadcrumbs, and user identification
 - **Analytics** — Firebase Analytics (`@react-native-firebase/analytics`); tracks app opens, messages sent, DMs opened, tips sent, swaps executed, daily sessions, chat duration, user properties
 - **Self-hosted LiveKit** — Docker Compose config for self-hosted LiveKit SFU on VPS; embedded TURN for NAT traversal; ~$6-10/mo on Hetzner CX22 (2 vCPU, 4GB RAM); handles 5-10 concurrent rooms with simulcast
-- **LightRAG** — Knowledge graph memory for Hermes bot; port 9621 (localhost only on the VPS); Groq `openai/gpt-oss-120b` + embeddings; ingests TA alerts, outcomes, chat, NFT sales, bets, predictions; enriches DM commands and LLM context via 3s-timeout RAG queries
+- **LightRAG** — Knowledge graph memory for Hermes bot; port 9621 (localhost only on the VPS); Groq `openai/gpt-oss-120b` + embeddings; ingests TA alerts, outcomes, chat, NFT sales; enriches DM commands and LLM context via 3s-timeout RAG queries
 
 ---
 
@@ -228,7 +206,7 @@ An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect yo
 | Framework | React Native + Expo SDK 51 (bare workflow) |
 | Navigation | Expo Router v3 (file-based) |
 | Messaging | XMTP v5 MLS (`@xmtp/react-native-sdk`) |
-| Live Audio | LiveKit WebRTC (`livekit-client`, `@livekit/react-native`) |
+| Avatar Rooms | LiveKit WebRTC + Google ML Kit face tracking (`livekit-client`, `@livekit/react-native`, `react-native-vision-camera-face-detector`) |
 | Live Video | LiveKit WebRTC with 720p simulcast + data channels for reactions |
 | Wallet | Mobile Wallet Adapter (`@solana-mobile/mobile-wallet-adapter-protocol-web3js`) |
 | Token Swaps | Jupiter v2 `/build` API (fee-free instructions) via MWA `VersionedTransaction` |
@@ -244,8 +222,6 @@ An NFT-gated social app for **Saga Monkes** holders on Solana Mobile. Connect yo
 | OTA Updates | EAS Update (`expo-updates`) |
 | Crash Reporting | Sentry (`@sentry/react-native`) |
 | Analytics | Firebase Analytics (`@react-native-firebase/analytics`) |
-| Prediction Markets | Drift Protocol (`@drift-labs/sdk`) — BET PerpMarkets on Solana |
-| Sports Betting | Monaco Protocol (`@monaco-protocol/client`) — exchange-style on-chain bets |
 | JWT Signing | `crypto-js` (HS256 for LiveKit tokens, client-side) |
 | Animations | `react-native-reanimated` ~3.10 |
 | Gestures | `react-native-gesture-handler` |
@@ -347,7 +323,7 @@ OnlyMonkes/
 │   │   └── xmtp.ts                   # XMTP client, message encode/decode, group/DM/video room helpers
 │   │
 │   ├── screens/
-│   │   ├── BotChannelScreen.tsx      # Bot alert feed w/ mute button + sports filter (Bets, Trades, Sales, Predictions)
+│   │   ├── BotChannelScreen.tsx      # Bot alert feed (MonkeTrades) w/ mute button
 │   │   ├── ChatScreen.tsx            # Main group chat: header, live banner, video PiP bubble, floating pill, input
 │   │   ├── ConnectScreen.tsx         # Wallet connect landing + onboarding carousel
 │   │   ├── DAppChatScreen.tsx        # Per-dApp community chat
@@ -481,43 +457,6 @@ Load message history + stream live messages
 
 ---
 
-## Live Audio Room Flow
-
-```
-Host taps LIVE in ChatScreen header
-        │
-        ▼
-createRoomName() + createLivekitToken() (HS256, client-side)
-        │
-        ▼
-Broadcast LIVE_ROOM: signal via XMTP group
-        │
-        ▼
-LiveRoomBanner appears for all members (Join button)
-        │
-        ├── AI Agent relays push to users with live room alerts enabled
-        │
-        ▼
-Members tap Join → navigate to /live-room → liveAudio singleton connects
-        │
-        ▼
-Twitter Spaces UI: host card + listener grid + speaking-highlight rings
-        │
-        ├── Tap ⌄ (Minimize) → router.back() — Room stays connected in singleton
-        │       │
-        │       ▼
-        │   Floating blue pill in ChatScreen (absolute overlay on logo area)
-        │   Shows: 🔴 LIVE · @host · N Monkes · 🎤/🔇 · ⌃
-        │   Mute button works live; tap pill to expand back to full room
-        │
-        ▼
-Host ends room → LIVE_ROOM: {active: false} → banner + pill dismissed
-        │
-        └── liveAudio.disconnectFromRoom() → AudioSession.stopAudioSession()
-```
-
----
-
 ## Live Video Call Flow
 
 ```
@@ -627,16 +566,16 @@ All channels use MAX importance (v8) for heads-up banners. Legacy channels (v1�
 ### Bot Security (Monke_Eliza)
 - **Encrypted wallet vault** — AutonoMonke hot wallets encrypted with AES-256-GCM; private keys never stored in plaintext or logged
 - **12-step gate system** — autonomous trades require: disclaimer acceptance → wallet check → NFT ownership → drawdown halt → TA score → cooldown → position limits → dedup → sizing → AI confidence → execution → notification; every gate is a hard stop
-- **Drawdown halt** — automatic $50 max cumulative loss halt across AutonoMonke, MonkePredictions, and MonkeBets; cannot be bypassed
-- **OpenClaw AI confidence** — every autonomous trade/bet passes through an AI confidence check; low-confidence signals are rejected even if TA score passes
+- **Drawdown halt** — automatic $50 max cumulative loss halt across AutonoMonke; cannot be bypassed
+- **OpenClaw AI confidence** — every autonomous trade passes through an AI confidence check; low-confidence signals are rejected even if TA score passes
 - **Per-user isolation** — each user has independent state, risk settings, position tracking, and drawdown counters; no cross-user data leakage
 - **NFT DM gate** — bot verifies Saga Monke ownership before processing any DM command that touches funds; cached 24hr, fail-open on API errors
-- **Separate disclaimers** — AutonoMonke (trading), MonkePredictions (Drift BET), and MonkeBets (Monaco Protocol) each require independent opt-in with explicit risk acknowledgment
+- **AutonoMonke disclaimer** — requires independent opt-in with explicit risk acknowledgment before enrollment
 - **No eval / no injection** — all user input sanitized; no `eval()`, `Function()`, template literals from user input, or dynamic code execution
 - **Position file safety** — `.json` state files contain only public keys and trade metadata; never private keys or secrets
 
 ### Infrastructure Security
-- **HTTPS everywhere** — all API calls (Helius, Jupiter, Birdeye, GIPHY, Cloudinary, SharpAPI, OddsAPI) over TLS
+- **HTTPS everywhere** — all API calls (Helius, Jupiter, Birdeye, GIPHY, Cloudinary) over TLS
 - **LiveKit encryption** — DTLS for signaling, SRTP for media; embedded TURN for NAT traversal
 - **FCM V1 auth** — push notifications sent via service account with scoped OAuth2 tokens; no legacy server keys
 - **Dependency auditing** — `npm audit` run before releases; critical vulnerabilities must be resolved before shipping
@@ -776,6 +715,3 @@ Output: `android/app/build/outputs/apk/release/app-release.apk`
 | `expo-clipboard` | Copy message text to clipboard |
 | `expo-document-picker` | File selection for chat attachments |
 | `bs58` | Base58 encoding for Solana keypairs (TipLink claim URLs) |
-| `@drift-labs/sdk` | Drift Protocol prediction market integration (bot-side) |
-| `@monaco-protocol/client` | Monaco Protocol sports betting integration (bot-side) |
-| `@coral-xyz/anchor` | Anchor framework for Monaco Protocol on-chain interactions |
