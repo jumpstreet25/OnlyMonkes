@@ -23,6 +23,8 @@ export interface TopTrader {
   rank: number;
   winRatePct: number;
   weeklyGainPct: number;
+  /** Avg closed PnL % across every closed trade ever tracked for this wallet/book. */
+  lifetimeGainPct?: number;
   /** Public Saga Monke / bot image URL when available */
   nftImage?: string;
   /** e.g. "MONKE #622" or "AI Agent #9385 · Entered" */

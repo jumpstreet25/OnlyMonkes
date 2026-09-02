@@ -8,7 +8,7 @@
  */
 
 import React, { useEffect, useState, useCallback, useMemo } from "react";
-import { View, Text, StyleSheet, RefreshControl, ScrollView, Image } from "react-native";
+import { View, Text, StyleSheet, RefreshControl, ScrollView, Image, Pressable, Linking } from "react-native";
 import { THEME, FONTS } from "@/lib/constants";
 import {
   fetchTopTraders,
@@ -21,6 +21,26 @@ import { useWorldGlassCardStyle } from "@/components/worlds/WorldScreenShell";
 import { WorldGlassFill } from "@/components/WorldGlassFill";
 import { useAppStore } from "@/store/appStore";
 import { CopyTradeToggle } from "@/components/CopyTradeToggle";
+import { toast } from "sonner-native";
+
+const TENSOR_SAGA_URL = "https://www.tensor.trade/trade/sagamonkes";
+
+/** Genesis-only holders (no Saga Monke → `verified` false) can view the
+ *  leaderboard but can't copy-trade or run AutonoMonke — those require a
+ *  live Saga Monke ownership check the bot enforces server-side too.
+ *  Explain the gate + link out rather than silently hiding the toggle. */
+function explainCopyTradeGate() {
+  toast(
+    "Copy-Trades & AutonoMonke (MonkeBrain) require a Saga Monkes NFT — tap to get one on Tensor",
+    {
+      action: {
+        label: "Open Tensor",
+        onClick: () => Linking.openURL(TENSOR_SAGA_URL).catch(() => {}),
+      },
+      duration: 6000,
+    },
+  );
+}
 
 const MEDALS = ["🥇", "🥈", "🥉"];
 const PODIUM_BORDER = ["#FFD700", "#C0C0C0", "#CD7F32"]; // gold, silver, bronze
@@ -83,6 +103,12 @@ function BotBookCard({
           {t.weeklyGainPct}%
         </Text>
         <Text style={styles.scoreCaption}>this week</Text>
+        {typeof t.lifetimeGainPct === "number" ? (
+          <Text style={styles.lifetimeCaption}>
+            {t.lifetimeGainPct >= 0 ? "+" : ""}
+            {t.lifetimeGainPct}% lifetime
+          </Text>
+        ) : null}
       </View>
     </View>
   );
@@ -92,10 +118,12 @@ function HolderRow({
   t,
   worldId,
   cardStyle,
+  copyTradeUnlocked,
 }: {
   t: TopTrader;
   worldId?: string;
   cardStyle: object;
+  copyTradeUnlocked: boolean;
 }) {
   const rankLabel = t.rank <= 3 && t.rank >= 1 ? MEDALS[t.rank - 1] : `${t.rank}.`;
   const podium = t.rank >= 1 && t.rank <= 3 ? PODIUM_BORDER[t.rank - 1] : undefined;
@@ -128,13 +156,27 @@ function HolderRow({
         </Text>
         <Text style={styles.stats}>{t.winRatePct}% win rate</Text>
       </View>
-      <Text style={[styles.score, t.weeklyGainPct < 0 && styles.scoreNegative]}>
-        {t.weeklyGainPct >= 0 ? "+" : ""}
-        {t.weeklyGainPct}%
-      </Text>
+      <View style={styles.scoreCol}>
+        <Text style={[styles.score, t.weeklyGainPct < 0 && styles.scoreNegative]}>
+          {t.weeklyGainPct >= 0 ? "+" : ""}
+          {t.weeklyGainPct}%
+        </Text>
+        {typeof t.lifetimeGainPct === "number" ? (
+          <Text style={styles.lifetimeCaption}>
+            {t.lifetimeGainPct >= 0 ? "+" : ""}
+            {t.lifetimeGainPct}% lifetime
+          </Text>
+        ) : null}
+      </View>
       {isCopySlot ? (
         <View style={styles.copyToggleCol}>
-          <CopyTradeToggle slot={t.rank as 1 | 3} enabled={copyEnabled} />
+          {copyTradeUnlocked ? (
+            <CopyTradeToggle slot={t.rank as 1 | 3} enabled={copyEnabled} />
+          ) : (
+            <Pressable onPress={explainCopyTradeGate} hitSlop={8}>
+              <Text style={styles.lockIcon}>🔒</Text>
+            </Pressable>
+          )}
         </View>
       ) : null}
     </View>
@@ -147,6 +189,10 @@ export function LeaderboardView() {
   const [refreshing, setRefreshing] = useState(false);
   const cardStyle = useWorldGlassCardStyle();
   const worldId = useAppStore((s) => s.shopStyles?.worldId) as string | undefined;
+  // Genesis-only holders (no Saga Monke) can view this leaderboard but
+  // can't copy-trade or run AutonoMonke — the bot's own gates enforce this
+  // server-side too, this is just making the gate visible + actionable.
+  const copyTradeUnlocked = useAppStore((s) => s.verified);
 
   const load = useCallback(async (forceRefresh = false) => {
     const entries = await fetchTopTraders(forceRefresh);
@@ -186,6 +232,18 @@ export function LeaderboardView() {
         Bot books · community ranked by weekly gain
       </Text>
 
+      {!copyTradeUnlocked ? (
+        <Pressable
+          style={styles.gateBanner}
+          onPress={() => Linking.openURL(TENSOR_SAGA_URL).catch(() => {})}
+        >
+          <Text style={styles.gateBannerText}>
+            🔒 To activate Copy-Trades or AutonoMonke trades via MonkeBrain, you'll need a Saga Monkes NFT.{" "}
+            <Text style={styles.gateBannerLink}>Get one on Tensor →</Text>
+          </Text>
+        </Pressable>
+      ) : null}
+
       {loading ? (
         <View style={styles.empty}>
           <Text style={styles.emptyText}>Loading…</Text>
@@ -221,6 +279,7 @@ export function LeaderboardView() {
                   t={t}
                   worldId={worldId}
                   cardStyle={cardStyle}
+                  copyTradeUnlocked={copyTradeUnlocked}
                 />
               ))}
             </>
@@ -368,10 +427,41 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   scoreNegative: { color: "#FF6B6B" },
+  lifetimeCaption: {
+    fontFamily: FONTS.mono,
+    fontSize: 8,
+    color: THEME.textFaint,
+    marginTop: 1,
+    textAlign: "right",
+  },
   copyToggleCol: {
     marginLeft: 8,
     alignItems: "center",
     justifyContent: "center",
+  },
+  lockIcon: {
+    fontSize: 16,
+    opacity: 0.6,
+  },
+  gateBanner: {
+    marginHorizontal: 4,
+    marginBottom: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,213,79,0.35)",
+    backgroundColor: "rgba(255,213,79,0.08)",
+  },
+  gateBannerText: {
+    fontFamily: FONTS.body,
+    fontSize: 11.5,
+    color: THEME.textMuted,
+    lineHeight: 16,
+  },
+  gateBannerLink: {
+    color: "#FFD54F",
+    fontFamily: FONTS.bodySemi,
   },
   formula: {
     fontFamily: FONTS.mono,

@@ -2300,6 +2300,8 @@ interface TopTraderEntry {
   rank: number;
   winRatePct: number;   // 0-100, rounded
   weeklyGainPct: number; // rounded, can be negative
+  /** Avg closed PnL % across every closed trade ever tracked for this wallet/book. */
+  lifetimeGainPct?: number;
   /** Optional public CDN image for a Saga Monke held by the trader — never a wallet. */
   nftImage?: string;
   /** Optional public display name e.g. "MONKE #622" */
@@ -2321,7 +2323,7 @@ function isValidTopTradersPayload(v: unknown): v is TopTradersSnapshot {
   const obj = v as Record<string, unknown>;
   if (typeof obj.updatedAt !== "number") return false;
   if (!Array.isArray(obj.traders) || obj.traders.length > 25) return false;
-  const ALLOWED = new Set(["rank", "winRatePct", "weeklyGainPct", "nftImage", "monkeName", "kind"]);
+  const ALLOWED = new Set(["rank", "winRatePct", "weeklyGainPct", "lifetimeGainPct", "nftImage", "monkeName", "kind"]);
   const KIND_OK = new Set(["bot_entered", "bot_monitored", "holder"]);
   return obj.traders.every((t: unknown) => {
     if (!t || typeof t !== "object") return false;
@@ -2331,6 +2333,9 @@ function isValidTopTradersPayload(v: unknown): v is TopTradersSnapshot {
       if (!ALLOWED.has(k)) return false;
     }
     if (typeof e.rank !== "number" || typeof e.winRatePct !== "number" || typeof e.weeklyGainPct !== "number") {
+      return false;
+    }
+    if (e.lifetimeGainPct !== undefined && typeof e.lifetimeGainPct !== "number") {
       return false;
     }
     if (e.nftImage !== undefined) {
