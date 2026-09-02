@@ -2316,6 +2316,41 @@ interface TopTraderEntry {
 interface TopTradersSnapshot {
   updatedAt: number;
   traders: TopTraderEntry[];
+  /** Lifetime-sorted Top 5 "hall of fame" — separate ranking (1..5) from
+   *  `traders`' weekly-first order. Not copy-trade-bound. */
+  lifetimeTraders?: TopTraderEntry[];
+}
+
+const TOP_TRADER_ALLOWED_FIELDS = new Set([
+  "rank", "winRatePct", "weeklyGainPct", "lifetimeGainPct", "nftImage", "monkeName", "kind",
+]);
+const TOP_TRADER_KIND_OK = new Set(["bot_entered", "bot_monitored", "holder"]);
+
+function isValidTopTraderEntry(t: unknown): t is TopTraderEntry {
+  if (!t || typeof t !== "object") return false;
+  const e = t as Record<string, unknown>;
+  // Reject wallet/amount fields and anything else not on the allowlist
+  for (const k of Object.keys(e)) {
+    if (!TOP_TRADER_ALLOWED_FIELDS.has(k)) return false;
+  }
+  if (typeof e.rank !== "number" || typeof e.winRatePct !== "number" || typeof e.weeklyGainPct !== "number") {
+    return false;
+  }
+  if (e.lifetimeGainPct !== undefined && typeof e.lifetimeGainPct !== "number") {
+    return false;
+  }
+  if (e.nftImage !== undefined) {
+    if (typeof e.nftImage !== "string" || !/^https:\/\//i.test(e.nftImage) || e.nftImage.length > 512) {
+      return false;
+    }
+  }
+  if (e.monkeName !== undefined) {
+    if (typeof e.monkeName !== "string" || e.monkeName.length > 40) return false;
+  }
+  if (e.kind !== undefined) {
+    if (typeof e.kind !== "string" || !TOP_TRADER_KIND_OK.has(e.kind)) return false;
+  }
+  return true;
 }
 
 function isValidTopTradersPayload(v: unknown): v is TopTradersSnapshot {
@@ -2323,34 +2358,12 @@ function isValidTopTradersPayload(v: unknown): v is TopTradersSnapshot {
   const obj = v as Record<string, unknown>;
   if (typeof obj.updatedAt !== "number") return false;
   if (!Array.isArray(obj.traders) || obj.traders.length > 25) return false;
-  const ALLOWED = new Set(["rank", "winRatePct", "weeklyGainPct", "lifetimeGainPct", "nftImage", "monkeName", "kind"]);
-  const KIND_OK = new Set(["bot_entered", "bot_monitored", "holder"]);
-  return obj.traders.every((t: unknown) => {
-    if (!t || typeof t !== "object") return false;
-    const e = t as Record<string, unknown>;
-    // Reject wallet/amount fields and anything else not on the allowlist
-    for (const k of Object.keys(e)) {
-      if (!ALLOWED.has(k)) return false;
-    }
-    if (typeof e.rank !== "number" || typeof e.winRatePct !== "number" || typeof e.weeklyGainPct !== "number") {
-      return false;
-    }
-    if (e.lifetimeGainPct !== undefined && typeof e.lifetimeGainPct !== "number") {
-      return false;
-    }
-    if (e.nftImage !== undefined) {
-      if (typeof e.nftImage !== "string" || !/^https:\/\//i.test(e.nftImage) || e.nftImage.length > 512) {
-        return false;
-      }
-    }
-    if (e.monkeName !== undefined) {
-      if (typeof e.monkeName !== "string" || e.monkeName.length > 40) return false;
-    }
-    if (e.kind !== undefined) {
-      if (typeof e.kind !== "string" || !KIND_OK.has(e.kind)) return false;
-    }
-    return true;
-  });
+  if (!obj.traders.every(isValidTopTraderEntry)) return false;
+  if (obj.lifetimeTraders !== undefined) {
+    if (!Array.isArray(obj.lifetimeTraders) || obj.lifetimeTraders.length > 10) return false;
+    if (!obj.lifetimeTraders.every(isValidTopTraderEntry)) return false;
+  }
+  return true;
 }
 
 /** GET /api/top-traders — public JSON, no auth. */

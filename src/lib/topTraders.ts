@@ -33,7 +33,7 @@ export interface TopTrader {
   kind?: TopTraderKind;
 }
 
-let _cache: { entries: TopTrader[]; ts: number } | null = null;
+let _cache: { entries: TopTrader[]; lifetimeEntries: TopTrader[]; ts: number } | null = null;
 
 function isBotKind(k: string | undefined): k is "bot_entered" | "bot_monitored" {
   return k === "bot_entered" || k === "bot_monitored";
@@ -82,16 +82,17 @@ export async function fetchTopTraders(forceRefresh = false): Promise<TopTrader[]
   try {
     const res = await fetch(TOP_TRADERS_URL);
     if (!res.ok) return _cache?.entries ?? [];
-    const data = await res.json() as { traders?: TopTrader[] };
+    const data = await res.json() as { traders?: TopTrader[]; lifetimeTraders?: TopTrader[] };
     const entries = Array.isArray(data.traders) ? data.traders : [];
-    const active = entries
-      .filter(
-        (t) =>
-          typeof t.rank === "number" &&
-          typeof t.winRatePct === "number" &&
-          typeof t.weeklyGainPct === "number",
-      )
-      .map(normalizeTopTrader);
+    const isValidRow = (t: TopTrader) =>
+      typeof t.rank === "number" &&
+      typeof t.winRatePct === "number" &&
+      typeof t.weeklyGainPct === "number";
+    const active = entries.filter(isValidRow).map(normalizeTopTrader);
+    const lifetimeEntries = (Array.isArray(data.lifetimeTraders) ? data.lifetimeTraders : [])
+      .filter(isValidRow)
+      .map(normalizeTopTrader)
+      .sort((a, b) => a.rank - b.rank);
 
     // If API returned two rank-0 rows without kind/name, assign by order
     const rankZero = active.filter((t) => t.rank === 0 && !isBotKind(t.kind));
@@ -115,11 +116,19 @@ export async function fetchTopTraders(forceRefresh = false): Promise<TopTrader[]
       ...bots.filter((t) => t.kind === "bot_monitored"),
       ...holders,
     ];
-    _cache = { entries: ordered, ts: Date.now() };
+    _cache = { entries: ordered, lifetimeEntries, ts: Date.now() };
     return ordered;
   } catch {
     return _cache?.entries ?? [];
   }
+}
+
+/** Lifetime-sorted Top 5 "hall of fame" — separate ranking from
+ *  fetchTopTraders' weekly-first order. Populated by the same fetch, so
+ *  call fetchTopTraders() first (or just after) to warm this cache. */
+export async function fetchLifetimeTopTraders(forceRefresh = false): Promise<TopTrader[]> {
+  await fetchTopTraders(forceRefresh);
+  return _cache?.lifetimeEntries ?? [];
 }
 
 export function isBotTrader(t: TopTrader): boolean {

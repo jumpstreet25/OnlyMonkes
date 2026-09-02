@@ -12,6 +12,7 @@ import { View, Text, StyleSheet, RefreshControl, ScrollView, Image, Pressable, L
 import { THEME, FONTS } from "@/lib/constants";
 import {
   fetchTopTraders,
+  fetchLifetimeTopTraders,
   isBotTrader,
   BOT_LEADERBOARD_PFP,
   BOT_LEADERBOARD_NAME,
@@ -183,8 +184,65 @@ function HolderRow({
   );
 }
 
+/**
+ * Lifetime "hall of fame" row — separate ranking from HolderRow's weekly
+ * board (see topTraders.ts's fetchLifetimeTopTraders). Read-only: never a
+ * copy-trade toggle here — slots 1/3 are bound to the weekly board
+ * specifically, not this list.
+ */
+function LifetimeTraderRow({
+  t,
+  worldId,
+  cardStyle,
+}: {
+  t: TopTrader;
+  worldId?: string;
+  cardStyle: object;
+}) {
+  const rankLabel = t.rank >= 1 && t.rank <= 3 ? MEDALS[t.rank - 1] : `${t.rank}.`;
+  const podium = t.rank >= 1 && t.rank <= 3 ? PODIUM_BORDER[t.rank - 1] : undefined;
+  const lifetime = t.lifetimeGainPct ?? 0;
+
+  return (
+    <View
+      style={[
+        styles.row,
+        styles.communityRow,
+        cardStyle,
+        podium
+          ? { borderWidth: 1.5, borderColor: podium }
+          : { borderWidth: 0.75, borderColor: "transparent" },
+      ]}
+    >
+      {worldId ? <WorldGlassFill worldId={worldId} blur={false} showHighlight={false} /> : null}
+      <Text style={styles.rank}>{rankLabel}</Text>
+      {t.nftImage ? (
+        <Image source={{ uri: t.nftImage }} style={[styles.pfp, styles.communityPfp]} />
+      ) : (
+        <View style={[styles.pfp, styles.communityPfp, styles.pfpFallback]}>
+          <Text style={{ fontSize: 18 }}>🐒</Text>
+        </View>
+      )}
+      <View style={styles.info}>
+        <Text style={styles.username} numberOfLines={1}>
+          {t.monkeName?.trim() || `Trader #${t.rank}`}
+        </Text>
+        <Text style={styles.stats}>{t.winRatePct}% win rate</Text>
+      </View>
+      <View style={styles.scoreCol}>
+        <Text style={[styles.score, lifetime < 0 && styles.scoreNegative]}>
+          {lifetime >= 0 ? "+" : ""}
+          {lifetime}%
+        </Text>
+        <Text style={styles.scoreCaption}>lifetime avg</Text>
+      </View>
+    </View>
+  );
+}
+
 export function LeaderboardView() {
   const [traders, setTraders] = useState<TopTrader[]>([]);
+  const [lifetimeTraders, setLifetimeTraders] = useState<TopTrader[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const cardStyle = useWorldGlassCardStyle();
@@ -197,6 +255,8 @@ export function LeaderboardView() {
   const load = useCallback(async (forceRefresh = false) => {
     const entries = await fetchTopTraders(forceRefresh);
     setTraders(entries);
+    const lifetimeEntries = await fetchLifetimeTopTraders(forceRefresh);
+    setLifetimeTraders(lifetimeEntries);
     setLoading(false);
   }, []);
 
@@ -289,6 +349,25 @@ export function LeaderboardView() {
                 No community traders with closed trades this week yet
               </Text>
             </View>
+          ) : null}
+
+          {lifetimeTraders.length > 0 ? (
+            <>
+              <Text style={[styles.sectionLabel, styles.sectionLabelSpaced]}>
+                TOP 5 LIFETIME
+              </Text>
+              {lifetimeTraders.map((t) => (
+                <LifetimeTraderRow
+                  key={`lt-${t.rank}-${t.monkeName ?? ""}`}
+                  t={t}
+                  worldId={worldId}
+                  cardStyle={cardStyle}
+                />
+              ))}
+              <Text style={styles.botHint}>
+                Ranked by average PnL% across every closed trade tracked for that wallet (min. sample required)
+              </Text>
+            </>
           ) : null}
 
           <Text style={styles.formula}>
