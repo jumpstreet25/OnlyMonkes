@@ -221,13 +221,20 @@ const styles = StyleSheet.create({
     color: "#6CB4EE",
     fontWeight: "600",
   },
+  // 2026-09-03: was rgba(255,213,79,0.1) — a gold-tinted background behind
+  // gold text. Fine against most world tints (cool/dark), but Banana
+  // Grove's own header tint is ALSO warm brown/gold (rgba(40,22,12,0.24)
+  // over its warm dusk gradient), so the pill nearly disappeared there
+  // (real user report). Darkened to a neutral, world-independent
+  // background so the gold text has reliable contrast everywhere, not
+  // just a Banana-Grove special case.
   bananaHeaderPill: {
-    backgroundColor: "rgba(255,213,79,0.1)",
+    backgroundColor: "rgba(0,0,0,0.35)",
     borderRadius: 10,
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderWidth: 1,
-    borderColor: "rgba(255,213,79,0.15)",
+    borderColor: "rgba(255,213,79,0.35)",
   },
   messageHeaderPill: {
     borderRadius: 10,
@@ -245,6 +252,11 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: "#FFD54F",
     fontWeight: "600",
+    // Extra contrast margin on top of the darkened pill background above —
+    // belt-and-suspenders against any future light/warm world tint.
+    textShadowColor: "rgba(0,0,0,0.6)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   communityBadge: {
     position: "absolute" as const,
