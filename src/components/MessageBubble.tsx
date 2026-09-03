@@ -698,10 +698,14 @@ export const MessageBubble = memo(function MessageBubble({
     if (isOwn && nftDominantColor) return nftDominantColor;
     return accentFallback;
   });
-  // Show expand control when bot message likely exceeds 9 lines
+  // Show expand control when bot message likely exceeds 9 lines.
+  // Trade/sale alerts (MonkeTrades TA setups, MonkeBrain) always carry a
+  // Blink action line followed by a closing "DYOR" sentence — collapsing
+  // them by default clipped that tail off (2026-09-03 bug report). Alerts
+  // stay fully expanded; only ordinary long chat replies still collapse.
   const showBotExpand = useMemo(
-    () => isBot && (message.content.split("\n").length > 9 || message.content.length > 380),
-    [isBot, message.content],
+    () => isBot && !extractBlinkUrl(displayContent) && (message.content.split("\n").length > 9 || message.content.length > 380),
+    [isBot, message.content, displayContent],
   );
   const isLegendarySender = isOwn
     ? useAppStore.getState().isLegendary
