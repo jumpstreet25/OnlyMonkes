@@ -364,6 +364,45 @@ async function fetchAssetsViaAlchemy(walletAddress: string): Promise<OwnedNFT[]>
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
+ * On-demand full collection list for a wallet, bypassing the holder-index
+ * fast path entirely — that path only ever tracks ONE mint per wallet (see
+ * the doc comment on verifyNFTOwnership's step 0), so a multi-Monke holder's
+ * `allNfts` from a normal login can be just their single most-recently-cached
+ * NFT. Real bug report (2026-09-04): a 2+-Monke holder was stuck seeing the
+ * same one NFT no matter how many times they signed out/in, and "Switch PFP"
+ * had nothing to switch between because it read from that same stale
+ * single-element list.
+ *
+ * Deliberately NOT called on every login (that would reintroduce exactly the
+ * live-DAS-call-per-login cost the fast path exists to avoid) — call this
+ * only when the user is about to actually pick a different NFT (the "Switch
+ * PFP" flow), where paying for one fresh DAS call is clearly worth it.
+ * Returns [] on total failure — callers should keep whatever `allNfts` they
+ * already had rather than blanking the picker.
+ */
+export async function fetchFullNftCollection(walletAddress: string): Promise<OwnedNFT[]> {
+  if (HELIUS_NFT_API_KEY) {
+    try {
+      const nfts = await fetchAssetsViaHelius(walletAddress);
+      if (nfts.length > 0) return nfts;
+    } catch { /* fall through */ }
+  }
+  if (QUICKNODE_DAS_URL) {
+    try {
+      const nfts = await fetchAssetsViaQuickNode(walletAddress);
+      if (nfts.length > 0) return nfts;
+    } catch { /* fall through */ }
+  }
+  if (ALCHEMY_DAS_URL) {
+    try {
+      const nfts = await fetchAssetsViaAlchemy(walletAddress);
+      if (nfts.length > 0) return nfts;
+    } catch { /* fall through */ }
+  }
+  return [];
+}
+
+/**
  * Verify whether a wallet owns any NFT from the configured collection.
  *
  * Chain: Helius (×2 retries) → QuickNode (×2 retries) → on-chain → error
@@ -399,16 +438,32 @@ export async function verifyNFTOwnership(
       const data = await res.json() as { owned?: boolean; mint?: string; name?: string; image?: string | null; traits?: Array<{ trait_type: string; value: string }> };
       if (data.owned && data.mint) {
         console.log("[NFTVerify] Holder-index fast path: confirmed current holder");
+        // 2026-09-04: this used to prefer the LOCAL AsyncStorage cache
+        // (getCachedVerifiedNft) over the worker's own answer whenever a
+        // cache entry existed — but that local cache is never invalidated
+        // by sign-out/sign-in (confirmed real bug report: a multi-Monke
+        // holder stuck seeing the same NFT no matter how many times they
+        // signed out). The worker's holder index refreshes every ~4h, so
+        // it's a strictly fresher source of truth than a cache with no TTL
+        // at all — use it directly, and only fall back to the local cache
+        // for the image URL specifically if the worker didn't have one.
         const cached = await getCachedVerifiedNft(walletAddress);
-        const nft: OwnedNFT = cached ?? {
+        const nft: OwnedNFT = {
           mint: data.mint,
-          name: data.name ?? "Saga Monke",
+          name: data.name ?? cached?.name ?? "Saga Monke",
           symbol: "MONKE",
-          image: data.image ?? null,
+          image: data.image ?? cached?.image ?? null,
           collectionMint: NFT_COLLECTION_ADDRESS,
-          traits: data.traits,
+          traits: data.traits ?? cached?.traits,
         };
         cacheVerifiedNft(walletAddress, nft).catch(() => {});
+        // allNfts is deliberately just [nft] here — the holder index only
+        // ever tracks one mint per wallet, so it structurally can't report
+        // a full multi-Monke collection. That's fine for the fast path's
+        // actual job (confirm + show ONE NFT quickly); getFullNftListFor()
+        // is what "Switch PFP" now calls on-demand to get the true full
+        // collection when a user actually wants to pick between Monkes,
+        // rather than paying that cost on every login.
         return { verified: true, nft, allNfts: [nft] };
       }
     }

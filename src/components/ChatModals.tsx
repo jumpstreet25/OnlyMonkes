@@ -306,7 +306,22 @@ export function ChatModals(props: ChatModalsProps) {
           }, 300);
         }}
         onSwitchPfp={() => {
-          setTimeout(() => setPfpPickerOpen(true), 300);
+          setTimeout(async () => {
+            // 2026-09-04: allNfts from login can be a single-element array
+            // for a multi-Monke holder (the fast-path holder-index lookup
+            // only ever tracks one mint per wallet — see nftVerification.ts)
+            // — refresh with the true full collection right before showing
+            // the picker, so there's actually something to switch between.
+            // One live DAS call here (only on explicit user intent) rather
+            // than on every login, which would burn the exact API quota the
+            // fast path exists to save.
+            if (wallet?.address) {
+              const { fetchFullNftCollection } = await import("@/lib/nftVerification");
+              const fresh = await fetchFullNftCollection(wallet.address).catch(() => []);
+              if (fresh.length > 0) useAppStore.getState().setAllNfts(fresh);
+            }
+            setPfpPickerOpen(true);
+          }, 300);
         }}
       />
 
