@@ -46,7 +46,12 @@ const BOT_INBOX_ID = "998001a498174b8a194110ee792b10f97de4965665eaf0d088ed2c71bd
 let _automonkeStatusCheckedThisSession = false;
 
 const AUTONOMY_CONFIG: Record<string, { command: string; storageKey: string }> = {
-  trades: { command: "/automonke start", storageKey: "automonke_enrolled" },
+  // 2026-09-03: command string was the misspelled legacy form — the bot
+  // still accepts it as an alias, but /autonomonke is canonical everywhere
+  // else in this file. storageKey deliberately left alone (AsyncStorage key
+  // name, not user-facing; renaming it would reset existing installs'
+  // locally-cached enrollment flag for no benefit).
+  trades: { command: "/autonomonke start", storageKey: "automonke_enrolled" },
 };
 
 // No-ops for read-only channel — users can't react or reply to bot alerts

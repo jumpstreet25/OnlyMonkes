@@ -77,14 +77,16 @@ const DM_COMMANDS: Command[] = [
   // Reports (new 2026-05-20)
   { cmd: "/ratchet-report", desc: "Closed-trade outcomes since ratchet" },
   { cmd: "/smart-wallet-report", desc: "Per-wallet smart-money PnL" },
-  // AutonoMonke
-  { cmd: "/automonke", desc: "Auto-trading status" },
-  { cmd: "/automonke start", desc: "Enable auto-trading" },
-  { cmd: "/automonke stop", desc: "Pause auto-trading" },
-  { cmd: "/automonke positions", desc: "Auto positions" },
-  { cmd: "/automonke fund", desc: "Deposit address" },
-  { cmd: "/automonke withdraw", desc: "Close all & withdraw" },
-  { cmd: "/automonke limits", desc: "Toggle Limit Orders" },
+  // AutonoMonke (2026-09-03: was the misspelled "/automonke" — bot still
+  // accepts that as a legacy alias, but this UI should surface the correct
+  // canonical spelling)
+  { cmd: "/autonomonke", desc: "Auto-trading status" },
+  { cmd: "/autonomonke start", desc: "Enable auto-trading" },
+  { cmd: "/autonomonke stop", desc: "Pause auto-trading" },
+  { cmd: "/autonomonke positions", desc: "Auto positions" },
+  { cmd: "/autonomonke fund", desc: "Deposit address" },
+  { cmd: "/autonomonke withdraw", desc: "Close all & withdraw" },
+  { cmd: "/autonomonke limits", desc: "Toggle Limit Orders" },
   // Risk management
   { cmd: "/risk", desc: "View risk settings" },
   { cmd: "/risk size 5", desc: "Position size %" },

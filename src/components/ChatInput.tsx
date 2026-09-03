@@ -90,14 +90,16 @@ const DM_BOT_COMMANDS = [
   // Reports
   { cmd: "/ratchet-report",       args: "[days]",        desc: "Closed-trade outcomes since ratchet" },
   { cmd: "/smart-wallet-report",  args: "",              desc: "Per-wallet smart-money PnL" },
-  // AutonoMonke
-  { cmd: "/automonke",            args: "",              desc: "AutonoMonke status" },
-  { cmd: "/automonke start",      args: "",              desc: "Enable auto-trading" },
-  { cmd: "/automonke stop",       args: "",              desc: "Pause auto-trading" },
-  { cmd: "/automonke positions",  args: "",              desc: "Auto positions" },
-  { cmd: "/automonke fund",       args: "",              desc: "Deposit address" },
-  { cmd: "/automonke withdraw",   args: "",              desc: "Close all & withdraw" },
-  { cmd: "/automonke limits",     args: "",              desc: "Toggle Limit Orders" },
+  // AutonoMonke (2026-09-03: was the misspelled "/automonke" — bot still
+  // accepts that as a legacy alias, but this UI should surface the correct
+  // canonical spelling)
+  { cmd: "/autonomonke",            args: "",              desc: "AutonoMonke status" },
+  { cmd: "/autonomonke start",      args: "",              desc: "Enable auto-trading" },
+  { cmd: "/autonomonke stop",       args: "",              desc: "Pause auto-trading" },
+  { cmd: "/autonomonke positions",  args: "",              desc: "Auto positions" },
+  { cmd: "/autonomonke fund",       args: "",              desc: "Deposit address" },
+  { cmd: "/autonomonke withdraw",   args: "",              desc: "Close all & withdraw" },
+  { cmd: "/autonomonke limits",     args: "",              desc: "Toggle Limit Orders" },
   // Risk
   { cmd: "/risk",                 args: "",              desc: "View risk settings" },
   { cmd: "/risk size",            args: "1-25",          desc: "Position size %" },
