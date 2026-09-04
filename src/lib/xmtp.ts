@@ -545,6 +545,21 @@ function decodeStringMessage(raw: any, rawContent: string, myInboxId: string): C
     if (rawContent.startsWith(p) || innerPreview.startsWith(p)) return null;
   }
 
+  // /shout <tweet-url> and /announce <message> are admin/dev-only Main Chat
+  // broadcast commands (2026-09-04) — the raw command text should never
+  // render as a chat bubble for anyone, sender included; only the bot's
+  // resulting X-card / announcement message should show up. Same treatment
+  // as STRUCTURED_PREFIXES above, just space- not colon-delimited so it
+  // can't be expressed as a plain prefix in that list.
+  const firstWord = (rawContent.split(/\s+/)[0] ?? "").toLowerCase();
+  const innerFirstWord = (innerPreview.split(/\s+/)[0] ?? "").toLowerCase();
+  if (
+    firstWord === "/shout" || firstWord === "/announce" ||
+    innerFirstWord === "/shout" || innerFirstWord === "/announce"
+  ) {
+    return null;
+  }
+
   const { username, inner } = parseContent(rawContent);
 
   let content = inner;
