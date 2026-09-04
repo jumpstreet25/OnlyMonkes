@@ -95,7 +95,23 @@ function getMessageType(item: ChatMessage): string {
   if (c.startsWith("ATTACHMENT:")) return "attachment";
   if (c.startsWith("TIPLINK:")) return "tiplink";
   if (c.startsWith("NFT_LIST:")) return "nftlist";
-  return "text";
+  // 2026-09-04: plain text messages were ALL bucketed as one "text" type
+  // regardless of length — a bot alert can be anywhere from a 1-line
+  // reply to a 10+-line MonkeBrain alert. Recycling a cell sized for a
+  // short message into a much taller message's slot (or vice versa) is
+  // exactly the failure mode the comment above already describes for
+  // video-vs-text, just not covered for text-vs-text — confirmed real bug
+  // (MonkeTrades alert bubbles losing their last line to visual overlap
+  // from the next recycled item, reproduced on-device; unrelated to
+  // MessageBubble's own render logic — a static maxHeight/overflow fix
+  // there had zero effect on the on-device repro, which is what pointed
+  // at recycling instead). Bucket by rough line count so short and long
+  // text messages never share a recycling pool.
+  const lineCount = c.split("\n").length;
+  if (lineCount > 6) return "text-xl";
+  if (lineCount > 3) return "text-l";
+  if (lineCount > 1) return "text-m";
+  return "text-s";
 }
 
 const ChatMessageListInner = React.forwardRef<FlashListRef<ChatMessage>, ChatMessageListProps>(function ChatMessageListInner(props, _ref) {
