@@ -23,6 +23,7 @@ import { router } from "expo-router";
 import { useAppStore } from "@/store/appStore";
 import { useGroupChat } from "@/hooks/useGroupChat";
 import { MessageBubble } from "@/components/MessageBubble";
+import { getMessageType } from "@/components/ChatMessageList";
 import { triggerProfileRebroadcast } from "@/hooks/useXmtp";
 import AutonoMonkeSetupWizard from "@/components/AutonoMonkeSetupWizard";
 import { getXmtpClient } from "@/hooks/useXmtp";
@@ -438,12 +439,21 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
 
           {/* Messages — FlashList for cell recycling (3-5x fewer frame drops
               vs. FlatList on long bot-alert histories). Mirrors the migration
-              done in ChatScreen. `inverted` keeps newest at the bottom. */}
+              done in ChatScreen. `inverted` keeps newest at the bottom.
+              2026-09-04: was missing getItemType entirely (unlike
+              ChatMessageList.tsx's FlashList, which already had it, just
+              under-bucketed for text) -- every message here, from a 1-line
+              reply to a 10+-line MonkeBrain alert to an image, shared ONE
+              recycling pool. Confirmed real bug: alert bubbles (Copy-book
+              STOP, Saga Monke sale alerts) losing their last line to visual
+              overlap from the next recycled item, reproduced on-device.
+              Reuses the same bucketing ChatMessageList.tsx uses. */}
           <FlashList
             ref={flatListRef}
             data={filteredMessages}
             renderItem={renderMessage}
             keyExtractor={keyExtractor}
+            getItemType={getMessageType}
             contentContainerStyle={styles.listContent}
             inverted
           />

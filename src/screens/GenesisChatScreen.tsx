@@ -36,6 +36,7 @@ import { getXmtpClient } from "@/hooks/useXmtp";
 import { sendGenesisJoinRequestDM, prepareWalletBoundXmtp, XMTP_SIGNATURE_REQUIRED_ERROR } from "@/lib/xmtp";
 import { fetchAppConfig } from "@/lib/remoteConfig";
 import { MessageBubble } from "@/components/MessageBubble";
+import { getMessageType } from "@/components/ChatMessageList";
 import { BananaShopModal } from "@/components/BananaShopModal";
 import { LeaderboardView } from "@/components/LeaderboardView";
 import { OnboardingCarousel } from "@/components/OnboardingCarousel";
@@ -304,6 +305,7 @@ export default function GenesisChatScreen() {
           data={reversedMessages}
           renderItem={renderMessage}
           keyExtractor={keyExtractor}
+          getItemType={getMessageType}
           inverted
           // Inverted flips which side paddingTop lands on — this clears the
           // visual BOTTOM (the ChatInput bar) so the newest message renders
