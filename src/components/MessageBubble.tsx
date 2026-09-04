@@ -1016,7 +1016,7 @@ export const MessageBubble = memo(function MessageBubble({
                     Skia-glow/world-chrome bubbles, same guard as the gradient/
                     highlight below — those own their own bubble surface. */}
                 {!hasSkiaGlow && !hasWorldChrome ? (
-                  <BlurView {...getBlurProps()} style={[StyleSheet.absoluteFill, { borderRadius: 22 }]} pointerEvents="none" />
+                  <BlurView {...getBlurProps()} style={[StyleSheet.absoluteFill, { borderRadius: 22, overflow: "hidden" }]} pointerEvents="none" />
                 ) : null}
                 {/* Glass gradient — only for non-Skia, non-world-chrome bubbles */}
                 {!hasSkiaGlow && !hasWorldChrome ? (
@@ -1024,7 +1024,7 @@ export const MessageBubble = memo(function MessageBubble({
                     colors={["rgba(248,248,255,0.08)", "rgba(0,0,0,0.15)"]}
                     start={{ x: 0.5, y: 0 }}
                     end={{ x: 0.5, y: 1 }}
-                    style={[StyleSheet.absoluteFill, { borderRadius: 22 }]}
+                    style={[StyleSheet.absoluteFill, { borderRadius: 22, overflow: "hidden" }]}
                   />
                 ) : null}
                 {!hasSkiaGlow && !hasWorldChrome ? <View style={styles.glassHighlight} /> : null}
@@ -1626,7 +1626,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     gap: 4,
-    overflow: "hidden",
+    // 2026-09-04: was overflow:"hidden" here — added purely to keep the
+    // BlurView/gradient decorative layers below within rounded corners,
+    // but it also hard-clipped real text content whenever this View's
+    // auto-calculated height came in even slightly short of what
+    // MarkdownContent (react-native-marked) actually needed — confirmed
+    // real bug report (MonkeTrades alerts losing their last line/word,
+    // e.g. a Tensor link's tail). This is a documented class of RN bug:
+    // wrapped text + certain emoji can cause a rich-text renderer's
+    // self-reported height to undershoot the real rendered height by a
+    // few px, and overflow:hidden on the parent turns that into a hard
+    // clip instead of harmless overflow. Moved the clip to just the
+    // decorative BlurView/LinearGradient below (which still need it for
+    // their own rounded corners) so real content can never be cut.
   },
   glassBubbleOwn: {
     backgroundColor: GLASS_OWN_BG,
