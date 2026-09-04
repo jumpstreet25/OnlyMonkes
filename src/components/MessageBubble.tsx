@@ -633,6 +633,25 @@ export const MessageBubble = memo(function MessageBubble({
     onOpenActions(message);
   }, [onOpenActions, message]);
 
+  // /shout posts SHOUT_CARD:<imageUrl>|<tweetUrl> — tapping downloads the
+  // rendered card locally (react-native-share needs a local file:// URI to
+  // actually attach the image, not a remote Cloudinary URL) and opens the
+  // native share sheet so the user can pick X, Discord, or anything else
+  // installed. Falls back to just opening the tweet link if the share
+  // sheet fails (app not installed, user cancels, download fails, etc.).
+  const handleShoutCardPress = useCallback(async (imageUrl: string, tweetUrl: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    try {
+      const FS = await import("expo-file-system/legacy");
+      const localUri = `${FS.cacheDirectory}shout-${Date.now()}.png`;
+      await FS.downloadAsync(imageUrl, localUri);
+      const { default: Share } = await import("react-native-share");
+      await Share.open({ url: localUri, message: tweetUrl, title: "Share this shoutout", failOnCancel: false });
+    } catch {
+      Linking.openURL(tweetUrl).catch(() => {});
+    }
+  }, []);
+
   const handlePressAvatar = useCallback(() => {
     if (!onPressUser) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -778,7 +797,8 @@ export const MessageBubble = memo(function MessageBubble({
   const isMedia =
     message.content.startsWith("GIF:") ||
     message.content.startsWith("IMAGE:") ||
-    message.content.startsWith("VIDEO:");
+    message.content.startsWith("VIDEO:") ||
+    message.content.startsWith("SHOUT_CARD:");
 
   // ── Blink / Solana Action detection ─────────────────────────────────────
   const blinkUrl = useMemo(
@@ -1285,6 +1305,41 @@ export const MessageBubble = memo(function MessageBubble({
                     <Text style={styles.gifBadgeText}>GIF</Text>
                   </View>
                 </Pressable>
+              ) : message.content.startsWith("SHOUT_CARD:") ? (
+                // /shout — rendered 1200×675 tweet card (shoutCard.ts). Fixed
+                // aspect ratio (server-rendered, no need to measure like a
+                // user-uploaded IMAGE:), tap downloads it locally and opens
+                // the native share sheet instead of the lightbox.
+                (() => {
+                  const [shoutImageUrl, shoutTweetUrl] = message.content.slice("SHOUT_CARD:".length).split("|");
+                  return (
+                    <Pressable
+                      onPress={() => handleShoutCardPress(shoutImageUrl, shoutTweetUrl)}
+                      onLongPress={handleLongPress}
+                      delayLongPress={350}
+                      style={{ width: mediaWidth, borderRadius: 22, overflow: "hidden" }}
+                    >
+                      <ExpoImage
+                        source={{ uri: shoutImageUrl }}
+                        style={{ width: mediaWidth, height: mediaWidth * (675 / 1200) }}
+                        contentFit="cover"
+                        cachePolicy="disk"
+                        priority="high"
+                        transition={200}
+                        recyclingKey={message.id}
+                        placeholder={require("../../assets/icon.png")}
+                        placeholderContentFit="contain"
+                      />
+                      <View style={styles.watermarkShadow}>
+                        <Image
+                          source={require("../../assets/watermark.png")}
+                          style={styles.watermark}
+                          resizeMode="contain"
+                        />
+                      </View>
+                    </Pressable>
+                  );
+                })()
               ) : message.content.startsWith("IMAGE:") ? (
                 <Pressable
                   onPress={() => onPressImage?.(message.content.slice(6))}

@@ -725,6 +725,26 @@ export default function ChatScreen() {
     const text = inputText.trim();
     if (!text) return;
 
+    // Intercept /shout and /announce — admin/dev-only Main Chat broadcast
+    // commands (bot-side, xmtpOnlyMonkes.ts). Still sent to the network
+    // normally so the bot can process them, but skip the local optimistic
+    // echo below: decodeMessage() already filters these out once they
+    // round-trip back over the network (so other users never see the raw
+    // command), but without this the SENDER's own device would show the
+    // raw text immediately, before that round trip completes.
+    if (/^\/(shout|announce)(\s|$)/i.test(text)) {
+      setInputText("");
+      setIsSending(true);
+      try {
+        await send(text);
+      } catch {
+        toast.error("Failed to send command");
+      } finally {
+        setIsSending(false);
+      }
+      return;
+    }
+
     // Intercept /buy, /sell, /swap commands
     const { parseSwapCommand, resolveToken, getSwapQuote, getTokenBalance } = await getJupiterSwap();
     const swapCmd = parseSwapCommand(text);

@@ -90,6 +90,7 @@ export function getMessageType(item: ChatMessage): string {
   if (c.startsWith("BANANA_BET_SETTLED_PILL:")) return "bananabetsettled";
   if (c.startsWith("VIDEO:")) return "video";
   if (c.startsWith("IMAGE:")) return "image";
+  if (c.startsWith("SHOUT_CARD:")) return "shoutcard";
   if (c.startsWith("GIF:")) return "gif";
   if (c.startsWith("STICKER:")) return "sticker";
   if (c.startsWith("ATTACHMENT:")) return "attachment";
