@@ -589,6 +589,21 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
     return { userMarkers: um, lumaMarkers: lm, irlMarkers: im, eventMarkers: [...lm, ...im] };
   }, [markers]);
 
+  // 2026-09-05: the "Solana Events" column shows every fetched Lu.ma event,
+  // not just the location-less ones onlineEvents was originally scoped to
+  // (geolocated events previously only ever showed as a globe pin, with no
+  // text listing anywhere) — matches the standalone MonkeGlobe site's
+  // events column, which lists all of them regardless of whether they also
+  // got a pin. Geolocated ones keep their event payload on the marker.
+  const allLumaEvents = useMemo(() => {
+    const geolocated = lumaMarkers
+      .map((m) => m.event)
+      .filter((e): e is LumaEvent => !!e && isLumaEvent(e));
+    return [...geolocated, ...onlineEvents].sort(
+      (a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime()
+    );
+  }, [lumaMarkers, onlineEvents]);
+
   const insets = useSafeAreaInsets();
   // 2026-08-06: glass header chrome so Globe matches Settings/Portfolio/etc.
   // Full WorldLayer behind a WebView globe is wasted (the globe fills the
@@ -660,57 +675,56 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
         </View>
       </View>
 
-      {/* Tappable marker pills */}
-      <View style={styles.markerList}>
-        {userMarkers.map((m: GlobeMarker) => (
-          <Pressable
-            key={m.id}
-            style={styles.markerPill}
-            onPress={() => m.inboxId && onPressUser?.({
-              senderAddress: m.inboxId,
-              senderUsername: m.username ?? m.label,
-              senderNft: m.nftImage ? { mint: "", name: "", image: m.nftImage } : null,
-            })}
-          >
-            {m.nftImage ? (
-              <Image source={{ uri: m.nftImage }} style={styles.markerPfp} />
-            ) : (
-              <View style={[styles.markerPfp, styles.markerPfpFallback]} />
-            )}
-            <Text style={styles.markerLabel} numberOfLines={1}>{m.label}</Text>
-            {m.inboxId && (
-              <View style={[styles.activityDot, { backgroundColor: getActivityColor(m.inboxId) }]} />
-            )}
-          </Pressable>
-        ))}
-        {/* Event pins removed — events are tappable on the globe + online events list below */}
-      </View>
-
-      {/* Online / unlocated events list */}
-      {onlineEvents.length > 0 && (
-        <View style={styles.onlineSection}>
-          <Text style={styles.onlineSectionTitle}>
-            🌐 Online Events ({onlineEvents.length})
-          </Text>
-          <ScrollView horizontal={false} style={styles.onlineScroll} showsVerticalScrollIndicator={false}>
-            {onlineEvents.map(evt => (
+      {/* Monkes / Solana Events — two side-by-side columns, both scrolling
+          together in one vertical ScrollView (2026-09-05: was a wrapping
+          pill row for Monkes with a separate capped-height list for
+          location-less events below it — now matches the standalone
+          MonkeGlobe site's layout exactly). */}
+      <ScrollView style={styles.columnsScroll} showsVerticalScrollIndicator={false}>
+        <View style={styles.columnsRow}>
+          <View style={styles.column}>
+            <Text style={styles.columnTitle}>🐒 Monkes ({userMarkers.length})</Text>
+            {userMarkers.map((m: GlobeMarker) => (
               <Pressable
-                key={evt.id}
-                style={styles.onlineRow}
-                onPress={() => setSelectedEvent(evt)}
+                key={m.id}
+                style={styles.columnRow}
+                onPress={() => m.inboxId && onPressUser?.({
+                  senderAddress: m.inboxId,
+                  senderUsername: m.username ?? m.label,
+                  senderNft: m.nftImage ? { mint: "", name: "", image: m.nftImage } : null,
+                })}
               >
-                <View style={styles.onlineInfo}>
-                  <Text style={styles.onlineName} numberOfLines={1}>{evt.name}</Text>
-                  <Text style={styles.onlineDate}>
-                    {evt.startAt ? new Date(evt.startAt).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "TBD"}
-                  </Text>
-                </View>
-                <Text style={styles.onlineArrow}>→</Text>
+                {m.nftImage ? (
+                  <Image source={{ uri: m.nftImage }} style={styles.markerPfp} />
+                ) : (
+                  <View style={[styles.markerPfp, styles.markerPfpFallback]} />
+                )}
+                <Text style={styles.markerLabel} numberOfLines={1}>{m.label}</Text>
+                {m.inboxId && (
+                  <View style={[styles.activityDot, { backgroundColor: getActivityColor(m.inboxId) }]} />
+                )}
               </Pressable>
             ))}
-          </ScrollView>
+          </View>
+
+          <View style={styles.column}>
+            <Text style={styles.columnTitle}>🌐 Solana Events ({allLumaEvents.length})</Text>
+            {allLumaEvents.map((evt) => (
+              <Pressable
+                key={evt.id}
+                style={styles.eventColumnRow}
+                onPress={() => setSelectedEvent(evt)}
+              >
+                <Text style={styles.onlineName} numberOfLines={1}>{evt.name}</Text>
+                <Text style={styles.onlineDate} numberOfLines={1}>
+                  {evt.startAt ? new Date(evt.startAt).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "TBD"}
+                  {evt.location ? ` · ${evt.location}` : ""}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
         </View>
-      )}
+      </ScrollView>
 
       {/* Event RSVP modal */}
       <EventRsvpModal
@@ -809,18 +823,25 @@ const styles = StyleSheet.create({
   legendDot: { width: 8, height: 8, borderRadius: 4 },
   legendText: { fontFamily: FONTS.mono, fontSize: 10, color: THEME.textMuted },
 
-  markerList: {
-    flexDirection: "row", flexWrap: "wrap", gap: 6,
-    paddingHorizontal: 12, paddingBottom: 20,
+  columnsScroll: { flex: 1 },
+  columnsRow: {
+    flexDirection: "row", paddingHorizontal: 12, paddingBottom: 20, gap: 10,
   },
-  markerPill: {
+  column: { flex: 1, minWidth: 0 },
+  columnTitle: {
+    fontFamily: FONTS.bodySemi, fontSize: 12, color: THEME.textMuted,
+    marginBottom: 6,
+  },
+  columnRow: {
     flexDirection: "row", alignItems: "center", gap: 6,
-    backgroundColor: "rgba(153,69,255,0.1)", borderRadius: 16,
-    paddingHorizontal: 8, paddingVertical: 5,
-    borderWidth: 1, borderColor: "rgba(153,69,255,0.15)", maxWidth: "48%",
+    backgroundColor: "rgba(153,69,255,0.1)", borderRadius: 12,
+    paddingHorizontal: 8, paddingVertical: 6, marginBottom: 4,
+    borderWidth: 1, borderColor: "rgba(153,69,255,0.15)",
   },
-  eventPill: {
-    backgroundColor: "rgba(108,180,238,0.08)", borderColor: "rgba(108,180,238,0.15)",
+  eventColumnRow: {
+    backgroundColor: "rgba(108,180,238,0.06)", borderRadius: 10,
+    paddingHorizontal: 10, paddingVertical: 8, marginBottom: 4,
+    borderWidth: 1, borderColor: "rgba(108,180,238,0.10)",
   },
   markerPfp: {
     width: 22, height: 22, borderRadius: 11,
@@ -852,25 +873,8 @@ const styles = StyleSheet.create({
   eventCloseBtn: { paddingVertical: 8, alignItems: "center" },
   eventCloseText: { fontFamily: FONTS.body, fontSize: 13, color: THEME.textFaint },
 
-  // Online events section
-  onlineSection: {
-    paddingHorizontal: 12, paddingBottom: 8,
-  },
-  onlineSectionTitle: {
-    fontFamily: FONTS.bodySemi, fontSize: 12, color: THEME.textMuted,
-    marginBottom: 6,
-  },
-  onlineScroll: { maxHeight: 120 },
-  onlineRow: {
-    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    backgroundColor: "rgba(108,180,238,0.06)", borderRadius: 10,
-    paddingHorizontal: 12, paddingVertical: 8, marginBottom: 4,
-    borderWidth: 1, borderColor: "rgba(108,180,238,0.10)",
-  },
-  onlineInfo: { flex: 1, marginRight: 8 },
   onlineName: { fontFamily: FONTS.bodyMed, fontSize: 12, color: THEME.text },
   onlineDate: { fontFamily: FONTS.mono, fontSize: 10, color: THEME.textDim, marginTop: 2 },
-  onlineArrow: { fontSize: 14, color: "#6CB4EE" },
 
   // Cluster bottom sheet
   clusterSheet: {
