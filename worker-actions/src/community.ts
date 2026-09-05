@@ -22,13 +22,24 @@
  * user explicitly chose "show everyone automatically" (2026-08-26) over an
  * opt-in flow for locations.
  *
- * 2026-08-26: PHASE 1 — endpoints are real and live, but nothing in the
- * OnlyMonkes app calls the write side yet. Locations/events will read back
- * empty (or whatever's been manually seeded/tested) until a follow-up wires
- * the app's PROFILE_UPDATE (location) and EVENT: (events) flows to POST here.
+ * 2026-08-26: PHASE 1 shipped — the app's src/lib/communitySync.ts now calls
+ * the write side (location save, event create, RSVP) from ChatModals,
+ * CalendarModal, and EventRsvpModal.
+ *
+ * 2026-09-05: PHASE 2 — that only covers locations set AFTER communitySync.ts
+ * shipped. Every user who set their in-app location earlier (via the old
+ * XMTP PROFILE_UPDATE/LOCATION_SYNC path the bot already aggregates into
+ * userLocations) never had a reason to re-save it, so the public site read
+ * back empty despite the in-app globe showing everyone correctly. Added
+ * handleBulkSetLocations — a trusted bot→worker push (Bearer BOT_HTTP_SECRET,
+ * same gate as /escrow and /api/signals) that upserts many holders' pins at
+ * once, geocoded bot-side. No per-wallet signature or on-chain re-check here:
+ * the bot already only aggregates locations from verified Main Chat members
+ * (Saga Monke gate already enforced at group-join time), so this trusts that
+ * existing boundary rather than re-deriving it per pin.
  */
 import type { Env } from "./index";
-import { CORS_HEADERS } from "./index";
+import { CORS_HEADERS, checkBotAuth } from "./index";
 import { verifyEd25519, base58ToBytes } from "./cryptoVerify";
 import { verifySagaOnChain } from "./onchainHolder";
 import { PublicKey } from "@solana/web3.js";
@@ -144,6 +155,44 @@ export async function handleSetLocation(request: Request, env: Env): Promise<Res
   });
   await env.COMMUNITY_DATA.put("locations:latest", JSON.stringify(next));
   return jsonResponse({ ok: true });
+}
+
+// ─── POST /api/community/bulk-locations — trusted bot push, many at once ───
+// See the 2026-09-05 doc note at the top of this file for why this exists
+// alongside the per-user signed path above: this is for the bot backfilling/
+// keeping in sync every Main Chat member's location, not a single user
+// acting on their own behalf.
+export async function handleBulkSetLocations(request: Request, env: Env): Promise<Response> {
+  if (!checkBotAuth(request, env)) return errorResponse("Unauthorized", 401);
+
+  let body: any;
+  try { body = await request.json(); } catch { return errorResponse("Invalid JSON body"); }
+  const incoming = body?.locations;
+  if (!Array.isArray(incoming)) return errorResponse("Missing locations array");
+
+  const raw = await env.COMMUNITY_DATA.get("locations:latest");
+  const existing: CommunityLocation[] = raw ? JSON.parse(raw) : [];
+  const byWallet = new Map(existing.map((l) => [l.wallet, l]));
+
+  let accepted = 0;
+  for (const entry of incoming) {
+    const { wallet, lat, lng, label, username, nftImage } = entry ?? {};
+    if (typeof wallet !== "string" || !wallet) continue;
+    if (typeof lat !== "number" || typeof lng !== "number" || lat < -90 || lat > 90 || lng < -180 || lng > 180) continue;
+    if (typeof label !== "string" || !label || label.length > 120) continue;
+    byWallet.set(wallet, {
+      wallet,
+      username: typeof username === "string" ? username.slice(0, 40) : null,
+      lat, lng,
+      label: label.slice(0, 120),
+      nftImage: typeof nftImage === "string" ? nftImage.slice(0, 500) : null,
+      updatedAt: Date.now(),
+    });
+    accepted++;
+  }
+
+  await env.COMMUNITY_DATA.put("locations:latest", JSON.stringify(Array.from(byWallet.values())));
+  return jsonResponse({ ok: true, accepted, total: byWallet.size });
 }
 
 // ─── GET /api/community/events — public list ────────────────────────────────

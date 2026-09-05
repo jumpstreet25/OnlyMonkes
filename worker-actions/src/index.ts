@@ -79,6 +79,7 @@ import {
 import {
   handleGetLocations,
   handleSetLocation,
+  handleBulkSetLocations,
   handleGetEvents,
   handleGetEvent,
   handleCreateEvent,
@@ -1151,7 +1152,7 @@ async function decryptData(encoded: string, hexKey: string): Promise<string> {
 
 // ─── Auth helper ─────────────────────────────────────────────────────────────
 
-function checkBotAuth(request: Request, env: Env): boolean {
+export function checkBotAuth(request: Request, env: Env): boolean {
   const auth = request.headers.get("Authorization") || "";
   return auth === `Bearer ${env.BOT_HTTP_SECRET}`;
 }
@@ -3357,7 +3358,7 @@ export default {
 
     // Health check
     if (path === "/health") {
-      return jsonResponse({ status: "ok", version: "1.10.0", endpoints: ["/api/actions/swap", "/api/actions/tip", "/api/actions/predict", "/api/actions/bet", "/api/actions/kalshi-bet", "/api/actions/treasury-swap", "/api/actions/treasury-stake", "/api/treasury/status", "/api/treasury/threshold-check", "/api/treasury/weekly-summary", "/api/actions/ad-skip", "/api/ad-skip/status", "/api/ad-skip/verify", "/escrow", "/claim", "/frames/alert", "/legal", "/terms", "/privacy", "/copyright", "/", "/api/stats", "/api/verify", "/api/holders/index", "/api/top-traders", "/api/signals", "/monke/:mint", "/api/sentiment/register-device", "/api/sentiment/unregister-device", "/api/sentiment/ingest", "/api/sentiment/score", "/api/community/locations", "/api/community/location", "/api/community/events", "/api/community/events/:id", "/api/community/events/:id/rsvp", "/api/community/events/:id/rsvps", "/api/admin/publish-app-config"] });
+      return jsonResponse({ status: "ok", version: "1.10.0", endpoints: ["/api/actions/swap", "/api/actions/tip", "/api/actions/predict", "/api/actions/bet", "/api/actions/kalshi-bet", "/api/actions/treasury-swap", "/api/actions/treasury-stake", "/api/treasury/status", "/api/treasury/threshold-check", "/api/treasury/weekly-summary", "/api/actions/ad-skip", "/api/ad-skip/status", "/api/ad-skip/verify", "/escrow", "/claim", "/frames/alert", "/legal", "/terms", "/privacy", "/copyright", "/", "/api/stats", "/api/verify", "/api/holders/index", "/api/top-traders", "/api/signals", "/monke/:mint", "/api/sentiment/register-device", "/api/sentiment/unregister-device", "/api/sentiment/ingest", "/api/sentiment/score", "/api/community/locations", "/api/community/location", "/api/community/bulk-locations", "/api/community/events", "/api/community/events/:id", "/api/community/events/:id/rsvp", "/api/community/events/:id/rsvps", "/api/admin/publish-app-config"] });
     }
 
     // 2026-07-30: public "Check Your Monke" growth page — see the section
@@ -3398,6 +3399,10 @@ export default {
     }
     if (path === "/api/community/location") {
       if (request.method === "POST") return handleSetLocation(request, env);
+      return errorResponse("Method not allowed", 405);
+    }
+    if (path === "/api/community/bulk-locations") {
+      if (request.method === "POST") return handleBulkSetLocations(request, env);
       return errorResponse("Method not allowed", 405);
     }
     if (path === "/api/community/events") {
