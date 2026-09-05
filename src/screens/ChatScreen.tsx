@@ -40,11 +40,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAppStore } from "@/store/appStore";
 import { useChatStore } from "@/store/chatStore";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useXmtp, triggerProfileRebroadcast, _streamHealth, getXmtpClient } from "@/hooks/useXmtp";
+import { useXmtp, triggerProfileRebroadcast, _streamHealth } from "@/hooks/useXmtp";
 import { prepareWalletBoundXmtp, XMTP_SIGNATURE_REQUIRED_ERROR } from "@/lib/xmtp";
 import { signBytesWithMwa } from "@/hooks/useMobileWallet";
-import { startHealthBeacon, stopHealthBeacon } from "@/lib/healthBeacon";
-import { BOT_INBOX_IDS } from "@/lib/constants";
 import { useAbortableFetch } from "@/hooks/useAbortableFetch";
 import { playSound } from "@/lib/sounds";
 import { useNetInfo } from "@react-native-community/netinfo";
@@ -539,21 +537,6 @@ export default function ChatScreen() {
     return () => { if (timer) clearInterval(timer); };
   }, [isGroupMember, checkStreamLiveness, initialize]);
 
-  // ─── HEALTH: beacon → bot/Hermes (Fix #4) ────────────────────────────────────
-  // Emits a structured DM to the bot every ~10min carrying stream-health
-  // counters. The bot persists these to ~/.hermes_memory/client_health.json
-  // so Hermes/Monke can flag patterns (high stale_reconnects, missing beacons,
-  // etc.) without us needing to ship Grafana/Prometheus. See healthBeacon.ts.
-  useEffect(() => {
-    if (!isGroupMember) return;
-    const botInboxId = BOT_INBOX_IDS[0];
-    startHealthBeacon({
-      getClient: () => getXmtpClient(),
-      botInboxId,
-      getMessageCount: () => useChatStore.getState().messages.length,
-    });
-    return () => stopHealthBeacon();
-  }, [isGroupMember]);
 
   // ─── Auto-retry until approved ───────────────────────────────────────────────
   useEffect(() => {
