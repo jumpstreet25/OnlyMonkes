@@ -101,16 +101,30 @@ export function PortfolioResponseBubble({ response, onPressPosition, onPressClos
           <Text style={styles.muted}>🔥 {addr.slice(0, 4)}…{addr.slice(-4)}</Text>
         </Text>
 
-        <Text style={styles.summaryLine}>
-          Realized{' '}
-          <Text style={{ color: realizedColor }}>
-            {realizedSign}{response.realizedPnlPct.toFixed(2)}%
-            {response.realizedPnlSol != null && ` (${response.realizedPnlSol >= 0 ? '+' : ''}${response.realizedPnlSol.toFixed(4)} SOL)`}
+        {/* 2026-09-05: was one dense mono line with 3 stats + 2 "·"
+            separators packed together — stacked onto their own lines so
+            each number has room to read at a glance. */}
+        <View style={styles.summaryBlock}>
+          <Text style={styles.summaryLine}>
+            Realized{' '}
+            <Text style={[styles.summaryValue, { color: realizedColor }]}>
+              {realizedSign}{response.realizedPnlPct.toFixed(2)}%
+            </Text>
+            {response.realizedPnlSol != null && (
+              <Text style={styles.summarySub}> ({response.realizedPnlSol >= 0 ? '+' : ''}{response.realizedPnlSol.toFixed(4)} SOL)</Text>
+            )}
           </Text>
-          {'  ·  Unrealized '}
-          <Text style={{ color: unrealizedColor }}>{unrealizedSign}{response.unrealizedPnlSol.toFixed(3)} SOL</Text>
-          {'  ·  '}{response.totalTrades} trades · {response.wins}W/{response.losses}L · {response.winRate.toFixed(0)}%
-        </Text>
+          <Text style={styles.summaryLine}>
+            Unrealized{' '}
+            <Text style={[styles.summaryValue, { color: unrealizedColor }]}>
+              {unrealizedSign}{response.unrealizedPnlSol.toFixed(3)} SOL
+            </Text>
+          </Text>
+          <Text style={styles.summaryLine}>
+            <Text style={styles.summaryValue}>{response.totalTrades}</Text> trades
+            <Text style={styles.summarySub}>  ·  {response.wins}W / {response.losses}L  ·  {response.winRate.toFixed(0)}% win rate</Text>
+          </Text>
+        </View>
 
         {response.walletBalanceSOL != null && (
           <Text style={styles.muted}>{response.walletBalanceSOL.toFixed(4)} SOL on-chain</Text>
@@ -140,32 +154,32 @@ export function PortfolioResponseBubble({ response, onPressPosition, onPressClos
                     pnlPct: displayPct,
                     pnlSol: netSol,
                   }))}
-                  style={({ pressed }) => [styles.tapLine, pressed && { opacity: 0.6 }]}
+                  style={({ pressed }) => [styles.posCard, pressed && { opacity: 0.6 }]}
                 >
-                  <Text style={styles.posLine}>
-                    <Text style={styles.bold}>${pos.token.toUpperCase()}</Text>{'  '}
-                    <Text style={{ color: chipAccent }}>{chipSign}{displayPct.toFixed(2)}%</Text>
-                    {pos.houseMoney && '  🟢 house money'}
-                  </Text>
+                  <View style={styles.posTopRow}>
+                    <Text style={styles.posToken}>${pos.token.toUpperCase()}</Text>
+                    <Text style={[styles.posPct, { color: chipAccent }]}>{chipSign}{displayPct.toFixed(2)}%</Text>
+                  </View>
+                  {pos.houseMoney && <Text style={styles.houseMoney}>🟢 house money</Text>}
                   {hasPartialData ? (
-                    <Text style={styles.muted}>
+                    <Text style={styles.posDetail}>
                       Holding {pos.currentSolValue.toFixed(4)} SOL
                       {pos.fractionRemaining != null && ` (${(pos.fractionRemaining * 100).toFixed(0)}%)`}
-                      {realized > 0 && `  ·  Realized +${realized.toFixed(4)} SOL`}
-                      {'  ·  Net '}
+                      {realized > 0 && `\nRealized +${realized.toFixed(4)} SOL`}
+                      {'\nNet '}
                       <Text style={{ color: netUp ? THEME.gold : THEME.error }}>
                         {netUp ? '+' : ''}{netSol.toFixed(4)} SOL
                       </Text>
                     </Text>
                   ) : (
-                    <Text style={styles.muted}>
+                    <Text style={styles.posDetail}>
                       {pos.entrySolAmount.toFixed(3)} SOL · {formatDuration(pos.durationMs)}
                     </Text>
                   )}
-                  <Text style={styles.muted}>
+                  <Text style={styles.posTargets}>
                     {pos.target1 != null && `T1 ${pos.t1Hit ? '✓ ' : ''}${(((pos.target1 - pos.entryPriceUsd) / pos.entryPriceUsd) * 100).toFixed(1)}%`}
-                    {pos.target2 != null && `  ·  T2 ${pos.t2Hit ? '✓ ' : ''}${(((pos.target2 - pos.entryPriceUsd) / pos.entryPriceUsd) * 100).toFixed(1)}%`}
-                    {`  ·  SL ${(((pos.stopPrice - pos.entryPriceUsd) / pos.entryPriceUsd) * 100).toFixed(1)}%`}
+                    {pos.target2 != null && `   T2 ${pos.t2Hit ? '✓ ' : ''}${(((pos.target2 - pos.entryPriceUsd) / pos.entryPriceUsd) * 100).toFixed(1)}%`}
+                    {`   SL ${(((pos.stopPrice - pos.entryPriceUsd) / pos.entryPriceUsd) * 100).toFixed(1)}%`}
                   </Text>
                 </Pressable>
               );
@@ -185,13 +199,13 @@ export function PortfolioResponseBubble({ response, onPressPosition, onPressClos
                 <Pressable
                   key={`${c.token}-${c.closedAt}-${i}`}
                   onPress={() => onPressClosedTrade?.(closedRowAsTrade(c))}
-                  style={({ pressed }) => [styles.tapLine, pressed && { opacity: 0.6 }]}
+                  style={({ pressed }) => [styles.closedRow, pressed && { opacity: 0.6 }]}
                 >
-                  <Text style={styles.posLine}>
+                  <Text style={styles.closedText}>
                     {won ? '✅' : '🛑'} <Text style={styles.bold}>${c.token.toUpperCase()}</Text>{'  '}
                     <Text style={{ color: accent }}>{won ? '+' : ''}{c.pnlPct.toFixed(2)}%</Text>
-                    <Text style={styles.muted}>  ↗</Text>
                   </Text>
+                  <Text style={styles.muted}>↗</Text>
                 </Pressable>
               );
             })}
@@ -208,17 +222,39 @@ const styles = StyleSheet.create({
     width: '94%', maxWidth: 420,
     borderRadius: 18,
     backgroundColor: THEME.surface,
-    paddingVertical: 12, paddingHorizontal: 14,
-    gap: 6,
+    paddingVertical: 14, paddingHorizontal: 14,
+    gap: 10,
   },
   bold: { fontFamily: FONTS.bodySemi },
-  muted: { fontFamily: FONTS.mono, fontSize: 11, color: THEME.textMuted },
-  headerLine: { fontFamily: FONTS.body, fontSize: 13, color: THEME.text },
-  summaryLine: { fontFamily: FONTS.mono, fontSize: 11, color: THEME.text, lineHeight: 16 },
+  muted: { fontFamily: FONTS.mono, fontSize: 12, color: THEME.textMuted },
+  headerLine: { fontFamily: FONTS.body, fontSize: 15, color: THEME.text },
 
-  section: { gap: 6, marginTop: 2 },
-  sectionLabel: { fontFamily: FONTS.mono, fontSize: 9, color: THEME.textMuted, letterSpacing: 1.2 },
+  summaryBlock: { gap: 3 },
+  summaryLine: { fontFamily: FONTS.body, fontSize: 14, color: THEME.text, lineHeight: 20 },
+  summaryValue: { fontFamily: FONTS.bodySemi, fontSize: 14 },
+  summarySub: { fontFamily: FONTS.mono, fontSize: 12, color: THEME.textMuted },
 
-  tapLine: { gap: 1, paddingVertical: 2 },
-  posLine: { fontFamily: FONTS.body, fontSize: 13, color: THEME.text },
+  section: { gap: 8, marginTop: 4 },
+  sectionLabel: { fontFamily: FONTS.mono, fontSize: 10, color: THEME.textMuted, letterSpacing: 1.2 },
+
+  // Lightweight per-row container — enough visual separation to stop
+  // everything reading as one slammed-together paragraph, without going
+  // back to the old bordered/logo/sparkline card.
+  posCard: {
+    backgroundColor: THEME.surfaceHigh, borderRadius: 12,
+    paddingVertical: 10, paddingHorizontal: 12, gap: 4,
+  },
+  posTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  posToken: { fontFamily: FONTS.display, fontSize: 16, color: THEME.text, letterSpacing: 0.2 },
+  posPct: { fontFamily: FONTS.display, fontSize: 16, letterSpacing: -0.2 },
+  houseMoney: { fontFamily: FONTS.mono, fontSize: 11, color: THEME.gold },
+  posDetail: { fontFamily: FONTS.body, fontSize: 13, color: THEME.text, lineHeight: 19 },
+  posTargets: { fontFamily: FONTS.mono, fontSize: 11, color: THEME.textMuted, marginTop: 2 },
+
+  closedRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: THEME.surfaceHigh, borderRadius: 10,
+    paddingVertical: 8, paddingHorizontal: 12,
+  },
+  closedText: { fontFamily: FONTS.body, fontSize: 14, color: THEME.text },
 });
