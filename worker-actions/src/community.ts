@@ -267,6 +267,56 @@ export async function handleCreateEvent(request: Request, env: Env): Promise<Res
   return jsonResponse({ id });
 }
 
+// ─── POST /api/community/bulk-events — trusted bot backfill, many at once ──
+// Same rationale as handleBulkSetLocations above: the bot scans Main Chat
+// history for old EVENT: broadcasts nothing centrally aggregated before
+// communitySync.ts shipped, and backfills them here. Idempotent — skips any
+// id that already exists (e.g. already created live via the signed path
+// above) rather than overwriting it, so it's safe to re-run.
+export async function handleBulkCreateEvents(request: Request, env: Env): Promise<Response> {
+  if (!checkBotAuth(request, env)) return errorResponse("Unauthorized", 401);
+
+  let body: any;
+  try { body = await request.json(); } catch { return errorResponse("Invalid JSON body"); }
+  const incoming = body?.events;
+  if (!Array.isArray(incoming)) return errorResponse("Missing events array");
+
+  const rawList = await env.COMMUNITY_DATA.get("events:latest");
+  const list: CommunityEventSummary[] = rawList ? JSON.parse(rawList) : [];
+  const byId = new Map(list.map((e) => [e.id, e]));
+
+  let created = 0;
+  for (const entry of incoming) {
+    const { id, title, description, lat, lng, label, startTime, endTime, createdBy, createdByWallet } = entry ?? {};
+    if (typeof id !== "string" || !id) continue;
+    if (typeof title !== "string" || !title || title.length > 120) continue;
+    if (typeof lat !== "number" || typeof lng !== "number" || lat < -90 || lat > 90 || lng < -180 || lng > 180) continue;
+    if (!Number.isFinite(startTime)) continue;
+    if (await env.COMMUNITY_DATA.get(`event:${id}`)) continue; // never overwrite a real record
+
+    const event: CommunityEvent = {
+      id,
+      title: title.slice(0, 120),
+      description: typeof description === "string" ? description.slice(0, 2000) : "",
+      lat, lng,
+      label: typeof label === "string" ? label.slice(0, 120) : "",
+      startTime,
+      endTime: Number.isFinite(endTime) ? endTime : null,
+      rsvpCount: 0,
+      createdBy: typeof createdBy === "string" && createdBy ? createdBy.slice(0, 40) : "Monke",
+      createdByWallet: typeof createdByWallet === "string" ? createdByWallet : "",
+      createdAt: Date.now(),
+    };
+    await env.COMMUNITY_DATA.put(`event:${id}`, JSON.stringify(event));
+    const { description: _d, createdByWallet: _w, createdAt: _c, ...summary } = event;
+    byId.set(id, summary);
+    created++;
+  }
+
+  await env.COMMUNITY_DATA.put("events:latest", JSON.stringify(Array.from(byId.values())));
+  return jsonResponse({ ok: true, created, total: byId.size });
+}
+
 // ─── POST /api/community/events/:id/rsvp — signed + holder-verified ────────
 export async function handleRsvp(id: string, request: Request, env: Env): Promise<Response> {
   let body: any;
