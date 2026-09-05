@@ -17,6 +17,7 @@ import { ChatInput } from '@/components/ChatInput';
 import ImageLightbox from '@/components/ImageLightbox';
 import { useAppStore } from '@/store/appStore';
 import { useTradesStore } from '@/store/tradesStore';
+import { fetchPortfolioViaHttp } from '@/lib/portfolioHttp';
 import { PnLCardMessage } from '@/components/PnLCardMessage';
 import { PnLCardModal } from '@/components/PnLCardModal';
 import { OpenTradeCardMessage } from '@/components/OpenTradeCardMessage';
@@ -89,11 +90,26 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
     if (!text) return;
     setInputText('');
     setReplyingTo(null);
-    await send(text);
+    const sendPromise = send(text);
+    // 2026-09-05: /portfolio (and its /positions alias) occasionally sits on
+    // XMTP's own send-side lock contention for the bot's reply. Race a
+    // direct, wallet-signed HTTP fetch alongside the normal DM send — first
+    // one to resolve populates the store. Pure speed optimization: on any
+    // failure (network, signature declined, bot down) this silently does
+    // nothing and the existing XMTP reply still lands exactly as before.
+    if (isBotDm && /^\/(portfolio|positions)$/i.test(text)) {
+      const walletAddress = useAppStore.getState().wallet?.address;
+      if (walletAddress) {
+        fetchPortfolioViaHttp(walletAddress)
+          .then(parsed => { if (parsed) useTradesStore.getState().setPortfolioResponse(parsed); })
+          .catch(() => {});
+      }
+    }
+    await sendPromise;
     // Inverted list — newest sits at the bottom of the screen, which is
     // offset 0 in the scroll coordinate space.
     setTimeout(() => flatListRef.current?.scrollToOffset({ offset: 0, animated: true }), 50);
-  }, [inputText, send]);
+  }, [inputText, send, isBotDm]);
 
   const handleReact = useCallback(async (emoji: ReactionEmoji, messageId: string) => {
     try {
