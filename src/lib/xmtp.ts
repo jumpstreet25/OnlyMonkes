@@ -1197,9 +1197,11 @@ export function parsePortfolioCard(raw: string): ParsedPortfolioCard | null {
 
 /**
  * Parse and validate a PORTFOLIO_RESPONSE: structured DM — single composite
- * payload from the bot containing wallet header + open positions (each with
- * a sparkline closes array) + recent closed summary. Replaces the older
- * "header text + N PORTFOLIO_CARD: messages" flow as of 2026-05-08.
+ * payload from the bot containing wallet header + open positions + recent
+ * closed summary. Replaces the older "header text + N PORTFOLIO_CARD:
+ * messages" flow as of 2026-05-08. Positions no longer carry a sparkline
+ * closes array (2026-09-05) — the plain-text /portfolio reply dropped the
+ * per-row chart it fed, so the bot stopped generating/sending it.
  */
 export interface ParsedPortfolioPosition {
   positionId: string;
@@ -1233,7 +1235,6 @@ export interface ParsedPortfolioPosition {
   openedAt: number;
   durationMs: number;
   taComposite?: number;
-  sparkline: number[];
 }
 
 /** Closed trade row in a /portfolio response — enriched with full ClosedTrade
@@ -1314,10 +1315,6 @@ export function parsePortfolioResponse(raw: string): ParsedPortfolioResponse | n
           || currentSolValue === null || pnlPct === null || pnlSol === null
           || stopPrice === null || highWaterMark === null
           || openedAt === null || durationMs === null) continue;
-      const rawSpark = Array.isArray(p?.sparkline) ? p.sparkline : [];
-      const sparkline = rawSpark
-        .filter((n: unknown): n is number => typeof n === 'number' && Number.isFinite(n) && n > 0)
-        .slice(0, 60);
       positions.push({
         positionId: positionId.slice(0, 80),
         token: token.slice(0, 32),
@@ -1338,7 +1335,6 @@ export function parsePortfolioResponse(raw: string): ParsedPortfolioResponse | n
         openedAt,
         durationMs: Math.max(0, durationMs),
         taComposite: numOrNull(p?.taComposite) ?? undefined,
-        sparkline,
       });
     }
   }
