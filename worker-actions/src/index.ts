@@ -89,7 +89,6 @@ import {
   handleGetRsvpStatus,
 } from "./community";
 import { handleGetLumaEvents } from "./lumaEvents";
-import { handleGetPortfolio } from "./portfolio";
 import { handlePublishAppConfig } from "./adminConfig";
 
 // Cloudflare Workers KV namespace binding (declared locally to avoid @cloudflare/workers-types dependency)
@@ -3361,7 +3360,7 @@ export default {
 
     // Health check
     if (path === "/health") {
-      return jsonResponse({ status: "ok", version: "1.10.0", endpoints: ["/api/actions/swap", "/api/actions/tip", "/api/actions/predict", "/api/actions/bet", "/api/actions/kalshi-bet", "/api/actions/treasury-swap", "/api/actions/treasury-stake", "/api/treasury/status", "/api/treasury/threshold-check", "/api/treasury/weekly-summary", "/api/actions/ad-skip", "/api/ad-skip/status", "/api/ad-skip/verify", "/escrow", "/claim", "/frames/alert", "/legal", "/terms", "/privacy", "/copyright", "/", "/api/stats", "/api/verify", "/api/holders/index", "/api/top-traders", "/api/signals", "/monke/:mint", "/api/sentiment/register-device", "/api/sentiment/unregister-device", "/api/sentiment/ingest", "/api/sentiment/score", "/api/community/locations", "/api/community/location", "/api/community/bulk-locations", "/api/community/events", "/api/community/bulk-events", "/api/community/luma-events", "/api/community/events/:id", "/api/community/events/:id/rsvp", "/api/community/events/:id/rsvps", "/api/portfolio", "/api/admin/publish-app-config"] });
+      return jsonResponse({ status: "ok", version: "1.10.0", endpoints: ["/api/actions/swap", "/api/actions/tip", "/api/actions/predict", "/api/actions/bet", "/api/actions/kalshi-bet", "/api/actions/treasury-swap", "/api/actions/treasury-stake", "/api/treasury/status", "/api/treasury/threshold-check", "/api/treasury/weekly-summary", "/api/actions/ad-skip", "/api/ad-skip/status", "/api/ad-skip/verify", "/escrow", "/claim", "/frames/alert", "/legal", "/terms", "/privacy", "/copyright", "/", "/api/stats", "/api/verify", "/api/holders/index", "/api/top-traders", "/api/signals", "/monke/:mint", "/api/sentiment/register-device", "/api/sentiment/unregister-device", "/api/sentiment/ingest", "/api/sentiment/score", "/api/community/locations", "/api/community/location", "/api/community/bulk-locations", "/api/community/events", "/api/community/bulk-events", "/api/community/luma-events", "/api/community/events/:id", "/api/community/events/:id/rsvp", "/api/community/events/:id/rsvps", "/api/admin/publish-app-config"] });
     }
 
     // 2026-07-30: public "Check Your Monke" growth page — see the section
@@ -3419,10 +3418,6 @@ export default {
     }
     if (path === "/api/community/luma-events") {
       if (request.method === "GET") return handleGetLumaEvents(env);
-      return errorResponse("Method not allowed", 405);
-    }
-    if (path === "/api/portfolio") {
-      if (request.method === "GET") return handleGetPortfolio(request, env);
       return errorResponse("Method not allowed", 405);
     }
     const eventRsvpsMatch = path.match(/^\/api\/community\/events\/([^/]+)\/rsvps$/);

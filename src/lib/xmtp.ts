@@ -1283,19 +1283,7 @@ export function parsePortfolioResponse(raw: string): ParsedPortfolioResponse | n
   if (jsonStr.length > 64_000) return null;
   let data: any;
   try { data = JSON.parse(jsonStr); } catch { return null; }
-  return parsePortfolioResponseData(data);
-}
-
-/**
- * Same validation as parsePortfolioResponse, operating on an already-parsed
- * object instead of the "PORTFOLIO_RESPONSE:"-prefixed wire string. Used by
- * the direct HTTP /api/portfolio fetch (src/lib/portfolioHttp.ts), which
- * gets the bot's raw JSON response body straight from worker-actions — no
- * XMTP envelope to strip.
- */
-export function parsePortfolioResponseData(raw: unknown): ParsedPortfolioResponse | null {
-  if (!raw || typeof raw !== 'object') return null;
-  const data = raw as any;
+  if (!data || typeof data !== 'object') return null;
 
   const numOrNull = (v: unknown): number | null =>
     typeof v === 'number' && Number.isFinite(v) ? v : null;
