@@ -11,17 +11,22 @@
  * Auth: same wallet-signature scheme as community.ts's verifyCommunityAuth
  * (ed25519 over a fixed, domain-separated message), but WITHOUT the
  * on-chain Saga Monke check — access here is gated by AutonoMonke
- * enrollment itself (the bot 404s any wallet it doesn't know), and a longer
- * signature-age window (10 min, vs the general 5 min) so the app can cache
- * one signature across several /portfolio taps instead of prompting MWA
- * every time — this is checked frequently, unlike "share my location".
+ * enrollment itself (the bot 404s any wallet it doesn't know). Signature-age
+ * window is 24h (vs the general 5 min for community.ts's write actions) —
+ * a 10-min window still meant a real MWA prompt on nearly every /portfolio
+ * tap in practice (reported live as "keeps making me sign a transaction");
+ * this endpoint only ever reads the caller's own portfolio, never moves
+ * funds, so a long-lived replay window trades a low-severity risk (someone
+ * replaying an intercepted signature can only re-fetch YOUR OWN portfolio
+ * numbers, nothing they couldn't already see, and nothing that spends
+ * anything) for signing roughly once a day instead of every few minutes.
  */
 import type { Env } from "./index";
 import { CORS_HEADERS } from "./index";
 import { verifyEd25519, base58ToBytes } from "./cryptoVerify";
 import { PublicKey } from "@solana/web3.js";
 
-const AUTH_MAX_AGE_MS = 10 * 60 * 1000;
+const AUTH_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const BOT_TIMEOUT_MS = 8_000;
 
 // Bot's public HTTP server (agents/monke-trader/src/services/xmtpOnlyMonkes.ts

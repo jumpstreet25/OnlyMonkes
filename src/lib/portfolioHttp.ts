@@ -12,37 +12,64 @@
  * to eventually populate the portfolio, this is a speed optimization only.
  *
  * Auth: signs a domain-separated message with the connected wallet
- * (signBytesWithMwa — same MWA prompt used elsewhere in the app) and caches
- * the signature for AUTH_CACHE_WINDOW_MS so repeated /portfolio taps in the
- * same sitting don't re-prompt every time. The worker accepts a signature
- * up to 10 minutes old; cached for 9 to stay clear of that edge.
+ * (signBytesWithMwa — same MWA prompt used elsewhere in the app). The first
+ * cut of this cached the signature in memory for 9 minutes, which in
+ * practice meant a real MWA prompt on almost every /portfolio tap (any
+ * backgrounding/app-restart between taps drops in-memory state) — reported
+ * live as "keeps making me sign a transaction." This endpoint only ever
+ * reads the caller's own portfolio (never moves funds), so a much longer
+ * replay window is an acceptable trade for far fewer prompts: cached
+ * 23h in-memory AND in SecureStore (survives app restarts), matched by the
+ * worker's 24h signature-age acceptance. Re-prompts roughly once a day
+ * instead of every few minutes.
  */
+import * as SecureStore from 'expo-secure-store';
 import { signBytesWithMwa } from '@/hooks/useMobileWallet';
 import { fetchWithTimeout } from './fetchWithTimeout';
 import { parsePortfolioResponseData } from './xmtp';
 import type { ParsedPortfolioResponse } from './xmtp';
 
 const ACTIONS_BASE = 'https://onlymonkes-actions.jumpstreet25.workers.dev';
-const AUTH_CACHE_WINDOW_MS = 9 * 60 * 1000;
+const AUTH_CACHE_WINDOW_MS = 23 * 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 8_000;
+const SECURE_STORE_KEY = 'portfolio_http_auth';
 
-let cachedAuth: { wallet: string; ts: number; signature: string } | null = null;
+interface PortfolioAuth { wallet: string; ts: number; signature: string }
 
-async function getPortfolioAuth(walletAddress: string): Promise<{ ts: number; signature: string }> {
-  if (cachedAuth && cachedAuth.wallet === walletAddress && Date.now() - cachedAuth.ts < AUTH_CACHE_WINDOW_MS) {
-    return cachedAuth;
-  }
+let cachedAuth: PortfolioAuth | null = null;
+
+function isFresh(auth: PortfolioAuth, walletAddress: string): boolean {
+  return auth.wallet === walletAddress && Date.now() - auth.ts < AUTH_CACHE_WINDOW_MS;
+}
+
+async function getPortfolioAuth(walletAddress: string): Promise<PortfolioAuth> {
+  if (cachedAuth && isFresh(cachedAuth, walletAddress)) return cachedAuth;
+
+  try {
+    const stored = await SecureStore.getItemAsync(SECURE_STORE_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored) as PortfolioAuth;
+      if (isFresh(parsed, walletAddress)) {
+        cachedAuth = parsed;
+        return parsed;
+      }
+    }
+  } catch { /* corrupt/missing entry — fall through to a fresh signature */ }
+
   const ts = Date.now();
   const message = new TextEncoder().encode(`OnlyMonkes Portfolio\nfetch\n${walletAddress}\n${ts}`);
   const sigBytes = await signBytesWithMwa(walletAddress, message);
   const signature = Buffer.from(sigBytes).toString('base64');
-  cachedAuth = { wallet: walletAddress, ts, signature };
-  return cachedAuth;
+  const auth: PortfolioAuth = { wallet: walletAddress, ts, signature };
+  cachedAuth = auth;
+  SecureStore.setItemAsync(SECURE_STORE_KEY, JSON.stringify(auth)).catch(() => {});
+  return auth;
 }
 
 /** Drop the cached signature — call on wallet disconnect/switch. */
 export function clearPortfolioAuthCache(): void {
   cachedAuth = null;
+  SecureStore.deleteItemAsync(SECURE_STORE_KEY).catch(() => {});
 }
 
 export async function fetchPortfolioViaHttp(walletAddress: string): Promise<ParsedPortfolioResponse | null> {
