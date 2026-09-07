@@ -1143,7 +1143,7 @@ async function handleKalshiBetPost(url: URL, body: any, env: Env): Promise<Respo
             type: "completed" as const,
             icon: ACTION_ICON,
             title: `Position open — ${sideUpper}${entryCopy}`,
-            description: `You bought $${amount} of ${sideUpper} on "${labelDecoded}".${payoutCopy} Tracking via Kalshi — settles to your wallet automatically.`,
+            description: `You bought $${amount} of ${sideUpper} on "${labelDecoded}".${payoutCopy} If this side wins, redemption is NOT automatic — Kalshi/DFlow requires a separate claim transaction after the market resolves. Check kalshi.com to redeem once it settles.`,
             label: "Done",
             links: {
               actions: [
