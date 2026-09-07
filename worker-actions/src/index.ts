@@ -843,7 +843,89 @@ async function handlePredictPost(url: URL, body: any, env: Env, kind: PredictKin
 //   Solflare in-app, MWA on Seeker, or any wallet that signs Solana txs.
 
 const DFLOW_QUOTE_BASE = "https://quote-api.dflow.net";
+const DFLOW_KALSHI_METADATA_BASE = "https://prediction-markets-api.dflow.net/api/v1";
 const KALSHI_MAX_USDC = 100;
+
+// 2026-09-07: neither handler validated that `outputMint` was an actual
+// Kalshi settlement token before building/signing a DFlow order — verified
+// live by sending outputMint=wrapped-SOL + a garbage account and getting
+// back a real, signable "Position open — YES" transaction. DFlow's /order
+// endpoint has no idea "Kalshi" is involved; it just swaps whatever mint you
+// give it. That means anyone could point our own kalshi-bet Blink (our
+// domain, our branding, "US-legal" copy) at an arbitrary token swap — a
+// phishing/rug vector, not just a cosmetic gap. Every call site that accepts
+// a caller-supplied outputMint MUST resolve it against DFlow's Kalshi
+// metadata API first and refuse to proceed if it doesn't come back as a real,
+// active market — never trust the caller's mint for fund-moving decisions.
+interface ResolvedKalshiMarket {
+  ticker: string;
+  status: string;
+  side: "yes" | "no";
+}
+
+let _kalshiMintCache: Map<string, { result: ResolvedKalshiMarket | null; ts: number }> | undefined;
+const KALSHI_MINT_CACHE_TTL_MS = 60_000;
+
+/** Look up a Kalshi market by its outcome-token mint via DFlow's metadata
+ *  API (dflow docs: GET /market/by-mint/{mint}). Returns null if the mint
+ *  isn't a recognized Kalshi settlement token, the market isn't active, or
+ *  the lookup fails for any reason — callers must fail closed on null. */
+async function resolveKalshiMarketByMint(mint: string): Promise<ResolvedKalshiMarket | null> {
+  _kalshiMintCache ??= new Map();
+  const cached = _kalshiMintCache.get(mint);
+  if (cached && Date.now() - cached.ts < KALSHI_MINT_CACHE_TTL_MS) return cached.result;
+
+  let result: ResolvedKalshiMarket | null = null;
+  try {
+    const res = await fetchWithTimeout(
+      `${DFLOW_KALSHI_METADATA_BASE}/market/by-mint/${encodeURIComponent(mint)}`,
+      { method: "GET", headers: { Accept: "application/json" } },
+      FETCH_TIMEOUT,
+    );
+    if (res.ok) {
+      const market = await res.json() as {
+        ticker?: string;
+        status?: string;
+        accounts?: Array<{ yesMint?: string; noMint?: string }>;
+      };
+      const accounts = market.accounts ?? [];
+      const side: "yes" | "no" | undefined = accounts.some(a => a.yesMint === mint)
+        ? "yes"
+        : accounts.some(a => a.noMint === mint)
+        ? "no"
+        : undefined;
+      if (market.ticker && market.status && side) {
+        result = { ticker: market.ticker, status: market.status, side };
+      }
+    }
+  } catch (err) {
+    console.warn("[kalshi] market/by-mint lookup failed:", (err as Error).message);
+  }
+  _kalshiMintCache.set(mint, { result, ts: Date.now() });
+  return result;
+}
+
+/** Shared gate for both the GET (preview card) and POST (order) handlers —
+ *  resolves outputMint against DFlow's Kalshi metadata and rejects anything
+ *  that isn't a real, currently-active market on the requested side. Fails
+ *  closed: a lookup error, an unrecognized mint, a closed/settled market, or
+ *  a side mismatch (e.g. a "yes" request pointing at a NO mint) all reject. */
+async function validateKalshiOutputMint(
+  outputMint: string,
+  requestedSide: "yes" | "no",
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const market = await resolveKalshiMarketByMint(outputMint);
+  if (!market) {
+    return { ok: false, error: "outputMint is not a recognized Kalshi settlement token" };
+  }
+  if (market.status !== "active") {
+    return { ok: false, error: `Kalshi market ${market.ticker} is not active (status: ${market.status})` };
+  }
+  if (market.side !== requestedSide) {
+    return { ok: false, error: `outputMint resolves to side "${market.side}", not requested side "${requestedSide}"` };
+  }
+  return { ok: true };
+}
 // Inline kalshiYesMint / kalshiNoMint instead of a separate side enum: DFlow
 // has no side flag — passing the YES mint as outputMint = buying YES, and
 // vice versa. The bot still sends a `side=yes|no` query param so the GET
@@ -941,7 +1023,7 @@ function estimatePayoutUsdc(amountUsdc: number, entryPrice: number): number {
   return amountUsdc / entryPrice;
 }
 
-function handleKalshiBetGet(url: URL): Response {
+async function handleKalshiBetGet(url: URL): Promise<Response> {
   const ticker = url.searchParams.get("ticker");
   const outputMint = url.searchParams.get("outputMint");
   const side = (url.searchParams.get("side") || "yes").toLowerCase();
@@ -954,6 +1036,9 @@ function handleKalshiBetGet(url: URL): Response {
   if (!outputMint) return errorResponse("Missing outputMint");
   try { new PublicKey(outputMint); } catch { return errorResponse("Invalid outputMint"); }
   if (side !== "yes" && side !== "no") return errorResponse("side must be yes or no");
+
+  const validation = await validateKalshiOutputMint(outputMint, side);
+  if (!validation.ok) return errorResponse(validation.error);
 
   const sideUpper = side.toUpperCase();
   const entryPrice = parseEntryPriceCents(entryPriceRaw);
@@ -1018,6 +1103,12 @@ async function handleKalshiBetPost(url: URL, body: any, env: Env): Promise<Respo
   if (!Number.isFinite(amount) || amount <= 0 || amount > KALSHI_MAX_USDC) {
     return errorResponse(`Invalid amount (0 < amount <= ${KALSHI_MAX_USDC} USDC)`);
   }
+
+  // Never build/sign an order off a caller-supplied mint without independently
+  // confirming DFlow itself recognizes it as a real, active Kalshi market on
+  // the requested side — see validateKalshiOutputMint's doc comment.
+  const validation = await validateKalshiOutputMint(outputMint, side as "yes" | "no");
+  if (!validation.ok) return errorResponse(validation.error);
 
   try {
     const tx = await getDFlowKalshiOrder({
