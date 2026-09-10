@@ -32,7 +32,7 @@ import { assertDeviceTrusted } from "@/lib/security";
 
 const APP_IDENTITY = {
   name: "OnlyMonkes",
-  uri: "https://github.com/jumpstreet25/OnlyMonkes",
+  uri: "https://onlymonkes-actions.jumpstreet25.workers.dev",
   icon: "favicon.ico",
 };
 

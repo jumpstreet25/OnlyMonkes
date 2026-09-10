@@ -3617,6 +3617,36 @@ export default {
       return handleActionsJson(url);
     }
 
+    // 2026-09-10: Digital Asset Links — lets Mobile Wallet Adapter verify
+    // com.onlymonkes.app as the legitimate holder of the app identity URI
+    // used in every authorize() call (see useMobileWallet.ts's APP_IDENTITY).
+    // Per the MWA spec, a wallet endpoint should fetch this file for the
+    // declared identity.uri and confirm the calling package + signing cert
+    // are listed before trusting the dapp. The identity.uri previously
+    // pointed at github.com, which has no such file — GitHub isn't a domain
+    // OnlyMonkes controls, so no verification could ever succeed there.
+    // Confirmed live: Solana Mobile's own native (Seed Vault) wallet appears
+    // to enforce this and was silently failing/limiting XMTP-identity
+    // signing as a result, while a lower-priority wallet let the connection
+    // through without the check. Fingerprint below pulled directly from the
+    // actual published dApp Store APK (versionCode 49) via
+    // `keytool -printcert -jarfile`, not the raw keystore — no password
+    // needed and it's guaranteed to match what's actually shipped.
+    if (path === "/.well-known/assetlinks.json") {
+      return jsonResponse([
+        {
+          relation: ["delegate_permission/common.handle_all_urls"],
+          target: {
+            namespace: "android_app",
+            package_name: "com.onlymonkes.app",
+            sha256_cert_fingerprints: [
+              "2E:2F:EE:B8:1C:CF:0D:E5:D1:91:F6:E1:74:11:3B:A9:83:91:81:B1:CB:75:40:AB:6D:5C:94:A9:CF:F4:87:D8",
+            ],
+          },
+        },
+      ]);
+    }
+
     // Swap endpoint
     if (path === "/api/actions/swap") {
       if (request.method === "GET") return handleSwapGet(url);
