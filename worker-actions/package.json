@@ -8,7 +8,7 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260804.1",
-    "wrangler": "^4.0.0"
+    "wrangler": "^4.131.0"
   },
   "dependencies": {
     "@cf-wasm/photon": "^0.3.7",
