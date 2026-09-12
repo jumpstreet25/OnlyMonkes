@@ -27,6 +27,7 @@ import type { ClosedTrade, OpenTrade } from '@/lib/positions';
 import type { PortfolioCard, PortfolioResponse } from '@/store/tradesStore';
 import type { ChatMessage, ReactionEmoji } from '@/types';
 import { isMineInbox } from '@/lib/inboxLinking';
+import { ReclaimModal } from '@/components/ReclaimModal';
 
 type FeedItem =
   | { kind: 'msg'; key: string; ts: number; msg: ChatMessage }
@@ -48,6 +49,7 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
   const [activeTradeCard, setActiveTradeCard] = useState<ClosedTrade | null>(null);
   const [activeLiveCard, setActiveLiveCard] = useState<PortfolioCard | null>(null);
   const [actionSheetTarget, setActionSheetTarget] = useState<ChatMessage | null>(null);
+  const [reclaimVisible, setReclaimVisible] = useState(false);
   // windowSoftInputMode="adjustResize" doesn't reliably reposition content
   // under this app's edge-to-edge/immersive mode — same root cause already
   // found and fixed on Main Chat (ChatScreen.tsx), where the input bar
@@ -87,13 +89,27 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
   const handleSend = useCallback(async () => {
     const text = inputText.trim();
     if (!text) return;
+    // The bare "/reclaim" chat command still triggers the bot's old manual
+    // sign-and-paste-a-signature flow — real bug, not just rough UX: the app
+    // has had a guided one-tap version (this same modal, reachable from the
+    // hamburger menu's Account Recovery section) since 2026-08-20, but the
+    // command was still left wired to the harder fallback path. Redirect it
+    // to the modal instead of ever sending it to the bot. A command WITH
+    // args (`/reclaim <sig> <pubkey>`) is the modal's own automated
+    // handshake completing itself — never something a user types by hand —
+    // so only the bare, no-args form is intercepted here.
+    if (isBotDm && text.toLowerCase() === '/reclaim') {
+      setInputText('');
+      setReclaimVisible(true);
+      return;
+    }
     setInputText('');
     setReplyingTo(null);
     await send(text);
     // Inverted list — newest sits at the bottom of the screen, which is
     // offset 0 in the scroll coordinate space.
     setTimeout(() => flatListRef.current?.scrollToOffset({ offset: 0, animated: true }), 50);
-  }, [inputText, send]);
+  }, [inputText, send, isBotDm]);
 
   const handleReact = useCallback(async (emoji: ReactionEmoji, messageId: string) => {
     try {
@@ -296,6 +312,7 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
         onReact={handleReact}
         onReply={handleReply}
       />
+      <ReclaimModal visible={reclaimVisible} onClose={() => setReclaimVisible(false)} />
     </View>
   );
 }

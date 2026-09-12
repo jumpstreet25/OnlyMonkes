@@ -140,9 +140,21 @@ export const SOLANA_RPC_URL = 'https://api.mainnet-beta.solana.com';
 // MonkeLedger — self-hosted Saga Monkes cNFT Merkle-proof indexer (own VPS process, own
 // Helius key, isolated from the trading bot — see MonkeLedger repo for why). Primary source
 // for Bubblegum transfer proofs in nftSwap.ts; Helius DAS is the fallback, not the other way
-// around. Plain HTTP (no TLS on this VPS port yet) — acceptable here since the proof data
-// itself is public and a bad/stale proof is rejected atomically on-chain regardless of source.
-export const MONKE_LEDGER_URL = 'http://157.173.192.39:3002';
+// around.
+//
+// 2026-09-13: was the raw VPS IP over plain HTTP ('http://157.173.192.39:3002') — that reasoning
+// ("acceptable since a bad proof just fails atomically on-chain") was about data-integrity risk
+// and never considered Android's own network security policy: release builds (both the preview
+// and production EAS profiles build the same production Gradle flavor) have no cleartext
+// exception configured, so every fetch to a plain http:// address was silently rejected before
+// it even reached the network — confirmed as the root cause of the Memorial tab's "couldn't
+// reach" error (a debug/dev-client build DOES allow cleartext, which is why this went unnoticed
+// in local testing). Point at MonkeLedger's own public HTTPS Cloudflare Worker instead — the
+// same isolated VPS backend, just fronted by TLS + the Worker's per-endpoint caching, and the
+// exact URL this project already hands out for others to use. Fixes the underlying issue
+// properly (real HTTPS) rather than papering over it with a native manifest change, and ships
+// via OTA with no native rebuild needed.
+export const MONKE_LEDGER_URL = 'https://monkeledger.jumpstreet25.workers.dev';
 
 // XMTP v5 global group chat ID — set this after the first user creates the group.
 // Leave empty on first run; the app will create a new group and log its ID.

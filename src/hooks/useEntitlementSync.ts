@@ -17,7 +17,7 @@ import { AppState, AppStateStatus } from 'react-native';
 import { useAppStore } from '@/store/appStore';
 import { useNFTVerification } from './useNFTVerification';
 import { verifyGenesisTokenOwnership } from '@/lib/genesisTokenVerification';
-import { saveGenesisFlag, clearGenesisFlag } from '@/lib/session';
+import { saveGenesisFlag, clearGenesisFlag, saveVerifiedNft, clearVerifiedNft, stampNftCheck } from '@/lib/session';
 
 const RECHECK_TTL_MS = 6 * 3600 * 1000; // 6h
 
@@ -42,7 +42,28 @@ export function useEntitlementSync(): void {
         // Only stamp a fresh check on a real answer — a providerError means every DAS
         // provider failed, so nothing was actually re-confirmed and the stale timestamp
         // should keep prompting a retry on the next foreground return.
-        if (!result.providerError) setVerifiedAt(Date.now());
+        if (!result.providerError) {
+          setVerifiedAt(Date.now());
+          // 2026-09-13 fix: this in-memory flag was the ONLY thing this background recheck
+          // updated on a confirmed Saga Monke holder — it never persisted that to SecureStore,
+          // so ConnectScreen's cold-launch fast path (which trusts the persisted cache, not this
+          // in-memory store) kept sending a wallet that became a Monke holder AFTER first being
+          // verified Genesis-only straight to Genesis Chat on every relaunch, contradicting the
+          // app's own "Saga Monke wins" precedence (VerifyScreen.tsx's fresh-verification path
+          // already gets this right — this hook's periodic recheck did not). Mirror what
+          // VerifyScreen's goToChat() does on a fresh verification, and also clear the cache on a
+          // CONFIRMED loss of ownership (not on a provider error) so the reverse case — someone
+          // who sells their Monke — doesn't stay stuck on the Main Chat fast path either.
+          if (result.verified) {
+            const nft = useAppStore.getState().verifiedNft;
+            if (nft) {
+              await saveVerifiedNft(nft);
+              await stampNftCheck();
+            }
+          } else {
+            await clearVerifiedNft();
+          }
+        }
 
         const genesis = await verifyGenesisTokenOwnership(walletAddress);
         if (genesis.verified && genesis.kind) {
