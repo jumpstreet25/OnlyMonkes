@@ -1589,6 +1589,10 @@ const APK_URL_CACHE_TTL_MS = 60 * 60 * 1000; // 1h — avoid hammering GitHub's 
 // or the Mac being awake. Same collection/creator addresses the bot uses
 // (src/lib/alerts/holderSnapshot.ts, src/lib/nft/sagaMonkesSales.ts).
 
+// MonkeLedger (github.com/jumpstreet25/MonkeLedger) — our own self-hosted Saga Monkes indexer,
+// separate Cloudflare Worker fronting an isolated VPS process. Public HTTPS URL, not a secret.
+const MONKE_LEDGER_URL = "https://monkeledger.jumpstreet25.workers.dev";
+
 const SAGA_COLLECTION_MINT = "GokAiStXz2Kqbxwz2oqzfEXuUhE7aXySmBGEP7uejKXF";
 const SAGA_CREATOR_WALLET = "8McVhmNjsYSkwQ34QXJb2ADgLWERcHcpqxSzRZUCRZfQ";
 const SKR_MINT = "SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3";
@@ -1692,6 +1696,27 @@ async function scanHolderIndexFrom(url: string): Promise<HolderIndexFile | null>
   return { updatedAt: Date.now(), owners };
 }
 
+/** MonkeLedger's /holders — same shape this index needs (owner + mint + name + image), already
+ *  kept fresh by MonkeLedger's own poll-triggered refresh. Tried before the getAssetsByGroup
+ *  scans below; this is what lets this worker stop running its own redundant full-collection
+ *  DAS scan every 4h for the exact same collection MonkeLedger already indexes. */
+async function buildHolderIndexFromMonkeLedger(): Promise<HolderIndexFile | null> {
+  try {
+    const res = await fetchWithTimeout(`${MONKE_LEDGER_URL}/holders`, {}, 30_000);
+    if (!res.ok) return null;
+    const rows = await res.json() as Array<{ mint: string; name: string | null; image: string | null; owner: string }>;
+    if (!Array.isArray(rows) || rows.length < 1000) return null;
+    const owners: Record<string, HolderIndexEntry> = {};
+    for (const row of rows) {
+      if (owners[row.owner] || MARKETPLACE_ESCROWS.has(row.owner)) continue;
+      owners[row.owner] = { mint: row.mint, name: row.name ?? "Saga Monke", image: row.image };
+    }
+    return { updatedAt: Date.now(), owners };
+  } catch {
+    return null;
+  }
+}
+
 async function persistHolderIndex(env: Env, file: HolderIndexFile): Promise<void> {
   await env.FRAME_ALERTS.put(HOLDERS_INDEX_KV_KEY, JSON.stringify(file));
 }
@@ -1709,6 +1734,12 @@ async function loadHolderIndex(env: Env): Promise<HolderIndexFile | null> {
 }
 
 async function refreshHolderIndex(env: Env): Promise<HolderIndexFile | null> {
+  const fromLedger = await buildHolderIndexFromMonkeLedger();
+  if (fromLedger) {
+    await persistHolderIndex(env, fromLedger);
+    return fromLedger;
+  }
+
   const urls: string[] = [rpcUrl(env)];
   if (env.QUICKNODE_DAS_URL) urls.push(env.QUICKNODE_DAS_URL);
   for (const url of urls) {
@@ -2160,11 +2191,41 @@ async function searchOwnedMonke(url: string, wallet: string, timeoutMs: number):
   return pickOwnedMonke(items);
 }
 
+/**
+ * MonkeLedger fast path (2026-09-12) — one /wallet lookup + a /metadata call for the first
+ * result, both served from MonkeLedger's own cache (no Helius call at all). Confirm-only, same
+ * contract as every other MonkeLedger integration in this project: returns a MonkeAsset only on
+ * an actual confirmed hit, null on anything else (not found, unreachable, malformed) — a null
+ * here does NOT mean "confirmed non-holder," it means "ask the live chain instead." This worker
+ * had no MonkeLedger integration at all before this; unlike the app/bot call sites (which have
+ * been running confirm-only since earlier the same day), this one starts its own fresh
+ * observation period before ever being trusted for a denial.
+ */
+async function fetchOwnedMonkeFromMonkeLedger(wallet: string): Promise<MonkeAsset | null> {
+  try {
+    const walletRes = await fetchWithTimeout(`${MONKE_LEDGER_URL}/wallet/${wallet}`, {}, 8_000);
+    if (!walletRes.ok) return null;
+    const { owns, assets } = await walletRes.json() as { owns?: boolean; assets?: string[] };
+    if (!owns || !assets?.[0]) return null;
+
+    const metaRes = await fetchWithTimeout(`${MONKE_LEDGER_URL}/metadata/${assets[0]}`, {}, 8_000);
+    if (!metaRes.ok) return null;
+    const meta = await metaRes.json() as { name?: string | null; image?: string | null; traits?: Array<{ trait_type: string; value: string }> | null };
+    if (!meta.name) return null;
+    return { mint: assets[0], name: meta.name, image: meta.image ?? null, traits: meta.traits ?? [] };
+  } catch {
+    return null;
+  }
+}
+
 export async function fetchOwnedMonke(
   wallet: string,
   env: Env,
 ): Promise<{ monke: MonkeAsset | null; uncertain: boolean; reasons: string[] }> {
   const reasons: string[] = [];
+
+  const fromLedger = await fetchOwnedMonkeFromMonkeLedger(wallet);
+  if (fromLedger) return { monke: fromLedger, uncertain: false, reasons: ["monkeledger:hit"] };
 
   // searchAssets(owner + collection) is one RPC vs paging getAssetsByOwner
   // (whales with 1000+ assets used to miss their Monke past page 5).
