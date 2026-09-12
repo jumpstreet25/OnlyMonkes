@@ -67,6 +67,7 @@ import {
   handleTreasuryStakePost,
   handleTreasuryThreshold,
   handleTreasuryWeeklySummary,
+  refreshTreasurySnapshotCache,
   PUBLISHER_WALLET,
 } from "./treasury";
 import { getAssociatedTokenAddressSync } from "@solana/spl-token";
@@ -3942,11 +3943,14 @@ export default {
   // above SAGA_COLLECTION_MINT for why that matters.
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
     if (event.cron === "0 * * * *") {
-      // Hourly: close the previous hour's sentiment epoch (Data Oracle Phase 1).
+      // Hourly: close the previous hour's sentiment epoch (Data Oracle Phase 1), and proactively
+      // warm the treasury snapshot cache so /api/treasury/status has fresh-ish data to serve even
+      // during an RPC provider outage (see treasury.ts's 2026-09-12 incident note).
       ctx.waitUntil(
         closeSentimentEpoch(env, new Date(event.scheduledTime))
           .catch(err => console.error("[scheduled] sentiment epoch close failed:", err)),
       );
+      ctx.waitUntil(refreshTreasurySnapshotCache(env));
       return;
     }
     ctx.waitUntil(

@@ -181,15 +181,27 @@ async function fetchSkrUsdPrice(env: Env): Promise<number | null> {
 // and this offset needs re-deriving the same way — see
 // reference_skr_guardian_staking_program.md for the re-derivation method.
 const SHARE_PRICE_OFFSET = 137;
-async function readSharePrice(connection: Connection): Promise<number | null> {
+async function readSharePriceFromConnection(connection: Connection): Promise<number | null> {
+  const { stakeConfig } = derivePdas();
+  const info = await connection.getAccountInfo(stakeConfig); // let an RPC-level failure throw — withRpcFallback needs to see it to retry
+  if (!info || info.data.length < SHARE_PRICE_OFFSET + 8) return null; // valid response, account just doesn't have this data — not a failure
+  const raw = info.data.readBigUInt64LE(SHARE_PRICE_OFFSET);
+  const price = Number(raw) / 1e9;
+  return price > 0.5 && price < 10 ? price : null; // sanity bound, not a real ceiling
+}
+
+// 2026-09-12 incident follow-up: this used to swallow its own errors internally and always
+// return null on ANY failure, which meant it never got a chance to retry via the public-RPC
+// fallback below (that catch already turned an RPC 429 into "no share price" before
+// withRpcFallback's own catch could ever see it) — silently zeroing stakedSkr (and therefore a
+// real chunk of totalUsd) every time Helius alone was unavailable, not just when both providers
+// were down. Now takes both connections and only gives up after the fallback also fails.
+async function readSharePrice(primary: Connection, fallback: Connection): Promise<number | null> {
   try {
-    const { stakeConfig } = derivePdas();
-    const info = await connection.getAccountInfo(stakeConfig);
-    if (!info || info.data.length < SHARE_PRICE_OFFSET + 8) return null;
-    const raw = info.data.readBigUInt64LE(SHARE_PRICE_OFFSET);
-    const price = Number(raw) / 1e9;
-    return price > 0.5 && price < 10 ? price : null; // sanity bound, not a real ceiling
-  } catch { return null; }
+    return await withRpcFallback(primary, fallback, readSharePriceFromConnection);
+  } catch {
+    return null;
+  }
 }
 
 const TREASURY_KV_PREFIX = "treasury:";
@@ -223,31 +235,80 @@ function buildStakeInstruction(staker: PublicKey, amountRaw: bigint): Transactio
   });
 }
 
+// 2026-09-12 incident: this handler had zero error handling around its RPC calls — when the
+// shared Helius key hit its account-wide usage cap (MonkeLedger's DAS scans draw against the
+// same account, see project memory on the interim shared key), every one of these plain
+// getBalance/getParsedTokenAccountsByOwner calls threw, and with nothing catching it the whole
+// /api/treasury/status request crashed with an unhandled exception (Cloudflare error 1101) instead
+// of a clean error. None of these three calls are DAS-specific — they're plain RPC methods any
+// provider supports — so they now fall back to a free public RPC on failure instead of depending
+// on Helius alone for something this simple.
+const TREASURY_RPC_FALLBACK_URL = "https://solana-rpc.publicnode.com";
+
+async function withRpcFallback<T>(
+  primary: Connection,
+  fallback: Connection,
+  fn: (c: Connection) => Promise<T>,
+): Promise<T> {
+  try {
+    return await fn(primary);
+  } catch (err) {
+    console.warn("[treasury] primary RPC call failed, retrying via fallback:", err instanceof Error ? err.message : err);
+    return fn(fallback);
+  }
+}
+
+// SPL Token Account layout: 32 mint + 32 owner + 8 amount (u64 LE) + ... — reading the amount at
+// a fixed byte offset via plain getAccountInfo, instead of getParsedTokenAccountsByOwner, is what
+// makes this fall back to a free public RPC at all: getParsedTokenAccountsByOwner requires an
+// "owner index" that PublicNode's free tier flatly refuses ("Indexed requests require a personal
+// token") even for a single already-known ATA — confirmed directly against PublicNode during the
+// 2026-09-12 incident. getAccountInfo on a specific address has no such restriction anywhere.
+const SPL_TOKEN_AMOUNT_OFFSET = 64;
+
+async function getAtaUiAmount(connection: Connection, mint: PublicKey, owner: PublicKey, decimals: number): Promise<number> {
+  const ata = getAssociatedTokenAddressSync(mint, owner);
+  const info = await connection.getAccountInfo(ata);
+  if (!info || info.data.length < SPL_TOKEN_AMOUNT_OFFSET + 8) return 0; // ATA never created — 0 balance
+  const raw = info.data.readBigUInt64LE(SPL_TOKEN_AMOUNT_OFFSET);
+  return Number(raw) / 10 ** decimals;
+}
+
 /** Shared balance+price read, used by /status, /threshold-check, and /weekly-summary
  *  so all three agree on the same numbers instead of three slightly-different reads. */
 async function readTreasurySnapshot(env: Env) {
-  const connection = new Connection(rpcUrl(env), "confirmed");
-  const [solLamports, skrAccounts, usdcAccounts, solUsdPrice, skrUsdPrice, sharePrice] = await Promise.all([
-    connection.getBalance(PUBLISHER_WALLET),
-    connection.getParsedTokenAccountsByOwner(PUBLISHER_WALLET, { mint: SKR_MINT }),
-    connection.getParsedTokenAccountsByOwner(PUBLISHER_WALLET, { mint: USDC_MINT }),
+  // disableRetryOnRateLimit is required here — @solana/web3.js's Connection otherwise retries a
+  // 429 internally ~16 times with escalating backoff (500ms -> 4s+ per attempt, 25s+ total)
+  // BEFORE ever throwing, which starved withRpcFallback of any chance to fail over quickly and
+  // blew straight through this request's wall-clock budget during the 2026-09-12 incident.
+  const connection = new Connection(rpcUrl(env), { commitment: "confirmed", disableRetryOnRateLimit: true });
+  const fallbackConnection = new Connection(TREASURY_RPC_FALLBACK_URL, { commitment: "confirmed", disableRetryOnRateLimit: true });
+  const [solLamports, skrUi, usdcUi, solUsdPrice, skrUsdPrice, sharePrice] = await Promise.all([
+    withRpcFallback(connection, fallbackConnection, (c) => c.getBalance(PUBLISHER_WALLET)),
+    withRpcFallback(connection, fallbackConnection, (c) => getAtaUiAmount(c, SKR_MINT, PUBLISHER_WALLET, 6)),
+    withRpcFallback(connection, fallbackConnection, (c) => getAtaUiAmount(c, USDC_MINT, PUBLISHER_WALLET, 6)),
     fetchSolUsdPrice(env),
     fetchSkrUsdPrice(env),
-    readSharePrice(connection),
+    readSharePrice(connection, fallbackConnection),
   ]);
-  const skrUi = skrAccounts.value[0]?.account.data.parsed.info.tokenAmount.uiAmount ?? 0;
-  const usdcUi = usdcAccounts.value[0]?.account.data.parsed.info.tokenAmount.uiAmount ?? 0;
   const solUi = solLamports / 1e9;
 
   let stakedShares = "0";
   let stakedSkr = 0;
-  try {
+  {
+    // 2026-09-12 incident follow-up: this used to swallow ANY failure here (including an RPC
+    // failure on BOTH providers) as "no stake account yet, default to 0" — during the incident
+    // that silently zeroed a real, substantial staked balance on every request where this one
+    // lookup happened to fail even though the rest of the snapshot succeeded, and then cached
+    // that wrong zero over a previously-good value. Only a genuine `info === null` (a real
+    // answer: this account doesn't exist) should default to 0 — an RPC-level failure must
+    // propagate so the caller falls back to the last good cached snapshot instead.
     const { stakeConfig, guardianPool } = derivePdas();
     const [userStake] = PublicKey.findProgramAddressSync(
       [Buffer.from("user_stake"), stakeConfig.toBuffer(), PUBLISHER_WALLET.toBuffer(), guardianPool.toBuffer()],
       STAKING_PROGRAM_ID,
     );
-    const info = await connection.getAccountInfo(userStake);
+    const info = await withRpcFallback(connection, fallbackConnection, (c) => c.getAccountInfo(userStake));
     if (info) {
       // UserStake layout: 8 disc + 1 bump + 32 stake_config + 32 user + 32 guardian_pool + 16 shares (u128 LE) ...
       const sharesOffset = 8 + 1 + 32 + 32 + 32;
@@ -255,7 +316,7 @@ async function readTreasurySnapshot(env: Env) {
       stakedShares = rawShares.toString();
       if (sharePrice) stakedSkr = (Number(rawShares) / 1e6) * sharePrice;
     }
-  } catch { /* no stake account yet — fine, defaults to 0 */ }
+  }
 
   const skrPortionUsd = skrUsdPrice ? (skrUi + stakedSkr) * skrUsdPrice : null;
   const totalUsd =
@@ -264,12 +325,37 @@ async function readTreasurySnapshot(env: Env) {
     (skrPortionUsd ?? 0);
   const sweepableUsd = (solUsdPrice ? solUi * solUsdPrice : 0) + usdcUi; // not-yet-swapped income only
 
-  return { connection, solUi, usdcUi, skrUi, stakedShares, stakedSkr, solUsdPrice, skrUsdPrice, sharePrice, totalUsd, sweepableUsd };
+  const result = { solUi, usdcUi, skrUi, stakedShares, stakedSkr, solUsdPrice, skrUsdPrice, sharePrice, totalUsd, sweepableUsd };
+  // Cache every successful read — this is what lets handleTreasuryStatus below serve
+  // last-known-good data instead of a bare error when Helius AND the public-RPC fallback are
+  // both rate-limited at once (confirmed happens together — see the 2026-09-12 incident note
+  // above). Non-fatal if the KV write itself fails.
+  cacheSnapshot(env, result).catch(() => {});
+  return { connection, ...result };
 }
 
-// ─── GET /api/treasury/status — read-only balances, no Action envelope ────────
-export async function handleTreasuryStatus(env: Env): Promise<Response> {
-  const snap = await readTreasurySnapshot(env);
+const TREASURY_SNAPSHOT_KV_KEY = `${TREASURY_KV_PREFIX}snapshot`;
+type CachedTreasurySnapshot = Awaited<ReturnType<typeof readTreasurySnapshot>> extends infer T
+  ? T extends { connection: unknown } ? Omit<T, "connection"> & { cachedAtMs: number } : never
+  : never;
+
+async function cacheSnapshot(env: Env, data: Omit<CachedTreasurySnapshot, "cachedAtMs">): Promise<void> {
+  await env.FRAME_ALERTS.put(TREASURY_SNAPSHOT_KV_KEY, JSON.stringify({ ...data, cachedAtMs: Date.now() }));
+}
+
+async function readCachedSnapshot(env: Env): Promise<CachedTreasurySnapshot | null> {
+  try {
+    const raw = await env.FRAME_ALERTS.get(TREASURY_SNAPSHOT_KV_KEY);
+    return raw ? (JSON.parse(raw) as CachedTreasurySnapshot) : null;
+  } catch {
+    return null;
+  }
+}
+
+function buildStatusResponse(
+  snap: Omit<CachedTreasurySnapshot, "cachedAtMs">,
+  extra: { stale: boolean; asOfMs: number | null },
+): Response {
   return jsonResponse({
     wallet: PUBLISHER_WALLET.toBase58(),
     sol: snap.solUi,
@@ -294,7 +380,46 @@ export async function handleTreasuryStatus(env: Env): Promise<Response> {
       usdc: snap.usdcUi >= SWAP_INPUTS.usdc.minRecommended,
     },
     readyToStake: snap.skrUi >= 1, // on-chain min_stake_amount
+    // Added 2026-09-12 — lets the app show "as of X ago" instead of silently passing off stale
+    // numbers as live when both RPC providers are down at once and this is serving from cache.
+    stale: extra.stale,
+    asOfMs: extra.asOfMs,
   });
+}
+
+/** Proactive cache warm — called from index.ts's hourly cron so a fresh snapshot exists in KV
+ *  even if no user happens to open the Treasury screen during a given window. Swallows its own
+ *  errors: readTreasurySnapshot already logs failures, and a missed warm just leaves the
+ *  previous cache entry in place for handleTreasuryStatus's fallback path to use. */
+export async function refreshTreasurySnapshotCache(env: Env): Promise<void> {
+  try {
+    await readTreasurySnapshot(env);
+  } catch (err) {
+    console.warn("[treasury] scheduled cache warm failed:", err instanceof Error ? err.message : err);
+  }
+}
+
+// ─── GET /api/treasury/status — read-only balances, no Action envelope ────────
+export async function handleTreasuryStatus(env: Env): Promise<Response> {
+  try {
+    const snap = await readTreasurySnapshot(env);
+    return buildStatusResponse(snap, { stale: false, asOfMs: Date.now() });
+  } catch (err) {
+    // readTreasurySnapshot's own RPC calls already fall back to a public RPC on failure (see
+    // withRpcFallback above), so reaching here means BOTH providers failed at once — confirmed to
+    // happen together during the 2026-09-12 incident (Helius hit its account-wide usage cap while
+    // MonkeLedger was mid-refresh; the public-RPC fallback got IP-rate-limited independently,
+    // since Cloudflare Workers share egress IPs with many other free-tier consumers). Serve the
+    // last successfully-cached snapshot instead of a bare error — stale real numbers beat nothing.
+    console.warn("[treasury] live read failed on both RPC providers, trying cache:", err instanceof Error ? err.message : err);
+    const cached = await readCachedSnapshot(env);
+    if (cached) {
+      const { cachedAtMs, ...snap } = cached;
+      return buildStatusResponse(snap, { stale: true, asOfMs: cachedAtMs });
+    }
+    console.error("[treasury] no cached snapshot available either — nothing to serve");
+    return errorResponse("Treasury status temporarily unavailable — try again shortly", 503);
+  }
 }
 
 // ─── GET /api/treasury/threshold-check — "$20 of dApp income accrued" alert ──
