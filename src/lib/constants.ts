@@ -137,6 +137,13 @@ export const ALCHEMY_DAS_URL: string = _ALCHEMY_API_KEY
 export const HELIUS_RPC_URL = `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`;
 export const SOLANA_RPC_URL = 'https://api.mainnet-beta.solana.com';
 
+// MonkeLedger — self-hosted Saga Monkes cNFT Merkle-proof indexer (own VPS process, own
+// Helius key, isolated from the trading bot — see MonkeLedger repo for why). Primary source
+// for Bubblegum transfer proofs in nftSwap.ts; Helius DAS is the fallback, not the other way
+// around. Plain HTTP (no TLS on this VPS port yet) — acceptable here since the proof data
+// itself is public and a bad/stale proof is rejected atomically on-chain regardless of source.
+export const MONKE_LEDGER_URL = 'http://157.173.192.39:3002';
+
 // XMTP v5 global group chat ID — set this after the first user creates the group.
 // Leave empty on first run; the app will create a new group and log its ID.
 export const GLOBAL_GROUP_ID = '';

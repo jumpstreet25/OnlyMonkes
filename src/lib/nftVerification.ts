@@ -25,10 +25,11 @@ import {
   NFT_COLLECTION_ADDRESS,
   QUICKNODE_DAS_URL,
   ALCHEMY_DAS_URL,
+  MONKE_LEDGER_URL,
 } from "./constants";
 import { verifySagaMonkeOnChain } from "./onchainCnftVerify";
 import { getSagaMonkeMeta } from "./sagaMonkesIndex";
-import type { NFTVerificationResult, OwnedNFT } from "@/types";
+import type { NFTVerificationResult, OwnedNFT, NftTrait } from "@/types";
 
 const TIMEOUT_MS = 15_000;
 const RETRY_DELAY_MS = 2_000;
@@ -376,11 +377,44 @@ async function fetchAssetsViaAlchemy(walletAddress: string): Promise<OwnedNFT[]>
  * Deliberately NOT called on every login (that would reintroduce exactly the
  * live-DAS-call-per-login cost the fast path exists to avoid) — call this
  * only when the user is about to actually pick a different NFT (the "Switch
- * PFP" flow), where paying for one fresh DAS call is clearly worth it.
- * Returns [] on total failure — callers should keep whatever `allNfts` they
+ * PFP" flow).
+ *
+ * 2026-09-12: tries MonkeLedger first (one /wallet + parallel /metadata calls, zero Helius) —
+ * only falls through to the live Helius->QuickNode->Alchemy chain if MonkeLedger can't produce a
+ * complete list. Returns [] on total failure — callers should keep whatever `allNfts` they
  * already had rather than blanking the picker.
  */
+/**
+ * MonkeLedger-first path for the full gallery — one /wallet lookup plus a parallel /metadata
+ * fetch per owned asset, all served from MonkeLedger's own cache (no Helius call at all).
+ * Returns null (not []) on anything short of a genuine "wallet owns N Monkes, here they are" so
+ * callers fall through to the live chain rather than confidently showing an empty/stale gallery —
+ * same confirm-only contract as every other MonkeLedger fast path in this file.
+ */
+async function fetchFullCollectionFromMonkeLedger(walletAddress: string): Promise<OwnedNFT[] | null> {
+  const fromLedger = await checkMonkeLedgerWalletAssets(walletAddress);
+  if (!fromLedger?.owns || fromLedger.assets.length === 0) return null;
+  const metadataResults = await Promise.all(fromLedger.assets.map(fetchMonkeLedgerMetadata));
+  const nfts: OwnedNFT[] = [];
+  for (let i = 0; i < fromLedger.assets.length; i++) {
+    const meta = metadataResults[i];
+    if (!meta) return null; // any miss — don't show a partial gallery, fall through instead
+    nfts.push({
+      mint: fromLedger.assets[i],
+      name: meta.name,
+      symbol: "MONKE",
+      image: meta.image,
+      collectionMint: NFT_COLLECTION_ADDRESS,
+      traits: meta.traits,
+    });
+  }
+  return nfts;
+}
+
 export async function fetchFullNftCollection(walletAddress: string): Promise<OwnedNFT[]> {
+  const fromLedger = await fetchFullCollectionFromMonkeLedger(walletAddress).catch(() => null);
+  if (fromLedger) return fromLedger;
+
   if (HELIUS_NFT_API_KEY) {
     try {
       const nfts = await fetchAssetsViaHelius(walletAddress);
@@ -421,6 +455,38 @@ export async function verifyNFTOwnership(
   const errors: string[] = [];
   let confirmedNonHolder = false;
 
+  // ── -1. MonkeLedger fast path (2026-09-12, Tier 1 migration, 48h backup-check
+  // period — see project memory). Our own self-hosted indexer, independently
+  // verified against the live on-chain root every 10 min — see MonkeLedger repo.
+  // Same additive-only contract as the holder-index step below: this can ONLY
+  // ever short-circuit to a CONFIRMED holder. Any other outcome (not found,
+  // unreachable, indeterminate) falls straight through to the full chain below,
+  // completely unchanged — Helius remains the sole authority for every denial
+  // during this probation period. Real name/image/traits now come straight from
+  // MonkeLedger too (added 2026-09-12) — no live Helius call needed for those
+  // either; cache/generic fallback only kicks in if MonkeLedger's metadata call
+  // itself misses (e.g. mid-refresh).
+  try {
+    const fromLedger = await checkMonkeLedgerWalletAssets(walletAddress);
+    if (fromLedger?.owns && fromLedger.assets[0]) {
+      console.log("[NFTVerify] MonkeLedger fast-confirm: wallet holds a Saga Monke");
+      const [cached, metadata] = await Promise.all([
+        getCachedVerifiedNft(walletAddress),
+        fetchMonkeLedgerMetadata(fromLedger.assets[0]),
+      ]);
+      const nft: OwnedNFT = {
+        mint: fromLedger.assets[0],
+        name: metadata?.name ?? cached?.name ?? "Saga Monke",
+        symbol: "MONKE",
+        image: metadata?.image ?? cached?.image ?? null,
+        collectionMint: NFT_COLLECTION_ADDRESS,
+        traits: metadata?.traits ?? cached?.traits,
+      };
+      cacheVerifiedNft(walletAddress, nft).catch(() => {});
+      return { verified: true, nft, allNfts: [nft] };
+    }
+  } catch { /* MonkeLedger unavailable — fall through, no error recorded */ }
+
   // ── 0. Holder-index fast path — pure KV read on the worker, no live
   // Helius/QuickNode/Alchemy call at all. The worker refreshes this index
   // from a full collection scan every ~4h (see fetchMonkeHolderCount), so
@@ -460,7 +526,7 @@ export async function verifyNFTOwnership(
         // allNfts is deliberately just [nft] here — the holder index only
         // ever tracks one mint per wallet, so it structurally can't report
         // a full multi-Monke collection. That's fine for the fast path's
-        // actual job (confirm + show ONE NFT quickly); getFullNftListFor()
+        // actual job (confirm + show ONE NFT quickly); fetchFullNftCollection()
         // is what "Switch PFP" now calls on-demand to get the true full
         // collection when a user actually wants to pick between Monkes,
         // rather than paying that cost on every login.
@@ -678,14 +744,155 @@ export async function verifyNFTOwnership(
 }
 
 /**
+ * Checks MonkeLedger (our own self-hosted indexer) for whether an assetId is a live,
+ * currently-held Saga Monke. Returns null (not false) on any failure/timeout/unknown-asset so
+ * callers correctly fall through to Helius rather than treating "MonkeLedger doesn't have it" as
+ * "not in the collection" — MonkeLedger's index can be mid-refresh, or the asset could be a
+ * burned/decompressed one it deliberately excludes even though it was once real.
+ */
+/**
+ * Wallet-keyed counterpart to checkMonkeLedgerMembership — "does this wallet currently hold any
+ * Saga Monke". Confirm-only, like every other MonkeLedger fast path in this codebase: only ever
+ * returns `true` (a real hit) or `null` (couldn't determine — no answer, unreachable, or
+ * MonkeLedger itself confirmed zero assets). A `false` from MonkeLedger is deliberately mapped to
+ * null here, not returned as-is — this function's only caller must fall through to the full
+ * verification chain for a denial, never treat MonkeLedger's "no" as final.
+ */
+export async function checkMonkeLedgerWalletOwnership(wallet: string): Promise<boolean | null> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5_000);
+    let res: Response;
+    try {
+      res = await fetch(`${MONKE_LEDGER_URL}/wallet/${wallet}`, { signal: controller.signal });
+    } finally {
+      clearTimeout(timer);
+    }
+    if (!res.ok) return null;
+    const data = (await res.json()) as { owns?: boolean };
+    return data.owns === true ? true : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Richer sibling of checkMonkeLedgerWalletOwnership, for verifyNFTOwnership's fast path — needs
+ * the actual assetId(s), not just a boolean, to build an OwnedNFT stub. Same null-on-uncertainty
+ * contract. Pair with fetchMonkeLedgerMetadata() below to fill in real name/image/traits (2026-09-12
+ * — MonkeLedger now captures display metadata for free from the same DAS snapshot it already
+ * fetches; no live Helius call needed for this).
+ */
+async function checkMonkeLedgerWalletAssets(wallet: string): Promise<{ owns: boolean; assets: string[] } | null> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5_000);
+    let res: Response;
+    try {
+      res = await fetch(`${MONKE_LEDGER_URL}/wallet/${wallet}`, { signal: controller.signal });
+    } finally {
+      clearTimeout(timer);
+    }
+    if (!res.ok) return null;
+    const data = (await res.json()) as { owns?: boolean; assets?: string[] };
+    if (typeof data.owns !== "boolean" || !Array.isArray(data.assets)) return null;
+    return { owns: data.owns, assets: data.assets };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Real display metadata from MonkeLedger — captured for free from the same getAssetsByGroup
+ * snapshot it already fetches every refresh (Helius has already resolved the Arweave JSON on its
+ * end; MonkeLedger just saves it instead of discarding it). Returns null on any failure/miss so
+ * callers fall back to cache/generic-placeholder exactly as before this existed.
+ */
+async function fetchMonkeLedgerMetadata(assetId: string): Promise<{ name: string; image: string | null; traits?: NftTrait[] } | null> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5_000);
+    let res: Response;
+    try {
+      res = await fetch(`${MONKE_LEDGER_URL}/metadata/${assetId}`, { signal: controller.signal });
+    } finally {
+      clearTimeout(timer);
+    }
+    if (!res.ok) return null;
+    const data = (await res.json()) as { name?: string | null; image?: string | null; traits?: NftTrait[] | null };
+    if (!data.name) return null;
+    return { name: data.name, image: data.image ?? null, traits: data.traits ?? undefined };
+  } catch {
+    return null;
+  }
+}
+
+export type BurntMonke = {
+  number: number | null;
+  name: string | null;
+  mint: string;
+  image: string | null;
+  traits: NftTrait[] | null;
+  lastSeenLeafIndex: number | null;
+  burnedAtMs: number | null;
+};
+
+/**
+ * The memorial list — every Saga Monke ever burnt, with its last-known name/image/traits.
+ * Purely static/historical display data (no ownership/security implications), so unlike the
+ * other MonkeLedger helpers in this file this isn't confirm-only — it's the only source for this
+ * data at all. Returns null on any failure so the screen can show a friendly error state.
+ */
+export async function fetchMonkeLedgerBurnt(): Promise<BurntMonke[] | null> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8_000);
+    let res: Response;
+    try {
+      res = await fetch(`${MONKE_LEDGER_URL}/burnt`, { signal: controller.signal });
+    } finally {
+      clearTimeout(timer);
+    }
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!Array.isArray(data)) return null;
+    return data as BurntMonke[];
+  } catch {
+    return null;
+  }
+}
+
+async function checkMonkeLedgerMembership(assetId: string): Promise<boolean | null> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5_000);
+    let res: Response;
+    try {
+      res = await fetch(`${MONKE_LEDGER_URL}/owner/${assetId}`, { signal: controller.signal });
+    } finally {
+      clearTimeout(timer);
+    }
+    if (res.status === 404) return null; // not (currently) in MonkeLedger's index — let Helius decide
+    if (!res.ok) return null;
+    return true; // a 200 with a body means MonkeLedger has this asset indexed as a live Saga Monke
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Verify a single NFT mint belongs to the configured collection.
  *
- * Chain: Helius getAsset → QuickNode getAsset → false
+ * Chain: MonkeLedger → Helius getAsset → QuickNode getAsset → false
  */
 export async function verifyNftMintInCollection(nftMint: string): Promise<boolean> {
   if (!NFT_COLLECTION_ADDRESS || !nftMint) return false;
 
-  // ── Helius (primary) ──────────────────────────────────────────────────
+  // ── MonkeLedger (primary — own indexer, isolated from Helius quota) ─────
+  const fromLedger = await checkMonkeLedgerMembership(nftMint);
+  if (fromLedger !== null) return fromLedger;
+
+  // ── Helius (fallback) ──────────────────────────────────────────────────
   if (HELIUS_NFT_API_KEY) {
     try {
       const res = await fetchWithAbort(

@@ -62,7 +62,8 @@ export type MenuIconName =
   | "bolt"        // ⚡ reaction_king
   | "clover"      // 🍀 lucky_monke
   | "palm"        // 🌴 og_jungle_king
-  | "gorilla";    // 🦍 clout-flair suffix
+  | "gorilla"     // 🦍 clout-flair suffix
+  | "tombstone";  // 🪦 Memorial (burnt Monkes)
 
 interface MenuIconProps {
   name: MenuIconName;
@@ -114,6 +115,7 @@ export const MenuIcon = React.memo(function MenuIcon({
       {name === "clover" && <CloverIcon s={s} color={color} />}
       {name === "palm" && <PalmIcon s={s} color={color} />}
       {name === "gorilla" && <GorillaIcon s={s} color={color} />}
+      {name === "tombstone" && <TombstoneIcon s={s} color={color} />}
     </Canvas>
   );
 });
@@ -867,6 +869,31 @@ function PalmIcon({ s, color }: { s: number; color: string }) {
       <Path path={`M ${14 * s} ${9 * s} L ${14 * s} ${2 * s}`} color={color} style="stroke" strokeWidth={stroke} strokeCap="round" />
       {/* Coconut */}
       <Circle cx={11 * s} cy={11 * s} r={1.2 * s} color={color} />
+    </Group>
+  );
+}
+
+// ── Tombstone — 🪦 Memorial (burnt Monkes) ─────────────────────────────────
+function TombstoneIcon({ s, color }: { s: number; color: string }) {
+  const stroke = STROKE * s;
+  // Arched-top grave marker: rounded top, straight sides, flat base.
+  const stone = `
+    M ${9 * s} ${24 * s}
+    L ${9 * s} ${13 * s}
+    Q ${9 * s} ${5 * s} ${14 * s} ${5 * s}
+    Q ${19 * s} ${5 * s} ${19 * s} ${13 * s}
+    L ${19 * s} ${24 * s}
+    Z
+  `;
+  // Ground line at the base
+  const ground = `M ${4 * s} ${24 * s} L ${24 * s} ${24 * s}`;
+  // Small cross etched on the face
+  const cross = `M ${14 * s} ${10 * s} L ${14 * s} ${18 * s} M ${11 * s} ${13 * s} L ${17 * s} ${13 * s}`;
+  return (
+    <Group>
+      <Path path={stone} color={color} style="stroke" strokeWidth={stroke} strokeJoin="round" />
+      <Path path={ground} color={color} style="stroke" strokeWidth={stroke * 1.2} strokeCap="round" />
+      <Path path={cross} color={color} style="stroke" strokeWidth={stroke * 0.8} strokeCap="round" />
     </Group>
   );
 }

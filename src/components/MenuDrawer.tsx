@@ -659,6 +659,11 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                   label="Settings"
                   onPress={() => { onClose(); setTimeout(() => router.push('/settings' as any), 300); }}
                 />
+                <GridButton
+                  iconName="tombstone"
+                  label="Memorial"
+                  onPress={() => { onClose(); setTimeout(() => router.push('/memorial' as any), 300); }}
+                />
                 {isSuperAdmin && (
                   <GridButton
                     iconName="monketools"
