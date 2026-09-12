@@ -266,6 +266,50 @@ async function withRpcFallback<T>(
 // 2026-09-12 incident. getAccountInfo on a specific address has no such restriction anywhere.
 const SPL_TOKEN_AMOUNT_OFFSET = 64;
 
+export type TreasuryMonke = { mint: string; name: string; image: string | null; traits: { trait_type: string; value: string }[] };
+
+/**
+ * Saga Monkes currently held by the publisher wallet — the wallet already holds one (it's the
+ * OnlyTreasury PFP), and since this is a public transparency wallet it could receive more as
+ * donations. Sourced entirely from MonkeLedger (/wallet then /metadata per asset) — zero Helius
+ * calls, same "our own indexer first" pattern as everywhere else this session. Returns [] on any
+ * failure (unreachable, no assets, malformed response) rather than throwing — this is decorative
+ * transparency content, not core balance data, so it should never be what takes /status down.
+ *
+ * Uses the MONKELEDGER Service Binding (wrangler.toml), not a plain fetch(MONKE_LEDGER_URL) —
+ * confirmed live (2026-09-13) that a same-account Worker calling another Worker's workers.dev URL
+ * over the public network can hit Cloudflare error 1042 ("Worker tried to fetch a workers.dev
+ * subdomain on the same account"). fetchOwnedMonkeFromMonkeLedger() below happened to keep working
+ * via plain fetch, but this new call site failed on every attempt — inconsistent enough that the
+ * only real fix is the Service Binding Cloudflare documents for exactly this case, which routes
+ * directly between the two Workers' isolates instead of going out through the public network.
+ */
+async function fetchTreasuryMonkes(env: Env): Promise<TreasuryMonke[]> {
+  try {
+    const walletRes = await env.MONKELEDGER.fetch(`https://monkeledger.internal/wallet/${PUBLISHER_WALLET.toBase58()}`);
+    if (!walletRes.ok) return [];
+    const { owns, assets } = (await walletRes.json()) as { owns?: boolean; assets?: string[] };
+    if (!owns || !assets?.length) return [];
+
+    const monkes = await Promise.all(
+      assets.map(async (mint): Promise<TreasuryMonke | null> => {
+        try {
+          const metaRes = await env.MONKELEDGER.fetch(`https://monkeledger.internal/metadata/${mint}`);
+          if (!metaRes.ok) return null;
+          const meta = (await metaRes.json()) as { name?: string | null; image?: string | null; traits?: { trait_type: string; value: string }[] | null };
+          if (!meta.name) return null;
+          return { mint, name: meta.name, image: meta.image ?? null, traits: meta.traits ?? [] };
+        } catch {
+          return null;
+        }
+      }),
+    );
+    return monkes.filter((m): m is TreasuryMonke => m !== null);
+  } catch {
+    return [];
+  }
+}
+
 async function getAtaUiAmount(connection: Connection, mint: PublicKey, owner: PublicKey, decimals: number): Promise<number> {
   const ata = getAssociatedTokenAddressSync(mint, owner);
   const info = await connection.getAccountInfo(ata);
@@ -283,13 +327,14 @@ async function readTreasurySnapshot(env: Env) {
   // blew straight through this request's wall-clock budget during the 2026-09-12 incident.
   const connection = new Connection(rpcUrl(env), { commitment: "confirmed", disableRetryOnRateLimit: true });
   const fallbackConnection = new Connection(TREASURY_RPC_FALLBACK_URL, { commitment: "confirmed", disableRetryOnRateLimit: true });
-  const [solLamports, skrUi, usdcUi, solUsdPrice, skrUsdPrice, sharePrice] = await Promise.all([
+  const [solLamports, skrUi, usdcUi, solUsdPrice, skrUsdPrice, sharePrice, monkes] = await Promise.all([
     withRpcFallback(connection, fallbackConnection, (c) => c.getBalance(PUBLISHER_WALLET)),
     withRpcFallback(connection, fallbackConnection, (c) => getAtaUiAmount(c, SKR_MINT, PUBLISHER_WALLET, 6)),
     withRpcFallback(connection, fallbackConnection, (c) => getAtaUiAmount(c, USDC_MINT, PUBLISHER_WALLET, 6)),
     fetchSolUsdPrice(env),
     fetchSkrUsdPrice(env),
     readSharePrice(connection, fallbackConnection),
+    fetchTreasuryMonkes(env),
   ]);
   const solUi = solLamports / 1e9;
 
@@ -325,7 +370,7 @@ async function readTreasurySnapshot(env: Env) {
     (skrPortionUsd ?? 0);
   const sweepableUsd = (solUsdPrice ? solUi * solUsdPrice : 0) + usdcUi; // not-yet-swapped income only
 
-  const result = { solUi, usdcUi, skrUi, stakedShares, stakedSkr, solUsdPrice, skrUsdPrice, sharePrice, totalUsd, sweepableUsd };
+  const result = { solUi, usdcUi, skrUi, stakedShares, stakedSkr, solUsdPrice, skrUsdPrice, sharePrice, totalUsd, sweepableUsd, monkes };
   // Cache every successful read — this is what lets handleTreasuryStatus below serve
   // last-known-good data instead of a bare error when Helius AND the public-RPC fallback are
   // both rate-limited at once (confirmed happens together — see the 2026-09-12 incident note
@@ -380,6 +425,9 @@ function buildStatusResponse(
       usdc: snap.usdcUi >= SWAP_INPUTS.usdc.minRecommended,
     },
     readyToStake: snap.skrUi >= 1, // on-chain min_stake_amount
+    // Saga Monkes currently held by this wallet (already has one — it's the OnlyTreasury PFP;
+    // could grow if this public wallet ever receives an NFT donation). See fetchTreasuryMonkes.
+    monkes: snap.monkes,
     // Added 2026-09-12 — lets the app show "as of X ago" instead of silently passing off stale
     // numbers as live when both RPC providers are down at once and this is serving from cache.
     stale: extra.stale,

@@ -12,13 +12,20 @@
  * wallets, not this one.
  */
 import React, { useEffect, useState, useCallback } from "react";
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, RefreshControl, Pressable, Linking } from "react-native";
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, RefreshControl, Pressable, Linking, Image } from "react-native";
 import { router } from "expo-router";
 import { THEME, FONTS, DEV_WALLET } from "@/lib/constants";
 import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
 import { WorldScreenShell, useWorldGlassCardStyle } from "@/components/worlds/WorldScreenShell";
 
 const ACTIONS_BASE = "https://onlymonkes-actions.jumpstreet25.workers.dev";
+
+interface TreasuryMonke {
+  mint: string;
+  name: string;
+  image: string | null;
+  traits: { trait_type: string; value: string }[];
+}
 
 interface TreasuryStatus {
   wallet: string;
@@ -30,6 +37,7 @@ interface TreasuryStatus {
   solUsdPrice: number | null;
   skrUsdPrice: number | null;
   totalUsd: number;
+  monkes: TreasuryMonke[];
 }
 
 export default function TreasuryScreen() {
@@ -89,6 +97,31 @@ export default function TreasuryScreen() {
                 <Text style={styles.walletLink}>{status.wallet.slice(0, 6)}…{status.wallet.slice(-6)} ↗</Text>
               </Pressable>
             </View>
+
+            {status.monkes.length > 0 && (
+              <View style={styles.monkesSection}>
+                <Text style={styles.sectionLabel}>
+                  SAGA MONKES HELD{status.monkes.length > 1 ? ` (${status.monkes.length})` : ""}
+                </Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.monkesRow}>
+                  {status.monkes.map((m) => (
+                    <View key={m.mint} style={[styles.monkeCard, cardStyle]}>
+                      {m.image ? (
+                        <Image source={{ uri: m.image }} style={styles.monkeImg} />
+                      ) : (
+                        <View style={[styles.monkeImg, styles.monkeImgFallback]}>
+                          <Text style={{ fontSize: 28 }}>🐒</Text>
+                        </View>
+                      )}
+                      <Text style={styles.monkeName} numberOfLines={1}>{m.name}</Text>
+                    </View>
+                  ))}
+                </ScrollView>
+                <Text style={styles.footnote}>
+                  Held directly by this wallet — could grow if it ever receives an NFT donation.
+                </Text>
+              </View>
+            )}
 
             <View style={[styles.row, cardStyle]}>
               <View>
@@ -166,4 +199,12 @@ const styles = StyleSheet.create({
   rowAmount: { fontFamily: FONTS.mono, fontSize: 14, color: THEME.text },
   rowUsd: { fontFamily: FONTS.mono, fontSize: 11, color: THEME.textMuted, marginTop: 2 },
   footnote: { fontFamily: FONTS.body, fontSize: 11, color: THEME.textFaint, lineHeight: 16, paddingHorizontal: 4 },
+
+  monkesSection: { gap: 8 },
+  sectionLabel: { fontFamily: FONTS.mono, fontSize: 11, color: THEME.textMuted, letterSpacing: 1, paddingHorizontal: 4 },
+  monkesRow: { gap: 10, paddingHorizontal: 4 },
+  monkeCard: { width: 92, borderRadius: 12, borderWidth: 1, padding: 8, alignItems: "center", gap: 6 },
+  monkeImg: { width: 76, height: 76, borderRadius: 8, backgroundColor: "rgba(127,127,127,0.1)" },
+  monkeImgFallback: { alignItems: "center", justifyContent: "center" },
+  monkeName: { fontFamily: FONTS.mono, fontSize: 10, color: THEME.text, textAlign: "center" },
 });

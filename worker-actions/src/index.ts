@@ -143,6 +143,11 @@ export interface Env {
   AD_ENTITLEMENTS: KVNamespace;
   // MonkeGlobe/MonkeEvents public web repo backend — see community.ts.
   COMMUNITY_DATA: KVNamespace;
+  // Service Binding to the MonkeLedger worker (same Cloudflare account) — see wrangler.toml's
+  // [[services]] entry for why a plain fetch(MONKE_LEDGER_URL) can 1042 and this can't. Typed
+  // minimally (not the ambient `Fetcher` type) since this project's tsconfig only pulls in
+  // @cloudflare/workers-types' stable entry, which doesn't export a bare `Fetcher` name.
+  MONKELEDGER: { fetch: (input: string, init?: RequestInit) => Promise<Response> };
   // Admin config publish (see adminConfig.ts) — replaces the old app-side
   // classic-PAT-in-SecureStore flow. ADMIN_WALLET_PUBKEY is the admin's
   // Solana wallet base58 address (not the XMTP inboxId); ADMIN_GITHUB_PAT
@@ -1591,8 +1596,9 @@ const APK_URL_CACHE_TTL_MS = 60 * 60 * 1000; // 1h — avoid hammering GitHub's 
 // (src/lib/alerts/holderSnapshot.ts, src/lib/nft/sagaMonkesSales.ts).
 
 // MonkeLedger (github.com/jumpstreet25/MonkeLedger) — our own self-hosted Saga Monkes indexer,
-// separate Cloudflare Worker fronting an isolated VPS process. Public HTTPS URL, not a secret.
-const MONKE_LEDGER_URL = "https://monkeledger.jumpstreet25.workers.dev";
+// separate Cloudflare Worker fronting an isolated VPS process. Reached via the MONKELEDGER
+// Service Binding (wrangler.toml), not a URL constant — see fetchOwnedMonkeFromMonkeLedger's doc
+// comment for why a plain fetch() to its public workers.dev URL isn't safe from this worker.
 
 const SAGA_COLLECTION_MINT = "GokAiStXz2Kqbxwz2oqzfEXuUhE7aXySmBGEP7uejKXF";
 const SAGA_CREATOR_WALLET = "8McVhmNjsYSkwQ34QXJb2ADgLWERcHcpqxSzRZUCRZfQ";
@@ -1701,9 +1707,9 @@ async function scanHolderIndexFrom(url: string): Promise<HolderIndexFile | null>
  *  kept fresh by MonkeLedger's own poll-triggered refresh. Tried before the getAssetsByGroup
  *  scans below; this is what lets this worker stop running its own redundant full-collection
  *  DAS scan every 4h for the exact same collection MonkeLedger already indexes. */
-async function buildHolderIndexFromMonkeLedger(): Promise<HolderIndexFile | null> {
+async function buildHolderIndexFromMonkeLedger(env: Env): Promise<HolderIndexFile | null> {
   try {
-    const res = await fetchWithTimeout(`${MONKE_LEDGER_URL}/holders`, {}, 30_000);
+    const res = await env.MONKELEDGER.fetch("https://monkeledger.internal/holders");
     if (!res.ok) return null;
     const rows = await res.json() as Array<{ mint: string; name: string | null; image: string | null; owner: string }>;
     if (!Array.isArray(rows) || rows.length < 1000) return null;
@@ -1735,7 +1741,7 @@ async function loadHolderIndex(env: Env): Promise<HolderIndexFile | null> {
 }
 
 async function refreshHolderIndex(env: Env): Promise<HolderIndexFile | null> {
-  const fromLedger = await buildHolderIndexFromMonkeLedger();
+  const fromLedger = await buildHolderIndexFromMonkeLedger(env);
   if (fromLedger) {
     await persistHolderIndex(env, fromLedger);
     return fromLedger;
@@ -2236,15 +2242,22 @@ async function searchOwnedMonke(url: string, wallet: string, timeoutMs: number):
  * had no MonkeLedger integration at all before this; unlike the app/bot call sites (which have
  * been running confirm-only since earlier the same day), this one starts its own fresh
  * observation period before ever being trusted for a denial.
+ *
+ * 2026-09-13: switched from a plain fetch(MONKE_LEDGER_URL) to the MONKELEDGER Service Binding
+ * (wrangler.toml) — confirmed live that a same-account Worker calling another Worker's
+ * workers.dev URL over the public network can hit Cloudflare error 1042. This one had happened
+ * to keep working via plain fetch while treasury.ts's identical-pattern new call site failed on
+ * every attempt, which makes it flaky rather than safe — not something to leave depending on
+ * luck for a path that gates real ownership verification.
  */
-async function fetchOwnedMonkeFromMonkeLedger(wallet: string): Promise<MonkeAsset | null> {
+async function fetchOwnedMonkeFromMonkeLedger(wallet: string, env: Env): Promise<MonkeAsset | null> {
   try {
-    const walletRes = await fetchWithTimeout(`${MONKE_LEDGER_URL}/wallet/${wallet}`, {}, 8_000);
+    const walletRes = await env.MONKELEDGER.fetch(`https://monkeledger.internal/wallet/${wallet}`);
     if (!walletRes.ok) return null;
     const { owns, assets } = await walletRes.json() as { owns?: boolean; assets?: string[] };
     if (!owns || !assets?.[0]) return null;
 
-    const metaRes = await fetchWithTimeout(`${MONKE_LEDGER_URL}/metadata/${assets[0]}`, {}, 8_000);
+    const metaRes = await env.MONKELEDGER.fetch(`https://monkeledger.internal/metadata/${assets[0]}`);
     if (!metaRes.ok) return null;
     const meta = await metaRes.json() as { name?: string | null; image?: string | null; traits?: Array<{ trait_type: string; value: string }> | null };
     if (!meta.name) return null;
@@ -2260,7 +2273,7 @@ export async function fetchOwnedMonke(
 ): Promise<{ monke: MonkeAsset | null; uncertain: boolean; reasons: string[] }> {
   const reasons: string[] = [];
 
-  const fromLedger = await fetchOwnedMonkeFromMonkeLedger(wallet);
+  const fromLedger = await fetchOwnedMonkeFromMonkeLedger(wallet, env);
   if (fromLedger) return { monke: fromLedger, uncertain: false, reasons: ["monkeledger:hit"] };
 
   // searchAssets(owner + collection) is one RPC vs paging getAssetsByOwner

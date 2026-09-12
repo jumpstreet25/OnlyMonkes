@@ -61,6 +61,19 @@ id = "6bb8296444af405185b354424bb150a7"
 binding = "COMMUNITY_DATA"
 id = "272632d79eb043a69586f7cb4013c080"
 
+# 2026-09-13: Service Binding to the MonkeLedger worker (separate project, same Cloudflare
+# account — github.com/jumpstreet25/MonkeLedger). A plain fetch() to monkeledger's public
+# workers.dev URL intermittently returns Cloudflare error 1042 ("Worker tried to fetch a
+# workers.dev subdomain on the same account") — confirmed live: /api/verify's existing
+# fetchOwnedMonkeFromMonkeLedger() happened to keep working, but the new treasury.ts NFT-card
+# lookup hit 1042 on every attempt. A Service Binding is Cloudflare's own documented fix for
+# same-account Worker-to-Worker calls — it routes directly between the two Workers' isolates
+# instead of going out through the public network/DNS, so this restriction never applies.
+# Call via env.MONKELEDGER.fetch(new Request(url)) rather than a plain fetch(url).
+[[services]]
+binding = "MONKELEDGER"
+service = "monkeledger"
+
 # 2026-07-30: refreshes the public stats:latest KV cache every 4h so the
 # "Check Your Monke" growth page (GET /, /monke/:mint) never makes a live
 # Helius/CoinGecko call per page view. See scheduled() in src/index.ts.
