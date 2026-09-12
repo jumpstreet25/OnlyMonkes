@@ -1886,26 +1886,56 @@ async function fetchMonkeHolderCount(env: Env): Promise<number> {
   throw new Error("holder indexer failed");
 }
 
-/** Floor price + 24h volume (CoinGecko) and $SKR price (DexScreener) —
- *  same endpoints/field mapping as the bot's fetchSagaMonkes() in
- *  overnightSnapshot.ts and ChatScreen.tsx's support-banner fetch. */
+// Bot's own sales-book, exposed for exactly this purpose (see sagaMonkesSales.ts +
+// xmtpOnlyMonkes.ts's /api/sales-stats). nip.io hostname, not the bare IP — Cloudflare Workers'
+// fetch() refuses a literal IP address (same reasoning as MonkeLedger's own worker).
+const BOT_SALES_STATS_URL = "http://157-173-192-39.nip.io:3001/api/sales-stats";
+
+async function fetchSalesStatsFromBot(): Promise<{ floorSol: number; volume24hSol: number; recentSales: StatsSnapshot["recentSales"] } | null> {
+  try {
+    const res = await fetchWithTimeout(BOT_SALES_STATS_URL, {}, 8_000);
+    if (!res.ok) return null;
+    const d = await res.json() as any;
+    if (typeof d?.volume24hSol !== "number") return null;
+    const recentSales: StatsSnapshot["recentSales"] = Array.isArray(d.recentSales)
+      ? d.recentSales.map((s: any) => ({ signature: s.signature, priceSol: s.priceSol, ts: s.ts }))
+      : [];
+    return { floorSol: d.floorSol ?? 0, volume24hSol: d.volume24hSol, recentSales };
+  } catch {
+    return null;
+  }
+}
+
+/** Floor price + 24h volume — tries our own bot's sales-book first (zero extra API cost, real
+ *  data we already collect), falling back to CoinGecko only if the bot is unreachable. $SKR price
+ *  is unrelated to sales and always comes from DexScreener — same endpoints/field mapping as the
+ *  bot's fetchSagaMonkes() in overnightSnapshot.ts and ChatScreen.tsx's support-banner fetch. */
 async function fetchFloorAndMarket(env: Env): Promise<{ floorSol: number | null; floorChg24h: number | null; volume24hSol: number | null; skrPriceUsd: number | null }> {
   let floorSol: number | null = null;
   let floorChg24h: number | null = null;
   let volume24hSol: number | null = null;
   let skrPriceUsd: number | null = null;
 
-  try {
-    const res = await fetchWithTimeout("https://api.coingecko.com/api/v3/nfts/saga-monkes", {
-      headers: { "User-Agent": "OnlyMonkes-Web/1.0" },
-    }, 8_000);
-    if (res.ok) {
-      const d = await res.json() as any;
-      floorSol = d?.floor_price?.native_currency ?? null;
-      floorChg24h = d?.floor_price_24h_percentage_change?.native_currency ?? null;
-      volume24hSol = d?.volume_24h?.native_currency ?? null;
-    }
-  } catch { /* best-effort, page still works without market data */ }
+  const fromBot = await fetchSalesStatsFromBot();
+  if (fromBot) {
+    floorSol = fromBot.floorSol;
+    volume24hSol = fromBot.volume24hSol;
+    // floorChg24h isn't computable from our own sales book (would need a historical floor
+    // snapshot we don't keep) — left null when the bot answers. CoinGecko's own copy is only
+    // still fetched below when the bot is unreachable.
+  } else {
+    try {
+      const res = await fetchWithTimeout("https://api.coingecko.com/api/v3/nfts/saga-monkes", {
+        headers: { "User-Agent": "OnlyMonkes-Web/1.0" },
+      }, 8_000);
+      if (res.ok) {
+        const d = await res.json() as any;
+        floorSol = d?.floor_price?.native_currency ?? null;
+        floorChg24h = d?.floor_price_24h_percentage_change?.native_currency ?? null;
+        volume24hSol = d?.volume_24h?.native_currency ?? null;
+      }
+    } catch { /* best-effort, page still works without market data */ }
+  }
 
   try {
     const res = await fetchWithTimeout(`https://api.dexscreener.com/latest/dex/tokens/${SKR_MINT}`, {}, 8_000);
@@ -1919,11 +1949,16 @@ async function fetchFloorAndMarket(env: Env): Promise<{ floorSol: number | null;
   return { floorSol, floorChg24h, volume24hSol, skrPriceUsd };
 }
 
-/** Recent Saga Monkes sales via Helius Enhanced Transaction API against the
- *  known creator/royalty wallet — same source as SagaMonkesSalesMonitor,
- *  trimmed to a short public-safe feed (no buyer/seller wallets, no name
+/** Recent Saga Monkes sales — tries the bot's own sales-book first (same one
+ *  fetchFloorAndMarket already calls; the extra hit is to our own VPS, not a rate-limited
+ *  third party, so the minor duplication isn't worth restructuring around), falling back to
+ *  Helius Enhanced Transaction API against the known creator/royalty wallet — same source as
+ *  SagaMonkesSalesMonitor, trimmed to a short public-safe feed (no buyer/seller wallets, no name
  *  lookup per sale to avoid N extra DAS calls on every cron run). */
 async function fetchRecentSales(env: Env): Promise<StatsSnapshot["recentSales"]> {
+  const fromBot = await fetchSalesStatsFromBot();
+  if (fromBot && fromBot.recentSales.length > 0) return fromBot.recentSales;
+
   try {
     const url = `https://api.helius.xyz/v0/addresses/${SAGA_CREATOR_WALLET}/transactions?api-key=${env.HELIUS_API_KEY}&type=NFT_SALE&limit=10`;
     const res = await fetchWithTimeout(url, { headers: { "User-Agent": "OnlyMonkes-Web/1.0" } }, 10_000);
