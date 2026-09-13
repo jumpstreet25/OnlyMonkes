@@ -20,9 +20,17 @@ import {
 import { FlashList } from "@shopify/flash-list";
 import { router } from "expo-router";
 import { THEME, FONTS } from "@/lib/constants";
-import { fetchMonkeLedgerBurnt, type BurntMonke } from "@/lib/nftVerification";
+import { fetchMonkeLedgerBurnt, type BurntMonke, type RarityTier } from "@/lib/nftVerification";
 import { WorldScreenShell, useWorldGlassCardStyle } from "@/components/worlds/WorldScreenShell";
 import { LiquidGlass as BlurView } from "@/components/LiquidGlass";
+import { MemorialShareModal } from "@/components/MemorialShareModal";
+
+const TIER_COLOR: Record<RarityTier, string> = {
+  Legendary: "#FFD700",
+  Rare: "#C084FC",
+  Uncommon: "#60A5FA",
+  Common: "#9CA3AF",
+};
 
 const GRID_GAP = 10;
 const COLUMNS = 2;
@@ -33,7 +41,14 @@ export default function MemorialScreen() {
   const [monkes, setMonkes] = useState<BurntMonke[] | null>(null);
   const [error, setError] = useState(false);
   const [selected, setSelected] = useState<BurntMonke | null>(null);
+  const [shareOpen, setShareOpen] = useState(false);
   const cardStyle = useWorldGlassCardStyle();
+
+  // Rarest first — MonkeLedger computes rarityRank across the whole 10,014-Monke collection
+  // (live + burnt combined), not just this list, so it's meaningful even for a 15-item set.
+  const sortedMonkes = monkes
+    ? [...monkes].sort((a, b) => (a.rarityRank ?? Infinity) - (b.rarityRank ?? Infinity))
+    : null;
 
   const load = useCallback(async () => {
     setError(false);
@@ -61,11 +76,18 @@ export default function MemorialScreen() {
           <Text style={{ fontSize: 40 }}>💀</Text>
         </View>
       )}
+      {item.rarityTier && (
+        <View style={[styles.tierPill, { backgroundColor: TIER_COLOR[item.rarityTier] + "CC" }]}>
+          <Text style={styles.tierPillText}>{item.rarityTier}</Text>
+        </View>
+      )}
       <View style={styles.cardBody}>
         <Text style={styles.cardName} numberOfLines={1}>
           {item.name ?? (item.number !== null ? `MONKE #${item.number}` : "Unknown Monke")}
         </Text>
-        <Text style={styles.cardTag}>Fallen homie 🪦</Text>
+        <Text style={styles.cardTag}>
+          Fallen homie 🪦{item.rarityRank ? ` · rank ${item.rarityRank}` : ""}
+        </Text>
       </View>
     </Pressable>
   ), [cardStyle]);
@@ -74,7 +96,16 @@ export default function MemorialScreen() {
     <WorldScreenShell
       title="Memorial"
       onBack={() => router.back()}
-      headerRight={monkes ? <Text style={styles.count}>{monkes.length} lost</Text> : undefined}
+      headerRight={
+        monkes ? (
+          <View style={styles.headerRightRow}>
+            <Text style={styles.count}>{monkes.length} lost</Text>
+            <Pressable onPress={() => setShareOpen(true)} hitSlop={8} style={styles.shareIconBtn}>
+              <Text style={styles.shareIcon}>🐦</Text>
+            </Pressable>
+          </View>
+        ) : undefined
+      }
     >
       <Text style={styles.intro}>
         Gone but never forgotten — every Saga Monke lost to the burn, with its last-known look and traits preserved here.
@@ -93,7 +124,7 @@ export default function MemorialScreen() {
         </View>
       ) : (
         <FlashList
-          data={monkes!}
+          data={sortedMonkes!}
           renderItem={renderCard}
           keyExtractor={(item) => item.mint}
           numColumns={COLUMNS}
@@ -145,12 +176,23 @@ export default function MemorialScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      {monkes && (
+        <MemorialShareModal monkes={sortedMonkes!} visible={shareOpen} onClose={() => setShareOpen(false)} />
+      )}
     </WorldScreenShell>
   );
 }
 
 const styles = StyleSheet.create({
   count: { fontFamily: FONTS.mono, fontSize: 11, color: THEME.textMuted },
+  headerRightRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  shareIconBtn: { padding: 2 },
+  shareIcon: { fontSize: 16 },
+  tierPill: {
+    position: "absolute", top: 6, left: 6, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6,
+  },
+  tierPillText: { fontFamily: FONTS.mono, fontSize: 8, fontWeight: "700", color: "#0A0A0F" },
   intro: {
     fontFamily: FONTS.mono, fontSize: 11, color: THEME.textDim,
     paddingHorizontal: 16, paddingBottom: 10, lineHeight: 17,

@@ -827,6 +827,8 @@ async function fetchMonkeLedgerMetadata(assetId: string): Promise<{ name: string
   }
 }
 
+export type RarityTier = "Legendary" | "Rare" | "Uncommon" | "Common";
+
 export type BurntMonke = {
   number: number | null;
   name: string | null;
@@ -835,6 +837,11 @@ export type BurntMonke = {
   traits: NftTrait[] | null;
   lastSeenLeafIndex: number | null;
   burnedAtMs: number | null;
+  // 2026-09-13: statistical rarity computed across the whole 10,014-Monke collection
+  // (live + burnt combined) — see MonkeLedger's computeRarity(). rank 1 = rarest.
+  rarityRank: number | null;
+  rarityTotal: number | null;
+  rarityTier: RarityTier | null;
 };
 
 /**
