@@ -113,7 +113,12 @@ export default function MemorialScreen() {
       >
         <Pressable style={styles.modalBackdrop} onPress={() => setSelected(null)}>
           <Pressable style={styles.modalCardWrap} onPress={(e) => e.stopPropagation()}>
-            <BlurView style={styles.modalCard}>
+            <View style={[styles.modalCard, cardStyle]}>
+              {/* LiquidGlass never renders children — it's a background-only overlay, always an
+                  absolutely-positioned sibling BEHIND the real content, never a wrapper. Using it
+                  as a wrapper (as this modal originally did) silently discards everything inside
+                  it, which is exactly why the modal appeared to open with nothing in it. */}
+              <BlurView style={StyleSheet.absoluteFill} />
               {selected?.image ? (
                 <Image source={{ uri: selected.image }} style={styles.modalImg} />
               ) : (
@@ -136,7 +141,7 @@ export default function MemorialScreen() {
               <Pressable style={styles.closeBtn} onPress={() => setSelected(null)}>
                 <Text style={styles.closeBtnText}>Close</Text>
               </Pressable>
-            </BlurView>
+            </View>
           </Pressable>
         </Pressable>
       </Modal>
