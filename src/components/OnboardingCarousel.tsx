@@ -67,7 +67,7 @@ const SLIDES: Slide[] = [
     title: "AI Agent #9385",
     subtitle: "Your personal trading intelligence",
     features:
-      "Real-time TA alerts in MonkeTrades. DM the bot for /limit orders, /dca, /hermes stats, /chart, and more.",
+      "Real-time TA alerts in MonkeTrades. DM the bot for /limit orders, /ta, /hermes stats, /chart, and more.",
     gradient: ["#100a1e", "#0a0a14"],
   },
   {
@@ -105,9 +105,9 @@ const SLIDES: Slide[] = [
     emojiBg: "#FFD54F22",
     accentClr: "#FFD54F",
     title: "Trade & Customize",
-    subtitle: "P2P NFT marketplace + cosmetic shop",
+    subtitle: "Banana Shop + NFT marketplace",
     features:
-      "List your Saga Monkes for sale. Earn bananas from daily rewards. Buy glow effects, themes, and PFP styles.",
+      "Earn bananas from daily rewards. Buy glow effects, themes, and PFP styles. Saga Monke marketplace listings are being rebuilt — check back soon.",
     gradient: ["#1a1400", "#0a0a14"],
   },
 ];

@@ -26,7 +26,7 @@ export const GENESIS_CAROUSEL_SLIDES: Slide[] = [
     title: "Main Chat is Monke-only",
     subtitle: "The real conversation happens next door",
     features:
-      "Live E2E encrypted group chat with every Saga Monke holder — GIFs, reactions, replies, tappable $TOKEN tickers. Genesis Chat is read-only; Main Chat is where you'd actually talk.",
+      "Live E2E encrypted group chat with every Saga Monke holder — GIFs, reactions, replies, tappable $TOKEN tickers. Genesis Chat is plain-text only, no camera/GIF/slash-commands — Main Chat is where the real hangout happens.",
     gradient: ["#0a1420", "#0a0a14"],
   },
   {
@@ -36,7 +36,7 @@ export const GENESIS_CAROUSEL_SLIDES: Slide[] = [
     title: "AI Agent #9385 doesn't DM Genesis holders",
     subtitle: "Real-time trading intelligence, Monke-only",
     features:
-      "Saga Monke holders DM the bot for /limit orders, /dca, /hermes stats, /chart, AutonoMonke automated trading, and live TA alerts. None of that reaches Genesis Chat.",
+      "Saga Monke holders DM the bot for /limit orders, /ta, /hermes stats, /chart, AutonoMonke automated trading, and live TA alerts. None of that reaches Genesis Chat.",
     gradient: ["#100a1e", "#0a0a14"],
   },
   {
