@@ -23,6 +23,7 @@
  *   HELIUS_NFT_API_KEY — Helius key used only by /api/verify wallet checks
  *   JUP_API_KEY        — Jupiter Swap API v2 key (get from portal.jup.ag)
  *   BOT_HTTP_SECRET    — Bearer token for authenticated bot endpoints
+ *   BOT_HTTP_URL       — bot Express base URL (VPS :3001) for /api/bot-command + /api/inbox-reset
  *   ESCROW_ENCRYPT_KEY — 256-bit hex key for AES-GCM encryption of ephemeral secrets in KV
  *   ADMIN_WALLET_PUBKEY — admin's Solana wallet base58 address (see adminConfig.ts)
  *   ADMIN_GITHUB_PAT     — fine-grained GitHub PAT, scoped to this repo's Contents only
@@ -91,6 +92,7 @@ import {
 } from "./community";
 import { handleGetLumaEvents } from "./lumaEvents";
 import { handlePublishAppConfig } from "./adminConfig";
+import { handleBotCommand, handleInboxReset } from "./botCommand";
 
 // Cloudflare Workers KV namespace binding (declared locally to avoid @cloudflare/workers-types dependency)
 interface KVListOptions {
@@ -115,6 +117,9 @@ export interface Env {
   HELIUS_NFT_API_KEY?: string;
   JUP_API_KEY: string;
   BOT_HTTP_SECRET: string;
+  // Bot Express on the VPS (`AGENT_HTTP_PORT`, default 3001, BIND_HOST 0.0.0.0).
+  // Set via `wrangler secret put BOT_HTTP_URL` (e.g. http://157.173.192.39:3001).
+  BOT_HTTP_URL?: string;
   ESCROW_ENCRYPT_KEY: string;
   // Optional in dev — DFlow's dev quote endpoint requires no key. Set in
   // production via `wrangler secret put DFLOW_API_KEY` once we cut over.
@@ -549,9 +554,18 @@ async function handleSwapPost(url: URL, body: any, env: Env): Promise<Response> 
     const amountLamports = String(Math.round(amount * LAMPORTS_PER_SOL));
 
     // 1. Get swap instructions from Jupiter v2 /build
-    // 2026-08-27: applyPlatformFee=true — see getJupiterBuild's doc comment
-    // for why Blinks moved off "fee-free" and what stays unaffected.
-    const build = await getJupiterBuild(inputMint, outputMint, amountLamports, account, 50, env, true);
+    // 2026-09-15: reverted to fee-free (applyPlatformFee=false). The
+    // 2026-08-27 change to true required PUBLISHER_WALLET's wrapped-SOL
+    // ATA to exist on-chain first — confirmed via getTokenAccountsByOwner
+    // just now that it never was created. Jupiter can't route a fee
+    // transfer to an account that doesn't exist, so every real Blink swap
+    // (SOL is always one leg — see getPlatformFeeParams) has been failing
+    // 100% of the time since whenever this was actually deployed. Found
+    // while root-causing the identical bug in the bot's AutonoMonke path
+    // (jupiterSwap.ts, same PUBLISHER_WALLET/DEV_WALLET, same missing ATA).
+    // Don't flip back to true until the ATA is actually created AND a real
+    // swap confirms Jupiter accepts it.
+    const build = await getJupiterBuild(inputMint, outputMint, amountLamports, account, 50, env, false);
 
     // Validate price impact
     const priceImpact = parseFloat(build.priceImpactPct || "0");
@@ -3592,6 +3606,14 @@ export default {
     // credential ever leaves this worker.
     if (path === "/api/admin/publish-app-config") {
       if (request.method === "POST") return handlePublishAppConfig(request, env);
+      return errorResponse("Method not allowed", 405);
+    }
+    if (path === "/api/bot-command") {
+      if (request.method === "POST") return handleBotCommand(request, env);
+      return errorResponse("Method not allowed", 405);
+    }
+    if (path === "/api/inbox-reset") {
+      if (request.method === "POST") return handleInboxReset(request, env);
       return errorResponse("Method not allowed", 405);
     }
 
