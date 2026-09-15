@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Image,
 } from 'react-native';
+import { showGlassAlert } from "@/lib/glassAlert";
 import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useVideoPlayer, VideoView } from 'expo-video';
@@ -112,8 +113,7 @@ export function VideoCameraModal({ visible, onClose, onSend }: Props) {
       const { videoUrl, thumbUrl } = await uploadVideo(videoUri);
       onSend(`VIDEO:${videoUrl}|${thumbUrl}`);
     } catch (err: any) {
-      const { Alert } = require('react-native');
-      Alert.alert('Upload failed', err?.message ?? 'Could not upload video.');
+      showGlassAlert('Upload failed', err?.message ?? 'Could not upload video.');
     } finally {
       setUploading(false);
     }

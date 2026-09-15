@@ -1,7 +1,8 @@
 import React, { useCallback, useRef, useState } from 'react';
 import {
-  View, Text, Pressable, StyleSheet, Alert, Dimensions,
+  View, Text, Pressable, StyleSheet, Dimensions,
 } from 'react-native';
+import { showGlassAlert } from "@/lib/glassAlert";
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { LiquidGlass as BlurView } from '@/components/LiquidGlass';
@@ -120,7 +121,7 @@ export function PnLCardModal({ trade, visible, onClose }: PnLCardModalProps) {
       const ML = await getMediaLibrary();
       const { status } = await ML.requestPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission needed', 'Allow gallery access to save the card.');
+        showGlassAlert('Permission needed', 'Allow gallery access to save the card.');
         return;
       }
       const uri = await captureCard();

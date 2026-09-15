@@ -7,7 +7,7 @@
  */
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Alert } from "react-native";
+import { showGlassAlert } from "@/lib/glassAlert";
 import { addBananas } from "@/lib/bananaRewards";
 import { BOT_INBOX_IDS } from "@/lib/constants";
 import { useAppStore } from "@/store/appStore";
@@ -88,6 +88,6 @@ export async function processBananaGrant(
   await markClaimed(msgId);
 
   if (showAlert) {
-    Alert.alert("🍌 Banana Airdrop!", `You received ${amount} bananas!`, [{ text: "Nice!" }]);
+    showGlassAlert("🍌 Banana Airdrop!", `You received ${amount} bananas!`, [{ text: "Nice!" }]);
   }
 }

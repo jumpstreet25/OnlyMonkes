@@ -17,9 +17,9 @@ import {
   Pressable,
   Keyboard,
   Image,
-  Alert,
   Animated,
 } from "react-native";
+import { showGlassAlert } from "@/lib/glassAlert";
 import { LinearGradient } from "expo-linear-gradient";
 import { LiquidGlass as BlurView } from "@/components/LiquidGlass";
 import * as Haptics from "expo-haptics";
@@ -351,7 +351,7 @@ export const ChatInput = memo(function ChatInput({
       const parts = trimmed.split(/\s+/);
       const amt = parts[2] ? parseFloat(parts[2]) : NaN;
       if (!isNaN(amt) && (amt <= 0 || amt > 100)) {
-        Alert.alert("Invalid Amount", "Buy amount must be between 0 and 100 SOL.");
+        showGlassAlert("Invalid Amount", "Buy amount must be between 0 and 100 SOL.");
         return;
       }
     }
@@ -359,7 +359,7 @@ export const ChatInput = memo(function ChatInput({
       const parts = trimmed.split(/\s+/);
       const pct = parts[2] ? parseFloat(parts[2]) : NaN;
       if (!isNaN(pct) && (pct <= 0 || pct > 100)) {
-        Alert.alert("Invalid Amount", "Sell percentage must be between 0 and 100.");
+        showGlassAlert("Invalid Amount", "Sell percentage must be between 0 and 100.");
         return;
       }
     }

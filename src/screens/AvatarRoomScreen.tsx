@@ -21,9 +21,9 @@ import {
   ScrollView,
   ActivityIndicator,
   StatusBar,
-  Alert,
   useWindowDimensions,
 } from 'react-native';
+import { showGlassAlert } from "@/lib/glassAlert";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
 import { router } from 'expo-router';
@@ -172,7 +172,7 @@ export default function AvatarRoomScreen() {
       .then(() => setConnecting(false))
       .catch(() => {
         setConnecting(false);
-        Alert.alert('Connection Failed', 'Could not join the room.');
+        showGlassAlert('Connection Failed', 'Could not join the room.');
         router.back();
       });
 

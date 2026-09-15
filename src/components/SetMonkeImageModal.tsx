@@ -11,7 +11,8 @@
  */
 
 import React, { useState } from "react";
-import { View, Text, Pressable, StyleSheet, Image, ActivityIndicator, Alert } from "react-native";
+import { View, Text, Pressable, StyleSheet, Image, ActivityIndicator } from "react-native";
+import { showGlassAlert } from "@/lib/glassAlert";
 import { GlassModal } from "@/components/GlassModal";
 import { THEME, FONTS } from "@/lib/constants";
 
@@ -30,7 +31,7 @@ export function SetMonkeImageModal({ visible, onPicked, onSkip }: SetMonkeImageM
       const IP = await import("expo-image-picker");
       const { status } = await IP.requestMediaLibraryPermissionsAsync();
       if (status !== "granted") {
-        Alert.alert("Photo access required", "Please allow photo library access in your device settings.");
+        showGlassAlert("Photo access required", "Please allow photo library access in your device settings.");
         return;
       }
       const result = await IP.launchImageLibraryAsync({
@@ -50,7 +51,7 @@ export function SetMonkeImageModal({ visible, onPicked, onSkip }: SetMonkeImageM
       const url = await uploadFile(compressedUri, "monke-pfp.jpg", "image/jpeg");
       onPicked(url);
     } catch (err: any) {
-      Alert.alert("Upload failed", err?.message ?? "Could not upload image.");
+      showGlassAlert("Upload failed", err?.message ?? "Could not upload image.");
     } finally {
       setUploading(false);
     }

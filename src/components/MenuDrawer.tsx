@@ -29,10 +29,10 @@ import {
   TextInput,
   Linking,
   Switch,
-  Alert,
   Platform,
   ActivityIndicator,
 } from "react-native";
+import { showGlassAlert } from "@/lib/glassAlert";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Slider from "@react-native-community/slider";
 import { router } from "expo-router";
@@ -54,6 +54,7 @@ import { markChannelRead } from "@/lib/messageCache";
 import { loadBananaState, type BananaState } from "@/lib/bananaRewards";
 import { BananaShopModal } from "@/components/BananaShopModal";
 import { ReclaimModal } from "@/components/ReclaimModal";
+import { ResetIdentityModal } from "@/components/ResetIdentityModal";
 import type { ProfileTarget } from "@/components/UserProfileModal";
 import { LinearGradient } from "expo-linear-gradient";
 import { LiquidGlass as BlurView } from "@/components/LiquidGlass";
@@ -295,9 +296,9 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
     const token = await registerForPushNotifications();
     if (token) {
       setExpoPushToken(token);
-      Alert.alert("Token refreshed", token);
+      showGlassAlert("Token refreshed", token);
     } else {
-      Alert.alert("Failed", "Could not get push token. Check notification permissions.");
+      showGlassAlert("Failed", "Could not get push token. Check notification permissions.");
     }
   }
 
@@ -381,6 +382,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
   const [searchText, setSearchText] = useState("");
   const [shopOpen, setShopOpen] = useState(false);
   const [reclaimOpen, setReclaimOpen] = useState(false);
+  const [resetIdentityOpen, setResetIdentityOpen] = useState(false);
   const [webView, setWebView] = useState<{ url: string; title: string } | null>(null);
   const [bananaState, setBananaState] = useState<BananaState | null>(null);
   const bananaBalance = useAppStore(s => s.bananaBalance);
@@ -669,7 +671,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                     iconName="monketools"
                     label="Prune Dupes"
                     onPress={() => {
-                      Alert.alert(
+                      showGlassAlert(
                         "Prune duplicate members?",
                         "Removes 12 stale inboxIds left over from repeated reinstalls during testing (roster 39 → 27). Real members and current sessions are unaffected.",
                         [
@@ -681,15 +683,15 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                               try {
                                 const result = await pruneStaleDuplicateMembers();
                                 if (result.stillPresent.length === 0) {
-                                  Alert.alert("Done", `Roster: ${result.before} → ${result.after} (removed ${result.removed}).`);
+                                  showGlassAlert("Done", `Roster: ${result.before} → ${result.after} (removed ${result.removed}).`);
                                 } else {
-                                  Alert.alert(
+                                  showGlassAlert(
                                     "Partial result",
                                     `Roster: ${result.before} → ${result.after} (removed ${result.removed}). ${result.stillPresent.length} still present — may need admin/superAdmin rights confirmed.`,
                                   );
                                 }
                               } catch (err) {
-                                Alert.alert("Failed", (err as Error).message);
+                                showGlassAlert("Failed", (err as Error).message);
                               }
                             },
                           },
@@ -770,7 +772,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                             <Pressable
                               hitSlop={8}
                               onPress={() => {
-                                Alert.alert("Delete Event", `Remove "${evt.title}"?`, [
+                                showGlassAlert("Delete Event", `Remove "${evt.title}"?`, [
                                   { text: "Cancel", style: "cancel" },
                                   { text: "Delete", style: "destructive", onPress: async () => {
                                     const { deleteEvent } = await import("@/lib/calendar");
@@ -1139,6 +1141,19 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                   </View>
                   <Text style={styles.chevron}>›</Text>
                 </Pressable>
+                <View style={styles.settingDivider} />
+                <Pressable
+                  style={styles.settingRow}
+                  onPress={() => setResetIdentityOpen(true)}
+                >
+                  <View style={styles.settingInfo}>
+                    <Text style={styles.settingTitle}>Reset chat identity</Text>
+                    <Text style={styles.settingDesc}>
+                      Last resort when the bot never sees your DMs. Signs a new identity for this wallet only.
+                    </Text>
+                  </View>
+                  <Text style={styles.chevron}>›</Text>
+                </Pressable>
               </View>
 
               <Text style={[styles.sectionLabel, { marginTop: 20 }]}>Legal</Text>
@@ -1223,6 +1238,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
 
       <BananaShopModal visible={shopOpen} onClose={() => setShopOpen(false)} />
       <ReclaimModal visible={reclaimOpen} onClose={() => setReclaimOpen(false)} />
+      <ResetIdentityModal visible={resetIdentityOpen} onClose={() => setResetIdentityOpen(false)} />
       <WebViewModal
         visible={!!webView}
         url={webView?.url ?? null}

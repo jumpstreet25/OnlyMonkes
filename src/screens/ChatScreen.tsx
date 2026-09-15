@@ -28,11 +28,11 @@ import {
   KeyboardAvoidingView,
   Keyboard,
   Platform,
-  Alert,
   Linking,
   AppState,
   type AppStateStatus,
 } from "react-native";
+import { showGlassAlert } from "@/lib/glassAlert";
 import type { FlashListRef } from "@shopify/flash-list";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { OnboardingChecklist, markOnboardingStep } from "@/components/OnboardingChecklist";
@@ -318,7 +318,7 @@ export default function ChatScreen() {
     const ML = await getMediaLibrary();
     const { status } = await ML.requestPermissionsAsync();
     if (status !== "granted") {
-      Alert.alert("Permission needed", "Allow gallery access to save videos.");
+      showGlassAlert("Permission needed", "Allow gallery access to save videos.");
       return;
     }
     try {
@@ -326,9 +326,9 @@ export default function ChatScreen() {
       const dest = `${FS.cacheDirectory}om_video_${Date.now()}.mp4`;
       const dl = await FS.downloadAsync(uri, dest);
       await ML.saveToLibraryAsync(dl.uri);
-      Alert.alert("Saved", "Video saved to your gallery.");
+      showGlassAlert("Saved", "Video saved to your gallery.");
     } catch {
-      Alert.alert("Error", "Could not save video.");
+      showGlassAlert("Error", "Could not save video.");
     }
   };
 
@@ -736,17 +736,17 @@ export default function ChatScreen() {
       setIsSending(true);
       try {
         const walletAddr = useAppStore.getState().wallet?.address;
-        if (!walletAddr) { Alert.alert("No wallet", "Connect your wallet first."); return; }
+        if (!walletAddr) { showGlassAlert("No wallet", "Connect your wallet first."); return; }
 
         const inputToken = await resolveToken(swapCmd.inputSymbol);
         const outputToken = await resolveToken(swapCmd.outputSymbol);
-        if (!inputToken) { Alert.alert("Unknown token", `Could not find token: ${swapCmd.inputSymbol}`); return; }
-        if (!outputToken) { Alert.alert("Unknown token", `Could not find token: ${swapCmd.outputSymbol}`); return; }
+        if (!inputToken) { showGlassAlert("Unknown token", `Could not find token: ${swapCmd.inputSymbol}`); return; }
+        if (!outputToken) { showGlassAlert("Unknown token", `Could not find token: ${swapCmd.outputSymbol}`); return; }
 
         let amountRaw: string;
         if (swapCmd.type === "sell") {
           const balance = await getTokenBalance(walletAddr, inputToken.mint, inputToken.decimals);
-          if (balance <= 0) { Alert.alert("No balance", `You have no ${inputToken.symbol} to sell.`); return; }
+          if (balance <= 0) { showGlassAlert("No balance", `You have no ${inputToken.symbol} to sell.`); return; }
           const sellAmount = balance * (swapCmd.amount / 100);
           amountRaw = Math.floor(sellAmount * Math.pow(10, inputToken.decimals)).toString();
         } else {
@@ -761,7 +761,7 @@ export default function ChatScreen() {
         setSwapQuote(quote);
         setSwapConfirmOpen(true);
       } catch (err: any) {
-        Alert.alert("Swap error", txError());
+        showGlassAlert("Swap error", txError());
       } finally {
         setIsSending(false);
       }
@@ -780,13 +780,13 @@ export default function ChatScreen() {
         }
       });
       if (!targetInboxId) {
-        Alert.alert("User not found", `Could not find @${tipCmd.username}. They may not have chatted yet.`);
+        showGlassAlert("User not found", `Could not find @${tipCmd.username}. They may not have chatted yet.`);
         return;
       }
       const cached = getCachedProfile(targetInboxId);
       const recipientWallet = cached?.tipWallet || cached?.walletAddress;
       if (!recipientWallet) {
-        Alert.alert("No wallet", `@${tipCmd.username} hasn't linked a wallet yet.`);
+        showGlassAlert("No wallet", `@${tipCmd.username} hasn't linked a wallet yet.`);
         return;
       }
       setTipTarget({
@@ -806,7 +806,7 @@ export default function ChatScreen() {
       setInputText("");
       const amount = parseFloat(tipLinkMatch[1]);
       if (!amount || amount <= 0 || amount > 10) {
-        Alert.alert("Invalid amount", "Tip link amount must be between 0.001 and 10 SOL.");
+        showGlassAlert("Invalid amount", "Tip link amount must be between 0.001 and 10 SOL.");
         return;
       }
       setIsSending(true);
@@ -815,7 +815,7 @@ export default function ChatScreen() {
         const result = await createTipLink(amount);
         await send(`TIPLINK:${result.claimUrl}|${amount}|${username ?? "Monke"}`);
       } catch (err: any) {
-        Alert.alert("TipLink failed", txError());
+        showGlassAlert("TipLink failed", txError());
       } finally {
         setIsSending(false);
       }
@@ -933,7 +933,7 @@ export default function ChatScreen() {
       const IP = await getImagePicker();
       const { status } = await IP.requestCameraPermissionsAsync();
       if (status !== "granted") {
-        Alert.alert("Camera permission required", "Please allow camera access in your device settings.");
+        showGlassAlert("Camera permission required", "Please allow camera access in your device settings.");
         return;
       }
       const result = await IP.launchCameraAsync({
@@ -966,7 +966,7 @@ export default function ChatScreen() {
         requestImageCaption(requestId, b64, compressedUri).catch(() => {});
       });
     } catch (err: any) {
-      Alert.alert("Camera error", err?.message ?? "Could not open camera.");
+      showGlassAlert("Camera error", err?.message ?? "Could not open camera.");
     }
   }, []);
 
@@ -1020,7 +1020,7 @@ export default function ChatScreen() {
         }
       }
     } catch (err: any) {
-      Alert.alert("Camera error", err?.message ?? "Could not send photo.");
+      showGlassAlert("Camera error", err?.message ?? "Could not send photo.");
       useChatStore.getState().updateMessageStatus(optimistic.id, "failed");
     }
   }, [send, myAddress, username, verifiedNft]);
@@ -1049,7 +1049,7 @@ export default function ChatScreen() {
       const url = await uploadFile(file.uri, file.name ?? 'file', file.mimeType ?? 'application/octet-stream');
       await sendFile(url, file.name ?? 'file', file.size ?? 0);
     } catch (err: any) {
-      Alert.alert('File error', err?.message ?? 'Could not send file.');
+      showGlassAlert('File error', err?.message ?? 'Could not send file.');
     }
   }, [sendFile]);
 
@@ -1084,7 +1084,7 @@ export default function ChatScreen() {
       await send(content);
       useChatStore.getState().updateMessageStatus(optimistic.id, 'sent');
     } catch (err: any) {
-      Alert.alert('Video error', err?.message ?? 'Could not send video.');
+      showGlassAlert('Video error', err?.message ?? 'Could not send video.');
       useChatStore.getState().updateMessageStatus(optimistic.id, 'failed');
     }
   }, [send, myAddress, username, verifiedNft]);
@@ -1190,7 +1190,7 @@ export default function ChatScreen() {
     const cached = getCachedProfile(tipTarget.senderAddress);
     const recipientWallet = cached?.tipWallet || cached?.walletAddress;
     if (!recipientWallet) {
-      Alert.alert(
+      showGlassAlert(
         "No wallet found",
         `${tipTarget.senderUsername ?? "This user"} hasn't linked a wallet yet. Ask them to set one in their profile.`
       );
@@ -1199,10 +1199,10 @@ export default function ChatScreen() {
     setTipSending(true);
     try {
       await sendSkrTip(recipientWallet, amount);
-      Alert.alert("🍌 Tip sent!", `${amount} SKR sent to ${tipTarget.senderUsername ?? "this user"}`);
+      showGlassAlert("🍌 Tip sent!", `${amount} SKR sent to ${tipTarget.senderUsername ?? "this user"}`);
       setTipTarget(null);
     } catch (err: any) {
-      Alert.alert("Tip failed", txError());
+      showGlassAlert("Tip failed", txError());
     } finally {
       setTipSending(false);
     }
@@ -1211,7 +1211,7 @@ export default function ChatScreen() {
   // ── Video call handlers ─────────────────────────────────────────────────────
   const handleStartVideoCall = useCallback(async () => {
     if (!myInboxId || !username) {
-      Alert.alert("Set a username first", "Go to your profile and set a username before starting a video call.");
+      showGlassAlert("Set a username first", "Go to your profile and set a username before starting a video call.");
       return;
     }
     try {
@@ -1224,7 +1224,7 @@ export default function ChatScreen() {
       await showLocalNotification(`${username} started a Video Call`, "Live Video in OnlyMonkes", CH_LIVE);
       router.push(`/video-room?token=${encodeURIComponent(token)}&isHost=1`);
     } catch (err: any) {
-      Alert.alert("Failed to start video call", err?.message ?? "Unknown error");
+      showGlassAlert("Failed to start video call", err?.message ?? "Unknown error");
     }
   }, [myInboxId, username, broadcastVideoRoom, setActiveVideoRoom, setIsInVideoCall]);
 
@@ -1237,7 +1237,7 @@ export default function ChatScreen() {
       setVideoCallToken(token);
       router.push(`/video-room?token=${encodeURIComponent(token)}&isHost=0`);
     } catch (err: any) {
-      Alert.alert("Failed to join", networkError());
+      showGlassAlert("Failed to join", networkError());
     }
   }, [myInboxId, username, activeVideoRoom, setIsInVideoCall]);
 
@@ -1260,7 +1260,7 @@ export default function ChatScreen() {
   // ── Avatar room handlers ────────────────────────────────────────────────────
   const handleStartAvatarRoom = useCallback(async () => {
     if (!myInboxId || !username) {
-      Alert.alert("Set a username first", "Go to your profile and set a username before starting a live.");
+      showGlassAlert("Set a username first", "Go to your profile and set a username before starting a live.");
       return;
     }
     try {
@@ -1284,7 +1284,7 @@ export default function ChatScreen() {
       );
       void showLocalNotification(`${username} started a Live`, "Avatar Room in OnlyMonkes", CH_LIVE);
     } catch (err: any) {
-      Alert.alert("Failed to start", err?.message ?? "Could not create the avatar room.");
+      showGlassAlert("Failed to start", err?.message ?? "Could not create the avatar room.");
     }
   }, [myInboxId, username, broadcastAvatarRoom, setActiveAvatarRoom, setAvatarRoomToken, setIsInAvatarRoom]);
 
@@ -1292,7 +1292,7 @@ export default function ChatScreen() {
     if (!activeAvatarRoom) return;
     if (!myInboxId) return;
     if (!username) {
-      Alert.alert("Set a username first", "Go to your profile and set a username before joining.");
+      showGlassAlert("Set a username first", "Go to your profile and set a username before joining.");
       return;
     }
     try {
@@ -1301,7 +1301,7 @@ export default function ChatScreen() {
       setIsInAvatarRoom(true);
       router.push(`/avatar-room?token=${encodeURIComponent(token)}&isHost=false`);
     } catch (err: any) {
-      Alert.alert("Failed to join", err?.message ?? "Could not join the avatar room.");
+      showGlassAlert("Failed to join", err?.message ?? "Could not join the avatar room.");
     }
   }, [myInboxId, username, activeAvatarRoom, setAvatarRoomToken, setIsInAvatarRoom]);
 
@@ -1345,9 +1345,9 @@ export default function ChatScreen() {
     setDevTipOpen(false);
     try {
       await sendDevTip(amount);
-      Alert.alert("Thank you!", `${amount} SKR sent to Jump.skr. Your support keeps OnlyMonkes alive!`);
+      showGlassAlert("Thank you!", `${amount} SKR sent to Jump.skr. Your support keeps OnlyMonkes alive!`);
     } catch (err: any) {
-      Alert.alert("Tip failed", txError());
+      showGlassAlert("Tip failed", txError());
     }
   }, []);
 
@@ -1362,9 +1362,9 @@ export default function ChatScreen() {
       setSwapQuote(null);
       const tradeMsg = `Swapped ${result.inputAmount.toFixed(4)} ${result.inputSymbol} for ${result.outputAmount.toFixed(4)} ${result.outputSymbol}`;
       await send(tradeMsg).catch(() => {});
-      Alert.alert("Swap complete!", tradeMsg);
+      showGlassAlert("Swap complete!", tradeMsg);
     } catch (err: any) {
-      Alert.alert("Swap failed", err?.message ?? "Transaction could not be sent.");
+      showGlassAlert("Swap failed", err?.message ?? "Transaction could not be sent.");
     } finally {
       setSwapExecuting(false);
     }
@@ -1391,7 +1391,7 @@ export default function ChatScreen() {
   }, []);
 
   const handleDelete = useCallback(async (msg: ChatMessage) => {
-    Alert.alert("Delete Message", "Are you sure you want to delete this message?", [
+    showGlassAlert("Delete Message", "Are you sure you want to delete this message?", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Delete", style: "destructive",
@@ -1402,7 +1402,7 @@ export default function ChatScreen() {
             await deleteMessage(msg.id, msg.senderAddress);
           } catch (e: any) {
             if (__DEV__) console.warn("[XMTP] deleteMessage failed:", e);
-            Alert.alert("Couldn't delete", e?.message ?? "Please try again.");
+            showGlassAlert("Couldn't delete", e?.message ?? "Please try again.");
           }
         },
       },

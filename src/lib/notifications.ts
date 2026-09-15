@@ -81,23 +81,14 @@ const POPUP_BACKED_NOTIFICATION_TYPES = new Set([
 async function handleBananaBetNotificationData(data: Record<string, unknown> | undefined): Promise<void> {
   if (!data || typeof data.type !== "string") return;
   const { useAppStore } = await import("@/store/appStore");
-  if (data.type === "banana_bet_open") {
-    const { betId, category, question, resolvesAt, shareCaption } = data as Record<string, string>;
-    if (!betId || !question || !resolvesAt) return;
-    useAppStore.getState().setActiveBananaBet({
-      id: betId, category: category as any, question, resolvesAt: Number(resolvesAt),
-      ...(shareCaption ? { shareCaption } : {}),
-    });
-  } else if (data.type === "banana_bet_settled") {
-    const { betId, question, outcome, totalBets, totalBananasWon, myBetSide, myBetAmount, shareCaption } = data as Record<string, string>;
-    if (!betId || !question || !outcome) return;
-    useAppStore.getState().setActiveBananaBetResult({
-      betId, question, outcome: outcome as "yes" | "no",
-      totalBets: Number(totalBets ?? 0),
-      totalBananasWon: Number(totalBananasWon ?? 0),
-      myBet: myBetSide ? { side: myBetSide as "yes" | "no", amount: Number(myBetAmount ?? 0) } : null,
-      ...(shareCaption ? { shareCaption } : {}),
-    });
+  if (data.type === "banana_bet_open" || data.type === "banana_bet_settled") {
+    // 2026-09-15: BananaBetting was fully removed bot-side 2026-09-02 — no
+    // generator, no /bet, no settlement logic left to ever produce a real
+    // push of either type again. Popup-trigger disabled (same reasoning as
+    // useXmtp.ts's BANANA_BET_OPEN/SETTLED handlers) so a stale queued
+    // notification can't surface a popup for a feature that no longer
+    // exists. No-op, not an error — return silently like the other branches.
+    return;
   } else if (data.type === "autonomonke_trade_closed") {
     // 2026-09-02: "Post this win" deep-link — same cold-start reconstruction
     // reasoning as banana_bet_settled above. Only ever sent for wins

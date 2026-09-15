@@ -32,6 +32,7 @@ import {
   TextInput,
   useWindowDimensions,
 } from "react-native";
+import { showGlassAlert } from "@/lib/glassAlert";
 import { LinearGradient } from "expo-linear-gradient";
 import { SkiaGlowBubble, SkiaGlassFront, SkiaGlowPfp } from "@/components/SkiaGlowBubble";
 import { CyberpunkGlitchBubble } from "@/components/CyberpunkGlitchBubble";
@@ -155,8 +156,7 @@ function LivePillBubble({ type, host, sentAt, roomId }: { type: LivePillType; ho
     if (!myInboxId) return;
     if (!username) {
       // Match start-room UX — join needs a display name for LiveKit
-      const { Alert } = require("react-native");
-      Alert.alert("Set a username first", "Go to your profile and set a username before joining.");
+      showGlassAlert("Set a username first", "Go to your profile and set a username before joining.");
       return;
     }
     try {
@@ -197,8 +197,7 @@ function LivePillBubble({ type, host, sentAt, roomId }: { type: LivePillType; ho
     } catch (err) {
       console.warn("[LivePill] Join failed:", err);
       try {
-        const { Alert } = require("react-native");
-        Alert.alert("Could not join", (err as Error)?.message ?? "Try again from the banner.");
+        showGlassAlert("Could not join", (err as Error)?.message ?? "Try again from the banner.");
       } catch { /* ignore */ }
     }
   }, [type, host, roomId]);

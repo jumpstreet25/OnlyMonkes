@@ -16,8 +16,8 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
-  Alert,
   Dimensions,} from "react-native";
+import { showGlassAlert } from "@/lib/glassAlert";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { GlassModal } from "@/components/GlassModal";
@@ -74,7 +74,7 @@ export function CalendarModal({ visible, onClose, onBroadcast }: CalendarModalPr
       reset();
       onClose();
     } catch (err: any) {
-      Alert.alert("Error", err?.message ?? "Could not create event.");
+      showGlassAlert("Error", err?.message ?? "Could not create event.");
     } finally {
       setSaving(false);
     }

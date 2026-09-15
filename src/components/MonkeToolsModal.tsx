@@ -15,9 +15,9 @@ import {
   Linking,
   Switch,
   ScrollView,
-  Alert,
   Platform,
   Dimensions,} from "react-native";
+import { showGlassAlert } from "@/lib/glassAlert";
 import * as Clipboard from "expo-clipboard";
 import { toast } from "sonner-native";
 import { GlassModal } from "@/components/GlassModal";
@@ -58,9 +58,9 @@ export function MonkeToolsModal({ visible, onClose }: MonkeToolsModalProps) {
     const token = await registerForPushNotifications();
     if (token) {
       setExpoPushToken(token);
-      Alert.alert("Token refreshed", token);
+      showGlassAlert("Token refreshed", token);
     } else {
-      Alert.alert("Failed", "Could not get push token. Check notification permissions.");
+      showGlassAlert("Failed", "Could not get push token. Check notification permissions.");
     }
   }
 

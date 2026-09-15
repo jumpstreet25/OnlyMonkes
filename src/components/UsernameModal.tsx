@@ -16,7 +16,8 @@ import {
   ActivityIndicator,
   ScrollView,
   Dimensions,
-  Alert,} from "react-native";
+} from "react-native";
+import { showGlassAlert } from "@/lib/glassAlert";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { toast } from "sonner-native";
@@ -111,7 +112,7 @@ export function UsernameModal({
 
   const handleClose = useCallback(() => {
     if (isDirty) {
-      Alert.alert(
+      showGlassAlert(
         "Unsaved Changes",
         "You have unsaved changes. Discard them?",
         [

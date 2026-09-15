@@ -17,10 +17,10 @@ import {
   Text,
   Pressable,
   Image,
-  Alert,
   Dimensions,
   StyleSheet,
 } from "react-native";
+import { showGlassAlert } from "@/lib/glassAlert";
 import { toast } from "sonner-native";
 import Animated, {
   useSharedValue,
@@ -212,7 +212,7 @@ export default function ImageLightbox({ url, onClose }: Props) {
     const ML = await getMediaLibrary();
     const { status } = await ML.requestPermissionsAsync();
     if (status !== "granted") {
-      Alert.alert("Permission needed", "Allow gallery access to save images.");
+      showGlassAlert("Permission needed", "Allow gallery access to save images.");
       return;
     }
     try {

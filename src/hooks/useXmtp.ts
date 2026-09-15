@@ -16,6 +16,7 @@
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useCallback } from "react";
+import { showGlassAlert } from "@/lib/glassAlert";
 import { clearSession, clearMatricaSession, clearVerifiedNft, clearGenesisFlag, saveWalletBinding } from "@/lib/session";
 import type { WalletBinding } from "@/lib/session";
 import {
@@ -1386,8 +1387,7 @@ export function useXmtp() {
               useAppStore.getState().setShopStyles(styles);
               applyThemeFromShop(styles);
               const itemName = itemId.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
-              const { Alert } = require("react-native");
-              Alert.alert("Gift Received!", `${from ?? "Admin"} gifted you: ${itemName}`);
+              showGlassAlert("Gift Received!", `${from ?? "Admin"} gifted you: ${itemName}`);
               if (__DEV__) console.log(`[GIFT] Received ${itemId} from ${from ?? "unknown"}`);
             }
           } catch (e) { if (__DEV__) console.warn("[GIFT] Failed to process gift:", e); }
@@ -1644,43 +1644,24 @@ export function useXmtp() {
         }
 
         if (typeof content === "string" && content.startsWith("BANANA_BET_OPEN:")) {
-          try {
-            const { parseBananaBetOpen, markBetSeenIfFirstTime } = await import("@/lib/bananaBet");
-            const data = parseBananaBetOpen(content);
-            if (data) {
-              // 2026-07-18: no longer merged into chatStore as a pill —
-              // BananaBetPopup is the only surface now, Main Chat never
-              // shows bet content. markBetSeenIfFirstTime below already
-              // dedupes a reprocessed broadcast safely on its own.
-              // App-wide pop-up — only fires from the live stream (a fresh
-              // signal), never on history replay, so re-opening the app
-              // hours later doesn't pop up a stale/already-seen bet. Also
-              // gated on markBetSeenIfFirstTime: 2026-07-16 report — the
-              // pop-up was "returning a few times" for the same bet, most
-              // likely an XMTP stream reconnect replaying recent messages.
-              // This makes a replay a no-op regardless of the exact cause.
-              if (await markBetSeenIfFirstTime(data.id)) {
-                useAppStore.getState().setActiveBananaBet(data);
-              }
-            }
-          } catch { /* ignore */ }
+          // 2026-09-15: BananaBetting was fully removed bot-side 2026-09-02
+          // (no more generator, no more /bet, per CLAUDE.md) — the bot can
+          // never send a NEW BANANA_BET_OPEN broadcast again, so any message
+          // reaching this branch is necessarily a pre-removal leftover
+          // (live reconnect replay or history resync, e.g. after a chat
+          // identity reset). Popup-trigger disabled so a stale broadcast
+          // can't surface BananaBetPopup for a feature that no longer
+          // exists; `return` below still filters the raw prefix out of
+          // chat content, unchanged.
           return;
         }
 
         if (typeof content === "string" && content.startsWith("BANANA_BET_SETTLED:")) {
-          try {
-            const { parseBananaBetSettled, markBetSeenIfFirstTime, getMyBet } = await import("@/lib/bananaBet");
-            const data = parseBananaBetSettled(content);
-            if (data) {
-              // 2026-07-18: no longer merged into chatStore as a pill — the
-              // group broadcast now only drives BananaBetResultPopup, never
-              // Main Chat content.
-              if (await markBetSeenIfFirstTime(`settled-${data.betId}`)) {
-                const myBet = await getMyBet(data.betId);
-                useAppStore.getState().setActiveBananaBetResult({ ...data, myBet });
-              }
-            }
-          } catch { /* ignore */ }
+          // 2026-09-15: same reasoning as BANANA_BET_OPEN above — BananaBetting
+          // was fully removed bot-side 2026-09-02, so any BANANA_BET_SETTLED
+          // reaching this branch is a pre-removal leftover, not a real settle
+          // event. Popup-trigger disabled (BananaBetResultPopup can no longer
+          // fire); `return` below still filters the raw prefix out of chat.
           return;
         }
 

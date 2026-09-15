@@ -16,8 +16,8 @@ import {
   StyleSheet,
   ActivityIndicator,
   TextInput,
-  Alert,
 } from "react-native";
+import { showGlassAlert } from "@/lib/glassAlert";
 import { Image as ExpoImage } from "expo-image";
 import {
   VersionedTransaction,
@@ -91,13 +91,13 @@ export function BlinkCard({ actionUrl }: BlinkCardProps) {
       }
       const wallet = useAppStore.getState().wallet;
       if (!wallet) {
-        Alert.alert("Wallet Required", "Connect your wallet first.");
+        showGlassAlert("Wallet Required", "Connect your wallet first.");
         return;
       }
 
       // Check for unfilled required parameters
       if (link.parameters?.some((p) => p.required && !paramValues[p.name])) {
-        Alert.alert("Missing Input", "Fill in all required fields.");
+        showGlassAlert("Missing Input", "Fill in all required fields.");
         return;
       }
 
