@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.expo/
+.expo-export-*/
+android/
+ios/
+worker-actions/dist/

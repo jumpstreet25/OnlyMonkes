@@ -112,6 +112,7 @@ export function WebViewModal({ visible, url, title, onClose }: WebViewModalProps
   const [loading, setLoading] = useState(true);
   const [currentUrl, setCurrentUrl] = useState<string | null>(url);
   const walletAddress = useAppStore((s) => s.wallet?.address);
+  const insets = useSafeAreaInsets();
 
   // Reset URL when re-opening with a new target
   React.useEffect(() => {
@@ -203,7 +204,6 @@ export function WebViewModal({ visible, url, title, onClose }: WebViewModalProps
     }
   })();
   const bridgeActive = !!injectedBridgeJs;
-  const insets = useSafeAreaInsets();
 
   return (
     <Modal
