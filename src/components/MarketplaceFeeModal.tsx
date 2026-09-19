@@ -65,15 +65,15 @@ export default function MarketplaceFeeModal({
             <Text style={s.exampleTitle}>Example</Text>
             <View style={s.exampleRow}>
               <Text style={s.exampleLabel}>You list for</Text>
-              <Text style={s.exampleValue}>10 SOL</Text>
+              <Text style={s.exampleValue}>10 SKR</Text>
             </View>
             <View style={s.exampleRow}>
               <Text style={s.exampleLabel}>Fee (2%)</Text>
-              <Text style={[s.exampleValue, { color: GOLD }]}>0.2 SOL</Text>
+              <Text style={[s.exampleValue, { color: GOLD }]}>0.2 SKR</Text>
             </View>
             <View style={[s.exampleRow, { borderBottomWidth: 0 }]}>
               <Text style={s.exampleLabel}>You receive</Text>
-              <Text style={[s.exampleValue, { color: OM_BLUE }]}>9.8 SOL</Text>
+              <Text style={[s.exampleValue, { color: OM_BLUE }]}>9.8 SKR</Text>
             </View>
           </View>
 
