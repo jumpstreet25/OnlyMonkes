@@ -56,9 +56,10 @@ export default function MarketplaceFeeModal({
           <Text style={s.title}>MonkeMarkets Fee Agreement</Text>
 
           <Text style={s.body}>
-            A <Text style={s.highlight}>2% fee</Text> is deducted from the sale
-            price of every NFT sold through MonkeMarkets. The fee is sent to the
-            dev wallet to support ongoing OnlyMonkes development.
+            A <Text style={s.highlight}>2% fee</Text> is deducted from every
+            MonkeMarkets sale (in SKR, in the same atomic swap). That SKR goes
+            to the OnlyMonkes vault — ads, tips, and market fees that get
+            staked to pay the bot and servers. You receive 98%.
           </Text>
 
           <View style={s.exampleBox}>
