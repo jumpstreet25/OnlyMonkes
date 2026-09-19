@@ -1,0 +1,56 @@
+[package]
+name = "monkemarkets"
+version = "0.1.0"
+description = "MonkeMarkets on-chain cNFT escrow marketplace (Phase 0 devnet PoC)"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "monkemarkets"
+
+[features]
+no-entrypoint = []
+no-idl = []
+no-log-ip = []
+cpi = ["no-entrypoint"]
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
+default = []
+
+[dependencies]
+anchor-lang = "0.30.1"
+anchor-spl = "0.30.1"
+mpl-bubblegum = "1.4.0"
+
+# --- Build-sandbox note (not part of the program's real dependency graph) ---
+# The pins below exist ONLY because this Phase 0 build was done on a real
+# macOS 12 (Monterey) machine, which forced pairing Solana's platform-tools
+# v1.41 (needed for its OLD `sbf-solana-solana` target name AND a runtime
+# libc++ ABI old enough for this OS) with its bundled rustc 1.75.0
+# (Feb 2024). By late 2026 several transitive dependencies of
+# anchor-lang/anchor-spl/mpl-bubblegum/solana-program have moved on to Rust
+# edition2024 or an MSRV newer than 1.75. None of this reflects a real
+# constraint of the on-chain program itself — on a current/modern toolchain
+# none of these overrides are necessary. Each entry names exactly which
+# transitive edge forced it. (`borsh` itself is pinned separately via
+# `cargo update -p borsh --precise` rather than listed here, because adding
+# it as a direct dependency collides with the `borsh` name anchor_lang's
+# prelude glob-re-exports, breaking the AnchorSerialize/AnchorDeserialize
+# derive macros with an E0659 ambiguous-name error.)
+blake3 = "=1.5.5"          # solana-program -> blake3 latest needs edition2024 (digest 0.11/block-buffer 0.12)
+zeroize_derive = "=1.4.3"  # solana-zk-token-sdk chain -> zeroize_derive 1.5.0 needs edition2024
+proc-macro-crate = "=3.2.0" # borsh-derive -> proc-macro-crate latest -> toml_edit/toml_parser split needs edition2024
+toml_edit = "=0.22.22"      # see above; last pre-split, pre-edition2024 line
+hashbrown = "=0.15.2"       # indexmap latest -> hashbrown 0.17 needs edition2024
+indexmap = "=2.9.0"         # toml_edit's own indexmap edge resolved to a hashbrown-0.17-requiring version
+jobserver = "=0.1.32"       # blake3's build-dep chain (cc -> jobserver) -> getrandom 0.4.x needs edition2024
+unicode-segmentation = "=1.11.0" # transitive MSRV 1.85 > rustc 1.75.0
+wasm-bindgen = "=0.2.92"    # transitive (wasm32-only, still graph-resolved) MSRV 1.77 > rustc 1.75.0
+rayon-core = "=1.12.1"      # transitive MSRV 1.80 > rustc 1.75.0
+rayon = "=1.10.0"           # paired with rayon-core pin above
+# anchor-syn 0.30.1's `idl-build`-only code path calls the now-removed
+# unstable-mirroring `Span::source_file()` method, dropped from proc-macro2
+# in newer releases. Pin to a proc-macro2 version contemporaneous with
+# Anchor 0.30.1's own release (June 2024) that still has it. This only
+# affects `anchor idl build`/IDL generation, not the actual on-chain
+# program compile.
+proc-macro2 = "=1.0.86"
