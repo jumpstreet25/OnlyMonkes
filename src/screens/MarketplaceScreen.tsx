@@ -24,6 +24,7 @@ import {
   ActivityIndicator,
   Linking,
   useWindowDimensions,
+  RefreshControl,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -36,7 +37,9 @@ import {
   getActiveListings,
   getMyListings,
   getBidsForListing,
+  getOffersForListing,
   getListingById,
+  hideListing,
   loadListings,
   loadHistory,
   addListing,
@@ -45,12 +48,16 @@ import {
   revertPendingSwap,
   delistNft,
   buildListMessage,
+  listingPayloadFromListMessage,
   buildBidMessage,
+  buildBidCancelMessage,
+  cancelBid,
   buildOfferMessage,
   buildAcceptMessage,
   buildDelistMessage,
   buildSwapMessage,
   buildCompleteMessage,
+  buildSaleAnnouncement,
   recordHistoryEntry,
   getHistory,
   type NftListing,
@@ -63,9 +70,11 @@ import {
   sellerSignSwap,
   buyerCompleteSwap,
   validateSwapTransaction,
+  fetchSolSkrRate,
 } from '@/lib/nftSwap';
+import { getSkrBalance } from '@/lib/solana';
 import { verifyNFTOwnership } from '@/lib/nftVerification';
-import { sendRawToGroup } from '@/hooks/useXmtp';
+import { sendRawToGroup, sendRawToDm } from '@/hooks/useXmtp';
 import {
   fetchTraitFloors,
   getTraitTypes,
@@ -125,6 +134,28 @@ export default function MarketplaceScreen() {
   // Collection floor — CoinGecko (ME no longer lists this cNFT collection).
   const [meFloor, setMeFloor] = useState<number | null>(null);
 
+  // SOL-per-SKR reference rate — MonkeMarkets settles in SKR only, but users
+  // still think in SOL terms, so every SKR price gets an "≈X SOL" hint.
+  // Never used for the actual on-chain transfer amount (see fetchSolSkrRate).
+  const [solSkrRate, setSolSkrRate] = useState<number | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
+  const [skrBalance, setSkrBalance] = useState<number | null>(null);
+  const skrToSolLabel = useCallback((skr: number): string => {
+    if (solSkrRate === null) return '';
+    return ` (≈${(skr * solSkrRate).toFixed(3)} SOL)`;
+  }, [solSkrRate]);
+  const floorSkr = useMemo(() => {
+    if (meFloor === null || solSkrRate === null || solSkrRate <= 0) return null;
+    return meFloor / solSkrRate;
+  }, [meFloor, solSkrRate]);
+  const vsFloorPct = useCallback((askSkr: number): string | null => {
+    if (floorSkr === null || floorSkr <= 0) return null;
+    const pct = ((askSkr - floorSkr) / floorSkr) * 100;
+    const sign = pct >= 0 ? '+' : '';
+    return `${sign}${pct.toFixed(0)}% vs floor`;
+  }, [floorSkr]);
+
   // Pending atomic swap (buyer flow — driven by appStore)
   const pendingSwap = useAppStore(s => s.pendingNftSwap);
   const setPendingSwap = useAppStore(s => s.setPendingNftSwap);
@@ -166,9 +197,28 @@ export default function MarketplaceScreen() {
         if (typeof floor === 'number') setMeFloor(floor);
       })
       .catch(() => {});
-  }, [refresh]);
+    fetchSolSkrRate().then(setSolSkrRate).catch(() => {});
+    if (wallet?.address) {
+      getSkrBalance(wallet.address).then(setSkrBalance).catch(() => {});
+    }
+    void (async () => {
+      const active = getActiveListings().filter(l => l.status === 'active').slice(0, 8);
+      for (const l of active) {
+        try {
+          const owns = await verifyCurrentOwner(l.mint, l.sellerWallet);
+          if (!owns) hideListing(l.id);
+        } catch { /* keep listing if DAS is down */ }
+      }
+      refresh();
+    })();
+  }, [refresh, wallet?.address]);
 
   useEffect(() => { loadAll(); }, [myInboxId]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try { await loadAll(); } finally { setRefreshing(false); }
+  }, [loadAll]);
 
   useEffect(() => {
     // 2026-07-12: was `allNfts.length > 1`, which only skips re-verification
@@ -222,10 +272,18 @@ export default function MarketplaceScreen() {
       });
     }
 
+    const q = searchQuery.trim().toLowerCase();
+    if (q) {
+      items = items.filter(item =>
+        item.name.toLowerCase().includes(q) ||
+        (item.sellerUsername ?? '').toLowerCase().includes(q),
+      );
+    }
+
     if (sortBy === 'low') items = [...items].sort((a, b) => a.askPrice - b.askPrice);
     else if (sortBy === 'high') items = [...items].sort((a, b) => b.askPrice - a.askPrice);
     return items;
-  }, [listings, sortBy, viewMode, myInboxId, selectedTraits]);
+  }, [listings, sortBy, viewMode, myInboxId, selectedTraits, searchQuery]);
 
   // ── Handlers ───────────────────────────────────────────────────────────────
 
@@ -233,7 +291,7 @@ export default function MarketplaceScreen() {
     if (!listMint || !myInboxId || !wallet) return;
     const price = parseFloat(listPrice);
     if (isNaN(price) || price <= 0) {
-      Alert.alert('Invalid Price', 'Enter a valid SOL amount.');
+      Alert.alert('Invalid Price', 'Enter a valid SKR amount.');
       return;
     }
     setIsProcessing(true);
@@ -254,30 +312,14 @@ export default function MarketplaceScreen() {
         askPrice: price,
         traits: listMint.traits,
       });
+      const payload = listingPayloadFromListMessage(msg);
+      if (!payload) throw new Error('Failed to build listing');
       await sendRawToGroup(msg);
-      // Add listing locally immediately (stream may skip own messages)
-      addListing({
-        id: `${listMint.mint}-${Date.now()}`,
-        mint: listMint.mint,
-        name: listMint.name,
-        image: listMint.image,
-        sellerInboxId: myInboxId,
-        sellerUsername: username ?? undefined,
-        sellerWallet: wallet.address,
-        askPrice: price,
-        traits: listMint.traits,
-        listedAt: new Date().toISOString(),
-      });
-      recordHistoryEntry({
-        type: 'sell',
-        nftName: listMint.name,
-        price,
-        timestamp: Date.now(),
-        counterparty: 'Listed',
-        mint: listMint.mint,
-      });
-      setHistory(getHistory());
-      Alert.alert('Listed', `${listMint.name} listed for ${price} SOL`);
+      // Same id as the group broadcast — bids key off listingId. A second
+      // Date.now() here used to mint a different id, so buyer bids never
+      // showed on the seller's listing.
+      addListing(payload);
+      Alert.alert('Listed', `${listMint.name} listed for ${price} SKR`);
       setListPrice('');
       setListMint(null);
       setShowListSheet(false);
@@ -296,13 +338,17 @@ export default function MarketplaceScreen() {
       Alert.alert('Error', "You can't buy your own listing.");
       return;
     }
+    if (skrBalance !== null && skrBalance < listing.askPrice) {
+      Alert.alert('Not enough SKR', `Ask is ${listing.askPrice} SKR. You have ${skrBalance.toFixed(2)} SKR.`);
+      return;
+    }
     Alert.alert(
-      'Buy Now',
-      `Purchase ${listing.name} for ${listing.askPrice} SOL?`,
+      'Offer ask price',
+      `This sends a ${listing.askPrice} SKR offer to the seller. They still have to accept, then you both sign. SKR does not leave your wallet until the atomic swap completes.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: `Pay ${listing.askPrice} SOL`,
+          text: `Offer ${listing.askPrice} SKR`,
           onPress: async () => {
             setIsProcessing(true);
             setProcessingText('Verifying ownership...');
@@ -312,7 +358,8 @@ export default function MarketplaceScreen() {
                 Alert.alert('Error', 'Seller no longer owns this NFT.');
                 return;
               }
-              // Send a bid at ask price — triggers normal swap flow
+              // Send a bid at ask price — triggers normal swap flow. Private DM to the seller,
+              // not a group broadcast — this carries the buyer's wallet address and the price.
               const msg = buildBidMessage({
                 listingId: listing.id,
                 bidderInboxId: myInboxId,
@@ -320,7 +367,7 @@ export default function MarketplaceScreen() {
                 bidderWallet: wallet.address,
                 bidPrice: listing.askPrice,
               }, { sellerInboxId: listing.sellerInboxId, listingName: listing.name });
-              await sendRawToGroup(msg);
+              await sendRawToDm(listing.sellerInboxId, msg);
               recordHistoryEntry({
                 type: 'bid',
                 nftName: listing.name,
@@ -330,7 +377,7 @@ export default function MarketplaceScreen() {
                 mint: listing.mint,
               });
               setHistory(getHistory());
-              Alert.alert('Offer Sent', `Your purchase offer for ${listing.askPrice} SOL has been sent. The seller will be notified by the bot.`);
+              Alert.alert('Offer sent', `Ask-price offer (${listing.askPrice} SKR) sent. The seller must accept, then you sign to finish.`);
               setSelectedListing(null);
               refresh();
             } catch {
@@ -343,15 +390,19 @@ export default function MarketplaceScreen() {
         },
       ],
     );
-  }, [wallet, myInboxId, username, refresh]);
+  }, [wallet, myInboxId, username, refresh, skrBalance]);
 
   const handlePlaceBid = useCallback(async (listing: NftListing) => {
     const price = parseFloat(bidAmount);
     if (isNaN(price) || price <= 0) {
-      Alert.alert('Invalid Bid', 'Enter a valid SOL amount.');
+      Alert.alert('Invalid Bid', 'Enter a valid SKR amount.');
       return;
     }
     if (!myInboxId || !wallet) return;
+    if (skrBalance !== null && skrBalance < price) {
+      Alert.alert('Not enough SKR', `Bid is ${price} SKR. You have ${skrBalance.toFixed(2)} SKR.`);
+      return;
+    }
     try {
       const msg = buildBidMessage({
         listingId: listing.id,
@@ -360,7 +411,7 @@ export default function MarketplaceScreen() {
         bidderWallet: wallet.address,
         bidPrice: price,
       }, { sellerInboxId: listing.sellerInboxId, listingName: listing.name });
-      await sendRawToGroup(msg);
+      await sendRawToDm(listing.sellerInboxId, msg);
       recordHistoryEntry({
         type: 'bid',
         nftName: listing.name,
@@ -370,13 +421,28 @@ export default function MarketplaceScreen() {
         mint: listing.mint,
       });
       setHistory(getHistory());
-      Alert.alert('Bid Sent', `Your bid of ${price} SOL has been sent. The seller will be notified.`);
+      Alert.alert('Bid Sent', `Your bid of ${price} SKR has been sent. The seller will be notified.`);
       setBidAmount('');
       setDetailAction('none');
     } catch {
       Alert.alert('Error', 'Failed to place bid.');
     }
-  }, [bidAmount, myInboxId, username, wallet]);
+  }, [bidAmount, myInboxId, username, wallet, skrBalance]);
+
+  // Buyer cancels their own pending bid — always allowed, no on-chain
+  // action needed since nothing moves until the seller accepts AND the
+  // buyer counter-signs (see nftSwap.ts). Purely a chat-message + local
+  // state update.
+  const handleCancelBid = useCallback(async (listing: NftListing) => {
+    if (!myInboxId) return;
+    try {
+      cancelBid(listing.id, myInboxId);
+      await sendRawToDm(listing.sellerInboxId, buildBidCancelMessage(listing.id, myInboxId));
+      refresh();
+    } catch {
+      Alert.alert('Error', 'Failed to cancel bid.');
+    }
+  }, [myInboxId, refresh]);
 
   const handleOfferSwap = useCallback(async (listing: NftListing) => {
     if (!swapNft || !myInboxId || !wallet) return;
@@ -392,7 +458,7 @@ export default function MarketplaceScreen() {
         offeredImage: swapNft.image,
         solTopUp: parseFloat(swapTopUp) || undefined,
       }, { sellerInboxId: listing.sellerInboxId, listingName: listing.name });
-      await sendRawToGroup(msg);
+      await sendRawToDm(listing.sellerInboxId, msg);
       const topUp = parseFloat(swapTopUp);
       const extra = topUp > 0 ? ` + ${topUp} SOL` : '';
       Alert.alert('Swap Offered', `You offered ${swapNft.name}${extra} for ${listing.name}. The seller will be notified.`);
@@ -408,7 +474,7 @@ export default function MarketplaceScreen() {
     if (!wallet || !myInboxId) return;
     Alert.alert(
       'Accept Bid',
-      `Accept ${bid.bidderUsername ?? 'anon'}'s bid of ${bid.bidPrice} SOL?\n\nYour wallet will open to sign the swap.`,
+      `Accept ${bid.bidderUsername ?? 'anon'}'s bid of ${bid.bidPrice} SKR?\n\nYour wallet will open to sign the swap.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -423,7 +489,7 @@ export default function MarketplaceScreen() {
                 return;
               }
               markPendingSwap(listing.id, bid);
-              await sendRawToGroup(buildAcceptMessage(listing.id, bid.bidderInboxId));
+              await sendRawToDm(bid.bidderInboxId, buildAcceptMessage(listing.id, bid.bidderInboxId));
               refresh();
 
               setProcessingText('Sign in your wallet...');
@@ -431,7 +497,7 @@ export default function MarketplaceScreen() {
                 nftMint: listing.mint,
                 sellerWallet: wallet.address,
                 buyerWallet: bid.bidderWallet,
-                solPrice: bid.bidPrice,
+                skrPrice: bid.bidPrice,
               });
 
               const swapMsg: NftSwapMessage = {
@@ -439,13 +505,13 @@ export default function MarketplaceScreen() {
                 sellerInboxId: myInboxId,
                 buyerInboxId: bid.bidderInboxId,
                 mint: listing.mint,
-                solPrice: bid.bidPrice,
+                skrPrice: bid.bidPrice,
                 sellerWallet: wallet.address,
                 buyerWallet: bid.bidderWallet,
                 serializedTx,
                 createdAt: Date.now(),
               };
-              await sendRawToGroup(buildSwapMessage(swapMsg));
+              await sendRawToDm(bid.bidderInboxId, buildSwapMessage(swapMsg));
 
               Alert.alert('Swap Sent', `Waiting for ${bid.bidderUsername ?? 'buyer'} to complete. Expires in ~90s.`);
               setSelectedListing(null);
@@ -469,8 +535,8 @@ export default function MarketplaceScreen() {
     setIsProcessing(true);
     setProcessingText('Validating transaction...');
     try {
-      const validation = validateSwapTransaction(
-        swap.serializedTx, swap.mint, swap.solPrice, swap.sellerWallet, wallet.address,
+      const validation = await validateSwapTransaction(
+        swap.serializedTx, swap.mint, swap.skrPrice, swap.sellerWallet, wallet.address,
       );
       if (!validation.valid) {
         Alert.alert('Security Error', `Validation failed: ${validation.reason}`);
@@ -483,24 +549,24 @@ export default function MarketplaceScreen() {
         return;
       }
       setProcessingText('Sign in your wallet...');
-      const signature = await buyerCompleteSwap(swap.serializedTx, swap.mint, swap.solPrice, swap.sellerWallet);
+      const signature = await buyerCompleteSwap(swap.serializedTx, swap.mint, swap.skrPrice, swap.sellerWallet);
       markSold(swap.listingId);
       const listing = getListingById(swap.listingId);
       recordHistoryEntry({
         type: 'buy',
         nftName: listing?.name ?? 'Saga Monke',
-        price: swap.solPrice,
+        price: swap.skrPrice,
         timestamp: Date.now(),
         counterparty: listing?.sellerUsername ?? 'anon',
         mint: swap.mint,
         txSignature: signature,
       });
       setHistory(getHistory());
-      await sendRawToGroup(buildCompleteMessage({
+      const completeMsg = {
         listingId: swap.listingId,
         signature,
         mint: swap.mint,
-        solPrice: swap.solPrice,
+        skrPrice: swap.skrPrice,
         sellerInboxId: swap.sellerInboxId,
         sellerUsername: listing?.sellerUsername,
         buyerInboxId: myInboxId,
@@ -508,8 +574,13 @@ export default function MarketplaceScreen() {
         nftName: listing?.name,
         nftImage: listing?.image,
         completedAt: Date.now(),
-      }));
-      Alert.alert('Purchase Complete!', `You bought ${listing?.name ?? 'NFT'} for ${swap.solPrice} SOL\n\nTx: ${signature.slice(0, 12)}...`);
+      };
+      // Private to the seller (so their client marks it sold too) — the raw payload here doesn't
+      // need to be public. The public "SOLD" signal below is the sanitized version everyone else
+      // sees, same as any other completed trade.
+      await sendRawToDm(swap.sellerInboxId, buildCompleteMessage(completeMsg));
+      sendRawToGroup(buildSaleAnnouncement(completeMsg)).catch(() => {});
+      Alert.alert('Purchase Complete!', `You bought ${listing?.name ?? 'NFT'} for ${swap.skrPrice} SKR\n\nTx: ${signature.slice(0, 12)}...`);
       setPendingSwap(null);
       refresh();
     } catch (err) {
@@ -563,37 +634,49 @@ export default function MarketplaceScreen() {
           </Text>
           <View style={s.cardPriceRow}>
             <Text style={s.cardPrice}>{item.askPrice}</Text>
-            <Text style={s.cardSol}> SOL</Text>
+            <Text style={s.cardSol}> SKR</Text>
           </View>
+          {solSkrRate !== null && (
+            <Text style={s.cardSeller}>{skrToSolLabel(item.askPrice).trim()}</Text>
+          )}
+          {vsFloorPct(item.askPrice) && (
+            <Text style={s.cardSeller}>{vsFloorPct(item.askPrice)}</Text>
+          )}
           {isPending && <Text style={s.cardPendingLabel}>Swap pending...</Text>}
           {isSold && <Text style={s.cardSoldLabel}>SOLD</Text>}
         </View>
       </Pressable>
     );
-  }, [CARD_W, myInboxId]);
+  }, [CARD_W, myInboxId, solSkrRate, skrToSolLabel, vsFloorPct]);
 
   // ── Seller's bid view (only in detail modal for own listings) ──────────────
   const renderSellerBids = useCallback((listing: NftListing) => {
     const bids = getBidsForListing(listing.id);
     if (bids.length === 0) return <Text style={s.noBids}>No offers yet</Text>;
-    return bids.map((bid, i) => (
-      <View key={i} style={s.bidRow}>
-        <View style={{ flex: 1 }}>
-          <Text style={s.bidUser}>{bid.bidderUsername ?? 'Monke'}</Text>
-          <Text style={s.bidAmt}>{bid.bidPrice} SOL</Text>
+    return bids.map((bid, i) => {
+      const hoursLeft = Math.max(0, (bid.expiresAt - Date.now()) / 3600_000);
+      return (
+        <View key={i} style={s.bidRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={s.bidUser}>{bid.bidderUsername ?? 'Monke'}</Text>
+            <Text style={s.bidAmt}>{bid.bidPrice} SKR{skrToSolLabel(bid.bidPrice)}</Text>
+            <Text style={s.noBids}>
+              {hoursLeft >= 1 ? `Expires in ~${hoursLeft.toFixed(0)}h` : 'Expiring soon'}
+            </Text>
+          </View>
+          {listing.status === 'active' && (
+            <Pressable
+              style={s.acceptBtn}
+              onPress={() => handleAcceptBid(listing, bid)}
+              disabled={isProcessing}
+            >
+              <Text style={s.acceptBtnText}>Accept</Text>
+            </Pressable>
+          )}
         </View>
-        {listing.status === 'active' && (
-          <Pressable
-            style={s.acceptBtn}
-            onPress={() => handleAcceptBid(listing, bid)}
-            disabled={isProcessing}
-          >
-            <Text style={s.acceptBtnText}>Accept</Text>
-          </Pressable>
-        )}
-      </View>
-    ));
-  }, [handleAcceptBid, isProcessing]);
+      );
+    });
+  }, [handleAcceptBid, isProcessing, skrToSolLabel]);
 
   // ── Main render ────────────────────────────────────────────────────────────
   return (
@@ -709,9 +792,29 @@ export default function MarketplaceScreen() {
         <View style={s.statItem}>
           <Text style={s.statLabel}>Floor</Text>
           <Text style={s.statValue}>
-            {meFloor !== null ? meFloor.toFixed(2) : '—'} SOL
+            {floorSkr !== null
+              ? `${Math.round(floorSkr).toLocaleString()} SKR`
+              : meFloor !== null ? `${meFloor.toFixed(2)} SOL` : '—'}
           </Text>
         </View>
+        {skrBalance !== null && !isGuest && (
+          <View style={s.statItem}>
+            <Text style={s.statLabel}>Your SKR</Text>
+            <Text style={s.statValue}>{skrBalance.toFixed(1)}</Text>
+          </View>
+        )}
+      </View>
+
+      <View style={s.searchWrap}>
+        <TextInput
+          style={s.searchInput}
+          placeholder="Search name or seller"
+          placeholderTextColor={THEME.textMuted}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          autoCorrect={false}
+          autoCapitalize="none"
+        />
       </View>
 
       {/* ── History view ─────────────────────────────────────────────────── */}
@@ -733,7 +836,7 @@ export default function MarketplaceScreen() {
                   <Text style={s.historyName} numberOfLines={1}>{item.nftName}</Text>
                   <Text style={s.historyMeta}>{item.counterparty} — {dateStr}</Text>
                 </View>
-                <Text style={s.historyPrice}>{item.price} SOL</Text>
+                <Text style={s.historyPrice}>{item.price} SKR</Text>
               </View>
             );
           }}
@@ -745,6 +848,7 @@ export default function MarketplaceScreen() {
               <Text style={s.emptyText}>No transaction history yet</Text>
             </View>
           }
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={ACCENT} />}
           removeClippedSubviews
           maxToRenderPerBatch={20}
           windowSize={7}
@@ -758,6 +862,7 @@ export default function MarketplaceScreen() {
         numColumns={2}
         columnWrapperStyle={s.gridRow}
         contentContainerStyle={s.grid}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={ACCENT} />}
         removeClippedSubviews
         maxToRenderPerBatch={20}
         windowSize={10}
@@ -835,14 +940,34 @@ export default function MarketplaceScreen() {
                 {/* Price */}
                 <View style={s.detailPriceRow}>
                   <Text style={s.detailPrice}>{selectedListing.askPrice}</Text>
-                  <Text style={s.detailSolLabel}> SOL</Text>
+                  <Text style={s.detailSolLabel}> SKR</Text>
                 </View>
+                {solSkrRate !== null && (
+                  <Text style={s.detailSeller}>{skrToSolLabel(selectedListing.askPrice).trim()}</Text>
+                )}
 
                 {isPending && (
                   <View style={s.pendingBanner}>
                     <Text style={s.pendingBannerText}>Swap in progress — waiting for buyer</Text>
                   </View>
                 )}
+
+                {/* ── Your pending bid (buyer view) ─────────────────────────── */}
+                {!isMine && (() => {
+                  const myBid = getBidsForListing(selectedListing.id).find(b => b.bidderInboxId === myInboxId);
+                  if (!myBid) return null;
+                  const hoursLeft = Math.max(0, (myBid.expiresAt - Date.now()) / 3600_000);
+                  return (
+                    <View style={s.pendingBanner}>
+                      <Text style={s.pendingBannerText}>
+                        Your bid: {myBid.bidPrice} SKR{skrToSolLabel(myBid.bidPrice)} — {hoursLeft >= 1 ? `expires in ~${hoursLeft.toFixed(0)}h` : 'expiring soon'}
+                      </Text>
+                      <Pressable style={s.cancelBtn} onPress={() => handleCancelBid(selectedListing)}>
+                        <Text style={s.cancelBtnText}>Cancel Bid</Text>
+                      </Pressable>
+                    </View>
+                  );
+                })()}
 
                 {/* ── Buyer actions ───────────────────────────────────────── */}
                 {!isMine && selectedListing.status === 'active' && (
@@ -854,7 +979,7 @@ export default function MarketplaceScreen() {
                           style={s.buyNowBtn}
                           onPress={() => Linking.openURL(`https://www.tensor.trade/item/${selectedListing.mint}`)}
                         >
-                          <Text style={s.buyNowText}>Buy on Tensor — {selectedListing.askPrice} SOL</Text>
+                          <Text style={s.buyNowText}>Buy on Tensor (SOL)</Text>
                         </Pressable>
                         <Text style={s.guestHint}>
                           Get a Saga Monke to unlock in-app trading, chat, signals & more
@@ -862,14 +987,16 @@ export default function MarketplaceScreen() {
                       </>
                     ) : (
                       <>
-                        {/* Buy Now */}
                         <Pressable
                           style={s.buyNowBtn}
                           onPress={() => handleBuyNow(selectedListing)}
                           disabled={isProcessing}
                         >
-                          <Text style={s.buyNowText}>Buy Now — {selectedListing.askPrice} SOL</Text>
+                          <Text style={s.buyNowText}>Offer ask — {selectedListing.askPrice} SKR</Text>
                         </Pressable>
+                        <Text style={s.guestHint}>
+                          P2P: seller accepts, then you both sign. SKR moves only in the atomic swap.
+                        </Text>
 
                         {/* Place Bid / Offer Swap toggles */}
                         <View style={s.altActions}>
@@ -898,7 +1025,7 @@ export default function MarketplaceScreen() {
                       <View style={s.bidSection}>
                         <TextInput
                           style={s.input}
-                          placeholder="Your bid (SOL)"
+                          placeholder="Your bid (SKR)"
                           placeholderTextColor={THEME.textMuted}
                           keyboardType="decimal-pad"
                           value={bidAmount}
@@ -942,7 +1069,7 @@ export default function MarketplaceScreen() {
                           <>
                             <TextInput
                               style={[s.input, { marginTop: 8 }]}
-                              placeholder="Add SOL on top? (optional)"
+                              placeholder="Note extra SKR? (not escrow — optional)"
                               placeholderTextColor={THEME.textMuted}
                               keyboardType="decimal-pad"
                               value={swapTopUp}
@@ -964,8 +1091,27 @@ export default function MarketplaceScreen() {
                 {/* ── Seller view: bids & offers ─────────────────────────── */}
                 {isMine && selectedListing.status === 'active' && (
                   <View style={s.actionSection}>
-                    <Text style={s.sectionTitle}>Offers & Bids</Text>
+                    <Text style={s.sectionTitle}>SKR bids</Text>
                     {renderSellerBids(selectedListing)}
+                    {getOffersForListing(selectedListing.id).length > 0 && (
+                      <>
+                        <Text style={[s.sectionTitle, { marginTop: 16 }]}>Monke swaps (notice only)</Text>
+                        <Text style={s.guestHint}>
+                          NFT-for-NFT is not on-chain yet. These are chat notices — reply in DMs.
+                        </Text>
+                        {getOffersForListing(selectedListing.id).map((off) => (
+                          <View key={off.offererInboxId} style={s.bidRow}>
+                            {off.offeredImage ? (
+                              <Image source={{ uri: off.offeredImage }} style={{ width: 40, height: 40, borderRadius: 8, marginRight: 8 }} />
+                            ) : null}
+                            <View style={{ flex: 1 }}>
+                              <Text style={s.bidUser}>{off.offererUsername ?? 'Monke'}</Text>
+                              <Text style={s.bidAmt}>{off.offeredName}</Text>
+                            </View>
+                          </View>
+                        ))}
+                      </>
+                    )}
                     <Pressable
                       style={s.delistBtn}
                       onPress={() => handleDelist(selectedListing)}
@@ -1008,7 +1154,7 @@ export default function MarketplaceScreen() {
         <View style={s.sheet}>
           <Text style={s.sheetTitle}>List a Saga Monke</Text>
           <Text style={s.securityNote}>
-            Your NFT stays in your wallet until the atomic swap completes. Both NFT and SOL transfer happen in one transaction. A 2% fee applies to the sale price.
+            Your NFT stays in your wallet until the atomic swap completes. Both NFT and SKR transfer happen in one transaction. A 2% fee applies to the sale price.
           </Text>
           <ScrollView showsVerticalScrollIndicator={false}>
             {allNfts.length === 0 ? (
@@ -1053,17 +1199,27 @@ export default function MarketplaceScreen() {
                     </Text>
                     <Pressable
                       style={s.traitFloorBtn}
-                      onPress={() => setListPrice(listTopTrait.floor.toFixed(2))}
+                      disabled={solSkrRate === null}
+                      onPress={() => {
+                        // listTopTrait.floor is a Tensor/ME reference price in SOL
+                        // (see traitFloor.ts) — MUST convert to SKR before pre-
+                        // filling the (SKR-denominated) listing price, or a 0.6
+                        // "SOL floor" would list for 0.6 SKR, worth pennies.
+                        if (solSkrRate === null || solSkrRate <= 0) return;
+                        setListPrice((listTopTrait.floor / solSkrRate).toFixed(0));
+                      }}
                     >
                       <Text style={s.traitFloorBtnText}>
-                        List at {listTopTrait.floor.toFixed(2)} SOL
+                        {solSkrRate !== null
+                          ? `List at ${(listTopTrait.floor / solSkrRate).toFixed(0)} SKR (≈${listTopTrait.floor.toFixed(2)} SOL)`
+                          : `Floor: ≈${listTopTrait.floor.toFixed(2)} SOL (rate loading…)`}
                       </Text>
                     </Pressable>
                   </View>
                 )}
                 <TextInput
                   style={s.input}
-                  placeholder="Asking price (SOL)"
+                  placeholder="Asking price (SKR)"
                   placeholderTextColor={THEME.textMuted}
                   keyboardType="decimal-pad"
                   value={listPrice}
@@ -1071,16 +1227,21 @@ export default function MarketplaceScreen() {
                 />
                 {listPrice && parseFloat(listPrice) > 0 && (
                   <View style={s.feeBreakdown}>
+                    {solSkrRate !== null && (
+                      <Text style={s.feeBreakdownLabel}>
+                        ≈{(parseFloat(listPrice) * solSkrRate).toFixed(3)} SOL
+                      </Text>
+                    )}
                     <View style={s.feeBreakdownRow}>
                       <Text style={s.feeBreakdownLabel}>Seller receives</Text>
                       <Text style={s.feeBreakdownValue}>
-                        {(parseFloat(listPrice) * (1 - NFT_SALE_FEE_PCT)).toFixed(4)} SOL
+                        {(parseFloat(listPrice) * (1 - NFT_SALE_FEE_PCT)).toFixed(4)} SKR
                       </Text>
                     </View>
                     <View style={s.feeBreakdownRow}>
                       <Text style={s.feeBreakdownLabel}>Fee ({NFT_SALE_FEE_PCT * 100}%)</Text>
                       <Text style={[s.feeBreakdownValue, { color: THEME.warning }]}>
-                        {(parseFloat(listPrice) * NFT_SALE_FEE_PCT).toFixed(4)} SOL
+                        {(parseFloat(listPrice) * NFT_SALE_FEE_PCT).toFixed(4)} SKR
                       </Text>
                     </View>
                   </View>
@@ -1115,10 +1276,10 @@ export default function MarketplaceScreen() {
           <View style={s.sheet}>
             <Text style={s.sheetTitle}>Complete Purchase</Text>
             <Text style={s.detailSeller}>
-              The seller signed the swap for {pendingSwap.solPrice} SOL.
+              The seller signed the swap for {pendingSwap.skrPrice} SKR.
             </Text>
             <Text style={s.securityNote}>
-              You will receive the NFT and {pendingSwap.solPrice} SOL will be sent to the seller — both in one atomic transaction. Validated: no hidden instructions.
+              You will receive the NFT. {pendingSwap.skrPrice} SKR leaves your wallet: 98% to the seller, 2% to the OnlyMonkes vault — one atomic transaction. Validated: no hidden instructions.
             </Text>
             <View style={s.swapConfirmRow}>
               <Pressable
@@ -1133,7 +1294,7 @@ export default function MarketplaceScreen() {
                 disabled={isProcessing}
               >
                 <Text style={s.buyNowText}>
-                  {isProcessing ? 'Processing...' : `Pay ${pendingSwap.solPrice} SOL`}
+                  {isProcessing ? 'Processing...' : `Pay ${pendingSwap.skrPrice} SKR`}
                 </Text>
               </Pressable>
             </View>
@@ -1209,6 +1370,12 @@ const s = StyleSheet.create({
   statItem: { alignItems: 'center' },
   statLabel: { fontFamily: FONTS.mono, fontSize: 9, color: THEME.textMuted },
   statValue: { fontFamily: FONTS.mono, fontSize: 11, fontWeight: '700', color: THEME.text },
+  searchWrap: { paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: THEME.border },
+  searchInput: {
+    backgroundColor: THEME.surface, borderWidth: 1, borderColor: THEME.border,
+    borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8,
+    fontFamily: FONTS.mono, fontSize: 13, color: THEME.text,
+  },
 
   // Grid
   grid: { padding: 12 },
