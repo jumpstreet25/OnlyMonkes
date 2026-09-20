@@ -64,6 +64,21 @@ export interface NftListing {
   status: 'active' | 'pending_swap' | 'sold' | 'delisted';
   acceptedBid?: NftBid;     // which bid was accepted (during pending_swap)
   swapExpiresAt?: number;   // timestamp when pending_swap auto-reverts
+  /**
+   * On-chain escrow via the MonkeMarkets Anchor program (Phase 1/2,
+   * marketplaceProgram.ts). Present only for listings created through the
+   * instant Buy Now flow — undefined for legacy off-chain listings, which
+   * keep using the bid/accept/swap handshake. `network` records which
+   * cluster actually holds the escrow so a stale devnet-era listing is
+   * never mistaken for a real mainnet escrow once Phase 2 ships.
+   */
+  onChainEscrow?: {
+    merkleTree: string;   // base58
+    leafId: string;       // stringified u64 nonce (AsyncStorage/JSON-safe)
+    dataHash: string;     // base58, 32 bytes
+    creatorHash: string;  // base58, 32 bytes
+    network: 'devnet' | 'mainnet';
+  };
 }
 
 // A pending bid with no seller response auto-expires after this long — the
@@ -323,6 +338,15 @@ export function addListing(data: any): NftListing {
     traits: data.traits ?? undefined,
     listedAt: new Date(data.listedAt),
     status: 'active',
+    onChainEscrow: (
+      data.onChainEscrow
+      && typeof data.onChainEscrow === 'object'
+      && typeof data.onChainEscrow.merkleTree === 'string'
+      && typeof data.onChainEscrow.leafId === 'string'
+      && typeof data.onChainEscrow.dataHash === 'string'
+      && typeof data.onChainEscrow.creatorHash === 'string'
+      && (data.onChainEscrow.network === 'devnet' || data.onChainEscrow.network === 'mainnet')
+    ) ? data.onChainEscrow : undefined,
   };
   // Replace existing listing for same mint from same seller
   _listings = _listings.filter(

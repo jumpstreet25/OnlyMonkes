@@ -28,7 +28,10 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { THEME, FONTS, NFT_SALE_FEE_PCT } from '@/lib/constants';
+import { THEME, FONTS, NFT_SALE_FEE_PCT, HELIUS_RPC_URL } from '@/lib/constants';
+import { Connection, PublicKey } from '@solana/web3.js';
+import { getMint } from '@solana/spl-token';
+import bs58 from 'bs58';
 import { ErrorMessage } from '@/components/ErrorMessage';
 
 const TENSOR_SAGA_URL = "https://www.tensor.trade/trade/sagamonkes";
@@ -71,7 +74,17 @@ import {
   buyerCompleteSwap,
   validateSwapTransaction,
   fetchSolSkrRate,
+  fetchCompressionData,
 } from '@/lib/nftSwap';
+import {
+  fetchMarketplaceConfig,
+  fetchListing,
+  fetchListMetadataArgsFromDas,
+  getListingPda,
+  sellerListNft,
+  sellerDelistNft,
+  buyerBuyNow,
+} from '@/lib/marketplaceProgram';
 import { getSkrBalance } from '@/lib/solana';
 import { verifyNFTOwnership } from '@/lib/nftVerification';
 import { sendRawToGroup, sendRawToDm } from '@/hooks/useXmtp';
@@ -92,6 +105,18 @@ import { MarketplaceSkeleton } from '@/components/SkeletonLoader';
 const ACCENT = '#0096C7';
 const ACCENT_SOFT = 'rgba(0, 150, 199, 0.12)';
 const GREEN = '#22c55e';
+
+// ── On-chain escrow (Phase 1/2 MonkeMarkets program) ────────────────────────
+// Single point of change for the mainnet cutover: flip to 'mainnet' once the
+// program is deployed there and MARKETPLACE_PROGRAM_ID in marketplaceProgram.ts
+// points at that deploy. A devnet program cannot escrow a real (mainnet-only)
+// Saga Monke — any real listing attempted while this is 'devnet' will fail
+// with a real on-chain/network error, surfaced to the user rather than
+// silently swallowed. That's expected until the flip, not a bug.
+const MARKETPLACE_ESCROW_NETWORK: 'devnet' | 'mainnet' = 'devnet';
+const ESCROW_RPC_URL = MARKETPLACE_ESCROW_NETWORK === 'devnet'
+  ? 'https://api.devnet.solana.com'
+  : HELIUS_RPC_URL;
 
 type SortKey = 'recent' | 'low' | 'high';
 type DetailAction = 'none' | 'bid' | 'swap';
@@ -119,6 +144,8 @@ export default function MarketplaceScreen() {
   const [processingText, setProcessingText] = useState('');
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loadingListings, setLoadingListings] = useState(true);
+  const [escrowOnList, setEscrowOnList] = useState(false);
+  const [escrowConnection] = useState(() => new Connection(ESCROW_RPC_URL, 'confirmed'));
 
   // ── Fee agreement ────────────────────────────────────────────────────────
   const [showFeeModal, setShowFeeModal] = useState(false);
@@ -302,6 +329,47 @@ export default function MarketplaceScreen() {
         Alert.alert('Not Owned', 'You no longer own this NFT.');
         return;
       }
+
+      let onChainEscrow: NftListing['onChainEscrow'];
+      if (escrowOnList) {
+        setProcessingText('Checking on-chain marketplace...');
+        const config = await fetchMarketplaceConfig(escrowConnection).catch(() => null);
+        if (!config) {
+          Alert.alert(
+            'On-chain escrow not live yet',
+            `The MonkeMarkets escrow program isn't initialized on ${MARKETPLACE_ESCROW_NETWORK} yet. Listing as off-chain (bid/accept) instead.`,
+          );
+        } else {
+          try {
+            setProcessingText('Fetching NFT proof...');
+            const comp = await fetchCompressionData(listMint.mint);
+            const metadataArgs = await fetchListMetadataArgsFromDas(HELIUS_RPC_URL, listMint.mint);
+            const decimals = (await getMint(escrowConnection, config.skrMint)).decimals;
+            const priceBaseUnits = BigInt(Math.round(price * 10 ** decimals));
+            setProcessingText('Sign in your wallet (escrow)...');
+            await sellerListNft({
+              connection: escrowConnection,
+              seller: new PublicKey(wallet.address),
+              price: priceBaseUnits,
+              comp,
+              metadataArgs,
+            });
+            onChainEscrow = {
+              merkleTree: comp.tree.toBase58(),
+              leafId: String(comp.nonce),
+              dataHash: bs58.encode(Buffer.from(comp.dataHash)),
+              creatorHash: bs58.encode(Buffer.from(comp.creatorHash)),
+              network: MARKETPLACE_ESCROW_NETWORK,
+            };
+          } catch (escrowErr) {
+            Alert.alert(
+              'On-chain escrow failed',
+              `${(escrowErr as Error).message}\n\nThis is expected on devnet for a real Saga Monke — the NFT and the escrow program must be on the same network. Listing as off-chain (bid/accept) instead.`,
+            );
+          }
+        }
+      }
+
       const msg = buildListMessage({
         mint: listMint.mint,
         name: listMint.name,
@@ -311,6 +379,7 @@ export default function MarketplaceScreen() {
         sellerWallet: wallet.address,
         askPrice: price,
         traits: listMint.traits,
+        onChainEscrow,
       });
       const payload = listingPayloadFromListMessage(msg);
       if (!payload) throw new Error('Failed to build listing');
@@ -330,7 +399,7 @@ export default function MarketplaceScreen() {
       setIsProcessing(false);
       setProcessingText('');
     }
-  }, [listMint, listPrice, myInboxId, username, wallet, refresh]);
+  }, [listMint, listPrice, myInboxId, username, wallet, refresh, escrowOnList, escrowConnection]);
 
   const handleBuyNow = useCallback(async (listing: NftListing) => {
     if (!wallet || !myInboxId) return;
@@ -391,6 +460,87 @@ export default function MarketplaceScreen() {
       ],
     );
   }, [wallet, myInboxId, username, refresh, skrBalance]);
+
+  /**
+   * Real on-chain Buy Now — one signed transaction, no seller-online
+   * requirement. Only reachable for listings with `onChainEscrow` set
+   * (i.e. actually escrowed via the MonkeMarkets program at list time).
+   */
+  const handleBuyNowOnChain = useCallback(async (listing: NftListing) => {
+    if (!wallet || !myInboxId || !listing.onChainEscrow) return;
+    if (listing.sellerInboxId === myInboxId) {
+      Alert.alert('Error', "You can't buy your own listing.");
+      return;
+    }
+    const escrow = listing.onChainEscrow;
+    Alert.alert(
+      'Buy Now (instant, on-chain)',
+      `This sends ${listing.askPrice} SKR and receives the NFT in ONE signed transaction — no waiting for the seller.${escrow.network === 'devnet' ? '\n\n🧪 Devnet test mode — not a real trade.' : ''}`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: `Buy for ${listing.askPrice} SKR`,
+          onPress: async () => {
+            setIsProcessing(true);
+            setProcessingText('Fetching listing...');
+            try {
+              const merkleTree = new PublicKey(escrow.merkleTree);
+              const [listingPda] = getListingPda(merkleTree, BigInt(escrow.leafId));
+              const [config, onChainListing] = await Promise.all([
+                fetchMarketplaceConfig(escrowConnection),
+                fetchListing(escrowConnection, listingPda),
+              ]);
+              if (!config) throw new Error('Marketplace not initialized on-chain.');
+              if (!onChainListing) throw new Error('Listing no longer escrowed on-chain (already sold or delisted).');
+
+              setProcessingText('Fetching NFT proof...');
+              const comp = await fetchCompressionData(listing.mint);
+
+              setProcessingText('Sign in your wallet...');
+              const signature = await buyerBuyNow({
+                connection: escrowConnection,
+                buyer: new PublicKey(wallet.address),
+                comp,
+                listing: onChainListing,
+                config,
+              });
+
+              markSold(listing.id);
+              recordHistoryEntry({
+                type: 'buy',
+                nftName: listing.name,
+                price: listing.askPrice,
+                timestamp: Date.now(),
+                counterparty: listing.sellerUsername ?? 'anon',
+                mint: listing.mint,
+                txSignature: signature,
+              });
+              setHistory(getHistory());
+              sendRawToGroup(buildSaleAnnouncement({
+                listingId: listing.id,
+                signature,
+                mint: listing.mint,
+                skrPrice: listing.askPrice,
+                sellerUsername: listing.sellerUsername,
+                buyerUsername: username ?? undefined,
+                nftName: listing.name,
+                nftImage: listing.image,
+                completedAt: Date.now(),
+              })).catch(() => {});
+              Alert.alert('Bought!', `${listing.name} is yours. tx: ${signature.slice(0, 12)}…`);
+              setSelectedListing(null);
+              refresh();
+            } catch (err) {
+              Alert.alert('Buy failed', err instanceof Error ? err.message : 'Unknown error');
+            } finally {
+              setIsProcessing(false);
+              setProcessingText('');
+            }
+          },
+        },
+      ],
+    );
+  }, [wallet, myInboxId, username, escrowConnection, refresh]);
 
   const handlePlaceBid = useCallback(async (listing: NftListing) => {
     const price = parseFloat(bidAmount);
@@ -597,7 +747,33 @@ export default function MarketplaceScreen() {
       {
         text: 'Delist',
         style: 'destructive',
-        onPress: () => {
+        onPress: async () => {
+          if (listing.onChainEscrow && wallet) {
+            setIsProcessing(true);
+            setProcessingText('Reclaiming from escrow...');
+            try {
+              const escrow = listing.onChainEscrow;
+              const merkleTree = new PublicKey(escrow.merkleTree);
+              const [listingPda] = getListingPda(merkleTree, BigInt(escrow.leafId));
+              const onChainListing = await fetchListing(escrowConnection, listingPda);
+              if (onChainListing) {
+                const comp = await fetchCompressionData(listing.mint);
+                await sellerDelistNft({
+                  connection: escrowConnection,
+                  seller: new PublicKey(wallet.address),
+                  comp,
+                  listing: onChainListing,
+                });
+              }
+            } catch (err) {
+              Alert.alert('On-chain delist failed', err instanceof Error ? err.message : 'Unknown error');
+              setIsProcessing(false);
+              setProcessingText('');
+              return;
+            }
+            setIsProcessing(false);
+            setProcessingText('');
+          }
           delistNft(listing.id);
           sendRawToGroup(buildDelistMessage(listing.id)).catch(() => {});
           setSelectedListing(null);
@@ -605,7 +781,7 @@ export default function MarketplaceScreen() {
         },
       },
     ]);
-  }, [refresh]);
+  }, [refresh, wallet, escrowConnection]);
 
   // ── NFT Card (2-column grid) ───────────────────────────────────────────────
   const renderCard = useCallback(({ item }: { item: NftListing }) => {
@@ -987,6 +1163,23 @@ export default function MarketplaceScreen() {
                       </>
                     ) : (
                       <>
+                        {selectedListing.onChainEscrow && (
+                          <>
+                            <Pressable
+                              style={[s.buyNowBtn, { backgroundColor: GREEN, marginBottom: 8 }]}
+                              onPress={() => handleBuyNowOnChain(selectedListing)}
+                              disabled={isProcessing}
+                            >
+                              <Text style={s.buyNowText}>
+                                ⚡ Buy Now — {selectedListing.askPrice} SKR
+                                {selectedListing.onChainEscrow.network === 'devnet' ? ' (🧪 devnet test)' : ''}
+                              </Text>
+                            </Pressable>
+                            <Text style={s.guestHint}>
+                              Instant — one signature, no waiting for the seller.
+                            </Text>
+                          </>
+                        )}
                         <Pressable
                           style={s.buyNowBtn}
                           onPress={() => handleBuyNow(selectedListing)}
@@ -1247,6 +1440,17 @@ export default function MarketplaceScreen() {
                   </View>
                 )}
                 <Pressable
+                  style={s.escrowToggleRow}
+                  onPress={() => setEscrowOnList((v) => !v)}
+                >
+                  <View style={[s.checkbox, escrowOnList && s.checkboxChecked]}>
+                    {escrowOnList && <Text style={s.checkboxMark}>✓</Text>}
+                  </View>
+                  <Text style={s.escrowToggleText}>
+                    Escrow on-chain (instant Buy Now){MARKETPLACE_ESCROW_NETWORK === 'devnet' ? ' — 🧪 devnet test only' : ''}
+                  </Text>
+                </Pressable>
+                <Pressable
                   style={[s.buyNowBtn, { marginTop: 10 }]}
                   onPress={handleList}
                   disabled={isProcessing}
@@ -1447,6 +1651,14 @@ const s = StyleSheet.create({
     backgroundColor: ACCENT, borderRadius: 10, paddingVertical: 14, alignItems: 'center',
   },
   buyNowText: { fontFamily: FONTS.bodySemi, fontSize: 15, color: '#fff' },
+  escrowToggleRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10, marginBottom: 4 },
+  checkbox: {
+    width: 18, height: 18, borderRadius: 4, borderWidth: 1, borderColor: THEME.border,
+    alignItems: 'center', justifyContent: 'center', marginRight: 8,
+  },
+  checkboxChecked: { backgroundColor: GREEN, borderColor: GREEN },
+  checkboxMark: { color: '#fff', fontSize: 12, fontFamily: FONTS.bodySemi },
+  escrowToggleText: { fontFamily: FONTS.body, fontSize: 12, color: THEME.textMuted, flexShrink: 1 },
   altActions: { flexDirection: 'row', gap: 8, marginTop: 10 },
   altBtn: {
     flex: 1, paddingVertical: 10, borderRadius: 8, alignItems: 'center',
