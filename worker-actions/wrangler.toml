@@ -6,6 +6,7 @@ compatibility_flags = ["nodejs_compat"]
 # Secrets (set via `wrangler secret put`):
 #   HELIUS_API_KEY  — Helius RPC API key
 #   JUP_API_KEY     — Jupiter Swap v2 API key (portal.jup.ag)
+#   BOT_HTTP_URL    — bot Express base (VPS :3001) for /api/bot-command + /api/inbox-reset
 
 # KV Namespaces
 # FRAME_ALERTS (v2.38): doubles as the Helius webhook event queue (key prefix

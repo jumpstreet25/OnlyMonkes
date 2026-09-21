@@ -28,6 +28,7 @@ import { triggerProfileRebroadcast } from "@/hooks/useXmtp";
 import AutonoMonkeSetupWizard from "@/components/AutonoMonkeSetupWizard";
 import { getXmtpClient } from "@/hooks/useXmtp";
 import { sendDmMessage } from "@/lib/xmtp";
+import { isInactiveMlsError, markBotDmBroken, postBotCommand, applyBotCommandResult } from "@/lib/botCommand";
 import * as Haptics from "expo-haptics";
 import { LiquidGlass as BlurView } from "@/components/LiquidGlass";
 import { getBlurProps } from "@/lib/glassTheme";
@@ -155,6 +156,7 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
         }
       } catch (err) {
         if (__DEV__) console.warn("[Autonomy:trades] status refresh DM failed:", (err as Error).message);
+        if (isInactiveMlsError(err)) await markBotDmBroken();
       }
     })();
   }, [channelId]);
@@ -194,10 +196,34 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
       if (!client) return;
       const dm = await (client.conversations as any).findOrCreateDm(BOT_INBOX_ID);
       if (dm) {
-        await sendDmMessage(dm, `/autonomonke limits ${next ? "on" : "off"}`, username);
+        const sentAt = Date.now();
+        const command = `/autonomonke limits ${next ? "on" : "off"}`;
+        await sendDmMessage(dm, command, username);
+        // 2026-09-13: dm.send() into an MLS-inactive 1:1 resolves normally
+        // (no throw) — a real user tap here, so a reply-timeout fallback
+        // (with its one real MWA signature prompt) is appropriate, unlike
+        // the background status-check above.
+        setTimeout(() => {
+          void (async () => {
+            const { getLastBotActivityTs } = await import("@/lib/botCommand");
+            if (getLastBotActivityTs() >= sentAt) return;
+            try {
+              await markBotDmBroken();
+              applyBotCommandResult(await postBotCommand(command));
+            } catch (httpErr) {
+              if (__DEV__) console.warn("[Autonomy:trades] limits reply-timeout fallback failed:", (httpErr as Error).message);
+            }
+          })();
+        }, 40_000);
       }
     } catch (err) {
       if (__DEV__) console.warn("[Autonomy:trades] limits toggle DM failed:", (err as Error).message);
+      try {
+        await markBotDmBroken();
+        applyBotCommandResult(await postBotCommand(`/autonomonke limits ${next ? "on" : "off"}`));
+      } catch (httpErr) {
+        if (__DEV__) console.warn("[Autonomy:trades] limits HTTP fallback failed:", (httpErr as Error).message);
+      }
     }
   }, [autonomyEnrolled, limitOrdersEnabled, username]);
 
@@ -373,10 +399,34 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
                     const client = getXmtpClient();
                     if (client) {
                       const dm = await (client.conversations as any).findOrCreateDm(BOT_INBOX_ID);
-                      if (dm) await sendDmMessage(dm, "/autonomonke resume", username);
+                      if (dm) {
+                        const sentAt = Date.now();
+                        await sendDmMessage(dm, "/autonomonke resume", username);
+                        // 2026-09-13: dm.send() into an MLS-inactive 1:1
+                        // resolves normally (no throw) — a real user tap
+                        // here, so a reply-timeout fallback is appropriate.
+                        setTimeout(() => {
+                          void (async () => {
+                            const { getLastBotActivityTs } = await import("@/lib/botCommand");
+                            if (getLastBotActivityTs() >= sentAt) return;
+                            try {
+                              await markBotDmBroken();
+                              applyBotCommandResult(await postBotCommand("/autonomonke resume"));
+                            } catch (httpErr) {
+                              if (__DEV__) console.warn("[Autonomy:trades] resume reply-timeout fallback failed:", (httpErr as Error)?.message);
+                            }
+                          })();
+                        }, 40_000);
+                      }
                     }
                   } catch (err) {
                     if (__DEV__) console.warn("[Autonomy:trades] resume DM failed:", (err as Error)?.message);
+                    try {
+                      await markBotDmBroken();
+                      applyBotCommandResult(await postBotCommand("/autonomonke resume"));
+                    } catch (httpErr) {
+                      if (__DEV__) console.warn("[Autonomy:trades] resume HTTP fallback failed:", (httpErr as Error)?.message);
+                    }
                   }
                 }
                 router.push(`/dm/${BOT_INBOX_ID}` as any);

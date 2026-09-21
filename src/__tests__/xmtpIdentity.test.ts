@@ -19,6 +19,7 @@ import {
   makeXmtpEoaSigner,
   xmtpIdentityMessage,
   xmtpIdentityMessageBytes,
+  xmtpIdentitySalt,
   XMTP_IDENTITY_DOMAIN,
 } from "../lib/xmtpIdentity";
 
@@ -38,9 +39,21 @@ describe("xmtpIdentity", () => {
     const msg = xmtpIdentityMessage(WALLET_A);
     expect(msg).toContain("OnlyMonkes XMTP identity v1");
     expect(msg).toContain(WALLET_A);
+    expect(msg).not.toContain("Reset:");
     expect(xmtpIdentityMessageBytes(WALLET_A)).toEqual(
       new TextEncoder().encode(msg),
     );
+  });
+
+  it("keeps generation 0 on the frozen salt and changes only on opt-in reset", () => {
+    expect(xmtpIdentitySalt(0)).toBe(XMTP_IDENTITY_DOMAIN);
+    expect(xmtpIdentitySalt(1)).toBe("onlymonkes-xmtp-identity-v1:reset:1");
+    const msg = xmtpIdentityMessage(WALLET_A, 1);
+    expect(msg).toContain("Reset: 1");
+    const sig = sigFrom(7);
+    const base = deriveXmtpEoa(sig, WALLET_A);
+    const reset = deriveXmtpEoa(sig, WALLET_A, 1);
+    expect(reset.address).not.toBe(base.address);
   });
 
   it("is deterministic for the same signature and wallet", () => {

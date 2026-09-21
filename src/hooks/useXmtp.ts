@@ -44,16 +44,18 @@ import {
   sendVideoRoomMessage,
   sendAvatarRoomMessage,
   parseProfileUpdate,
+  openOrCreateDm,
+  sendDmMessage,
 } from "@/lib/xmtp";
 import { parseLiveRoomMessage, buildLiveRoomMessage, type LiveRoomData } from "@/lib/livekit";
 import { parsePinMessage, pinMessage, unpinMessage, getPinnedMessages } from "@/lib/pinnedMessages";
 import { parseDeleteMessage, buildDeleteMessage, markMessageDeleted, isMessageDeleted, filterDeleted, loadDeletedMessageIds } from "@/lib/deletedMessages";
 import { parsePresenceMessage, updatePresence, buildPresenceMessage } from "@/lib/presence";
 import { parseThreadMessage, trackThreadReply } from "@/lib/threads";
-import { parseMarketplaceMessage, addListing, addBid, markPendingSwap, markSold, delistNft, getListingById, getBidsForListing, getHistory as getMarketplaceHistory, type NftSwapMessage } from "@/lib/marketplace";
+import { parseMarketplaceMessage, addListing, addBid, addSwapOffer, cancelBid, markPendingSwap, markSold, delistNft, getListingById, getBidsForListing, recordHistoryEntry, getHistory as getMarketplaceHistory, type NftSwapMessage } from "@/lib/marketplace";
 import { parseVideoRoomMessage, type VideoRoomData } from "@/lib/liveVideo";
 import { parseAvatarRoomMessage, type AvatarRoomData } from "@/lib/avatarRoom";
-import { verifyNFTOwnership, verifyNftMintInCollection } from "@/lib/nftVerification";
+import { verifyNFTOwnership, verifyNftMintInCollection, checkMonkeLedgerWalletOwnership } from "@/lib/nftVerification";
 import { cacheProfile, getCachedProfile, loadProfileCache, trackUser, loadAllTimeUsers, applyLocationSync, getLocatedUserCount } from "@/lib/userProfile";
 import { loadWeeklyActivity, trackActivity } from "@/lib/activityTracker";
 import { incrementProgress, updateStreak, getEarnedBadges, grantSpecialBadge, type BadgeDef } from "@/lib/badges";
@@ -109,10 +111,29 @@ let _client: XmtpClient | null = null;
 
 export function getXmtpClient(): XmtpClient | null { return _client; }
 
-/** Send a raw string to the global group (no MSG: wrapping). Used by marketplace. */
+/** Send a raw string to the global group (no MSG: wrapping). Used by marketplace listings/delists —
+ *  the only two marketplace message types actually meant to be public (see marketplace.ts's doc
+ *  comment). Everything else (bid/offer/accept/swap/complete) goes through sendRawToDm instead. */
 export async function sendRawToGroup(raw: string): Promise<void> {
   if (!_group) throw new Error("Not connected to chat");
   await (_group as any).send(raw);
+}
+
+/**
+ * Send a raw string directly to one peer's DM (no MSG: wrapping) — the private counterpart to
+ * sendRawToGroup. 2026-09-13: added because marketplace bid/offer/accept/swap/complete messages
+ * were being broadcast to the WHOLE Main Chat group via sendRawToGroup, contradicting
+ * marketplace.ts's own doc comment ("PRIVATE (DM to seller)") — every bid amount, wallet address,
+ * and even the signed swap transaction bytes were visible to every group member. Real funds don't
+ * move any less safely either way (Solana's own signature requirement protects that regardless of
+ * who can see the message), but there's no reason to leak bid amounts/wallets/tx bytes publicly
+ * when the whole point of this path was always meant to be a private handshake between the two
+ * actual parties.
+ */
+export async function sendRawToDm(peerInboxId: string, raw: string): Promise<void> {
+  if (!_client) throw new Error("Not connected to chat");
+  const dm = await openOrCreateDm(_client, peerInboxId);
+  await sendDmMessage(dm, raw);
 }
 
 /** Admin: gift a shop item to a user. Sends GIFT_ITEM: message to group. */
@@ -471,8 +492,11 @@ const _verifiedWallets = new Map<string, boolean>();
 const MAX_VERIFIED_WALLETS = 500;
 
 /**
- * Background-verify that a wallet owns a Saga Monke NFT via Helius/Shyft.
- * If it doesn't, null out the nftImage in the profile cache.
+ * Background-verify that a wallet owns a Saga Monke NFT. Tries our own MonkeLedger indexer
+ * first (cosmetic-only call site, first one staged onto it — see nftVerification.ts's doc
+ * comment on checkMonkeLedgerWalletOwnership) and only falls through to the full Helius/etc.
+ * chain if MonkeLedger couldn't give a determinate answer. If it doesn't, null out the nftImage
+ * in the profile cache.
  */
 function bgVerifyWallet(inboxId: string, walletAddress: string): void {
   const cached = _verifiedWallets.get(walletAddress);
@@ -481,24 +505,30 @@ function bgVerifyWallet(inboxId: string, walletAddress: string): void {
     cacheProfile(inboxId, { nftImage: null });
     return;
   }
-  verifyNFTOwnership(walletAddress)
-    .then((result) => {
-      // LRU: delete-then-set moves entry to end of insertion order
-      _verifiedWallets.delete(walletAddress);
-      _verifiedWallets.set(walletAddress, result.verified);
-      // Evict oldest when over cap
-      if (_verifiedWallets.size > MAX_VERIFIED_WALLETS) {
-        const oldest = _verifiedWallets.keys().next().value;
-        if (oldest) _verifiedWallets.delete(oldest);
-      }
-      if (!result.verified) {
-        console.warn(`[XMTP] Wallet ${walletAddress.slice(0, 8)}… for ${inboxId.slice(0, 8)}… has no Saga Monke — clearing PFP`);
-        cacheProfile(inboxId, { nftImage: null });
-      }
-    })
-    .catch(() => {
-      // Network error — leave image for now, re-check on next update
-    });
+  const finish = (verified: boolean) => {
+    _verifiedWallets.delete(walletAddress);
+    _verifiedWallets.set(walletAddress, verified);
+    if (_verifiedWallets.size > MAX_VERIFIED_WALLETS) {
+      const oldest = _verifiedWallets.keys().next().value;
+      if (oldest) _verifiedWallets.delete(oldest);
+    }
+    if (!verified) {
+      console.warn(`[XMTP] Wallet ${walletAddress.slice(0, 8)}… for ${inboxId.slice(0, 8)}… has no Saga Monke — clearing PFP`);
+      cacheProfile(inboxId, { nftImage: null });
+    }
+  };
+
+  checkMonkeLedgerWalletOwnership(walletAddress).then((fromLedger) => {
+    if (fromLedger !== null) {
+      finish(fromLedger);
+      return;
+    }
+    verifyNFTOwnership(walletAddress)
+      .then((result) => finish(result.verified))
+      .catch(() => {
+        // Network error — leave image for now, re-check on next update
+      });
+  });
 }
 
 /**
@@ -945,19 +975,16 @@ export function useXmtp() {
             } else if (typeof content === "string" && content.startsWith("RSVP:")) {
               processRsvpMessage(content).catch(() => {});
             } else if (typeof content === "string" && (
-              content.startsWith("NFT_LIST:") || content.startsWith("NFT_BID:") ||
-              content.startsWith("NFT_OFFER:") || content.startsWith("NFT_ACCEPT:") ||
-              content.startsWith("NFT_DELIST:") || content.startsWith("NFT_SWAP:") ||
-              content.startsWith("NFT_COMPLETE:")
+              content.startsWith("NFT_LIST:") || content.startsWith("NFT_DELIST:")
             )) {
+              // Rebuilding listing state from Main Chat history on load — only list/delist ever
+              // appear here (bid/accept/swap/complete are private DMs, see the live-stream
+              // handler's doc comment below for why).
               const market = parseMarketplaceMessage(content);
               if (market) {
                 switch (market.type) {
                   case 'list': addListing(market.data); break;
-                  case 'bid': addBid(market.data); break;
-                  case 'accept': markSold(market.data.listingId); break;
                   case 'delist': delistNft(market.data.listingId); break;
-                  case 'complete': markSold(market.data.listingId); break;
                   default: break;
                 }
               }
@@ -1518,61 +1545,21 @@ export function useXmtp() {
           return;
         }
 
-        // ── NFT Marketplace messages ────────────────────────────────────────
+        // ── NFT Marketplace messages (public ones only) ─────────────────────
+        // 2026-09-13: bid/bid_cancel/offer/accept/swap/complete moved to private DMs (see
+        // sendRawToDm call sites in MarketplaceScreen.tsx + the streamAllMessages handler
+        // above for the off-screen DM case) — every bid amount, wallet address, and the signed
+        // swap transaction itself used to be broadcast here to the whole group, contradicting
+        // marketplace.ts's own doc comment ("PRIVATE (DM to seller)"). Only NFT_LIST and
+        // NFT_DELIST are actually meant to be public (everyone should see what's for sale).
         if (typeof content === "string" && (
-          content.startsWith("NFT_LIST:") || content.startsWith("NFT_BID:") ||
-          content.startsWith("NFT_ACCEPT:") || content.startsWith("NFT_DELIST:") ||
-          content.startsWith("NFT_SWAP:") || content.startsWith("NFT_COMPLETE:")
+          content.startsWith("NFT_LIST:") || content.startsWith("NFT_DELIST:")
         )) {
           const market = parseMarketplaceMessage(content);
           if (market) {
             switch (market.type) {
               case 'list': addListing(market.data); break;
-              case 'bid': {
-                addBid(market.data);
-                // Notify seller if someone bids on their listing
-                const bidListing = getListingById(market.data.listingId);
-                if (bidListing && bidListing.sellerInboxId === _myInboxId) {
-                  showLocalNotification(
-                    'New Bid',
-                    `${market.data.bidderUsername ?? 'Someone'} bid ${market.data.bidPrice} SOL on ${bidListing.name}`,
-                    CH_MARKET,
-                  );
-                }
-                break;
-              }
-              case 'accept': {
-                // Seller accepted a bid — mark listing as pending_swap
-                const listing = getListingById(market.data.listingId);
-                const bids = getBidsForListing(market.data.listingId);
-                const acceptedBid = bids.find((b: any) => b.bidderInboxId === market.data.bidderInboxId);
-                if (listing && acceptedBid) {
-                  markPendingSwap(market.data.listingId, acceptedBid);
-                } else {
-                  markSold(market.data.listingId);
-                }
-                break;
-              }
               case 'delist': delistNft(market.data.listingId); break;
-              case 'swap': {
-                // Swap tx addressed to me — show buyer confirmation
-                const swap = market.data as NftSwapMessage;
-                if (swap.buyerInboxId === _myInboxId) {
-                  useAppStore.getState().setPendingNftSwap(swap);
-                  const listing = getListingById(swap.listingId);
-                  showLocalNotification(
-                    'NFT Swap Ready',
-                    `${listing?.sellerUsername ?? 'Seller'} signed the swap for ${listing?.name ?? 'NFT'} (${swap.solPrice} SOL). Open MonkeMarkets to complete.`,
-                    CH_MARKET,
-                  );
-                }
-                break;
-              }
-              case 'complete': {
-                // Trade completed on-chain — mark listing sold
-                markSold(market.data.listingId);
-                break;
-              }
             }
           }
           return;
@@ -1991,6 +1978,21 @@ export function useXmtp() {
               const senderInboxId: string = raw.senderInboxId ?? '';
               if (senderInboxId === client.inboxId) return;
 
+              // 2026-09-13: shared signal for the bot-command reply-timeout
+              // fallback (see botCommand.ts) — this global stream is what
+              // actually catches AUTOMONKE_STATUS/etc. replies while the
+              // user is on any screen other than the bot's own DM thread
+              // (useDm.ts's scoped stream only runs while that screen is
+              // mounted). Dual-wired the same way every other bot-reply
+              // prefix handler in this codebase already is.
+              try {
+                const { BOT_INBOX_IDS: _botIds } = await import('@/lib/constants');
+                if (_botIds.includes(senderInboxId)) {
+                  const { noteBotActivity } = await import('@/lib/botCommand');
+                  noteBotActivity();
+                }
+              } catch { /* non-fatal */ }
+
               // Strip the bot's `MSG:<name>:` envelope so prefix checks below
               // match both wrapped and bare structured payloads.
               const inner: string = content.startsWith('MSG:')
@@ -2154,6 +2156,98 @@ export function useXmtp() {
                 if (!parsed) return;
                 const { useTradesStore } = await import('@/store/tradesStore');
                 useTradesStore.getState().addPortfolioCard(parsed);
+                return;
+              }
+
+              // MonkeMarkets private handshake — bid/offer/accept/swap/complete moved off the
+              // group broadcast (2026-09-13, see marketplace.ts's doc comment) and now arrive as
+              // DMs. This is the off-screen case (per-DM stream in useDm.ts owns it while that
+              // exact DM is mounted, same split as PORTFOLIO_RESPONSE above). Each case checks
+              // senderInboxId against the identity the payload claims to be FROM (or, for
+              // NFT_ACCEPT which carries no seller field of its own, against this device's own
+              // locally-held listing record) — same spoofing defense already used for
+              // PROFILE_UPDATE elsewhere in this file: a DM's sender is cryptographically real,
+              // but the JSON payload's own claimed fields are not, so don't trust them blind.
+              if (
+                inner.startsWith("NFT_BID:") || inner.startsWith("NFT_BID_CANCEL:") ||
+                inner.startsWith("NFT_OFFER:") || inner.startsWith("NFT_ACCEPT:") ||
+                inner.startsWith("NFT_SWAP:") || inner.startsWith("NFT_COMPLETE:")
+              ) {
+                try {
+                  // All already imported at the top of this file — no need for a dynamic import.
+                  const market = parseMarketplaceMessage(inner);
+                  if (!market) return;
+                  switch (market.type) {
+                    case 'bid': {
+                      if (senderInboxId !== market.data.bidderInboxId) return;
+                      addBid(market.data);
+                      const bidListing = getListingById(market.data.listingId);
+                      if (bidListing && bidListing.sellerInboxId === client.inboxId) {
+                        showLocalNotification(
+                          'New Bid',
+                          `${market.data.bidderUsername ?? 'Someone'} bid ${market.data.bidPrice} SKR on ${bidListing.name}`,
+                          CH_MARKET,
+                        );
+                      }
+                      break;
+                    }
+                    case 'bid_cancel': {
+                      if (senderInboxId !== market.data.bidderInboxId) return;
+                      cancelBid(market.data.listingId, market.data.bidderInboxId);
+                      break;
+                    }
+                    case 'offer': {
+                      if (senderInboxId !== market.data.offererInboxId) return;
+                      addSwapOffer(market.data);
+                      const offerListing = getListingById(market.data.listingId);
+                      if (offerListing && offerListing.sellerInboxId === client.inboxId) {
+                        showLocalNotification(
+                          'Monke Swap Offer',
+                          `${market.data.offererUsername ?? 'Someone'} offered ${market.data.offeredName ?? 'a Monke'} for ${offerListing.name}`,
+                          CH_MARKET,
+                        );
+                      }
+                      break;
+                    }
+                    case 'accept': {
+                      const acceptListing = getListingById(market.data.listingId);
+                      if (!acceptListing || senderInboxId !== acceptListing.sellerInboxId) return;
+                      const bids = getBidsForListing(market.data.listingId);
+                      const acceptedBid = bids.find((b) => b.bidderInboxId === market.data.bidderInboxId);
+                      if (acceptedBid) markPendingSwap(market.data.listingId, acceptedBid);
+                      break;
+                    }
+                    case 'swap': {
+                      const swap = market.data as NftSwapMessage;
+                      if (senderInboxId !== swap.sellerInboxId || swap.buyerInboxId !== client.inboxId) return;
+                      useAppStore.getState().setPendingNftSwap(swap);
+                      const swapListing = getListingById(swap.listingId);
+                      showLocalNotification(
+                        'NFT Swap Ready',
+                        `${swapListing?.sellerUsername ?? 'Seller'} signed the swap for ${swapListing?.name ?? 'NFT'} (${swap.skrPrice} SKR). Open MonkeMarkets to complete.`,
+                        CH_MARKET,
+                      );
+                      break;
+                    }
+                    case 'complete': {
+                      if (senderInboxId !== market.data.buyerInboxId) return;
+                      const soldListing = getListingById(market.data.listingId);
+                      markSold(market.data.listingId);
+                      if (soldListing && soldListing.sellerInboxId === client.inboxId) {
+                        recordHistoryEntry({
+                          type: 'sell',
+                          nftName: soldListing.name,
+                          price: market.data.skrPrice ?? soldListing.askPrice,
+                          timestamp: Date.now(),
+                          counterparty: market.data.buyerUsername ?? 'anon',
+                          mint: soldListing.mint,
+                          txSignature: market.data.signature,
+                        });
+                      }
+                      break;
+                    }
+                  }
+                } catch { /* non-fatal — worst case this device's local marketplace state lags */ }
                 return;
               }
 

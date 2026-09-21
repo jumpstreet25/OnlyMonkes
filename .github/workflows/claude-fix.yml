@@ -1,0 +1,38 @@
+# Triggered by admin /claude DMs in OnlyMonkes (bot files an issue labeled claude-fix).
+# Needs repo secret ANTHROPIC_API_KEY. Opens a PR — never pushes to master.
+name: Claude fix from issue
+
+on:
+  issues:
+    types: [opened, labeled]
+
+concurrency:
+  group: claude-fix-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  implement:
+    if: >
+      contains(join(github.event.issue.labels.*.name, ','), 'claude-fix')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            Implement the task in GitHub issue #${{ github.event.issue.number }}.
+            Constraints from the issue body are binding.
+            Open a pull request against master. Never push directly to master.
+            App changes must be JS/OTA-safe for runtime 3.4 (no Gradle/native/manifest).
+            Comment the PR URL on the issue when done.
+          claude_args: |
+            --max-turns 40
+            --allowedTools "Read,Edit,Write,Bash,Grep,Glob"

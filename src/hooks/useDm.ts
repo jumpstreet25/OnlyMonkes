@@ -3,6 +3,16 @@ import { AppState } from 'react-native';
 import { useAppStore } from '@/store/appStore';
 import { getXmtpClient } from '@/hooks/useXmtp';
 import { openOrCreateDm, loadDmMessages, sendDmMessage, sendReaction, applyReaction, applyWithRetry, sendTypingIndicator, sendReadReceipt, getLastPeerReadReceipt, decodeMessage } from '@/lib/xmtp';
+import { BOT_INBOX_IDS } from '@/lib/constants';
+import {
+  isAllowedBotCommand,
+  isInactiveMlsError,
+  markBotDmBroken,
+  postBotCommand,
+  applyBotCommandResult,
+  noteBotActivity,
+  getLastBotActivityTs,
+} from '@/lib/botCommand';
 import { getCachedProfile } from '@/lib/userProfile';
 import { markChannelRead } from '@/lib/messageCache';
 import type { ChatMessage, ReactionEmoji } from '@/types';
@@ -136,6 +146,16 @@ export function useDm(peerInboxId: string) {
           async (raw: any) => {
             if (cancelled) return;
 
+            // 2026-09-13: confirmed tonight that dm.send() into an
+            // MLS-inactive 1:1 resolves normally (client shows "delivered")
+            // instead of throwing — so the HTTP-fallback catch block below
+            // can never fire for the exact failure it exists to catch. This
+            // tracks the last time ANY message arrived from the bot so send()
+            // can fall back on a reply timeout instead of a thrown exception.
+            if (BOT_INBOX_IDS.includes(raw.senderInboxId ?? '')) {
+              noteBotActivity();
+            }
+
             // Robust text extract — same shapes as streamAllMessages
             // (string / {text} / nativeContent.text / fallback).
             const { extractXmtpText, parseImageCaptionResponse, deliverCaptionResponse } =
@@ -231,6 +251,104 @@ export function useDm(peerInboxId: string) {
             }
 
             // IMAGE_CAPTION_RESPONSE handled above via parseImageCaptionResponse.
+
+            // MonkeMarkets private handshake (2026-09-13) — bid/offer/accept/swap/complete moved
+            // off the Main Chat group broadcast to private DMs (see marketplace.ts's doc comment
+            // and the matching block in useXmtp.ts's global streamAllMessages, which covers the
+            // off-screen case). Caught here too so the per-DM screen updates live while it's the
+            // one actually mounted. Same spoofing defense as everywhere else in this codebase:
+            // trust the cryptographically-real DM sender, not the JSON payload's own claimed
+            // fields (NFT_ACCEPT carries no seller field at all, so that one's checked against
+            // this device's own locally-held listing record instead).
+            if (
+              innerContent.startsWith('NFT_BID:') || innerContent.startsWith('NFT_BID_CANCEL:') ||
+              innerContent.startsWith('NFT_OFFER:') || innerContent.startsWith('NFT_ACCEPT:') ||
+              innerContent.startsWith('NFT_SWAP:') || innerContent.startsWith('NFT_COMPLETE:')
+            ) {
+              try {
+                const sender = raw.senderInboxId ?? '';
+                const {
+                  parseMarketplaceMessage, addBid, addSwapOffer, cancelBid, markPendingSwap, markSold,
+                  getListingById, getBidsForListing, recordHistoryEntry,
+                } = await import('@/lib/marketplace');
+                const market = parseMarketplaceMessage(innerContent);
+                if (!market) return;
+                switch (market.type) {
+                  case 'bid': {
+                    if (sender !== market.data.bidderInboxId) return;
+                    addBid(market.data);
+                    const bidListing = getListingById(market.data.listingId);
+                    if (bidListing && bidListing.sellerInboxId === myInboxId) {
+                      const { showLocalNotification, CH_MARKET } = await import('@/lib/notifications');
+                      showLocalNotification(
+                        'New Bid',
+                        `${market.data.bidderUsername ?? 'Someone'} bid ${market.data.bidPrice} SKR on ${bidListing.name}`,
+                        CH_MARKET,
+                      );
+                    }
+                    break;
+                  }
+                  case 'bid_cancel': {
+                    if (sender !== market.data.bidderInboxId) return;
+                    cancelBid(market.data.listingId, market.data.bidderInboxId);
+                    break;
+                  }
+                  case 'offer': {
+                    if (sender !== market.data.offererInboxId) return;
+                    addSwapOffer(market.data);
+                    const offerListing = getListingById(market.data.listingId);
+                    if (offerListing && offerListing.sellerInboxId === myInboxId) {
+                      const { showLocalNotification, CH_MARKET } = await import('@/lib/notifications');
+                      showLocalNotification(
+                        'Monke Swap Offer',
+                        `${market.data.offererUsername ?? 'Someone'} offered ${market.data.offeredName ?? 'a Monke'} for ${offerListing.name}`,
+                        CH_MARKET,
+                      );
+                    }
+                    break;
+                  }
+                  case 'accept': {
+                    const acceptListing = getListingById(market.data.listingId);
+                    if (!acceptListing || sender !== acceptListing.sellerInboxId) return;
+                    const bids = getBidsForListing(market.data.listingId);
+                    const acceptedBid = bids.find((b) => b.bidderInboxId === market.data.bidderInboxId);
+                    if (acceptedBid) markPendingSwap(market.data.listingId, acceptedBid);
+                    break;
+                  }
+                  case 'swap': {
+                    const swap = market.data;
+                    if (sender !== swap.sellerInboxId || swap.buyerInboxId !== myInboxId) return;
+                    useAppStore.getState().setPendingNftSwap(swap);
+                    const swapListing = getListingById(swap.listingId);
+                    const { showLocalNotification, CH_MARKET } = await import('@/lib/notifications');
+                    showLocalNotification(
+                      'NFT Swap Ready',
+                      `${swapListing?.sellerUsername ?? 'Seller'} signed the swap for ${swapListing?.name ?? 'NFT'} (${swap.skrPrice} SKR). Open MonkeMarkets to complete.`,
+                      CH_MARKET,
+                    );
+                    break;
+                  }
+                  case 'complete': {
+                    if (sender !== market.data.buyerInboxId) return;
+                    const soldListing = getListingById(market.data.listingId);
+                    markSold(market.data.listingId);
+                    if (soldListing && soldListing.sellerInboxId === myInboxId) {
+                      recordHistoryEntry({
+                        type: 'sell',
+                        nftName: soldListing.name,
+                        price: market.data.skrPrice ?? soldListing.askPrice,
+                        timestamp: Date.now(),
+                        counterparty: market.data.buyerUsername ?? 'anon',
+                        mint: soldListing.mint,
+                        txSignature: market.data.signature,
+                      });
+                    }
+                    break;
+                  }
+                }
+              } catch { /* non-fatal — worst case this device's local marketplace state lags */ }
+              return;
+            }
 
             if (innerContent.startsWith('STREAK_CAPTION_RESPONSE:')) {
               try {
@@ -442,6 +560,37 @@ export function useDm(peerInboxId: string) {
 
   const [sendError, setSendError] = useState<string | null>(null);
 
+  // 2026-09-13: no reply from the bot after this long means the DM is
+  // probably dead — long enough to clear normal bot-side latency (botSend
+  // retries against a locked XMTP DB for up to ~32s under load) without
+  // making a genuinely dead conversation wait forever for the HTTP
+  // fallback + its one real MWA signature prompt.
+  const BOT_REPLY_TIMEOUT_MS = 40_000;
+
+  const tryHttpFallback = useCallback(async (text: string, optimisticId: string) => {
+    const result = await postBotCommand(text.trim());
+    applyBotCommandResult(result);
+    setMessages(prev =>
+      prev.map(m => m.id === optimisticId ? { ...m, status: 'sent' } : m),
+    );
+    const visible = result.reply
+      && !result.reply.startsWith('PORTFOLIO_RESPONSE:')
+      && !result.reply.startsWith('AUTOMONKE_STATUS:');
+    if (visible) {
+      setMessages(prev => [...prev, {
+        id: `http-${Date.now()}`,
+        content: result.reply,
+        senderAddress: peerInboxId,
+        senderUsername: 'AI Agent #9385',
+        senderNft: undefined,
+        sentAt: new Date(),
+        reactions: {},
+        replyTo: undefined,
+        status: 'sent',
+      }]);
+    }
+  }, [peerInboxId]);
+
   const send = useCallback(async (text: string) => {
     if (!dmRef.current || !text.trim()) return;
     setSending(true);
@@ -464,6 +613,7 @@ export function useDm(peerInboxId: string) {
     setMessages(prev => [...prev, optimistic]);
 
     try {
+      const sentAt = Date.now();
       await sendDmMessage(dmRef.current, text, username);
 
       // Mark optimistic message as sent
@@ -483,8 +633,42 @@ export function useDm(peerInboxId: string) {
           );
         }
       }
+
+      // 2026-09-13: dm.send() into an MLS-inactive 1:1 resolves normally
+      // (confirmed live — the client shows "delivered" even though the
+      // bot's stream never yields the message), so a thrown exception can
+      // never be relied on to detect this failure class. Race a reply
+      // timeout instead, scoped to allowlisted bot commands only — never
+      // fires for ordinary chat, and only trips the one real MWA signature
+      // prompt after a genuinely long silence.
+      const toBot = BOT_INBOX_IDS.includes(peerInboxId);
+      if (toBot && isAllowedBotCommand(text.trim())) {
+        setTimeout(() => {
+          void (async () => {
+            if (getLastBotActivityTs() >= sentAt) return; // real reply already arrived
+            try {
+              await markBotDmBroken();
+              await tryHttpFallback(text, optimisticId);
+            } catch (httpErr) {
+              if (__DEV__) console.warn('[useDm] bot-command reply-timeout fallback failed:', (httpErr as Error).message);
+            }
+          })();
+        }, BOT_REPLY_TIMEOUT_MS);
+      }
     } catch (e: any) {
       console.warn('[useDm] send failed:', e?.message ?? e);
+      const toBot = BOT_INBOX_IDS.includes(peerInboxId);
+      if (toBot && isAllowedBotCommand(text.trim())) {
+        try {
+          if (isInactiveMlsError(e)) await markBotDmBroken();
+          await tryHttpFallback(text, optimisticId);
+          return;
+        } catch (httpErr) {
+          if (__DEV__) console.warn('[useDm] bot-command HTTP fallback failed:', (httpErr as Error).message);
+        }
+      } else if (toBot && isInactiveMlsError(e)) {
+        await markBotDmBroken();
+      }
       setSendError('Message failed to send');
       // Mark optimistic message as failed
       setMessages(prev =>

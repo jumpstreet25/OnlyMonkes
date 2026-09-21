@@ -40,7 +40,15 @@ APK="android/app/build/outputs/apk/release/app-release.apk"
 KEYPAIR="$HOME/onlymonkes-publisher-keypair.json"
 EXPECTED_PUBLISHER="BzyaYyd7ew7SRqC1P9Q6z61ebfYmdXRFU6UfKjHzcQ2o"
 EXPECTED_APP_NFT="EFfZv9iWGEtFijK3VBoJF3CnPxXJnayHjVGNMyZyoi6d"
-CLI="@solana-mobile/dapp-store-cli"
+# 2026-08-31: pinned to 1.0.0 (was unversioned, silently resolving to whatever
+# was globally installed — 0.16.1, a full major version behind). Two
+# consecutive real publish attempts on 0.16.1 failed identically at "Waiting
+# for portal ingestion to finish" with an opaque UnknownError and no further
+# diagnostic info — consistent with a stale client hitting a portal backend
+# that's since moved on. Flag set (--apk-file/--whats-new/--api-key-stdin/
+# --keypair/--verbose) is unchanged between 0.16.1 and 1.0.0, so this is a
+# safe drop-in version bump, not a behavior change.
+CLI="@solana-mobile/dapp-store-cli@1.0.0"
 LOG="/tmp/onlymonkes-publish-$(date +%Y%m%d-%H%M%S).log"
 LAST_VC_FILE="$REPO_ROOT/.last_published_version_code"
 LAST_REL_FILE="$REPO_ROOT/.last_release_id"

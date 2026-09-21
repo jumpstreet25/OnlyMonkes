@@ -20,6 +20,7 @@ import { useAppStore } from '@/store/appStore';
 import { router } from 'expo-router';
 import { getXmtpClient } from '@/hooks/useXmtp';
 import { sendDmMessage } from '@/lib/xmtp';
+import { isInactiveMlsError, markBotDmBroken, postBotCommand, applyBotCommandResult } from '@/lib/botCommand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { toast } from 'sonner-native';
 import * as Haptics from 'expo-haptics';
@@ -88,11 +89,6 @@ export default function AutonoMonkeSetupWizard({ visible, onClose }: Props) {
     }
     setSubmitting(true);
     try {
-      const client = getXmtpClient();
-      if (!client) throw new Error('Not connected to chat. Restart the app.');
-      const dm = await (client.conversations as any).findOrCreateDm(BOT_INBOX_ID);
-      if (!dm) throw new Error('Could not open bot DM.');
-
       const payload = {
         mainWallet: wallet.address,
         maxSOL,
@@ -100,7 +96,43 @@ export default function AutonoMonkeSetupWizard({ visible, onClose }: Props) {
         minConfidence,
         baseCurrency,
       };
-      await sendDmMessage(dm, `/autonomonke setup ${JSON.stringify(payload)}`, username);
+      const command = `/autonomonke setup ${JSON.stringify(payload)}`;
+      const client = getXmtpClient();
+      let sentViaHttp = false;
+      try {
+        if (!client) throw new Error('Not connected to chat');
+        const dm = await (client.conversations as any).findOrCreateDm(BOT_INBOX_ID);
+        if (!dm) throw new Error('Could not open bot DM.');
+        const sentAt = Date.now();
+        await sendDmMessage(dm, command, username);
+        // 2026-09-13: dm.send() into an MLS-inactive 1:1 resolves normally
+        // (no throw), so the catch block below can silently miss a genuine
+        // failure here — enrollment would never actually reach the bot
+        // while the UI shows "Activating…" as if it had. Background
+        // correction: if no bot activity follows within the window, retry
+        // via HTTP so enrollment still lands even though the optimistic
+        // UI has already moved on.
+        setTimeout(() => {
+          void (async () => {
+            const { getLastBotActivityTs } = await import('@/lib/botCommand');
+            if (getLastBotActivityTs() >= sentAt) return;
+            try {
+              await markBotDmBroken();
+              applyBotCommandResult(await postBotCommand(command));
+            } catch (httpErr) {
+              if (__DEV__) console.warn('[AutonoMonke] setup reply-timeout fallback failed:', (httpErr as Error).message);
+            }
+          })();
+        }, 40_000);
+      } catch (dmErr) {
+        await markBotDmBroken();
+        if (__DEV__ && !isInactiveMlsError(dmErr)) {
+          console.warn('[AutonoMonke] setup DM failed, trying HTTP:', (dmErr as Error).message);
+        }
+        const result = await postBotCommand(command);
+        applyBotCommandResult(result);
+        sentViaHttp = true;
+      }
       await AsyncStorage.setItem(STORAGE_KEY, '1');
       // Optimistic — bot AUTOMONKE_STATUS will confirm; keep pill in sync now.
       useAppStore.getState().setAutomonkeStatus({
@@ -117,8 +149,8 @@ export default function AutonoMonkeSetupWizard({ visible, onClose }: Props) {
       // first, let the Modal's own dismissal clear, then toast + navigate.
       handleClose();
       setTimeout(() => {
-        toast.success('Activating AutonoMonke…');
-        router.push(`/dm/${BOT_INBOX_ID}` as any);
+        toast.success(sentViaHttp ? 'AutonoMonke activated (network fallback).' : 'Activating AutonoMonke…');
+        if (!sentViaHttp) router.push(`/dm/${BOT_INBOX_ID}` as any);
       }, 350);
     } catch (err: any) {
       toast.error(err?.message ?? 'Setup failed');

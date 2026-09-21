@@ -18,8 +18,10 @@ import {
   deriveXmtpEoa,
   hasDerivedXmtpEoa,
   loadDerivedXmtpEoa,
+  loadIdentityGeneration,
   makeXmtpEoaSigner,
   saveDerivedXmtpEoa,
+  saveIdentityGeneration,
   xmtpIdentityMessageBytes,
 } from "@/lib/xmtpIdentity";
 import { rememberLocalInboxId, loadLocalInboxIds } from "@/lib/localInboxes";
@@ -72,8 +74,9 @@ export async function prepareWalletBoundXmtp(
     _eoaSigner = makeXmtpEoaSigner(existing);
     return;
   }
-  const sig = await signMessage(xmtpIdentityMessageBytes(walletAddress));
-  const derived = deriveXmtpEoa(sig, walletAddress);
+  const generation = await loadIdentityGeneration(walletAddress);
+  const sig = await signMessage(xmtpIdentityMessageBytes(walletAddress, generation));
+  const derived = deriveXmtpEoa(sig, walletAddress, generation);
   await saveDerivedXmtpEoa(walletAddress, derived);
   _eoaSigner = makeXmtpEoaSigner(derived);
   _prefetchPromise = null;
@@ -253,6 +256,43 @@ export async function getOrInitXmtpClient(): Promise<Client> {
     return promise;
   }
   return initXmtpClient();
+}
+
+async function clearStoredXmtpInbox(walletAddress: string): Promise<void> {
+  const scoped = (prefix: string) => prefix + walletAddress.slice(0, 16);
+  await Promise.all([
+    SecureStore.deleteItemAsync(scoped(SK_INBOX_ID_PREFIX)).catch(() => {}),
+    SecureStore.deleteItemAsync(scoped(SK_IDENTITY_ID_PREFIX)).catch(() => {}),
+    SecureStore.deleteItemAsync(scoped(SK_IDENTITY_KIND_PREFIX)).catch(() => {}),
+    // Legacy unscoped keys would otherwise Client.build the old inbox and
+    // addAccount the new EOA onto it — the opposite of an identity hatch.
+    SecureStore.deleteItemAsync(SK_INBOX_ID_LEGACY).catch(() => {}),
+    SecureStore.deleteItemAsync(SK_IDENTITY_ID_LEGACY).catch(() => {}),
+    SecureStore.deleteItemAsync(SK_IDENTITY_KIND_LEGACY).catch(() => {}),
+  ]);
+}
+
+/**
+ * Opt-in per-wallet identity hatch. Bumps HKDF salt to
+ * `onlymonkes-xmtp-identity-v1:reset:N` (global domain string stays frozen),
+ * derives a new EOA, and drops stored inbox ids so the next Client.create
+ * mints a new inbox. Caller must Client.create + POST /api/inbox-reset.
+ */
+export async function bumpWalletBoundXmtpIdentity(
+  walletAddress: string,
+  signMessage: (bytes: Uint8Array) => Promise<Uint8Array>,
+): Promise<{ generation: number }> {
+  bindXmtpToWallet(walletAddress);
+  const current = await loadIdentityGeneration(walletAddress);
+  const generation = Math.min(99, current + 1);
+  const sig = await signMessage(xmtpIdentityMessageBytes(walletAddress, generation));
+  const derived = deriveXmtpEoa(sig, walletAddress, generation);
+  await saveDerivedXmtpEoa(walletAddress, derived);
+  await saveIdentityGeneration(walletAddress, generation);
+  await clearStoredXmtpInbox(walletAddress);
+  _eoaSigner = makeXmtpEoaSigner(derived);
+  _prefetchPromise = null;
+  return { generation };
 }
 
 // ─── Global Group ─────────────────────────────────────────────────────────────
@@ -521,7 +561,7 @@ function decodeStringMessage(raw: any, rawContent: string, myInboxId: string): C
     "REACT:", "STICKER_REACT:", "TYPING:", "PROFILE_UPDATE:", "PROFILE_SNAPSHOT:", "MY_INBOXES:",
     "LOCATION_SYNC:", "LOCATION_SYNC_REQUEST", "EVENT:", "EDIT:", "PRESENCE:", "LIVE_ROOM:", "VIDEO_ROOM:",
     "AVATAR_ROOM:", "SHOP_PURCHASE:", "GIFT_ITEM:", "THREAD:", "PIN:", "UNPIN:",
-    "NFT_LIST:", "NFT_BID:", "NFT_ACCEPT:", "NFT_DELIST:", "NFT_OFFER:",
+    "NFT_LIST:", "NFT_BID:", "NFT_BID_CANCEL:", "NFT_ACCEPT:", "NFT_DELIST:", "NFT_OFFER:",
     "NFT_SWAP:", "NFT_COMPLETE:", "AUTOMONKE_STATUS:", "TRADE_CLOSED:",
     "TRADE_OPENED:", "PORTFOLIO_CARD:", "PORTFOLIO_RESPONSE:", "RSVP:", "READ:",
     "BANANA_GRANT:", "BANANA_BET_OPEN:", "BANANA_BET_SETTLED:", "HEALTH:", "DELETE:",

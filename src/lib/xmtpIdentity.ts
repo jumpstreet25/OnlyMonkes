@@ -27,23 +27,32 @@ import * as SecureStore from "expo-secure-store";
 export const XMTP_IDENTITY_DOMAIN = "onlymonkes-xmtp-identity-v1";
 
 const SK_EOA_PREFIX = "xmtp_v5_eoa_";
+const SK_GEN_PREFIX = "xmtp_v5_id_gen_";
+
+/** Per-wallet HKDF salt. Generation 0 is the frozen global domain. */
+export function xmtpIdentitySalt(generation = 0): string {
+  if (!Number.isInteger(generation) || generation < 0) generation = 0;
+  return generation > 0 ? `${XMTP_IDENTITY_DOMAIN}:reset:${generation}` : XMTP_IDENTITY_DOMAIN;
+}
 
 export interface DerivedXmtpEoa {
   privateKey: Uint8Array;
   address: string;
 }
 
-export function xmtpIdentityMessage(walletAddress: string): string {
+export function xmtpIdentityMessage(walletAddress: string, generation = 0): string {
+  const resetLine = generation > 0 ? `Reset: ${generation}\n` : "";
   return (
     `OnlyMonkes XMTP identity v1\n` +
     `Wallet: ${walletAddress}\n` +
+    resetLine +
     `This signature creates your OnlyMonkes chat identity. ` +
     `The same wallet always gets the same inbox on every device.`
   );
 }
 
-export function xmtpIdentityMessageBytes(walletAddress: string): Uint8Array {
-  return new TextEncoder().encode(xmtpIdentityMessage(walletAddress));
+export function xmtpIdentityMessageBytes(walletAddress: string, generation = 0): Uint8Array {
+  return new TextEncoder().encode(xmtpIdentityMessage(walletAddress, generation));
 }
 
 function isValidSecpKey(key: Uint8Array): boolean {
@@ -58,11 +67,12 @@ function isValidSecpKey(key: Uint8Array): boolean {
 export function deriveXmtpEoa(
   solanaSignature: Uint8Array,
   walletAddress: string,
+  generation = 0,
 ): DerivedXmtpEoa {
   if (solanaSignature.length < 32) {
     throw new Error("XMTP identity: Solana signature too short");
   }
-  const salt = new TextEncoder().encode(XMTP_IDENTITY_DOMAIN);
+  const salt = new TextEncoder().encode(xmtpIdentitySalt(generation));
   let privateKey: Uint8Array | null = null;
   for (let i = 0; i < 8; i++) {
     const info = new TextEncoder().encode(`${walletAddress}:${i}`);
@@ -152,4 +162,25 @@ export async function saveDerivedXmtpEoa(
 
 export async function hasDerivedXmtpEoa(walletAddress: string): Promise<boolean> {
   return (await loadDerivedXmtpEoa(walletAddress)) !== null;
+}
+
+function genStoreKey(walletAddress: string): string {
+  return SK_GEN_PREFIX + walletAddress.slice(0, 16);
+}
+
+export async function loadIdentityGeneration(walletAddress: string): Promise<number> {
+  try {
+    const raw = await SecureStore.getItemAsync(genStoreKey(walletAddress));
+    const n = raw ? parseInt(raw, 10) : 0;
+    return Number.isInteger(n) && n >= 0 && n <= 99 ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+
+export async function saveIdentityGeneration(
+  walletAddress: string,
+  generation: number,
+): Promise<void> {
+  await SecureStore.setItemAsync(genStoreKey(walletAddress), String(generation));
 }
