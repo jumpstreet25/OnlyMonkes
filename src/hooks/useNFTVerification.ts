@@ -53,7 +53,16 @@ export function useNFTVerification() {
         return { verified: true, providerError: false };
       } else {
         setError(result.error ?? 'NFT verification failed');
-        setVerified(false, null);
+        // 2026-09-21: only clear verification on a CONFIRMED non-holder
+        // result. A provider error (every DAS provider erroring/timing
+        // out) is not evidence of non-ownership — calling setVerified
+        // here unconditionally was logging out real holders app-wide
+        // (including bouncing app/dm/[inboxId].tsx straight to Connect
+        // mid-conversation) on every transient provider hiccup hit by
+        // useEntitlementSync's periodic 6h background recheck.
+        if (!result.providerError) {
+          setVerified(false, null);
+        }
         return { verified: false, providerError: !!result.providerError };
       }
     } catch (err) {
