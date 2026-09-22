@@ -141,6 +141,19 @@ android {
             // production," ready for whatever's tested here next.
             versionName "3.1.0-test"
         }
+        // 2026-09-22: dedicated dev-client flavor, distinct applicationId so it
+        // can never collide with the release-signed production or canary
+        // installs (both already on-device, both non-debuggable — a
+        // debug-signed build sharing either applicationId gets rejected on
+        // install by Android's own signature check, not silently overwritten,
+        // but this avoids that friction entirely). Same isolation rationale as
+        // canary: separate storage/XMTP identity, safe to install/uninstall
+        // freely with zero effect on the other two.
+        dev {
+            dimension "env"
+            applicationId "com.onlymonkes.app.dev"
+            versionName "dev"
+        }
     }
     // ABI splits → arm64-v8a only. Every Solana Mobile wallet device (Seeker,
     // Saga, Phantom-on-Android, Solflare-on-Android) is arm64. The other ABIs

@@ -32,6 +32,14 @@
       "android": {
         "gradleCommand": ":app:assembleCanaryRelease"
       }
+    },
+    "dev-client": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "channel": "preview",
+      "android": {
+        "gradleCommand": ":app:assembleDevDebug"
+      }
     }
   },
   "submit": {

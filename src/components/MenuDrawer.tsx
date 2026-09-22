@@ -700,6 +700,13 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                     }}
                   />
                 )}
+                {isSuperAdmin && (
+                  <GridButton
+                    iconName="settings"
+                    label="Escrow Test (Devnet)"
+                    onPress={() => { onClose(); setTimeout(() => router.push('/marketplace-onchain-test' as any), 300); }}
+                  />
+                )}
               </View>
             </>
           )}
