@@ -3,11 +3,27 @@
 Created by `scripts/devnetFixture.ts` against `https://api.devnet.solana.com`.
 Rerunnable — always creates fresh accounts, never mutates existing ones.
 
-All accounts below are currently owned/controlled by the deploy authority
-keypair (`8KmybEbuobMTFxun8Liqn4h8LHBKZr5ueRD3TKt5wFX8`) — nothing has been
-transferred to a real user wallet yet. That's the remaining step before a
-real device (Seeker + Solflare, devnet cluster) can run `list → delist →
-buy_now` through `MarketplaceOnChainTestScreen.tsx`.
+**Update 2026-09-22, post-transfer**: the test cNFT (leaf nonce 0) and 10,000
+test SKR were transferred from the deploy authority to
+`BzyaYyd7ew7SRqC1P9Q6z61ebfYmdXRFU6UfKjHzcQ2o` (the user's own wallet,
+confirmed — same address as the publisher/treasury wallet elsewhere in this
+project, deliberately reused for devnet testing). Both transfers finalized
+and independently re-verified on-chain, not just trusted from the send call:
+- cNFT transfer tx: `4Xhg84TBHKjAGfu5QCcQoPtvM3ArhA8YXBEdARXBx7RygUKNusUXeWxNP3o2VZDg2cPWy5e8DEiLUPUEoaMDsBQT`
+- SKR transfer tx: `3Nhn63TnmA3fAuWK6cnqauVuNVh8dCGs8MdRFDNdUYWexzhMUzcvLGEuGjVy9JLRjpAP1pQKkp8o6jZbZGM1njJ6` (recipient ATA: `AxqXseTuvjrZGPEeJco3omToK5BJg1am4W3VHL3UGj1z`, balance 10,000.0 test SKR)
+
+**Important**: the cNFT transfer moved the tree's root (any transfer does —
+the leaf's own `data_hash`/`creator_hash` are unchanged, but `root` is not).
+Current root is `6CjUK2AmFGg5uyegJSDRgnebQN4A9BJweQ6D1brwrzsr`, NOT the
+mint-time root in the table below — always refetch the live root from the
+`ConcurrentMerkleTreeAccount` before building a `list()`/`delist()` call
+against this leaf, never reuse a stale one from this doc.
+
+The deploy authority still holds `vault_skr_ata` and remains
+`MarketplaceConfig.authority` — only the leaf and 10,000 test SKR moved.
+This sets up a real `list()` test with that wallet as **seller**. It is not
+set up for a two-party `buy_now()` test (buyer ≠ seller) — that needs a
+second test listing owned by a different address.
 
 | Field | Value |
 |---|---|
