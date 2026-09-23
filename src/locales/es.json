@@ -488,5 +488,21 @@
     "supportSub": "Propina de $SKR con un toque a la billetera del desarrollador 🐒\nConfirmación biométrica — nunca sale de la app.",
     "sendingEllipsis": "Enviando…",
     "sendSkr": "Enviar {{amount}} $SKR  🐒"
+  },
+  "watchlist": {
+    "title": "Lista de Seguimiento",
+    "tokenCount": "{{count}} tokens",
+    "alreadyWatching": "Ya en seguimiento",
+    "alreadyWatchingBody": "${{sym}} ya está en tu lista de seguimiento.",
+    "dmTheBot": "Escríbele al bot",
+    "dmTheBotAddBody": "Envía \"/watch ${{sym}}\" a AI Agent #9385 por DM para agregarlo a tu lista de seguimiento.",
+    "removeTitle": "¿Eliminar ${{symbol}}?",
+    "removeBody": "Envía \"/unwatch ${{symbol}}\" a AI Agent #9385 por DM para eliminarlo.",
+    "ok": "OK",
+    "addPlaceholder": "Agregar token (ej. SOL)",
+    "manageHint": "Gestiona por DM: /watch $TOKEN, /unwatch $TOKEN",
+    "fetchingPrices": "Obteniendo precios...",
+    "emptyLine1": "Aún no tienes tokens en tu lista de seguimiento.",
+    "emptyLine2": "Escríbele al bot: /watch $SOL"
   }
 }

@@ -488,5 +488,21 @@
     "supportSub": "One-tap $SKR tip to the dev wallet 🐒\nBiometric confirm — never leaves the app.",
     "sendingEllipsis": "Sending…",
     "sendSkr": "Send {{amount}} $SKR  🐒"
+  },
+  "watchlist": {
+    "title": "Watchlist",
+    "tokenCount": "{{count}} tokens",
+    "alreadyWatching": "Already watching",
+    "alreadyWatchingBody": "${{sym}} is already on your watchlist.",
+    "dmTheBot": "DM the bot",
+    "dmTheBotAddBody": "Send \"/watch ${{sym}}\" to AI Agent #9385 in DMs to add it to your watchlist.",
+    "removeTitle": "Remove ${{symbol}}?",
+    "removeBody": "Send \"/unwatch ${{symbol}}\" to AI Agent #9385 in DMs to remove it.",
+    "ok": "OK",
+    "addPlaceholder": "Add token (e.g. SOL)",
+    "manageHint": "Manage via DM: /watch $TOKEN, /unwatch $TOKEN",
+    "fetchingPrices": "Fetching prices...",
+    "emptyLine1": "No tokens on your watchlist yet.",
+    "emptyLine2": "DM the bot: /watch $SOL"
   }
 }

@@ -22,6 +22,7 @@ import { pickSolPair, solMarkFromPair, usdToSolScale, formatSolPx, type DexScree
 import { ChartModal } from "@/components/ChartModal";
 import { MiniChart } from "@/components/MiniChart";
 import { showGlassAlert } from "@/lib/glassAlert";
+import { useTranslation } from "react-i18next";
 import { WorldScreenShell, useWorldGlassCardStyle } from "@/components/worlds/WorldScreenShell";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -108,6 +109,7 @@ async function fetchSparkline(address: string): Promise<number[]> {
 // your watchlist" while this screen kept showing WIF regardless. Starting
 // empty is honest; the hint text below already points at the real DM flow.
 export default function WatchlistScreen() {
+  const { t } = useTranslation();
   const [tokens, setTokens] = useState<WatchlistToken[]>([]);
   const [loading, setLoading] = useState(false);
   const [addText, setAddText] = useState("");
@@ -136,24 +138,24 @@ export default function WatchlistScreen() {
   const handleAdd = useCallback(() => {
     const sym = addText.replace(/^\$/, "").trim().toUpperCase();
     if (!sym) return;
-    if (tokens.some(t => t.symbol === sym)) {
-      showGlassAlert("Already watching", `$${sym} is already on your watchlist.`);
+    if (tokens.some(tk => tk.symbol === sym)) {
+      showGlassAlert(t("watchlist.alreadyWatching"), t("watchlist.alreadyWatchingBody", { sym }));
       setAddText("");
       return;
     }
     // TODO: In production, send /watch $SYM via DM to bot and parse response
     // For now, just add locally with placeholder address
-    showGlassAlert("DM the bot", `Send "/watch $${sym}" to AI Agent #9385 in DMs to add it to your watchlist.`);
+    showGlassAlert(t("watchlist.dmTheBot"), t("watchlist.dmTheBotAddBody", { sym }));
     setAddText("");
-  }, [addText, tokens]);
+  }, [addText, tokens, t]);
 
   const handleRemove = useCallback((symbol: string) => {
     showGlassAlert(
-      `Remove $${symbol}?`,
-      `Send "/unwatch $${symbol}" to AI Agent #9385 in DMs to remove it.`,
-      [{ text: "OK" }],
+      t("watchlist.removeTitle", { symbol }),
+      t("watchlist.removeBody", { symbol }),
+      [{ text: t("watchlist.ok") }],
     );
-  }, []);
+  }, [t]);
 
   const formatPrice = (price?: number) => formatSolPx(price ?? 0);
 
@@ -191,9 +193,9 @@ export default function WatchlistScreen() {
 
   return (
     <WorldScreenShell
-      title="Watchlist"
+      title={t("watchlist.title")}
       onBack={() => router.back()}
-      headerRight={<Text style={styles.count}>{tokens.length} tokens</Text>}
+      headerRight={<Text style={styles.count}>{t("watchlist.tokenCount", { count: tokens.length })}</Text>}
     >
       {/* Add token input */}
       <View style={styles.addRow}>
@@ -201,7 +203,7 @@ export default function WatchlistScreen() {
           style={[styles.addInput, cardStyle]}
           value={addText}
           onChangeText={setAddText}
-          placeholder="Add token (e.g. SOL)"
+          placeholder={t("watchlist.addPlaceholder")}
           placeholderTextColor={THEME.textDim}
           autoCapitalize="characters"
           returnKeyType="done"
@@ -213,14 +215,14 @@ export default function WatchlistScreen() {
       </View>
 
       <Text style={styles.hint}>
-        Manage via DM: /watch $TOKEN, /unwatch $TOKEN
+        {t("watchlist.manageHint")}
       </Text>
 
       {/* Token list */}
       {loading ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color={THEME.accent} />
-          <Text style={styles.loadingText}>Fetching prices...</Text>
+          <Text style={styles.loadingText}>{t("watchlist.fetchingPrices")}</Text>
         </View>
       ) : (
         <FlashList
@@ -230,8 +232,8 @@ export default function WatchlistScreen() {
           contentContainerStyle={styles.list}
           ListEmptyComponent={
             <Text style={styles.emptyText}>
-              No tokens on your watchlist yet.{"\n"}
-              DM the bot: /watch $SOL
+              {t("watchlist.emptyLine1")}{"\n"}
+              {t("watchlist.emptyLine2")}
             </Text>
           }
         />
