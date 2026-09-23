@@ -20,6 +20,7 @@ import {
   Animated,
 } from "react-native";
 import { showGlassAlert } from "@/lib/glassAlert";
+import { useTranslation } from "react-i18next";
 import { LinearGradient } from "expo-linear-gradient";
 import { LiquidGlass as BlurView } from "@/components/LiquidGlass";
 import * as Haptics from "expo-haptics";
@@ -44,77 +45,78 @@ function getActiveMention(text: string): { start: number; query: string } | null
 
 // Main chat autocomplete — must match CHAT_COMMANDS in BotCommandTicker.tsx.
 // DM-only commands live in DM_BOT_COMMANDS below.
+// `descKey` resolves against chatInput.commands.<descKey> in locales/{en,es}.json.
 const BOT_COMMANDS = [
   // Market intel
-  { cmd: "/price",      args: "$TOKEN",           desc: "Live price snapshot" },
-  { cmd: "/ta",         args: "$TOKEN",           desc: "Technical analysis" },
-  { cmd: "/hottest",    args: "",                 desc: "Top 10 tokens by score" },
-  { cmd: "/coldest",    args: "",                 desc: "Bottom 10 contrarian watch" },
-  { cmd: "/alerts",     args: "",                 desc: "Recent TA signals" },
+  { cmd: "/price",      args: "$TOKEN",           descKey: "price" },
+  { cmd: "/ta",         args: "$TOKEN",           descKey: "ta" },
+  { cmd: "/hottest",    args: "",                 descKey: "hottest" },
+  { cmd: "/coldest",    args: "",                 descKey: "coldest" },
+  { cmd: "/alerts",     args: "",                 descKey: "alerts" },
   // Watchlist
-  { cmd: "/watchlist",  args: "",                 desc: "Group watchlist" },
-  { cmd: "/watch",      args: "$TOKEN",           desc: "Add to your watchlist" },
-  { cmd: "/unwatch",    args: "$TOKEN",           desc: "Remove from watchlist" },
-  { cmd: "/mywatchlist", args: "",                desc: "Your personal watchlist" },
+  { cmd: "/watchlist",  args: "",                 descKey: "watchlist" },
+  { cmd: "/watch",      args: "$TOKEN",           descKey: "watch" },
+  { cmd: "/unwatch",    args: "$TOKEN",           descKey: "unwatch" },
+  { cmd: "/mywatchlist", args: "",                descKey: "mywatchlist" },
   // Trading (group → Jupiter URL)
-  { cmd: "/buy",        args: "$TOKEN [SOL]",     desc: "Buy token via Jupiter" },
-  { cmd: "/sell",       args: "$TOKEN [%]",       desc: "Sell token via Jupiter" },
-  { cmd: "/swap",       args: "$A for $B",        desc: "Swap tokens via Jupiter" },
-  { cmd: "/tip",        args: "@Username [amt]",  desc: "Tip $SKR to a Monke" },
+  { cmd: "/buy",        args: "$TOKEN [SOL]",     descKey: "buyGroup" },
+  { cmd: "/sell",       args: "$TOKEN [%]",       descKey: "sellGroup" },
+  { cmd: "/swap",       args: "$A for $B",        descKey: "swapGroup" },
+  { cmd: "/tip",        args: "@Username [amt]",  descKey: "tip" },
   // Meta
-  { cmd: "/identity",   args: "",                 desc: "Bot identity & reputation" },
-  { cmd: "/globe",      args: "",                 desc: "Open the Monke Globe" },
-  { cmd: "/help",       args: "",                 desc: "Show all commands" },
+  { cmd: "/identity",   args: "",                 descKey: "identity" },
+  { cmd: "/globe",      args: "",                 descKey: "globe" },
+  { cmd: "/help",       args: "",                 descKey: "helpGroup" },
 ];
 
 // DM autocomplete — must match DM_COMMANDS in BotCommandTicker.tsx.
 const DM_BOT_COMMANDS = [
   // Quick intel
-  { cmd: "/hottest",              args: "",              desc: "Top 10 tokens by score" },
-  { cmd: "/coldest",              args: "",              desc: "Bottom 10 contrarian watch" },
-  { cmd: "/price",                args: "$TOKEN",        desc: "Live price snapshot" },
-  { cmd: "/ta",                   args: "$TOKEN",        desc: "Technical analysis" },
-  { cmd: "/whale",                args: "$TOKEN",        desc: "Whale activity & net flow" },
-  { cmd: "/chart",                args: "$TOKEN",        desc: "Generate TA chart image" },
-  { cmd: "/compare",              args: "$A $B",         desc: "Side-by-side TA comparison" },
-  { cmd: "/backtest",             args: "$TOKEN",        desc: "Historical signal replay" },
+  { cmd: "/hottest",              args: "",              descKey: "hottest" },
+  { cmd: "/coldest",              args: "",              descKey: "coldest" },
+  { cmd: "/price",                args: "$TOKEN",        descKey: "price" },
+  { cmd: "/ta",                   args: "$TOKEN",        descKey: "ta" },
+  { cmd: "/whale",                args: "$TOKEN",        descKey: "whale" },
+  { cmd: "/chart",                args: "$TOKEN",        descKey: "chart" },
+  { cmd: "/compare",              args: "$A $B",         descKey: "compare" },
+  { cmd: "/backtest",             args: "$TOKEN",        descKey: "backtest" },
   // Trading (DM → bot executes via hot wallet)
-  { cmd: "/buy",                  args: "$TOKEN [SOL]",  desc: "Buy (bot executes; YES to confirm)" },
-  { cmd: "/sell",                 args: "$TOKEN [%]",    desc: "Sell (atomic 3% on profit)" },
-  { cmd: "/swap",                 args: "$A for $B",     desc: "Swap on-chain" },
-  { cmd: "/limit",                args: "",              desc: "Place a limit order" },
-  { cmd: "/dca",                  args: "",              desc: "Jupiter DCA setup" },
+  { cmd: "/buy",                  args: "$TOKEN [SOL]",  descKey: "buyDm" },
+  { cmd: "/sell",                 args: "$TOKEN [%]",    descKey: "sellDm" },
+  { cmd: "/swap",                 args: "$A for $B",     descKey: "swapDm" },
+  { cmd: "/limit",                args: "",              descKey: "limit" },
+  { cmd: "/dca",                  args: "",              descKey: "dca" },
   // Portfolio & positions
-  { cmd: "/portfolio",            args: "",              desc: "PNL + Hermes analysis" },
-  { cmd: "/positions",            args: "",              desc: "Open trades" },
+  { cmd: "/portfolio",            args: "",              descKey: "portfolio" },
+  { cmd: "/positions",            args: "",              descKey: "positions" },
   // Reports
-  { cmd: "/ratchet-report",       args: "[days]",        desc: "Closed-trade outcomes since ratchet" },
-  { cmd: "/smart-wallet-report",  args: "",              desc: "Per-wallet smart-money PnL" },
+  { cmd: "/ratchet-report",       args: "[days]",        descKey: "ratchetReport" },
+  { cmd: "/smart-wallet-report",  args: "",              descKey: "smartWalletReport" },
   // AutonoMonke (2026-09-03: was the misspelled "/automonke" — bot still
   // accepts that as a legacy alias, but this UI should surface the correct
   // canonical spelling)
-  { cmd: "/autonomonke",            args: "",              desc: "AutonoMonke status" },
-  { cmd: "/autonomonke start",      args: "",              desc: "Enable auto-trading" },
-  { cmd: "/autonomonke stop",       args: "",              desc: "Pause auto-trading" },
-  { cmd: "/autonomonke positions",  args: "",              desc: "Auto positions" },
-  { cmd: "/autonomonke fund",       args: "",              desc: "Deposit address" },
-  { cmd: "/autonomonke withdraw",   args: "",              desc: "Close all & withdraw" },
-  { cmd: "/autonomonke limits",     args: "",              desc: "Toggle Limit Orders" },
+  { cmd: "/autonomonke",            args: "",              descKey: "autonomonke" },
+  { cmd: "/autonomonke start",      args: "",              descKey: "autonomonkeStart" },
+  { cmd: "/autonomonke stop",       args: "",              descKey: "autonomonkeStop" },
+  { cmd: "/autonomonke positions",  args: "",              descKey: "autonomonkePositions" },
+  { cmd: "/autonomonke fund",       args: "",              descKey: "autonomonkeFund" },
+  { cmd: "/autonomonke withdraw",   args: "",              descKey: "autonomonkeWithdraw" },
+  { cmd: "/autonomonke limits",     args: "",              descKey: "autonomonkeLimits" },
   // Risk
-  { cmd: "/risk",                 args: "",              desc: "View risk settings" },
-  { cmd: "/risk size",            args: "1-25",          desc: "Position size %" },
-  { cmd: "/risk stop",            args: "1-50",          desc: "Stop-loss %" },
-  { cmd: "/risk conviction",      args: "50-100",        desc: "Min score to alert" },
-  { cmd: "/risk blacklist",       args: "$TOKEN",        desc: "Block token" },
+  { cmd: "/risk",                 args: "",              descKey: "risk" },
+  { cmd: "/risk size",            args: "1-25",          descKey: "riskSize" },
+  { cmd: "/risk stop",            args: "1-50",          descKey: "riskStop" },
+  { cmd: "/risk conviction",      args: "50-100",        descKey: "riskConviction" },
+  { cmd: "/risk blacklist",       args: "$TOKEN",        descKey: "riskBlacklist" },
   // Hermes memory
-  { cmd: "/hermes stats",         args: "",              desc: "Your trading stats" },
-  { cmd: "/hermes best",          args: "",              desc: "Your best tokens" },
-  { cmd: "/hermes worst",         args: "",              desc: "Your worst tokens" },
-  { cmd: "/hermes achievements",  args: "",              desc: "Badges & streaks" },
+  { cmd: "/hermes stats",         args: "",              descKey: "hermesStats" },
+  { cmd: "/hermes best",          args: "",              descKey: "hermesBest" },
+  { cmd: "/hermes worst",         args: "",              descKey: "hermesWorst" },
+  { cmd: "/hermes achievements",  args: "",              descKey: "hermesAchievements" },
   // Recovery & meta
-  { cmd: "/reclaim",              args: "",              desc: "Restore profile on a new device" },
-  { cmd: "/myid",                 args: "",              desc: "Your XMTP inbox ID" },
-  { cmd: "/help",                 args: "",              desc: "All commands" },
+  { cmd: "/reclaim",              args: "",              descKey: "reclaim" },
+  { cmd: "/myid",                 args: "",              descKey: "myid" },
+  { cmd: "/help",                 args: "",              descKey: "helpDm" },
 ];
 
 function getSlashSuggestions(text: string, isDmWithBot?: boolean) {
@@ -126,6 +128,7 @@ function getSlashSuggestions(text: string, isDmWithBot?: boolean) {
 
 // ── Bot channel button with badge ─────────────────────────────────────────────
 function ChannelButton({ channelId, disabled, disabledMessage }: { channelId: 'trades'; disabled?: boolean; disabledMessage?: string }) {
+  const { t } = useTranslation();
   const count = useAppStore((s) => s.botChannelCounts[channelId]);
   const muted = useAppStore((s) => s.mutedBotChannels[channelId]);
   const clearCount = useAppStore((s) => s.clearBotChannelCount);
@@ -146,8 +149,8 @@ function ChannelButton({ channelId, disabled, disabledMessage }: { channelId: 't
   if (disabled) {
     return (
       <Pressable
-        onPress={() => toast.info(disabledMessage ?? "Not available here")}
-        accessibilityLabel={`${channelId} channel (unavailable)`}
+        onPress={() => toast.info(disabledMessage ?? t("chatInput.notAvailableHere"))}
+        accessibilityLabel={t("chatInput.channelUnavailable", { channelId })}
         accessibilityRole="button"
         style={[styles.toolbarBtn, styles.toolbarChannel, styles.toolbarBtnDisabled]}
       >
@@ -169,7 +172,7 @@ function ChannelButton({ channelId, disabled, disabledMessage }: { channelId: 't
         clearCount(channelId);
         markChannelRead(channelId).catch(() => {});
       }}
-      accessibilityLabel={`${channelId} channel`}
+      accessibilityLabel={t("chatInput.channelLabel", { channelId })}
       accessibilityRole="button"
       style={({ pressed }) => [styles.toolbarBtn, styles.toolbarChannel, pressed && { opacity: 0.7 }]}
     >
@@ -187,6 +190,7 @@ function ChannelButton({ channelId, disabled, disabledMessage }: { channelId: 't
 }
 
 function MessagesButton() {
+  const { t } = useTranslation();
   const dmUnread = useAppStore((s) =>
     Object.values(s.dmUnreadCounts ?? {}).reduce((a, b) => a + (typeof b === "number" ? b : 0), 0),
   );
@@ -206,7 +210,7 @@ function MessagesButton() {
         markChannelRead("dms").catch(() => {});
         router.push("/dms" as any);
       }}
-      accessibilityLabel={dmUnread > 0 ? `${dmUnread} unread messages` : "Messages"}
+      accessibilityLabel={dmUnread > 0 ? t("chatInput.unreadMessages", { count: dmUnread }) : t("chatInput.messages")}
       accessibilityRole="button"
       style={({ pressed }) => [styles.toolbarBtn, styles.toolbarChannel, pressed && { opacity: 0.7 }]}
     >
@@ -275,6 +279,7 @@ export const ChatInput = memo(function ChatInput({
   disabledButtons,
   disabledMessage,
 }: ChatInputProps) {
+  const { t } = useTranslation();
   const inputRef = useRef<TextInput>(null);
   const bounceAnim = useRef(new Animated.Value(0)).current;
   const hasTypers = !!(typingUsers && typingUsers.length > 0);
@@ -351,7 +356,7 @@ export const ChatInput = memo(function ChatInput({
       const parts = trimmed.split(/\s+/);
       const amt = parts[2] ? parseFloat(parts[2]) : NaN;
       if (!isNaN(amt) && (amt <= 0 || amt > 100)) {
-        showGlassAlert("Invalid Amount", "Buy amount must be between 0 and 100 SOL.");
+        showGlassAlert(t("chatInput.invalidAmount"), t("chatInput.buyAmountRange"));
         return;
       }
     }
@@ -359,14 +364,14 @@ export const ChatInput = memo(function ChatInput({
       const parts = trimmed.split(/\s+/);
       const pct = parts[2] ? parseFloat(parts[2]) : NaN;
       if (!isNaN(pct) && (pct <= 0 || pct > 100)) {
-        showGlassAlert("Invalid Amount", "Sell percentage must be between 0 and 100.");
+        showGlassAlert(t("chatInput.invalidAmount"), t("chatInput.sellPercentRange"));
         return;
       }
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     onSend();
     inputRef.current?.blur();
-  }, [canSend, onSend, value]);
+  }, [canSend, onSend, value, t]);
 
   const handleChangeText = useCallback((text: string) => {
     onChangeText(text);
@@ -387,14 +392,14 @@ export const ChatInput = memo(function ChatInput({
       {/* Slash command suggestions */}
       {slashSuggestions.length > 0 && (
         <View style={styles.mentionList}>
-          {slashSuggestions.map(({ cmd, args, desc }) => (
+          {slashSuggestions.map(({ cmd, args, descKey }) => (
             <Pressable key={cmd} style={styles.mentionRow} onPress={() => insertSlashCommand(cmd, args)}>
               <View style={styles.slashCmdIcon}>
                 <Text style={styles.slashCmdSlash}>/</Text>
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.slashCmdName}>{cmd}{args ? ` ${args}` : ""}</Text>
-                <Text style={styles.slashCmdDesc}>{desc}</Text>
+                <Text style={styles.slashCmdDesc}>{t(`chatInput.commands.${descKey}`)}</Text>
               </View>
             </Pressable>
           ))}
@@ -428,10 +433,10 @@ export const ChatInput = memo(function ChatInput({
           <Text style={styles.typingDots}>●●●</Text>
           <Text style={styles.typingText}>
             {typingUsers!.length === 1
-              ? `${typingUsers![0].username ?? "A Monke"} is typing`
+              ? t("chatInput.typingOne", { name: typingUsers![0].username ?? t("chatInput.aMonke") })
               : typingUsers!.length === 2
-              ? `${typingUsers![0].username ?? "Monke"} and ${typingUsers![1].username ?? "Monke"} are typing`
-              : `Chat is bananas 🍌 ${typingUsers!.length}+ Monkes typing…`}
+              ? t("chatInput.typingTwo", { name1: typingUsers![0].username ?? t("chatInput.monke"), name2: typingUsers![1].username ?? t("chatInput.monke") })
+              : t("chatInput.typingMany", { count: typingUsers!.length })}
           </Text>
         </Animated.View>
       )}
@@ -442,7 +447,7 @@ export const ChatInput = memo(function ChatInput({
           <View style={styles.replyBannerBar} />
           <View style={styles.replyBannerContent}>
             <Text style={styles.replyBannerLabel}>
-              Replying to {replyingTo.senderUsername ?? getCachedProfile(replyingTo.senderAddress)?.username ?? "Monke"}
+              {t("chatInput.replyingTo", { name: replyingTo.senderUsername ?? getCachedProfile(replyingTo.senderAddress)?.username ?? t("chatInput.monke") })}
             </Text>
             <Text style={styles.replyBannerText} numberOfLines={1}>
               {replyingTo.content}
@@ -461,7 +466,7 @@ export const ChatInput = memo(function ChatInput({
           <Pressable
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onPfpGifPicker(); }}
             hitSlop={6}
-            accessibilityLabel="Change profile picture"
+            accessibilityLabel={t("chatInput.changeProfilePicture")}
             accessibilityRole="button"
             style={({ pressed }) => [styles.pfpBtn, pressed && { opacity: 0.7 }]}
           >
@@ -481,13 +486,13 @@ export const ChatInput = memo(function ChatInput({
             style={styles.input}
             value={value}
             onChangeText={handleChangeText}
-            placeholder="Message…"
+            placeholder={t("chatInput.messagePlaceholder")}
             placeholderTextColor={THEME.textFaint}
             multiline
             maxLength={MAX_MESSAGE_LENGTH + 10} // soft limit via UI
             returnKeyType="default"
             blurOnSubmit={false}
-            accessibilityLabel="Message input"
+            accessibilityLabel={t("chatInput.messageInput")}
             accessibilityRole="text"
           />
           {isNearLimit && (
@@ -498,7 +503,7 @@ export const ChatInput = memo(function ChatInput({
         </View>
 
         <Pressable onPress={handleSend} disabled={!canSend}
-          accessibilityLabel="Send message"
+          accessibilityLabel={t("chatInput.sendMessage")}
           accessibilityRole="button"
           style={({ pressed }) => [
             styles.sendButton,
@@ -534,10 +539,10 @@ export const ChatInput = memo(function ChatInput({
           {(onCamera || disabledButtons?.cam) && (
             <Pressable
               onPress={() => {
-                if (disabledButtons?.cam) { toast.info(disabledMessage ?? "Not available here"); return; }
+                if (disabledButtons?.cam) { toast.info(disabledMessage ?? t("chatInput.notAvailableHere")); return; }
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onCamera?.();
               }}
-              accessibilityLabel={disabledButtons?.cam ? "Open camera (unavailable)" : "Open camera"}
+              accessibilityLabel={disabledButtons?.cam ? t("chatInput.openCameraUnavailable") : t("chatInput.openCamera")}
               accessibilityRole="button"
               style={({ pressed }) => [
                 styles.toolbarBtn, styles.toolbarCamera,
@@ -552,10 +557,10 @@ export const ChatInput = memo(function ChatInput({
           {(onLiveVideo || onAvatarRoom || disabledButtons?.live) && (
             <Pressable
               onPress={() => {
-                if (disabledButtons?.live) { toast.info(disabledMessage ?? "Not available here"); return; }
+                if (disabledButtons?.live) { toast.info(disabledMessage ?? t("chatInput.notAvailableHere")); return; }
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onOpenLivePicker?.();
               }}
-              accessibilityLabel={disabledButtons?.live ? "Go live (unavailable)" : "Go live"}
+              accessibilityLabel={disabledButtons?.live ? t("chatInput.goLiveUnavailable") : t("chatInput.goLive")}
               accessibilityRole="button"
               style={({ pressed }) => [
                 styles.toolbarBtn, styles.toolbarLive,
@@ -571,10 +576,10 @@ export const ChatInput = memo(function ChatInput({
           {(onGifPicker || disabledButtons?.gif) && (
             <Pressable
               onPress={() => {
-                if (disabledButtons?.gif) { toast.info(disabledMessage ?? "Not available here"); return; }
+                if (disabledButtons?.gif) { toast.info(disabledMessage ?? t("chatInput.notAvailableHere")); return; }
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onGifPicker?.();
               }}
-              accessibilityLabel={disabledButtons?.gif ? "Open GIF picker (unavailable)" : "Open GIF picker"}
+              accessibilityLabel={disabledButtons?.gif ? t("chatInput.openGifPickerUnavailable") : t("chatInput.openGifPicker")}
               accessibilityRole="button"
               style={({ pressed }) => [
                 styles.toolbarBtn, styles.toolbarGif,
