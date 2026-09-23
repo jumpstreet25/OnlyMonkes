@@ -13,6 +13,74 @@
     "chooseWallet": "Elige tu Wallet",
     "cancel": "Cancelar"
   },
+  "autonoWizard": {
+    "cancel": "Cancelar",
+    "useDefaults": "Usar Valores Predeterminados",
+    "customize": "Personalizar",
+    "back": "Atrás",
+    "next": "Siguiente",
+    "activate": "Activar",
+    "activating": "Activando…",
+    "edit": "Editar",
+    "step1": {
+      "subtitle": "Trading Autónomo",
+      "riskBadge": "RIESGO ALTO · PUEDES PERDER FONDOS",
+      "bodyPart1": "AutonoMonke crea una hot wallet separada, vigila las memecoins de Solana, y abre operaciones automáticamente cuando sus señales de análisis técnico e IA se alinean. Se fijan stops y objetivos de ganancia en cada entrada.",
+      "bodyPart2": "Las ganancias por encima del saldo máximo de tu wallet se transfieren automáticamente de vuelta a tu wallet principal. ",
+      "feeProfitBold": "Comisión del 5% sobre ganancias",
+      "bodyPart3": "; sin comisión en pérdidas. ",
+      "feeSkrBold": "Financia con SKR para un 50% de descuento",
+      "bodyPart4": " (comisión del 2.5%).",
+      "seekerLabel": "Usuarios de Seeker:",
+      "seekerText": " cada operación de AutonoMonke cuenta para tus puntos del SKR Activity Tracker.",
+      "ack1": "Entiendo que puedo perder parte o la totalidad de los fondos que deposite en la hot wallet.",
+      "ack2": "Soy el único responsable de financiar, configurar y monitorear este servicio."
+    },
+    "step2": {
+      "title": "Moneda de Financiamiento",
+      "hint": "Elige SOL o SKR. Cada operación, gráfico y marca de análisis técnico usa esta cotización — compras y vendes de vuelta al mismo token. SKR reduce las comisiones de ganancias a la mitad.",
+      "skrTitle": "SKR",
+      "skrSub": "Preferido. Token de la comunidad — 50% de descuento en comisiones sobre operaciones ganadoras.",
+      "skrBadge": "AHORRA 50%",
+      "solTitle": "SOL",
+      "solSub": "El token nativo de Solana — el par más líquido entre memecoins.",
+      "helperLabel": "Puedes cambiar esto más tarde",
+      "helperTextPart1": "Cambia el token de financiamiento en cualquier momento con ",
+      "helperTextPart2": " en el DM del bot. Las posiciones actualmente abiertas mantienen su moneda original hasta que se cierren."
+    },
+    "step3": {
+      "title": "Tamaño por Operación",
+      "hint": "Cuánto {{baseCurrency}} gasta el bot en cada entrada. Cada operación es independiente — más pequeño = más diversificación, más grande = mayores variaciones por operación.",
+      "heroUnit": "{{baseCurrency}} por operación",
+      "sliderMax": "1.0 {{baseCurrency}}",
+      "helperLabel": "Recomendado",
+      "helperText": "0.10 {{baseCurrency}} — suficiente margen para obtener ganancias significativas manteniendo cada operación bien acotada."
+    },
+    "step4": {
+      "title": "Perfil de Riesgo",
+      "hint": "Dos configuraciones — cuánto SOL guarda la hot wallet, y qué tan exigente es el bot al elegir qué operaciones tomar.",
+      "maxWalletLabel": "Saldo máximo de la hot wallet",
+      "maxWalletHelp": "Las ganancias por encima de esto se transfieren automáticamente a tu wallet principal. La hot wallet se mantiene pequeña.",
+      "exceedsCap": "El monto por operación ({{perTrade}}) supera el máximo ({{max}}). Aumenta el máximo o retrocede y reduce el monto por operación.",
+      "minConfidenceLabel": "Confianza mínima de la IA",
+      "sliderLoose": "50 (permisivo)",
+      "sliderStrict": "90 (estricto)",
+      "confBalanced": "55 = equilibrado. Más operaciones, más variación.",
+      "confConservative": "Conservador. Menos operaciones, mayor convicción.",
+      "confStrict": "Estricto. Solo las señales más fuertes se activan — puede pasar días sin operar."
+    },
+    "step5": {
+      "title": "Revisar y Activar",
+      "hint": "Después de la activación, el bot te enviará por DM la dirección de una hot wallet. Fondéala con {{baseCurrency}} — el bot empieza a operar en cuanto el saldo supere el umbral por operación.",
+      "fundingCurrency": "Moneda de financiamiento",
+      "skrDiscount": " 🍌 (50% de descuento en comisiones)",
+      "perTradeSize": "Tamaño por operación",
+      "maxWallet": "Wallet máxima",
+      "minConfidence": "Confianza mínima",
+      "mainWallet": "Wallet principal",
+      "notice": "Puedes cambiar todo esto más tarde mediante comandos DM o volviendo a ejecutar este asistente. Pausar / retirar / cerrar todo están siempre a un DM de distancia."
+    }
+  },
   "verify": {
     "loadingTexts": [
       "Olfateando bananas en tu wallet…",

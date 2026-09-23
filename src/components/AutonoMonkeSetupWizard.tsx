@@ -24,6 +24,7 @@ import { isInactiveMlsError, markBotDmBroken, postBotCommand, applyBotCommandRes
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { toast } from 'sonner-native';
 import * as Haptics from 'expo-haptics';
+import { useTranslation } from 'react-i18next';
 
 const BOT_INBOX_ID = '998001a498174b8a194110ee792b10f97de4965665eaf0d088ed2c71bdf62363';
 const STORAGE_KEY = 'automonke_enrolled';
@@ -45,6 +46,7 @@ interface Props {
 type Step = 1 | 2 | 3 | 4 | 5;
 
 export default function AutonoMonkeSetupWizard({ visible, onClose }: Props) {
+  const { t } = useTranslation();
   const username = useAppStore(s => s.username);
   const wallet = useAppStore(s => s.wallet);
 
@@ -204,21 +206,21 @@ export default function AutonoMonkeSetupWizard({ visible, onClose }: Props) {
               style={[s.btn, s.btnGhost]}
               onPress={handleClose}
             >
-              <Text style={s.btnGhostText}>Cancel</Text>
+              <Text style={s.btnGhostText}>{t('autonoWizard.cancel')}</Text>
             </Pressable>
             <Pressable
               style={[s.btn, s.btnSecondary, (!riskAck || !responsibilityAck) && s.btnDisabled]}
               onPress={handleUseDefaults}
               disabled={!riskAck || !responsibilityAck}
             >
-              <Text style={s.btnSecondaryText}>Use Defaults</Text>
+              <Text style={s.btnSecondaryText}>{t('autonoWizard.useDefaults')}</Text>
             </Pressable>
             <Pressable
               style={[s.btn, s.btnPrimary, (!riskAck || !responsibilityAck) && s.btnDisabled]}
               onPress={() => setStep(2)}
               disabled={!riskAck || !responsibilityAck}
             >
-              <Text style={s.btnPrimaryText}>Customize</Text>
+              <Text style={s.btnPrimaryText}>{t('autonoWizard.customize')}</Text>
             </Pressable>
           </>
         ) : step < 5 ? (
@@ -227,13 +229,13 @@ export default function AutonoMonkeSetupWizard({ visible, onClose }: Props) {
               style={[s.btn, s.btnGhost]}
               onPress={() => setStep((step - 1) as Step)}
             >
-              <Text style={s.btnGhostText}>Back</Text>
+              <Text style={s.btnGhostText}>{t('autonoWizard.back')}</Text>
             </Pressable>
             <Pressable
               style={[s.btn, s.btnPrimary]}
               onPress={() => setStep((step + 1) as Step)}
             >
-              <Text style={s.btnPrimaryText}>Next</Text>
+              <Text style={s.btnPrimaryText}>{t('autonoWizard.next')}</Text>
             </Pressable>
           </>
         ) : (
@@ -243,7 +245,7 @@ export default function AutonoMonkeSetupWizard({ visible, onClose }: Props) {
               onPress={() => setStep(4)}
               disabled={submitting}
             >
-              <Text style={s.btnGhostText}>Back</Text>
+              <Text style={s.btnGhostText}>{t('autonoWizard.back')}</Text>
             </Pressable>
             <Pressable
               style={[s.btn, s.btnPrimary, submitting && s.btnDisabled]}
@@ -251,7 +253,7 @@ export default function AutonoMonkeSetupWizard({ visible, onClose }: Props) {
               disabled={submitting}
             >
               <Text style={s.btnPrimaryText}>
-                {submitting ? 'Activating…' : 'Activate'}
+                {submitting ? t('autonoWizard.activating') : t('autonoWizard.activate')}
               </Text>
             </Pressable>
           </>
@@ -269,39 +271,37 @@ function Step1Disclaimer({
   riskAck: boolean; setRiskAck: (v: boolean) => void;
   responsibilityAck: boolean; setResponsibilityAck: (v: boolean) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <View style={s.step}>
       <Text style={s.stepTitle}>AutonoMonke</Text>
-      <Text style={s.stepSubtitle}>Autonomous Trading</Text>
+      <Text style={s.stepSubtitle}>{t('autonoWizard.step1.subtitle')}</Text>
 
       <View style={s.warnBadge}>
-        <Text style={s.warnText}>HIGH RISK · YOU CAN LOSE FUNDS</Text>
+        <Text style={s.warnText}>{t('autonoWizard.step1.riskBadge')}</Text>
       </View>
 
       <Text style={s.bodyText}>
-        AutonoMonke creates a separate hot wallet, watches Solana memecoins, and
-        opens trades automatically when its TA + AI signals align. Stops and
-        profit targets are set on every entry.{"\n\n"}
-        Profits above your max wallet balance auto-sweep back to your main
-        wallet. <Text style={s.bold}>5% fee on profits</Text>; no fee on losses.{" "}
-        <Text style={s.bold}>Fund with SKR for 50% off</Text> (2.5% fee).
+        {t('autonoWizard.step1.bodyPart1')}{"\n\n"}
+        {t('autonoWizard.step1.bodyPart2')}<Text style={s.bold}>{t('autonoWizard.step1.feeProfitBold')}</Text>{t('autonoWizard.step1.bodyPart3')}
+        <Text style={s.bold}>{t('autonoWizard.step1.feeSkrBold')}</Text>{t('autonoWizard.step1.bodyPart4')}
       </Text>
 
       <View style={s.seekerNote}>
         <Text style={s.seekerNoteText}>
-          📱 <Text style={s.bold}>Seeker users:</Text> every AutonoMonke trade counts toward your SKR Activity Tracker points.
+          📱 <Text style={s.bold}>{t('autonoWizard.step1.seekerLabel')}</Text>{t('autonoWizard.step1.seekerText')}
         </Text>
       </View>
 
       <CheckboxRow
         checked={riskAck}
         onToggle={() => setRiskAck(!riskAck)}
-        label="I understand I may lose any or all funds I deposit into the hot wallet."
+        label={t('autonoWizard.step1.ack1')}
       />
       <CheckboxRow
         checked={responsibilityAck}
         onToggle={() => setResponsibilityAck(!responsibilityAck)}
-        label="I am solely responsible for funding, configuring, and monitoring this service."
+        label={t('autonoWizard.step1.ack2')}
       />
     </View>
   );
@@ -315,22 +315,22 @@ function Step1Disclaimer({
 function Step2Base({
   value, onChange,
 }: { value: BaseCurrency; onChange: (v: BaseCurrency) => void }) {
+  const { t } = useTranslation();
   const options: Array<{
     sym: BaseCurrency;
     title: string;
     sub: string;
     badge?: string;
   }> = [
-    { sym: 'SKR', title: 'SKR', sub: 'Preferred. Community token — 50% off fees on winning trades.', badge: 'SAVE 50%' },
-    { sym: 'SOL', title: 'SOL', sub: "Solana's native token — most liquid pair across memecoins." },
+    { sym: 'SKR', title: t('autonoWizard.step2.skrTitle'), sub: t('autonoWizard.step2.skrSub'), badge: t('autonoWizard.step2.skrBadge') },
+    { sym: 'SOL', title: t('autonoWizard.step2.solTitle'), sub: t('autonoWizard.step2.solSub') },
   ];
 
   return (
     <View style={s.step}>
-      <Text style={s.stepTitle}>Funding Currency</Text>
+      <Text style={s.stepTitle}>{t('autonoWizard.step2.title')}</Text>
       <Text style={s.stepHint}>
-        Pick SOL or SKR. Every trade, chart, and TA mark uses this quote —
-        buy and sell back into the same token. SKR cuts profit fees in half.
+        {t('autonoWizard.step2.hint')}
       </Text>
 
       {options.map(opt => {
@@ -359,11 +359,10 @@ function Step2Base({
       })}
 
       <View style={s.helperBox}>
-        <Text style={s.helperLabel}>You can change this later</Text>
+        <Text style={s.helperLabel}>{t('autonoWizard.step2.helperLabel')}</Text>
         <Text style={s.helperText}>
-          Switch the funding token any time with{' '}
-          <Text style={s.mono}>/autonomonke base SOL|SKR</Text> in the bot
-          DM. Currently-open positions keep their original base until close.
+          {t('autonoWizard.step2.helperTextPart1')}
+          <Text style={s.mono}>/autonomonke base SOL|SKR</Text>{t('autonoWizard.step2.helperTextPart2')}
         </Text>
       </View>
     </View>
@@ -375,18 +374,17 @@ function Step2Base({
 function Step3PerTrade({
   value, onChange, baseCurrency,
 }: { value: number; onChange: (v: number) => void; baseCurrency: BaseCurrency }) {
+  const { t } = useTranslation();
   return (
     <View style={s.step}>
-      <Text style={s.stepTitle}>Per-Trade Size</Text>
+      <Text style={s.stepTitle}>{t('autonoWizard.step3.title')}</Text>
       <Text style={s.stepHint}>
-        How much {baseCurrency} the bot spends on every entry. Each trade is
-        independent — smaller = more diversification, bigger = bigger swings
-        per trade.
+        {t('autonoWizard.step3.hint', { baseCurrency })}
       </Text>
 
       <View style={s.heroBlock}>
         <Text style={s.heroValue}>{value.toFixed(2)}</Text>
-        <Text style={s.heroUnit}>{baseCurrency} per trade</Text>
+        <Text style={s.heroUnit}>{t('autonoWizard.step3.heroUnit', { baseCurrency })}</Text>
       </View>
 
       <Slider
@@ -403,14 +401,13 @@ function Step3PerTrade({
 
       <View style={s.sliderRange}>
         <Text style={s.sliderRangeText}>0.05</Text>
-        <Text style={s.sliderRangeText}>1.0 {baseCurrency}</Text>
+        <Text style={s.sliderRangeText}>{t('autonoWizard.step3.sliderMax', { baseCurrency })}</Text>
       </View>
 
       <View style={s.helperBox}>
-        <Text style={s.helperLabel}>Recommended</Text>
+        <Text style={s.helperLabel}>{t('autonoWizard.step3.helperLabel')}</Text>
         <Text style={s.helperText}>
-          0.10 {baseCurrency} — enough room to take meaningful gains while
-          keeping any single trade well-bounded.
+          {t('autonoWizard.step3.helperText', { baseCurrency })}
         </Text>
       </View>
     </View>
@@ -428,18 +425,18 @@ function Step4Risk({
   baseCurrency: BaseCurrency;
 }) {
   const exceedsCap = perTradeSOL > maxSOL;
+  const { t } = useTranslation();
 
   return (
     <View style={s.step}>
-      <Text style={s.stepTitle}>Risk Profile</Text>
+      <Text style={s.stepTitle}>{t('autonoWizard.step4.title')}</Text>
       <Text style={s.stepHint}>
-        Two settings — how much SOL the hot wallet holds, and how picky the bot
-        is about which trades to take.
+        {t('autonoWizard.step4.hint')}
       </Text>
 
       {/* Max wallet */}
       <View style={s.field}>
-        <Text style={s.fieldLabel}>Max hot wallet balance</Text>
+        <Text style={s.fieldLabel}>{t('autonoWizard.step4.maxWalletLabel')}</Text>
         <Text style={s.fieldValue}>{maxSOL.toFixed(1)} {baseCurrency}</Text>
         <Slider
           style={s.slider}
@@ -457,20 +454,18 @@ function Step4Risk({
           <Text style={s.sliderRangeText}>10 {baseCurrency}</Text>
         </View>
         <Text style={s.fieldHelp}>
-          Profits above this auto-sweep to your main wallet. The hot wallet
-          stays small.
+          {t('autonoWizard.step4.maxWalletHelp')}
         </Text>
         {exceedsCap && (
           <Text style={s.fieldError}>
-            Per-trade ({perTradeSOL.toFixed(2)}) exceeds max ({maxSOL.toFixed(1)}).
-            Bump max or go back and lower per-trade.
+            {t('autonoWizard.step4.exceedsCap', { perTrade: perTradeSOL.toFixed(2), max: maxSOL.toFixed(1) })}
           </Text>
         )}
       </View>
 
       {/* Min confidence */}
       <View style={s.field}>
-        <Text style={s.fieldLabel}>Min AI confidence</Text>
+        <Text style={s.fieldLabel}>{t('autonoWizard.step4.minConfidenceLabel')}</Text>
         <Text style={s.fieldValue}>{minConfidence}%</Text>
         <Slider
           style={s.slider}
@@ -484,13 +479,13 @@ function Step4Risk({
           thumbTintColor={THEME.gold}
         />
         <View style={s.sliderRange}>
-          <Text style={s.sliderRangeText}>50 (loose)</Text>
-          <Text style={s.sliderRangeText}>90 (strict)</Text>
+          <Text style={s.sliderRangeText}>{t('autonoWizard.step4.sliderLoose')}</Text>
+          <Text style={s.sliderRangeText}>{t('autonoWizard.step4.sliderStrict')}</Text>
         </View>
         <Text style={s.fieldHelp}>
-          {minConfidence <= 55 && '55 = balanced. More trades, more variance.'}
-          {minConfidence > 55 && minConfidence <= 70 && 'Conservative. Fewer trades, higher conviction.'}
-          {minConfidence > 70 && 'Strict. Only the strongest signals fire — may go days without trading.'}
+          {minConfidence <= 55 && t('autonoWizard.step4.confBalanced')}
+          {minConfidence > 55 && minConfidence <= 70 && t('autonoWizard.step4.confConservative')}
+          {minConfidence > 70 && t('autonoWizard.step4.confStrict')}
         </Text>
       </View>
     </View>
@@ -510,32 +505,30 @@ function Step5Review({
   onEdit: (target: Step) => void;
 }) {
   const isSkr = baseCurrency === 'SKR';
+  const { t } = useTranslation();
   return (
     <View style={s.step}>
-      <Text style={s.stepTitle}>Review & Activate</Text>
+      <Text style={s.stepTitle}>{t('autonoWizard.step5.title')}</Text>
       <Text style={s.stepHint}>
-        After activation, the bot DMs you a hot wallet address. Fund it with{' '}
-        {baseCurrency} — the bot starts trading once balance crosses the
-        per-trade threshold.
+        {t('autonoWizard.step5.hint', { baseCurrency })}
       </Text>
 
       <ReviewRow
-        label="Funding currency"
-        value={isSkr ? `${baseCurrency} 🍌 (50% off fees)` : baseCurrency}
+        label={t('autonoWizard.step5.fundingCurrency')}
+        value={isSkr ? `${baseCurrency}${t('autonoWizard.step5.skrDiscount')}` : baseCurrency}
         onEdit={() => onEdit(2)}
       />
-      <ReviewRow label="Per-trade size" value={`${perTradeSOL.toFixed(2)} ${baseCurrency}`} onEdit={() => onEdit(3)} />
-      <ReviewRow label="Max wallet" value={`${maxSOL.toFixed(1)} ${baseCurrency}`} onEdit={() => onEdit(4)} />
-      <ReviewRow label="Min confidence" value={`${minConfidence}%`} onEdit={() => onEdit(4)} />
+      <ReviewRow label={t('autonoWizard.step5.perTradeSize')} value={`${perTradeSOL.toFixed(2)} ${baseCurrency}`} onEdit={() => onEdit(3)} />
+      <ReviewRow label={t('autonoWizard.step5.maxWallet')} value={`${maxSOL.toFixed(1)} ${baseCurrency}`} onEdit={() => onEdit(4)} />
+      <ReviewRow label={t('autonoWizard.step5.minConfidence')} value={`${minConfidence}%`} onEdit={() => onEdit(4)} />
       <ReviewRow
-        label="Main wallet"
+        label={t('autonoWizard.step5.mainWallet')}
         value={mainWallet ? `${mainWallet.slice(0, 6)}…${mainWallet.slice(-4)}` : '—'}
       />
 
       <View style={s.notice}>
         <Text style={s.noticeText}>
-          You can change all of these later via DM commands or by re-running
-          this wizard. Pause / withdraw / close-all are always one DM away.
+          {t('autonoWizard.step5.notice')}
         </Text>
       </View>
     </View>
@@ -560,6 +553,7 @@ function CheckboxRow({ checked, onToggle, label }: {
 function ReviewRow({ label, value, onEdit }: {
   label: string; value: string; onEdit?: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <View style={s.reviewRow}>
       <Text style={s.reviewLabel}>{label}</Text>
@@ -567,7 +561,7 @@ function ReviewRow({ label, value, onEdit }: {
         <Text style={s.reviewValue}>{value}</Text>
         {onEdit && (
           <Pressable onPress={onEdit} hitSlop={10}>
-            <Text style={s.reviewEdit}>Edit</Text>
+            <Text style={s.reviewEdit}>{t('autonoWizard.edit')}</Text>
           </Pressable>
         )}
       </View>

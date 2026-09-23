@@ -13,6 +13,74 @@
     "chooseWallet": "Choose Wallet",
     "cancel": "Cancel"
   },
+  "autonoWizard": {
+    "cancel": "Cancel",
+    "useDefaults": "Use Defaults",
+    "customize": "Customize",
+    "back": "Back",
+    "next": "Next",
+    "activate": "Activate",
+    "activating": "Activating…",
+    "edit": "Edit",
+    "step1": {
+      "subtitle": "Autonomous Trading",
+      "riskBadge": "HIGH RISK · YOU CAN LOSE FUNDS",
+      "bodyPart1": "AutonoMonke creates a separate hot wallet, watches Solana memecoins, and opens trades automatically when its TA + AI signals align. Stops and profit targets are set on every entry.",
+      "bodyPart2": "Profits above your max wallet balance auto-sweep back to your main wallet. ",
+      "feeProfitBold": "5% fee on profits",
+      "bodyPart3": "; no fee on losses. ",
+      "feeSkrBold": "Fund with SKR for 50% off",
+      "bodyPart4": " (2.5% fee).",
+      "seekerLabel": "Seeker users:",
+      "seekerText": " every AutonoMonke trade counts toward your SKR Activity Tracker points.",
+      "ack1": "I understand I may lose any or all funds I deposit into the hot wallet.",
+      "ack2": "I am solely responsible for funding, configuring, and monitoring this service."
+    },
+    "step2": {
+      "title": "Funding Currency",
+      "hint": "Pick SOL or SKR. Every trade, chart, and TA mark uses this quote — buy and sell back into the same token. SKR cuts profit fees in half.",
+      "skrTitle": "SKR",
+      "skrSub": "Preferred. Community token — 50% off fees on winning trades.",
+      "skrBadge": "SAVE 50%",
+      "solTitle": "SOL",
+      "solSub": "Solana's native token — most liquid pair across memecoins.",
+      "helperLabel": "You can change this later",
+      "helperTextPart1": "Switch the funding token any time with ",
+      "helperTextPart2": " in the bot DM. Currently-open positions keep their original base until close."
+    },
+    "step3": {
+      "title": "Per-Trade Size",
+      "hint": "How much {{baseCurrency}} the bot spends on every entry. Each trade is independent — smaller = more diversification, bigger = bigger swings per trade.",
+      "heroUnit": "{{baseCurrency}} per trade",
+      "sliderMax": "1.0 {{baseCurrency}}",
+      "helperLabel": "Recommended",
+      "helperText": "0.10 {{baseCurrency}} — enough room to take meaningful gains while keeping any single trade well-bounded."
+    },
+    "step4": {
+      "title": "Risk Profile",
+      "hint": "Two settings — how much SOL the hot wallet holds, and how picky the bot is about which trades to take.",
+      "maxWalletLabel": "Max hot wallet balance",
+      "maxWalletHelp": "Profits above this auto-sweep to your main wallet. The hot wallet stays small.",
+      "exceedsCap": "Per-trade ({{perTrade}}) exceeds max ({{max}}). Bump max or go back and lower per-trade.",
+      "minConfidenceLabel": "Min AI confidence",
+      "sliderLoose": "50 (loose)",
+      "sliderStrict": "90 (strict)",
+      "confBalanced": "55 = balanced. More trades, more variance.",
+      "confConservative": "Conservative. Fewer trades, higher conviction.",
+      "confStrict": "Strict. Only the strongest signals fire — may go days without trading."
+    },
+    "step5": {
+      "title": "Review & Activate",
+      "hint": "After activation, the bot DMs you a hot wallet address. Fund it with {{baseCurrency}} — the bot starts trading once balance crosses the per-trade threshold.",
+      "fundingCurrency": "Funding currency",
+      "skrDiscount": " 🍌 (50% off fees)",
+      "perTradeSize": "Per-trade size",
+      "maxWallet": "Max wallet",
+      "minConfidence": "Min confidence",
+      "mainWallet": "Main wallet",
+      "notice": "You can change all of these later via DM commands or by re-running this wizard. Pause / withdraw / close-all are always one DM away."
+    }
+  },
   "verify": {
     "loadingTexts": [
       "Sniffing bananas in your wallet…",
