@@ -18,6 +18,7 @@ import {
   Platform,
   Dimensions,} from "react-native";
 import { showGlassAlert } from "@/lib/glassAlert";
+import { useTranslation } from "react-i18next";
 import * as Clipboard from "expo-clipboard";
 import { toast } from "sonner-native";
 import { GlassModal } from "@/components/GlassModal";
@@ -41,6 +42,7 @@ const TOOLS = [
 ] as const;
 
 export function MonkeToolsModal({ visible, onClose }: MonkeToolsModalProps) {
+  const { t } = useTranslation();
   const {
     notificationsEnabled, mentionsOnly, botNotificationsEnabled,
     setNotificationsEnabled, setMentionsOnly, setBotNotificationsEnabled,
@@ -58,9 +60,9 @@ export function MonkeToolsModal({ visible, onClose }: MonkeToolsModalProps) {
     const token = await registerForPushNotifications();
     if (token) {
       setExpoPushToken(token);
-      showGlassAlert("Token refreshed", token);
+      showGlassAlert(t("monkeToolsModal.tokenRefreshed"), token);
     } else {
-      showGlassAlert("Failed", "Could not get push token. Check notification permissions.");
+      showGlassAlert(t("monkeToolsModal.failed"), t("monkeToolsModal.pushTokenError"));
     }
   }
 
@@ -69,7 +71,7 @@ export function MonkeToolsModal({ visible, onClose }: MonkeToolsModalProps) {
 
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>🔧  Monke Tools</Text>
+          <Text style={styles.headerTitle}>🔧  {t("monkeToolsModal.title")}</Text>
           <Pressable onPress={onClose} style={styles.closeBtn} hitSlop={10}>
             <Text style={styles.closeIcon}>✕</Text>
           </Pressable>
@@ -77,7 +79,7 @@ export function MonkeToolsModal({ visible, onClose }: MonkeToolsModalProps) {
 
         <ScrollView showsVerticalScrollIndicator={false}>
           {/* Tools list */}
-          <Text style={styles.sectionLabel}>Ecosystem</Text>
+          <Text style={styles.sectionLabel}>{t("monkeToolsModal.ecosystem")}</Text>
 
           {TOOLS.map((tool, idx) => (
             <Pressable
@@ -104,7 +106,7 @@ export function MonkeToolsModal({ visible, onClose }: MonkeToolsModalProps) {
 
           {/* Notifications settings */}
           <Text style={[styles.sectionLabel, styles.sectionLabelSpaced]}>
-            Notifications
+            {t("monkeToolsModal.notifications")}
           </Text>
 
           {/* Android: direct link to fix popup/heads-up importance */}
@@ -115,10 +117,10 @@ export function MonkeToolsModal({ visible, onClose }: MonkeToolsModalProps) {
             >
               <Text style={styles.fixBannerIcon}>🔔</Text>
               <View style={{ flex: 1 }}>
-                <Text style={styles.fixBannerTitle}>Not seeing popup alerts?</Text>
+                <Text style={styles.fixBannerTitle}>{t("monkeToolsModal.notSeeingAlertsTitle")}</Text>
                 <Text style={styles.fixBannerDesc}>
-                  Tap to open Notification Settings → set importance to{" "}
-                  <Text style={{ color: THEME.accent }}>Urgent</Text> for heads-up banners.
+                  {t("monkeToolsModal.notSeeingAlertsDescPart1")}{" "}
+                  <Text style={{ color: THEME.accent }}>{t("monkeToolsModal.urgent")}</Text> {t("monkeToolsModal.notSeeingAlertsDescPart2")}
                 </Text>
               </View>
               <Text style={styles.chevron}>›</Text>
@@ -128,9 +130,9 @@ export function MonkeToolsModal({ visible, onClose }: MonkeToolsModalProps) {
           <View style={styles.settingsCard}>
             <View style={styles.settingRow}>
               <View style={styles.settingInfo}>
-                <Text style={styles.settingTitle}>Enable notifications</Text>
+                <Text style={styles.settingTitle}>{t("monkeToolsModal.enableNotifications")}</Text>
                 <Text style={styles.settingDesc}>
-                  Get notified for new messages in all chats
+                  {t("monkeToolsModal.enableNotificationsDesc")}
                 </Text>
               </View>
               <Switch
@@ -145,9 +147,9 @@ export function MonkeToolsModal({ visible, onClose }: MonkeToolsModalProps) {
 
             <View style={[styles.settingRow, !notificationsEnabled && styles.settingRowDisabled]}>
               <View style={styles.settingInfo}>
-                <Text style={styles.settingTitle}>@Mentions only</Text>
+                <Text style={styles.settingTitle}>{t("monkeToolsModal.mentionsOnlyTitle")}</Text>
                 <Text style={styles.settingDesc}>
-                  Only notify when someone @mentions your username
+                  {t("monkeToolsModal.mentionsOnlyDesc")}
                 </Text>
               </View>
               <Switch
@@ -163,9 +165,9 @@ export function MonkeToolsModal({ visible, onClose }: MonkeToolsModalProps) {
 
             <View style={styles.settingRow}>
               <View style={styles.settingInfo}>
-                <Text style={styles.settingTitle}>Bot notifications</Text>
+                <Text style={styles.settingTitle}>{t("monkeToolsModal.botNotificationsTitle")}</Text>
                 <Text style={styles.settingDesc}>
-                  Alerts from AI Agent (trade signals, announcements)
+                  {t("monkeToolsModal.botNotificationsDesc")}
                 </Text>
               </View>
               <Switch
@@ -179,11 +181,11 @@ export function MonkeToolsModal({ visible, onClose }: MonkeToolsModalProps) {
 
           {/* Push Token */}
           <Text style={[styles.sectionLabel, styles.sectionLabelSpaced]}>
-            Push Token
+            {t("monkeToolsModal.pushToken")}
           </Text>
           <View style={styles.tokenCard}>
             <Text style={styles.tokenText} numberOfLines={2} selectable>
-              {expoPushToken ?? "Not registered yet"}
+              {expoPushToken ?? t("monkeToolsModal.notRegisteredYet")}
             </Text>
             <View style={styles.tokenButtons}>
               {expoPushToken && (
@@ -191,17 +193,17 @@ export function MonkeToolsModal({ visible, onClose }: MonkeToolsModalProps) {
                   style={styles.tokenBtn}
                   onPress={async () => {
                     await Clipboard.setStringAsync(expoPushToken);
-                    toast.success("Copied to clipboard");
+                    toast.success(t("monkeToolsModal.copiedToClipboard"));
                   }}
                 >
-                  <Text style={styles.tokenBtnText}>Copy</Text>
+                  <Text style={styles.tokenBtnText}>{t("monkeToolsModal.copy")}</Text>
                 </Pressable>
               )}
               <Pressable style={styles.tokenBtn} onPress={handleRefreshToken}>
-                <Text style={styles.tokenBtnText}>Refresh</Text>
+                <Text style={styles.tokenBtnText}>{t("monkeToolsModal.refresh")}</Text>
               </Pressable>
               <Pressable style={[styles.tokenBtn, { borderColor: THEME.accent }]} onPress={handleTestNotification}>
-                <Text style={styles.tokenBtnText}>Test (press Home!)</Text>
+                <Text style={styles.tokenBtnText}>{t("monkeToolsModal.testPressHome")}</Text>
               </Pressable>
             </View>
           </View>

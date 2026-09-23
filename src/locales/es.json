@@ -519,5 +519,29 @@
     "purposePlaceholder": "¿De qué trata este evento?",
     "createAndBroadcast": "Crear y Transmitir",
     "hint": "El evento se compartirá con todos los miembros del chat vía XMTP."
+  },
+  "monkeToolsModal": {
+    "tokenRefreshed": "Token actualizado",
+    "failed": "Error",
+    "pushTokenError": "No se pudo obtener el token push. Revisa los permisos de notificaciones.",
+    "title": "Monke Tools",
+    "ecosystem": "Ecosistema",
+    "notifications": "Notificaciones",
+    "notSeeingAlertsTitle": "¿No ves las alertas emergentes?",
+    "notSeeingAlertsDescPart1": "Toca para abrir Configuración de Notificaciones → cambia la importancia a",
+    "notSeeingAlertsDescPart2": "para banners emergentes.",
+    "urgent": "Urgente",
+    "enableNotifications": "Activar notificaciones",
+    "enableNotificationsDesc": "Recibe avisos de mensajes nuevos en todos los chats",
+    "mentionsOnlyTitle": "Solo @Menciones",
+    "mentionsOnlyDesc": "Solo notificar cuando alguien @menciona tu nombre de usuario",
+    "botNotificationsTitle": "Notificaciones del bot",
+    "botNotificationsDesc": "Alertas de AI Agent (señales de trading, anuncios)",
+    "pushToken": "Token Push",
+    "notRegisteredYet": "Aún no registrado",
+    "copiedToClipboard": "Copiado al portapapeles",
+    "copy": "Copiar",
+    "refresh": "Actualizar",
+    "testPressHome": "Probar (¡presiona Inicio!)"
   }
 }
