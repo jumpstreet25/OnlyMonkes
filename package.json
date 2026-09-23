@@ -42,7 +42,7 @@
     "test:coverage": "jest --coverage",
     "e2e:build": "detox build --configuration android.emu.debug",
     "e2e:test": "detox test --configuration android.emu.debug",
-    "eas-build-pre-install": "if [ -n \"$GOOGLE_SERVICES_JSON\" ] && [ -f \"$GOOGLE_SERVICES_JSON\" ]; then cp \"$GOOGLE_SERVICES_JSON\" android/app/google-services.json && echo \"[eas-build-pre-install] google-services.json restored from secret\"; else echo \"[eas-build-pre-install] no GOOGLE_SERVICES_JSON env var or file missing (local build)\"; fi"
+    "eas-build-pre-install": "if [ -n \"$GOOGLE_SERVICES_JSON\" ] && [ -f \"$GOOGLE_SERVICES_JSON\" ]; then cp \"$GOOGLE_SERVICES_JSON\" android/app/google-services.json && echo \"[eas-build-pre-install] google-services.json restored from secret\"; else echo \"[eas-build-pre-install] no GOOGLE_SERVICES_JSON env var or file missing (local build)\"; fi; rm -f bun.lock && echo \"[eas-build-pre-install] removed bun.lock so EAS falls back to package-lock.json/npm (packageManager field alone is documented-unreliable in EAS Build -- github.com/expo/eas-cli/issues/2658 -- this hook only runs inside the ephemeral EAS build container, never touches the local repo)\""
   },
   "dependencies": {
     "@gorhom/bottom-sheet": "^5.2.14",
