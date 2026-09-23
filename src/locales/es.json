@@ -692,5 +692,14 @@
     "both": "Ambos",
     "save": "Guardar",
     "copy": "Copiar"
+  },
+  "livePnlCard": {
+    "livePosition": "Posición en Vivo",
+    "live": "EN VIVO",
+    "closingToken": "Cerrando ${{token}}…",
+    "closeFailed": "Error al cerrar",
+    "closingEllipsis": "Cerrando…",
+    "tapAgainToConfirm": "Toca de nuevo para confirmar — cerrar ${{token}}",
+    "closePosition": "🔻 Cerrar Posición"
   }
 }

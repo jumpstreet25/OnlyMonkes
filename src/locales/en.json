@@ -692,5 +692,14 @@
     "both": "Both",
     "save": "Save",
     "copy": "Copy"
+  },
+  "livePnlCard": {
+    "livePosition": "Live Position",
+    "live": "LIVE",
+    "closingToken": "Closing ${{token}}…",
+    "closeFailed": "Close failed",
+    "closingEllipsis": "Closing…",
+    "tapAgainToConfirm": "Tap again to confirm — close ${{token}}",
+    "closePosition": "🔻 Close Position"
   }
 }
