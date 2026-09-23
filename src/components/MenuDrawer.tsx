@@ -33,6 +33,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { showGlassAlert } from "@/lib/glassAlert";
+import { useTranslation } from "react-i18next";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Slider from "@react-native-community/slider";
 import { router } from "expo-router";
@@ -74,18 +75,6 @@ const BOT_USERNAME = "AI Agent #9385";
 
 type ActiveView = "list" | "alerts" | "events" | "images" | "links" | "settings" | "tools" | "leaderboard";
 
-const VIEW_TITLES: Record<ActiveView, string> = {
-  list:        "Community",
-  alerts:      "AI Agent Alerts",
-  events:      "Events",
-  images:      "Shared Images",
-  links:       "Shared Links",
-  settings:    "App Settings",
-  tools:       "Monke Tools",
-  /** Empty — LeaderboardView owns the "TOP TRADERS" title so it sits flush under Back. */
-  leaderboard: "",
-};
-
 
 const TOOLS = [
   { name: "MonkeExplorer", url: "https://explorer.sagamonkes.com", icon: "🔭" },
@@ -117,6 +106,18 @@ interface SharedLink {
 }
 
 export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onStartVideo, onSearch, onPressUser, broadcastProfile, onDevTip, onEditProfile, onSwitchPfp }: MenuDrawerProps) {
+  const { t } = useTranslation();
+  const VIEW_TITLES: Record<ActiveView, string> = {
+    list:        t("menuDrawer.community"),
+    alerts:      t("menuDrawer.aiAgentAlerts"),
+    events:      t("menuDrawer.events"),
+    images:      t("menuDrawer.sharedImages"),
+    links:       t("menuDrawer.sharedLinks"),
+    settings:    t("menuDrawer.appSettings"),
+    tools:       t("menuDrawer.monkeTools"),
+    /** Empty — LeaderboardView owns the "TOP TRADERS" title so it sits flush under Back. */
+    leaderboard: "",
+  };
   const { width: SCREEN_WIDTH } = useWindowDimensions();
   const { messages } = useChatStore();
   const calendarEvents = useAppStore(s => s.calendarEvents);
@@ -296,9 +297,9 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
     const token = await registerForPushNotifications();
     if (token) {
       setExpoPushToken(token);
-      showGlassAlert("Token refreshed", token);
+      showGlassAlert(t("menuDrawer.tokenRefreshed"), token);
     } else {
-      showGlassAlert("Failed", "Could not get push token. Check notification permissions.");
+      showGlassAlert(t("menuDrawer.failed"), t("menuDrawer.pushTokenError"));
     }
   }
 
@@ -484,18 +485,18 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
               onPress={() => setActiveView("list")}
               style={styles.backBtn}
               hitSlop={10}
-              accessibilityLabel="Go back"
+              accessibilityLabel={t("menuDrawer.goBack")}
               accessibilityRole="button"
             >
               <Text style={styles.backIcon}>‹</Text>
-              <Text style={styles.backLabel}>Back</Text>
+              <Text style={styles.backLabel}>{t("menuDrawer.back")}</Text>
             </Pressable>
             {VIEW_TITLES[activeView] ? (
               <Text style={styles.subViewTitle}>{VIEW_TITLES[activeView]}</Text>
             ) : (
               <View style={styles.subViewTitleSpacer} />
             )}
-            <Pressable onPress={onClose} style={styles.closeBtn} hitSlop={10} accessibilityLabel="Close menu" accessibilityRole="button">
+            <Pressable onPress={onClose} style={styles.closeBtn} hitSlop={10} accessibilityLabel={t("menuDrawer.closeMenu")} accessibilityRole="button">
               <Text style={styles.closeIcon}>✕</Text>
             </Pressable>
           </View>
@@ -531,9 +532,9 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                   {worldId ? <WorldGlassFill worldId={worldId} blur={false} /> : null}
                   <View style={styles.bananaHeader}>
                     <Text style={styles.bananaTitle}>
-                      Daily Streak{" "}
+                      {t("menuDrawer.dailyStreak")}{" "}
                       <Text style={{ fontSize: 11, fontFamily: FONTS.mono, color: canClaim ? "#22c55e" : THEME.textMuted }}>
-                        {canClaim ? "Ready!" : `${hrsLeft}h ${minsLeft}m`}
+                        {canClaim ? t("menuDrawer.ready") : t("menuDrawer.hoursMinsLeft", { hrs: hrsLeft, mins: minsLeft })}
                       </Text>
                     </Text>
                     {/* Banana balance pill — Skia banana + count (v39).
@@ -566,7 +567,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                   >
                     {worldId ? <WorldGlassFill worldId={worldId} blur={false} showHighlight={false} /> : null}
                     <MenuIcon name="cart" size={16} color={iconAccent} />
-                    <Text style={styles.shopBtnText}>Banana Shop</Text>
+                    <Text style={styles.shopBtnText}>{t("menuDrawer.bananaShop")}</Text>
                   </Pressable>
                 </View>
                 );
@@ -583,7 +584,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                 <MenuIcon name="search" size={16} color={iconAccent} />
                 <TextInput
                   style={styles.searchInput}
-                  placeholder="Search messages…"
+                  placeholder={t("menuDrawer.searchMessages")}
                   placeholderTextColor={THEME.textFaint}
                   value={searchText}
                   onChangeText={setSearchText}
@@ -602,27 +603,27 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
               {/* (v36 2026-05-09) Single combined "Menu" section. Bot
                   channel grid removed — already accessible from the main
                   chat bottom toolbar. Community + Tools merged. */}
-              <Text style={[styles.navSectionLabel, worldId ? { color: iconAccent } : null]}>Menu</Text>
+              <Text style={[styles.navSectionLabel, worldId ? { color: iconAccent } : null]}>{t("menuDrawer.menu")}</Text>
               <View style={styles.gridContainer}>
                 <GridButton
                   iconName="leaderboard"
-                  label="Leaderboard"
+                  label={t("menuDrawer.leaderboard")}
                   onPress={() => setActiveView("leaderboard")}
                 />
                 <GridButton
                   iconName="events"
-                  label="Events"
+                  label={t("menuDrawer.events")}
                   badge={communityBadges.events || undefined}
                   onPress={() => { clearCommunityBadge('events'); setActiveView("events"); }}
                 />
                 <GridButton
                   iconName="images"
-                  label="Images"
+                  label={t("menuDrawer.images")}
                   onPress={() => setActiveView("images")}
                 />
                 <GridButton
                   iconName="links"
-                  label="Links"
+                  label={t("menuDrawer.links")}
                   badge={communityBadges.links || undefined}
                   onPress={() => { clearCommunityBadge('links'); setActiveView("links"); }}
                 />
@@ -633,7 +634,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                 />
                 <GridButton
                   iconName="portfolio"
-                  label="Portfolio"
+                  label={t("menuDrawer.portfolio")}
                   onPress={() => { onClose(); setTimeout(() => router.push('/portfolio' as any), 300); }}
                 />
                 <GridButton
@@ -643,27 +644,27 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                 />
                 <GridButton
                   iconName="watchlist"
-                  label="Watchlist"
+                  label={t("menuDrawer.watchlist")}
                   onPress={() => { onClose(); setTimeout(() => router.push('/watchlist' as any), 300); }}
                 />
                 <GridButton
                   iconName="globe"
-                  label="Globe"
+                  label={t("menuDrawer.globe")}
                   onPress={() => { onClose(); setTimeout(() => router.push('/globe' as any), 300); }}
                 />
                 <GridButton
                   iconName="monketools"
-                  label="Monke Tools"
+                  label={t("menuDrawer.monkeTools")}
                   onPress={() => setActiveView("tools")}
                 />
                 <GridButton
                   iconName="settings"
-                  label="Settings"
+                  label={t("menuDrawer.settings")}
                   onPress={() => { onClose(); setTimeout(() => router.push('/settings' as any), 300); }}
                 />
                 <GridButton
                   iconName="tombstone"
-                  label="Memorial"
+                  label={t("menuDrawer.memorial")}
                   onPress={() => { onClose(); setTimeout(() => router.push('/memorial' as any), 300); }}
                 />
                 {isSuperAdmin && (
@@ -708,10 +709,10 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
           {activeView === "alerts" && (
             <>
               <Text style={styles.sectionLabel}>
-                Alerts · {agentAlerts.length}
+                {t("menuDrawer.alertsCount", { count: agentAlerts.length })}
               </Text>
               {agentAlerts.length === 0 ? (
-                <Text style={styles.emptyText}>No alerts from AI Agent yet.</Text>
+                <Text style={styles.emptyText}>{t("menuDrawer.noAlertsYet")}</Text>
               ) : (
                 [...agentAlerts].reverse().map((msg) => (
                   <View key={msg.id} style={styles.alertRow}>
@@ -730,18 +731,18 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
           {activeView === "events" && (
             <>
               <View style={styles.eventsHeader}>
-                <Text style={styles.sectionLabel}>Community Events</Text>
+                <Text style={styles.sectionLabel}>{t("menuDrawer.communityEvents")}</Text>
                 {onCreateEvent && (
                   <Pressable
                     style={styles.createEventBtn}
                     onPress={() => { onClose(); setTimeout(onCreateEvent, 300); }}
                   >
-                    <Text style={styles.createEventText}>+ Add Event</Text>
+                    <Text style={styles.createEventText}>{t("menuDrawer.addEvent")}</Text>
                   </Pressable>
                 )}
               </View>
               {sortedEvents.length === 0 ? (
-                <Text style={styles.emptyText}>No community events yet. Tap + Add Event to create one.</Text>
+                <Text style={styles.emptyText}>{t("menuDrawer.noCommunityEvents")}</Text>
               ) : (
                 sortedEvents.map((evt) => {
                   // Show "Go Live" for OnlyMonkes events whose start time has passed (within 2h)
@@ -767,14 +768,14 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                         {evt.time ? <Text style={styles.eventMeta}>{evt.time}{evt.location ? ` · ${evt.location}` : ""}</Text> : null}
                         {evt.purpose ? <Text style={styles.eventPurpose} numberOfLines={2}>{evt.purpose}</Text> : null}
                         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                          <Text style={styles.eventCreator}>by {evt.creatorUsername ?? getCachedProfile(evt.creatorInboxId)?.username ?? 'Monke'}</Text>
+                          <Text style={styles.eventCreator}>{t("menuDrawer.eventBy", { name: evt.creatorUsername ?? getCachedProfile(evt.creatorInboxId)?.username ?? t("chatInput.monke") })}</Text>
                           {evt.creatorInboxId === myInboxId && (
                             <Pressable
                               hitSlop={8}
                               onPress={() => {
-                                showGlassAlert("Delete Event", `Remove "${evt.title}"?`, [
-                                  { text: "Cancel", style: "cancel" },
-                                  { text: "Delete", style: "destructive", onPress: async () => {
+                                showGlassAlert(t("menuDrawer.deleteEventTitle"), t("menuDrawer.deleteEventBody", { title: evt.title }), [
+                                  { text: t("menuDrawer.cancel"), style: "cancel" },
+                                  { text: t("menuDrawer.delete"), style: "destructive", onPress: async () => {
                                     const { deleteEvent } = await import("@/lib/calendar");
                                     await deleteEvent(evt.id);
                                     const { loadEvents } = await import("@/lib/calendar");
@@ -784,7 +785,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                                 ]);
                               }}
                             >
-                              <Text style={{ fontFamily: FONTS.mono, fontSize: 10, color: THEME.error }}>Delete</Text>
+                              <Text style={{ fontFamily: FONTS.mono, fontSize: 10, color: THEME.error }}>{t("menuDrawer.delete")}</Text>
                             </Pressable>
                           )}
                         </View>
@@ -794,7 +795,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                             onPress={() => { onClose(); onStartLive(); }}
                           >
                             <View style={styles.startLiveDot} />
-                            <Text style={styles.startLiveBtnText}>Start Live Audio Chat</Text>
+                            <Text style={styles.startLiveBtnText}>{t("menuDrawer.startLiveAudioChat")}</Text>
                           </Pressable>
                         )}
                         {isLive && onStartVideo && (
@@ -802,7 +803,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                             style={({ pressed }) => [styles.startLiveBtn, { marginTop: 6, backgroundColor: '#0096C7' }, pressed && { opacity: 0.75 }]}
                             onPress={() => { onClose(); onStartVideo(); }}
                           >
-                            <Text style={styles.startLiveBtnText}>Start Video Call</Text>
+                            <Text style={styles.startLiveBtnText}>{t("menuDrawer.startVideoCall")}</Text>
                           </Pressable>
                         )}
                       </View>
@@ -813,7 +814,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
 
               {/* ── Solana Ecosystem (Lu.ma) ─────────────────────────────── */}
               <View style={[styles.eventsHeader, { marginTop: 18 }]}>
-                <Text style={styles.sectionLabel}>🌐 Solana Ecosystem</Text>
+                <Text style={styles.sectionLabel}>🌐 {t("menuDrawer.solanaEcosystem")}</Text>
               </View>
               {solanaEventsLoading ? (
                 <View style={{ paddingVertical: 12, alignItems: "center" }}>
@@ -821,7 +822,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                 </View>
               ) : solanaEvents.length === 0 ? (
                 <Text style={styles.emptyText}>
-                  No upcoming Solana events. Pulled from Lu.ma every 6h.
+                  {t("menuDrawer.noUpcomingSolanaEvents")}
                 </Text>
               ) : (
                 solanaEvents.map((evt) => {
@@ -840,7 +841,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                       <View style={styles.eventInfo}>
                         <Text style={styles.eventTitle} numberOfLines={1}>{evt.name}</Text>
                         <Text style={styles.eventMeta}>{timeStr}{evt.location ? ` · ${evt.location}` : ""}</Text>
-                        <Text style={styles.eventCreator}>via Lu.ma · tap to open</Text>
+                        <Text style={styles.eventCreator}>{t("menuDrawer.viaLuma")}</Text>
                       </View>
                     </Pressable>
                   );
@@ -859,9 +860,9 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
           {/* ── Shared Images ───────────────────────────────────────────────── */}
           {activeView === "images" && (
             <>
-              <Text style={styles.sectionLabel}>Shared Media · {sharedMedia.length}</Text>
+              <Text style={styles.sectionLabel}>{t("menuDrawer.sharedMediaCount", { count: sharedMedia.length })}</Text>
               {sharedMedia.length === 0 ? (
-                <Text style={styles.emptyText}>No images, GIFs or videos shared yet.</Text>
+                <Text style={styles.emptyText}>{t("menuDrawer.noMediaYet")}</Text>
               ) : (
                 [...sharedMedia].reverse().map((msg) => {
                   const isVideo = msg.content.startsWith("VIDEO:");
@@ -877,7 +878,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                       />
                       <View style={styles.mediaInfo}>
                         <Text style={styles.mediaSender}>
-                          {getCachedProfile(msg.senderAddress)?.username ?? msg.senderUsername ?? 'Monke'}
+                          {getCachedProfile(msg.senderAddress)?.username ?? msg.senderUsername ?? t("chatInput.monke")}
                         </Text>
                         <Text style={styles.mediaTime}>{formatRelative(msg.sentAt)}</Text>
                       </View>
@@ -892,10 +893,10 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
           {activeView === "links" && (
             <>
               <Text style={styles.sectionLabel}>
-                Shared Links · {sharedLinks.length}
+                {t("menuDrawer.sharedLinksCount", { count: sharedLinks.length })}
               </Text>
               {sharedLinks.length === 0 ? (
-                <Text style={styles.emptyText}>No links shared in chat yet.</Text>
+                <Text style={styles.emptyText}>{t("menuDrawer.noLinksYet")}</Text>
               ) : (
                 sharedLinks.map((link, i) => (
                   <Pressable
@@ -920,16 +921,16 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
           {/* ── App Settings ─────────────────────────────────────────────────── */}
           {activeView === "settings" && (
             <>
-              <Text style={styles.sectionLabel}>Notifications</Text>
+              <Text style={styles.sectionLabel}>{t("menuDrawer.notifications")}</Text>
 
               {Platform.OS === "android" && (
                 <Pressable style={styles.fixBanner} onPress={() => Linking.openSettings()}>
                   <Text style={styles.fixBannerIcon}>🔔</Text>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.fixBannerTitle}>Not seeing popup alerts?</Text>
+                    <Text style={styles.fixBannerTitle}>{t("menuDrawer.notSeeingAlertsTitle")}</Text>
                     <Text style={styles.fixBannerDesc}>
-                      Tap to open Notification Settings → set importance to{" "}
-                      <Text style={{ color: THEME.accent }}>Urgent</Text> for heads-up banners.
+                      {t("menuDrawer.notSeeingAlertsDescPart1")}{" "}
+                      <Text style={{ color: THEME.accent }}>{t("menuDrawer.urgent")}</Text> {t("menuDrawer.notSeeingAlertsDescPart2")}
                     </Text>
                   </View>
                   <Text style={styles.chevron}>›</Text>
@@ -939,8 +940,8 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
               <View style={styles.settingsCard}>
                 <View style={styles.settingRow}>
                   <View style={styles.settingInfo}>
-                    <Text style={styles.settingTitle}>Enable notifications</Text>
-                    <Text style={styles.settingDesc}>Get notified for new messages in all chats</Text>
+                    <Text style={styles.settingTitle}>{t("menuDrawer.enableNotifications")}</Text>
+                    <Text style={styles.settingDesc}>{t("menuDrawer.enableNotificationsDesc")}</Text>
                   </View>
                   <Switch
                     value={notificationsEnabled}
@@ -952,8 +953,8 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                 <View style={styles.settingDivider} />
                 <View style={[styles.settingRow, !notificationsEnabled && styles.settingRowDisabled]}>
                   <View style={styles.settingInfo}>
-                    <Text style={styles.settingTitle}>@Mentions only</Text>
-                    <Text style={styles.settingDesc}>Only notify when someone @mentions you</Text>
+                    <Text style={styles.settingTitle}>{t("menuDrawer.mentionsOnlyTitle")}</Text>
+                    <Text style={styles.settingDesc}>{t("menuDrawer.mentionsOnlyDesc")}</Text>
                   </View>
                   <Switch
                     value={mentionsOnly}
@@ -966,8 +967,8 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                 <View style={styles.settingDivider} />
                 <View style={styles.settingRow}>
                   <View style={styles.settingInfo}>
-                    <Text style={styles.settingTitle}>Bot notifications</Text>
-                    <Text style={styles.settingDesc}>Alerts from AI Agent (trade signals)</Text>
+                    <Text style={styles.settingTitle}>{t("menuDrawer.botNotificationsTitle")}</Text>
+                    <Text style={styles.settingDesc}>{t("menuDrawer.botNotificationsDesc")}</Text>
                   </View>
                   <Switch
                     value={botNotificationsEnabled}
@@ -979,8 +980,8 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                 <View style={styles.settingDivider} />
                 <View style={styles.settingRow}>
                   <View style={styles.settingInfo}>
-                    <Text style={styles.settingTitle}>DM notifications</Text>
-                    <Text style={styles.settingDesc}>Push alerts for direct messages</Text>
+                    <Text style={styles.settingTitle}>{t("menuDrawer.dmNotificationsTitle")}</Text>
+                    <Text style={styles.settingDesc}>{t("menuDrawer.dmNotificationsDesc")}</Text>
                   </View>
                   <Switch
                     value={dmNotificationsEnabled}
@@ -992,8 +993,8 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                 <View style={styles.settingDivider} />
                 <View style={styles.settingRow}>
                   <View style={styles.settingInfo}>
-                    <Text style={styles.settingTitle}>Live room alerts</Text>
-                    <Text style={styles.settingDesc}>Notify when a live audio room starts</Text>
+                    <Text style={styles.settingTitle}>{t("menuDrawer.liveRoomAlertsTitle")}</Text>
+                    <Text style={styles.settingDesc}>{t("menuDrawer.liveRoomAlertsDesc")}</Text>
                   </View>
                   <Switch
                     value={liveRoomNotificationsEnabled}
@@ -1005,7 +1006,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
               </View>
 
               {/* ── Per-Bot-Channel Mutes ──────────────────────────────── */}
-              <Text style={[styles.sectionLabel, { marginTop: 20 }]}>Bot Channel Alerts</Text>
+              <Text style={[styles.sectionLabel, { marginTop: 20 }]}>{t("menuDrawer.botChannelAlerts")}</Text>
               <View style={styles.settingsCard}>
                 {(["trades"] as const).map((ch, i) => (
                   <React.Fragment key={ch}>
@@ -1014,7 +1015,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                       <View style={styles.settingInfo}>
                         <Text style={styles.settingTitle}>{ch.charAt(0).toUpperCase() + ch.slice(1)}</Text>
                         <Text style={styles.settingDesc}>
-                          {mutedBotChannels[ch] ? "Muted — no push alerts" : "Push alerts enabled"}
+                          {mutedBotChannels[ch] ? t("menuDrawer.mutedNoAlerts") : t("menuDrawer.pushAlertsEnabled")}
                         </Text>
                       </View>
                       <Switch
@@ -1029,12 +1030,12 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
               </View>
 
               {/* ── Chat Theme ────────────────────────────────────────── */}
-              <Text style={[styles.sectionLabel, { marginTop: 20 }]}>Chat Theme</Text>
+              <Text style={[styles.sectionLabel, { marginTop: 20 }]}>{t("menuDrawer.chatTheme")}</Text>
               {shopThemeActive && (
                 <View style={styles.shopThemeBanner}>
                   <Text style={styles.shopThemeBannerIcon}>🍌</Text>
                   <Text style={styles.shopThemeBannerText}>
-                    Banana Shop theme is active — unequip it to use these
+                    {t("menuDrawer.shopThemeActiveBanner")}
                   </Text>
                 </View>
               )}
@@ -1077,7 +1078,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                 })}
               </ScrollView>
 
-              <Text style={[styles.sectionLabel, { marginTop: 20 }]}>Text Size</Text>
+              <Text style={[styles.sectionLabel, { marginTop: 20 }]}>{t("menuDrawer.textSize")}</Text>
               <View style={styles.settingsCard}>
                 <View style={styles.settingRow}>
                   <Text style={[styles.settingTitle, { fontSize: 12 }]}>A</Text>
@@ -1096,14 +1097,14 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                   <Text style={[styles.settingTitle, { fontSize: 20 }]}>A</Text>
                 </View>
                 <Text style={[styles.settingDesc, { textAlign: "center", marginTop: 4 }]}>
-                  Adjusts message text size ({Math.round((useAppStore.getState().textScale ?? 1) * 100)}%)
+                  {t("menuDrawer.textSizeDesc", { pct: Math.round((useAppStore.getState().textScale ?? 1) * 100) })}
                 </Text>
               </View>
 
-              <Text style={[styles.sectionLabel, { marginTop: 20 }]}>Push Token</Text>
+              <Text style={[styles.sectionLabel, { marginTop: 20 }]}>{t("menuDrawer.pushToken")}</Text>
               <View style={styles.tokenCard}>
                 <Text style={styles.tokenText} numberOfLines={2} selectable>
-                  {expoPushToken ?? "Not registered yet"}
+                  {expoPushToken ?? t("menuDrawer.notRegisteredYet")}
                 </Text>
                 <View style={styles.tokenButtons}>
                   {expoPushToken && (
@@ -1111,32 +1112,32 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                       style={styles.tokenBtn}
                       onPress={async () => {
                         await Clipboard.setStringAsync(expoPushToken);
-                        toast.success("Copied to clipboard");
+                        toast.success(t("menuDrawer.copiedToClipboard"));
                       }}
                     >
-                      <Text style={styles.tokenBtnText}>Copy</Text>
+                      <Text style={styles.tokenBtnText}>{t("menuDrawer.copy")}</Text>
                     </Pressable>
                   )}
                   <Pressable style={styles.tokenBtn} onPress={handleRefreshToken}>
-                    <Text style={styles.tokenBtnText}>Refresh</Text>
+                    <Text style={styles.tokenBtnText}>{t("menuDrawer.refresh")}</Text>
                   </Pressable>
                   <Pressable style={[styles.tokenBtn, { borderColor: THEME.accent }]} onPress={handleTestNotification}>
-                    <Text style={styles.tokenBtnText}>Test (press Home!)</Text>
+                    <Text style={styles.tokenBtnText}>{t("menuDrawer.testPressHome")}</Text>
                   </Pressable>
                 </View>
               </View>
 
               {/* ── Account Recovery ──────────────────────────────────── */}
-              <Text style={[styles.sectionLabel, { marginTop: 20 }]}>Account Recovery</Text>
+              <Text style={[styles.sectionLabel, { marginTop: 20 }]}>{t("menuDrawer.accountRecovery")}</Text>
               <View style={styles.settingsCard}>
                 <Pressable
                   style={styles.settingRow}
                   onPress={() => setReclaimOpen(true)}
                 >
                   <View style={styles.settingInfo}>
-                    <Text style={styles.settingTitle}>Restore from previous device</Text>
+                    <Text style={styles.settingTitle}>{t("menuDrawer.restoreFromPreviousDevice")}</Text>
                     <Text style={styles.settingDesc}>
-                      Sign with your wallet to recover bananas, shop items, marketplace history, and your hot wallet.
+                      {t("menuDrawer.restoreFromPreviousDeviceDesc")}
                     </Text>
                   </View>
                   <Text style={styles.chevron}>›</Text>
@@ -1147,24 +1148,24 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                   onPress={() => setResetIdentityOpen(true)}
                 >
                   <View style={styles.settingInfo}>
-                    <Text style={styles.settingTitle}>Reset chat identity</Text>
+                    <Text style={styles.settingTitle}>{t("menuDrawer.resetChatIdentity")}</Text>
                     <Text style={styles.settingDesc}>
-                      Last resort when the bot never sees your DMs. Signs a new identity for this wallet only.
+                      {t("menuDrawer.resetChatIdentityDesc")}
                     </Text>
                   </View>
                   <Text style={styles.chevron}>›</Text>
                 </Pressable>
               </View>
 
-              <Text style={[styles.sectionLabel, { marginTop: 20 }]}>Legal</Text>
+              <Text style={[styles.sectionLabel, { marginTop: 20 }]}>{t("menuDrawer.legal")}</Text>
               <View style={styles.settingsCard}>
                 <Pressable
                   style={styles.settingRow}
                   onPress={() => Linking.openURL("https://onlymonkes-actions.jumpstreet25.workers.dev/terms")}
                 >
                   <View style={styles.settingInfo}>
-                    <Text style={styles.settingTitle}>Terms of Use & EULA</Text>
-                    <Text style={styles.settingDesc}>End-user license agreement and terms of use</Text>
+                    <Text style={styles.settingTitle}>{t("menuDrawer.termsOfUse")}</Text>
+                    <Text style={styles.settingDesc}>{t("menuDrawer.termsOfUseDesc")}</Text>
                   </View>
                   <Text style={styles.chevron}>›</Text>
                 </Pressable>
@@ -1174,8 +1175,8 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                   onPress={() => Linking.openURL("https://onlymonkes-actions.jumpstreet25.workers.dev/privacy")}
                 >
                   <View style={styles.settingInfo}>
-                    <Text style={styles.settingTitle}>Privacy Policy</Text>
-                    <Text style={styles.settingDesc}>What we collect, how it's stored, your rights</Text>
+                    <Text style={styles.settingTitle}>{t("menuDrawer.privacyPolicy")}</Text>
+                    <Text style={styles.settingDesc}>{t("menuDrawer.privacyPolicyDesc")}</Text>
                   </View>
                   <Text style={styles.chevron}>›</Text>
                 </Pressable>
@@ -1185,8 +1186,8 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                   onPress={() => Linking.openURL("https://onlymonkes-actions.jumpstreet25.workers.dev/copyright")}
                 >
                   <View style={styles.settingInfo}>
-                    <Text style={styles.settingTitle}>Copyright & DMCA</Text>
-                    <Text style={styles.settingDesc}>Copyright notice and DMCA takedown procedure</Text>
+                    <Text style={styles.settingTitle}>{t("menuDrawer.copyrightDmca")}</Text>
+                    <Text style={styles.settingDesc}>{t("menuDrawer.copyrightDmcaDesc")}</Text>
                   </View>
                   <Text style={styles.chevron}>›</Text>
                 </Pressable>
@@ -1202,7 +1203,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
           {/* ── Monke Tools ──────────────────────────────────────────────────── */}
           {activeView === "tools" && (
             <>
-              <Text style={styles.sectionLabel}>Ecosystem</Text>
+              <Text style={styles.sectionLabel}>{t("menuDrawer.ecosystem")}</Text>
               {TOOLS.map((tool, idx) => (
                 <Pressable
                   key={tool.name}
@@ -1233,7 +1234,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
           <View style={{ height: 24 }} />
         </ScrollView>
 
-        <Text style={styles.footerHint}>OnlyMonkes · Saga Monkes holders</Text>
+        <Text style={styles.footerHint}>{t("menuDrawer.footerHint")}</Text>
       </View>
 
       <BananaShopModal visible={shopOpen} onClose={() => setShopOpen(false)} />
@@ -1269,6 +1270,7 @@ function buildSupportLink(amount?: number): string {
 }
 
 function SupportCard({ onDevTip }: { onDevTip?: (amount: number) => void }) {
+  const { t } = useTranslation();
   const [amount, setAmount] = React.useState("10");
   const [sending, setSending] = React.useState(false);
   const amounts = ["5", "10", "25", "50"];
@@ -1288,9 +1290,9 @@ function SupportCard({ onDevTip }: { onDevTip?: (amount: number) => void }) {
 
   return (
     <View style={supportStyles.card}>
-      <Text style={supportStyles.heading}>Help Support OnlyMonkes</Text>
+      <Text style={supportStyles.heading}>{t("menuDrawer.helpSupportOnlyMonkes")}</Text>
       <Text style={supportStyles.sub}>
-        One-tap $SKR tip to the dev wallet 🐒{"\n"}Biometric confirm — never leaves the app.
+        {t("menuDrawer.supportSub")}
       </Text>
 
       <View style={supportStyles.pills}>
@@ -1313,7 +1315,7 @@ function SupportCard({ onDevTip }: { onDevTip?: (amount: number) => void }) {
         disabled={sending}
       >
         <Text style={supportStyles.btnText}>
-          {sending ? "Sending…" : `Send ${amount} $SKR  🐒`}
+          {sending ? t("menuDrawer.sendingEllipsis") : t("menuDrawer.sendSkr", { amount })}
         </Text>
       </Pressable>
 
