@@ -33,6 +33,7 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { showGlassAlert } from "@/lib/glassAlert";
+import { useTranslation } from "react-i18next";
 import { LinearGradient } from "expo-linear-gradient";
 import { SkiaGlowBubble, SkiaGlassFront, SkiaGlowPfp } from "@/components/SkiaGlowBubble";
 import { CyberpunkGlitchBubble } from "@/components/CyberpunkGlitchBubble";
@@ -145,18 +146,19 @@ function parseLivePill(content: string): { type: LivePillType; host: string; roo
 }
 
 function LivePillBubble({ type, host, sentAt, roomId }: { type: LivePillType; host: string; sentAt: Date; roomId: string }) {
+  const { t } = useTranslation();
   const icon = type === "video" ? "📹" : type === "avatar" ? "🐒" : "🎙";
   const label =
-    type === "video" ? "Live Video Chat" :
-    type === "avatar" ? "Avatar Room" :
-    "Live Audio Chat";
+    type === "video" ? t("messageBubble.liveVideoChat") :
+    type === "avatar" ? t("messageBubble.avatarRoom") :
+    t("messageBubble.liveAudioChat");
   const handleJoin = useCallback(async () => {
     const store = useAppStore.getState();
     const { myInboxId, username, activeLiveRoom, activeVideoRoom, activeAvatarRoom } = store;
     if (!myInboxId) return;
     if (!username) {
       // Match start-room UX — join needs a display name for LiveKit
-      showGlassAlert("Set a username first", "Go to your profile and set a username before joining.");
+      showGlassAlert(t("messageBubble.setUsernameFirst"), t("messageBubble.setUsernameFirstBody"));
       return;
     }
     try {
@@ -197,10 +199,10 @@ function LivePillBubble({ type, host, sentAt, roomId }: { type: LivePillType; ho
     } catch (err) {
       console.warn("[LivePill] Join failed:", err);
       try {
-        showGlassAlert("Could not join", (err as Error)?.message ?? "Try again from the banner.");
+        showGlassAlert(t("messageBubble.couldNotJoin"), (err as Error)?.message ?? t("messageBubble.tryAgainFromBanner"));
       } catch { /* ignore */ }
     }
-  }, [type, host, roomId]);
+  }, [type, host, roomId, t]);
 
   return (
     <View style={livePillStyles.container}>
@@ -209,7 +211,7 @@ function LivePillBubble({ type, host, sentAt, roomId }: { type: LivePillType; ho
           <Text style={livePillStyles.icon}>{icon}</Text>
           <View>
             <Text style={livePillStyles.title}>
-              @{host} started a {label}
+              {t("messageBubble.startedA", { host, label })}
             </Text>
             <Text style={livePillStyles.time}>{format(sentAt, "h:mm a")}</Text>
           </View>
@@ -218,7 +220,7 @@ function LivePillBubble({ type, host, sentAt, roomId }: { type: LivePillType; ho
           onPress={handleJoin}
           style={({ pressed }) => [livePillStyles.joinBtn, pressed && { opacity: 0.7 }]}
         >
-          <Text style={livePillStyles.joinText}>JOIN</Text>
+          <Text style={livePillStyles.joinText}>{t("messageBubble.join")}</Text>
         </Pressable>
       </View>
     </View>
@@ -485,6 +487,7 @@ export const MessageBubble = memo(function MessageBubble({
   isLatest,
   isNew,
 }: MessageBubbleProps) {
+  const { t } = useTranslation();
   const verifiedNft = useAppStore(s => s.verifiedNft);
   const myInboxId = useAppStore(s => s.myInboxId);
   const myShopStyles = useAppStore(s => s.shopStyles);
@@ -699,7 +702,7 @@ export const MessageBubble = memo(function MessageBubble({
   // Re-read from cache on every render — use primary inbox ID to merge multi-device users
   const primarySenderInbox = isOwn ? message.senderAddress : getPrimaryInboxId(message.senderAddress);
   const cachedSender = getCachedProfile(primarySenderInbox);
-  const displayName  = cachedSender?.username ?? message.senderUsername ?? 'Monke';
+  const displayName  = cachedSender?.username ?? message.senderUsername ?? t("chatInput.monke");
   const isBot = message.senderUsername === "AI Agent #9385";
   // Bot PFP theme — teal from the bot's pixel art visor/eyes
   const BOT_THEME_COLOR = "#00C9A7";
@@ -886,7 +889,7 @@ export const MessageBubble = memo(function MessageBubble({
               <Text style={[styles.replySender, isOwn && styles.replySenderOwn]}>
                 {getCachedProfile(message.replyTo.senderAddress)?.username ??
                   message.replyTo.senderUsername ??
-                  'Monke'}
+                  t("chatInput.monke")}
               </Text>
               <Text style={styles.replyText} numberOfLines={1}>
                 {message.replyTo.content}
@@ -1091,7 +1094,7 @@ export const MessageBubble = memo(function MessageBubble({
                       <Text style={styles.attachmentIcon}>📎</Text>
                       <View style={{ flex: 1 }}>
                         <Text style={styles.attachmentFilename} numberOfLines={1}>{filename}</Text>
-                        <Text style={styles.attachmentHint}>Tap to open</Text>
+                        <Text style={styles.attachmentHint}>{t("messageBubble.tapToOpen")}</Text>
                       </View>
                     </Pressable>
                   );

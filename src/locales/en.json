@@ -637,5 +637,17 @@
       "normal": "Normal",
       "vivid": "Vivid"
     }
+  },
+  "messageBubble": {
+    "liveVideoChat": "Live Video Chat",
+    "avatarRoom": "Avatar Room",
+    "liveAudioChat": "Live Audio Chat",
+    "setUsernameFirst": "Set a username first",
+    "setUsernameFirstBody": "Go to your profile and set a username before joining.",
+    "couldNotJoin": "Could not join",
+    "tryAgainFromBanner": "Try again from the banner.",
+    "startedA": "@{{host}} started a {{label}}",
+    "join": "JOIN",
+    "tapToOpen": "Tap to open"
   }
 }

@@ -637,5 +637,17 @@
       "normal": "Normal",
       "vivid": "Vívido"
     }
+  },
+  "messageBubble": {
+    "liveVideoChat": "Videochat en Vivo",
+    "avatarRoom": "Sala de Avatar",
+    "liveAudioChat": "Audiochat en Vivo",
+    "setUsernameFirst": "Primero configura un nombre de usuario",
+    "setUsernameFirstBody": "Ve a tu perfil y configura un nombre de usuario antes de unirte.",
+    "couldNotJoin": "No se pudo unir",
+    "tryAgainFromBanner": "Inténtalo de nuevo desde el banner.",
+    "startedA": "@{{host}} inició: {{label}}",
+    "join": "UNIRSE",
+    "tapToOpen": "Toca para abrir"
   }
 }
