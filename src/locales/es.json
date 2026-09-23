@@ -4,6 +4,35 @@
     "languageEnglish": "English",
     "languageSpanish": "Español"
   },
+  "resetIdentity": {
+    "title": "🔄  Restablecer identidad de chat",
+    "idleBody": "Solo si los DMs del bot siguen muertos. Esto crea una nueva bandeja de entrada para ESTA wallet — otros dispositivos conservan la anterior — te vuelve a agregar a Main / Trades / Genesis, y no afecta los fondos de AutonoMonke.",
+    "idleNote": "Tendrás que forzar el cierre y volver a abrir OnlyMonkes cuando termine.",
+    "reset": "Restablecer",
+    "cancel": "Cancelar",
+    "signingIdentity": "Firmando nueva identidad…",
+    "runningNote": "Si tu wallet pide aprobación, toca la notificación para firmar.",
+    "successBody": "✅ Identidad de chat restablecida.",
+    "newInbox": "Nueva bandeja de entrada",
+    "generation": "Generación",
+    "successNote": "Fuerza el cierre y vuelve a abrir OnlyMonkes ahora para terminar.",
+    "done": "Listo",
+    "tryAgain": "Intentar de nuevo",
+    "close": "Cerrar"
+  },
+  "marketplaceFee": {
+    "title": "Acuerdo de Comisión de MonkeMarkets",
+    "bodyPart1": "Se descuenta una ",
+    "feeHighlight": "comisión del 2%",
+    "bodyPart2": " de cada venta en MonkeMarkets (en SKR, en el mismo swap atómico). Ese SKR va a la bóveda de OnlyMonkes — anuncios, propinas y comisiones del mercado que se stakean para pagar el bot y los servidores. Tú recibes el 98%.",
+    "exampleTitle": "Ejemplo",
+    "youListFor": "Listas por",
+    "fee2pct": "Comisión (2%)",
+    "youReceive": "Recibes",
+    "note": "La comisión está integrada en la transacción del swap atómico — el comprador paga el precio publicado y tú recibes el 98%. Sin cargos ocultos.",
+    "decline": "Rechazar",
+    "iUnderstand": "Entendido"
+  },
   "connect": {
     "subtitle": "Chat global exclusivo para poseedores de Saga Monkes.",
     "sagaLink": "¿Qué son los Saga Monkes?",

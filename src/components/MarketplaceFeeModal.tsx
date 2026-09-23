@@ -15,6 +15,7 @@ import {
   Pressable,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useTranslation } from "react-i18next";
 import { GlassModal } from "@/components/GlassModal";
 import { FONTS } from "@/lib/constants";
 
@@ -51,36 +52,33 @@ export default function MarketplaceFeeModal({
   onAccept,
   onDecline,
 }: MarketplaceFeeModalProps) {
+  const { t } = useTranslation();
   return (
     <GlassModal visible={visible} onClose={onDecline}>
-          <Text style={s.title}>MonkeMarkets Fee Agreement</Text>
+          <Text style={s.title}>{t("marketplaceFee.title")}</Text>
 
           <Text style={s.body}>
-            A <Text style={s.highlight}>2% fee</Text> is deducted from every
-            MonkeMarkets sale (in SKR, in the same atomic swap). That SKR goes
-            to the OnlyMonkes vault — ads, tips, and market fees that get
-            staked to pay the bot and servers. You receive 98%.
+            {t("marketplaceFee.bodyPart1")}<Text style={s.highlight}>{t("marketplaceFee.feeHighlight")}</Text>{t("marketplaceFee.bodyPart2")}
           </Text>
 
           <View style={s.exampleBox}>
-            <Text style={s.exampleTitle}>Example</Text>
+            <Text style={s.exampleTitle}>{t("marketplaceFee.exampleTitle")}</Text>
             <View style={s.exampleRow}>
-              <Text style={s.exampleLabel}>You list for</Text>
+              <Text style={s.exampleLabel}>{t("marketplaceFee.youListFor")}</Text>
               <Text style={s.exampleValue}>10 SKR</Text>
             </View>
             <View style={s.exampleRow}>
-              <Text style={s.exampleLabel}>Fee (2%)</Text>
+              <Text style={s.exampleLabel}>{t("marketplaceFee.fee2pct")}</Text>
               <Text style={[s.exampleValue, { color: GOLD }]}>0.2 SKR</Text>
             </View>
             <View style={[s.exampleRow, { borderBottomWidth: 0 }]}>
-              <Text style={s.exampleLabel}>You receive</Text>
+              <Text style={s.exampleLabel}>{t("marketplaceFee.youReceive")}</Text>
               <Text style={[s.exampleValue, { color: OM_BLUE }]}>9.8 SKR</Text>
             </View>
           </View>
 
           <Text style={s.note}>
-            The fee is built into the atomic swap transaction — the buyer pays
-            the listed price and you receive 98%. No hidden charges.
+            {t("marketplaceFee.note")}
           </Text>
 
           <View style={s.buttonRow}>
@@ -88,13 +86,13 @@ export default function MarketplaceFeeModal({
               style={({ pressed }) => [s.btn, s.declineBtn, pressed && s.btnPressed]}
               onPress={onDecline}
             >
-              <Text style={s.declineText}>Decline</Text>
+              <Text style={s.declineText}>{t("marketplaceFee.decline")}</Text>
             </Pressable>
             <Pressable
               style={({ pressed }) => [s.btn, s.acceptBtn, pressed && s.btnPressed]}
               onPress={onAccept}
             >
-              <Text style={s.acceptText}>I Understand</Text>
+              <Text style={s.acceptText}>{t("marketplaceFee.iUnderstand")}</Text>
             </Pressable>
           </View>
     </GlassModal>

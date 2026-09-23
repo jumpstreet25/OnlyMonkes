@@ -4,6 +4,35 @@
     "languageEnglish": "English",
     "languageSpanish": "Español"
   },
+  "resetIdentity": {
+    "title": "🔄  Reset chat identity",
+    "idleBody": "Only if bot DMs stay dead. This mints a new inbox for THIS wallet — other devices keep the old one — re-adds you to Main / Trades / Genesis, and does not touch AutonoMonke funds.",
+    "idleNote": "You'll need to force-close and reopen OnlyMonkes after it finishes.",
+    "reset": "Reset",
+    "cancel": "Cancel",
+    "signingIdentity": "Signing new identity…",
+    "runningNote": "If your wallet asks for approval, tap the notification to sign.",
+    "successBody": "✅ Chat identity reset.",
+    "newInbox": "New inbox",
+    "generation": "Generation",
+    "successNote": "Force-close and reopen OnlyMonkes now to finish.",
+    "done": "Done",
+    "tryAgain": "Try again",
+    "close": "Close"
+  },
+  "marketplaceFee": {
+    "title": "MonkeMarkets Fee Agreement",
+    "bodyPart1": "A ",
+    "feeHighlight": "2% fee",
+    "bodyPart2": " is deducted from every MonkeMarkets sale (in SKR, in the same atomic swap). That SKR goes to the OnlyMonkes vault — ads, tips, and market fees that get staked to pay the bot and servers. You receive 98%.",
+    "exampleTitle": "Example",
+    "youListFor": "You list for",
+    "fee2pct": "Fee (2%)",
+    "youReceive": "You receive",
+    "note": "The fee is built into the atomic swap transaction — the buyer pays the listed price and you receive 98%. No hidden charges.",
+    "decline": "Decline",
+    "iUnderstand": "I Understand"
+  },
   "connect": {
     "subtitle": "Holder-only global chat for Saga Monkes.",
     "sagaLink": "What are Saga Monkes?",

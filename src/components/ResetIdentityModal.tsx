@@ -12,6 +12,7 @@
 
 import React, { useState } from 'react';
 import { View, Text, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { GlassModal } from '@/components/GlassModal';
 import { THEME, FONTS } from '@/lib/constants';
 
@@ -27,6 +28,7 @@ type Phase =
   | { kind: 'error'; message: string };
 
 export function ResetIdentityModal({ visible, onClose }: ResetIdentityModalProps) {
+  const { t } = useTranslation();
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' });
 
   const start = async () => {
@@ -48,23 +50,21 @@ export function ResetIdentityModal({ visible, onClose }: ResetIdentityModalProps
 
   return (
     <GlassModal visible={visible} onClose={close} position="center" animationType="fade">
-      <Text style={styles.title}>🔄  Reset chat identity</Text>
+      <Text style={styles.title}>{t('resetIdentity.title')}</Text>
 
       {phase.kind === 'idle' && (
         <>
           <Text style={styles.body}>
-            Only if bot DMs stay dead. This mints a new inbox for THIS wallet
-            — other devices keep the old one — re-adds you to Main / Trades /
-            Genesis, and does not touch AutonoMonke funds.
+            {t('resetIdentity.idleBody')}
           </Text>
           <Text style={styles.note}>
-            You'll need to force-close and reopen OnlyMonkes after it finishes.
+            {t('resetIdentity.idleNote')}
           </Text>
           <Pressable style={styles.destructiveBtn} onPress={start}>
-            <Text style={styles.destructiveText}>Reset</Text>
+            <Text style={styles.destructiveText}>{t('resetIdentity.reset')}</Text>
           </Pressable>
           <Pressable style={styles.cancelBtn} onPress={close}>
-            <Text style={styles.cancelText}>Cancel</Text>
+            <Text style={styles.cancelText}>{t('resetIdentity.cancel')}</Text>
           </Pressable>
         </>
       )}
@@ -72,25 +72,25 @@ export function ResetIdentityModal({ visible, onClose }: ResetIdentityModalProps
       {phase.kind === 'running' && (
         <>
           <ActivityIndicator color={THEME.gold ?? '#FFD700'} style={{ marginVertical: 20 }} />
-          <Text style={styles.statusText}>Signing new identity…</Text>
+          <Text style={styles.statusText}>{t('resetIdentity.signingIdentity')}</Text>
           <Text style={styles.note}>
-            If your wallet asks for approval, tap the notification to sign.
+            {t('resetIdentity.runningNote')}
           </Text>
         </>
       )}
 
       {phase.kind === 'success' && (
         <>
-          <Text style={styles.body}>✅ Chat identity reset.</Text>
+          <Text style={styles.body}>{t('resetIdentity.successBody')}</Text>
           <View style={styles.summaryBlock}>
-            <SummaryRow label="New inbox" value={`${phase.inboxId.slice(0, 10)}…`} />
-            <SummaryRow label="Generation" value={String(phase.generation)} />
+            <SummaryRow label={t('resetIdentity.newInbox')} value={`${phase.inboxId.slice(0, 10)}…`} />
+            <SummaryRow label={t('resetIdentity.generation')} value={String(phase.generation)} />
           </View>
           <Text style={styles.note}>
-            Force-close and reopen OnlyMonkes now to finish.
+            {t('resetIdentity.successNote')}
           </Text>
           <Pressable style={styles.destructiveBtn} onPress={close}>
-            <Text style={styles.destructiveText}>Done</Text>
+            <Text style={styles.destructiveText}>{t('resetIdentity.done')}</Text>
           </Pressable>
         </>
       )}
@@ -99,10 +99,10 @@ export function ResetIdentityModal({ visible, onClose }: ResetIdentityModalProps
         <>
           <Text style={styles.errorText}>❌ {phase.message}</Text>
           <Pressable style={styles.destructiveBtn} onPress={start}>
-            <Text style={styles.destructiveText}>Try again</Text>
+            <Text style={styles.destructiveText}>{t('resetIdentity.tryAgain')}</Text>
           </Pressable>
           <Pressable style={styles.cancelBtn} onPress={close}>
-            <Text style={styles.cancelText}>Close</Text>
+            <Text style={styles.cancelText}>{t('resetIdentity.close')}</Text>
           </Pressable>
         </>
       )}
