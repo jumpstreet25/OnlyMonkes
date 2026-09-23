@@ -47,12 +47,12 @@ export default function SettingsScreen() {
 
   const handleClearCache = async () => {
     showGlassAlert(
-      "Clear Cache",
-      "This will clear cached images, geocode data, and message cache. Your account, bananas, and purchases are not affected.",
+      t("settings.clearCacheAlertTitle"),
+      t("settings.clearCacheAlertBody"),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: t("settings.cancel"), style: "cancel" },
         {
-          text: "Clear",
+          text: t("settings.clear"),
           style: "destructive",
           onPress: async () => {
             setClearing(true);
@@ -63,7 +63,7 @@ export default function SettingsScreen() {
               ]);
             } catch { /* ignore */ }
             setClearing(false);
-            showGlassAlert("Cache Cleared", "Restart the app for changes to take effect.");
+            showGlassAlert(t("settings.cacheClearedTitle"), t("settings.cacheClearedBody"));
           },
         },
       ]
@@ -74,17 +74,17 @@ export default function SettingsScreen() {
     <WorldScreenShell title="Settings" onBack={() => router.back()}>
       <ScrollView contentContainerStyle={styles.content}>
         {/* Notifications */}
-        <Text style={styles.sectionTitle}>Notifications</Text>
-        <ToggleRow label="All Messages" value={notificationsEnabled} onToggle={setNotificationsEnabled} cardStyle={cardStyle} />
-        <ToggleRow label="Mentions Only" value={mentionsOnly} onToggle={setMentionsOnly} cardStyle={cardStyle} />
-        <ToggleRow label="Bot Alerts" value={botNotificationsEnabled} onToggle={setBotNotificationsEnabled} cardStyle={cardStyle} />
-        <ToggleRow label="DM Notifications" value={dmNotificationsEnabled} onToggle={setDmNotificationsEnabled} cardStyle={cardStyle} />
-        <ToggleRow label="Live Room Alerts" value={liveRoomNotificationsEnabled} onToggle={setLiveRoomNotificationsEnabled} cardStyle={cardStyle} />
+        <Text style={styles.sectionTitle}>{t("settings.notifications")}</Text>
+        <ToggleRow label={t("settings.allMessages")} value={notificationsEnabled} onToggle={setNotificationsEnabled} cardStyle={cardStyle} />
+        <ToggleRow label={t("settings.mentionsOnly")} value={mentionsOnly} onToggle={setMentionsOnly} cardStyle={cardStyle} />
+        <ToggleRow label={t("settings.botAlerts")} value={botNotificationsEnabled} onToggle={setBotNotificationsEnabled} cardStyle={cardStyle} />
+        <ToggleRow label={t("settings.dmNotifications")} value={dmNotificationsEnabled} onToggle={setDmNotificationsEnabled} cardStyle={cardStyle} />
+        <ToggleRow label={t("settings.liveRoomAlerts")} value={liveRoomNotificationsEnabled} onToggle={setLiveRoomNotificationsEnabled} cardStyle={cardStyle} />
 
         {/* Display */}
-        <Text style={[styles.sectionTitle, { marginTop: 24 }]}>Display</Text>
+        <Text style={[styles.sectionTitle, { marginTop: 24 }]}>{t("settings.display")}</Text>
         <View style={[styles.row, cardStyle]}>
-          <Text style={styles.rowLabel}>Text Size</Text>
+          <Text style={styles.rowLabel}>{t("settings.textSize")}</Text>
           <View style={styles.textScaleRow}>
             {[0.85, 1.0, 1.15, 1.3].map(s => (
               <Pressable
@@ -93,7 +93,7 @@ export default function SettingsScreen() {
                 onPress={() => setTextScale(s)}
               >
                 <Text style={[styles.scaleText, textScale === s && styles.scaleTextActive]}>
-                  {s === 1.0 ? "Default" : `${Math.round(s * 100)}%`}
+                  {s === 1.0 ? t("settings.default") : `${Math.round(s * 100)}%`}
                 </Text>
               </Pressable>
             ))}
@@ -121,22 +121,19 @@ export default function SettingsScreen() {
         </View>
 
         {/* Data */}
-        <Text style={[styles.sectionTitle, { marginTop: 24 }]}>Data</Text>
+        <Text style={[styles.sectionTitle, { marginTop: 24 }]}>{t("settings.data")}</Text>
         <Pressable style={[styles.actionRow, cardStyle]} onPress={handleClearCache} disabled={clearing}>
-          <Text style={styles.actionText}>{clearing ? "Clearing..." : "Clear Cache"}</Text>
-          <Text style={styles.actionDesc}>Clears profile and geocode caches</Text>
+          <Text style={styles.actionText}>{clearing ? t("settings.clearing") : t("settings.clearCache")}</Text>
+          <Text style={styles.actionDesc}>{t("settings.clearCacheDesc")}</Text>
         </Pressable>
 
         {/* Data Oracle — Phase 1: attestation + collection only, no payouts yet */}
-        <Text style={[styles.sectionTitle, { marginTop: 24 }]}>Data Oracle</Text>
+        <Text style={[styles.sectionTitle, { marginTop: 24 }]}>{t("settings.dataOracle")}</Text>
         <View style={[styles.row, cardStyle]}>
           <View style={{ flex: 1, marginRight: 12 }}>
-            <Text style={styles.rowLabel}>Contribute Sentiment Signal</Text>
+            <Text style={styles.rowLabel}>{t("settings.contributeSentiment")}</Text>
             <Text style={styles.actionDesc}>
-              Shares which tokens you view in-app and for how long — nothing else — toward a
-              market-sentiment signal for OnlyMonkes' trading agents. Batches are signed with
-              this device's hardware-backed key. No payouts exist yet. Turning this off stops
-              collection immediately.
+              {t("settings.sentimentDesc")}
             </Text>
           </View>
           <Switch
@@ -149,69 +146,70 @@ export default function SettingsScreen() {
         </View>
 
         {/* Device Security */}
-        <Text style={[styles.sectionTitle, { marginTop: 24 }]}>Device Security</Text>
+        <Text style={[styles.sectionTitle, { marginTop: 24 }]}>{t("settings.deviceSecurity")}</Text>
         <SecurityPanel cardStyle={cardStyle} />
 
         {/* Links */}
-        <Text style={[styles.sectionTitle, { marginTop: 24 }]}>Info</Text>
+        <Text style={[styles.sectionTitle, { marginTop: 24 }]}>{t("settings.info")}</Text>
         <Pressable style={[styles.actionRow, cardStyle]} onPress={() => router.push("/about" as any)}>
-          <Text style={styles.actionText}>About OnlyMonkes</Text>
-          <Text style={styles.actionDesc}>Version, links, credits, legal docs</Text>
+          <Text style={styles.actionText}>{t("settings.aboutOnlyMonkes")}</Text>
+          <Text style={styles.actionDesc}>{t("settings.aboutDesc")}</Text>
         </Pressable>
       </ScrollView>
     </WorldScreenShell>
   );
 }
 
-const THREAT_LABELS: Record<string, string> = {
-  privilegedAccess: "Root / jailbreak detected",
-  hooks: "Code-hooking framework detected (Frida / Xposed)",
-  appIntegrity: "App tampered or repackaged",
-  deviceBinding: "Device fingerprint changed",
-  raspNotConfigured: "Tamper detection not configured",
-  simulator: "Running on emulator",
-  debug: "Debugger attached",
-  unofficialStore: "Sideloaded from unknown source",
-  adbEnabled: "ADB debugging enabled",
-  passcode: "No screen lock set",
-  devMode: "Developer mode enabled",
+const THREAT_LABEL_KEYS: Record<string, string> = {
+  privilegedAccess: "privilegedAccess",
+  hooks: "hooks",
+  appIntegrity: "appIntegrity",
+  deviceBinding: "deviceBinding",
+  raspNotConfigured: "raspNotConfigured",
+  simulator: "simulator",
+  debug: "debug",
+  unofficialStore: "unofficialStore",
+  adbEnabled: "adbEnabled",
+  passcode: "passcode",
+  devMode: "devMode",
 };
 
 function SecurityPanel({ cardStyle }: { cardStyle: object }) {
+  const { t } = useTranslation();
   // "info" threats (e.g. devMode) are tracked for future gating but never
   // shown — only "hard"/"soft" are actionable enough to surface to the user.
-  const threats = getActiveThreats().filter((t) => getThreatSeverity(t) !== "info");
+  const threats = getActiveThreats().filter((threat) => getThreatSeverity(threat) !== "info");
   if (threats.length === 0) {
     return (
       <View style={[styles.actionRow, cardStyle]}>
-        <Text style={[styles.actionText, { color: "#22c55e" }]}>✓ Device verified</Text>
-        <Text style={styles.actionDesc}>No security threats detected. Trading is enabled.</Text>
+        <Text style={[styles.actionText, { color: "#22c55e" }]}>✓ {t("settings.deviceVerified")}</Text>
+        <Text style={styles.actionDesc}>{t("settings.noThreatsDesc")}</Text>
       </View>
     );
   }
-  const hard = threats.filter((t) => getThreatSeverity(t) === "hard");
+  const hard = threats.filter((threat) => getThreatSeverity(threat) === "hard");
   return (
     <View style={[styles.actionRow, cardStyle]}>
       <Text style={[styles.actionText, { color: hard.length > 0 ? "#ef4444" : "#f59e0b" }]}>
-        {hard.length > 0 ? "⚠ Trading blocked" : "ℹ Security notice"}
+        {hard.length > 0 ? `⚠ ${t("settings.tradingBlocked")}` : `ℹ ${t("settings.securityNotice")}`}
       </Text>
       <Text style={styles.actionDesc}>
         {hard.length > 0
-          ? "Hard threats detected — transactions and identity signing are disabled until resolved."
-          : "Soft warnings detected — trading still allowed."}
+          ? t("settings.hardThreatsDesc")
+          : t("settings.softThreatsDesc")}
       </Text>
-      {threats.map((t) => (
+      {threats.map((threat) => (
         <Text
-          key={t}
+          key={threat}
           style={[
             styles.actionDesc,
             {
               marginTop: 4,
-              color: getThreatSeverity(t) === "hard" ? "#ef4444" : THEME.textMuted,
+              color: getThreatSeverity(threat) === "hard" ? "#ef4444" : THEME.textMuted,
             },
           ]}
         >
-          • {THREAT_LABELS[t] ?? t}
+          • {THREAT_LABEL_KEYS[threat] ? t(`settings.threats.${THREAT_LABEL_KEYS[threat]}`) : threat}
         </Text>
       ))}
     </View>
