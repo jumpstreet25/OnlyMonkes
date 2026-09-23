@@ -712,5 +712,13 @@
     "transactionSent": "Transaction sent",
     "retry": "Retry",
     "actionBadge": "ACTION"
+  },
+  "videoCameraModal": {
+    "uploadFailed": "Upload failed",
+    "couldNotUpload": "Could not upload video.",
+    "permissionRequired": "Camera and microphone access required.",
+    "grantPermissions": "Grant Permissions",
+    "retake": "Retake",
+    "send": "Send"
   }
 }

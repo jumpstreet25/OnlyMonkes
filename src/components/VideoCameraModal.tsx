@@ -9,6 +9,7 @@ import {
   Image,
 } from 'react-native';
 import { showGlassAlert } from "@/lib/glassAlert";
+import { useTranslation } from "react-i18next";
 import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useVideoPlayer, VideoView } from 'expo-video';
@@ -24,6 +25,7 @@ interface Props {
 }
 
 export function VideoCameraModal({ visible, onClose, onSend }: Props) {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [micPermission, requestMicPermission] = useMicrophonePermissions();
@@ -113,11 +115,11 @@ export function VideoCameraModal({ visible, onClose, onSend }: Props) {
       const { videoUrl, thumbUrl } = await uploadVideo(videoUri);
       onSend(`VIDEO:${videoUrl}|${thumbUrl}`);
     } catch (err: any) {
-      showGlassAlert('Upload failed', err?.message ?? 'Could not upload video.');
+      showGlassAlert(t('videoCameraModal.uploadFailed'), err?.message ?? t('videoCameraModal.couldNotUpload'));
     } finally {
       setUploading(false);
     }
-  }, [videoUri, onSend]);
+  }, [videoUri, onSend, t]);
 
   const hasPermissions = cameraPermission?.granted && micPermission?.granted;
 
@@ -134,9 +136,9 @@ export function VideoCameraModal({ visible, onClose, onSend }: Props) {
       <View style={styles.container}>
         {!hasPermissions ? (
           <View style={styles.permContainer}>
-            <Text style={styles.permText}>Camera and microphone access required.</Text>
+            <Text style={styles.permText}>{t('videoCameraModal.permissionRequired')}</Text>
             <Pressable style={styles.permBtn} onPress={requestPermissions}>
-              <Text style={styles.permBtnText}>Grant Permissions</Text>
+              <Text style={styles.permBtnText}>{t('videoCameraModal.grantPermissions')}</Text>
             </Pressable>
             <Pressable style={[styles.closeBtn, { top: insets.top + 12 }]} onPress={onClose}>
               <Text style={styles.closeBtnText}>✕</Text>
@@ -167,7 +169,7 @@ export function VideoCameraModal({ visible, onClose, onSend }: Props) {
             {/* Bottom bar */}
             <View style={[styles.previewBar, { height: 80 + insets.bottom, paddingBottom: insets.bottom }]}>
               <Pressable style={styles.retakeBtn} onPress={handleRetake}>
-                <Text style={styles.retakeBtnText}>↩ Retake</Text>
+                <Text style={styles.retakeBtnText}>↩ {t('videoCameraModal.retake')}</Text>
               </Pressable>
               <Pressable
                 style={[styles.sendBtn, uploading && styles.sendBtnDisabled]}
@@ -177,7 +179,7 @@ export function VideoCameraModal({ visible, onClose, onSend }: Props) {
                 {uploading ? (
                   <ActivityIndicator color="#fff" size="small" />
                 ) : (
-                  <Text style={styles.sendBtnText}>Send ↑</Text>
+                  <Text style={styles.sendBtnText}>{t('videoCameraModal.send')} ↑</Text>
                 )}
               </Pressable>
             </View>

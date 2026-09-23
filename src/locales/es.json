@@ -712,5 +712,13 @@
     "transactionSent": "Transacción enviada",
     "retry": "Reintentar",
     "actionBadge": "ACCIÓN"
+  },
+  "videoCameraModal": {
+    "uploadFailed": "Error al subir",
+    "couldNotUpload": "No se pudo subir el video.",
+    "permissionRequired": "Se requiere acceso a cámara y micrófono.",
+    "grantPermissions": "Conceder Permisos",
+    "retake": "Repetir",
+    "send": "Enviar"
   }
 }
