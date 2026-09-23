@@ -4,6 +4,43 @@
     "languageEnglish": "English",
     "languageSpanish": "Español"
   },
+  "connect": {
+    "subtitle": "Holder-only global chat for Saga Monkes.",
+    "sagaLink": "What are Saga Monkes?",
+    "signingIn": "Signing you in…",
+    "login": "Login",
+    "walletHint": "Requires a Solana wallet app (Phantom, Solflare, etc.)",
+    "chooseWallet": "Choose Wallet",
+    "cancel": "Cancel"
+  },
+  "verify": {
+    "loadingTexts": [
+      "Sniffing bananas in your wallet…",
+      "Counting Monkes on-chain…",
+      "Verifying you're not a tourist…",
+      "Checking with Shyft…",
+      "Scanning for Saga Monkes…",
+      "Checking the banana vault…",
+      "Asking the chain nicely…"
+    ],
+    "nftVerified": "NFT Verified ✓",
+    "verifyErrorTitle": "Verification's Having Trouble",
+    "verifyErrorBody": "We couldn't confirm your Saga Monke ownership right now — this is on our end, not yours. Give it another try.",
+    "retryVerification": "Retry Verification",
+    "tryDifferentWallet": "← Try a Different Wallet",
+    "notHolderTitle": "You Need a Saga Monke",
+    "notHolderBody": "OnlyMonkes is an exclusive club for Saga Monkes NFT holders. No Monkes are listed in MonkeMarkets right now — grab one below to unlock holder-only chat, AI signals, voice rooms, and more.",
+    "whyTitle": "Why Saga Monkes?",
+    "whyLine1": "🐒  Rare — only 10,000 exist on Solana",
+    "whyLine2": "🔐  Private group chat via XMTP encryption",
+    "whyLine3": "📈  Live AI trading signals & alerts",
+    "whyLine4": "🎙  Voice rooms & holder-only events",
+    "buyOnTensor": "Buy on Tensor",
+    "deviceFailTitle": "Device Check Failed",
+    "deviceFailBody": "We couldn't confirm this device's hardware security — this usually means an unsupported device, a modified OS, or an app store copy that isn't genuine.",
+    "verifyingStep": "Verifying NFT ownership…",
+    "verifiedStep": "Verified ✓"
+  },
   "adDisclosure": {
     "title": "🍌 About OnlyMonkes ads",
     "body1": "Every once in a while (at most every couple hours, only when you reopen the app fresh), you'll see a short automatic ad — no tap required to start it.",

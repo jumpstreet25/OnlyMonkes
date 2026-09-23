@@ -47,8 +47,10 @@ import { MonkeGlass } from "@/components/MonkeGlass";
 import { OnboardingCarousel, ONBOARDING_KEY } from "@/components/OnboardingCarousel";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { toast } from "sonner-native";
+import { useTranslation } from "react-i18next";
 
 export default function ConnectScreen() {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const { width: SCREEN_W, height: SCREEN_H } = useWindowDimensions();
   const HEADER_HEIGHT = Math.round(SCREEN_H * 0.30);
@@ -172,14 +174,14 @@ export default function ConnectScreen() {
         <View style={styles.titleBlock}>
           <Text style={styles.title}>OnlyMonkes</Text>
           <Text style={styles.subtitle}>
-            Holder-only global chat for Saga Monkes.
+            {t("connect.subtitle")}
           </Text>
           <Pressable
             onPress={() => Linking.openURL("https://www.tensor.trade/trade/sagamonkes")}
             accessibilityLabel="What are Saga Monkes? Opens Tensor"
             accessibilityRole="link"
           >
-            <Text style={styles.sagaLink}>What are Saga Monkes?</Text>
+            <Text style={styles.sagaLink}>{t("connect.sagaLink")}</Text>
           </Pressable>
         </View>
 
@@ -189,7 +191,7 @@ export default function ConnectScreen() {
             /* Auto-login in progress — show branded loader, not a tappable button */
             <View style={styles.autoLoginRow}>
               <ActivityIndicator size="small" color={THEME.accent} />
-              <Text style={styles.autoLoginText}>Signing you in…</Text>
+              <Text style={styles.autoLoginText}>{t("connect.signingIn")}</Text>
             </View>
           ) : (
             <Pressable
@@ -211,7 +213,7 @@ export default function ConnectScreen() {
                 {busy ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
-                  <Text style={styles.primaryBtnText}>Login</Text>
+                  <Text style={styles.primaryBtnText}>{t("connect.login")}</Text>
                 )}
               </LinearGradient>
             </Pressable>
@@ -226,7 +228,7 @@ export default function ConnectScreen() {
             </View>
           ) : (
             <Text style={styles.hint}>
-              Requires a Solana wallet app (Phantom, Solflare, etc.)
+              {t("connect.walletHint")}
             </Text>
           )
         )}
@@ -240,7 +242,7 @@ export default function ConnectScreen() {
         animationType="slide"
         cardStyle={styles.sheet}
       >
-        <Text style={styles.sheetTitle}>Choose Wallet</Text>
+        <Text style={styles.sheetTitle}>{t("connect.chooseWallet")}</Text>
 
         {[
           { icon: "🟣", label: "Phantom", onPress: async () => { setWalletSheetOpen(false); await handleConnectWith("phantom://"); } },
@@ -261,7 +263,7 @@ export default function ConnectScreen() {
         ))}
 
         <Pressable style={styles.sheetCancelBtn} onPress={() => setWalletSheetOpen(false)} accessibilityLabel="Cancel" accessibilityRole="button">
-          <Text style={styles.sheetCancelText}>Cancel</Text>
+          <Text style={styles.sheetCancelText}>{t("connect.cancel")}</Text>
         </Pressable>
       </MonkeGlass>
     </View>

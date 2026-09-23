@@ -4,6 +4,43 @@
     "languageEnglish": "English",
     "languageSpanish": "Español"
   },
+  "connect": {
+    "subtitle": "Chat global exclusivo para poseedores de Saga Monkes.",
+    "sagaLink": "¿Qué son los Saga Monkes?",
+    "signingIn": "Iniciando sesión…",
+    "login": "Iniciar sesión",
+    "walletHint": "Requiere una app de wallet de Solana (Phantom, Solflare, etc.)",
+    "chooseWallet": "Elige tu Wallet",
+    "cancel": "Cancelar"
+  },
+  "verify": {
+    "loadingTexts": [
+      "Olfateando bananas en tu wallet…",
+      "Contando Monkes en la blockchain…",
+      "Verificando que no seas un turista…",
+      "Consultando con Shyft…",
+      "Escaneando en busca de Saga Monkes…",
+      "Revisando la bóveda de bananas…",
+      "Preguntándole amablemente a la blockchain…"
+    ],
+    "nftVerified": "NFT Verificado ✓",
+    "verifyErrorTitle": "La Verificación Está Fallando",
+    "verifyErrorBody": "No pudimos confirmar tu posesión de un Saga Monke en este momento — el problema es nuestro, no tuyo. Inténtalo de nuevo.",
+    "retryVerification": "Reintentar Verificación",
+    "tryDifferentWallet": "← Probar con Otra Wallet",
+    "notHolderTitle": "Necesitas un Saga Monke",
+    "notHolderBody": "OnlyMonkes es un club exclusivo para poseedores de NFTs Saga Monkes. No hay Monkes listados en MonkeMarkets en este momento — consigue uno abajo para desbloquear el chat exclusivo, señales de IA, salas de voz y más.",
+    "whyTitle": "¿Por Qué Saga Monkes?",
+    "whyLine1": "🐒  Escasos — solo existen 10,000 en Solana",
+    "whyLine2": "🔐  Chat grupal privado con cifrado XMTP",
+    "whyLine3": "📈  Señales y alertas de trading con IA en vivo",
+    "whyLine4": "🎙  Salas de voz y eventos exclusivos para poseedores",
+    "buyOnTensor": "Comprar en Tensor",
+    "deviceFailTitle": "Falló la Verificación del Dispositivo",
+    "deviceFailBody": "No pudimos confirmar la seguridad del hardware de este dispositivo — esto normalmente significa un dispositivo no compatible, un sistema operativo modificado, o una copia de la app store que no es genuina.",
+    "verifyingStep": "Verificando posesión del NFT…",
+    "verifiedStep": "Verificado ✓"
+  },
   "adDisclosure": {
     "title": "🍌 Sobre los anuncios de OnlyMonkes",
     "body1": "De vez en cuando (como máximo cada par de horas, y solo cuando reabres la app después de cerrarla), verás un anuncio automático breve — no hace falta tocar nada para que empiece.",

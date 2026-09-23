@@ -34,32 +34,22 @@ import { loadListings, getActiveListings } from "@/lib/marketplace";
 import { grantFirstLoginBonusIfEligible } from "@/lib/firstLoginBonus";
 import { verifyGenesisTokenOwnership } from "@/lib/genesisTokenVerification";
 import { useDeviceIntegrity } from "@/hooks/useDeviceIntegrity";
+import { useTranslation } from "react-i18next";
 import type { OwnedNFT } from "@/types";
 
 type VerifyState = "idle" | "checking-nft" | "nft-fail" | "verify-error" | "nft-ok" | "pick-nft" | "set-pfp" | "ready" | "device-fail";
 
-// Fun Monke-themed loading texts — rotate every 1.8 s
-const LOADING_TEXTS = [
-  "Sniffing bananas in your wallet…",
-  "Counting Monkes on-chain…",
-  "Verifying you're not a tourist…",
-  "Checking with Shyft…",
-  "Scanning for Saga Monkes…",
-  "Checking the banana vault…",
-  "Asking the chain nicely…",
-];
-
 // Magic Eden delisted Saga Monkes (cNFT collection support dropped, 0 active
 // listings as of 2026-07) — Tensor is the only working marketplace link.
-const MARKETPLACES = [
-  {
-    label: "Buy on Tensor",
-    emoji: "⚡",
-    url: "https://www.tensor.trade/trade/sagamonkes",
-  },
+const MARKETPLACE_URLS = [
+  { emoji: "⚡", url: "https://www.tensor.trade/trade/sagamonkes" },
 ];
 
 export default function VerifyScreen() {
+  const { t } = useTranslation();
+  // Fun Monke-themed loading texts — rotate every 1.8 s
+  const LOADING_TEXTS = t("verify.loadingTexts", { returnObjects: true }) as string[];
+  const MARKETPLACES = MARKETPLACE_URLS.map((m) => ({ ...m, label: t("verify.buyOnTensor") }));
   const { wallet, verifiedNft, allNfts, error, setVerified, setIsGuest, setIsGenesisHolder, setVerifiedGenesisAt } = useAppStore();
   const { verify } = useNFTVerification();
   const { disconnect } = useMobileWallet();
@@ -308,7 +298,7 @@ export default function VerifyScreen() {
           <View style={styles.card}>
             <View style={styles.statusInner}>
               <Image source={{ uri: verifiedNft.image }} style={styles.nftImage} />
-              <Text style={styles.nftFoundLabel}>NFT Verified ✓</Text>
+              <Text style={styles.nftFoundLabel}>{t("verify.nftVerified")}</Text>
               <Text style={styles.nftName}>{verifiedNft.name}</Text>
             </View>
           </View>
@@ -318,18 +308,18 @@ export default function VerifyScreen() {
         {phase === "verify-error" && (
           <View style={styles.notHolderBlock}>
             <Text style={styles.notHolderEmoji}>🐒🔧</Text>
-            <Text style={styles.notHolderTitle}>Verification's Having Trouble</Text>
+            <Text style={styles.notHolderTitle}>{t("verify.verifyErrorTitle")}</Text>
             <Text style={styles.notHolderBody}>
-              {error ?? "We couldn't confirm your Saga Monke ownership right now — this is on our end, not yours. Give it another try."}
+              {error ?? t("verify.verifyErrorBody")}
             </Text>
             <Pressable
               style={({ pressed }) => [styles.retryNowButton, pressed && { opacity: 0.7 }]}
               onPress={runVerification}
             >
-              <Text style={styles.retryNowButtonText}>Retry Verification</Text>
+              <Text style={styles.retryNowButtonText}>{t("verify.retryVerification")}</Text>
             </Pressable>
             <Pressable style={styles.retryButton} onPress={handleDisconnect}>
-              <Text style={styles.retryButtonText}>← Try a Different Wallet</Text>
+              <Text style={styles.retryButtonText}>{t("verify.tryDifferentWallet")}</Text>
             </Pressable>
           </View>
         )}
@@ -339,9 +329,9 @@ export default function VerifyScreen() {
           <View style={styles.notHolderBlock}>
             {/* Icon */}
             <Text style={styles.notHolderEmoji}>🔒</Text>
-            <Text style={styles.notHolderTitle}>You Need a Saga Monke</Text>
+            <Text style={styles.notHolderTitle}>{t("verify.notHolderTitle")}</Text>
             <Text style={styles.notHolderBody}>
-              {error ?? "OnlyMonkes is an exclusive club for Saga Monkes NFT holders. No Monkes are listed in MonkeMarkets right now — grab one below to unlock holder-only chat, AI signals, voice rooms, and more."}
+              {error ?? t("verify.notHolderBody")}
             </Text>
 
             {/* Divider */}
@@ -349,12 +339,12 @@ export default function VerifyScreen() {
 
             {/* "Why Saga Monkes?" blurb */}
             <View style={styles.whyBlock}>
-              <Text style={styles.whyTitle}>Why Saga Monkes?</Text>
+              <Text style={styles.whyTitle}>{t("verify.whyTitle")}</Text>
               {[
-                "🐒  Rare — only 10,000 exist on Solana",
-                "🔐  Private group chat via XMTP encryption",
-                "📈  Live AI trading signals & alerts",
-                "🎙  Voice rooms & holder-only events",
+                t("verify.whyLine1"),
+                t("verify.whyLine2"),
+                t("verify.whyLine3"),
+                t("verify.whyLine4"),
               ].map(line => (
                 <Text key={line} style={styles.whyLine}>{line}</Text>
               ))}
@@ -386,12 +376,12 @@ export default function VerifyScreen() {
               style={({ pressed }) => [styles.retryNowButton, pressed && { opacity: 0.7 }]}
               onPress={runVerification}
             >
-              <Text style={styles.retryNowButtonText}>Retry Verification</Text>
+              <Text style={styles.retryNowButtonText}>{t("verify.retryVerification")}</Text>
             </Pressable>
 
             {/* Try different wallet */}
             <Pressable style={styles.retryButton} onPress={handleDisconnect}>
-              <Text style={styles.retryButtonText}>← Try a Different Wallet</Text>
+              <Text style={styles.retryButtonText}>{t("verify.tryDifferentWallet")}</Text>
             </Pressable>
           </View>
         )}
@@ -400,20 +390,19 @@ export default function VerifyScreen() {
         {phase === "device-fail" && (
           <View style={styles.notHolderBlock}>
             <Text style={styles.notHolderEmoji}>🛡️</Text>
-            <Text style={styles.notHolderTitle}>Device Check Failed</Text>
+            <Text style={styles.notHolderTitle}>{t("verify.deviceFailTitle")}</Text>
             <Text style={styles.notHolderBody}>
-              We couldn't confirm this device's hardware security — this usually means an
-              unsupported device, a modified OS, or an app store copy that isn't genuine.
+              {t("verify.deviceFailBody")}
               {deviceFailReason ? `\n\n(${deviceFailReason})` : ""}
             </Text>
             <Pressable
               style={({ pressed }) => [styles.retryNowButton, pressed && { opacity: 0.7 }]}
               onPress={runVerification}
             >
-              <Text style={styles.retryNowButtonText}>Retry Verification</Text>
+              <Text style={styles.retryNowButtonText}>{t("verify.retryVerification")}</Text>
             </Pressable>
             <Pressable style={styles.retryButton} onPress={handleDisconnect}>
-              <Text style={styles.retryButtonText}>← Try a Different Wallet</Text>
+              <Text style={styles.retryButtonText}>{t("verify.tryDifferentWallet")}</Text>
             </Pressable>
           </View>
         )}
@@ -424,7 +413,7 @@ export default function VerifyScreen() {
             <StepRow
               done={["nft-ok", "pick-nft", "ready"].includes(phase)}
               active={phase === "checking-nft"}
-              label={phase === "checking-nft" ? "Verifying NFT ownership…" : "Verified ✓"}
+              label={phase === "checking-nft" ? t("verify.verifyingStep") : t("verify.verifiedStep")}
               index={1}
             />
           </View>
