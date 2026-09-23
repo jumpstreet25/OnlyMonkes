@@ -366,5 +366,33 @@
       "myid": "Tu ID de inbox XMTP",
       "helpDm": "Todos los comandos"
     }
+  },
+  "usernameModal": {
+    "unsavedChangesTitle": "Cambios sin Guardar",
+    "unsavedChangesBody": "Tienes cambios sin guardar. ¿Descartarlos?",
+    "keepEditing": "Seguir Editando",
+    "discard": "Descartar",
+    "usernameCharsError": "El nombre de usuario solo puede contener letras, números, espacios, _ - .",
+    "profileUpdated": "Perfil actualizado",
+    "saveFailed": "Error al guardar — inténtalo de nuevo.",
+    "editTitle": "Edita tu perfil",
+    "createTitle": "Crea tu perfil",
+    "editSubtitle": "Los cambios se guardan permanentemente en tu dispositivo.",
+    "createSubtitle": "Elige un nombre que otros poseedores verán en el chat.",
+    "usernameLabel": "Nombre de usuario *",
+    "usernamePlaceholder": "ej. CryptoMonke",
+    "bioLabel": "Biografía corta  (opcional)",
+    "bioPlaceholder": "Cuéntales algo sobre ti a los otros monkes…",
+    "xAccountLabel": "Cuenta de X (Twitter)  (opcional)",
+    "tipWalletLabel": "💰 Billetera de Propinas  (opcional)",
+    "tipWalletHint": "Dirección de Solana donde se te envían las propinas en SKR",
+    "tipWalletPlaceholder": "Dirección de Solana…",
+    "locationLabel": "Ubicación  (opcional)",
+    "locationHint": "Ciudad, país, o cualquier lugar que llames hogar — se muestra a otros Monkes en la app y se fija públicamente en monke-globe.pages.dev",
+    "locationPlaceholder": "ej. Miami, Tokio, La Luna…",
+    "saveChanges": "Guardar cambios",
+    "enterChat": "Entrar al chat",
+    "cancel": "Cancelar",
+    "hint": "Mínimo 2 caracteres · Máximo {{max}} caracteres"
   }
 }

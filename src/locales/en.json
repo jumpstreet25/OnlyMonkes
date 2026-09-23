@@ -366,5 +366,33 @@
       "myid": "Your XMTP inbox ID",
       "helpDm": "All commands"
     }
+  },
+  "usernameModal": {
+    "unsavedChangesTitle": "Unsaved Changes",
+    "unsavedChangesBody": "You have unsaved changes. Discard them?",
+    "keepEditing": "Keep Editing",
+    "discard": "Discard",
+    "usernameCharsError": "Username can only contain letters, numbers, spaces, _ - .",
+    "profileUpdated": "Profile updated",
+    "saveFailed": "Failed to save — please try again.",
+    "editTitle": "Edit your profile",
+    "createTitle": "Create your profile",
+    "editSubtitle": "Changes are saved permanently to your device.",
+    "createSubtitle": "Choose a name that other holders will see in the chat.",
+    "usernameLabel": "Username *",
+    "usernamePlaceholder": "e.g. CryptoMonke",
+    "bioLabel": "Short bio  (optional)",
+    "bioPlaceholder": "Tell the other monkes something about yourself…",
+    "xAccountLabel": "X (Twitter) account  (optional)",
+    "tipWalletLabel": "💰 Tipping Wallet  (optional)",
+    "tipWalletHint": "Solana address where SKR tips are sent to you",
+    "tipWalletPlaceholder": "Solana address…",
+    "locationLabel": "Location  (optional)",
+    "locationHint": "City, country, or anywhere you call home — shown to other Monkes in-app and pinned publicly on monke-globe.pages.dev",
+    "locationPlaceholder": "e.g. Miami, Tokyo, The Moon…",
+    "saveChanges": "Save changes",
+    "enterChat": "Enter the chat",
+    "cancel": "Cancel",
+    "hint": "Minimum 2 characters · Max {{max}} characters"
   }
 }

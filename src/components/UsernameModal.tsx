@@ -21,6 +21,7 @@ import { showGlassAlert } from "@/lib/glassAlert";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { toast } from "sonner-native";
+import { useTranslation } from "react-i18next";
 import { GlassModal } from "@/components/GlassModal";
 import { THEME, FONTS } from "@/lib/constants";
 import { saveUserProfile } from "@/lib/userProfile";
@@ -55,6 +56,7 @@ export function UsernameModal({
   initialLocation = "",
   editMode = false,
 }: UsernameModalProps) {
+  const { t } = useTranslation();
   const { setUsername, setBio, setXAccount, setTipWallet, setLocation } = useAppStore();
   const [name, setName] = useState(initialUsername);
   const [bio, setBioLocal] = useState(initialBio);
@@ -113,22 +115,22 @@ export function UsernameModal({
   const handleClose = useCallback(() => {
     if (isDirty) {
       showGlassAlert(
-        "Unsaved Changes",
-        "You have unsaved changes. Discard them?",
+        t("usernameModal.unsavedChangesTitle"),
+        t("usernameModal.unsavedChangesBody"),
         [
-          { text: "Keep Editing", style: "cancel" },
-          { text: "Discard", style: "destructive", onPress: onDone },
+          { text: t("usernameModal.keepEditing"), style: "cancel" },
+          { text: t("usernameModal.discard"), style: "destructive", onPress: onDone },
         ]
       );
     } else {
       onDone();
     }
-  }, [isDirty, onDone]);
+  }, [isDirty, onDone, t]);
 
   const handleSave = useCallback(async () => {
     if (!canSave) return;
     if (/[^a-zA-Z0-9_\-. ]/.test(trimmedName)) {
-      setError("Username can only contain letters, numbers, spaces, _ - .");
+      setError(t("usernameModal.usernameCharsError"));
       return;
     }
 
@@ -152,13 +154,13 @@ export function UsernameModal({
       // bug class as BananaBetPopup.handlePlaceBet. Close first, let the
       // Modal's own dismissal clear, then toast.
       onDone();
-      setTimeout(() => toast.success("Profile updated"), 350);
+      setTimeout(() => toast.success(t("usernameModal.profileUpdated")), 350);
     } catch {
-      setError("Failed to save — please try again.");
+      setError(t("usernameModal.saveFailed"));
     } finally {
       setSaving(false);
     }
-  }, [canSave, trimmedName, bio, xAccount, tipWallet, location, setUsername, setBio, setXAccount, setTipWallet, setLocation, onDone]);
+  }, [canSave, trimmedName, bio, xAccount, tipWallet, location, setUsername, setBio, setXAccount, setTipWallet, setLocation, onDone, t]);
 
   return (
     <GlassModal visible={visible} onClose={handleClose} position="bottom" animationType="slide" cardStyle={{ height: Dimensions.get("window").height * 0.7 - keyboardHeight }}>
@@ -179,23 +181,23 @@ export function UsernameModal({
           </View>
 
           <Text style={styles.title}>
-            {editMode ? "Edit your profile" : "Create your profile"}
+            {editMode ? t("usernameModal.editTitle") : t("usernameModal.createTitle")}
           </Text>
           <Text style={styles.subtitle}>
             {editMode
-              ? "Changes are saved permanently to your device."
-              : "Choose a name that other holders will see in the chat."}
+              ? t("usernameModal.editSubtitle")
+              : t("usernameModal.createSubtitle")}
           </Text>
 
           {/* Username */}
           <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Username *</Text>
+            <Text style={styles.label}>{t("usernameModal.usernameLabel")}</Text>
             <View style={styles.inputWrap}>
               <TextInput
                 style={styles.input}
                 value={name}
-                onChangeText={(t) => { setName(t); setError(""); }}
-                placeholder="e.g. CryptoMonke"
+                onChangeText={(v) => { setName(v); setError(""); }}
+                placeholder={t("usernameModal.usernamePlaceholder")}
                 placeholderTextColor={THEME.textFaint}
                 maxLength={MAX_USERNAME}
                 autoCapitalize="none"
@@ -210,13 +212,13 @@ export function UsernameModal({
 
           {/* Bio */}
           <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Short bio  (optional)</Text>
+            <Text style={styles.label}>{t("usernameModal.bioLabel")}</Text>
             <View style={[styles.inputWrap, styles.bioWrap]}>
               <TextInput
                 style={[styles.input, styles.bioInput]}
                 value={bio}
                 onChangeText={setBioLocal}
-                placeholder="Tell the other monkes something about yourself…"
+                placeholder={t("usernameModal.bioPlaceholder")}
                 placeholderTextColor={THEME.textFaint}
                 maxLength={MAX_BIO}
                 multiline
@@ -231,7 +233,7 @@ export function UsernameModal({
 
           {/* X account */}
           <View style={styles.fieldGroup}>
-            <Text style={styles.label}>X (Twitter) account  (optional)</Text>
+            <Text style={styles.label}>{t("usernameModal.xAccountLabel")}</Text>
             <View style={styles.inputWrap}>
               <TextInput
                 style={styles.input}
@@ -249,16 +251,16 @@ export function UsernameModal({
 
           {/* Tipping wallet */}
           <View style={styles.fieldGroup}>
-            <Text style={styles.label}>💰 Tipping Wallet  (optional)</Text>
+            <Text style={styles.label}>{t("usernameModal.tipWalletLabel")}</Text>
             <Text style={styles.fieldHint}>
-              Solana address where SKR tips are sent to you
+              {t("usernameModal.tipWalletHint")}
             </Text>
             <View style={styles.inputWrap}>
               <TextInput
                 style={styles.input}
                 value={tipWallet}
                 onChangeText={setTipWalletLocal}
-                placeholder="Solana address…"
+                placeholder={t("usernameModal.tipWalletPlaceholder")}
                 placeholderTextColor={THEME.textFaint}
                 maxLength={MAX_WALLET}
                 autoCapitalize="none"
@@ -275,16 +277,16 @@ export function UsernameModal({
 
           {/* Location */}
           <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Location  (optional)</Text>
+            <Text style={styles.label}>{t("usernameModal.locationLabel")}</Text>
             <Text style={styles.fieldHint}>
-              City, country, or anywhere you call home — shown to other Monkes in-app and pinned publicly on monke-globe.pages.dev
+              {t("usernameModal.locationHint")}
             </Text>
             <View style={styles.inputWrap}>
               <TextInput
                 style={styles.input}
                 value={location}
                 onChangeText={setLocationLocal}
-                placeholder="e.g. Miami, Tokyo, The Moon…"
+                placeholder={t("usernameModal.locationPlaceholder")}
                 placeholderTextColor={THEME.textFaint}
                 maxLength={MAX_LOCATION}
                 autoCapitalize="words"
@@ -323,7 +325,7 @@ export function UsernameModal({
                 <ActivityIndicator color="#fff" />
               ) : (
                 <Text style={[styles.saveBtnText, !canSave && styles.saveBtnTextDisabled]}>
-                  {editMode ? "Save changes" : "Enter the chat"}
+                  {editMode ? t("usernameModal.saveChanges") : t("usernameModal.enterChat")}
                 </Text>
               )}
             </LinearGradient>
@@ -331,12 +333,12 @@ export function UsernameModal({
 
           {editMode && (
             <Pressable onPress={onDone} style={styles.cancelBtn}>
-              <Text style={styles.cancelBtnText}>Cancel</Text>
+              <Text style={styles.cancelBtnText}>{t("usernameModal.cancel")}</Text>
             </Pressable>
           )}
 
           <Text style={styles.hint}>
-            Minimum 2 characters · Max {MAX_USERNAME} characters
+            {t("usernameModal.hint", { max: MAX_USERNAME })}
           </Text>
         </ScrollView>
       </View>
