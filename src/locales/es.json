@@ -668,5 +668,11 @@
     "title": "🍌 ¡Lluvia de Bananas!",
     "body": "¡Recibiste {{amount}} bananas!",
     "nice": "¡Genial!"
+  },
+  "imageLightbox": {
+    "permissionNeeded": "Se necesita permiso",
+    "permissionNeededBody": "Permite el acceso a la galería para guardar imágenes.",
+    "savedToGallery": "Guardado en la galería",
+    "couldNotSave": "No se pudo guardar la imagen."
   }
 }

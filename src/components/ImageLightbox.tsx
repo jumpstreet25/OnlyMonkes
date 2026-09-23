@@ -21,6 +21,7 @@ import {
   StyleSheet,
 } from "react-native";
 import { showGlassAlert } from "@/lib/glassAlert";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner-native";
 import Animated, {
   useSharedValue,
@@ -48,6 +49,7 @@ interface Props {
 }
 
 export default function ImageLightbox({ url, onClose }: Props) {
+  const { t } = useTranslation();
   const [imgSize, setImgSize] = useState<{ w: number; h: number } | null>(null);
   const captureRef = useRef<any>(null);
 
@@ -212,7 +214,7 @@ export default function ImageLightbox({ url, onClose }: Props) {
     const ML = await getMediaLibrary();
     const { status } = await ML.requestPermissionsAsync();
     if (status !== "granted") {
-      showGlassAlert("Permission needed", "Allow gallery access to save images.");
+      showGlassAlert(t("imageLightbox.permissionNeeded"), t("imageLightbox.permissionNeededBody"));
       return;
     }
     try {
@@ -225,11 +227,11 @@ export default function ImageLightbox({ url, onClose }: Props) {
       // in-tree rendering note below) left a stuck grey screen on Android.
       // "Permission needed" stays a native Alert — same established
       // precedent, rare one-time prompt.
-      setTimeout(() => toast.success("Saved to gallery"), 350);
+      setTimeout(() => toast.success(t("imageLightbox.savedToGallery")), 350);
     } catch {
-      toast.error("Could not save image.");
+      toast.error(t("imageLightbox.couldNotSave"));
     }
-  }, []);
+  }, [t]);
 
   if (!url) return null;
 

@@ -668,5 +668,11 @@
     "title": "🍌 Banana Airdrop!",
     "body": "You received {{amount}} bananas!",
     "nice": "Nice!"
+  },
+  "imageLightbox": {
+    "permissionNeeded": "Permission needed",
+    "permissionNeededBody": "Allow gallery access to save images.",
+    "savedToGallery": "Saved to gallery",
+    "couldNotSave": "Could not save image."
   }
 }
