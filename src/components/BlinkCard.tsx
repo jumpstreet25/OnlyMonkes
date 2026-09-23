@@ -18,6 +18,7 @@ import {
   TextInput,
 } from "react-native";
 import { showGlassAlert } from "@/lib/glassAlert";
+import { useTranslation } from "react-i18next";
 import { Image as ExpoImage } from "expo-image";
 import {
   VersionedTransaction,
@@ -58,6 +59,7 @@ interface BlinkCardProps {
 }
 
 export function BlinkCard({ actionUrl }: BlinkCardProps) {
+  const { t } = useTranslation();
   const [state, setState] = useState<BlinkState>("loading");
   const [metadata, setMetadata] = useState<ActionMetadata | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -74,11 +76,11 @@ export function BlinkCard({ actionUrl }: BlinkCardProps) {
         setState("ready");
       } else {
         setState("failed");
-        setError("Could not load action");
+        setError(t("blinkCard.couldNotLoadAction"));
       }
     });
     return () => { mounted = false; };
-  }, [actionUrl]);
+  }, [actionUrl, t]);
 
   const handleAction = useCallback(
     async (link: ActionLink) => {
@@ -86,18 +88,18 @@ export function BlinkCard({ actionUrl }: BlinkCardProps) {
         assertDeviceTrusted("Blink action");
       } catch (e: any) {
         setState("failed");
-        setError(e?.message ?? "Device security check failed");
+        setError(e?.message ?? t("blinkCard.deviceSecurityCheckFailed"));
         return;
       }
       const wallet = useAppStore.getState().wallet;
       if (!wallet) {
-        showGlassAlert("Wallet Required", "Connect your wallet first.");
+        showGlassAlert(t("blinkCard.walletRequired"), t("blinkCard.connectWalletFirst"));
         return;
       }
 
       // Check for unfilled required parameters
       if (link.parameters?.some((p) => p.required && !paramValues[p.name])) {
-        showGlassAlert("Missing Input", "Fill in all required fields.");
+        showGlassAlert(t("blinkCard.missingInput"), t("blinkCard.fillRequiredFields"));
         return;
       }
 
@@ -189,7 +191,7 @@ export function BlinkCard({ actionUrl }: BlinkCardProps) {
         setState("failed");
       }
     },
-    [actionUrl, paramValues],
+    [actionUrl, paramValues, t],
   );
 
   // ── Loading state ──────────────────────────────────────────────────────────
@@ -292,7 +294,7 @@ export function BlinkCard({ actionUrl }: BlinkCardProps) {
         {isCompleted && (
           <View style={styles.statusRow}>
             <Text style={styles.confirmedText}>
-              {"\u2713"} Transaction sent
+              {"\u2713"} {t("blinkCard.transactionSent")}
             </Text>
           </View>
         )}
@@ -307,7 +309,7 @@ export function BlinkCard({ actionUrl }: BlinkCardProps) {
               style={styles.retryBtn}
               onPress={() => setState("ready")}
             >
-              <Text style={styles.retryBtnText}>Retry</Text>
+              <Text style={styles.retryBtnText}>{t("blinkCard.retry")}</Text>
             </Pressable>
           </View>
         )}
@@ -315,7 +317,7 @@ export function BlinkCard({ actionUrl }: BlinkCardProps) {
 
       {/* Blink badge */}
       <View style={styles.badge}>
-        <Text style={styles.badgeText}>ACTION</Text>
+        <Text style={styles.badgeText}>{t("blinkCard.actionBadge")}</Text>
       </View>
     </View>
   );

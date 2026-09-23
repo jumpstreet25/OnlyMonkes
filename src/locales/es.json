@@ -701,5 +701,16 @@
     "closingEllipsis": "Cerrando…",
     "tapAgainToConfirm": "Toca de nuevo para confirmar — cerrar ${{token}}",
     "closePosition": "🔻 Cerrar Posición"
+  },
+  "blinkCard": {
+    "couldNotLoadAction": "No se pudo cargar la acción",
+    "deviceSecurityCheckFailed": "Falló la verificación de seguridad del dispositivo",
+    "walletRequired": "Se Requiere Billetera",
+    "connectWalletFirst": "Conecta tu billetera primero.",
+    "missingInput": "Falta Información",
+    "fillRequiredFields": "Completa todos los campos requeridos.",
+    "transactionSent": "Transacción enviada",
+    "retry": "Reintentar",
+    "actionBadge": "ACCIÓN"
   }
 }
