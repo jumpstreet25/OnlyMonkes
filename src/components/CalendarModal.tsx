@@ -18,6 +18,7 @@ import {
   ActivityIndicator,
   Dimensions,} from "react-native";
 import { showGlassAlert } from "@/lib/glassAlert";
+import { useTranslation } from "react-i18next";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { GlassModal } from "@/components/GlassModal";
@@ -33,6 +34,7 @@ interface CalendarModalProps {
 }
 
 export function CalendarModal({ visible, onClose, onBroadcast }: CalendarModalProps) {
+  const { t } = useTranslation();
   const { myInboxId, username } = useAppStore();
   const [title, setTitle] = useState("");
   const [date, setDate] = useState("");
@@ -74,7 +76,7 @@ export function CalendarModal({ visible, onClose, onBroadcast }: CalendarModalPr
       reset();
       onClose();
     } catch (err: any) {
-      showGlassAlert("Error", err?.message ?? "Could not create event.");
+      showGlassAlert(t("calendarModal.error"), err?.message ?? t("calendarModal.couldNotCreate"));
     } finally {
       setSaving(false);
     }
@@ -93,18 +95,18 @@ export function CalendarModal({ visible, onClose, onBroadcast }: CalendarModalPr
 
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>📅  Create Event</Text>
+          <Text style={styles.headerTitle}>📅  {t("calendarModal.createEvent")}</Text>
           <Pressable onPress={() => { reset(); onClose(); }} style={styles.closeBtn} hitSlop={8}>
             <Text style={styles.closeText}>✕</Text>
           </Pressable>
         </View>
 
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <Field label="Event Title *" value={title} onChange={setTitle} placeholder="Monkes meetup…" />
-          <Field label="Date  (MM/DD/YYYY) *" value={date} onChange={setDate} placeholder="12/25/2025" keyboardType="numeric" />
-          <Field label="Time  (HH:MM)" value={time} onChange={setTime} placeholder="18:00" keyboardType="numeric" />
-          <Field label="Location" value={location} onChange={setLocation} placeholder="Discord Stage, Twitter Space…" />
-          <Field label="Purpose / Description" value={purpose} onChange={setPurpose} placeholder="What is this event about?" multiline />
+          <Field label={t("calendarModal.eventTitleLabel")} value={title} onChange={setTitle} placeholder={t("calendarModal.eventTitlePlaceholder")} />
+          <Field label={t("calendarModal.dateLabel")} value={date} onChange={setDate} placeholder="12/25/2025" keyboardType="numeric" />
+          <Field label={t("calendarModal.timeLabel")} value={time} onChange={setTime} placeholder="18:00" keyboardType="numeric" />
+          <Field label={t("calendarModal.locationLabel")} value={location} onChange={setLocation} placeholder={t("calendarModal.locationPlaceholder")} />
+          <Field label={t("calendarModal.purposeLabel")} value={purpose} onChange={setPurpose} placeholder={t("calendarModal.purposePlaceholder")} multiline />
 
           <Pressable
             style={[styles.saveBtn, !canSave && styles.saveBtnDisabled]}
@@ -121,14 +123,14 @@ export function CalendarModal({ visible, onClose, onBroadcast }: CalendarModalPr
                 <ActivityIndicator color="#fff" />
               ) : (
                 <Text style={[styles.saveText, !canSave && { color: THEME.textFaint }]}>
-                  Create & Broadcast
+                  {t("calendarModal.createAndBroadcast")}
                 </Text>
               )}
             </LinearGradient>
           </Pressable>
 
           <Text style={styles.hint}>
-            Event will be shared with all chat members via XMTP.
+            {t("calendarModal.hint")}
           </Text>
 
           <View style={{ height: 24 }} />

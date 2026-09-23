@@ -504,5 +504,20 @@
     "fetchingPrices": "Fetching prices...",
     "emptyLine1": "No tokens on your watchlist yet.",
     "emptyLine2": "DM the bot: /watch $SOL"
+  },
+  "calendarModal": {
+    "error": "Error",
+    "couldNotCreate": "Could not create event.",
+    "createEvent": "Create Event",
+    "eventTitleLabel": "Event Title *",
+    "eventTitlePlaceholder": "Monkes meetup…",
+    "dateLabel": "Date  (MM/DD/YYYY) *",
+    "timeLabel": "Time  (HH:MM)",
+    "locationLabel": "Location",
+    "locationPlaceholder": "Discord Stage, Twitter Space…",
+    "purposeLabel": "Purpose / Description",
+    "purposePlaceholder": "What is this event about?",
+    "createAndBroadcast": "Create & Broadcast",
+    "hint": "Event will be shared with all chat members via XMTP."
   }
 }

@@ -504,5 +504,20 @@
     "fetchingPrices": "Obteniendo precios...",
     "emptyLine1": "Aún no tienes tokens en tu lista de seguimiento.",
     "emptyLine2": "Escríbele al bot: /watch $SOL"
+  },
+  "calendarModal": {
+    "error": "Error",
+    "couldNotCreate": "No se pudo crear el evento.",
+    "createEvent": "Crear Evento",
+    "eventTitleLabel": "Título del Evento *",
+    "eventTitlePlaceholder": "Encuentro de Monkes…",
+    "dateLabel": "Fecha  (MM/DD/AAAA) *",
+    "timeLabel": "Hora  (HH:MM)",
+    "locationLabel": "Ubicación",
+    "locationPlaceholder": "Discord Stage, Twitter Space…",
+    "purposeLabel": "Propósito / Descripción",
+    "purposePlaceholder": "¿De qué trata este evento?",
+    "createAndBroadcast": "Crear y Transmitir",
+    "hint": "El evento se compartirá con todos los miembros del chat vía XMTP."
   }
 }
