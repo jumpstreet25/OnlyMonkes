@@ -19,6 +19,7 @@ import React, { useEffect, useState } from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import { GlassModal } from "@/components/GlassModal";
 import { THEME, FONTS } from "@/lib/constants";
+import i18n from "@/lib/i18n";
 
 export interface GlassAlertButton {
   text: string;
@@ -38,7 +39,7 @@ const EMPTY_STATE: GlassAlertState = { visible: false, title: "", buttons: [] };
 let _setState: ((s: GlassAlertState) => void) | null = null;
 
 export function showGlassAlert(title: string, message?: string, buttons?: GlassAlertButton[]): void {
-  const resolvedButtons = buttons && buttons.length > 0 ? buttons : [{ text: "OK" }];
+  const resolvedButtons = buttons && buttons.length > 0 ? buttons : [{ text: i18n.t("glassAlert.ok") }];
   _setState?.({ visible: true, title, message, buttons: resolvedButtons });
 }
 

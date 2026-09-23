@@ -8,6 +8,7 @@
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { showGlassAlert } from "@/lib/glassAlert";
+import i18n from "@/lib/i18n";
 import { addBananas } from "@/lib/bananaRewards";
 import { BOT_INBOX_IDS } from "@/lib/constants";
 import { useAppStore } from "@/store/appStore";
@@ -88,6 +89,10 @@ export async function processBananaGrant(
   await markClaimed(msgId);
 
   if (showAlert) {
-    showGlassAlert("🍌 Banana Airdrop!", `You received ${amount} bananas!`, [{ text: "Nice!" }]);
+    showGlassAlert(
+      i18n.t("bananaGrant.title"),
+      i18n.t("bananaGrant.body", { amount }),
+      [{ text: i18n.t("bananaGrant.nice") }],
+    );
   }
 }

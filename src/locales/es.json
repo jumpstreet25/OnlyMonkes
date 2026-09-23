@@ -649,5 +649,24 @@
     "startedA": "@{{host}} inició: {{label}}",
     "join": "UNIRSE",
     "tapToOpen": "Toca para abrir"
+  },
+  "glassAlert": {
+    "ok": "OK"
+  },
+  "setMonkeImageModal": {
+    "photoAccessRequired": "Se requiere acceso a fotos",
+    "photoAccessBody": "Permite el acceso a la galería de fotos en la configuración de tu dispositivo.",
+    "uploadFailed": "Error al subir",
+    "couldNotUpload": "No se pudo subir la imagen.",
+    "title": "Configura tu PFP de Monke",
+    "body": "Esta vez no pudimos detectar automáticamente la imagen de tu Monke. Abre tu app de billetera (Phantom, Solflare), busca tu Saga Monke en tu galería de NFT, guarda la imagen y luego súbela aquí.",
+    "chooseDifferent": "Elegir Otra Foto",
+    "pickFromPhotos": "Elegir de Fotos",
+    "skipForNow": "Omitir por ahora — configúralo después en Configuración"
+  },
+  "bananaGrant": {
+    "title": "🍌 ¡Lluvia de Bananas!",
+    "body": "¡Recibiste {{amount}} bananas!",
+    "nice": "¡Genial!"
   }
 }

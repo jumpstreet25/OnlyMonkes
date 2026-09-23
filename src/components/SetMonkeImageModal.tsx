@@ -13,6 +13,7 @@
 import React, { useState } from "react";
 import { View, Text, Pressable, StyleSheet, Image, ActivityIndicator } from "react-native";
 import { showGlassAlert } from "@/lib/glassAlert";
+import { useTranslation } from "react-i18next";
 import { GlassModal } from "@/components/GlassModal";
 import { THEME, FONTS } from "@/lib/constants";
 
@@ -23,6 +24,7 @@ interface SetMonkeImageModalProps {
 }
 
 export function SetMonkeImageModal({ visible, onPicked, onSkip }: SetMonkeImageModalProps) {
+  const { t } = useTranslation();
   const [uploading, setUploading] = useState(false);
   const [previewUri, setPreviewUri] = useState<string | null>(null);
 
@@ -31,7 +33,7 @@ export function SetMonkeImageModal({ visible, onPicked, onSkip }: SetMonkeImageM
       const IP = await import("expo-image-picker");
       const { status } = await IP.requestMediaLibraryPermissionsAsync();
       if (status !== "granted") {
-        showGlassAlert("Photo access required", "Please allow photo library access in your device settings.");
+        showGlassAlert(t("setMonkeImageModal.photoAccessRequired"), t("setMonkeImageModal.photoAccessBody"));
         return;
       }
       const result = await IP.launchImageLibraryAsync({
@@ -51,7 +53,7 @@ export function SetMonkeImageModal({ visible, onPicked, onSkip }: SetMonkeImageM
       const url = await uploadFile(compressedUri, "monke-pfp.jpg", "image/jpeg");
       onPicked(url);
     } catch (err: any) {
-      showGlassAlert("Upload failed", err?.message ?? "Could not upload image.");
+      showGlassAlert(t("setMonkeImageModal.uploadFailed"), err?.message ?? t("setMonkeImageModal.couldNotUpload"));
     } finally {
       setUploading(false);
     }
@@ -61,11 +63,9 @@ export function SetMonkeImageModal({ visible, onPicked, onSkip }: SetMonkeImageM
     <GlassModal visible={visible} onClose={onSkip} cardStyle={styles.sheet}>
       <View style={styles.content}>
         <Text style={styles.emoji}>🐒</Text>
-        <Text style={styles.title}>Set Your Monke PFP</Text>
+        <Text style={styles.title}>{t("setMonkeImageModal.title")}</Text>
         <Text style={styles.body}>
-          We couldn't auto-detect your Monke's image this time. Open your wallet app
-          (Phantom, Solflare) and find your Saga Monke in your NFT gallery, save the
-          image, then upload it here.
+          {t("setMonkeImageModal.body")}
         </Text>
 
         {previewUri && (
@@ -81,13 +81,13 @@ export function SetMonkeImageModal({ visible, onPicked, onSkip }: SetMonkeImageM
             <ActivityIndicator size="small" color="#fff" />
           ) : (
             <Text style={styles.pickBtnText}>
-              {previewUri ? "Choose a Different Photo" : "Pick from Photos"}
+              {previewUri ? t("setMonkeImageModal.chooseDifferent") : t("setMonkeImageModal.pickFromPhotos")}
             </Text>
           )}
         </Pressable>
 
         <Pressable onPress={onSkip} style={styles.skipBtn} disabled={uploading}>
-          <Text style={styles.skipText}>Skip for now — set it later in Settings</Text>
+          <Text style={styles.skipText}>{t("setMonkeImageModal.skipForNow")}</Text>
         </Pressable>
       </View>
     </GlassModal>

@@ -649,5 +649,24 @@
     "startedA": "@{{host}} started a {{label}}",
     "join": "JOIN",
     "tapToOpen": "Tap to open"
+  },
+  "glassAlert": {
+    "ok": "OK"
+  },
+  "setMonkeImageModal": {
+    "photoAccessRequired": "Photo access required",
+    "photoAccessBody": "Please allow photo library access in your device settings.",
+    "uploadFailed": "Upload failed",
+    "couldNotUpload": "Could not upload image.",
+    "title": "Set Your Monke PFP",
+    "body": "We couldn't auto-detect your Monke's image this time. Open your wallet app (Phantom, Solflare) and find your Saga Monke in your NFT gallery, save the image, then upload it here.",
+    "chooseDifferent": "Choose a Different Photo",
+    "pickFromPhotos": "Pick from Photos",
+    "skipForNow": "Skip for now — set it later in Settings"
+  },
+  "bananaGrant": {
+    "title": "🍌 Banana Airdrop!",
+    "body": "You received {{amount}} bananas!",
+    "nice": "Nice!"
   }
 }
