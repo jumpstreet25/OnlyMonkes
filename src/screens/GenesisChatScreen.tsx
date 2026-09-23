@@ -40,7 +40,8 @@ import { getMessageType } from "@/components/ChatMessageList";
 import { BananaShopModal } from "@/components/BananaShopModal";
 import { LeaderboardView } from "@/components/LeaderboardView";
 import { OnboardingCarousel } from "@/components/OnboardingCarousel";
-import { GENESIS_CAROUSEL_KEY, GENESIS_CAROUSEL_SLIDES } from "@/lib/genesisCarouselSlides";
+import { GENESIS_CAROUSEL_KEY, useGenesisCarouselSlides } from "@/lib/genesisCarouselSlides";
+import { useTranslation } from "react-i18next";
 import { ChatModeTabs, SwipeToSwitchChat } from "@/components/ChatModeSwitch";
 import { ChatHeader, CHAT_HEADER_HEIGHT } from "@/components/ChatHeader";
 import { ChatInput } from "@/components/ChatInput";
@@ -54,12 +55,12 @@ import { isMineInbox } from "@/lib/inboxLinking";
 import { SupportOptionsModal } from "@/components/SupportOptionsModal";
 import { captureError } from "@/lib/sentry";
 
-const GENESIS_DISABLED_MESSAGE = "Not available in Genesis Chat";
-
 const noop = (..._args: any[]) => {};
 
 export default function GenesisChatScreen() {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
+  const genesisCarouselSlides = useGenesisCarouselSlides();
 
   const { myInboxId, genesisGroupId, verified: isDualHolder, wallet, username, setGenesisGroupId } = useAppStore();
   const { disconnect } = useMobileWallet();
@@ -341,15 +342,15 @@ export default function GenesisChatScreen() {
           onCancelReply={noop}
           isSending={isSending}
           disabledButtons={{ cam: true, live: true, gif: true, trades: true }}
-          disabledMessage={GENESIS_DISABLED_MESSAGE}
+          disabledMessage={t("genesisCarousel.disabledMessage")}
           chatModeTabs={isDualHolder ? <ChatModeTabs active="genesis" /> : undefined}
         />
       </View>
 
       {showCarousel && (
         <OnboardingCarousel
-          slides={GENESIS_CAROUSEL_SLIDES}
-          finalCtaLabel="⚡ Check Saga Monkes on Tensor"
+          slides={genesisCarouselSlides}
+          finalCtaLabel={t("genesisCarousel.finalCta")}
           onDone={async () => {
             await AsyncStorage.setItem(GENESIS_CAROUSEL_KEY, "1").catch(() => {});
             setShowCarousel(false);

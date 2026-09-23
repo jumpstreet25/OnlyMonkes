@@ -254,5 +254,41 @@
         "features": "Earn bananas from daily rewards. Buy glow effects, themes, and PFP styles. Saga Monke marketplace listings are being rebuilt — check back soon."
       }
     ]
+  },
+  "genesisCarousel": {
+    "disabledMessage": "Not available in Genesis Chat",
+    "finalCta": "⚡ Check Saga Monkes on Tensor",
+    "slides": [
+      {
+        "title": "Welcome to Genesis Chat",
+        "subtitle": "Your Solana phone's Genesis Token got you in the door",
+        "features": "Swipe to see what a Saga Monke unlocks beyond this room"
+      },
+      {
+        "title": "Main Chat is Monke-only",
+        "subtitle": "The real conversation happens next door",
+        "features": "Live E2E encrypted group chat with every Saga Monke holder — GIFs, reactions, replies, tappable $TOKEN tickers. Genesis Chat is plain-text only, no camera/GIF/slash-commands — Main Chat is where the real hangout happens."
+      },
+      {
+        "title": "AI Agent #9385 doesn't DM Genesis holders",
+        "subtitle": "Real-time trading intelligence, Monke-only",
+        "features": "Saga Monke holders DM the bot for /limit orders, /ta, /hermes stats, /chart, AutonoMonke automated trading, and live TA alerts. None of that reaches Genesis Chat."
+      },
+      {
+        "title": "Avatar Rooms & Video Calls",
+        "subtitle": "Go live with an animated NFT avatar",
+        "features": "Monke holders start face-tracked Avatar Rooms and video calls straight from Main Chat. Your Genesis Token doesn't have a PFP to animate — a Saga Monke does."
+      },
+      {
+        "title": "The Leaderboard has a Monke-only side",
+        "subtitle": "You can watch. Monke holders compete.",
+        "features": "You've got Leaderboard and BananaShop access already — but only Saga Monke holders show up on the win-rate rankings and get full trading history tracked."
+      },
+      {
+        "title": "One NFT away",
+        "subtitle": "Buy a Saga Monke, unlock everything above",
+        "features": "Tap below to check Saga Monkes on Tensor — same wallet, instant upgrade."
+      }
+    ]
   }
 }

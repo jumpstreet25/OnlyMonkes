@@ -254,5 +254,41 @@
         "features": "Gana bananas con recompensas diarias. Compra efectos de brillo, temas y estilos de foto de perfil. Las publicaciones del mercado de Saga Monke se están reconstruyendo — vuelve pronto."
       }
     ]
+  },
+  "genesisCarousel": {
+    "disabledMessage": "No disponible en Genesis Chat",
+    "finalCta": "⚡ Ver Saga Monkes en Tensor",
+    "slides": [
+      {
+        "title": "Bienvenido a Genesis Chat",
+        "subtitle": "El Genesis Token de tu teléfono Solana te dio la entrada",
+        "features": "Desliza para ver lo que desbloquea un Saga Monke más allá de esta sala"
+      },
+      {
+        "title": "Main Chat es solo para Monkes",
+        "subtitle": "La verdadera conversación pasa en la sala de al lado",
+        "features": "Chat grupal cifrado E2E en vivo con todos los poseedores de Saga Monke — GIFs, reacciones, respuestas, tickers de $TOKEN tocables. Genesis Chat es solo texto plano, sin cámara/GIF/comandos — Main Chat es donde está la verdadera acción."
+      },
+      {
+        "title": "AI Agent #9385 no envía DMs a los de Genesis",
+        "subtitle": "Inteligencia de trading en tiempo real, solo para Monkes",
+        "features": "Los poseedores de Saga Monke le escriben al bot para órdenes /limit, /ta, estadísticas /hermes, /chart, trading automático AutonoMonke y alertas TA en vivo. Nada de eso llega a Genesis Chat."
+      },
+      {
+        "title": "Salas de Avatar y Videollamadas",
+        "subtitle": "Transmite en vivo con un avatar NFT animado",
+        "features": "Los poseedores de Monke inician Salas de Avatar con seguimiento facial y videollamadas directamente desde Main Chat. Tu Genesis Token no tiene un PFP para animar — un Saga Monke sí."
+      },
+      {
+        "title": "La Tabla de Líderes tiene un lado solo para Monkes",
+        "subtitle": "Tú puedes mirar. Los poseedores de Monke compiten.",
+        "features": "Ya tienes acceso a la Tabla de Líderes y BananaShop — pero solo los poseedores de Saga Monke aparecen en el ranking de tasa de acierto y tienen su historial de trading completo registrado."
+      },
+      {
+        "title": "A un NFT de distancia",
+        "subtitle": "Compra un Saga Monke, desbloquea todo lo anterior",
+        "features": "Toca abajo para ver Saga Monkes en Tensor — misma billetera, mejora instantánea."
+      }
+    ]
   }
 }
