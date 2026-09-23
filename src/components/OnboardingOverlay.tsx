@@ -16,12 +16,18 @@ import {
 } from "react-native";
 import * as Haptics from "expo-haptics";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useTranslation } from "react-i18next";
 import { THEME, FONTS } from "@/lib/constants";
-import { ONBOARDING_SCREENS } from "@/lib/monkeCopy";
 import { MonkeGlass } from "@/components/MonkeGlass";
 
 const AK_ONBOARDED = "onboarding_complete_v1";
 const { width: SCREEN_W } = Dimensions.get("window");
+
+interface OnboardingScreen {
+  emoji: string;
+  title: string;
+  body: string;
+}
 
 interface OnboardingOverlayProps {
   visible: boolean;
@@ -29,6 +35,8 @@ interface OnboardingOverlayProps {
 }
 
 export function OnboardingOverlay({ visible, onComplete }: OnboardingOverlayProps) {
+  const { t } = useTranslation();
+  const ONBOARDING_SCREENS = t("onboarding.screens", { returnObjects: true }) as OnboardingScreen[];
   const [page, setPage] = useState(0);
   const fadeAnim = useRef(new Animated.Value(1)).current;
 
@@ -70,12 +78,12 @@ export function OnboardingOverlay({ visible, onComplete }: OnboardingOverlayProp
           onPress={goNext}
         >
           <Text style={styles.btnText}>
-            {page === ONBOARDING_SCREENS.length - 1 ? "Let's Go! 🍌" : "Next"}
+            {page === ONBOARDING_SCREENS.length - 1 ? t("onboarding.letsGo") : t("onboarding.next")}
           </Text>
         </Pressable>
 
         {page === ONBOARDING_SCREENS.length - 1 && (
-          <Text style={styles.bonusHint}>+25 🍌 welcome bonus</Text>
+          <Text style={styles.bonusHint}>{t("onboarding.bonusHint")}</Text>
         )}
       </Animated.View>
     </MonkeGlass>

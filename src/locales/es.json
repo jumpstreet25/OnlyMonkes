@@ -3,5 +3,77 @@
     "language": "Idioma",
     "languageEnglish": "English",
     "languageSpanish": "Español"
+  },
+  "adDisclosure": {
+    "title": "🍌 Sobre los anuncios de OnlyMonkes",
+    "body1": "De vez en cuando (como máximo cada par de horas, y solo cuando reabres la app después de cerrarla), verás un anuncio automático breve — no hace falta tocar nada para que empiece.",
+    "body2": "Los ingresos por publicidad se convierten a $SKR, se stakean y se usan para pagar los costos de servidores y APIs de OnlyMonkes — el resto forma una Bóveda de $SKR permanente. Con el tiempo, esa Bóveda también financiará sorteos para la comunidad y la compra de Saga Monkes para añadir a ella. Nunca se vende ni se usa para nada más.",
+    "body3": "Los poseedores de Genesis Token ven un anuncio un poco más largo que los poseedores de Saga Monke. Siempre puedes saltar el anuncio automático en cuanto aparezca la opción de cerrarlo, igual que cualquier anuncio estándar.",
+    "gotIt": "Entendido"
+  },
+  "onboarding": {
+    "screens": [
+      {
+        "emoji": "🍌",
+        "title": "Gana Bananas a Diario",
+        "body": "Abre la app todos los días para ganar bananas. Una racha de 7 días = pago extra. Las bananas desbloquean personalizaciones de la interfaz en la Banana Shop."
+      },
+      {
+        "emoji": "🌍",
+        "title": "Monke Globe",
+        "body": "Configura tu ubicación en tu perfil. Mira dónde están los Saga Monkes en todo el mundo y encuentra eventos de Solana cerca de ti."
+      },
+      {
+        "emoji": "🐒",
+        "title": "Tu Comunidad",
+        "body": "Toca la píldora de banana para acceder a Mensajes, Eventos, Marketplace, Herramientas y Ajustes. AI Agent #9385 siempre está atento — menciónalo o envíale un DM al bot cuando quieras."
+      }
+    ],
+    "next": "Siguiente",
+    "letsGo": "¡Vamos! 🍌",
+    "bonusHint": "+25 🍌 de bono de bienvenida"
+  },
+  "onboardingCarousel": {
+    "skip": "Omitir",
+    "next": "Siguiente",
+    "letsGo": "¡Vamos!",
+    "loginNow": "🍌 Inicia sesión ahora — reclama tu bono de bienvenida",
+    "slides": [
+      {
+        "title": "Bienvenido a OnlyMonkes",
+        "subtitle": "El centro social exclusivo para los poseedores de NFTs Saga Monkes",
+        "features": "Desliza para descubrir todo lo que puedes hacer"
+      },
+      {
+        "title": "Chat Comunitario",
+        "subtitle": "Chat grupal cifrado de extremo a extremo con tus compañeros Monkes",
+        "features": "Envía mensajes, GIFs, reacciones y respuestas. Menciona a otros usuarios con @. Los tickers de $TOKEN se pueden tocar."
+      },
+      {
+        "title": "AI Agent #9385",
+        "subtitle": "Tu inteligencia de trading personal",
+        "features": "Alertas de análisis técnico en tiempo real en MonkeTrades. Envíale un DM al bot para órdenes /limit, /ta, estadísticas /hermes, /chart y más."
+      },
+      {
+        "title": "Los Mejores Traders",
+        "subtitle": "Mira quién realmente está ganando",
+        "features": "Una clasificación en vivo de los poseedores de Saga Monkes con el mejor historial de trading — tasa de aciertos y % de ganancia de esta semana. La encuentras en el menú → Clasificación."
+      },
+      {
+        "title": "Avatar Rooms y Videollamadas",
+        "subtitle": "Transmite en vivo con avatares NFT animados o video",
+        "features": "Inicia un Avatar Room desde la barra de chat. Tu foto de perfil Saga Monke cobra vida con seguimiento facial."
+      },
+      {
+        "title": "Comunidad Global",
+        "subtitle": "Mira dónde están los Monkes en todo el mundo",
+        "features": "Un globo 3D muestra la ubicación de los miembros. Toca los eventos para confirmar tu asistencia. Eventos del ecosistema Solana obtenidos de Lu.ma."
+      },
+      {
+        "title": "Comercia y Personaliza",
+        "subtitle": "Banana Shop + mercado de NFTs",
+        "features": "Gana bananas con recompensas diarias. Compra efectos de brillo, temas y estilos de foto de perfil. Las publicaciones del mercado de Saga Monke se están reconstruyendo — vuelve pronto."
+      }
+    ]
   }
 }

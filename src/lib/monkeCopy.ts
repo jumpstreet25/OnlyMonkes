@@ -89,23 +89,3 @@ const SUCCESS = [
 ];
 
 export function success(): string { return pick(SUCCESS); }
-
-// ─── Onboarding ──────────────────────────────────────────────────────────────
-
-export const ONBOARDING_SCREENS = [
-  {
-    emoji: "🍌",
-    title: "Earn Bananas Daily",
-    body: "Open the app every day to earn bananas. 7-day streak = bonus payout. Bananas unlock UI customizations in the Banana Shop.",
-  },
-  {
-    emoji: "🌍",
-    title: "Monke Globe",
-    body: "Set your location in your profile. See where Saga Monkes are worldwide and find Solana events near you.",
-  },
-  {
-    emoji: "🐒",
-    title: "Your Community",
-    body: "Tap the banana pill to access Messages, Events, Marketplace, Tools, and Settings. AI Agent #9385 is always watching — tag or DM the bot anytime.",
-  },
-];

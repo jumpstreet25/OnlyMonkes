@@ -13,7 +13,7 @@
  *   6. Marketplace & Banana Shop
  */
 
-import React, { useRef, useState, useEffect, useCallback } from "react";
+import React, { useRef, useState, useEffect, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -26,6 +26,7 @@ import {
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { LinearGradient } from "expo-linear-gradient";
+import { useTranslation } from "react-i18next";
 import { THEME, FONTS } from "@/lib/constants";
 
 export const ONBOARDING_KEY = "onboarding_carousel_seen_v1";
@@ -40,89 +41,42 @@ export interface Slide {
   gradient: readonly [string, string];
 }
 
-const SLIDES: Slide[] = [
-  {
-    emoji: "\uD83D\uDC12",
-    emojiBg: "#FFD70022",
-    accentClr: "#FFD700",
-    title: "Welcome to OnlyMonkes",
-    subtitle: "The exclusive social hub for Saga Monkes NFT holders",
-    features: "Swipe to learn what you can do",
-    gradient: ["#1a1200", "#0a0a14"],
-  },
-  {
-    emoji: "\uD83D\uDCAC",
-    emojiBg: "#6CB4EE22",
-    accentClr: "#6CB4EE",
-    title: "Community Chat",
-    subtitle: "E2E encrypted group chat with your fellow Monkes",
-    features:
-      "Send messages, GIFs, reactions, replies. @mention users. $TOKEN tickers are tappable.",
-    gradient: ["#0a1420", "#0a0a14"],
-  },
-  {
-    emoji: "\uD83E\uDD16",
-    emojiBg: "#9c7cff22",
-    accentClr: "#9c7cff",
-    title: "AI Agent #9385",
-    subtitle: "Your personal trading intelligence",
-    features:
-      "Real-time TA alerts in MonkeTrades. DM the bot for /limit orders, /ta, /hermes stats, /chart, and more.",
-    gradient: ["#100a1e", "#0a0a14"],
-  },
-  {
-    emoji: "\uD83D\uDCC8",
-    emojiBg: "#44ff8822",
-    accentClr: "#44ff88",
-    title: "Top Traders",
-    subtitle: "See who's actually winning",
-    features:
-      "A live leaderboard of Saga Monkes holders with the best trading track record \u2014 win rate and this week's gain %. Find it under the menu \u2192 Leaderboard.",
-    gradient: ["#001410", "#0a0a14"],
-  },
-  {
-    emoji: "\uD83C\uDFAD",
-    emojiBg: "#FF6B6B22",
-    accentClr: "#FF6B6B",
-    title: "Avatar Rooms & Video Calls",
-    subtitle: "Go live with animated NFT avatars or video",
-    features:
-      "Start an Avatar Room from the chat input. Your Saga Monke PFP comes alive with face tracking.",
-    gradient: ["#1a0a0a", "#0a0a14"],
-  },
-  {
-    emoji: "\uD83C\uDF0D",
-    emojiBg: "#44ff8822",
-    accentClr: "#44ff88",
-    title: "Global Community",
-    subtitle: "See where Monkes are worldwide",
-    features:
-      "3D globe shows member locations. Tap events to RSVP. Solana ecosystem events pulled from Lu.ma.",
-    gradient: ["#001410", "#0a0a14"],
-  },
-  {
-    emoji: "\uD83C\uDF4C",
-    emojiBg: "#FFD54F22",
-    accentClr: "#FFD54F",
-    title: "Trade & Customize",
-    subtitle: "Banana Shop + NFT marketplace",
-    features:
-      "Earn bananas from daily rewards. Buy glow effects, themes, and PFP styles. Saga Monke marketplace listings are being rebuilt — check back soon.",
-    gradient: ["#1a1400", "#0a0a14"],
-  },
+/**
+ * Visual-only (non-translatable) half of the default slide set — title/
+ * subtitle/features live in locales/{en,es}.json under onboardingCarousel.
+ * slides, merged in by index at render time (see useMemo below). Custom
+ * `slides` passed via props (e.g. GenesisChatScreen's own FOMO slides)
+ * bypass this and are not yet translated — a separate follow-up.
+ */
+const SLIDE_VISUALS: readonly Omit<Slide, "title" | "subtitle" | "features">[] = [
+  { emoji: "🐒", emojiBg: "#FFD70022", accentClr: "#FFD700", gradient: ["#1a1200", "#0a0a14"] },
+  { emoji: "💬", emojiBg: "#6CB4EE22", accentClr: "#6CB4EE", gradient: ["#0a1420", "#0a0a14"] },
+  { emoji: "🤖", emojiBg: "#9c7cff22", accentClr: "#9c7cff", gradient: ["#100a1e", "#0a0a14"] },
+  { emoji: "📈", emojiBg: "#44ff8822", accentClr: "#44ff88", gradient: ["#001410", "#0a0a14"] },
+  { emoji: "🎭", emojiBg: "#FF6B6B22", accentClr: "#FF6B6B", gradient: ["#1a0a0a", "#0a0a14"] },
+  { emoji: "🌍", emojiBg: "#44ff8822", accentClr: "#44ff88", gradient: ["#001410", "#0a0a14"] },
+  { emoji: "🍌", emojiBg: "#FFD54F22", accentClr: "#FFD54F", gradient: ["#1a1400", "#0a0a14"] },
 ];
 
 interface Props {
   onDone: () => void;
   onLoginNow: () => void;
-  /** Defaults to the pre-login SLIDES above — pass a different set (e.g.
+  /** Defaults to the pre-login slides above — pass a different set (e.g.
    *  Genesis Chat's FOMO slides) to reuse this same carousel shell. */
   slides?: Slide[];
-  /** Text for the CTA button on the final slide. Defaults to "Login now". */
+  /** Text for the CTA button on the final slide. Defaults to the translated "Login now" copy. */
   finalCtaLabel?: string;
 }
 
-export function OnboardingCarousel({ onDone, onLoginNow, slides = SLIDES, finalCtaLabel }: Props) {
+export function OnboardingCarousel({ onDone, onLoginNow, slides: slidesProp, finalCtaLabel }: Props) {
+  const { t } = useTranslation();
+  const defaultSlides = useMemo<Slide[]>(() => {
+    const text = t("onboardingCarousel.slides", { returnObjects: true }) as
+      Pick<Slide, "title" | "subtitle" | "features">[];
+    return SLIDE_VISUALS.map((visual, i) => ({ ...visual, ...text[i] }));
+  }, [t]);
+  const slides = slidesProp ?? defaultSlides;
+
   const { width } = useWindowDimensions();
   const flatListRef = useRef<FlatList<Slide>>(null);
   const [index, setIndex] = useState(0);
@@ -213,7 +167,7 @@ export function OnboardingCarousel({ onDone, onLoginNow, slides = SLIDES, finalC
       {/* Skip button — top right */}
       {!isLast && (
         <Pressable style={styles.skipTop} onPress={handleDone} hitSlop={12}>
-          <Text style={styles.skipTopText}>Skip</Text>
+          <Text style={styles.skipTopText}>{t("onboardingCarousel.skip")}</Text>
         </Pressable>
       )}
 
@@ -266,7 +220,7 @@ export function OnboardingCarousel({ onDone, onLoginNow, slides = SLIDES, finalC
             style={styles.btnGradient}
           >
             <Text style={styles.btnText}>
-              {isLast ? "Let's Go!" : "Next"}
+              {isLast ? t("onboardingCarousel.letsGo") : t("onboardingCarousel.next")}
             </Text>
           </LinearGradient>
         </Pressable>
@@ -279,7 +233,7 @@ export function OnboardingCarousel({ onDone, onLoginNow, slides = SLIDES, finalC
             style={({ pressed }) => [styles.loginNowBtn, pressed && { opacity: 0.7 }]}
             onPress={handleLoginNow}
           >
-            <Text style={styles.loginNowText}>{finalCtaLabel ?? "🍌 Login now — claim your welcome bonus"}</Text>
+            <Text style={styles.loginNowText}>{finalCtaLabel ?? t("onboardingCarousel.loginNow")}</Text>
           </Pressable>
         )}
       </View>

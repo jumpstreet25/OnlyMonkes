@@ -3,5 +3,77 @@
     "language": "Language",
     "languageEnglish": "English",
     "languageSpanish": "Español"
+  },
+  "adDisclosure": {
+    "title": "🍌 About OnlyMonkes ads",
+    "body1": "Every once in a while (at most every couple hours, only when you reopen the app fresh), you'll see a short automatic ad — no tap required to start it.",
+    "body2": "Ad revenue gets swapped into $SKR, staked, and used to pay OnlyMonkes' server and API costs — the rest builds a standing $SKR Vault. Eventually that Vault also funds community giveaways and buying Saga Monkes to add to it. Never sold or used for anything else.",
+    "body3": "Genesis Token holders see a slightly longer ad than Saga Monke holders. You can always skip the automatic ad the moment it's closeable, same as any standard ad.",
+    "gotIt": "Got it"
+  },
+  "onboarding": {
+    "screens": [
+      {
+        "emoji": "🍌",
+        "title": "Earn Bananas Daily",
+        "body": "Open the app every day to earn bananas. 7-day streak = bonus payout. Bananas unlock UI customizations in the Banana Shop."
+      },
+      {
+        "emoji": "🌍",
+        "title": "Monke Globe",
+        "body": "Set your location in your profile. See where Saga Monkes are worldwide and find Solana events near you."
+      },
+      {
+        "emoji": "🐒",
+        "title": "Your Community",
+        "body": "Tap the banana pill to access Messages, Events, Marketplace, Tools, and Settings. AI Agent #9385 is always watching — tag or DM the bot anytime."
+      }
+    ],
+    "next": "Next",
+    "letsGo": "Let's Go! 🍌",
+    "bonusHint": "+25 🍌 welcome bonus"
+  },
+  "onboardingCarousel": {
+    "skip": "Skip",
+    "next": "Next",
+    "letsGo": "Let's Go!",
+    "loginNow": "🍌 Login now — claim your welcome bonus",
+    "slides": [
+      {
+        "title": "Welcome to OnlyMonkes",
+        "subtitle": "The exclusive social hub for Saga Monkes NFT holders",
+        "features": "Swipe to learn what you can do"
+      },
+      {
+        "title": "Community Chat",
+        "subtitle": "E2E encrypted group chat with your fellow Monkes",
+        "features": "Send messages, GIFs, reactions, replies. @mention users. $TOKEN tickers are tappable."
+      },
+      {
+        "title": "AI Agent #9385",
+        "subtitle": "Your personal trading intelligence",
+        "features": "Real-time TA alerts in MonkeTrades. DM the bot for /limit orders, /ta, /hermes stats, /chart, and more."
+      },
+      {
+        "title": "Top Traders",
+        "subtitle": "See who's actually winning",
+        "features": "A live leaderboard of Saga Monkes holders with the best trading track record — win rate and this week's gain %. Find it under the menu → Leaderboard."
+      },
+      {
+        "title": "Avatar Rooms & Video Calls",
+        "subtitle": "Go live with animated NFT avatars or video",
+        "features": "Start an Avatar Room from the chat input. Your Saga Monke PFP comes alive with face tracking."
+      },
+      {
+        "title": "Global Community",
+        "subtitle": "See where Monkes are worldwide",
+        "features": "3D globe shows member locations. Tap events to RSVP. Solana ecosystem events pulled from Lu.ma."
+      },
+      {
+        "title": "Trade & Customize",
+        "subtitle": "Banana Shop + NFT marketplace",
+        "features": "Earn bananas from daily rewards. Buy glow effects, themes, and PFP styles. Saga Monke marketplace listings are being rebuilt — check back soon."
+      }
+    ]
   }
 }

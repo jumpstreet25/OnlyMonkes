@@ -6,6 +6,7 @@
  */
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
+import { useTranslation } from "react-i18next";
 import { MonkeGlass, MonkeGlassActionButton } from "@/components/MonkeGlass";
 import { THEME, FONTS } from "@/lib/constants";
 
@@ -15,24 +16,14 @@ interface AdDisclosureModalProps {
 }
 
 export function AdDisclosureModal({ visible, onAcknowledge }: AdDisclosureModalProps) {
+  const { t } = useTranslation();
   return (
     <MonkeGlass visible={visible} onClose={onAcknowledge} position="bottom" persistent>
-      <Text style={styles.title}>🍌 About OnlyMonkes ads</Text>
-      <Text style={styles.body}>
-        Every once in a while (at most every couple hours, only when you reopen the app fresh),
-        you'll see a short automatic ad — no tap required to start it.
-      </Text>
-      <Text style={styles.body}>
-        Ad revenue gets swapped into $SKR, staked, and used to pay OnlyMonkes' server and API
-        costs — the rest builds a standing $SKR Vault. Eventually that Vault also funds
-        community giveaways and buying Saga Monkes to add to it. Never sold or used for
-        anything else.
-      </Text>
-      <Text style={styles.body}>
-        Genesis Token holders see a slightly longer ad than Saga Monke holders. You can always
-        skip the automatic ad the moment it's closeable, same as any standard ad.
-      </Text>
-      <MonkeGlassActionButton label="Got it" onPress={onAcknowledge} />
+      <Text style={styles.title}>{t("adDisclosure.title")}</Text>
+      <Text style={styles.body}>{t("adDisclosure.body1")}</Text>
+      <Text style={styles.body}>{t("adDisclosure.body2")}</Text>
+      <Text style={styles.body}>{t("adDisclosure.body3")}</Text>
+      <MonkeGlassActionButton label={t("adDisclosure.gotIt")} onPress={onAcknowledge} />
     </MonkeGlass>
   );
 }
