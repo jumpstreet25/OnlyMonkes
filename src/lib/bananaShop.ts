@@ -397,14 +397,16 @@ export interface ShopState {
 }
 
 /** Purchase disclaimer shown before first purchase. */
-export const PURCHASE_DISCLAIMER = [
-  "• All purchases are permanent and yours forever",
-  "• You can switch between owned items anytime at no extra cost",
-  "• PFP-linked cosmetics (aura, pulse frame, color theme) are tied to the NFT equipped when purchased",
-  "• Changing your PFP deactivates PFP-linked items; switching back reactivates them",
-  "• Non-PFP cosmetics (bubble glow, text style, themes) carry over regardless of PFP changes",
-  "• SOL payment is non-refundable",
-].join("\n");
+export function getPurchaseDisclaimer(t: (key: string) => string): string {
+  return [
+    t("bananaShop.disclaimer1"),
+    t("bananaShop.disclaimer2"),
+    t("bananaShop.disclaimer3"),
+    t("bananaShop.disclaimer4"),
+    t("bananaShop.disclaimer5"),
+    t("bananaShop.disclaimer6"),
+  ].join("\n");
+}
 
 const DEFAULT_SHOP_STATE: ShopState = {
   owned: [],
@@ -566,26 +568,35 @@ export async function getEquippedStyles(): Promise<Record<string, any>> {
   return styles;
 }
 
-/** Get tier label and color. */
-export function getTierInfo(tier: number): { label: string; color: string } {
+/** Get tier label and color. `t` optional — falls back to English (e.g. for non-component callers). */
+export function getTierInfo(tier: number, t?: (key: string) => string): { label: string; color: string } {
   switch (tier) {
-    case 1: return { label: "TIER 1", color: "#6CB4EE" };
-    case 2: return { label: "TIER 2", color: "#9945FF" };
-    case 3: return { label: "TIER 3", color: "#FFD54F" };
-    case 4: return { label: "TIER 4", color: "#FF6B6B" };
-    case 5: return { label: "TIER 5", color: "#14F195" };
-    default: return { label: "TIER ?", color: "#888" };
+    case 1: return { label: t ? t("bananaShop.tier1") : "TIER 1", color: "#6CB4EE" };
+    case 2: return { label: t ? t("bananaShop.tier2") : "TIER 2", color: "#9945FF" };
+    case 3: return { label: t ? t("bananaShop.tier3") : "TIER 3", color: "#FFD54F" };
+    case 4: return { label: t ? t("bananaShop.tier4") : "TIER 4", color: "#FF6B6B" };
+    case 5: return { label: t ? t("bananaShop.tier5") : "TIER 5", color: "#14F195" };
+    default: return { label: t ? t("bananaShop.tierUnknown") : "TIER ?", color: "#888" };
   }
 }
 
-/** Get category display name. */
-export function getCategoryName(cat: ShopCategory): string {
+/** Get category display name. `t` optional — falls back to English (e.g. for non-component callers). */
+export function getCategoryName(cat: ShopCategory, t?: (key: string) => string): string {
+  if (!t) {
+    switch (cat) {
+      case "bubble": return "Chat Bubbles";
+      case "text": return "Text & Names";
+      case "pfp": return "PFP Styles";
+      case "theme": return "App Themes";
+      case "world": return "Chat World";
+    }
+  }
   switch (cat) {
-    case "bubble": return "Chat Bubbles";
-    case "text": return "Text & Names";
-    case "pfp": return "PFP Styles";
-    case "theme": return "App Themes";
-    case "world": return "Chat World";
+    case "bubble": return t("bananaShop.catBubble");
+    case "text": return t("bananaShop.catText");
+    case "pfp": return t("bananaShop.catPfp");
+    case "theme": return t("bananaShop.catTheme");
+    case "world": return t("bananaShop.catWorld");
   }
 }
 

@@ -34,7 +34,7 @@ import { CurrencyPickerSheet } from "@/components/CurrencyPickerSheet";
 import { WorldMiniPreview, WorldLayer } from "@/components/worlds/WorldLayer";
 import {
   getAvailableItems, loadShopState, saveShopState, addOwnedItem, equipItem, unequipCategory, unequipItem,
-  getTierInfo, getCategoryName, getEquippedStyles, PURCHASE_DISCLAIMER, bindPfpItemToNft,
+  getTierInfo, getCategoryName, getEquippedStyles, getPurchaseDisclaimer, bindPfpItemToNft,
   type ShopItem, type ShopCategory, type ShopState,
 } from "@/lib/bananaShop";
 import { applyThemeFromShop } from "@/lib/shopTheme";
@@ -42,6 +42,8 @@ import { GlassModal } from "@/components/GlassModal";
 import { openCrate, getCrateCost, getRarityColor, type LootResult } from "@/lib/lootCrate";
 import { triggerProfileRebroadcast } from "@/hooks/useXmtp";
 import { isReceiptMintingAvailable, mintPurchaseReceipt } from "@/lib/cnftReceipts";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
 
@@ -59,39 +61,39 @@ function hslToHex(h: number, s: number, l: number): string {
 }
 
 /** Get a human-readable effect summary for the preview popup. */
-function getEffectSummary(item: ShopItem): string {
+function getEffectSummary(item: ShopItem, t: TFunction): string {
   switch (item.category) {
     case "bubble": {
       const color = item.style.glowColor as string | undefined;
-      if (item.style.bgColor) return `Custom bubble background with ${color ?? "colored"} glow`;
-      if (item.style.glassOpacity) return `Frosted glass bubble with ${color ?? "ice-blue"} glow`;
-      return `${color ?? "Colored"} neon glow around all your messages`;
+      if (item.style.bgColor) return t("bananaShop.effect.bubbleCustomBg", { color: color ?? t("bananaShop.effect.colored") });
+      if (item.style.glassOpacity) return t("bananaShop.effect.bubbleFrosted", { color: color ?? t("bananaShop.effect.iceBlue") });
+      return t("bananaShop.effect.bubbleNeon", { color: color ?? t("bananaShop.effect.coloredCap") });
     }
     case "text": {
-      if (item.style.nameColor) return `Your username displays in ${item.style.nameColor} in chat`;
-      if (item.style.customTextColor) return "Pick any color from the wheel for your message text";
-      if (item.style.fontWeight === "bold") return "All your messages render in bold weight";
-      if (item.style.fontFamily === "mono") return "Messages use monospace font (JetBrains Mono)";
-      if (item.style.textGlow) return "Your message text gets a soft luminous glow effect";
-      return "Custom text styling for your messages";
+      if (item.style.nameColor) return t("bananaShop.effect.textNameColor", { color: item.style.nameColor });
+      if (item.style.customTextColor) return t("bananaShop.effect.textCustomColor");
+      if (item.style.fontWeight === "bold") return t("bananaShop.effect.textBold");
+      if (item.style.fontFamily === "mono") return t("bananaShop.effect.textMono");
+      if (item.style.textGlow) return t("bananaShop.effect.textGlow");
+      return t("bananaShop.effect.textDefault");
     }
     case "pfp": {
-      if (item.style.pfpThemeEnabled) return "Your NFT's dominant color tints your bubble border and glow";
-      if (item.style.pfpAuraEnabled) return "Your PFP gets a colored aura using your NFT's palette";
-      if (item.style.pfpFrame === "pulse") return "Animated pulsing ring appears around your avatar";
-      if (item.style.pfpFrame === "glow") return "Constant soft glow ring around your avatar";
-      return "Custom PFP styling";
+      if (item.style.pfpThemeEnabled) return t("bananaShop.effect.pfpTheme");
+      if (item.style.pfpAuraEnabled) return t("bananaShop.effect.pfpAura");
+      if (item.style.pfpFrame === "pulse") return t("bananaShop.effect.pfpPulse");
+      if (item.style.pfpFrame === "glow") return t("bananaShop.effect.pfpGlow");
+      return t("bananaShop.effect.pfpDefault");
     }
     case "theme": {
-      if (item.style.pfpFullTheme) return "Your entire app UI uses colors derived from your NFT's palette";
+      if (item.style.pfpFullTheme) return t("bananaShop.effect.themeFull");
       const accent = item.style.themeAccent as string | undefined;
-      return `App-wide color scheme: background, surfaces, and accent (${accent ?? "custom"})`;
+      return t("bananaShop.effect.themeAppWide", { accent: accent ?? t("bananaShop.effect.custom") });
     }
     case "world": {
       const wid = item.style.worldId as string | undefined;
-      if (wid === "world_banana_grove") return "Animated jungle backdrop with bananas drifting down behind your chat";
-      if (wid === "world_solana_cyberpunk") return "Purple-to-teal Saga grid backdrop with a slow neon drift";
-      if (wid === "world_trading_floor") return "Jungle floor where five dirty-green Monke Core candles ripped through the earth — heavy waterfall is the only motion";
+      if (wid === "world_banana_grove") return t("bananaShop.effect.worldBananaGrove");
+      if (wid === "world_solana_cyberpunk") return t("bananaShop.effect.worldCyberpunk");
+      if (wid === "world_trading_floor") return t("bananaShop.effect.worldTradingFloor");
       return item.description;
     }
     default: return item.description;
@@ -102,12 +104,13 @@ function getEffectSummary(item: ShopItem): string {
 
 const PRESETS = ["#FFD700", "#FF6B6B", "#00FFFF", "#FF69B4", "#39FF14", "#9945FF", "#6CB4EE", "#FF8C00", "#FFFFFF"];
 const BRIGHTNESS_LEVELS = [
-  { label: "Light", l: 75 },
-  { label: "Normal", l: 55 },
-  { label: "Vivid", l: 45 },
+  { labelKey: "light", l: 75 },
+  { labelKey: "normal", l: 55 },
+  { labelKey: "vivid", l: 45 },
 ];
 
 function ColorPickerSection({ currentColor, onColorChange }: { currentColor: string; onColorChange: (c: string) => void }) {
+  const { t } = useTranslation();
   const [hue, setHue] = useState(0);
   const [brightness, setBrightness] = useState(1);
   const [barWidth, setBarWidth] = useState(300);
@@ -122,7 +125,7 @@ function ColorPickerSection({ currentColor, onColorChange }: { currentColor: str
   return (
     <View style={colorStyles.section}>
       <View style={colorStyles.headerRow}>
-        <Text style={colorStyles.label}>Your Text Color</Text>
+        <Text style={colorStyles.label}>{t("bananaShop.yourTextColor")}</Text>
         <View style={[colorStyles.preview, { backgroundColor: currentColor }]} />
       </View>
       <Pressable
@@ -141,11 +144,11 @@ function ColorPickerSection({ currentColor, onColorChange }: { currentColor: str
       <View style={colorStyles.brightnessRow}>
         {BRIGHTNESS_LEVELS.map((b, i) => (
           <Pressable
-            key={b.label}
+            key={b.labelKey}
             style={[colorStyles.brightPill, brightness === i && colorStyles.brightPillActive]}
             onPress={() => { setBrightness(i); onColorChange(hslToHex(hue, 100, b.l)); }}
           >
-            <Text style={[colorStyles.brightText, brightness === i && colorStyles.brightTextActive]}>{b.label}</Text>
+            <Text style={[colorStyles.brightText, brightness === i && colorStyles.brightTextActive]}>{t(`bananaShop.brightness.${b.labelKey}`)}</Text>
           </Pressable>
         ))}
       </View>
@@ -209,9 +212,10 @@ interface PreviewPopupProps {
 }
 
 function PreviewPopup({ item, owned, equipped, canAfford, onClose, onAction, purchasing }: PreviewPopupProps) {
+  const { t } = useTranslation();
   if (!item) return null;
-  const { label: tierLabel, color: tierColor } = getTierInfo(item.tier);
-  const catName = getCategoryName(item.category);
+  const { label: tierLabel, color: tierColor } = getTierInfo(item.tier, t);
+  const catName = getCategoryName(item.category, t);
 
   // Build mock bubble styles based on item
   const mockBubbleStyle: any = {
@@ -287,14 +291,14 @@ function PreviewPopup({ item, owned, equipped, canAfford, onClose, onAction, pur
 
   const usdLabel = `$${item.usdCost.toFixed(2)}`;
   const actionLabel = purchasing
-    ? "Processing..."
+    ? t("bananaShop.processing")
     : equipped
-      ? "Unequip"
+      ? t("bananaShop.unequip")
       : owned
-        ? "Equip"
+        ? t("bananaShop.equip")
         : canAfford
-          ? `Buy — ${item.bananaCost} 🍌 + ${usdLabel}`
-          : `Need ${item.bananaCost} 🍌`;
+          ? t("bananaShop.buyFor", { cost: item.bananaCost, usd: usdLabel })
+          : t("bananaShop.needBananas", { cost: item.bananaCost });
 
   return (
     <GlassModal visible onClose={onClose} position="center">
@@ -312,18 +316,18 @@ function PreviewPopup({ item, owned, equipped, canAfford, onClose, onAction, pur
             <Text style={previewStyles.catLabel}>{catName}</Text>
             {item.seasonal && (
               <View style={previewStyles.limitedPill}>
-                <Text style={previewStyles.limitedText}>LIMITED</Text>
+                <Text style={previewStyles.limitedText}>{t("bananaShop.limited")}</Text>
               </View>
             )}
           </View>
 
           {/* Description */}
           <Text style={previewStyles.desc}>{item.description}</Text>
-          <Text style={previewStyles.effectLabel}>What changes:</Text>
-          <Text style={previewStyles.effectText}>{getEffectSummary(item)}</Text>
+          <Text style={previewStyles.effectLabel}>{t("bananaShop.whatChanges")}</Text>
+          <Text style={previewStyles.effectText}>{getEffectSummary(item, t)}</Text>
 
           {/* Live preview */}
-          <Text style={previewStyles.previewLabel}>Preview</Text>
+          <Text style={previewStyles.previewLabel}>{t("bananaShop.preview")}</Text>
           <View style={previewStyles.previewArea}>
             {item.category === "pfp" ? (
               <View style={{ alignItems: "center", gap: 8 }}>
@@ -334,7 +338,7 @@ function PreviewPopup({ item, owned, equipped, canAfford, onClose, onAction, pur
                   <Text style={{ fontSize: 22 }}>🐒</Text>
                 </View>
                 <Text style={{ fontFamily: FONTS.body, fontSize: 11, color: THEME.textMuted }}>
-                  {item.style.pfpFrame === "pulse" ? "Ring pulses in/out" : item.style.pfpFrame === "glow" ? "Soft constant glow" : "NFT color aura"}
+                  {item.style.pfpFrame === "pulse" ? t("bananaShop.ringPulses") : item.style.pfpFrame === "glow" ? t("bananaShop.softGlow") : t("bananaShop.nftColorAura")}
                 </Text>
               </View>
             ) : item.category === "world" ? (
@@ -345,7 +349,7 @@ function PreviewPopup({ item, owned, equipped, canAfford, onClose, onAction, pur
                   height={120}
                 />
                 <Text style={{ fontFamily: FONTS.body, fontSize: 10, color: THEME.textMuted, textAlign: "center" }}>
-                  Animated background renders behind your chat messages
+                  {t("bananaShop.animatedBackgroundHint")}
                 </Text>
               </View>
             ) : item.category === "theme" ? (
@@ -367,7 +371,7 @@ function PreviewPopup({ item, owned, equipped, canAfford, onClose, onAction, pur
                 </View>
                 {item.style.pfpFullTheme && (
                   <Text style={{ fontFamily: FONTS.body, fontSize: 10, color: THEME.textMuted, textAlign: "center" }}>
-                    Colors derived from your equipped NFT
+                    {t("bananaShop.colorsFromNft")}
                   </Text>
                 )}
               </View>
@@ -376,8 +380,8 @@ function PreviewPopup({ item, owned, equipped, canAfford, onClose, onAction, pur
                 <Text style={mockNameStyle}>MonkeUser 🍌</Text>
                 <Text style={mockTextStyle}>
                   {item.category === "text" && item.style.customTextColor
-                    ? "Your messages in your chosen color"
-                    : "gm monkes, wagmi"}
+                    ? t("bananaShop.messagesInChosenColor")
+                    : t("bananaShop.gmMonkesWagmi")}
                 </Text>
               </View>
             )}
@@ -403,7 +407,7 @@ function PreviewPopup({ item, owned, equipped, canAfford, onClose, onAction, pur
           {/* Price breakdown for unowned */}
       {!owned && (
         <Text style={previewStyles.priceBreakdown}>
-          {item.bananaCost} 🍌 (engagement) + ${item.usdCost.toFixed(2)} (SOL · USDC · SKR — 10% off in SKR)
+          {t("bananaShop.priceBreakdown", { cost: item.bananaCost, usd: item.usdCost.toFixed(2) })}
         </Text>
       )}
     </GlassModal>
@@ -493,6 +497,7 @@ interface BananaShopModalProps {
 }
 
 export function BananaShopModal({ visible, onClose, onLeaderboardPress, onSupportPress, onDisconnectPress }: BananaShopModalProps) {
+  const { t } = useTranslation();
   const bananaBalance = useAppStore(s => s.bananaBalance);
   const worldId = useAppStore(s => s.shopStyles?.worldId) as string | undefined;
   const [shopState, setShopState] = useState<ShopState | null>(null);
@@ -573,7 +578,7 @@ export function BananaShopModal({ visible, onClose, onLeaderboardPress, onSuppor
     const isDevForBananaCheck = myWalletForCheck === DEV_ADMIN_WALLET;
 
     if (!isDevForBananaCheck && bananaBalance < item.bananaCost) {
-      showGlassAlert("Not enough bananas", `You need ${item.bananaCost} 🍌 but have ${bananaBalance}. Keep logging in daily!`);
+      showGlassAlert(t("bananaShop.notEnoughBananas"), t("bananaShop.notEnoughBananasBody", { cost: item.bananaCost, balance: bananaBalance }));
       return;
     }
 
@@ -582,25 +587,25 @@ export function BananaShopModal({ visible, onClose, onLeaderboardPress, onSuppor
     const isFirstPurchase = shopState.owned.length === 0;
     if (isFirstPurchase) {
       showGlassAlert(
-        `Buy ${item.name}?`,
-        `${item.bananaCost} 🍌 + $${item.usdCost.toFixed(2)}\n\n${PURCHASE_DISCLAIMER}`,
+        t("bananaShop.buyItemTitle", { name: item.name }),
+        `${item.bananaCost} 🍌 + $${item.usdCost.toFixed(2)}\n\n${getPurchaseDisclaimer(t)}`,
         [
-          { text: "Cancel", style: "cancel" },
-          { text: "Continue", onPress: () => setPurchaseItem(item) },
+          { text: t("bananaShop.cancel"), style: "cancel" },
+          { text: t("bananaShop.continue"), onPress: () => setPurchaseItem(item) },
         ],
       );
     } else {
       setPurchaseItem(item);
     }
-  }, [shopState, bananaBalance]);
+  }, [shopState, bananaBalance, t]);
 
   const categories: Array<{ key: ShopCategory | "all"; label: string }> = [
-    { key: "all", label: "All" },
-    { key: "bubble", label: "Bubbles" },
-    { key: "text", label: "Text" },
+    { key: "all", label: t("bananaShop.catAll") },
+    { key: "bubble", label: t("bananaShop.catBubbles") },
+    { key: "text", label: t("bananaShop.catTextShort") },
     { key: "pfp", label: "PFP" },
-    { key: "theme", label: "Themes" },
-    { key: "world", label: "Worlds" },
+    { key: "theme", label: t("bananaShop.catThemes") },
+    { key: "world", label: t("bananaShop.catWorlds") },
   ];
 
   // Helper to check item state
@@ -667,8 +672,8 @@ export function BananaShopModal({ visible, onClose, onLeaderboardPress, onSuppor
             <Text style={styles.backText}>←</Text>
           </Pressable>
           <View style={styles.titleWrap}>
-            <Text style={[styles.title, worldId ? { color: getWorldAccent(worldId), textShadowColor: getWorldAccent(worldId) + "59" } : null]}>Banana Shop</Text>
-            <Text style={styles.subtitle}>{items.length} customizations</Text>
+            <Text style={[styles.title, worldId ? { color: getWorldAccent(worldId), textShadowColor: getWorldAccent(worldId) + "59" } : null]}>{t("bananaShop.title")}</Text>
+            <Text style={styles.subtitle}>{t("bananaShop.customizationsCount", { count: items.length })}</Text>
           </View>
           <View style={styles.balancePill}>
             <Text style={styles.balanceText}>{bananaBalance} 🍌</Text>
@@ -745,12 +750,12 @@ export function BananaShopModal({ visible, onClose, onLeaderboardPress, onSuppor
                 const crateWallet = useAppStore.getState().wallet?.address;
                 const isDevCrate = crateWallet === DEV_ADMIN_WALLET;
                 if (!isDevCrate && bananaBalance < cost) {
-                  showGlassAlert("Not enough bananas", `You need ${cost} 🍌 to open a Banana Chest.`);
+                  showGlassAlert(t("bananaShop.notEnoughBananas"), t("bananaShop.notEnoughForCrate", { cost }));
                   return;
                 }
-                showGlassAlert("Open Banana Chest?", `Spend ${cost} 🍌 for a random prize?\n\nPrizes: Banana bonus, 2x multiplier, free shop items, legendary exclusives!`, [
-                  { text: "Cancel", style: "cancel" },
-                  { text: "Open!", onPress: async () => {
+                showGlassAlert(t("bananaShop.openCrateTitle"), t("bananaShop.openCrateBody", { cost }), [
+                  { text: t("bananaShop.cancel"), style: "cancel" },
+                  { text: t("bananaShop.openExclaim"), onPress: async () => {
                     setSpinningCrate(true);
                     if (!isDevCrate) {
                       const spent = await spendBananas(cost);
@@ -791,8 +796,8 @@ export function BananaShopModal({ visible, onClose, onLeaderboardPress, onSuppor
               <View style={styles.crateInner}>
                 <Text style={{ fontSize: 28 }}>🎰</Text>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.crateName}>Banana Chest</Text>
-                  <Text style={styles.crateDesc}>Random prize — bonuses, items, or legendaries</Text>
+                  <Text style={styles.crateName}>{t("bananaShop.bananaChest")}</Text>
+                  <Text style={styles.crateDesc}>{t("bananaShop.bananaChestDesc")}</Text>
                 </View>
                 <View style={styles.costPill}>
                   <Text style={styles.costText}>50 🍌</Text>
@@ -807,7 +812,7 @@ export function BananaShopModal({ visible, onClose, onLeaderboardPress, onSuppor
               <Text style={{ fontSize: 32 }}>{crateResult.emoji}</Text>
               <Text style={[styles.crateName, { color: getRarityColor(crateResult.rarity) }]}>{crateResult.title}</Text>
               <Text style={styles.crateDesc}>{crateResult.description}</Text>
-              <Text style={{ fontFamily: FONTS.mono, fontSize: 10, color: THEME.textFaint, marginTop: 4 }}>Tap to dismiss</Text>
+              <Text style={{ fontFamily: FONTS.mono, fontSize: 10, color: THEME.textFaint, marginTop: 4 }}>{t("bananaShop.tapToDismiss")}</Text>
             </Pressable>
           )}
 
@@ -834,7 +839,7 @@ export function BananaShopModal({ visible, onClose, onLeaderboardPress, onSuppor
           {([1, 2, 3, 4, 5] as number[]).map(tier => {
             const tierItems = groupedByTier[tier];
             if (!tierItems || tierItems.length === 0) return null;
-            const { label, color } = getTierInfo(tier);
+            const { label, color } = getTierInfo(tier, t);
 
             return (
               <View key={tier} style={styles.tierSection}>
@@ -911,7 +916,7 @@ export function BananaShopModal({ visible, onClose, onLeaderboardPress, onSuppor
                         {/* Seasonal badge */}
                         {item.seasonal && (
                           <View style={styles.seasonalBadge}>
-                            <Text style={styles.seasonalText}>LIMITED</Text>
+                            <Text style={styles.seasonalText}>{t("bananaShop.limited")}</Text>
                           </View>
                         )}
 
@@ -932,7 +937,7 @@ export function BananaShopModal({ visible, onClose, onLeaderboardPress, onSuppor
 
                         {/* Category pill */}
                         <View style={styles.itemCatPill}>
-                          <Text style={styles.itemCatText}>{getCategoryName(item.category)}</Text>
+                          <Text style={styles.itemCatText}>{getCategoryName(item.category, t)}</Text>
                         </View>
 
                         {/* Price or status */}
@@ -941,7 +946,7 @@ export function BananaShopModal({ visible, onClose, onLeaderboardPress, onSuppor
                         ) : owned ? (
                           <View style={[styles.statusPill, equipped ? styles.equippedPill : styles.ownedPill]}>
                             <Text style={[styles.statusText, equipped ? { color: "#FFD54F" } : { color: "#6CB4EE" }]}>
-                              {equipped ? "EQUIPPED" : "OWNED"}
+                              {equipped ? t("bananaShop.equippedBadge") : t("bananaShop.ownedBadge")}
                             </Text>
                           </View>
                         ) : (
@@ -1000,7 +1005,7 @@ export function BananaShopModal({ visible, onClose, onLeaderboardPress, onSuppor
             // Dev wallet skips banana spend AND crypto payment (test path).
             if (!isDevWallet) {
               const spent = await spendBananas(item.bananaCost);
-              if (!spent) { showGlassAlert("Error", "Failed to deduct bananas"); return; }
+              if (!spent) { showGlassAlert(t("bananaShop.error"), t("bananaShop.failedToDeductBananas")); return; }
               useAppStore.getState().setBananaBalance(bananaBalance - item.bananaCost);
 
               try {
@@ -1037,7 +1042,7 @@ export function BananaShopModal({ visible, onClose, onLeaderboardPress, onSuppor
             playSound("purchase");
 
             // Show success immediately — receipt minting runs in background.
-            showGlassAlert("Purchased!", `${item.name} is now equipped.`);
+            showGlassAlert(t("bananaShop.purchased"), t("bananaShop.nowEquipped", { name: item.name }));
 
             // Auto-mint cNFT receipt as a permanent on-chain log entry tied
             // to the buyer wallet. Non-blocking, fail-silent: the purchase is
@@ -1048,14 +1053,14 @@ export function BananaShopModal({ visible, onClose, onLeaderboardPress, onSuppor
               mintPurchaseReceipt(item, walletAddr)
                 .then((result) => {
                   if (result.success) {
-                    toast.success("On-chain receipt minted");
+                    toast.success(t("bananaShop.onChainReceiptMinted"));
                   }
                   // Silent on failure — purchase is still safe via other channels
                 })
                 .catch(() => { /* silent */ });
             }
           } catch (err: any) {
-            showGlassAlert("Purchase failed", err?.message ?? "Please try again");
+            showGlassAlert(t("bananaShop.purchaseFailed"), err?.message ?? t("bananaShop.pleaseTryAgain"));
           } finally {
             setPurchasing(null);
             setPreviewItem(null);
