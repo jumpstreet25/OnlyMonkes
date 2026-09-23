@@ -18,6 +18,7 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
+import i18n, { type SupportedLanguage } from '../lib/i18n';
 import type { WalletAccount, OwnedNFT } from '../types';
 import type { LiveRoomData } from '../lib/livekit';
 import type { VideoRoomData } from '../lib/liveVideo';
@@ -40,6 +41,7 @@ const AK_HIDDEN_BANANA_BETS = 'om_hidden_banana_bets';
 const AK_MUTED_CHANNELS = 'om_muted_channels';
 const AK_MUTED_ALERT_SOURCES = 'om_muted_alert_sources';
 const AK_NOTIF_PREFS = 'om_notif_prefs';
+const AK_LANGUAGE = 'om_language_v1';
 const SK_MWA_TOKEN = 'om_mwa_auth_token';
 const AK_SENTIMENT_OPT_IN = 'om_sentiment_oracle_opt_in';
 const AK_COPY_TRADE_SLOTS = 'om_copy_trade_slots';
@@ -175,6 +177,7 @@ interface UserProfileActions {
 interface AppSettingsState {
   isLoading: boolean;
   error: string | null;
+  language: SupportedLanguage;
   notificationsEnabled: boolean;
   mentionsOnly: boolean;
   botNotificationsEnabled: boolean;
@@ -221,6 +224,7 @@ interface AppSettingsState {
 interface AppSettingsActions {
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
+  setLanguage: (language: SupportedLanguage) => void;
   setNotificationsEnabled: (enabled: boolean) => void;
   setMentionsOnly: (mentionsOnly: boolean) => void;
   setBotNotificationsEnabled: (enabled: boolean) => void;
@@ -349,6 +353,7 @@ const initialState: AppState = {
   // Slice 3: App Settings
   isLoading: false,
   error: null,
+  language: 'en',
   notificationsEnabled: true,
   mentionsOnly: false,
   botNotificationsEnabled: true,
@@ -444,6 +449,11 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
 
   setLoading: (isLoading) => set({ isLoading }),
   setError: (error) => set({ error }),
+  setLanguage: (language) => {
+    set({ language });
+    i18n.changeLanguage(language);
+    AsyncStorage.setItem(AK_LANGUAGE, language).catch(() => {});
+  },
   setNotificationsEnabled: (notificationsEnabled) => {
     set({ notificationsEnabled });
     _persistNotifPrefs();
@@ -640,7 +650,7 @@ function _persistNotifPrefs() {
  */
 export async function loadPersistedPrefs(): Promise<void> {
   try {
-    const [sportsRaw, channelsRaw, notifRaw, sourcesRaw, hiddenBetsRaw, sentimentOptInRaw, copyTradeSlotsRaw] = await Promise.all([
+    const [sportsRaw, channelsRaw, notifRaw, sourcesRaw, hiddenBetsRaw, sentimentOptInRaw, copyTradeSlotsRaw, languageRaw] = await Promise.all([
       AsyncStorage.getItem(AK_MUTED_SPORTS),
       AsyncStorage.getItem(AK_MUTED_CHANNELS),
       AsyncStorage.getItem(AK_NOTIF_PREFS),
@@ -648,7 +658,12 @@ export async function loadPersistedPrefs(): Promise<void> {
       AsyncStorage.getItem(AK_HIDDEN_BANANA_BETS),
       AsyncStorage.getItem(AK_SENTIMENT_OPT_IN),
       AsyncStorage.getItem(AK_COPY_TRADE_SLOTS),
+      AsyncStorage.getItem(AK_LANGUAGE),
     ]);
+    if (languageRaw === 'en' || languageRaw === 'es') {
+      i18n.changeLanguage(languageRaw);
+      useAppStore.setState({ language: languageRaw });
+    }
     const state: Record<string, unknown> = {};
     if (sportsRaw) {
       const parsed = JSON.parse(sportsRaw);

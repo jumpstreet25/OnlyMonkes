@@ -2,15 +2,19 @@ import React, { useState } from "react";
 import { View, Text, StyleSheet, Pressable, Switch, ScrollView } from "react-native";
 import { router } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useTranslation } from "react-i18next";
 import { THEME, FONTS } from "@/lib/constants";
 import { useAppStore } from "@/store/appStore";
+import type { SupportedLanguage } from "@/lib/i18n";
 import { getActiveThreats, getThreatSeverity } from "@/lib/security";
 import { showGlassAlert } from "@/lib/glassAlert";
 import { WorldScreenShell, useWorldGlassCardStyle } from "@/components/worlds/WorldScreenShell";
 import { useSentimentOptIn } from "@/hooks/useSentimentOptIn";
 
 export default function SettingsScreen() {
+  const { t } = useTranslation();
   const {
+    language, setLanguage,
     notificationsEnabled, setNotificationsEnabled,
     mentionsOnly, setMentionsOnly,
     botNotificationsEnabled, setBotNotificationsEnabled,
@@ -90,6 +94,26 @@ export default function SettingsScreen() {
               >
                 <Text style={[styles.scaleText, textScale === s && styles.scaleTextActive]}>
                   {s === 1.0 ? "Default" : `${Math.round(s * 100)}%`}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+
+        <View style={[styles.row, cardStyle, { marginTop: 8 }]}>
+          <Text style={styles.rowLabel}>{t("settings.language")}</Text>
+          <View style={styles.textScaleRow}>
+            {([
+              { code: "en" as SupportedLanguage, label: t("settings.languageEnglish") },
+              { code: "es" as SupportedLanguage, label: t("settings.languageSpanish") },
+            ]).map(({ code, label }) => (
+              <Pressable
+                key={code}
+                style={[styles.scalePill, language === code && styles.scalePillActive]}
+                onPress={() => setLanguage(code)}
+              >
+                <Text style={[styles.scaleText, language === code && styles.scaleTextActive]}>
+                  {label}
                 </Text>
               </Pressable>
             ))}
