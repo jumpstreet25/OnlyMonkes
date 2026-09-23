@@ -3,6 +3,7 @@ import {
   View, Text, Pressable, StyleSheet, Dimensions,
 } from 'react-native';
 import { showGlassAlert } from "@/lib/glassAlert";
+import { useTranslation } from "react-i18next";
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { LiquidGlass as BlurView } from '@/components/LiquidGlass';
@@ -40,6 +41,7 @@ function formatTradeSummary(trade: ClosedTrade): string {
 }
 
 export function PnLCardModal({ trade, visible, onClose }: PnLCardModalProps) {
+  const { t } = useTranslation();
   const cardRef = useRef<View>(null);
   const [busy, setBusy] = useState<null | 'save' | 'copy' | 'x' | 'chat' | 'both'>(null);
   const { send } = useXmtp();
@@ -121,7 +123,7 @@ export function PnLCardModal({ trade, visible, onClose }: PnLCardModalProps) {
       const ML = await getMediaLibrary();
       const { status } = await ML.requestPermissionsAsync();
       if (status !== 'granted') {
-        showGlassAlert('Permission needed', 'Allow gallery access to save the card.');
+        showGlassAlert(t('pnlCard.permissionNeeded'), t('pnlCard.permissionNeededBody'));
         return;
       }
       const uri = await captureCard();
@@ -130,13 +132,13 @@ export function PnLCardModal({ trade, visible, onClose }: PnLCardModalProps) {
       // 2026-07-30: defer — same race as handleShareMainChat below (grey
       // screen when the toast overlay mounts in the same tick as this
       // Modal's Android Dialog window still settling from the save).
-      setTimeout(() => toast.success('Saved to gallery'), 350);
+      setTimeout(() => toast.success(t('pnlCard.savedToGallery')), 350);
     } catch (e: any) {
-      toast.error(e?.message ?? 'Save failed');
+      toast.error(e?.message ?? t('pnlCard.saveFailed'));
     } finally {
       setBusy(null);
     }
-  }, [trade, busy, captureCard]);
+  }, [trade, busy, captureCard, t]);
 
   const handleCopy = useCallback(async () => {
     if (!trade || busy) return;
@@ -144,13 +146,13 @@ export function PnLCardModal({ trade, visible, onClose }: PnLCardModalProps) {
     try {
       await Clipboard.setStringAsync(formatTradeSummary(trade));
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      toast.success('Summary copied');
+      toast.success(t('pnlCard.summaryCopied'));
     } catch (e: any) {
-      toast.error(e?.message ?? 'Copy failed');
+      toast.error(e?.message ?? t('pnlCard.copyFailed'));
     } finally {
       setBusy(null);
     }
-  }, [trade, busy]);
+  }, [trade, busy, t]);
 
   const handleShareX = useCallback(async () => {
     if (!trade || busy) return;
@@ -161,14 +163,14 @@ export function PnLCardModal({ trade, visible, onClose }: PnLCardModalProps) {
       const { saved } = await shareImageToX(compressed, formatTradeSummary(trade));
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       if (saved) {
-        toast.success('Image saved — tap the image icon in X to attach it 📸');
+        toast.success(t('pnlCard.imageSavedForX'));
       }
     } catch (e: any) {
       if (e?.message && !/dismiss/i.test(e.message)) toast.error(e.message);
     } finally {
       setBusy(null);
     }
-  }, [trade, busy, captureCard, compressForShare]);
+  }, [trade, busy, captureCard, compressForShare, t]);
 
   const handleShareMainChat = useCallback(async () => {
     if (!trade || busy) return;
@@ -181,13 +183,13 @@ export function PnLCardModal({ trade, visible, onClose }: PnLCardModalProps) {
       // message into chatStore, which can still be laying out behind this
       // Modal when the toast overlay mounts; firing both at once left a
       // stuck grey screen on Android (same race as the reaction toast fix).
-      setTimeout(() => toast.success('Posted to Main Chat'), 350);
+      setTimeout(() => toast.success(t('pnlCard.postedToMainChat')), 350);
     } catch (e: any) {
-      toast.error(e?.message ?? 'Post failed');
+      toast.error(e?.message ?? t('pnlCard.postFailed'));
     } finally {
       setBusy(null);
     }
-  }, [trade, busy, captureCard, sendToMainChat]);
+  }, [trade, busy, captureCard, sendToMainChat, t]);
 
   const handleShareBoth = useCallback(async () => {
     if (!trade || busy) return;
@@ -198,13 +200,13 @@ export function PnLCardModal({ trade, visible, onClose }: PnLCardModalProps) {
       const compressed = await compressForShare(uri);
       const { saved } = await shareImageToX(compressed, formatTradeSummary(trade));
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setTimeout(() => toast.success(saved ? 'Posted to Main Chat — image saved for X too 📸' : 'Posted to Main Chat'), 350);
+      setTimeout(() => toast.success(saved ? t('pnlCard.postedBothSavedForX') : t('pnlCard.postedToMainChat')), 350);
     } catch (e: any) {
       if (e?.message && !/dismiss/i.test(e.message)) toast.error(e.message);
     } finally {
       setBusy(null);
     }
-  }, [trade, busy, captureCard, compressForShare, sendToMainChat]);
+  }, [trade, busy, captureCard, compressForShare, sendToMainChat, t]);
 
   if (!trade) return null;
 
@@ -212,7 +214,7 @@ export function PnLCardModal({ trade, visible, onClose }: PnLCardModalProps) {
     <GlassBottomSheet visible={visible} onClose={onClose} snapPoints={['65%', '95%']}>
       <View style={styles.contentGap}>
         <View style={styles.headerRow}>
-          <Text style={styles.title}>Trade Closed</Text>
+          <Text style={styles.title}>{t('pnlCard.tradeClosed')}</Text>
           <Pressable onPress={onClose} hitSlop={12} style={styles.closeBtn}>
             <Text style={styles.closeIcon}>✕</Text>
           </Pressable>
@@ -223,14 +225,14 @@ export function PnLCardModal({ trade, visible, onClose }: PnLCardModalProps) {
         </View>
 
         <View style={styles.shareRow}>
-          <ActionBtn label="𝕏" sub="Tweet" onPress={handleShareX} loading={busy === 'x'} disabled={!!busy && busy !== 'x'} />
-          <ActionBtn label="💬" sub="Main Chat" onPress={handleShareMainChat} loading={busy === 'chat'} disabled={!!busy && busy !== 'chat'} />
-          <ActionBtn label="🚀" sub="Both" onPress={handleShareBoth} loading={busy === 'both'} disabled={!!busy && busy !== 'both'} primary />
+          <ActionBtn label="𝕏" sub={t('pnlCard.tweet')} onPress={handleShareX} loading={busy === 'x'} disabled={!!busy && busy !== 'x'} />
+          <ActionBtn label="💬" sub={t('pnlCard.mainChat')} onPress={handleShareMainChat} loading={busy === 'chat'} disabled={!!busy && busy !== 'chat'} />
+          <ActionBtn label="🚀" sub={t('pnlCard.both')} onPress={handleShareBoth} loading={busy === 'both'} disabled={!!busy && busy !== 'both'} primary />
         </View>
 
         <View style={styles.utilRow}>
-          <ActionBtn label="💾" sub="Save" onPress={handleSave} loading={busy === 'save'} disabled={!!busy && busy !== 'save'} flat />
-          <ActionBtn label="📋" sub="Copy" onPress={handleCopy} loading={busy === 'copy'} disabled={!!busy && busy !== 'copy'} flat />
+          <ActionBtn label="💾" sub={t('pnlCard.save')} onPress={handleSave} loading={busy === 'save'} disabled={!!busy && busy !== 'save'} flat />
+          <ActionBtn label="📋" sub={t('pnlCard.copy')} onPress={handleCopy} loading={busy === 'copy'} disabled={!!busy && busy !== 'copy'} flat />
         </View>
       </View>
     </GlassBottomSheet>

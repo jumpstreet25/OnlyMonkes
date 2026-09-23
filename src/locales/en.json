@@ -674,5 +674,23 @@
     "permissionNeededBody": "Allow gallery access to save images.",
     "savedToGallery": "Saved to gallery",
     "couldNotSave": "Could not save image."
+  },
+  "pnlCard": {
+    "permissionNeeded": "Permission needed",
+    "permissionNeededBody": "Allow gallery access to save the card.",
+    "savedToGallery": "Saved to gallery",
+    "saveFailed": "Save failed",
+    "summaryCopied": "Summary copied",
+    "copyFailed": "Copy failed",
+    "imageSavedForX": "Image saved — tap the image icon in X to attach it 📸",
+    "postedToMainChat": "Posted to Main Chat",
+    "postFailed": "Post failed",
+    "postedBothSavedForX": "Posted to Main Chat — image saved for X too 📸",
+    "tradeClosed": "Trade Closed",
+    "tweet": "Tweet",
+    "mainChat": "Main Chat",
+    "both": "Both",
+    "save": "Save",
+    "copy": "Copy"
   }
 }
