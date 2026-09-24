@@ -35,7 +35,7 @@ export default function SettingsScreen() {
       if (next) {
         const result = await optInOracle();
         if (!result.ok) {
-          showGlassAlert("Couldn't enable Data Oracle", result.error ?? "Try again in a moment.");
+          showGlassAlert(t("settings.couldntEnableOracle"), result.error ?? t("settings.tryAgainInAMoment"));
         }
       } else {
         await optOutOracle();

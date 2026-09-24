@@ -47,7 +47,9 @@
       "adbEnabled": "Depuración ADB habilitada",
       "passcode": "Sin bloqueo de pantalla configurado",
       "devMode": "Modo de desarrollador habilitado"
-    }
+    },
+    "couldntEnableOracle": "No se pudo activar el Oráculo de Datos",
+    "tryAgainInAMoment": "Inténtalo de nuevo en un momento."
   },
   "resetIdentity": {
     "title": "🔄  Restablecer identidad de chat",

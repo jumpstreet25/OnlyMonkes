@@ -47,7 +47,9 @@
       "adbEnabled": "ADB debugging enabled",
       "passcode": "No screen lock set",
       "devMode": "Developer mode enabled"
-    }
+    },
+    "couldntEnableOracle": "Couldn't enable Data Oracle",
+    "tryAgainInAMoment": "Try again in a moment."
   },
   "resetIdentity": {
     "title": "🔄  Reset chat identity",
