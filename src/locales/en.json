@@ -650,7 +650,11 @@
     "tryAgainFromBanner": "Try again from the banner.",
     "startedA": "@{{host}} started a {{label}}",
     "join": "JOIN",
-    "tapToOpen": "Tap to open"
+    "tapToOpen": "Tap to open",
+    "editedLabel": "(edited)",
+    "translatedFromSpanish": "🌐 Translated from Spanish — tap to see original",
+    "translatedFromEnglish": "🌐 Translated from English — tap to see original",
+    "showTranslation": "🌐 Show translation"
   },
   "glassAlert": {
     "ok": "OK"

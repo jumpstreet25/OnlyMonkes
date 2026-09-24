@@ -627,7 +627,17 @@ export const MessageBubble = memo(function MessageBubble({
   }, [onPressUser]);
 
   // Determine displayed content (edited or original)
-  const displayContent = message.editedContent ?? message.content;
+  const editedOrOriginal = message.editedContent ?? message.content;
+  // Main Chat auto-translate — only substitute when the message's detected
+  // language actually differs from this viewer's own app language (a
+  // Spanish speaker never sees their own Spanish messages "translated" back
+  // to Spanish, an English speaker's English messages pass through
+  // untouched). "See original" always available — never silently swap text
+  // with no way back to what was actually sent.
+  const viewerLanguage = useAppStore(s => s.language);
+  const [showOriginalOverTranslation, setShowOriginalOverTranslation] = useState(false);
+  const hasTranslation = !!message.translatedContent && !!message.detectedLang && message.detectedLang !== viewerLanguage;
+  const displayContent = hasTranslation && !showOriginalOverTranslation ? message.translatedContent! : editedOrOriginal;
 
   const handleLongPress = useCallback(() => {
     Keyboard.dismiss();
@@ -1169,7 +1179,20 @@ export const MessageBubble = memo(function MessageBubble({
                     );
                   })()}
                   {message.editedAt && (
-                    <Text style={[styles.editedLabel, { color: textColor }]}>(edited)</Text>
+                    <Text style={[styles.editedLabel, { color: textColor }]}>{t("messageBubble.editedLabel")}</Text>
+                  )}
+                  {hasTranslation && (
+                    <Pressable onPress={() => setShowOriginalOverTranslation(v => !v)} hitSlop={6}>
+                      <Text style={[styles.editedLabel, { color: textColor }]}>
+                        {showOriginalOverTranslation
+                          ? t("messageBubble.showTranslation")
+                          : t(
+                              message.detectedLang === "es"
+                                ? "messageBubble.translatedFromSpanish"
+                                : "messageBubble.translatedFromEnglish",
+                            )}
+                      </Text>
+                    </Pressable>
                   )}
                   {showBotExpand && (
                     <Text style={styles.expandText}>

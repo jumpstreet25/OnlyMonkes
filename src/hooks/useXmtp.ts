@@ -26,6 +26,7 @@ import {
   decodeMessage,
   applyReaction,
   applyEdit,
+  applyTranslation,
   applyStickerReaction,
   applyWithRetry,
   resolveReplyTargets,
@@ -71,6 +72,7 @@ import {
 } from "@/lib/remoteConfig";
 import { toast } from "sonner-native";
 import { useAppStore } from "@/store/appStore";
+import { BOT_INBOX_IDS } from "@/lib/constants";
 import { useChatStore } from "@/store/chatStore";
 import { useTranslation } from "react-i18next";
 // Typing-indicator timeout map — module-level so it survives re-renders
@@ -1045,9 +1047,9 @@ export function useXmtp() {
               trackActivity(raw.senderInboxId as string, 'given');
               continue;
             }
-            // Legacy sticker reaction / edit (still string-based)
+            // Legacy sticker reaction / edit / translation (still string-based)
             if (typeof content === "string") {
-              if (content.startsWith("STICKER_REACT:") || content.startsWith("EDIT:")) {
+              if (content.startsWith("STICKER_REACT:") || content.startsWith("EDIT:") || content.startsWith("TRANSLATION:")) {
                 reactionRaws.push(raw);
                 continue;
               }
@@ -1129,6 +1131,11 @@ export function useXmtp() {
               decoded = applyStickerReaction(decoded, raw, _myInboxId);
             } else if (typeof content === "string" && content.startsWith("EDIT:")) {
               decoded = applyEdit(decoded, raw);
+            } else if (typeof content === "string" && content.startsWith("TRANSLATION:")) {
+              // Spoof guard — only the bot may broadcast a translation.
+              if (BOT_INBOX_IDS.includes(raw.senderInboxId as string)) {
+                decoded = applyTranslation(decoded, raw);
+              }
             }
           } catch { /* skip */ }
         }
@@ -1331,6 +1338,16 @@ export function useXmtp() {
           const { messages } = useChatStore.getState();
           const updated = applyEdit(messages, raw);
           applyReactionUpdate(updated);
+          return;
+        }
+
+        if (typeof content === "string" && content.startsWith("TRANSLATION:")) {
+          // Spoof guard — only the bot may broadcast a translation.
+          if (BOT_INBOX_IDS.includes(raw.senderInboxId as string)) {
+            const { messages } = useChatStore.getState();
+            const updated = applyTranslation(messages, raw);
+            applyReactionUpdate(updated);
+          }
           return;
         }
 

@@ -650,7 +650,11 @@
     "tryAgainFromBanner": "Inténtalo de nuevo desde el banner.",
     "startedA": "@{{host}} inició: {{label}}",
     "join": "UNIRSE",
-    "tapToOpen": "Toca para abrir"
+    "tapToOpen": "Toca para abrir",
+    "editedLabel": "(editado)",
+    "translatedFromSpanish": "🌐 Traducido del español — toca para ver el original",
+    "translatedFromEnglish": "🌐 Traducido del inglés — toca para ver el original",
+    "showTranslation": "🌐 Mostrar traducción"
   },
   "glassAlert": {
     "ok": "OK"

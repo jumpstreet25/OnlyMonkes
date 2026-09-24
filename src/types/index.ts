@@ -70,4 +70,11 @@ export interface ChatMessage {
   status?: 'sending' | 'sent' | 'failed' | 'pending' | 'read';
   editedContent?: string;   // if edited, the updated text (original stays in content)
   editedAt?: Date;          // timestamp of edit
+  // Main Chat auto-translate (bot-broadcast TRANSLATION: message) — see
+  // applyTranslation in xmtp.ts. translatedContent is the "other" supported
+  // language's version; detectedLang is the ORIGINAL message's language.
+  // MessageBubble shows translatedContent instead of content only when
+  // detectedLang differs from the viewer's own appStore.language.
+  translatedContent?: string;
+  detectedLang?: 'en' | 'es';
 }

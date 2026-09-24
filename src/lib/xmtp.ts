@@ -567,7 +567,7 @@ function decodeStringMessage(raw: any, rawContent: string, myInboxId: string): C
     "BANANA_GRANT:", "BANANA_BET_OPEN:", "BANANA_BET_SETTLED:", "HEALTH:", "DELETE:",
     "IMAGE_CAPTION_REQUEST:", "IMAGE_CAPTION_RESPONSE:", "POLL_OPEN:", "POLL_RESULT:",
     "STREAK_CAPTION_REQUEST:", "STREAK_CAPTION_RESPONSE:", "JOIN_REQUEST:",
-    "BADGE_GRANT:", "COPY_TRADE_STATUS:", "GENESIS_JOIN_REQUEST:",
+    "BADGE_GRANT:", "COPY_TRADE_STATUS:", "GENESIS_JOIN_REQUEST:", "TRANSLATION:",
   ];
   for (const p of STRUCTURED_PREFIXES) {
     // LOCATION_SYNC_REQUEST is a bare token (optionally with trailing :payload)
@@ -885,6 +885,45 @@ export function applyEdit(
   if (msg.senderAddress !== sender) return messages;
   const updated = messages.slice();
   updated[idx] = { ...msg, editedContent: newContent, editedAt: new Date() };
+  return updated;
+}
+
+/**
+ * Apply a TRANSLATION message to the message list — merges the detected
+ * source language + translated text into the matching message by id, for
+ * Main Chat auto-translate (see messageTranslation.ts on the bot side).
+ * Format: TRANSLATION:<originalMessageId>:<lang>:<translatedText>
+ * Spoof guard at the call site: sender must be in BOT_INBOX_IDS — this is
+ * the only kind of message where the SENDER (the bot) differs from the
+ * original message's author, unlike EDIT above.
+ */
+export function applyTranslation(
+  messages: ChatMessage[],
+  raw: any,
+): ChatMessage[] {
+  let content: string;
+  try {
+    content = raw.content();
+  } catch {
+    return messages;
+  }
+
+  if (!content?.startsWith("TRANSLATION:")) return messages;
+
+  // TRANSLATION:<targetId>:<lang>:<translatedText> — translatedText may
+  // itself contain colons, so only the first two are split off.
+  const withoutPrefix = content.slice("TRANSLATION:".length);
+  const parts = withoutPrefix.split(":");
+  const targetId = parts[0] ?? "";
+  const lang = parts[1] ?? "";
+  const translated = parts.slice(2).join(":");
+  if ((lang !== "en" && lang !== "es") || !translated) return messages;
+
+  const idx = messages.findIndex((m) => m.id === targetId);
+  if (idx === -1) return messages;
+  const msg = messages[idx];
+  const updated = messages.slice();
+  updated[idx] = { ...msg, translatedContent: translated, detectedLang: lang as "en" | "es" };
   return updated;
 }
 
