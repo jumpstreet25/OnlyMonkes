@@ -1408,14 +1408,18 @@ export function useXmtp() {
             const payload = JSON.parse(content.slice("GIFT_ITEM:".length));
             const { recipientInboxId, itemId, from } = payload as { recipientInboxId: string; itemId: string; from?: string };
             if (recipientInboxId === _myInboxId) {
-              const { addOwnedItem, equipItem: equipShopItem, getEquippedStyles: getStyles } = await import("@/lib/bananaShop");
+              const { addOwnedItem, equipItem: equipShopItem, getEquippedStyles: getStyles, getAvailableItems } = await import("@/lib/bananaShop");
               const { applyThemeFromShop } = await import("@/lib/shopTheme");
               await addOwnedItem(itemId);
               await equipShopItem(itemId);
               const styles = await getStyles();
               useAppStore.getState().setShopStyles(styles);
               applyThemeFromShop(styles);
-              const itemName = itemId.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+              const catalogItem = getAvailableItems().find((i) => i.id === itemId);
+              const fallbackName = itemId.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+              const itemName = catalogItem
+                ? t(`shopItems.${catalogItem.id}.name`, { defaultValue: catalogItem.name })
+                : fallbackName;
               showGlassAlert(t("useXmtp.giftReceived"), t("useXmtp.giftReceivedBody", { from: from ?? t("useXmtp.admin"), itemName }));
               if (__DEV__) console.log(`[GIFT] Received ${itemId} from ${from ?? "unknown"}`);
             }

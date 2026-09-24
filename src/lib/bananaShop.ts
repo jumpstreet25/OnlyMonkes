@@ -378,6 +378,28 @@ export const SEASONAL_ITEMS: ShopItem[] = [
   },
 ];
 
+/**
+ * Display-only translated name/description for a shop item.
+ *
+ * item.name/item.description stay canonical English — they're the values
+ * that get minted into on-chain purchase-receipt metadata (cnftReceipts.ts)
+ * whenever that feature is eventually activated, so a receipt's content
+ * must never depend on the buyer's UI language at purchase time. These
+ * helpers are for on-screen display ONLY; never pass their output into
+ * mintPurchaseReceipt's metadata builder.
+ *
+ * Falls back to the canonical English string via i18next's defaultValue
+ * when a key is missing (e.g. a newly-added seasonal item not yet
+ * translated), so nothing ever renders a raw translation key.
+ */
+export function getItemDisplayName(item: ShopItem, t: (key: string, opts?: Record<string, unknown>) => string): string {
+  return t(`shopItems.${item.id}.name`, { defaultValue: item.name });
+}
+
+export function getItemDisplayDescription(item: ShopItem, t: (key: string, opts?: Record<string, unknown>) => string): string {
+  return t(`shopItems.${item.id}.description`, { defaultValue: item.description });
+}
+
 /** Get items available right now (including in-season limited items). */
 export function getAvailableItems(): ShopItem[] {
   const now = Date.now();

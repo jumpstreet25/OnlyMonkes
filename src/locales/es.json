@@ -841,5 +841,163 @@
     "photo": "Foto",
     "video": "Video",
     "file": "Archivo"
+  },
+  "shopItems": {
+    "bubble_neon_blue": {
+      "name": "Brillo Neón Azul",
+      "description": "Tus burbujas brillan con un borde azul neón intenso"
+    },
+    "bubble_neon_pink": {
+      "name": "Brillo Neón Rosa",
+      "description": "Brillo neón rosa fuerte alrededor de tus mensajes"
+    },
+    "bubble_neon_green": {
+      "name": "Brillo Neón Verde",
+      "description": "Brillo verde eléctrico — estilo matrix"
+    },
+    "bubble_gold_glow": {
+      "name": "Brillo Dorado",
+      "description": "Brillo dorado premium para el monke distinguido"
+    },
+    "bubble_frosted": {
+      "name": "Hielo Esmerilado",
+      "description": "Vidrio esmerilado azul hielo — look premium ultra-transparente"
+    },
+    "bubble_dark_ember": {
+      "name": "Brasa Oscura",
+      "description": "Ultra oscuro con un sutil brillo de brasa roja"
+    },
+    "bubble_sunset": {
+      "name": "Brillo Atardecer",
+      "description": "Cálido brillo naranja-rosa — vibra de hora dorada"
+    },
+    "bubble_diamond": {
+      "name": "Hielo Diamante",
+      "description": "Destello blanco-azulado nítido — limpio y frío"
+    },
+    "bubble_phantom": {
+      "name": "Púrpura Fantasma",
+      "description": "Aura púrpura profunda con un borde fantasmal"
+    },
+    "bubble_arctic_violet": {
+      "name": "Violeta Ártico",
+      "description": "Brillo violeta-azulado fresco con un borde helado"
+    },
+    "bubble_emerald_frost": {
+      "name": "Escarcha Esmeralda",
+      "description": "Brillo fresco menta-esmeralda — nítido y limpio"
+    },
+    "text_gold_name": {
+      "name": "Nombre Dorado",
+      "description": "Tu nombre de usuario brilla en dorado en el chat"
+    },
+    "text_neon_cyan": {
+      "name": "Nombre Neón Cian",
+      "description": "Nombre de usuario cian estilo ciberpunk"
+    },
+    "text_neon_pink_name": {
+      "name": "Nombre Neón Rosa",
+      "description": "Nombre de usuario rosa fuerte que resalta"
+    },
+    "text_custom_color": {
+      "name": "Color de Texto Personalizado",
+      "description": "Elige cualquier color para el texto de tus mensajes"
+    },
+    "text_bold": {
+      "name": "Mensajes en Negrita",
+      "description": "Tus mensajes se muestran en negrita"
+    },
+    "text_mono": {
+      "name": "Modo Monoespaciado",
+      "description": "Mensajes en fuente monoespaciada — estética de programador"
+    },
+    "text_glow": {
+      "name": "Brillo de Texto",
+      "description": "El texto de tus mensajes tiene un suave brillo luminoso"
+    },
+    "text_fire_name": {
+      "name": "Nombre de Fuego",
+      "description": "Nombre de usuario naranja-rojo ardiente — entrada impactante"
+    },
+    "text_emerald_name": {
+      "name": "Nombre Esmeralda",
+      "description": "Nombre de usuario verde esmeralda intenso — vibra de dinero"
+    },
+    "text_ice_blue_name": {
+      "name": "Nombre Azul Hielo",
+      "description": "Nombre de usuario azul hielo fresco — nítido y limpio"
+    },
+    "pfp_theme": {
+      "name": "Tema de Color de PFP",
+      "description": "El color dominante de tu NFT se convierte en el color de tu burbuja y brillo"
+    },
+    "pfp_aura": {
+      "name": "Aura de PFP",
+      "description": "El brillo de tu PFP usa el color de tu NFT en vez de púrpura"
+    },
+    "pfp_frame_pulse": {
+      "name": "Marco Pulsante",
+      "description": "Anillo pulsante animado alrededor de tu PFP"
+    },
+    "pfp_glow_ring": {
+      "name": "Anillo de Brillo",
+      "description": "Anillo de brillo suave y constante usando el color de tu NFT"
+    },
+    "theme_midnight": {
+      "name": "Azul Medianoche",
+      "description": "Tinte azul marino profundo en toda la app"
+    },
+    "theme_solana_purple": {
+      "name": "Púrpura Solana",
+      "description": "Tema de marca Solana con predominio púrpura"
+    },
+    "theme_banana": {
+      "name": "Amarillo Banana",
+      "description": "Acento dorado/amarillo — para verdaderos entusiastas de la banana"
+    },
+    "theme_matrix": {
+      "name": "Verde Matrix",
+      "description": "Estética hacker verde sobre negro"
+    },
+    "theme_pfp_full": {
+      "name": "Tema Completo de PFP",
+      "description": "La paleta de tu NFT se convierte en toda la app. El flex definitivo."
+    },
+    "theme_ember": {
+      "name": "Brasa Oscura",
+      "description": "Rojo oscuro cálido — como brasas en la oscuridad"
+    },
+    "theme_ocean": {
+      "name": "Océano Profundo",
+      "description": "Profundidades azul verdoso — calma y enfoque"
+    },
+    "world_banana_grove": {
+      "name": "Bosque de Bananas",
+      "description": "Frondoso dosel verde a dorado con bananas cayendo por tu chat"
+    },
+    "world_solana_cyberpunk": {
+      "name": "Solana Cyberpunk",
+      "description": "Cuadrícula neón púrpura a turquesa — horizonte de Saga de noche"
+    },
+    "world_trading_floor": {
+      "name": "Piso de Trading",
+      "description": "Sala oscura con un tenue gráfico de velas a la deriva detrás de tu chat"
+    },
+    "world_tech_noir": {
+      "name": "Tech Noir",
+      "description": "Avenida mojada a nivel de calle de noche. Rascacielos neón, torre Saga Monke en el punto de fuga."
+    },
+    "world_deep_space": {
+      "name": "Espacio Profundo",
+      "description": "Espacio profundo NFT — planeta del logo 3D de OnlyMonkes en océanos azul Solana y tierra púrpura, nebulosas detrás de tu chat"
+    },
+    "world_frost_grove": {
+      "name": "Bosque Helado",
+      "description": "Siluetas de pinos a la luz de la luna y copos de nieve a la deriva por tu chat"
+    },
+    "bubble_breakpoint_2026": {
+      "name": "Breakpoint 2026",
+      "description": "Estilo de burbuja exclusivo — solo durante Solana Breakpoint"
+    }
   }
 }

@@ -17,6 +17,7 @@ import {
   Linking,
   Alert,
 } from "react-native";
+import { useTranslation } from "react-i18next";
 import { GlassBottomSheet } from "@/components/GlassBottomSheet";
 import { MonkeGlass, MonkeGlassActionButton } from "@/components/MonkeGlass";
 import { useAppStore } from "@/store/appStore";
@@ -51,6 +52,7 @@ interface UserProfileModalProps {
 }
 
 export function UserProfileModal({ visible, target, onClose, onEditProfile, onChangePfp, onSwitchWallet, onLogout, onMessage }: UserProfileModalProps) {
+  const { t } = useTranslation();
   const { myInboxId, username: myUsername, bio: myBio, xAccount: myXAccount, tipWallet: myTipWallet, verifiedNft, wallet } = useAppStore();
   const isDevAdmin = wallet?.address === DEV_ADMIN_WALLET;
   const [showTipQr, setShowTipQr] = useState(false);
@@ -300,10 +302,12 @@ export function UserProfileModal({ visible, target, onClose, onEditProfile, onCh
             const { getAvailableItems, getCategoryName } = require("@/lib/bananaShop");
             const items = getAvailableItems() as { id: string; name: string; category: import("@/lib/bananaShop").ShopCategory; tier: number }[];
             const { sendGiftItem } = require("@/hooks/useXmtp");
+            const displayItemName = (item: { id: string; name: string }) =>
+              t(`shopItems.${item.id}.name`, { defaultValue: item.name });
             const giftItem = (item: { id: string; name: string }) => {
               setGiftPickerStep(null);
               sendGiftItem(target.senderAddress, item.id)
-                .then(() => Alert.alert("Gift Sent", `${item.name} gifted to ${displayName}`))
+                .then(() => Alert.alert("Gift Sent", `${displayItemName(item)} gifted to ${displayName}`))
                 .catch((e: any) => Alert.alert("Gift Failed", e?.message ?? "Error"));
             };
             const categories = Array.from(new Set(items.map(i => i.category)));
@@ -340,7 +344,7 @@ export function UserProfileModal({ visible, target, onClose, onEditProfile, onCh
                   {inCategory.map(item => (
                     <MonkeGlassActionButton
                       key={item.id}
-                      label={`${item.name} (T${item.tier})`}
+                      label={`${displayItemName(item)} (T${item.tier})`}
                       onPress={() => giftItem(item)}
                     />
                   ))}

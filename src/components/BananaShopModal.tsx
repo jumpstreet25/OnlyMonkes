@@ -35,6 +35,7 @@ import { WorldMiniPreview, WorldLayer } from "@/components/worlds/WorldLayer";
 import {
   getAvailableItems, loadShopState, saveShopState, addOwnedItem, equipItem, unequipCategory, unequipItem,
   getTierInfo, getCategoryName, getEquippedStyles, getPurchaseDisclaimer, bindPfpItemToNft,
+  getItemDisplayName, getItemDisplayDescription,
   type ShopItem, type ShopCategory, type ShopState,
 } from "@/lib/bananaShop";
 import { applyThemeFromShop } from "@/lib/shopTheme";
@@ -94,9 +95,9 @@ function getEffectSummary(item: ShopItem, t: TFunction): string {
       if (wid === "world_banana_grove") return t("bananaShop.effect.worldBananaGrove");
       if (wid === "world_solana_cyberpunk") return t("bananaShop.effect.worldCyberpunk");
       if (wid === "world_trading_floor") return t("bananaShop.effect.worldTradingFloor");
-      return item.description;
+      return getItemDisplayDescription(item, t);
     }
-    default: return item.description;
+    default: return getItemDisplayDescription(item, t);
   }
 }
 
@@ -308,7 +309,7 @@ function PreviewPopup({ item, owned, equipped, canAfford, onClose, onAction, pur
       </Pressable>
 
       {/* Header */}
-          <Text style={previewStyles.itemName}>{item.name}</Text>
+          <Text style={previewStyles.itemName}>{getItemDisplayName(item, t)}</Text>
           <View style={previewStyles.metaRow}>
             <View style={[previewStyles.tierPill, { backgroundColor: tierColor + "18", borderColor: tierColor + "40" }]}>
               <Text style={[previewStyles.tierText, { color: tierColor }]}>{tierLabel}</Text>
@@ -322,7 +323,7 @@ function PreviewPopup({ item, owned, equipped, canAfford, onClose, onAction, pur
           </View>
 
           {/* Description */}
-          <Text style={previewStyles.desc}>{item.description}</Text>
+          <Text style={previewStyles.desc}>{getItemDisplayDescription(item, t)}</Text>
           <Text style={previewStyles.effectLabel}>{t("bananaShop.whatChanges")}</Text>
           <Text style={previewStyles.effectText}>{getEffectSummary(item, t)}</Text>
 
@@ -587,7 +588,7 @@ export function BananaShopModal({ visible, onClose, onLeaderboardPress, onSuppor
     const isFirstPurchase = shopState.owned.length === 0;
     if (isFirstPurchase) {
       showGlassAlert(
-        t("bananaShop.buyItemTitle", { name: item.name }),
+        t("bananaShop.buyItemTitle", { name: getItemDisplayName(item, t) }),
         `${item.bananaCost} 🍌 + $${item.usdCost.toFixed(2)}\n\n${getPurchaseDisclaimer(t)}`,
         [
           { text: t("bananaShop.cancel"), style: "cancel" },
@@ -932,8 +933,8 @@ export function BananaShopModal({ visible, onClose, onLeaderboardPress, onSuppor
                         )}
 
                         {/* Item info */}
-                        <Text style={styles.itemName} numberOfLines={1}>{item.name}</Text>
-                        <Text style={styles.itemDesc} numberOfLines={2}>{item.description}</Text>
+                        <Text style={styles.itemName} numberOfLines={1}>{getItemDisplayName(item, t)}</Text>
+                        <Text style={styles.itemDesc} numberOfLines={2}>{getItemDisplayDescription(item, t)}</Text>
 
                         {/* Category pill */}
                         <View style={styles.itemCatPill}>
@@ -991,7 +992,7 @@ export function BananaShopModal({ visible, onClose, onLeaderboardPress, onSuppor
       <CurrencyPickerSheet
         visible={!!purchaseItem}
         usdCost={purchaseItem?.usdCost ?? 0}
-        itemName={purchaseItem?.name ?? ""}
+        itemName={purchaseItem ? getItemDisplayName(purchaseItem, t) : ""}
         onClose={() => setPurchaseItem(null)}
         onChoose={async (currency: ShopCurrency) => {
           const item = purchaseItem;
@@ -1042,7 +1043,7 @@ export function BananaShopModal({ visible, onClose, onLeaderboardPress, onSuppor
             playSound("purchase");
 
             // Show success immediately — receipt minting runs in background.
-            showGlassAlert(t("bananaShop.purchased"), t("bananaShop.nowEquipped", { name: item.name }));
+            showGlassAlert(t("bananaShop.purchased"), t("bananaShop.nowEquipped", { name: getItemDisplayName(item, t) }));
 
             // Auto-mint cNFT receipt as a permanent on-chain log entry tied
             // to the buyer wallet. Non-blocking, fail-silent: the purchase is

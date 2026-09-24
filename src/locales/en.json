@@ -841,5 +841,163 @@
     "photo": "Photo",
     "video": "Video",
     "file": "File"
+  },
+  "shopItems": {
+    "bubble_neon_blue": {
+      "name": "Neon Blue Glow",
+      "description": "Your bubbles glow with a bright neon blue edge"
+    },
+    "bubble_neon_pink": {
+      "name": "Neon Pink Glow",
+      "description": "Hot pink neon glow around your messages"
+    },
+    "bubble_neon_green": {
+      "name": "Neon Green Glow",
+      "description": "Electric green glow — matrix vibes"
+    },
+    "bubble_gold_glow": {
+      "name": "Gold Glow",
+      "description": "Premium gold glow for the distinguished monke"
+    },
+    "bubble_frosted": {
+      "name": "Frosted Ice",
+      "description": "Ice-blue frosted glass — ultra-transparent premium look"
+    },
+    "bubble_dark_ember": {
+      "name": "Dark Ember",
+      "description": "Ultra-dark with a subtle red ember glow"
+    },
+    "bubble_sunset": {
+      "name": "Sunset Glow",
+      "description": "Warm orange-pink glow — golden hour vibes"
+    },
+    "bubble_diamond": {
+      "name": "Diamond Ice",
+      "description": "Crisp white-blue sparkle — clean and cold"
+    },
+    "bubble_phantom": {
+      "name": "Phantom Purple",
+      "description": "Deep purple aura with a ghostly edge"
+    },
+    "bubble_arctic_violet": {
+      "name": "Arctic Violet",
+      "description": "Cool violet-blue glow with a frosty edge"
+    },
+    "bubble_emerald_frost": {
+      "name": "Emerald Frost",
+      "description": "Cool mint-emerald glow — crisp and clean"
+    },
+    "text_gold_name": {
+      "name": "Gold Name",
+      "description": "Your username shines gold in the chat"
+    },
+    "text_neon_cyan": {
+      "name": "Neon Cyan Name",
+      "description": "Cyberpunk cyan username"
+    },
+    "text_neon_pink_name": {
+      "name": "Neon Pink Name",
+      "description": "Hot pink username that pops"
+    },
+    "text_custom_color": {
+      "name": "Custom Text Color",
+      "description": "Pick any color for your message text"
+    },
+    "text_bold": {
+      "name": "Bold Messages",
+      "description": "Your messages render in bold"
+    },
+    "text_mono": {
+      "name": "Monospace Mode",
+      "description": "Messages in monospace — coder aesthetic"
+    },
+    "text_glow": {
+      "name": "Text Glow",
+      "description": "Your message text has a soft luminous glow"
+    },
+    "text_fire_name": {
+      "name": "Fire Name",
+      "description": "Blazing orange-red username — hot entrance"
+    },
+    "text_emerald_name": {
+      "name": "Emerald Name",
+      "description": "Rich emerald green username — money vibes"
+    },
+    "text_ice_blue_name": {
+      "name": "Ice Blue Name",
+      "description": "Cool ice-blue username — sharp and clean"
+    },
+    "pfp_theme": {
+      "name": "PFP Color Theme",
+      "description": "Your NFT's dominant color becomes your bubble + glow color"
+    },
+    "pfp_aura": {
+      "name": "PFP Aura",
+      "description": "Your PFP glow uses your NFT's color instead of purple"
+    },
+    "pfp_frame_pulse": {
+      "name": "Pulse Frame",
+      "description": "Animated pulsing ring around your PFP"
+    },
+    "pfp_glow_ring": {
+      "name": "Glow Ring",
+      "description": "Soft constant glow ring using your NFT's color"
+    },
+    "theme_midnight": {
+      "name": "Midnight Blue",
+      "description": "Deep navy tint across the entire app"
+    },
+    "theme_solana_purple": {
+      "name": "Solana Purple",
+      "description": "Purple-dominant Solana brand theme"
+    },
+    "theme_banana": {
+      "name": "Banana Yellow",
+      "description": "Gold/yellow accent — for true banana enthusiasts"
+    },
+    "theme_matrix": {
+      "name": "Matrix Green",
+      "description": "Green-on-black hacker aesthetic"
+    },
+    "theme_pfp_full": {
+      "name": "PFP Full Theme",
+      "description": "Your NFT's palette becomes the entire app. The ultimate flex."
+    },
+    "theme_ember": {
+      "name": "Ember Dark",
+      "description": "Warm dark red — like embers in the dark"
+    },
+    "theme_ocean": {
+      "name": "Deep Ocean",
+      "description": "Teal blue depths — calm and focused"
+    },
+    "world_banana_grove": {
+      "name": "Banana Grove",
+      "description": "Lush green-to-gold canopy with bananas drifting down across your chat"
+    },
+    "world_solana_cyberpunk": {
+      "name": "Solana Cyberpunk",
+      "description": "Purple-to-teal neon grid — Saga skyline at night"
+    },
+    "world_trading_floor": {
+      "name": "Trading Floor",
+      "description": "Dark room with a faint candlestick chart drifting behind your chat"
+    },
+    "world_tech_noir": {
+      "name": "Tech Noir",
+      "description": "Street-level wet avenue at night. Neon skyscrapers, Saga Monke tower at the vanishing point."
+    },
+    "world_deep_space": {
+      "name": "Deep Space",
+      "description": "NFT deep space — 3D OnlyMonkes logo planet in Solana blue oceans & purple land, nebulae behind your chat"
+    },
+    "world_frost_grove": {
+      "name": "Frost Grove",
+      "description": "Moonlit pine silhouettes and drifting snowflakes across your chat"
+    },
+    "bubble_breakpoint_2026": {
+      "name": "Breakpoint 2026",
+      "description": "Exclusive bubble style — only during Solana Breakpoint"
+    }
   }
 }
