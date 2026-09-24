@@ -24,6 +24,8 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { showGlassAlert } from "@/lib/glassAlert";
+import { useTranslation } from "react-i18next";
+import i18n from "@/lib/i18n";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
 import { router } from 'expo-router';
@@ -61,8 +63,8 @@ function showRaidToast(raid: RaidResult | null): void {
   if (!raid?.granted) return;
   toast.success(
     raid.reason === 'host'
-      ? `🐒 Banana Raid! +${raid.amount} 🍌 for hosting a packed room`
-      : `🐒 Banana Raid! +${raid.amount} 🍌 for showing up`,
+      ? i18n.t('avatarRoom.raidHost', { amount: raid.amount })
+      : i18n.t('avatarRoom.raidShowedUp', { amount: raid.amount }),
   );
 }
 
@@ -118,6 +120,7 @@ const AvatarTile = React.memo(function AvatarTile({
 // ── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function AvatarRoomScreen() {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const { width: SCREEN_W, height: SCREEN_H } = useWindowDimensions();
   const params = useLocalSearchParams<{ token: string; isHost: string }>();
@@ -172,7 +175,7 @@ export default function AvatarRoomScreen() {
       .then(() => setConnecting(false))
       .catch(() => {
         setConnecting(false);
-        showGlassAlert('Connection Failed', 'Could not join the room.');
+        showGlassAlert(t('avatarRoom.connectionFailed'), t('avatarRoom.couldNotJoinRoom'));
         router.back();
       });
 
@@ -233,7 +236,7 @@ export default function AvatarRoomScreen() {
       <View style={[styles.container, { paddingTop: insets.top }]}>
         <StatusBar barStyle="light-content" hidden={IS_IMMERSIVE_SHELL} />
         <ActivityIndicator size="large" color={THEME.accent} />
-        <Text style={styles.loadingText}>Joining room...</Text>
+        <Text style={styles.loadingText}>{t('avatarRoom.joiningRoom')}</Text>
       </View>
     );
   }

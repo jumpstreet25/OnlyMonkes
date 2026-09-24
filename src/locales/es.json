@@ -720,5 +720,12 @@
     "grantPermissions": "Conceder Permisos",
     "retake": "Repetir",
     "send": "Enviar"
+  },
+  "avatarRoom": {
+    "raidHost": "🐒 ¡Redada de Bananas! +{{amount}} 🍌 por ser anfitrión de una sala llena",
+    "raidShowedUp": "🐒 ¡Redada de Bananas! +{{amount}} 🍌 por aparecer",
+    "connectionFailed": "Conexión Fallida",
+    "couldNotJoinRoom": "No se pudo unir a la sala.",
+    "joiningRoom": "Uniéndose a la sala..."
   }
 }

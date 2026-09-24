@@ -720,5 +720,12 @@
     "grantPermissions": "Grant Permissions",
     "retake": "Retake",
     "send": "Send"
+  },
+  "avatarRoom": {
+    "raidHost": "🐒 Banana Raid! +{{amount}} 🍌 for hosting a packed room",
+    "raidShowedUp": "🐒 Banana Raid! +{{amount}} 🍌 for showing up",
+    "connectionFailed": "Connection Failed",
+    "couldNotJoinRoom": "Could not join the room.",
+    "joiningRoom": "Joining room..."
   }
 }
