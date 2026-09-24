@@ -727,5 +727,33 @@
     "connectionFailed": "Connection Failed",
     "couldNotJoinRoom": "Could not join the room.",
     "joiningRoom": "Joining room..."
+  },
+  "useXmtp": {
+    "joinRetrying": "Couldn't reach the bot to join — retrying automatically.",
+    "giftReceived": "Gift Received!",
+    "giftReceivedBody": "{{from}} gifted you: {{itemName}}",
+    "admin": "Admin",
+    "badgeEarned": "{{emoji}} Badge earned: {{name}}",
+    "connectionLost": "Connection lost — retrying...",
+    "reactionSent": "Reaction sent",
+    "joinedChatWithHandle": "🍌 @{{handle}} joined chat",
+    "newMonkeJoinedChat": "🍌 New Monke joined chat",
+    "tapToOpenApp": "Tap to open OnlyMonkes",
+    "reactedToYourMessage": "{{name}} reacted to your message",
+    "avatarRoomStarted": "🐒 Avatar Room started",
+    "hostIsLive": "{{host}} is live — tap to join",
+    "mentionedYou": "{{name}} mentioned you 🍌",
+    "senderInApp": "{{name}} in OnlyMonkes",
+    "newBid": "New Bid",
+    "newBidBody": "{{name}} bid {{price}} SKR on {{listing}}",
+    "someone": "Someone",
+    "monkeSwapOffer": "Monke Swap Offer",
+    "monkeSwapOfferBody": "{{name}} offered {{offered}} for {{listing}}",
+    "aMonke": "a Monke",
+    "nftSwapReady": "NFT Swap Ready",
+    "nftSwapReadyBody": "{{name}} signed the swap for {{item}} ({{price}} SKR). Open MonkeMarkets to complete.",
+    "seller": "Seller",
+    "nft": "NFT",
+    "dmdYou": "{{name}} DM'd you 🍌"
   }
 }

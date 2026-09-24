@@ -727,5 +727,33 @@
     "connectionFailed": "Conexión Fallida",
     "couldNotJoinRoom": "No se pudo unir a la sala.",
     "joiningRoom": "Uniéndose a la sala..."
+  },
+  "useXmtp": {
+    "joinRetrying": "No se pudo contactar al bot para unirte — reintentando automáticamente.",
+    "giftReceived": "¡Regalo Recibido!",
+    "giftReceivedBody": "{{from}} te regaló: {{itemName}}",
+    "admin": "Admin",
+    "badgeEarned": "{{emoji}} Insignia obtenida: {{name}}",
+    "connectionLost": "Conexión perdida — reintentando...",
+    "reactionSent": "Reacción enviada",
+    "joinedChatWithHandle": "🍌 @{{handle}} se unió al chat",
+    "newMonkeJoinedChat": "🍌 Nuevo Monke se unió al chat",
+    "tapToOpenApp": "Toca para abrir OnlyMonkes",
+    "reactedToYourMessage": "{{name}} reaccionó a tu mensaje",
+    "avatarRoomStarted": "🐒 Sala de Avatar iniciada",
+    "hostIsLive": "{{host}} está en vivo — toca para unirte",
+    "mentionedYou": "{{name}} te mencionó 🍌",
+    "senderInApp": "{{name}} en OnlyMonkes",
+    "newBid": "Nueva Oferta",
+    "newBidBody": "{{name}} ofertó {{price}} SKR por {{listing}}",
+    "someone": "Alguien",
+    "monkeSwapOffer": "Oferta de Intercambio Monke",
+    "monkeSwapOfferBody": "{{name}} ofreció {{offered}} por {{listing}}",
+    "aMonke": "un Monke",
+    "nftSwapReady": "Intercambio NFT Listo",
+    "nftSwapReadyBody": "{{name}} firmó el intercambio de {{item}} ({{price}} SKR). Abre MonkeMarkets para completarlo.",
+    "seller": "Vendedor",
+    "nft": "NFT",
+    "dmdYou": "{{name}} te envió un DM 🍌"
   }
 }

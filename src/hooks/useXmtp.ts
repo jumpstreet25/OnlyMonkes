@@ -72,6 +72,7 @@ import {
 import { toast } from "sonner-native";
 import { useAppStore } from "@/store/appStore";
 import { useChatStore } from "@/store/chatStore";
+import { useTranslation } from "react-i18next";
 // Typing-indicator timeout map — module-level so it survives re-renders
 // Capped at 100 to prevent memory leak in long sessions
 const _typingTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
@@ -550,6 +551,7 @@ function enrichWithNft(msg: ChatMessage): ChatMessage {
 }
 
 export function useXmtp() {
+  const { t } = useTranslation();
   const {
     setXmtpClient,
     setMyInboxId,
@@ -742,9 +744,9 @@ export function useXmtp() {
                   const cached = getCachedProfile(r.inboxId);
                   const handle = r.username || cached?.username;
                   const title = handle
-                    ? `🍌 @${handle} joined chat`
-                    : `🍌 New Monke joined chat`;
-                  await showLocalNotification(title, "Tap to open OnlyMonkes");
+                    ? t("useXmtp.joinedChatWithHandle", { handle })
+                    : t("useXmtp.newMonkeJoinedChat");
+                  await showLocalNotification(title, t("useXmtp.tapToOpenApp"));
                 }
               }
 
@@ -848,7 +850,7 @@ export function useXmtp() {
                 // wrong. Confirmed as a real-world hang 2026-08-25 (though
                 // that specific case was a stale-APK payload-format mismatch,
                 // not this catch — this covers the DM-send-itself-fails case).
-                toast.error("Couldn't reach the bot to join — retrying automatically.");
+                toast.error(t("useXmtp.joinRetrying"));
               }
             }
           }
@@ -1286,7 +1288,7 @@ export function useXmtp() {
           const reactorProfile = getCachedProfile(reactorInboxId);
           const reactorName = reactorProfile?.username ?? reactorInboxId.slice(0, 8);
           showLocalNotification(
-            `${reactorName} reacted to your message`,
+            t("useXmtp.reactedToYourMessage", { name: reactorName }),
             reactionLabel,
             CH_SOCIAL,
           ).catch(() => {});
@@ -1414,7 +1416,7 @@ export function useXmtp() {
               useAppStore.getState().setShopStyles(styles);
               applyThemeFromShop(styles);
               const itemName = itemId.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
-              showGlassAlert("Gift Received!", `${from ?? "Admin"} gifted you: ${itemName}`);
+              showGlassAlert(t("useXmtp.giftReceived"), t("useXmtp.giftReceivedBody", { from: from ?? t("useXmtp.admin"), itemName }));
               if (__DEV__) console.log(`[GIFT] Received ${itemId} from ${from ?? "unknown"}`);
             }
           } catch (e) { if (__DEV__) console.warn("[GIFT] Failed to process gift:", e); }
@@ -1500,7 +1502,7 @@ export function useXmtp() {
           if (badgeId && targetInbox && _myInboxId && targetInbox === _myInboxId) {
             const earned = grantSpecialBadge(badgeId);
             if (earned) {
-              toast.success(`${earned.emoji} Badge earned: ${earned.name}`);
+              toast.success(t("useXmtp.badgeEarned", { emoji: earned.emoji, name: earned.name }));
               // Mirror onto profile so others see it on next PROFILE_UPDATE
               try {
                 const prev = getCachedProfile(_myInboxId);
@@ -1614,8 +1616,8 @@ export function useXmtp() {
                 // the host, who already knows they started it.
                 if (raw.senderInboxId !== _myInboxId) {
                   showLocalNotificationWithJoinAction(
-                    "🐒 Avatar Room started",
-                    `${data.host} is live — tap to join`,
+                    t("useXmtp.avatarRoomStarted"),
+                    t("useXmtp.hostIsLive", { host: data.host }),
                     CH_LIVE,
                     "avatar",
                     data.id,
@@ -1761,8 +1763,8 @@ export function useXmtp() {
 
         const channelId = isMention ? CH_MENTIONS : CH_ALL;
         const title = isMention
-          ? `${senderLabel} mentioned you 🍌`
-          : `${senderLabel} in OnlyMonkes`;
+          ? t("useXmtp.mentionedYou", { name: senderLabel })
+          : t("useXmtp.senderInApp", { name: senderLabel });
 
         const mainGroupId = (_group as any)?.id;
         if (mainGroupId && msg.id) {
@@ -2184,8 +2186,8 @@ export function useXmtp() {
                       const bidListing = getListingById(market.data.listingId);
                       if (bidListing && bidListing.sellerInboxId === client.inboxId) {
                         showLocalNotification(
-                          'New Bid',
-                          `${market.data.bidderUsername ?? 'Someone'} bid ${market.data.bidPrice} SKR on ${bidListing.name}`,
+                          t('useXmtp.newBid'),
+                          t('useXmtp.newBidBody', { name: market.data.bidderUsername ?? t('useXmtp.someone'), price: market.data.bidPrice, listing: bidListing.name }),
                           CH_MARKET,
                         );
                       }
@@ -2202,8 +2204,8 @@ export function useXmtp() {
                       const offerListing = getListingById(market.data.listingId);
                       if (offerListing && offerListing.sellerInboxId === client.inboxId) {
                         showLocalNotification(
-                          'Monke Swap Offer',
-                          `${market.data.offererUsername ?? 'Someone'} offered ${market.data.offeredName ?? 'a Monke'} for ${offerListing.name}`,
+                          t('useXmtp.monkeSwapOffer'),
+                          t('useXmtp.monkeSwapOfferBody', { name: market.data.offererUsername ?? t('useXmtp.someone'), offered: market.data.offeredName ?? t('useXmtp.aMonke'), listing: offerListing.name }),
                           CH_MARKET,
                         );
                       }
@@ -2223,8 +2225,8 @@ export function useXmtp() {
                       useAppStore.getState().setPendingNftSwap(swap);
                       const swapListing = getListingById(swap.listingId);
                       showLocalNotification(
-                        'NFT Swap Ready',
-                        `${swapListing?.sellerUsername ?? 'Seller'} signed the swap for ${swapListing?.name ?? 'NFT'} (${swap.skrPrice} SKR). Open MonkeMarkets to complete.`,
+                        t('useXmtp.nftSwapReady'),
+                        t('useXmtp.nftSwapReadyBody', { name: swapListing?.sellerUsername ?? t('useXmtp.seller'), item: swapListing?.name ?? t('useXmtp.nft'), price: swap.skrPrice }),
                         CH_MARKET,
                       );
                       break;
@@ -2315,7 +2317,7 @@ export function useXmtp() {
                   return;
                 }
                 showLocalNotification(
-                  `${senderName} DM'd you 🍌`,
+                  t('useXmtp.dmdYou', { name: senderName }),
                   displayBody.slice(0, 100),
                   CH_ALL,
                 ).catch(() => {});
@@ -2332,7 +2334,7 @@ export function useXmtp() {
         err instanceof Error ? err.message : "XMTP initialization failed";
       if (__DEV__) console.error("[XMTP] initialize() failed:", message, err);
       setError(message);
-      toast.error("Connection lost — retrying...");
+      toast.error(t("useXmtp.connectionLost"));
     } finally {
       _initRunning = false;
       setLoading(false);
@@ -2431,7 +2433,7 @@ export function useXmtp() {
       // ~300ms animation finishes, so firing the toast overlay immediately
       // raced the Modal dismiss and left a stuck grey screen on Android
       // (same class of bug fixed for Copy in MessageBubble on 2026-06-12).
-      setTimeout(() => toast.success("Reaction sent"), 350);
+      setTimeout(() => toast.success(t("useXmtp.reactionSent")), 350);
       incrementProgress('reactions_given');
       tryMintBadge();
     },
