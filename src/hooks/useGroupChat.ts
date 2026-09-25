@@ -22,6 +22,7 @@ import {
   resolveReplyTargets,
   applyReaction,
   applyWithRetry,
+  applyTranslation,
   sendMessage,
   sendReply,
   sendReaction,
@@ -29,6 +30,7 @@ import {
 } from "@/lib/xmtp";
 import { getXmtpClient } from "@/hooks/useXmtp";
 import { useAppStore } from "@/store/appStore";
+import { BOT_INBOX_IDS } from "@/lib/constants";
 import {
   loadCachedMessages,
   saveCachedMessages,
@@ -263,6 +265,16 @@ export function useGroupChat(groupId: string, groupName: string) {
           return;
         }
 
+        // Bot-broadcast alert translation — same TRANSLATION:<id>:<lang>:<text>
+        // mechanism useXmtp.ts already handles for Main Chat. Spoof-guarded:
+        // only the bot may broadcast a translation for its own alert.
+        if (typeof content === "string" && content.startsWith("TRANSLATION:")) {
+          if (BOT_INBOX_IDS.includes(raw.senderInboxId as string)) {
+            setMessages((prev) => applyTranslation(prev, raw));
+          }
+          return;
+        }
+
         const msg = decodeMessage(raw, myInboxIdRef.current);
         if (msg) {
           setMessages((prev) => {
@@ -357,6 +369,12 @@ export function useGroupChat(groupId: string, groupName: string) {
             try { content = raw.content(); } catch { return; }
             if (isReactionContent(content)) {
               applyWithRetry(m => applyReaction(m, raw, myInboxIdRef.current), setMessages);
+              return;
+            }
+            if (typeof content === "string" && content.startsWith("TRANSLATION:")) {
+              if (BOT_INBOX_IDS.includes(raw.senderInboxId as string)) {
+                setMessages((prev) => applyTranslation(prev, raw));
+              }
               return;
             }
             const msg = decodeMessage(raw, myInboxIdRef.current);
