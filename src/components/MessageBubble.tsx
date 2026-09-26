@@ -68,7 +68,7 @@ import type { ChatMessage, ReactionEmoji } from "@/types";
 import type { ProfileTarget } from "@/components/UserProfileModal";
 import { LinkPreviewCard } from "@/components/LinkPreviewCard";
 import { BlinkCard } from "@/components/BlinkCard";
-import { extractBlinkUrl } from "@/lib/blinkActions";
+import { extractBlinkUrl, stripBlinkUrlLine } from "@/lib/blinkActions";
 import { OnlineDot } from "@/components/OnlineDot";
 import { isUserOnline } from "@/lib/presence";
 import MarkdownContent from "@/components/MarkdownContent";
@@ -1174,7 +1174,7 @@ export const MessageBubble = memo(function MessageBubble({
                         ]}
                         selectable={false}
                       >
-                        {renderRichContent(displayContent, handlePressMention, onTokenPress)}
+                        {renderRichContent(blinkUrl ? stripBlinkUrlLine(displayContent) : displayContent, handlePressMention, onTokenPress)}
                       </Text>
                     );
                   })()}

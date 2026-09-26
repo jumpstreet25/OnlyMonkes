@@ -212,12 +212,14 @@ export function BlinkCard({ actionUrl }: BlinkCardProps) {
     <View style={styles.card}>
       {/* Icon */}
       {metadata.icon && (
-        <ExpoImage
-          source={{ uri: metadata.icon }}
-          style={styles.icon}
-          contentFit="cover"
-          transition={200}
-        />
+        <View style={styles.iconWrap}>
+          <ExpoImage
+            source={{ uri: metadata.icon }}
+            style={styles.icon}
+            contentFit="contain"
+            transition={200}
+          />
+        </View>
       )}
 
       <View style={styles.body}>
@@ -333,9 +335,21 @@ const styles = StyleSheet.create({
     borderColor: THEME.border,
     maxWidth: 280,
   },
-  icon: {
+  // 2026-09-26: was width:100%/height:140 with contentFit:"cover" — cropping
+  // a square logo into a wide banner shape zoomed in on whatever happened to
+  // be centered, reading as a near-blank slab (the "bland" report this
+  // fixes). contain + a branded tint band shows the whole mark instead.
+  iconWrap: {
     width: "100%",
-    height: 140,
+    height: 110,
+    backgroundColor: OM_BLUE_DIM,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  icon: {
+    width: 72,
+    height: 72,
+    borderRadius: 16,
   },
   body: {
     padding: 10,

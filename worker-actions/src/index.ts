@@ -483,15 +483,19 @@ function handleSwapGet(url: URL): Response {
 
   const isBuy = inputMint === SOL_MINT;
   const label = isBuy ? `Buy ${symbol}` : `Sell ${symbol}`;
+  // 2026-09-26: was a flat "Swap X SOL for Y via Jupiter" — accurate but
+  // interchangeable with any generic swap widget. Names the route + who's
+  // actually signing, which is both more reassuring for a money action and
+  // more "us" than a bare functional description.
   const description = isBuy
-    ? `Swap ${amount} SOL for ${symbol} via Jupiter`
-    : `Swap ${symbol} for SOL via Jupiter`;
+    ? `🐒 ${amount} SOL → ${symbol}, routed through Jupiter. You review and sign — nothing moves without your wallet's OK.`
+    : `🐒 ${symbol} → SOL, routed through Jupiter. You review and sign — nothing moves without your wallet's OK.`;
 
   // Solana Actions metadata response
   const metadata = {
     type: "action",
     icon: ACTION_ICON,
-    title: `OnlyMonkes — ${label}`,
+    title: `🐒 OnlyMonkes — ${label}`,
     description,
     label,
     links: {

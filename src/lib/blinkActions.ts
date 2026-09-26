@@ -103,6 +103,26 @@ export function extractBlinkUrl(content: string): string | null {
   return null;
 }
 
+const DIRECT_ACTIONS_URL_REGEX = /https?:\/\/[^\s"'<>)]*\/api\/actions\/[^\s"'<>)]+/;
+
+/**
+ * Strip the raw Blink URL line from message text for display. The card
+ * (BlinkCard, rendered separately from `extractBlinkUrl`'s result) already
+ * shows the action's title/description/buttons — leaving the raw
+ * `solana-action:https://...` line in the text too just repeats it as a
+ * long, ugly wrapped hyperlink with no extra information. Only ever call
+ * this for the TEXT rendering path; `extractBlinkUrl` must still run on the
+ * original, unstripped content or the card stops rendering entirely.
+ */
+export function stripBlinkUrlLine(content: string): string {
+  return content
+    .split("\n")
+    .filter(line => !ACTION_URL_REGEX.test(line) && !DIAL_TO_REGEX.test(line) && !DIRECT_ACTIONS_URL_REGEX.test(line))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n") // collapse any blank-line runs the removed line left behind
+    .trim();
+}
+
 // ── Metadata Cache ──────────────────────────────────────────────────────────
 
 const _metadataCache = new Map<string, ActionMetadata | null>();
