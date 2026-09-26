@@ -507,28 +507,33 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
               STOP, Saga Monke sale alerts) losing their last line to visual
               overlap from the next recycled item, reproduced on-device.
               Reuses the same bucketing ChatMessageList.tsx uses. */}
-          <FlashList
-            ref={flatListRef}
-            data={filteredMessages}
-            renderItem={renderMessage}
-            keyExtractor={keyExtractor}
-            getItemType={getMessageType}
-            contentContainerStyle={[
-              styles.listContent,
-              // Same pattern as ChatMessageList.tsx (Main Chat): fold the
-              // real bottom-of-screen reservation into the list's OWN
-              // scrollable content padding (visual bottom, since inverted
-              // flips paddingTop/paddingBottom — see
-              // reference_flashlist_inverted_padding_flip), not a sibling
-              // View after the list. A sibling spacer only shrinks the
-              // FlashList's flex box; it doesn't push the newest message's
-              // last line away from that box's own edge, which is what was
-              // still clipping it under this edge-to-edge shell even after
-              // a plain contentContainerStyle paddingTop bump (2026-09-27).
-              { paddingTop: 8 + insets.bottom, paddingBottom: 8 },
-            ]}
-            inverted
-          />
+          {/* flex:1 + minHeight:0 give FlashList v2 a constrained parent to
+              virtualize against — same requirement ChatMessageList.tsx
+              (Main Chat) already documents ("without it the list collapses
+              to ~0 height"). This FlashList had neither an explicit style
+              nor this wrapper, unlike the working Main Chat pattern —
+              likely why its last item's layout came in short regardless of
+              every content-padding/bucketing fix tried (2026-09-27). */}
+          <View style={{ flex: 1, minHeight: 0 }}>
+            <FlashList
+              ref={flatListRef}
+              data={filteredMessages}
+              renderItem={renderMessage}
+              keyExtractor={keyExtractor}
+              getItemType={getMessageType}
+              contentContainerStyle={[
+                styles.listContent,
+                // Same pattern as ChatMessageList.tsx (Main Chat): fold the
+                // real bottom-of-screen reservation into the list's OWN
+                // scrollable content padding (visual bottom, since inverted
+                // flips paddingTop/paddingBottom — see
+                // reference_flashlist_inverted_padding_flip), not a sibling
+                // View after the list.
+                { paddingTop: 8 + insets.bottom, paddingBottom: 8 },
+              ]}
+              inverted
+            />
+          </View>
         </>
       )}
 
