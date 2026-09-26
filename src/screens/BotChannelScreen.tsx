@@ -504,13 +504,24 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
             renderItem={renderMessage}
             keyExtractor={keyExtractor}
             getItemType={getMessageType}
-            contentContainerStyle={styles.listContent}
+            contentContainerStyle={[
+              styles.listContent,
+              // Same pattern as ChatMessageList.tsx (Main Chat): fold the
+              // real bottom-of-screen reservation into the list's OWN
+              // scrollable content padding (visual bottom, since inverted
+              // flips paddingTop/paddingBottom — see
+              // reference_flashlist_inverted_padding_flip), not a sibling
+              // View after the list. A sibling spacer only shrinks the
+              // FlashList's flex box; it doesn't push the newest message's
+              // last line away from that box's own edge, which is what was
+              // still clipping it under this edge-to-edge shell even after
+              // a plain contentContainerStyle paddingTop bump (2026-09-27).
+              { paddingTop: 8 + insets.bottom, paddingBottom: 8 },
+            ]}
             inverted
           />
         </>
       )}
-
-      <View style={{ height: insets.bottom }} />
 
       {hasAutonomy && (
         <AutonoMonkeSetupWizard
@@ -791,16 +802,10 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
 
-  listContent: {
-    // inverted list — paddingTop renders at the visual BOTTOM (newest
-    // message, nearest the screen edge), paddingBottom at the visual top.
-    // 8px there was under one text line tall, clipping the last line of
-    // multi-line alerts (MonkeScore/New Pair "chat quiet · X listed · TG
-    // listed" tail) right at the screen edge — confirmed live 2026-09-27,
-    // matches [[reference_flashlist_inverted_padding_flip]].
-    paddingTop: 28,
-    paddingBottom: 8,
-  },
+  // Real padding values (paddingTop = visual bottom, folding in
+  // insets.bottom) are applied inline where the FlashList is rendered —
+  // see the contentContainerStyle array there.
+  listContent: {},
 
   // Base fill bumped from 0.15→0.22 and a matching border added — at 0.15
   // with no border, the pills nearly disappeared against the busy World
