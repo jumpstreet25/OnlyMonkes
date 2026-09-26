@@ -1136,7 +1136,7 @@ export const MessageBubble = memo(function MessageBubble({
                       return (
                         <View style={showBotExpand && !botExpanded ? { maxHeight: 9 * 22, overflow: "hidden" } : undefined}>
                           <MarkdownContent
-                            content={displayContent}
+                            content={blinkUrl ? stripBlinkUrlLine(displayContent) : displayContent}
                             style={{ fontSize: 15 * (useAppStore.getState().textScale ?? 1) }}
                           />
                         </View>
