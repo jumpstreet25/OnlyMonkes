@@ -22,7 +22,6 @@ import { useTranslation } from "react-i18next";
 import { Image as ExpoImage } from "expo-image";
 import {
   VersionedTransaction,
-  TransactionMessage,
   Connection,
   PublicKey,
 } from "@solana/web3.js";
@@ -123,26 +122,19 @@ export function BlinkCard({ actionUrl }: BlinkCardProps) {
           throw new Error("Transaction fee payer does not match your wallet");
         }
 
-        // Fetch fresh blockhash — the worker-built tx may have a stale one
-        const { blockhash, lastValidBlockHeight } =
-          await connection.getLatestBlockhash("confirmed");
-
-        // Decompile, replace blockhash, recompile
-        const lookupTableAccounts = await Promise.all(
-          tx.message.addressTableLookups.map(async (lookup) => {
-            const res = await connection.getAddressLookupTable(lookup.accountKey);
-            return res.value;
-          }),
-        );
-        const validLuts = lookupTableAccounts.filter(
-          (a): a is NonNullable<typeof a> => a !== null,
-        );
-        const decompiled = TransactionMessage.decompile(tx.message, {
-          addressLookupTableAccounts: validLuts,
-        });
-        decompiled.recentBlockhash = blockhash;
-        const freshMessage = decompiled.compileToV0Message(validLuts);
-        const freshTx = new VersionedTransaction(freshMessage);
+        // Fetch fresh blockhash — the worker-built tx may have a stale one.
+        // MessageV0.recentBlockhash is a plain mutable field, so it can be
+        // swapped in place. The previous decompile/recompile round trip
+        // re-resolved every address lookup table the route used via a
+        // separate RPC call per table — any single one failing (rate limit,
+        // indexing lag, wrong cluster) silently dropped that table and
+        // corrupted the recompiled account layout, producing a transaction
+        // that would sign but never simulate. Confirmed live 2026-09-26:
+        // every Blink swap attempt hit Solflare's "This transaction
+        // couldn't be simulated" warning.
+        const { blockhash } = await connection.getLatestBlockhash("confirmed");
+        tx.message.recentBlockhash = blockhash;
+        const freshTx = tx;
 
         // Sign via MWA — pass VersionedTransaction object (not serialized bytes)
         const minContextSlot = await connection.getSlot();
