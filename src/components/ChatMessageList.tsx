@@ -108,10 +108,23 @@ export function getMessageType(item: ChatMessage): string {
   // there had zero effect on the on-device repro, which is what pointed
   // at recycling instead). Bucket by rough line count so short and long
   // text messages never share a recycling pool.
-  const lineCount = c.split("\n").length;
-  if (lineCount > 6) return "text-xl";
-  if (lineCount > 3) return "text-l";
-  if (lineCount > 1) return "text-m";
+  //
+  // 2026-09-27: raw `\n` count still undercounts real rendered height for
+  // messages with one very long unbroken "line" (a dexscreener/Tensor URL,
+  // 70-90+ chars) that word-wraps into 2-3 extra visual lines the newline
+  // count never sees — e.g. a 4-newline-segment MonkeScore alert bucketed
+  // as "text-m" that actually renders ~7 visual lines, sized (and
+  // recycled) like a much shorter message and clipping its last line.
+  // Same diagnostic signature as the 2026-09-04 bug (list/bubble-level
+  // padding fixes had zero effect on-device) — estimate wrapped lines per
+  // segment instead of counting raw newlines.
+  const CHARS_PER_VISUAL_LINE = 40;
+  const estimatedLines = c
+    .split("\n")
+    .reduce((sum, seg) => sum + Math.max(1, Math.ceil(seg.length / CHARS_PER_VISUAL_LINE)), 0);
+  if (estimatedLines > 6) return "text-xl";
+  if (estimatedLines > 3) return "text-l";
+  if (estimatedLines > 1) return "text-m";
   return "text-s";
 }
 
