@@ -792,7 +792,14 @@ const styles = StyleSheet.create({
   },
 
   listContent: {
-    paddingVertical: 8,
+    // inverted list — paddingTop renders at the visual BOTTOM (newest
+    // message, nearest the screen edge), paddingBottom at the visual top.
+    // 8px there was under one text line tall, clipping the last line of
+    // multi-line alerts (MonkeScore/New Pair "chat quiet · X listed · TG
+    // listed" tail) right at the screen edge — confirmed live 2026-09-27,
+    // matches [[reference_flashlist_inverted_padding_flip]].
+    paddingTop: 28,
+    paddingBottom: 8,
   },
 
   // Base fill bumped from 0.15→0.22 and a matching border added — at 0.15
