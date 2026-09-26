@@ -18,6 +18,7 @@ import {
   ImageBackground,
 } from "react-native";
 import { FlashList, type FlashListRef, type ListRenderItem } from "@shopify/flash-list";
+import * as Updates from "expo-updates";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { useAppStore } from "@/store/appStore";
@@ -327,6 +328,14 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
           <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />
         )}
         <View style={[StyleSheet.absoluteFill, { backgroundColor: chromeBg }]} pointerEvents="none" />
+        {/* TEMP DIAGNOSTIC (2026-09-27) — remove once the MonkeTrades
+            clipping bug is confirmed fixed. Four structurally different
+            code fixes here produced zero visible change on-device, which
+            is unusual enough to first rule out an OTA-delivery problem
+            before trying a fifth. */}
+        <Text style={{ position: "absolute", top: 2, left: 2, fontSize: 8, color: "#0F0", zIndex: 999 }}>
+          {Updates.updateId?.slice(0, 8) ?? "embedded"}
+        </Text>
         <View style={styles.headerRow1}>
         <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={8}>
           <Text style={styles.backIcon}>{"\u2039"}</Text>
