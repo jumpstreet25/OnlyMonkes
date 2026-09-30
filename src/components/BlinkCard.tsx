@@ -45,9 +45,15 @@ import {
 const OM_BLUE = "#0096C7";
 const OM_BLUE_DIM = "rgba(0, 150, 199, 0.12)";
 
+// Must match every other MWA identity in the app (solana.ts, useMobileWallet.ts,
+// jupiterSwap.ts, …): that domain serves .well-known/assetlinks.json binding it
+// to com.onlymonkes.app. This was "https://onlymonkes.app" — a domain with no
+// DNS at all — so wallets couldn't verify the requester and flagged every
+// Blink buy "Scam site detected" (2026-09-30), and the mismatched identity
+// also invalidated the cached auth token on every Blink.
 const APP_IDENTITY = {
   name: "OnlyMonkes",
-  uri: "https://onlymonkes.app",
+  uri: "https://onlymonkes-actions.jumpstreet25.workers.dev",
   icon: "favicon.ico",
 };
 
