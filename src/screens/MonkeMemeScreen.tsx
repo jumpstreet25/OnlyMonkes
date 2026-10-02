@@ -49,7 +49,7 @@ import {
   SCENE_MAX_CHARS,
   SCENE_PRESETS,
 } from "@/lib/monkeMeme/prompt";
-import { getMonkeMemeConfig, type MonkeMemeConfig } from "@/lib/monkeMeme/config";
+import { getMonkeMemeConfig, monkeMemeVisible, type MonkeMemeConfig } from "@/lib/monkeMeme/config";
 import { SpaceError, type SpaceImage } from "@/lib/monkeMeme/spaceClient";
 import { generateMeme } from "@/lib/monkeMeme/generate";
 import { getUsedToday, recordGeneration } from "@/lib/monkeMeme/usage";
@@ -96,6 +96,7 @@ export default function MonkeMemeScreen() {
   const verifiedNft = useAppStore((s) => s.verifiedNft);
   const allNfts = useAppStore((s) => s.allNfts);
   const walletAddress = useAppStore((s) => s.wallet?.address ?? null);
+  const isAdmin = useAppStore((s) => s.isGroupAdmin);
 
   const monkes = useMemo(() => uniqueMonkes(allNfts ?? [], verifiedNft), [allNfts, verifiedNft]);
   const [selected, setSelected] = useState<OwnedNFT | null>(null);
@@ -234,8 +235,8 @@ export default function MonkeMemeScreen() {
     }
   }, [resultLoaded, sharing, capture, shareText, t]);
 
-  if (!allowed || (cfg && !cfg.enabled)) {
-    const disabled = allowed && cfg && !cfg.enabled;
+  if (!allowed || (cfg && !monkeMemeVisible(cfg, isAdmin))) {
+    const disabled = allowed && cfg && !monkeMemeVisible(cfg, isAdmin);
     return (
       <WorldScreenShell title={t("monkeMeme.title")} onBack={() => router.back()}>
         <View style={styles.center}>

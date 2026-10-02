@@ -46,6 +46,7 @@ import { WorldLayer } from "@/components/worlds/WorldLayer";
 import { useThemeColor } from "@/lib/shopTheme";
 import { useChatStore } from "@/store/chatStore";
 import { useAppStore, type CalendarEvent } from "@/store/appStore";
+import { getMonkeMemeConfig, monkeMemeVisible, type MonkeMemeConfig } from "@/lib/monkeMeme/config";
 import { getCachedProfile, useProfileVersion } from "@/lib/userProfile";
 import { fetchSolanaEvents, type LumaEvent } from "@/lib/lumaEvents";
 import { ProfileScorecard } from "@/components/ProfileScorecard";
@@ -334,6 +335,15 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
       </Pressable>
     );
   }
+
+  // MonkeMeme tile: hidden unless config/monkememe.json says it's live (or
+  // this is the admin during the tester-only dark launch).
+  const isGroupAdminForMeme = useAppStore((s) => s.isGroupAdmin);
+  const [memeCfg, setMemeCfg] = useState<MonkeMemeConfig | null>(null);
+  useEffect(() => {
+    getMonkeMemeConfig().then(setMemeCfg).catch(() => {});
+  }, []);
+  const showMonkeMeme = monkeMemeVisible(memeCfg, isGroupAdminForMeme);
 
   function GridButton({
     iconName, label, badge, onPress,
@@ -647,11 +657,13 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                   label={t("menuDrawer.watchlist")}
                   onPress={() => { onClose(); setTimeout(() => router.push('/watchlist' as any), 300); }}
                 />
-                <GridButton
-                  iconName="monkeface"
-                  label={t("menuDrawer.monkeMeme")}
-                  onPress={() => { onClose(); setTimeout(() => router.push('/monkememe' as any), 300); }}
-                />
+                {showMonkeMeme && (
+                  <GridButton
+                    iconName="monkeface"
+                    label={t("menuDrawer.monkeMeme")}
+                    onPress={() => { onClose(); setTimeout(() => router.push('/monkememe' as any), 300); }}
+                  />
+                )}
                 <GridButton
                   iconName="globe"
                   label={t("menuDrawer.globe")}

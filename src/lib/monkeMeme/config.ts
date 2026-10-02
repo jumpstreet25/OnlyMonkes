@@ -25,6 +25,10 @@ export interface MonkeMemeConfig {
    *  get only ~3 runs/day and the Worker allows 6 per IP, so 6 keeps the
    *  counter honest without promising memes neither provider will draw. */
   dailyLimit: number;
+  /** Dark launch: only the app admin (store isGroupAdmin) sees MonkeMeme.
+   *  Defaults to true so a failed config fetch keeps it hidden, never open;
+   *  set "testersOnly": false in config/monkememe.json to launch. */
+  testersOnly: boolean;
 }
 
 export const DEFAULT_MONKEMEME_CONFIG: MonkeMemeConfig = {
@@ -33,9 +37,16 @@ export const DEFAULT_MONKEMEME_CONFIG: MonkeMemeConfig = {
   styleRefUrl: "https://raw.githubusercontent.com/jumpstreet25/OnlyMonkes/master/config/monkememe/style-ref-1.png",
   fallbackUrl: "https://onlymonkes-actions.jumpstreet25.workers.dev",
   dailyLimit: 6,
+  testersOnly: true,
 };
 
 let _cache: { cfg: MonkeMemeConfig; at: number } | null = null;
+
+/** Whether this user should see MonkeMeme at all (menu tile + page). */
+export function monkeMemeVisible(cfg: MonkeMemeConfig | null, isAdmin: boolean): boolean {
+  if (!cfg || !cfg.enabled) return false;
+  return !cfg.testersOnly || isAdmin;
+}
 const TTL_MS = 10 * 60 * 1000;
 
 export function parseMonkeMemeConfig(json: unknown): MonkeMemeConfig {
@@ -50,6 +61,7 @@ export function parseMonkeMemeConfig(json: unknown): MonkeMemeConfig {
         ? j.fallbackUrl.replace(/\/+$/, "")
         : d.fallbackUrl,
     dailyLimit: typeof j.dailyLimit === "number" && j.dailyLimit > 0 ? Math.floor(j.dailyLimit) : d.dailyLimit,
+    testersOnly: typeof j.testersOnly === "boolean" ? j.testersOnly : d.testersOnly,
   };
 }
 

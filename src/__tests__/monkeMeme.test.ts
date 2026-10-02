@@ -7,7 +7,7 @@ import {
 } from "../lib/monkeMeme/traitCatalog";
 import { buildMemePrompt, checkCaption, checkScene, SCENE_MAX_CHARS } from "../lib/monkeMeme/prompt";
 import { parseSseResult, SpaceError } from "../lib/monkeMeme/spaceClient";
-import { DEFAULT_MONKEMEME_CONFIG, parseMonkeMemeConfig } from "../lib/monkeMeme/config";
+import { DEFAULT_MONKEMEME_CONFIG, monkeMemeVisible, parseMonkeMemeConfig } from "../lib/monkeMeme/config";
 
 // MONKE #1760 straight from MonkeLedger /metadata.
 const M1760 = [
@@ -121,5 +121,18 @@ describe("parseMonkeMemeConfig", () => {
     expect(cfg.spaceUrl).toBe("https://me-monkememe.hf.space");
     expect(cfg.fallbackUrl).toBe("");
     expect(cfg.dailyLimit).toBe(3);
+  });
+});
+
+describe("monkeMemeVisible (dark launch)", () => {
+  it("is admin-only by default, so a failed config fetch stays hidden", () => {
+    expect(DEFAULT_MONKEMEME_CONFIG.testersOnly).toBe(true);
+    expect(monkeMemeVisible(DEFAULT_MONKEMEME_CONFIG, false)).toBe(false);
+    expect(monkeMemeVisible(DEFAULT_MONKEMEME_CONFIG, true)).toBe(true);
+    expect(monkeMemeVisible(null, true)).toBe(false);
+  });
+  it("opens to everyone once testersOnly is false, and the kill switch beats both", () => {
+    expect(monkeMemeVisible(parseMonkeMemeConfig({ testersOnly: false }), false)).toBe(true);
+    expect(monkeMemeVisible(parseMonkeMemeConfig({ enabled: false, testersOnly: false }), true)).toBe(false);
   });
 });
