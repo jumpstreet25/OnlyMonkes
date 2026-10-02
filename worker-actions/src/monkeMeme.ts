@@ -11,11 +11,14 @@
  *    bot's Cloudflare chat fallback hop, so memes are capped well below it.
  *  - GLOBAL_DAILY_CAP and PER_IP_DAILY_CAP via single-key KV get/put
  *    (never list() — KV list has its own daily cap, see index.ts history).
- *  - Holder check via the MonkeLedger service binding. The wallet is
- *    caller-supplied, so this only raises the bar; the caps are the real gate.
+ *  - Holder check via fetchOwnedMonke (same chain as /api/verify: MonkeLedger
+ *    fast path, then live Helius/holder index/QuickNode/Alchemy) — MonkeLedger
+ *    alone refuses /wallet while its index is stale, which would lock every
+ *    holder out. The wallet is caller-supplied, so this only raises the bar;
+ *    the caps are the real gate.
  */
 import type { Env } from "./index";
-import { CORS_HEADERS } from "./index";
+import { CORS_HEADERS, fetchOwnedMonke } from "./index";
 
 const MODEL = "@cf/black-forest-labs/flux-2-klein-4b";
 const GLOBAL_DAILY_CAP = 60;
@@ -49,10 +52,7 @@ async function bump(kv: Env["COMMUNITY_DATA"], key: string, cap: number): Promis
 
 async function isHolder(env: Env, wallet: string): Promise<boolean> {
   try {
-    const res = await env.MONKELEDGER.fetch(`https://monkeledger/wallet/${wallet}`);
-    if (!res.ok) return false;
-    const body = (await res.json()) as { owns?: boolean; assets?: unknown[] };
-    return body.owns === true || (Array.isArray(body.assets) && body.assets.length > 0);
+    return (await fetchOwnedMonke(wallet, env)).monke !== null;
   } catch {
     return false;
   }
