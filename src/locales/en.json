@@ -489,7 +489,8 @@
     "helpSupportOnlyMonkes": "Help Support OnlyMonkes",
     "supportSub": "One-tap $SKR tip to the dev wallet 🐒\nBiometric confirm — never leaves the app.",
     "sendingEllipsis": "Sending…",
-    "sendSkr": "Send {{amount}} $SKR  🐒"
+    "sendSkr": "Send {{amount}} $SKR  🐒",
+    "monkeMeme": "MonkeMeme"
   },
   "watchlist": {
     "title": "Watchlist",
@@ -1002,6 +1003,48 @@
     "bubble_breakpoint_2026": {
       "name": "Breakpoint 2026",
       "description": "Exclusive bubble style — only during Solana Breakpoint"
+    }
+  },
+  "monkeMeme": {
+    "title": "MonkeMeme",
+    "lockedTitle": "Saga Monke holders only",
+    "lockedBody": "MonkeMeme turns your Saga Monke into a cartoon meme. Verify the wallet that holds your monke to unlock it.",
+    "verifyCta": "Verify my monke",
+    "disabledTitle": "MonkeMeme is taking a nap",
+    "disabledBody": "The meme generator is paused for maintenance. Check back soon.",
+    "leftToday": "{{left}}/{{limit}} today",
+    "pickMonke": "Your monke",
+    "traits": "Trait board",
+    "resetTraits": "Reset to my monke",
+    "none": "None",
+    "cat": {
+      "Fur": "Fur",
+      "Head": "Head",
+      "Eyes": "Eyes",
+      "Mouth": "Mouth",
+      "Clothing": "Clothing"
+    },
+    "scene": "What's your monke doing?",
+    "scenePlaceholder": "e.g. staring at a green candle at 3am",
+    "caption": "Caption (optional)",
+    "captionPlaceholder": "WAGMI",
+    "generate": "Generate MonkeMeme",
+    "regenerate": "Generate another",
+    "generating": "Drawing your monke… {{s}}s",
+    "limitReached": "You've used today's MonkeMemes. More tomorrow.",
+    "shareX": "Share to X",
+    "shareMore": "More…",
+    "shareText": "Made my MonkeMeme on @xOnlyMonkes 🐒 #SagaMonkes #OnlyMonkes",
+    "footnote": "Drawn by FLUX.2 [klein] on free GPUs — Hugging Face first, Cloudflare as backup.",
+    "err": {
+      "empty": "Tell us what your monke is doing first.",
+      "too_long": "Keep it to 140 characters.",
+      "blocked": "That scene isn't allowed. Try something else.",
+      "pfpLoading": "Still loading your monke — try again in a second.",
+      "quota": "Your free GPU time for today is used up. Try again tomorrow.",
+      "busy": "The generator is busy. Try again in a minute.",
+      "failed": "Couldn't draw that one. Try again.",
+      "captureFailed": "Couldn't save the meme image. Try again."
     }
   }
 }

@@ -71,6 +71,9 @@ id = "272632d79eb043a69586f7cb4013c080"
 # same-account Worker-to-Worker calls — it routes directly between the two Workers' isolates
 # instead of going out through the public network/DNS, so this restriction never applies.
 # Call via env.MONKELEDGER.fetch(new Request(url)) rather than a plain fetch(url).
+[ai]
+binding = "AI"
+
 [[services]]
 binding = "MONKELEDGER"
 service = "monkeledger"

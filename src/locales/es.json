@@ -489,7 +489,8 @@
     "helpSupportOnlyMonkes": "Ayuda a Apoyar OnlyMonkes",
     "supportSub": "Propina de $SKR con un toque a la billetera del desarrollador 🐒\nConfirmación biométrica — nunca sale de la app.",
     "sendingEllipsis": "Enviando…",
-    "sendSkr": "Enviar {{amount}} $SKR  🐒"
+    "sendSkr": "Enviar {{amount}} $SKR  🐒",
+    "monkeMeme": "MonkeMeme"
   },
   "watchlist": {
     "title": "Lista de Seguimiento",
@@ -1002,6 +1003,48 @@
     "bubble_breakpoint_2026": {
       "name": "Breakpoint 2026",
       "description": "Estilo de burbuja exclusivo — solo durante Solana Breakpoint"
+    }
+  },
+  "monkeMeme": {
+    "title": "MonkeMeme",
+    "lockedTitle": "Solo para holders de Saga Monke",
+    "lockedBody": "MonkeMeme convierte tu Saga Monke en un meme de caricatura. Verifica la wallet con tu monke para desbloquearlo.",
+    "verifyCta": "Verificar mi monke",
+    "disabledTitle": "MonkeMeme está tomando una siesta",
+    "disabledBody": "El generador de memes está en pausa por mantenimiento. Vuelve pronto.",
+    "leftToday": "{{left}}/{{limit}} hoy",
+    "pickMonke": "Tu monke",
+    "traits": "Tablero de rasgos",
+    "resetTraits": "Volver a mi monke",
+    "none": "Ninguno",
+    "cat": {
+      "Fur": "Pelaje",
+      "Head": "Cabeza",
+      "Eyes": "Ojos",
+      "Mouth": "Boca",
+      "Clothing": "Ropa"
+    },
+    "scene": "¿Qué está haciendo tu monke?",
+    "scenePlaceholder": "ej. mirando una vela verde a las 3am",
+    "caption": "Texto (opcional)",
+    "captionPlaceholder": "WAGMI",
+    "generate": "Generar MonkeMeme",
+    "regenerate": "Generar otro",
+    "generating": "Dibujando tu monke… {{s}}s",
+    "limitReached": "Ya usaste los MonkeMemes de hoy. Más mañana.",
+    "shareX": "Compartir en X",
+    "shareMore": "Más…",
+    "shareText": "Hice mi MonkeMeme en @xOnlyMonkes 🐒 #SagaMonkes #OnlyMonkes",
+    "footnote": "Dibujado por FLUX.2 [klein] en GPU gratuitas — Hugging Face primero, Cloudflare de respaldo.",
+    "err": {
+      "empty": "Primero cuéntanos qué hace tu monke.",
+      "too_long": "Máximo 140 caracteres.",
+      "blocked": "Esa escena no está permitida. Prueba otra.",
+      "pfpLoading": "Tu monke aún está cargando — intenta en un segundo.",
+      "quota": "Ya usaste tu tiempo de GPU gratis de hoy. Intenta mañana.",
+      "busy": "El generador está ocupado. Intenta en un minuto.",
+      "failed": "No se pudo dibujar. Intenta de nuevo.",
+      "captureFailed": "No se pudo guardar la imagen del meme. Intenta de nuevo."
     }
   }
 }

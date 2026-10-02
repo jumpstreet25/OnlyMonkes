@@ -93,6 +93,7 @@ import {
 import { handleGetLumaEvents } from "./lumaEvents";
 import { handlePublishAppConfig } from "./adminConfig";
 import { handleBotCommand, handleInboxReset } from "./botCommand";
+import { handleMonkeMemeGenerate } from "./monkeMeme";
 
 // Cloudflare Workers KV namespace binding (declared locally to avoid @cloudflare/workers-types dependency)
 interface KVListOptions {
@@ -153,6 +154,9 @@ export interface Env {
   // minimally (not the ambient `Fetcher` type) since this project's tsconfig only pulls in
   // @cloudflare/workers-types' stable entry, which doesn't export a bare `Fetcher` name.
   MONKELEDGER: { fetch: (input: string, init?: RequestInit) => Promise<Response> };
+  // Workers AI — MonkeMeme fallback generator (monkeMeme.ts). Free plan only;
+  // exhausting the daily neurons errors, it never bills.
+  AI?: { run: (model: string, inputs: unknown) => Promise<unknown> };
   // Admin config publish (see adminConfig.ts) — replaces the old app-side
   // classic-PAT-in-SecureStore flow. ADMIN_WALLET_PUBKEY is the admin's
   // Solana wallet base58 address (not the XMTP inboxId); ADMIN_GITHUB_PAT
@@ -3703,6 +3707,11 @@ export default {
 
     // Device Integrity Attestation — backend-verified (Key Attestation cert chain + RASP +
     // Saga/Genesis ownership), cached per wallet, no on-chain write. See deviceIntegrity.ts.
+    if (path === "/api/monkememe/generate") {
+      if (request.method === "POST") return handleMonkeMemeGenerate(request, env);
+      return errorResponse("Method not allowed", 405);
+    }
+
     if (path === "/api/device-integrity/challenge") {
       if (request.method === "POST") return handleDeviceIntegrityChallenge(env);
       return errorResponse("Method not allowed", 405);
