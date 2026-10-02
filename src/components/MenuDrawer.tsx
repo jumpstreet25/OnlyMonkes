@@ -339,11 +339,12 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
   // MonkeMeme tile: hidden unless config/monkememe.json says it's live (or
   // this is the admin during the tester-only dark launch).
   const isGroupAdminForMeme = useAppStore((s) => s.isGroupAdmin);
+  const walletForMeme = useAppStore((s) => s.wallet?.address ?? null);
   const [memeCfg, setMemeCfg] = useState<MonkeMemeConfig | null>(null);
   useEffect(() => {
     getMonkeMemeConfig().then(setMemeCfg).catch(() => {});
   }, []);
-  const showMonkeMeme = monkeMemeVisible(memeCfg, isGroupAdminForMeme);
+  const showMonkeMeme = monkeMemeVisible(memeCfg, isGroupAdminForMeme, walletForMeme);
 
   function GridButton({
     iconName, label, badge, onPress,

@@ -11,6 +11,9 @@
  * breaks the screen.
  */
 
+import { sha256 } from "@noble/hashes/sha2";
+import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils";
+
 const RAW = "https://raw.githubusercontent.com/jumpstreet25/OnlyMonkes/master/config/monkememe.json";
 
 export interface MonkeMemeConfig {
@@ -29,6 +32,9 @@ export interface MonkeMemeConfig {
    *  Defaults to true so a failed config fetch keeps it hidden, never open;
    *  set "testersOnly": false in config/monkememe.json to launch. */
   testersOnly: boolean;
+  /** Extra testers during the dark launch, as lowercase hex SHA-256 of the
+   *  wallet address — config/monkememe.json is public, so never raw wallets. */
+  testerWalletHashes: string[];
 }
 
 export const DEFAULT_MONKEMEME_CONFIG: MonkeMemeConfig = {
@@ -38,14 +44,20 @@ export const DEFAULT_MONKEMEME_CONFIG: MonkeMemeConfig = {
   fallbackUrl: "https://onlymonkes-actions.jumpstreet25.workers.dev",
   dailyLimit: 6,
   testersOnly: true,
+  testerWalletHashes: [],
 };
 
 let _cache: { cfg: MonkeMemeConfig; at: number } | null = null;
 
+export function walletHash(wallet: string): string {
+  return bytesToHex(sha256(utf8ToBytes(wallet)));
+}
+
 /** Whether this user should see MonkeMeme at all (menu tile + page). */
-export function monkeMemeVisible(cfg: MonkeMemeConfig | null, isAdmin: boolean): boolean {
+export function monkeMemeVisible(cfg: MonkeMemeConfig | null, isAdmin: boolean, wallet?: string | null): boolean {
   if (!cfg || !cfg.enabled) return false;
-  return !cfg.testersOnly || isAdmin;
+  if (!cfg.testersOnly || isAdmin) return true;
+  return !!wallet && cfg.testerWalletHashes.includes(walletHash(wallet));
 }
 const TTL_MS = 10 * 60 * 1000;
 
@@ -62,6 +74,9 @@ export function parseMonkeMemeConfig(json: unknown): MonkeMemeConfig {
         : d.fallbackUrl,
     dailyLimit: typeof j.dailyLimit === "number" && j.dailyLimit > 0 ? Math.floor(j.dailyLimit) : d.dailyLimit,
     testersOnly: typeof j.testersOnly === "boolean" ? j.testersOnly : d.testersOnly,
+    testerWalletHashes: Array.isArray(j.testerWalletHashes)
+      ? j.testerWalletHashes.filter((h): h is string => typeof h === "string" && /^[0-9a-f]{64}$/.test(h))
+      : d.testerWalletHashes,
   };
 }
 

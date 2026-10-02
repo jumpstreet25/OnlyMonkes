@@ -7,7 +7,7 @@ import {
 } from "../lib/monkeMeme/traitCatalog";
 import { buildMemePrompt, checkCaption, checkScene, SCENE_MAX_CHARS } from "../lib/monkeMeme/prompt";
 import { parseSseResult, SpaceError } from "../lib/monkeMeme/spaceClient";
-import { DEFAULT_MONKEMEME_CONFIG, monkeMemeVisible, parseMonkeMemeConfig } from "../lib/monkeMeme/config";
+import { DEFAULT_MONKEMEME_CONFIG, monkeMemeVisible, parseMonkeMemeConfig, walletHash } from "../lib/monkeMeme/config";
 
 // MONKE #1760 straight from MonkeLedger /metadata.
 const M1760 = [
@@ -193,5 +193,19 @@ describe("trait table + Wave 2 descriptions", () => {
     expect(p).toContain("It is a cyborg monkey");
     expect(p).toContain("Keep its exact colors from image 1");
     expect(p).not.toContain("pink lips");
+  });
+});
+
+describe("tester wallet hashes", () => {
+  const wallet = "TestWallet1111111111111111111111111111111111";
+  it("hashes wallets the same way the config expects", () => {
+    expect(walletHash(wallet)).toMatch(/^[0-9a-f]{64}$/);
+  });
+  it("lets a listed tester in during the dark launch, and nobody else", () => {
+    const cfg = parseMonkeMemeConfig({ testersOnly: true, testerWalletHashes: [walletHash(wallet), "not-a-hash"] });
+    expect(cfg.testerWalletHashes).toEqual([walletHash(wallet)]);
+    expect(monkeMemeVisible(cfg, false, wallet)).toBe(true);
+    expect(monkeMemeVisible(cfg, false, "SomeoneElse11111111111111111111111111111111")).toBe(false);
+    expect(monkeMemeVisible(cfg, false, null)).toBe(false);
   });
 });

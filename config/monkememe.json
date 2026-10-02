@@ -4,5 +4,8 @@
   "spaceUrl": "https://black-forest-labs-flux-2-klein-4b.hf.space",
   "styleRefUrl": "https://raw.githubusercontent.com/jumpstreet25/OnlyMonkes/master/config/monkememe/style-ref-1.png",
   "fallbackUrl": "https://onlymonkes-actions.jumpstreet25.workers.dev",
-  "dailyLimit": 6
+  "dailyLimit": 6,
+  "testerWalletHashes": [
+    "326ac81460be4de300c8ebc8d078d805b62e0ae99102b1e43aef1230d25e800a"
+  ]
 }

@@ -274,8 +274,8 @@ export default function MonkeMemeScreen() {
     }
   }, [resultLoaded, sharing, capture, shareText, t]);
 
-  if (!allowed || (cfg && !monkeMemeVisible(cfg, isAdmin))) {
-    const disabled = allowed && cfg && !monkeMemeVisible(cfg, isAdmin);
+  if (!allowed || (cfg && !monkeMemeVisible(cfg, isAdmin, walletAddress))) {
+    const disabled = allowed && cfg && !monkeMemeVisible(cfg, isAdmin, walletAddress);
     return (
       <WorldScreenShell title={t("monkeMeme.title")} onBack={() => router.back()}>
         <View style={styles.center}>
