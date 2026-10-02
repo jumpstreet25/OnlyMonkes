@@ -10,30 +10,38 @@ export const SCENE_MAX_CHARS = 140;
 export const CAPTION_MAX_CHARS = 60;
 
 /** Our house style. Kept in words as well as the reference image so the
- *  look holds even when the style reference can't be attached. */
+ *  look holds even when the style reference can't be attached. Deliberately
+ *  colour-neutral ("glossy lips", not "pink lips"): forcing pink lips and a
+ *  peach face painted over monkes like the #8982 cyborg's metal face plate. */
 export const MONKEMEME_STYLE =
   "hand-drawn cartoon in a bold sticker style: very thick black outlines, flat cel shading with one soft highlight, " +
-  "oversized rounded head, droopy half-closed eyelids, huge glossy pink lips in a smug grin, spiral-shaped ear";
+  "oversized rounded head, droopy half-closed eyelids, huge glossy lips in a smug grin, spiral-shaped ear";
 
 export interface PromptInput {
   traits: TraitSelection;
   scene: string;
   /** True when a style reference image is attached as image 2. */
   hasStyleRef: boolean;
+  /** Hand-written look of a 1/1 (Wave 2). Takes precedence over traits. */
+  description?: string | null;
 }
 
-export function buildMemePrompt({ traits, scene, hasStyleRef }: PromptInput): string {
+export function buildMemePrompt({ traits, scene, hasStyleRef, description }: PromptInput): string {
+  const sceneLine = scene.trim() ? ` Scene: ${scene.trim()}.` : "";
+  const tail = `${sceneLine} No text, letters or words anywhere in the image.`;
+  // 1/1s: never paired with the style reference (the model copies the plain
+  // ref monke instead of image 1), so the style rides in words only.
+  if (description) {
+    return `Redraw the pixel-art character in image 1 as a ${MONKEMEME_STYLE}. Keep its exact colors from image 1. It is ${description}.${tail}`;
+  }
   const look = describeSelection(traits);
   const intro = hasStyleRef
     ? `Redraw the pixel-art monkey from image 1 as a cartoon character in the exact art style of image 2 (${MONKEMEME_STYLE}).`
     : `Redraw the pixel-art monkey from image 1 as a ${MONKEMEME_STYLE}.`;
-  // No catalog traits (Wave 2 1/1s, or a monke picked by number) → the
-  // art itself is the description.
   const lookLine = look
-    ? ` Its look, even where image 1 differs: ${look}.`
+    ? ` Keep its colors from image 1. Its look, even where image 1 differs: ${look}.`
     : " Keep the monkey's exact look from image 1: its colors, theme, outfit and accessories.";
-  const sceneLine = scene.trim() ? ` Scene: ${scene.trim()}.` : "";
-  return `${intro}${lookLine}${sceneLine} No text, letters or words anywhere in the image.`;
+  return `${intro}${lookLine}${tail}`;
 }
 
 // Whole-word matches only, so "assistant" or "Scunthorpe"-style words pass.

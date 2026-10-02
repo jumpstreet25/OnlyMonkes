@@ -20,8 +20,8 @@ export const TRAIT_CATALOG: Record<TraitCategory, Record<string, string>> = {
     Mahogany_: "deep mahogany-brown fur",
     "Cherry Blossom": "soft cherry-blossom pink fur",
     AutonoMonke: "silver-gray robotic fur with darker metal panels",
-    Zombie: "sickly green-gray zombie fur",
-    "Gold Idol": "shiny solid-gold fur like a golden idol",
+    Zombie: "sickly green-gray zombie fur and a matching green-gray face",
+    "Gold Idol": "shiny solid-gold fur and face like a golden idol",
     Solana: "fur in a Solana gradient from mint green to purple",
   },
   Head: {

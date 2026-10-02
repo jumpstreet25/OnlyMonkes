@@ -165,3 +165,33 @@ describe("prompt for 1/1s", () => {
     expect(p).not.toContain("Its look, even where");
   });
 });
+
+describe("trait table + Wave 2 descriptions", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { traitsForNumber, wave2Description } = require("../lib/monkeMeme/monkeNumbers");
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { WAVE2_DESCRIPTIONS } = require("../lib/monkeMeme/wave2Descriptions");
+
+  it("decodes a standard monke's traits from the packed table", () => {
+    expect(traitsForNumber(1760)).toEqual({ Fur: "Dark", Head: "Horns", Eyes: "Open", Mouth: "None", Clothing: "Gold Chain" });
+    expect(traitsForNumber(1308)).toEqual({ Fur: "Cherry Blossom", Head: "Trainer Cap", Eyes: "Glare", Mouth: "None", Clothing: "Band Hoodie" });
+  });
+
+  it("has no traits for Wave 2 and burned numbers", () => {
+    expect(traitsForNumber(8930)).toEqual({});
+    expect(traitsForNumber(411)).toEqual({});
+  });
+
+  it("describes every Wave 2 1/1", () => {
+    for (let n = 8889; n <= 8988; n++) expect(WAVE2_DESCRIPTIONS[n]?.length).toBeGreaterThan(10);
+    expect(wave2Description(8982)).toContain("cyborg");
+    expect(wave2Description(1760)).toBeNull();
+  });
+
+  it("puts the description in the prompt and keeps the house style colour-neutral", () => {
+    const p = buildMemePrompt({ traits: {}, scene: "at 3am", hasStyleRef: false, description: wave2Description(8982) });
+    expect(p).toContain("It is a cyborg monkey");
+    expect(p).toContain("Keep its exact colors from image 1");
+    expect(p).not.toContain("pink lips");
+  });
+});

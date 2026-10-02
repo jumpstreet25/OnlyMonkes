@@ -11,6 +11,10 @@
  * head or eyes — so their art is the only description the generator gets.
  */
 
+import { TRAIT_CATALOG, TRAIT_CATEGORIES, type TraitSelection } from "./traitCatalog";
+import { TRAIT_TABLE, TRAIT_TABLE_WIDTH } from "./traitTable";
+import { WAVE2_DESCRIPTIONS } from "./wave2Descriptions";
+
 const BASE_A = "https://arweave.net/8bJFg1KcX8M_ahz3wJplqdG4-8we_Ts1pTSi5wephHE";
 const BASE_B = "https://arweave.net/2x92sGwXGIDCumAN1vawXd6CitHeqyjuZ1fUWOVmfsY";
 const BASE_B_RANGE: [number, number] = [8989, 10014];
@@ -36,4 +40,24 @@ export function parseMonkeNumber(text: string | null | undefined): number | null
   if (!m) return null;
   const n = parseInt(m[1], 10);
   return monkeImageForNumber(n) ? n : null;
+}
+
+
+/** Catalog traits for MONKE #n from the packed table; {} for Wave 2 / burned. */
+export function traitsForNumber(n: number): TraitSelection {
+  if (!monkeImageForNumber(n)) return {};
+  const row = TRAIT_TABLE.slice((n - 1) * TRAIT_TABLE_WIDTH, n * TRAIT_TABLE_WIDTH);
+  const sel: TraitSelection = {};
+  TRAIT_CATEGORIES.forEach((cat, i) => {
+    const ch = row[i];
+    if (!ch || ch === "-") return;
+    const value = Object.keys(TRAIT_CATALOG[cat])[parseInt(ch, 36)];
+    if (value) sel[cat] = value;
+  });
+  return sel;
+}
+
+/** Hand-written look of a Wave 2 1/1, or null. */
+export function wave2Description(n: number): string | null {
+  return isWave2(n) ? WAVE2_DESCRIPTIONS[n] ?? null : null;
 }

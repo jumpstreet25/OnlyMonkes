@@ -53,7 +53,7 @@ import { getMonkeMemeConfig, monkeMemeVisible, type MonkeMemeConfig } from "@/li
 import { SpaceError, type SpaceImage } from "@/lib/monkeMeme/spaceClient";
 import { generateMeme } from "@/lib/monkeMeme/generate";
 import { getUsedToday, recordGeneration } from "@/lib/monkeMeme/usage";
-import { isWave2, monkeImageForNumber, parseMonkeNumber } from "@/lib/monkeMeme/monkeNumbers";
+import { isWave2, monkeImageForNumber, parseMonkeNumber, traitsForNumber, wave2Description } from "@/lib/monkeMeme/monkeNumbers";
 
 const getViewShot = () => import("react-native-view-shot");
 
@@ -166,11 +166,17 @@ export default function MonkeMemeScreen() {
       setTraits(sel);
     };
     const nft = selected.nft;
-    // Wave 2 1/1s and monkes picked by number have no catalog traits: the art
-    // itself is the description (buildMemePrompt handles an empty selection).
-    if (!nft || (selected.number !== null && isWave2(selected.number))) apply([]);
-    else if (nft.traits?.length) apply(nft.traits);
-    else fetchLedgerTraits(nft.mint).then(apply);
+    // Known number → packed trait table (instant, offline, any monke). Wave 2
+    // 1/1s come back empty and are described in words instead (wave2Description).
+    const fromTable = selected.number !== null ? traitsForNumber(selected.number) : {};
+    if (Object.keys(fromTable).length || (selected.number !== null && isWave2(selected.number))) {
+      if (!cancelled) {
+        setBaseTraits(fromTable);
+        setTraits(fromTable);
+      }
+    } else if (nft?.traits?.length) apply(nft.traits);
+    else if (nft) fetchLedgerTraits(nft.mint).then(apply);
+    else apply([]);
     return () => {
       cancelled = true;
     };
@@ -216,7 +222,8 @@ export default function MonkeMemeScreen() {
       // the prompt it only steers the drawing style, but for art-only monkes
       // (Wave 2 1/1s, monkes picked by number) the model copies its character
       // instead of image 1 — tested on #8930 — so those get the style in words.
-      const artOnly = Object.keys(traits).length === 0;
+      const description = selected.number !== null ? wave2Description(selected.number) : null;
+      const artOnly = !!description || Object.keys(traits).length === 0;
       if (styleReady && !artOnly) {
         try {
           images.push({ uri: await capture(styleRef, CAPTURE_SIZE), name: "style.png" });
@@ -224,7 +231,7 @@ export default function MonkeMemeScreen() {
           // style reference is a nice-to-have; the prompt carries the style in words too
         }
       }
-      const prompt = buildMemePrompt({ traits, scene: s.scene, hasStyleRef: images.length > 1 });
+      const prompt = buildMemePrompt({ traits, scene: s.scene, hasStyleRef: images.length > 1, description });
       const { uri } = await generateMeme(cfg, { prompt, images, wallet: walletAddress });
       setResultUrl(uri);
       setUsed(await recordGeneration());
