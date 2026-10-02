@@ -1044,7 +1044,13 @@
       "quota": "Your free GPU time for today is used up. Try again tomorrow.",
       "busy": "The generator is busy. Try again in a minute.",
       "failed": "Couldn't draw that one. Try again.",
-      "captureFailed": "Couldn't save the meme image. Try again."
-    }
+      "captureFailed": "Couldn't save the meme image. Try again.",
+      "badNumber": "That's not a Saga Monke number (1–10014, burned monkes excluded).",
+      "pfpFailed": "Couldn't load that monke's art. Try again."
+    },
+    "numberPlaceholder": "Any Monke # (e.g. 8930)",
+    "loadNumber": "Load",
+    "wave2": "Wave 2 1/1",
+    "artOnly": "This monke is drawn straight from its own art — no trait board needed."
   }
 }

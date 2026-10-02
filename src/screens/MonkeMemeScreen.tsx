@@ -53,6 +53,7 @@ import { getMonkeMemeConfig, monkeMemeVisible, type MonkeMemeConfig } from "@/li
 import { SpaceError, type SpaceImage } from "@/lib/monkeMeme/spaceClient";
 import { generateMeme } from "@/lib/monkeMeme/generate";
 import { getUsedToday, recordGeneration } from "@/lib/monkeMeme/usage";
+import { isWave2, monkeImageForNumber, parseMonkeNumber } from "@/lib/monkeMeme/monkeNumbers";
 
 const getViewShot = () => import("react-native-view-shot");
 
@@ -71,6 +72,18 @@ function uniqueMonkes(all: OwnedNFT[], verified: OwnedNFT | null): OwnedNFT[] {
     out.push(n);
   }
   return out;
+}
+
+interface ActiveMonke {
+  number: number | null;
+  image: string;
+  /** Set when it's one of the holder's own monkes (traits available). */
+  nft: OwnedNFT | null;
+}
+
+function activeFromOwned(m: OwnedNFT): ActiveMonke {
+  const number = parseMonkeNumber(m.name);
+  return { number, image: (number && monkeImageForNumber(number)) || m.image!, nft: m };
 }
 
 async function fetchLedgerTraits(mint: string): Promise<OwnedNFT["traits"]> {
@@ -99,7 +112,8 @@ export default function MonkeMemeScreen() {
   const isAdmin = useAppStore((s) => s.isGroupAdmin);
 
   const monkes = useMemo(() => uniqueMonkes(allNfts ?? [], verifiedNft), [allNfts, verifiedNft]);
-  const [selected, setSelected] = useState<OwnedNFT | null>(null);
+  const [selected, setSelected] = useState<ActiveMonke | null>(null);
+  const [numberInput, setNumberInput] = useState("");
   const [baseTraits, setBaseTraits] = useState<TraitSelection>({});
   const [traits, setTraits] = useState<TraitSelection>({});
   const [openCat, setOpenCat] = useState<TraitCategory | null>(null);
@@ -120,7 +134,7 @@ export default function MonkeMemeScreen() {
   const pfpRef = useRef<View>(null);
   const styleRef = useRef<View>(null);
   const memeRef = useRef<View>(null);
-  const loadedMintRef = useRef<string | null>(null);
+  const loadedImageRef = useRef<string | null>(null);
 
   const allowed = verified && integrity !== "hardware_failed";
   const memeSize = Math.min(width - 32, 480);
@@ -133,16 +147,16 @@ export default function MonkeMemeScreen() {
   }, []);
 
   useEffect(() => {
-    if (!selected && monkes.length) setSelected(monkes[0]);
+    if (!selected && monkes.length) setSelected(activeFromOwned(monkes[0]));
   }, [monkes, selected]);
 
   useEffect(() => {
     if (!selected) return;
     let cancelled = false;
-    // Only a different monke remounts the capture image (keyed by mint); a
-    // refreshed NFT object for the same mint keeps the already-loaded image.
-    if (loadedMintRef.current !== selected.mint) {
-      loadedMintRef.current = selected.mint;
+    // Only a different image remounts the capture view (keyed by image URL);
+    // a refreshed object for the same monke keeps the already-loaded image.
+    if (loadedImageRef.current !== selected.image) {
+      loadedImageRef.current = selected.image;
       setPfpReady(false);
     }
     const apply = (list: OwnedNFT["traits"]) => {
@@ -151,8 +165,12 @@ export default function MonkeMemeScreen() {
       setBaseTraits(sel);
       setTraits(sel);
     };
-    if (selected.traits?.length) apply(selected.traits);
-    else fetchLedgerTraits(selected.mint).then(apply);
+    const nft = selected.nft;
+    // Wave 2 1/1s and monkes picked by number have no catalog traits: the art
+    // itself is the description (buildMemePrompt handles an empty selection).
+    if (!nft || (selected.number !== null && isWave2(selected.number))) apply([]);
+    else if (nft.traits?.length) apply(nft.traits);
+    else fetchLedgerTraits(nft.mint).then(apply);
     return () => {
       cancelled = true;
     };
@@ -170,6 +188,15 @@ export default function MonkeMemeScreen() {
     return captureRef(ref as never, { format: "png", quality: 1, result: "tmpfile", width: size, height: size });
   }, []);
 
+  const loadNumber = useCallback(() => {
+    const n = parseMonkeNumber(numberInput);
+    if (n === null) return setError(t("monkeMeme.err.badNumber"));
+    setError(null);
+    const own = monkes.find((m) => parseMonkeNumber(m.name) === n);
+    setSelected(own ? activeFromOwned(own) : { number: n, image: monkeImageForNumber(n)!, nft: null });
+    setResultUrl(null);
+  }, [numberInput, monkes, t]);
+
   const generate = useCallback(async () => {
     if (!cfg || !selected || busy) return;
     setError(null);
@@ -185,7 +212,12 @@ export default function MonkeMemeScreen() {
     setResultLoaded(false);
     try {
       const images: SpaceImage[] = [{ uri: await capture(pfpRef, CAPTURE_SIZE), name: "monke.png" }];
-      if (styleReady) {
+      // The style reference is a plain trait-less monke. With trait words in
+      // the prompt it only steers the drawing style, but for art-only monkes
+      // (Wave 2 1/1s, monkes picked by number) the model copies its character
+      // instead of image 1 — tested on #8930 — so those get the style in words.
+      const artOnly = Object.keys(traits).length === 0;
+      if (styleReady && !artOnly) {
         try {
           images.push({ uri: await capture(styleRef, CAPTURE_SIZE), name: "style.png" });
         } catch {
@@ -267,8 +299,8 @@ export default function MonkeMemeScreen() {
           {monkes.map((m) => (
             <Pressable
               key={m.mint}
-              onPress={() => setSelected(m)}
-              style={[styles.monkeThumb, selected?.mint === m.mint && styles.monkeThumbOn]}
+              onPress={() => setSelected(activeFromOwned(m))}
+              style={[styles.monkeThumb, selected?.nft?.mint === m.mint && styles.monkeThumbOn]}
             >
               <Image source={{ uri: m.image! }} style={styles.monkeThumbImg} />
               <Text style={styles.monkeName} numberOfLines={1}>{m.name.replace(/^MONKE\s*/i, "")}</Text>
@@ -276,7 +308,37 @@ export default function MonkeMemeScreen() {
           ))}
         </ScrollView>
 
-        {/* Trait board */}
+        {/* Any monke by number — the built-in index covers all 9,999 */}
+        <View style={styles.numberRow}>
+          <TextInput
+            style={[styles.input, styles.numberInput, cardStyle]}
+            value={numberInput}
+            onChangeText={(v) => setNumberInput(v.replace(/[^0-9]/g, "").slice(0, 5))}
+            placeholder={t("monkeMeme.numberPlaceholder")}
+            placeholderTextColor={THEME.textDim}
+            keyboardType="number-pad"
+            returnKeyType="go"
+            onSubmitEditing={loadNumber}
+          />
+          <Pressable style={styles.numberBtn} onPress={loadNumber}>
+            <Text style={styles.numberBtnText}>{t("monkeMeme.loadNumber")}</Text>
+          </Pressable>
+        </View>
+        {selected ? (
+          <View style={styles.activeRow}>
+            <Image source={{ uri: selected.image }} style={styles.activeImg} />
+            <Text style={styles.activeName}>
+              {selected.number ? `MONKE #${selected.number}` : selected.nft?.name ?? ""}
+              {selected.number !== null && isWave2(selected.number) ? `  ·  ${t("monkeMeme.wave2")}` : ""}
+            </Text>
+          </View>
+        ) : null}
+
+        {/* Trait board — only for monkes with catalog traits */}
+        {Object.keys(baseTraits).length === 0 ? (
+          <Text style={styles.artNote}>{t("monkeMeme.artOnly")}</Text>
+        ) : (
+        <>
         <View style={styles.sectionRow}>
           <Text style={styles.section}>{t("monkeMeme.traits")}</Text>
           <Pressable onPress={() => setTraits(baseTraits)} hitSlop={8}>
@@ -313,6 +375,9 @@ export default function MonkeMemeScreen() {
             );
           })}
         </View>
+
+        </>
+        )}
 
         {/* Scene + caption */}
         <Text style={styles.section}>{t("monkeMeme.scene")}</Text>
@@ -393,8 +458,13 @@ export default function MonkeMemeScreen() {
       {/* Off-screen 512px sources for the generator: the PFP and our house
           style reference, captured to local PNGs right before upload. */}
       {selected?.image ? (
-        <View key={selected.mint} ref={pfpRef} collapsable={false} style={styles.offscreen}>
-          <Image source={{ uri: selected.image }} style={styles.offscreenImg} onLoad={() => setPfpReady(true)} />
+        <View key={selected.image} ref={pfpRef} collapsable={false} style={styles.offscreen}>
+          <Image
+            source={{ uri: selected.image }}
+            style={styles.offscreenImg}
+            onLoad={() => setPfpReady(true)}
+            onError={() => setError(t("monkeMeme.err.pfpFailed"))}
+          />
         </View>
       ) : null}
       {cfg?.styleRefUrl ? (
@@ -489,6 +559,14 @@ const styles = StyleSheet.create({
   lockCard: { borderRadius: 16, padding: 20, width: "100%", maxWidth: 380 },
   lockTitle: { color: THEME.text, fontFamily: FONTS.display, fontSize: 18, marginBottom: 8 },
   lockBody: { color: THEME.textMuted, fontFamily: FONTS.body, fontSize: 14, lineHeight: 20 },
+  numberRow: { flexDirection: "row", gap: 8, marginTop: 12 },
+  numberInput: { flex: 1 },
+  numberBtn: { backgroundColor: THEME.surfaceHigh, borderRadius: 12, paddingHorizontal: 16, justifyContent: "center" },
+  numberBtnText: { color: THEME.text, fontFamily: FONTS.bodySemi, fontSize: 14 },
+  activeRow: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 12 },
+  activeImg: { width: 44, height: 44, borderRadius: 8 },
+  activeName: { color: THEME.text, fontFamily: FONTS.bodySemi, fontSize: 14, flexShrink: 1 },
+  artNote: { color: THEME.textMuted, fontFamily: FONTS.body, fontSize: 13, marginTop: 14, lineHeight: 19 },
   offscreen: { position: "absolute", left: -4000, top: 0, width: CAPTURE_SIZE, height: CAPTURE_SIZE },
   offscreenImg: { width: CAPTURE_SIZE, height: CAPTURE_SIZE },
 });

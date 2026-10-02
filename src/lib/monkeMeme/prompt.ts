@@ -27,7 +27,11 @@ export function buildMemePrompt({ traits, scene, hasStyleRef }: PromptInput): st
   const intro = hasStyleRef
     ? `Redraw the pixel-art monkey from image 1 as a cartoon character in the exact art style of image 2 (${MONKEMEME_STYLE}).`
     : `Redraw the pixel-art monkey from image 1 as a ${MONKEMEME_STYLE}.`;
-  const lookLine = look ? ` Its look, even where image 1 differs: ${look}.` : "";
+  // No catalog traits (Wave 2 1/1s, or a monke picked by number) → the
+  // art itself is the description.
+  const lookLine = look
+    ? ` Its look, even where image 1 differs: ${look}.`
+    : " Keep the monkey's exact look from image 1: its colors, theme, outfit and accessories.";
   const sceneLine = scene.trim() ? ` Scene: ${scene.trim()}.` : "";
   return `${intro}${lookLine}${sceneLine} No text, letters or words anywhere in the image.`;
 }

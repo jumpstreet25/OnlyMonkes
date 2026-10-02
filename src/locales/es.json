@@ -1044,7 +1044,13 @@
       "quota": "Ya usaste tu tiempo de GPU gratis de hoy. Intenta mañana.",
       "busy": "El generador está ocupado. Intenta en un minuto.",
       "failed": "No se pudo dibujar. Intenta de nuevo.",
-      "captureFailed": "No se pudo guardar la imagen del meme. Intenta de nuevo."
-    }
+      "captureFailed": "No se pudo guardar la imagen del meme. Intenta de nuevo.",
+      "badNumber": "Ese no es un número de Saga Monke (1–10014, sin los quemados).",
+      "pfpFailed": "No se pudo cargar el arte de ese monke. Intenta de nuevo."
+    },
+    "numberPlaceholder": "Cualquier Monke # (ej. 8930)",
+    "loadNumber": "Cargar",
+    "wave2": "Wave 2 1/1",
+    "artOnly": "Este monke se dibuja directo de su propio arte — sin tablero de rasgos."
   }
 }

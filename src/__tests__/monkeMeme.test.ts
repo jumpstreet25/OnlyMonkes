@@ -136,3 +136,32 @@ describe("monkeMemeVisible (dark launch)", () => {
     expect(monkeMemeVisible(parseMonkeMemeConfig({ enabled: false, testersOnly: false }), true)).toBe(false);
   });
 });
+
+describe("monkeNumbers", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { monkeImageForNumber, isWave2, parseMonkeNumber } = require("../lib/monkeMeme/monkeNumbers");
+  it("resolves both arweave folders, the animated Wave 2 GIFs and rejects burned numbers", () => {
+    expect(monkeImageForNumber(1760)).toBe("https://arweave.net/8bJFg1KcX8M_ahz3wJplqdG4-8we_Ts1pTSi5wephHE/1760.png");
+    expect(monkeImageForNumber(9048)).toBe("https://arweave.net/2x92sGwXGIDCumAN1vawXd6CitHeqyjuZ1fUWOVmfsY/9048.png");
+    expect(monkeImageForNumber(8987)).toBe("https://arweave.net/8bJFg1KcX8M_ahz3wJplqdG4-8we_Ts1pTSi5wephHE/8987.gif");
+    expect(monkeImageForNumber(411)).toBeNull();
+    expect(monkeImageForNumber(0)).toBeNull();
+    expect(monkeImageForNumber(10015)).toBeNull();
+  });
+  it("flags Wave 2 and parses names", () => {
+    expect(isWave2(8930)).toBe(true);
+    expect(isWave2(8888)).toBe(false);
+    expect(parseMonkeNumber("MONKE #8930")).toBe(8930);
+    expect(parseMonkeNumber("8930")).toBe(8930);
+    expect(parseMonkeNumber("MONKE #411")).toBeNull();
+    expect(parseMonkeNumber("not a monke")).toBeNull();
+  });
+});
+
+describe("prompt for 1/1s", () => {
+  it("falls back to the art when there are no catalog traits", () => {
+    const p = buildMemePrompt({ traits: {}, scene: "stoned on a beach", hasStyleRef: true });
+    expect(p).toContain("Keep the monkey's exact look from image 1");
+    expect(p).not.toContain("Its look, even where");
+  });
+});
