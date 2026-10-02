@@ -52,8 +52,11 @@ async function bump(kv: Env["COMMUNITY_DATA"], key: string, cap: number): Promis
 
 async function isHolder(env: Env, wallet: string): Promise<boolean> {
   try {
-    return (await fetchOwnedMonke(wallet, env)).monke !== null;
-  } catch {
+    const r = await fetchOwnedMonke(wallet, env);
+    if (!r.monke) console.warn(`[monkememe] holder check: no monke (uncertain=${r.uncertain}) ${r.reasons.join(",")}`);
+    return r.monke !== null;
+  } catch (err) {
+    console.warn(`[monkememe] holder check threw: ${(err as Error).message}`);
     return false;
   }
 }
