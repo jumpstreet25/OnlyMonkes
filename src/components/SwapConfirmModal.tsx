@@ -16,6 +16,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { GlassModal } from "@/components/GlassModal";
+import { TransferHookNotice } from "@/components/TransferHookNotice";
 import { FONTS, TOKEN_TRADE_FEE_PCT } from "@/lib/constants";
 import type { SwapQuote } from "@/lib/jupiterSwap";
 
@@ -80,6 +81,8 @@ export function SwapConfirmModal({
               ? `${feePct}% fee on profits when you sell`
               : `${feePct}% fee on profits only — none if this trade lost money`}
           </Text>
+
+          <TransferHookNotice mint={isBuy ? quote.outputMint : quote.inputMint} />
 
           {quote.priceImpactPct > 5 && (
             <View style={s.warningBox}>

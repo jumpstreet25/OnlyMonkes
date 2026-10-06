@@ -19,6 +19,7 @@ import { THEME, FONTS } from '@/lib/constants';
 import { GlassBottomSheet } from '@/components/GlassBottomSheet';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { fetchRugCheckSummary, type RugCheckSummary } from '@/lib/rugCheck';
+import { TransferHookNotice } from '@/components/TransferHookNotice';
 import { pickSolPair, solMarkFromPair, usdToSolScale, type DexScreenerPair } from '@/lib/solQuote';
 import { recordTokenView, recordEngagementEnd } from '@/lib/sentimentSignal';
 
@@ -106,6 +107,7 @@ export function ChartModal({ visible, symbol, onClose }: ChartModalProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [rug, setRug] = useState<RugCheckSummary | null>(null);
+  const [mint, setMint] = useState<string | null>(null);
 
   useEffect(() => {
     if (!visible || !symbol) return;
@@ -113,11 +115,13 @@ export function ChartModal({ visible, symbol, onClose }: ChartModalProps) {
     setLoading(true);
     setError(false);
     setRug(null);
+    setMint(null);
 
     fetchOHLCV(symbol)
       .then(({ candles, mint }) => {
         if (!alive) return;
         setCandles(candles);
+        setMint(mint ?? null);
         if (candles.length === 0) setError(true);
         // Kick off RugCheck in parallel — don't block the chart on it
         if (mint) {
@@ -179,6 +183,9 @@ export function ChartModal({ visible, symbol, onClose }: ChartModalProps) {
           </Text>
         </View>
       )}
+
+      {/* Token-2022 transfer hook (e.g. Hooked launch rules) — can block sells */}
+      <TransferHookNotice mint={mint} style={styles.hookRow} />
 
       {/* Chart */}
       {loading && (
@@ -250,6 +257,10 @@ const styles = StyleSheet.create({
   closeBtn: {
     fontSize: 20,
     color: THEME.textDim,
+  },
+  hookRow: {
+    marginTop: 0,
+    marginBottom: 10,
   },
   rugRow: {
     flexDirection: 'row',
