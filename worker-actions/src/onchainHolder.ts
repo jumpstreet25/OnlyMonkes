@@ -109,7 +109,7 @@ export async function verifySagaOnChain(wallet: string): Promise<{
         jsonrpc: "2.0",
         id: i,
         method: "getTransaction",
-        params: [sig, { encoding: "jsonParsed", maxSupportedTransactionVersion: 0 }],
+        params: [sig, { encoding: "jsonParsed", maxSupportedTransactionVersion: 1 }],
       }));
       let batchRes: Array<{ result?: ParsedTx }> | null = null;
       for (const url of RPCS) {

@@ -24,23 +24,35 @@ interface TokenHolding {
 
 // ─── Jupiter token list cache ───────────────────────────────────────────────
 
-let _jupTokenMap: Map<string, { symbol: string; name: string }> | null = null;
+// 2026-10-06: `token.jup.ag/strict` is DNS-dead (same as src/lib/jupiterSwap.ts,
+// 2026-08-01), so every holding fell back to a truncated mint. Look up only
+// the wallet's own mints via Jupiter's search API (comma-separated ids).
+const JUP_SEARCH_URL = "https://lite-api.jup.ag/tokens/v2/search";
+const JUP_SEARCH_BATCH = 50;
+const _jupTokenMap = new Map<string, { symbol: string; name: string }>();
 
-async function getJupTokenMap(): Promise<Map<string, { symbol: string; name: string }>> {
-  if (_jupTokenMap) return _jupTokenMap;
-  try {
-    const res = await fetchWithTimeout("https://token.jup.ag/strict", { timeoutMs: 8000 });
-    if (!res.ok) return new Map();
-    const data = await res.json();
-    const map = new Map<string, { symbol: string; name: string }>();
-    for (const t of data) {
-      map.set(t.address, { symbol: t.symbol, name: t.name });
+async function getJupTokenMap(mints: string[]): Promise<Map<string, { symbol: string; name: string }>> {
+  const missing = [...new Set(mints)].filter((m) => !_jupTokenMap.has(m));
+  for (let i = 0; i < missing.length; i += JUP_SEARCH_BATCH) {
+    const batch = missing.slice(i, i + JUP_SEARCH_BATCH);
+    try {
+      const res = await fetchWithTimeout(
+        `${JUP_SEARCH_URL}?query=${encodeURIComponent(batch.join(","))}`,
+        { timeoutMs: 8000 },
+      );
+      if (!res.ok) continue;
+      const data = await res.json();
+      if (!Array.isArray(data)) continue;
+      for (const t of data) {
+        if (typeof t?.id === "string" && typeof t?.symbol === "string") {
+          _jupTokenMap.set(t.id, { symbol: t.symbol, name: typeof t.name === "string" ? t.name : t.symbol });
+        }
+      }
+    } catch {
+      // unnamed mints fall back to a truncated address below
     }
-    _jupTokenMap = map;
-    return map;
-  } catch {
-    return new Map();
   }
+  return _jupTokenMap;
 }
 
 // ─── Price + sparkline fetching ─────────────────────────────────────────────
@@ -119,8 +131,8 @@ export default function PortfolioScreen() {
       // often-maxed Helius account (2026-07-12).
       const connection = new Connection(SOLANA_RPC_URL, "confirmed");
 
-      // Fetch SOL balance, token accounts, token map in parallel
-      const [lamports, tokenRes, jupMap] = await Promise.all([
+      // Fetch SOL balance and token accounts in parallel
+      const [lamports, tokenRes] = await Promise.all([
         connection.getBalance(new PublicKey(wallet.address)),
         fetchWithTimeout(SOLANA_RPC_URL, {
           method: "POST",
@@ -136,7 +148,6 @@ export default function PortfolioScreen() {
           }),
           timeoutMs: 10000,
         }).then(r => r.json()),
-        getJupTokenMap(),
       ]);
 
       const sol = lamports / LAMPORTS_PER_SOL;
@@ -144,6 +155,13 @@ export default function PortfolioScreen() {
 
       // Parse token accounts
       const accounts = tokenRes?.result?.value ?? [];
+      const jupMap = await getJupTokenMap(
+        accounts
+          .map((a: any) => a.account?.data?.parsed?.info)
+          .filter((info: any) => info && parseFloat(info.tokenAmount?.uiAmountString ?? "0") > 0)
+          .map((info: any) => info.mint)
+          .filter((m: unknown): m is string => typeof m === "string" && m !== SKR_MINT),
+      );
       const holdings: TokenHolding[] = [];
       const mintDecimals: { mint: string; decimals: number }[] = [];
 

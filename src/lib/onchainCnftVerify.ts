@@ -46,7 +46,7 @@
  *   (tx 4YPEg1QBq9RT63YB3JoA37uyEAQPsB7W3gvxnNQx2hyUQZdvKF6k9chVAGYaom3vkX39YBLuunShXqwmBmErzirQ)
  */
 
-import { Connection, PublicKey, type ParsedTransactionWithMeta } from "@solana/web3.js";
+import { Connection, PublicKey } from "@solana/web3.js";
 import { HELIUS_RPC_URL, QUICKNODE_DAS_URL, SOLANA_RPC_URL } from "./constants";
 
 const BUBBLEGUM_PROGRAM = "BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY";
@@ -206,6 +206,37 @@ function currentConnection(): Connection {
 }
 function rotateRpc(): void {
   _rpcIndex = (_rpcIndex + 1) % RPC_URLS.length;
+}
+
+// 2026-10-06: Solana v1 transactions (SIMD-0385) are live on mainnet since
+// 2026-09-15. Asking for maxSupportedTransactionVersion 0 makes the RPC error
+// on every v1 tx, and web3.js 1.98's response schema rejects `version: 1`
+// even when asked for it — so fetch jsonParsed over raw JSON-RPC instead
+// (same fix as the bot's wsConnection.getParsedTransactionRaw). Keys come
+// back as base58 strings, not PublicKeys.
+type RawParsedTx = {
+  transaction: {
+    message: {
+      accountKeys: Array<{ pubkey: string }>;
+      instructions: Array<{ programId: string; accounts?: string[]; data?: string }>;
+    };
+  };
+};
+async function getParsedTransactionRaw(signature: string): Promise<RawParsedTx | null> {
+  const res = await fetch(currentConnection().rpcEndpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "getTransaction",
+      params: [signature, { encoding: "jsonParsed", maxSupportedTransactionVersion: 1, commitment: "confirmed" }],
+    }),
+  });
+  if (!res.ok) throw new Error(`getTransaction HTTP ${res.status}`);
+  const json = (await res.json()) as { result?: RawParsedTx | null; error?: { message?: string } };
+  if (json.error) throw new Error(`getTransaction: ${json.error.message ?? "rpc error"}`);
+  return json.result ?? null;
 }
 
 // 2026-07-30: neither RPC call below had any timeout — @solana/web3.js's
@@ -429,11 +460,11 @@ export async function verifySagaMonkeOnChain(
         // and fall through to a stale "holds" signal from an older
         // transaction, a false positive. Halt and report inconclusive
         // instead of guessing past a gap in what we were able to check.
-        let tx: ParsedTransactionWithMeta | null;
+        let tx: RawParsedTx | null;
         try {
           tx = await withRetry(() =>
             withTimeout(
-              currentConnection().getParsedTransaction(sigInfo.signature, { maxSupportedTransactionVersion: 0 }),
+              getParsedTransactionRaw(sigInfo.signature),
               RPC_TIMEOUT_MS,
               "getParsedTransaction",
             ),
@@ -448,15 +479,15 @@ export async function verifySagaMonkeOnChain(
         }
         if (!tx) continue; // confirmed absent (e.g. pruned), safe to skip — not a fetch failure
 
-        const keys = tx.transaction.message.accountKeys.map((k) => k.pubkey.toBase58());
+        const keys = tx.transaction.message.accountKeys.map((k) => k.pubkey);
         if (!keys.includes(BUBBLEGUM_PROGRAM)) continue;
 
         const bubblegumIx = tx.transaction.message.instructions.find(
-          (ix) => "programId" in ix && ix.programId.toBase58() === BUBBLEGUM_PROGRAM,
-        ) as { accounts?: PublicKey[]; data?: string } | undefined;
+          (ix) => ix.programId === BUBBLEGUM_PROGRAM,
+        );
         if (!bubblegumIx?.accounts || !bubblegumIx.data) continue;
 
-        const ixAccounts = bubblegumIx.accounts.map((a) => a.toBase58());
+        const ixAccounts = bubblegumIx.accounts;
         const treeInIx = ixAccounts.find((a) => SAGA_MONKES_TREES.has(a));
         if (!treeInIx) continue; // this Bubblegum tx is for a different tree/collection
 
