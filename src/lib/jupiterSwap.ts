@@ -9,10 +9,10 @@
  *  3. Assemble VersionedTransaction from raw instructions
  *  4. Sign via MWA → send to Solana
  *
- * Flow (Ultra — gasless):
- *  1. GET /ultra/v1/order → unsigned tx + requestId
+ * Flow (Ultra — gasless, now Swap V2 /order + /execute, see jupiterUltra.ts):
+ *  1. GET /swap/v2/order → unsigned tx + requestId
  *  2. Sign via MWA
- *  3. POST /ultra/v1/execute → Jupiter lands the tx
+ *  3. POST /swap/v2/execute → Jupiter lands the tx
  *
  * getSmartQuote() auto-selects: Ultra for trades <= 1 SOL, v2 for larger.
  * executeSwap() handles both paths transparently.

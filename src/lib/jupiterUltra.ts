@@ -1,12 +1,17 @@
 /**
  * jupiterUltra.ts
  *
- * Jupiter Ultra API integration — gasless swaps.
+ * Jupiter Swap V2 meta-aggregator (formerly Ultra) — gasless swaps.
  *
- * Ultra flow:
- *  1. GET /ultra/v1/order — returns unsigned transaction + requestId
+ * 2026-10-06: moved off /ultra/v1/* — Jupiter marked Ultra "no longer
+ * actively maintained, superseded by Swap V2". /swap/v2/order + /execute is
+ * the same engine (responses still say mode: "ultra") with identical
+ * request/response fields, verified side by side against live quotes.
+ *
+ * Flow:
+ *  1. GET /swap/v2/order — returns unsigned transaction + requestId
  *  2. Sign via MWA
- *  3. POST /ultra/v1/execute — Jupiter lands the tx (handles priority fees, retries)
+ *  3. POST /swap/v2/execute — Jupiter lands the tx (handles priority fees, retries)
  *
  * Gasless: Ultra routes through Jupiter Z (RFQ) where the market maker pays gas,
  * or provides gasless support for qualifying trades (wallet < 0.01 SOL, trade > $10).
@@ -20,8 +25,8 @@ import {
 } from "@solana/web3.js";
 import { JUP_API_KEY } from "./constants";
 
-const ULTRA_ORDER_URL = "https://api.jup.ag/ultra/v1/order";
-const ULTRA_EXECUTE_URL = "https://api.jup.ag/ultra/v1/execute";
+const ULTRA_ORDER_URL = "https://api.jup.ag/swap/v2/order";
+const ULTRA_EXECUTE_URL = "https://api.jup.ag/swap/v2/execute";
 const ULTRA_TIMEOUT = 10_000;
 
 // ── Types ──────────────────────────────────────────────────────────────────
