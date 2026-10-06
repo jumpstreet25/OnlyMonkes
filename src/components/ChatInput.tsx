@@ -18,9 +18,11 @@ import {
   Keyboard,
   Image,
   Animated,
+  ScrollView,
 } from "react-native";
 import { showGlassAlert } from "@/lib/glassAlert";
 import { useTranslation } from "react-i18next";
+import { useBotCommands, slashSuggestions as slashSuggestionsFor, commandDesc } from "@/lib/botCommands";
 import { LinearGradient } from "expo-linear-gradient";
 import { LiquidGlass as BlurView } from "@/components/LiquidGlass";
 import * as Haptics from "expo-haptics";
@@ -41,89 +43,6 @@ function getActiveMention(text: string): { start: number; query: string } | null
   const match = text.match(/@(\w*)$/);
   if (!match) return null;
   return { start: text.length - match[0].length, query: match[1] };
-}
-
-// Main chat autocomplete — must match CHAT_COMMANDS in BotCommandTicker.tsx.
-// DM-only commands live in DM_BOT_COMMANDS below.
-// `descKey` resolves against chatInput.commands.<descKey> in locales/{en,es}.json.
-const BOT_COMMANDS = [
-  // Market intel
-  { cmd: "/price",      args: "$TOKEN",           descKey: "price" },
-  { cmd: "/ta",         args: "$TOKEN",           descKey: "ta" },
-  { cmd: "/hottest",    args: "",                 descKey: "hottest" },
-  { cmd: "/coldest",    args: "",                 descKey: "coldest" },
-  { cmd: "/alerts",     args: "",                 descKey: "alerts" },
-  // Watchlist
-  { cmd: "/watchlist",  args: "",                 descKey: "watchlist" },
-  { cmd: "/watch",      args: "$TOKEN",           descKey: "watch" },
-  { cmd: "/unwatch",    args: "$TOKEN",           descKey: "unwatch" },
-  { cmd: "/mywatchlist", args: "",                descKey: "mywatchlist" },
-  // Trading (group → Jupiter URL)
-  { cmd: "/buy",        args: "$TOKEN [SOL]",     descKey: "buyGroup" },
-  { cmd: "/sell",       args: "$TOKEN [%]",       descKey: "sellGroup" },
-  { cmd: "/swap",       args: "$A for $B",        descKey: "swapGroup" },
-  { cmd: "/tip",        args: "@Username [amt]",  descKey: "tip" },
-  // Meta
-  { cmd: "/identity",   args: "",                 descKey: "identity" },
-  { cmd: "/globe",      args: "",                 descKey: "globe" },
-  { cmd: "/help",       args: "",                 descKey: "helpGroup" },
-];
-
-// DM autocomplete — must match DM_COMMANDS in BotCommandTicker.tsx.
-const DM_BOT_COMMANDS = [
-  // Quick intel
-  { cmd: "/hottest",              args: "",              descKey: "hottest" },
-  { cmd: "/coldest",              args: "",              descKey: "coldest" },
-  { cmd: "/price",                args: "$TOKEN",        descKey: "price" },
-  { cmd: "/ta",                   args: "$TOKEN",        descKey: "ta" },
-  { cmd: "/whale",                args: "$TOKEN",        descKey: "whale" },
-  { cmd: "/chart",                args: "$TOKEN",        descKey: "chart" },
-  { cmd: "/compare",              args: "$A $B",         descKey: "compare" },
-  { cmd: "/backtest",             args: "$TOKEN",        descKey: "backtest" },
-  // Trading (DM → bot executes via hot wallet)
-  { cmd: "/buy",                  args: "$TOKEN [SOL]",  descKey: "buyDm" },
-  { cmd: "/sell",                 args: "$TOKEN [%]",    descKey: "sellDm" },
-  { cmd: "/swap",                 args: "$A for $B",     descKey: "swapDm" },
-  { cmd: "/limit",                args: "",              descKey: "limit" },
-  { cmd: "/dca",                  args: "",              descKey: "dca" },
-  // Portfolio & positions
-  { cmd: "/portfolio",            args: "",              descKey: "portfolio" },
-  { cmd: "/positions",            args: "",              descKey: "positions" },
-  // Reports
-  { cmd: "/ratchet-report",       args: "[days]",        descKey: "ratchetReport" },
-  { cmd: "/smart-wallet-report",  args: "",              descKey: "smartWalletReport" },
-  // AutonoMonke (2026-09-03: was the misspelled "/automonke" — bot still
-  // accepts that as a legacy alias, but this UI should surface the correct
-  // canonical spelling)
-  { cmd: "/autonomonke",            args: "",              descKey: "autonomonke" },
-  { cmd: "/autonomonke start",      args: "",              descKey: "autonomonkeStart" },
-  { cmd: "/autonomonke stop",       args: "",              descKey: "autonomonkeStop" },
-  { cmd: "/autonomonke positions",  args: "",              descKey: "autonomonkePositions" },
-  { cmd: "/autonomonke fund",       args: "",              descKey: "autonomonkeFund" },
-  { cmd: "/autonomonke withdraw",   args: "",              descKey: "autonomonkeWithdraw" },
-  { cmd: "/autonomonke limits",     args: "",              descKey: "autonomonkeLimits" },
-  // Risk
-  { cmd: "/risk",                 args: "",              descKey: "risk" },
-  { cmd: "/risk size",            args: "1-25",          descKey: "riskSize" },
-  { cmd: "/risk stop",            args: "1-50",          descKey: "riskStop" },
-  { cmd: "/risk conviction",      args: "50-100",        descKey: "riskConviction" },
-  { cmd: "/risk blacklist",       args: "$TOKEN",        descKey: "riskBlacklist" },
-  // Hermes memory
-  { cmd: "/hermes stats",         args: "",              descKey: "hermesStats" },
-  { cmd: "/hermes best",          args: "",              descKey: "hermesBest" },
-  { cmd: "/hermes worst",         args: "",              descKey: "hermesWorst" },
-  { cmd: "/hermes achievements",  args: "",              descKey: "hermesAchievements" },
-  // Recovery & meta
-  { cmd: "/reclaim",              args: "",              descKey: "reclaim" },
-  { cmd: "/myid",                 args: "",              descKey: "myid" },
-  { cmd: "/help",                 args: "",              descKey: "helpDm" },
-];
-
-function getSlashSuggestions(text: string, isDmWithBot?: boolean) {
-  if (!text.startsWith("/")) return [];
-  const query = text.slice(1).toLowerCase();
-  const commands = isDmWithBot ? DM_BOT_COMMANDS : BOT_COMMANDS;
-  return commands.filter(c => c.cmd.slice(1).startsWith(query));
 }
 
 // ── Bot channel button with badge ─────────────────────────────────────────────
@@ -279,7 +198,7 @@ export const ChatInput = memo(function ChatInput({
   disabledButtons,
   disabledMessage,
 }: ChatInputProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const inputRef = useRef<TextInput>(null);
   const bounceAnim = useRef(new Animated.Value(0)).current;
   const hasTypers = !!(typingUsers && typingUsers.length > 0);
@@ -310,7 +229,12 @@ export const ChatInput = memo(function ChatInput({
   const hasThemeOverride = useAppStore(s => !!s.themeOverrides);
   const inputBarBg = resolveBarTint(worldId, hasThemeOverride, themeSurface, 0.20);
 
-  const slashSuggestions = useMemo(() => getSlashSuggestions(value, isDmWithBot), [value, isDmWithBot]);
+  const botCommands = useBotCommands();
+  const isGroupAdmin = useAppStore((s) => s.isGroupAdmin);
+  const slashSuggestions = useMemo(
+    () => slashSuggestionsFor(botCommands, value, isDmWithBot ? "dm" : "chat", isGroupAdmin),
+    [botCommands, value, isDmWithBot, isGroupAdmin],
+  );
 
   const activeMention = getActiveMention(value);
   const suggestions: { inboxId: string; username: string }[] = useMemo(() => {
@@ -391,19 +315,19 @@ export const ChatInput = memo(function ChatInput({
       <View style={[StyleSheet.absoluteFill, { backgroundColor: inputBarBg }]} pointerEvents="none" />
       {/* Slash command suggestions */}
       {slashSuggestions.length > 0 && (
-        <View style={styles.mentionList}>
-          {slashSuggestions.map(({ cmd, args, descKey }) => (
-            <Pressable key={cmd} style={styles.mentionRow} onPress={() => insertSlashCommand(cmd, args)}>
+        <ScrollView style={[styles.mentionList, styles.slashList]} keyboardShouldPersistTaps="handled">
+          {slashSuggestions.map((c) => (
+            <Pressable key={`${c.cmd}|${c.where.join(",")}`} style={styles.mentionRow} onPress={() => insertSlashCommand(c.cmd, c.args ?? "")}>
               <View style={styles.slashCmdIcon}>
                 <Text style={styles.slashCmdSlash}>/</Text>
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.slashCmdName}>{cmd}{args ? ` ${args}` : ""}</Text>
-                <Text style={styles.slashCmdDesc}>{t(`chatInput.commands.${descKey}`)}</Text>
+                <Text style={styles.slashCmdName}>{c.cmd}{c.args ? ` ${c.args}` : ""}{c.admin ? "  🔒" : ""}</Text>
+                <Text style={styles.slashCmdDesc}>{commandDesc(c, i18n.language)}</Text>
               </View>
             </Pressable>
           ))}
-        </View>
+        </ScrollView>
       )}
 
       {/* Mention suggestions */}
@@ -894,6 +818,9 @@ const styles = StyleSheet.create({
   },
 
   // ── @mention suggestion list ────────────────────────────────────────────────
+  slashList: {
+    maxHeight: 320,
+  },
   mentionList: {
     backgroundColor: THEME.surface,
     borderWidth: 1,
