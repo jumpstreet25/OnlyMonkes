@@ -113,6 +113,7 @@
     { "cmd": "/admin revoke", "args": "<inboxId>", "group": "admin", "admin": true, "where": ["dm"], "desc": { "en": "Revoke dev access", "es": "Quitar acceso de desarrollador" } },
     { "cmd": "/admin allowlist", "group": "admin", "admin": true, "where": ["dm"], "desc": { "en": "List dev access grants", "es": "Lista de accesos de desarrollador" } },
     { "cmd": "/vwap start", "args": "[SYMBOL|mint]", "group": "admin", "admin": true, "where": ["dm"], "desc": { "en": "Sell at VWAP, re-enter lower at support (one hot-wallet bag)", "es": "Vende en el VWAP y recompra más abajo en soporte (una posición)" } },
+    { "cmd": "/vwap size", "args": "<5-25>", "group": "admin", "admin": true, "where": ["dm"], "desc": { "en": "% of the bag sold per VWAP sell", "es": "% de la posición vendido en cada venta VWAP" } },
     { "cmd": "/vwap status", "group": "admin", "admin": true, "where": ["dm"], "desc": { "en": "VWAP manager levels and recent actions", "es": "Niveles y acciones del gestor VWAP" } },
     { "cmd": "/vwap stop", "group": "admin", "admin": true, "where": ["dm"], "desc": { "en": "Turn the VWAP manager off", "es": "Apagar el gestor VWAP" } },
     { "cmd": "/health", "group": "admin", "admin": true, "where": ["dm"], "desc": { "en": "Client stream health", "es": "Salud de los streams de clientes" } },
