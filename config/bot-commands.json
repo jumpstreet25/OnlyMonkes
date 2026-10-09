@@ -22,7 +22,7 @@
     { "cmd": "/sell", "args": "$TOKEN [%]", "group": "trading", "where": ["chat"], "desc": { "en": "Sell via Jupiter", "es": "Vender vía Jupiter" } },
     { "cmd": "/swap", "args": "$A for $B [amt]", "group": "trading", "where": ["chat"], "desc": { "en": "Swap via Jupiter", "es": "Intercambiar vía Jupiter" } },
     { "cmd": "/buy", "args": "$TOKEN [SOL]", "group": "trading", "where": ["dm"], "desc": { "en": "Bot buys for you (YES to confirm)", "es": "El bot compra por ti (YES para confirmar)" } },
-    { "cmd": "/sell", "args": "$TOKEN [%]", "group": "trading", "where": ["dm"], "desc": { "en": "Bot sells for you (3% on profit only)", "es": "El bot vende por ti (3% solo sobre ganancias)" } },
+    { "cmd": "/sell", "args": "$TOKEN [% | <amt> sol]", "group": "trading", "where": ["dm"], "desc": { "en": "Bot sells for you — 25 = 25% of the bag, 0.05 sol = ~0.05 SOL worth (3% on profit only)", "es": "El bot vende por ti — 25 = 25% de la posición, 0.05 sol = ~0.05 SOL (3% solo sobre ganancias)" } },
     { "cmd": "/swap", "args": "$A for $B <amt>", "group": "trading", "where": ["dm"], "desc": { "en": "Bot swaps on-chain", "es": "El bot intercambia on-chain" } },
     { "cmd": "/limit", "args": "buy|sell <TOKEN> <price> <amt>", "group": "trading", "where": ["dm"], "desc": { "en": "Jupiter limit order", "es": "Orden límite en Jupiter" } },
     { "cmd": "/writeoff", "args": "$TOKEN", "group": "trading", "where": ["chat", "dm"], "desc": { "en": "Write off a phantom position", "es": "Dar de baja una posición fantasma" } },
