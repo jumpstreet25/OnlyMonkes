@@ -31,6 +31,15 @@ describe('bot command catalog', () => {
     expect(commandsFor(all, 'dm', true).some((c) => c.cmd === '/announce')).toBe(true);
   });
 
+  it('never mixes admin and user commands', () => {
+    for (const c of all) expect(c.group === 'admin').toBe(!!c.admin);
+    // The header ticker is the user command list — admin entries never scroll there, even for admins.
+    for (const c of all.filter((x) => x.admin)) expect(c.ticker).toBe(false);
+    for (const scope of ['chat', 'dm'] as const) {
+      expect(commandsFor(all, scope, true).filter((c) => c.ticker !== false).some((c) => c.admin)).toBe(false);
+    }
+  });
+
   it('does not list commands the bot never handled', () => {
     const cmds = all.map((c) => c.cmd.split(' ')[0]);
     for (const dead of ['/whale', '/dca', '/globe']) expect(cmds).not.toContain(dead);
