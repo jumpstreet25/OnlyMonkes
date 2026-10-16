@@ -633,12 +633,14 @@ export default function ChatScreen() {
     const fetchPrices = () => {
       // /tokens/{address} returns pairs:null for SKR as of 2026-08-24 (confirmed
       // live) — /search still indexes it. Filter to this exact Solana mint and
-      // take the highest-liquidity pair so a thin listing can't skew the price.
+      // take the highest-liquidity SOL/stable pair — pools against junk tokens can
+      // report fake liquidity and a nonsense price (SKR/SJ on Orca showed $17.63, 2026-10-16).
       fetchAbortable(`https://api.dexscreener.com/latest/dex/search?q=${SKR_MINT}`)
         .then(r => r.json())
         .then(d => {
           if (!mounted) return;
-          const skrPairs = (d?.pairs ?? []).filter((p: any) => p.chainId === 'solana' && p.baseToken?.address === SKR_MINT);
+          const skrPairs = (d?.pairs ?? []).filter((p: any) => p.chainId === 'solana' && p.baseToken?.address === SKR_MINT
+            && ['SOL', 'WSOL', 'USDC', 'USDT'].includes(String(p.quoteToken?.symbol ?? '').toUpperCase()));
           skrPairs.sort((a: any, b: any) => (b.liquidity?.usd ?? 0) - (a.liquidity?.usd ?? 0));
           const p = skrPairs[0]?.priceUsd;
           if (p) setSkrPrice(Number(p) < 0.01 ? `$${Number(p).toFixed(6)}` : `$${Number(p).toFixed(4)}`);

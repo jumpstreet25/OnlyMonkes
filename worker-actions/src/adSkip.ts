@@ -59,13 +59,15 @@ async function getSkrUsdPrice(): Promise<number> {
   // DexScreener's /tokens/{address} lookup returns `pairs: null` for this
   // mint as of 2026-08-24 (confirmed live, not transient) — /search still
   // indexes it fine. Filter to this exact mint on Solana and take the
-  // highest-liquidity pair so a thin/stale listing can't skew the price.
+  // highest-liquidity SOL/stable pair so a thin/stale listing can't skew the price
+  // (an SKR/SJ pool with fake liquidity priced SKR at $17.63, 2026-10-16).
   const res = await fetch(`https://api.dexscreener.com/latest/dex/search?q=${SKR_MINT.toBase58()}`, {
     signal: AbortSignal.timeout(10_000),
   });
   if (!res.ok) throw new Error(`DexScreener price lookup failed (${res.status})`);
-  const data = await res.json() as { pairs?: Array<{ chainId?: string; baseToken?: { address?: string }; priceUsd?: string; liquidity?: { usd?: number } }> };
-  const skrPairs = (data?.pairs ?? []).filter((p) => p.chainId === "solana" && p.baseToken?.address === SKR_MINT.toBase58());
+  const data = await res.json() as { pairs?: Array<{ chainId?: string; baseToken?: { address?: string }; quoteToken?: { symbol?: string }; priceUsd?: string; liquidity?: { usd?: number } }> };
+  const skrPairs = (data?.pairs ?? []).filter((p) => p.chainId === "solana" && p.baseToken?.address === SKR_MINT.toBase58()
+    && ["SOL", "WSOL", "USDC", "USDT"].includes((p.quoteToken?.symbol ?? "").toUpperCase()));
   skrPairs.sort((a, b) => (b.liquidity?.usd ?? 0) - (a.liquidity?.usd ?? 0));
   const priceUsd = parseFloat(skrPairs[0]?.priceUsd ?? "");
   if (!Number.isFinite(priceUsd) || priceUsd <= 0) throw new Error("No live SKR/USD price available");

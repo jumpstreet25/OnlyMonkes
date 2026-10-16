@@ -133,8 +133,9 @@ async function fetchSkrUsdPrice(env: Env): Promise<number | null> {
   try {
     const res = await fetchWithTimeout(`https://api.dexscreener.com/tokens/v1/solana/${SKR_MINT.toBase58()}`, {}, 8_000);
     if (res.ok) {
-      const pairs = await res.json() as Array<{ priceUsd?: string; liquidity?: { usd?: number } }>;
-      const best = (pairs ?? []).reduce<{ priceUsd?: string; liquidity?: { usd?: number } } | null>(
+      const pairs = await res.json() as Array<{ priceUsd?: string; quoteToken?: { symbol?: string }; liquidity?: { usd?: number } }>;
+      // SOL/stable pairs only — junk-token pools report fake liquidity (SKR/SJ showed $17.63, 2026-10-16).
+      const best = (pairs ?? []).filter((p) => ["SOL", "WSOL", "USDC", "USDT"].includes((p.quoteToken?.symbol ?? "").toUpperCase())).reduce<{ priceUsd?: string; liquidity?: { usd?: number } } | null>(
         (a, b) => ((b.liquidity?.usd ?? 0) > (a?.liquidity?.usd ?? -1) ? b : a), null,
       );
       const price = best?.priceUsd ? parseFloat(best.priceUsd) : null;
