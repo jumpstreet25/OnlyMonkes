@@ -22,7 +22,7 @@ export const APP_NAME = 'OnlyMonkes';
 export const SKR_MINT = ENV_SKR || 'SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3';
 // OnlyMonkes publisher wallet — the same keypair that published the app to
 // the Solana Mobile dApp Store (~/onlymonkes-publisher-keypair.json).
-// Receives tips, Banana Shop purchases, trading fees, AND ad-skip $SKR
+// Receives tips, Banana Shop purchases, trading fees, AND $SKR
 // payments — one wallet, matches worker-actions' treasury.ts PUBLISHER_WALLET
 // and the bot's DEV_WALLET (Monke_Eliza/agents/monke-trader/.env). Fixed
 // 2026-08-24: this app's own .env DEV_WALLET had drifted to a different,

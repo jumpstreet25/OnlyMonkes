@@ -24,7 +24,6 @@ import { registerForPushNotifications } from '../src/lib/notifications';
 import { triggerProfileRebroadcast } from '../src/hooks/useXmtp';
 import { useAppStore, loadPersistedPrefs } from '../src/store/appStore';
 import { useEntitlementSync } from '../src/hooks/useEntitlementSync';
-import { AdGate } from '../src/components/AdGate';
 import { useUpdatePrompt } from '../src/hooks/useUpdatePrompt';
 import { UpdateAvailableModal } from '../src/components/UpdateAvailableModal';
 import { getEquippedStyles, type ShopState } from '../src/lib/bananaShop';
@@ -45,13 +44,6 @@ import { RASP_CONFIG, THREAT_ACTIONS } from '../src/lib/security';
 
 // Initialize Sentry crash reporting (no-op if SENTRY_DSN not set)
 initSentry();
-
-// Google Mobile Ads init + the whole app-open ad flow now lives in
-// <AdGate>, rendered below — moved out of this module's top level
-// (2026-08-27: a real crash-on-every-launch report surfaced that this used
-// to run here, unconditionally, before React even started rendering, with
-// no protection against a synchronous throw. See AdGate.tsx's doc comment
-// for the full story).
 
 SplashScreen.preventAutoHideAsync();
 
@@ -270,7 +262,6 @@ export default function RootLayout() {
           <TradeCloseSharePrompt />
           <OtaUpdateIndicator />
           <GlassAlertRoot />
-          <AdGate />
           <UpdateAvailableModal visible={updatePromptVisible} onUpdate={applyUpdate} onDismiss={dismissUpdatePrompt} />
         </GestureHandlerRootView>
       </SafeAreaProvider>

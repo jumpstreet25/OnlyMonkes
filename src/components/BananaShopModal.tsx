@@ -485,9 +485,8 @@ interface BananaShopModalProps {
    *  since Genesis has no dedicated header icon for it (leaderboard access
    *  now lives inside the shop). Omitted everywhere else — unaffected. */
   onLeaderboardPress?: () => void;
-  /** Genesis Chat: same idea, for SupportOptionsModal (watch ad / pay SKR
-   *  to skip ads / tip) — its dedicated header icon was dropped when
-   *  Genesis's header was rebuilt to match ChatHeader's layout. */
+  /** Genesis Chat: same idea, for the SKR tip link — its dedicated header
+   *  icon was dropped when Genesis's header was rebuilt to match ChatHeader's layout. */
   onSupportPress?: () => void;
   /** Genesis-only holders (no Saga Monke, so no Main Chat / MenuDrawer to
    *  disconnect from) — Genesis's own header dropped its dedicated

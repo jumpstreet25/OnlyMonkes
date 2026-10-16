@@ -52,7 +52,6 @@ import { markChannelRead } from "@/lib/messageCache";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { ChatMessage } from "@/types";
 import { isMineInbox } from "@/lib/inboxLinking";
-import { SupportOptionsModal } from "@/components/SupportOptionsModal";
 import { captureError } from "@/lib/sentry";
 
 const noop = (..._args: any[]) => {};
@@ -77,7 +76,6 @@ export default function GenesisChatScreen() {
 
   const [shopOpen, setShopOpen] = useState(false);
   const [leaderboardOpen, setLeaderboardOpen] = useState(false);
-  const [supportOptionsOpen, setSupportOptionsOpen] = useState(false);
   const [showCarousel, setShowCarousel] = useState(false);
   const [awaitingApproval, setAwaitingApproval] = useState(false);
 
@@ -367,20 +365,13 @@ export default function GenesisChatScreen() {
         visible={shopOpen}
         onClose={() => setShopOpen(false)}
         onLeaderboardPress={() => { setShopOpen(false); setLeaderboardOpen(true); }}
-        onSupportPress={() => { setShopOpen(false); setSupportOptionsOpen(true); }}
-        onDisconnectPress={isDualHolder ? undefined : handleDisconnect}
-      />
-
-      <SupportOptionsModal
-        visible={supportOptionsOpen}
-        onClose={() => setSupportOptionsOpen(false)}
-        onOpenTip={() => {
-          // No dedicated tip flow in Genesis Chat — open the same Solana
-          // Pay SKR link MenuDrawer's "Support OnlyMonkes" card uses.
+        onSupportPress={() => {
+          setShopOpen(false);
+          // No dedicated tip flow in Genesis Chat — same Solana Pay SKR link as MenuDrawer's "Support OnlyMonkes" card.
           const uri = `solana:${DEV_WALLET}?spl-token=${SKR_MINT}&label=${encodeURIComponent("Support OnlyMonkes")}&message=${encodeURIComponent("Help build the future of OnlyMonkes 🐒")}`;
           Linking.openURL(uri).catch(() => toast.error("No Solana wallet found to handle this link"));
         }}
-        variant="genesis"
+        onDisconnectPress={isDualHolder ? undefined : handleDisconnect}
       />
 
       {leaderboardOpen && (

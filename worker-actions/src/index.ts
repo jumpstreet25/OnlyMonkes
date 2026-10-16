@@ -73,12 +73,6 @@ import {
 } from "./treasury";
 import { getAssociatedTokenAddressSync } from "@solana/spl-token";
 import {
-  handleAdSkipGet,
-  handleAdSkipPost,
-  handleAdSkipVerify,
-  handleAdSkipStatus,
-} from "./adSkip";
-import {
   handleGetLocations,
   handleSetLocation,
   handleBulkSetLocations,
@@ -145,8 +139,6 @@ export interface Env {
   // Device Integrity Attestation — see deviceIntegrity.ts. Backend-verified
   // (Key Attestation chain + RASP + Saga/Genesis ownership), no on-chain write.
   DEVICE_INTEGRITY: KVNamespace;
-  // Pay-$SKR-to-skip-ads entitlements — see adSkip.ts.
-  AD_ENTITLEMENTS: KVNamespace;
   // MonkeGlobe/MonkeEvents public web repo backend — see community.ts.
   COMMUNITY_DATA: KVNamespace;
   // Service Binding to the MonkeLedger worker (same Cloudflare account) — see wrangler.toml's
@@ -3583,7 +3575,7 @@ export default {
 
     // Health check
     if (path === "/health") {
-      return jsonResponse({ status: "ok", version: "1.10.0", endpoints: ["/api/actions/swap", "/api/actions/tip", "/api/actions/predict", "/api/actions/bet", "/api/actions/kalshi-bet", "/api/actions/treasury-swap", "/api/actions/treasury-stake", "/api/treasury/status", "/api/treasury/threshold-check", "/api/treasury/weekly-summary", "/api/actions/ad-skip", "/api/ad-skip/status", "/api/ad-skip/verify", "/escrow", "/claim", "/frames/alert", "/legal", "/terms", "/privacy", "/copyright", "/", "/api/stats", "/api/verify", "/api/holders/index", "/api/top-traders", "/api/signals", "/monke/:mint", "/api/sentiment/register-device", "/api/sentiment/unregister-device", "/api/sentiment/ingest", "/api/sentiment/score", "/api/community/locations", "/api/community/location", "/api/community/bulk-locations", "/api/community/events", "/api/community/bulk-events", "/api/community/luma-events", "/api/community/events/:id", "/api/community/events/:id/rsvp", "/api/community/events/:id/rsvps", "/api/admin/publish-app-config"] });
+      return jsonResponse({ status: "ok", version: "1.10.0", endpoints: ["/api/actions/swap", "/api/actions/tip", "/api/actions/predict", "/api/actions/bet", "/api/actions/kalshi-bet", "/api/actions/treasury-swap", "/api/actions/treasury-stake", "/api/treasury/status", "/api/treasury/threshold-check", "/api/treasury/weekly-summary", "/escrow", "/claim", "/frames/alert", "/legal", "/terms", "/privacy", "/copyright", "/", "/api/stats", "/api/verify", "/api/holders/index", "/api/top-traders", "/api/signals", "/monke/:mint", "/api/sentiment/register-device", "/api/sentiment/unregister-device", "/api/sentiment/ingest", "/api/sentiment/score", "/api/community/locations", "/api/community/location", "/api/community/bulk-locations", "/api/community/events", "/api/community/bulk-events", "/api/community/luma-events", "/api/community/events/:id", "/api/community/events/:id/rsvp", "/api/community/events/:id/rsvps", "/api/admin/publish-app-config"] });
     }
 
     // 2026-07-30: public "Check Your Monke" growth page — see the section
@@ -3848,40 +3840,6 @@ export default {
           return errorResponse("Invalid JSON body");
         }
         return handleTreasuryStakePost(url, body, env);
-      }
-      return errorResponse("Method not allowed", 405);
-    }
-
-    // Pay-$SKR-to-skip-ads: Blink builds the transfer, /api/ad-skip/verify
-    // confirms it on-chain before granting 30 days in AD_ENTITLEMENTS KV.
-    // See adSkip.ts's doc comment for why this is a plain transfer, not a
-    // bundled swap.
-    if (path === "/api/actions/ad-skip") {
-      if (request.method === "GET") return handleAdSkipGet();
-      if (request.method === "POST") {
-        let body: any;
-        try {
-          body = await request.json();
-        } catch {
-          return errorResponse("Invalid JSON body");
-        }
-        return handleAdSkipPost(body, env);
-      }
-      return errorResponse("Method not allowed", 405);
-    }
-    if (path === "/api/ad-skip/status") {
-      if (request.method === "GET") return handleAdSkipStatus(url, env);
-      return errorResponse("Method not allowed", 405);
-    }
-    if (path === "/api/ad-skip/verify") {
-      if (request.method === "POST") {
-        let body: any;
-        try {
-          body = await request.json();
-        } catch {
-          return errorResponse("Invalid JSON body");
-        }
-        return handleAdSkipVerify(body, env);
       }
       return errorResponse("Method not allowed", 405);
     }

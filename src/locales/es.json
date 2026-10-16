@@ -185,13 +185,6 @@
     "verifyingStep": "Verificando posesión del NFT…",
     "verifiedStep": "Verificado ✓"
   },
-  "adDisclosure": {
-    "title": "🍌 Sobre los anuncios de OnlyMonkes",
-    "body1": "De vez en cuando (como máximo cada par de horas, y solo cuando reabres la app después de cerrarla), verás un anuncio automático breve — no hace falta tocar nada para que empiece.",
-    "body2": "Los ingresos por publicidad se convierten a $SKR, se stakean y se usan para pagar los costos de servidores y APIs de OnlyMonkes — el resto forma una Bóveda de $SKR permanente. Con el tiempo, esa Bóveda también financiará sorteos para la comunidad y la compra de Saga Monkes para añadir a ella. Nunca se vende ni se usa para nada más.",
-    "body3": "Los poseedores de Genesis Token ven un anuncio un poco más largo que los poseedores de Saga Monke. Siempre puedes saltar el anuncio automático en cuanto aparezca la opción de cerrarlo, igual que cualquier anuncio estándar.",
-    "gotIt": "Entendido"
-  },
   "onboarding": {
     "screens": [
       {

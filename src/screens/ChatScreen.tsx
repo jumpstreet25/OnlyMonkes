@@ -118,7 +118,6 @@ import { ChatModals } from "@/components/ChatModals";
 import { MonkeGlass, MonkeGlassActionButton } from "@/components/MonkeGlass";
 import { GoLivePicker } from "@/components/GoLivePicker";
 import { ChatMessageList } from "@/components/ChatMessageList";
-import { SupportOptionsModal } from "@/components/SupportOptionsModal";
 
 export default function ChatScreen() {
   const { t } = useTranslation();
@@ -223,7 +222,6 @@ export default function ChatScreen() {
   const [tipTarget, setTipTarget] = useState<ChatMessage | null>(null);
   const [tipSending, setTipSending] = useState(false);
   const [devTipOpen, setDevTipOpen] = useState(false);
-  const [supportOptionsOpen, setSupportOptionsOpen] = useState(false);
   const [pfpPickerOpen, setPfpPickerOpen] = useState(false);
   const [pfpImagePickerOpen, setPfpImagePickerOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -1749,7 +1747,7 @@ export default function ChatScreen() {
               )}
             </View>
             <Pressable
-              onPress={() => setSupportOptionsOpen(true)}
+              onPress={() => setDevTipOpen(true)}
               style={({ pressed }) => [{ flex: 1, alignItems: 'center' }, pressed && { opacity: 0.6 }]}
             >
               <Text style={[styles.supportBannerText, accentSupportTextStyle]} numberOfLines={1}>
@@ -1914,12 +1912,6 @@ export default function ChatScreen() {
         handlePin={handlePin}
         handleThread={handleThread}
         handleStickerReact={handleStickerReact}
-      />
-      <SupportOptionsModal
-        visible={supportOptionsOpen}
-        onClose={() => setSupportOptionsOpen(false)}
-        onOpenTip={() => setDevTipOpen(true)}
-        variant="main"
       />
     </ErrorBoundary>
   );

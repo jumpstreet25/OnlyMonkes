@@ -45,13 +45,6 @@ id = "c9d1b341ee9445868909ebbb57000758"
 binding = "DEVICE_INTEGRITY"
 id = "b0b8d8e361a749d28074f32134fe4fbf"
 
-# 2026-08-24: pay-$SKR-to-skip-ads entitlements (adSkip.ts). Key = wallet
-# address, value = { expiresAt, txSig }. Written by /api/ad-skip/verify
-# after confirming the payment tx on-chain; read by /api/ad-skip/status.
-[[kv_namespaces]]
-binding = "AD_ENTITLEMENTS"
-id = "6bb8296444af405185b354424bb150a7"
-
 # 2026-08-26: MonkeGlobe/MonkeEvents public web repo (jumpstreet25/monke-globe)
 # backend. Key = "locations:latest" (single aggregate JSON array, holder-
 # opted-in-by-default per user decision 2026-08-26) and "event:<id>" /
