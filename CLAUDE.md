@@ -236,6 +236,7 @@ Interactive fallback (no bot): claude.ai/code or Grok TUI from the phone browser
 - Worker source: `worker-actions/src/index.ts` — swap and tip endpoints
 - **Jupiter API**: Use `api.jup.ag/swap/v2/quote` and `api.jup.ag/swap/v2/swap` — the old `quote-api.jup.ag/v6/` and `swap/v1/` endpoints are deprecated and return DNS errors from CF Workers.
 - Swap amount capped at **5 SOL max** for safety. Tips capped at 10 SOL.
+- **0.10% Jupiter platform fee is OFF in all three places (owner 2026-10-16: leave it off)** — app `src/lib/jupiterSwap.ts` (`JUP_PLATFORM_FEE_ENABLED = false`), worker (`applyPlatformFee=false`), bot (`JUP_PLATFORM_FEE_ENABLED` env unset). The publisher's wSOL ATA (the `feeAccount`) was never created, so with the fee on Jupiter fails every SOL-paired swap with `0x1789` (bot buys 100% failed 2026-09-15; app swaps were broken until the 2026-10-16 OTA). Fees that ARE live, all to the publisher/treasury wallet `BzyaYyd7…`: 5% of AutonoMonke profit, 3% of manual `/sell` profit (half on SKR), 2% NFT sales — atomic in the same tx.
 - All wallet addresses and token mints MUST be validated via `new PublicKey()` before use.
 - Worker secrets: `HELIUS_API_KEY`, `JUP_API_KEY` (set via `wrangler secret put`)
 
