@@ -75,7 +75,15 @@ const JUP_FEE_ACCOUNT_SOL = getAssociatedTokenAddressSync(
  * when one leg actually is SOL; returns {} (no fee params at all) otherwise
  * rather than sending a feeAccount Jupiter would reject as mismatched.
  */
+// 2026-10-16: OFF. The publisher's wSOL ATA (the feeAccount) doesn't exist on-chain, so Jupiter fails
+// every SOL-paired swap with 0x1789 (re-confirmed by simulation: same 0.01 SOL→USDC swap passes
+// without the fee, fails with it). Bot (JUP_PLATFORM_FEE_ENABLED) and worker (applyPlatformFee=false)
+// were turned off for the same reason on 2026-09-15; the app was missed. Create the ATA and get an
+// owner decision before turning this back on.
+const JUP_PLATFORM_FEE_ENABLED = false;
+
 function getPlatformFeeParams(inputMint: string, outputMint: string): Record<string, string> {
+  if (!JUP_PLATFORM_FEE_ENABLED) return {};
   if (inputMint !== SOL_MINT && outputMint !== SOL_MINT) return {};
   return {
     platformFeeBps: String(JUP_PLATFORM_FEE_BPS),
