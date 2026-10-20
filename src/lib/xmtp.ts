@@ -2092,14 +2092,15 @@ export async function openGroupDm(client: XmtpClient, groupId: string): Promise<
   throw new Error('Group DM not found');
 }
 
-export async function loadDmMessages(dm: any, myInboxId: string): Promise<ChatMessage[]> {
+export async function loadDmMessages(dm: any, myInboxId: string, opts?: { reconcile?: boolean }): Promise<ChatMessage[]> {
   await dm.sync();
   await dm.sync(); // second pass ensures bot replies committed before fetching
   const raw: any[] = await dm.messages({ limit: 200 });
   // Catch-up pass for TRADE_CLOSED/PORTFOLIO_RESPONSE/etc. — see
-  // reconcileStructuredHistory's doc comment. Runs on every call site
-  // (mount and the AppState foreground refresh), not just once.
-  await reconcileStructuredHistory(raw, myInboxId);
+  // reconcileStructuredHistory's doc comment. Mount + foreground refresh only:
+  // it rewrites trades/portfolio/status stores with fresh objects, which re-renders
+  // the open DM, so the 20s catch-up poll skips it (2026-10-20: the chat jumped every poll).
+  if (opts?.reconcile !== false) await reconcileStructuredHistory(raw, myInboxId);
   const decoded = raw.map(r => decodeMessage(r, myInboxId)).filter(Boolean) as ChatMessage[];
   return decoded.reverse(); // XMTP returns newest-first; reverse to oldest-first for FlatList
 }

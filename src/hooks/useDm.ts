@@ -537,11 +537,11 @@ export function useDm(peerInboxId: string) {
     // appeared after leaving the DM and coming back. Runs on foreground, every 20s while
     // open, and shortly after each send. seenIds keeps it from doubling stream messages.
     let catchingUp = false;
-    const catchUp = async () => {
+    const catchUp = async (reconcile = false) => {
       if (!dmRef.current || cancelled || catchingUp) return;
       catchingUp = true;
       try {
-        const refreshed = await loadDmMessages(dmRef.current, myInboxId!);
+        const refreshed = await loadDmMessages(dmRef.current, myInboxId!, { reconcile });
         if (cancelled) return;
         const newMsgs = refreshed.filter(m => !seenIds.current.has(m.id));
         if (newMsgs.length > 0) {
@@ -572,7 +572,7 @@ export function useDm(peerInboxId: string) {
       if (AppState.currentState === 'active') void catchUp();
     }, 20_000);
     const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') void catchUp();
+      if (state === 'active') void catchUp(true);
     });
 
     return () => {
