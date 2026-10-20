@@ -75,6 +75,7 @@ export function useDm(peerInboxId: string) {
   const typingTimeout             = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dmRef                     = useRef<any>(null);
   const seenIds                   = useRef<Set<string>>(new Set());
+  const catchUpRef                = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -531,24 +532,54 @@ export function useDm(peerInboxId: string) {
 
     init();
 
-    // On app foreground: do a single catch-up sync for messages missed while backgrounded
-    const sub = AppState.addEventListener('change', async (state) => {
-      if (state === 'active' && dmRef.current && !cancelled) {
-        try {
-          const refreshed = await loadDmMessages(dmRef.current, myInboxId!);
-          if (cancelled) return;
-          const newMsgs = refreshed.filter(m => !seenIds.current.has(m.id));
-          if (newMsgs.length > 0) {
-            for (const m of newMsgs) seenIds.current.add(m.id);
-            setMessages(prev => [...prev, ...newMsgs]);
+    // Catch-up sync: pull anything the stream missed. 2026-10-20: the stream was the only
+    // live source, and it silently stops (seen across a bot restart) — replies then only
+    // appeared after leaving the DM and coming back. Runs on foreground, every 20s while
+    // open, and shortly after each send. seenIds keeps it from doubling stream messages.
+    let catchingUp = false;
+    const catchUp = async () => {
+      if (!dmRef.current || cancelled || catchingUp) return;
+      catchingUp = true;
+      try {
+        const refreshed = await loadDmMessages(dmRef.current, myInboxId!);
+        if (cancelled) return;
+        const newMsgs = refreshed.filter(m => !seenIds.current.has(m.id));
+        if (newMsgs.length > 0) {
+          setMessages(prev => {
+            let next = prev;
+            for (const msg of newMsgs) {
+              seenIds.current.add(msg.id);
+              if (next.some(m => m.id === msg.id)) continue;
+              const optimisticIdx = next.findIndex(
+                m => m.id.startsWith('optimistic-') && m.content === msg.content && m.senderAddress === msg.senderAddress
+              );
+              next = optimisticIdx !== -1
+                ? next.map((m, i) => (i === optimisticIdx ? msg : m))
+                : [...next, msg];
+            }
+            return next;
+          });
+          if (newMsgs.some(m => m.senderAddress !== myInboxId)) {
+            markChannelRead(`dm_${peerInboxId}`).catch(() => {});
           }
-        } catch { /* non-fatal */ }
+        }
+      } catch { /* non-fatal */ } finally {
+        catchingUp = false;
       }
+    };
+    catchUpRef.current = () => { void catchUp(); };
+    const poll = setInterval(() => {
+      if (AppState.currentState === 'active') void catchUp();
+    }, 20_000);
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void catchUp();
     });
 
     return () => {
       cancelled = true;
       sub.remove();
+      clearInterval(poll);
+      catchUpRef.current = null;
       if (retryTimer.current) clearTimeout(retryTimer.current);
       if (typingTimeout.current) clearTimeout(typingTimeout.current);
       unsubscribeStream.current?.();
@@ -615,6 +646,9 @@ export function useDm(peerInboxId: string) {
     try {
       const sentAt = Date.now();
       await sendDmMessage(dmRef.current, text, username);
+      // Bot replies land within seconds — don't wait for the 20s poll if the stream is down.
+      setTimeout(() => catchUpRef.current?.(), 5_000);
+      setTimeout(() => catchUpRef.current?.(), 12_000);
 
       // Mark optimistic message as sent
       setMessages(prev =>
