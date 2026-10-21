@@ -87,6 +87,10 @@ import {
 import { handleGetLumaEvents } from "./lumaEvents";
 import { handlePublishAppConfig } from "./adminConfig";
 import { handleBotCommand, handleInboxReset } from "./botCommand";
+import { handleWebRpc } from "./webRpc";
+import { handleWebAuth } from "./webAuth";
+import { handleWebPair } from "./webPair";
+import { verifyGenesisTokenOwnership } from "./genesisVerify";
 import { handleMonkeMemeGenerate } from "./monkeMeme";
 
 // Cloudflare Workers KV namespace binding (declared locally to avoid @cloudflare/workers-types dependency)
@@ -156,6 +160,14 @@ export interface Env {
   // read/write, nothing else.
   ADMIN_WALLET_PUBKEY?: string;
   ADMIN_GITHUB_PAT?: string;
+  // Web app RPC proxy (webRpc.ts): comma-separated allowed browser origins
+  // ([vars] in wrangler.toml) and an optional per-IP rate-limit binding.
+  WEB_APP_ORIGINS?: string;
+  WEB_RPC_LIMITER?: { limit: (opts: { key: string }) => Promise<{ success: boolean }> };
+  // Web sign-in (webAuth.ts): Ed25519 PKCS8 (base64) signing the XMTP access
+  // JWTs; the self-hosted XMTP backend holds the matching public key.
+  XMTP_JWT_PRIVATE_KEY?: string;
+  XMTP_JWT_KID?: string;
 }
 
 // Cron Trigger types (declared locally, same reasoning as KVNamespace above —
@@ -178,7 +190,7 @@ type ExportedHandler<E = unknown> = {
 export const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Accept, Authorization, Content-Encoding, Accept-Encoding",
+  "Access-Control-Allow-Headers": "Content-Type, Accept, Authorization, Content-Encoding, Accept-Encoding, solana-client",
 };
 
 export const SOL_MINT = "So11111111111111111111111111111111111111112";
@@ -3588,6 +3600,24 @@ export default {
       if (request.method === "GET") return handleStatsApi(env);
       return errorResponse("Method not allowed", 405);
     }
+    if (path === "/api/rpc") {
+      return handleWebRpc(request, env);
+    }
+
+    if (path.startsWith("/api/pair/")) {
+      return handleWebPair(path, request, env);
+    }
+
+    if (path.startsWith("/api/auth/")) {
+      return handleWebAuth(path, request, env, async (wallet) => {
+        try { new PublicKey(wallet); } catch { return null; }
+        const { monke, uncertain } = await fetchOwnedMonke(wallet, env);
+        if (monke) return "monke";
+        if ((await verifyGenesisTokenOwnership(wallet, env)).verified) return "genesis";
+        return uncertain ? "uncertain" : null;
+      });
+    }
+
     if (path === "/api/verify") {
       if (request.method === "GET") return handleVerifyApi(url, env);
       return errorResponse("Method not allowed", 405);

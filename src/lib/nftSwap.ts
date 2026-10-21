@@ -72,7 +72,7 @@ import {
   transact,
   Web3MobileWallet,
 } from "@solana-mobile/mobile-wallet-adapter-protocol-web3js";
-import { HELIUS_RPC_URL, HELIUS_API_KEY, DEV_WALLET, NFT_SALE_FEE_PCT, SKR_MINT, MONKE_LEDGER_URL } from "./constants";
+import { HELIUS_RPC_URL, DEV_WALLET, NFT_SALE_FEE_PCT, SKR_MINT, MONKE_LEDGER_URL } from "./constants";
 import { fetchSolPriceUsd, fetchSkrPriceUsd } from "./solana";
 import { useAppStore } from "@/store/appStore";
 import { assertDeviceTrusted } from "./security";
@@ -114,8 +114,6 @@ async function mwaAuthorize(mobileWallet: Web3MobileWallet): Promise<PublicKey> 
 
 // ─── Ownership verification ──────────────────────────────────────────────────
 
-// HELIUS_API_KEY imported from constants (env var, not extracted from URL)
-
 /**
  * Verify the current on-chain owner of a specific NFT mint via Helius DAS.
  * Returns true only if the current owner matches the expected wallet.
@@ -127,7 +125,7 @@ export async function verifyCurrentOwner(
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 10_000);
-    const res = await fetch(`https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`, {
+    const res = await fetch(HELIUS_RPC_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

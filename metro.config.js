@@ -15,4 +15,26 @@ config.resolver.extraNodeModules = {
 // transform) work as opaque asset files instead of being parsed as app code.
 config.resolver.assetExts = [...(config.resolver.assetExts ?? []), 'html', 'txt'];
 
+// Web build only: phone-only native packages resolve to browser stand-ins in
+// src/web/ (XMTP browser SDK, Wallet Standard wallets, IndexedDB storage).
+// Android/iOS resolution is untouched — this only runs when platform === 'web'.
+const path = require('path');
+const WEB_ALIASES = {
+  '@xmtp/react-native-sdk': 'src/web/xmtpCompat.ts',
+  '@solana-mobile/mobile-wallet-adapter-protocol-web3js': 'src/web/mwaCompat.ts',
+  'expo-secure-store': 'src/web/shims/secureStore.ts',
+  'freerasp-react-native': 'src/web/shims/freerasp.ts',
+  '@react-native-firebase/analytics': 'src/web/shims/firebaseAnalytics.ts',
+  '@livekit/react-native': 'src/web/shims/livekitNative.ts',
+  '@livekit/react-native-krisp-noise-filter': 'src/web/shims/krisp.ts',
+  'react-native-webview': 'src/web/shims/webview.tsx',
+};
+const defaultResolve = config.resolver.resolveRequest;
+config.resolver.resolveRequest = (context, moduleName, platform) => {
+  if (platform === 'web' && WEB_ALIASES[moduleName]) {
+    return { type: 'sourceFile', filePath: path.join(__dirname, WEB_ALIASES[moduleName]) };
+  }
+  return (defaultResolve ?? context.resolveRequest)(context, moduleName, platform);
+};
+
 module.exports = config;

@@ -1,0 +1,10 @@
+# OnlyMonkes web app (Expo web export) on Cloudflare Workers static assets.
+# Deploy with scripts/web/deploy-site.sh — it builds dist-web/ first.
+# The XMTP client wasm (40 MB) is over the 25 MiB per-file limit and is
+# served from the VPS instead (Caddy /assets/*).
+name = "onlymonkes-web"
+compatibility_date = "2026-10-01"
+
+[assets]
+directory = "../../dist-web"
+not_found_handling = "single-page-application"

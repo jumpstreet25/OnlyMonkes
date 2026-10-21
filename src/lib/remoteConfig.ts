@@ -12,6 +12,8 @@
  *         actual GitHub credential — no GitHub token ever touches the phone.
  */
 
+import { Platform } from 'react-native';
+
 const WORKER_BASE = 'https://onlymonkes-actions.jumpstreet25.workers.dev';
 
 export interface AppRemoteConfig {
@@ -32,6 +34,11 @@ const BRANCH = 'master';
 const FILE   = 'config/app-config.json';
 const RAW    = `https://raw.githubusercontent.com/${REPO}/${BRANCH}/${FILE}`;
 
+// The web app runs on the self-hosted staging XMTP backend, whose groups and
+// helper inbox differ from production's. Its config ships with the site
+// (public/staging/app-config.json, written by scripts/web/staging-helper).
+const CONFIG_URL = Platform.OS === 'web' ? '/staging/app-config.json' : RAW;
+
 const EMPTY: AppRemoteConfig = { globalGroupId: '', adminInboxId: '' };
 
 // ─── Read ─────────────────────────────────────────────────────────────────────
@@ -41,7 +48,7 @@ export async function fetchAppConfig(): Promise<AppRemoteConfig> {
     // Cache-bust so testers always get the latest group ID.
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 5_000);
-    const res = await fetch(`${RAW}?t=${Date.now()}`, { signal: controller.signal });
+    const res = await fetch(`${CONFIG_URL}?t=${Date.now()}`, { signal: controller.signal });
     clearTimeout(timer);
     if (!res.ok) return EMPTY;
     const json = await res.json();

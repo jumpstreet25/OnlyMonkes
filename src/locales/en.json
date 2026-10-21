@@ -87,6 +87,7 @@
     "login": "Login",
     "walletHint": "Requires a Solana wallet app (Phantom, Solflare, etc.)",
     "chooseWallet": "Choose Wallet",
+    "noWallets": "No Solana wallet found in this browser. Install Phantom, Solflare or Backpack, then reload.",
     "cancel": "Cancel"
   },
   "autonoWizard": {

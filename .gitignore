@@ -67,3 +67,7 @@ google-services.json
 *.bak
 *.bak2
 
+
+# Web build: generated XMTP browser SDK bundle (scripts/web/build-xmtp.mjs)
+/public/xmtp/
+/dist-web/

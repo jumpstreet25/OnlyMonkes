@@ -17,13 +17,14 @@ import {
   Web3MobileWallet,
 } from "@solana-mobile/mobile-wallet-adapter-protocol-web3js";
 import { PublicKey } from "@solana/web3.js";
-import { Linking } from "react-native";
+import { Linking, Platform } from "react-native";
 import bs58 from "bs58";
 import { useAppStore } from "@/store/appStore";
 import { bindXmtpToWallet, prepareWalletBoundXmtp } from "@/lib/xmtp";
 import { rehydrateForWallet } from "@/lib/walletIdentity";
 import { assertDeviceTrusted } from "@/lib/security";
 import { refreshInboxLinks } from "@/lib/inboxLinking";
+import { signInForChat, signOutOfChat } from "@/lib/webLogin";
 import { toast } from "sonner-native";
 import type { WalletAccount } from "@/types";
 
@@ -122,7 +123,7 @@ export function useMobileWallet() {
 
     try {
       // Bring specific wallet to foreground so Android MWA routes to it
-      if (walletScheme) {
+      if (walletScheme && Platform.OS !== "web") {
         try {
           const canOpen = await Linking.canOpenURL(walletScheme);
           if (canOpen) {
@@ -167,6 +168,8 @@ export function useMobileWallet() {
 
         return walletAccount;
       });
+
+      await signInForChat(account.address);
 
       setWallet(account);
       await rehydrateForWallet(account.address);
@@ -248,6 +251,7 @@ export function useMobileWallet() {
    */
   const disconnect = useCallback(() => {
     setAuthToken(null);
+    void signOutOfChat();
     reset();
   }, [reset]);
 

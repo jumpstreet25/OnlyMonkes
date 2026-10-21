@@ -15,6 +15,7 @@ import {
   GROQ_API_KEY as ENV_GROQ,
 } from '@env';
 import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 
 export const APP_NAME = 'OnlyMonkes';
 
@@ -86,18 +87,26 @@ export const NFT_COLLECTION_ADDRESS = 'GokAiStXz2Kqbxwz2oqzfEXuUhE7aXySmBGEP7uej
 const _extra = (Constants.expoConfig?.extra ?? {}) as Record<string, unknown>;
 const _str = (v: unknown): string => (typeof v === 'string' ? v : '');
 
-export const HELIUS_API_KEY: string = ENV_HELIUS || _str(_extra.heliusApiKey);
+// Web build: a public site can't carry RPC keys, so every RPC/DAS call goes
+// through the actions worker (worker-actions/src/webRpc.ts), which adds the key
+// server-side. The key constants become a non-secret marker so the existing
+// "is Helius configured" gates still pass.
+const IS_WEB = Platform.OS === 'web';
+const WEB_KEY_MARKER = 'web-proxy';
+export const WEB_RPC_PROXY_URL = 'https://onlymonkes-actions.jumpstreet25.workers.dev/api/rpc';
+
+export const HELIUS_API_KEY: string = IS_WEB ? WEB_KEY_MARKER : ENV_HELIUS || _str(_extra.heliusApiKey);
 // Dedicated key for wallet / Saga Monke ownership checks only.
 // Isolated from HELIUS_API_KEY (scanner, swaps, sales, general RPC).
 const _HELIUS_NFT_API_KEY_RAW: string = ENV_HELIUS_NFT || _str(_extra.heliusNftApiKey);
-export const HELIUS_NFT_API_KEY: string = _HELIUS_NFT_API_KEY_RAW || HELIUS_API_KEY;
-export const HELIUS_NFT_RPC_URL = `https://mainnet.helius-rpc.com/?api-key=${HELIUS_NFT_API_KEY}`;
+export const HELIUS_NFT_API_KEY: string = IS_WEB ? WEB_KEY_MARKER : _HELIUS_NFT_API_KEY_RAW || HELIUS_API_KEY;
+export const HELIUS_NFT_RPC_URL = IS_WEB ? WEB_RPC_PROXY_URL : `https://mainnet.helius-rpc.com/?api-key=${HELIUS_NFT_API_KEY}`;
 export const GIPHY_API_KEY: string = ENV_GIPHY || _str(_extra.giphyApiKey);
 export const CLOUDINARY_CLOUD_NAME: string = ENV_CLOUD_NAME || _str(_extra.cloudinaryCloudName);
 export const CLOUDINARY_UPLOAD_PRESET: string = ENV_CLOUD_PRESET || _str(_extra.cloudinaryUploadPreset);
 export const LIVEKIT_URL_ENV: string = ENV_LK_URL || _str(_extra.livekitUrl);
 export const LIVEKIT_TOKEN_URL_ENV: string = ENV_LK_TOKEN || _str(_extra.livekitTokenUrl);
-export const JUP_API_KEY: string = ENV_JUP || _str(_extra.jupApiKey);
+export const JUP_API_KEY: string = IS_WEB ? '' : ENV_JUP || _str(_extra.jupApiKey);
 export const SENTRY_DSN_ENV: string = ENV_SENTRY || _str(_extra.sentryDsn);
 // 2026-08-04: nftFeatureDetection.ts and avatarEmotions.ts were reading
 // `process.env.GROQ_API_KEY` directly — that's always undefined in a React
@@ -108,7 +117,7 @@ export const SENTRY_DSN_ENV: string = ENV_SENTRY || _str(_extra.sentryDsn);
 // this was silent, not a crash. Routing through the same safe pattern as
 // everything else here so it starts working the moment the key is added to
 // `.env` + `app.config.ts`'s `extra.groqApiKey`.
-export const GROQ_API_KEY: string = ENV_GROQ || _str(_extra.groqApiKey);
+export const GROQ_API_KEY: string = IS_WEB ? '' : ENV_GROQ || _str(_extra.groqApiKey);
 // QuickNode DAS endpoint — auth token is embedded in the URL path itself
 // (QuickNode's convention), so this is used as a full URL, not a bare key.
 // Added 2026-07-13 as a 30-day trial; see project memory for the expiry
@@ -122,7 +131,7 @@ export const GROQ_API_KEY: string = ENV_GROQ || _str(_extra.groqApiKey);
 // with Helius quota-exhausted (429) and QuickNode dark, verification fell
 // through to the on-chain check — unreliable for compressed NFTs — and
 // falsely reported him as a non-holder.
-export const QUICKNODE_DAS_URL: string = ENV_QUICKNODE_DAS || _str(_extra.quickNodeDasUrl);
+export const QUICKNODE_DAS_URL: string = IS_WEB ? '' : ENV_QUICKNODE_DAS || _str(_extra.quickNodeDasUrl);
 // Alchemy DAS — added 2026-08-10 as a second, vendor-independent fallback
 // tier ahead of QuickNode's 30-day trial expiring (~2026-08-12). Free tier:
 // 30M CU/month, confirmed to support getAssetsByOwner for compressed NFTs.
@@ -131,11 +140,11 @@ export const QUICKNODE_DAS_URL: string = ENV_QUICKNODE_DAS || _str(_extra.quickN
 // nftVerification.ts. Same dual-fallback (`@env` + `extra`) pattern as
 // above, to avoid repeating the QUICKNODE_DAS_URL silent-empty-string bug.
 const _ALCHEMY_API_KEY: string = ENV_ALCHEMY || _str(_extra.alchemyApiKey);
-export const ALCHEMY_DAS_URL: string = _ALCHEMY_API_KEY
+export const ALCHEMY_DAS_URL: string = _ALCHEMY_API_KEY && !IS_WEB
   ? `https://solana-mainnet.g.alchemy.com/v2/${_ALCHEMY_API_KEY}`
   : '';
-export const HELIUS_RPC_URL = `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`;
-export const SOLANA_RPC_URL = 'https://api.mainnet-beta.solana.com';
+export const HELIUS_RPC_URL = IS_WEB ? WEB_RPC_PROXY_URL : `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`;
+export const SOLANA_RPC_URL = IS_WEB ? WEB_RPC_PROXY_URL : 'https://api.mainnet-beta.solana.com';
 
 // MonkeLedger — self-hosted Saga Monkes cNFT Merkle-proof indexer (own VPS process, own
 // Helius key, isolated from the trading bot — see MonkeLedger repo for why). Primary source

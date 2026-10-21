@@ -24,6 +24,8 @@ import {
   saveIdentityGeneration,
   xmtpIdentityMessageBytes,
 } from "@/lib/xmtpIdentity";
+import { deriveBoundXmtpEoa } from "@/lib/xmtpDerive";
+import { joinProofSuffix } from "@/lib/webLogin";
 import { rememberLocalInboxId, loadLocalInboxIds } from "@/lib/localInboxes";
 
 const NATIVE_CODECS = [new ReactionCodec(), new ReactionV2Codec(), new ReplyCodec(), new RemoteAttachmentCodec()];
@@ -76,7 +78,7 @@ export async function prepareWalletBoundXmtp(
   }
   const generation = await loadIdentityGeneration(walletAddress);
   const sig = await signMessage(xmtpIdentityMessageBytes(walletAddress, generation));
-  const derived = deriveXmtpEoa(sig, walletAddress, generation);
+  const derived = await deriveBoundXmtpEoa(sig, walletAddress, generation);
   await saveDerivedXmtpEoa(walletAddress, derived);
   _eoaSigner = makeXmtpEoaSigner(derived);
   _prefetchPromise = null;
@@ -401,7 +403,7 @@ export async function sendJoinRequestDM(
   botInboxId?: string | null,
   walletAddress?: string | null,
 ): Promise<void> {
-  const payload = `${JOIN_REQUEST_PREFIX}${walletAddress ?? ""}`;
+  const payload = `${JOIN_REQUEST_PREFIX}${walletAddress ?? ""}${await joinProofSuffix()}`;
 
   // Bot first — it auto-adds to Main + Trades. Admin DM is only a notify.
   // Used to send admin first and let that throw, so a closed/unreachable
@@ -494,7 +496,7 @@ export async function sendGenesisJoinRequestDM(
   username?: string | null,
   botInboxId?: string | null,
 ): Promise<void> {
-  const payload = `${GENESIS_JOIN_REQUEST_PREFIX}${walletAddress}`;
+  const payload = `${GENESIS_JOIN_REQUEST_PREFIX}${walletAddress}${await joinProofSuffix()}`;
 
   let botSent = false;
   if (botInboxId && botInboxId !== myInboxId) {

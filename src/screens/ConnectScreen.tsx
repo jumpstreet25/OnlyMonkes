@@ -31,6 +31,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import { useMobileWallet, signBytesWithMwa } from "@/hooks/useMobileWallet";
+import { PAIR_CHOICE_KEY, useWalletChoices } from "@/hooks/useWalletChoices";
+import { PairModal } from "@/components/PairModal";
 import { useAppStore, loadMwaAuthToken } from "@/store/appStore";
 import {
   loadSession,
@@ -55,6 +57,8 @@ export default function ConnectScreen() {
   const { width: SCREEN_W, height: SCREEN_H } = useWindowDimensions();
   const HEADER_HEIGHT = Math.round(SCREEN_H * 0.30);
   const { connect } = useMobileWallet();
+  const { choices: walletChoices, choose: chooseWallet } = useWalletChoices();
+  const [pairOpen, setPairOpen] = useState(false);
   const { isLoading, error, setError, setWallet, setVerified, setAllNfts, setIsGenesisHolder } = useAppStore();
   const { checkDeviceIntegrity } = useDeviceIntegrity();
   const [checkingSession, setCheckingSession] = useState(true);
@@ -234,6 +238,16 @@ export default function ConnectScreen() {
         )}
       </View>
 
+      <PairModal
+        visible={pairOpen}
+        onClose={() => setPairOpen(false)}
+        onPaired={async (account) => {
+          setPairOpen(false);
+          await saveSession(account);
+          router.replace("/verify");
+        }}
+      />
+
       {/* Wallet picker bottom sheet */}
       <MonkeGlass
         visible={walletSheetOpen}
@@ -243,20 +257,31 @@ export default function ConnectScreen() {
         cardStyle={styles.sheet}
       >
         <Text style={styles.sheetTitle}>{t("connect.chooseWallet")}</Text>
+        {walletChoices.length === 0 && (
+          <Text style={styles.sheetEmpty}>{t("connect.noWallets")}</Text>
+        )}
 
-        {[
-          { icon: "🟣", label: "Phantom", onPress: async () => { setWalletSheetOpen(false); await handleConnectWith("phantom://"); } },
-          { icon: "🔥", label: "Solflare", onPress: async () => { setWalletSheetOpen(false); await handleConnectWith("solflare://"); } },
-          { icon: "📱", label: "Mobile Wallet Adapter", onPress: async () => { setWalletSheetOpen(false); await handleConnectWith(); } },
-        ].map(({ icon, label, onPress }) => (
+        {walletChoices.map((choice) => ({
+          ...choice,
+          onPress: async () => {
+            setWalletSheetOpen(false);
+            if (choice.key === PAIR_CHOICE_KEY) { setPairOpen(true); return; }
+            chooseWallet(choice);
+            await handleConnectWith(choice.scheme);
+          },
+        })).map(({ key, icon, iconUri, label, onPress }) => (
           <Pressable
-            key={label}
+            key={key}
             style={({ pressed }) => [styles.walletRow, pressed && styles.walletRowPressed]}
             onPress={onPress}
             accessibilityLabel={`Connect with ${label}`}
             accessibilityRole="button"
           >
-            <Text style={styles.walletIcon}>{icon}</Text>
+            {iconUri ? (
+              <Image source={{ uri: iconUri }} style={styles.walletIconImage} />
+            ) : (
+              <Text style={styles.walletIcon}>{icon}</Text>
+            )}
             <Text style={styles.walletLabel}>{label}</Text>
             <Text style={styles.walletChevron}>›</Text>
           </Pressable>
@@ -382,6 +407,19 @@ const styles = StyleSheet.create({
     fontSize: 22,
     width: 28,
     textAlign: "center",
+  },
+  sheetEmpty: {
+    color: "rgba(255,255,255,0.7)",
+    fontSize: 14,
+    textAlign: "center",
+    lineHeight: 20,
+    marginVertical: 16,
+    paddingHorizontal: 12,
+  },
+  walletIconImage: {
+    width: 28,
+    height: 28,
+    borderRadius: 6,
   },
   walletLabel: {
     flex: 1,

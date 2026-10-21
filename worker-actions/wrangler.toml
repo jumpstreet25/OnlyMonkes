@@ -78,3 +78,19 @@ service = "monkeledger"
 # sentiment epoch — see closeSentimentEpoch() in src/sentimentOracle.ts.
 [triggers]
 crons = ["0 */4 * * *", "0 * * * *"]
+
+# 2026-10-21: OnlyMonkes web app. /api/rpc (webRpc.ts) proxies Solana RPC/DAS
+# so no RPC key ships in the public site; /api/auth/* (webAuth.ts) signs XMTP
+# access tokens for holders. Allowed browser origins (comma-separated, plus
+# localhost while developing) — add the site's URL here when it deploys.
+# XMTP_JWT_PRIVATE_KEY is a secret (`wrangler secret put`); its public half
+# is in the XMTP backend's backend.toml [auth] keys on the VPS.
+[vars]
+WEB_APP_ORIGINS = "https://onlymonkes-web.jumpstreet25.workers.dev"
+XMTP_JWT_KID = "om-1"
+
+# Per-IP limit shared by /api/rpc and /api/auth/* (key prefixes differ).
+[[ratelimits]]
+name = "WEB_RPC_LIMITER"
+namespace_id = "1001"
+simple = { limit = 120, period = 60 }
