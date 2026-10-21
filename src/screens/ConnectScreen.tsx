@@ -34,6 +34,7 @@ import { router } from "expo-router";
 import { useMobileWallet, signBytesWithMwa } from "@/hooks/useMobileWallet";
 import { PAIR_CHOICE_KEY, useWalletChoices } from "@/hooks/useWalletChoices";
 import { PairModal } from "@/components/PairModal";
+import { startSingleSessionLogin } from "@/lib/webLogin";
 import { useAppStore, loadMwaAuthToken } from "@/store/appStore";
 import {
   loadSession,
@@ -277,6 +278,18 @@ export default function ConnectScreen() {
             setWalletSheetOpen(false);
             if (choice.key === PAIR_CHOICE_KEY) { setPairOpen(true); return; }
             chooseWallet(choice);
+            const single = startSingleSessionLogin(choice.key);
+            if (single) {
+              setError(null);
+              try {
+                const account = await single;
+                await saveSession(account);
+                router.replace("/verify");
+              } catch (e) {
+                setError(e instanceof Error ? e.message : "Wallet login failed");
+              }
+              return;
+            }
             await handleConnectWith(choice.scheme);
           },
         })).map(({ key, icon, iconUri, label, onPress }) => (

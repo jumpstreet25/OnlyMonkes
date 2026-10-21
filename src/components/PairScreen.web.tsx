@@ -7,7 +7,9 @@ import React, { useState } from "react";
 import { Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { THEME, FONTS } from "@/lib/constants";
 import { PAIR_CHOICE_KEY, useWalletChoices } from "@/hooks/useWalletChoices";
-import { approveOnPhone, lookupShortCode, pairCode, readPairLink } from "@/web/pairing";
+import { approveOnPhone, collectWithWalletStandard, lookupShortCode, pairCode, readPairLink } from "@/web/pairing";
+import { collectWithMwa } from "@/web/mwaSession";
+import { MWA_WALLET_NAME } from "@/web/walletStandard";
 
 export default function PairScreen() {
   const [link, setLink] = useState(() => (typeof window !== "undefined" ? readPairLink(window.location.hash) : null));
@@ -59,19 +61,21 @@ export default function PairScreen() {
     );
   }
 
-  const approve = async (key: string) => {
+  // Start the wallet session synchronously inside the tap: Chrome on Android
+  // only opens the wallet app for a launch that directly follows a tap.
+  const approve = (key: string) => {
     const c = choices.find((x) => x.key === key);
     if (!c) return;
     choose(c);
+    const bundle = c.key === MWA_WALLET_NAME ? collectWithMwa() : collectWithWalletStandard();
     setState("busy");
     setError(null);
-    try {
-      await approveOnPhone(link);
-      setState("done");
-    } catch (e) {
-      setError((e as Error)?.message ?? "Approval failed");
-      setState("error");
-    }
+    approveOnPhone(link, bundle)
+      .then(() => setState("done"))
+      .catch((e) => {
+        setError((e as Error)?.message ?? "Approval failed");
+        setState("error");
+      });
   };
 
   return (
@@ -91,7 +95,7 @@ export default function PairScreen() {
         </Text>
       ) : (
         <View style={styles.list}>
-          <Text style={styles.body}>Approve with (you'll sign twice: sign-in, then chat identity):</Text>
+          <Text style={styles.body}>Approve with (one wallet approval covers the sign-in and your chat identity):</Text>
           {choices.map((c) => (
             <Pressable
               key={c.key}

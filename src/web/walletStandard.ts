@@ -15,7 +15,7 @@ const SELECTED_KEY = "om_web_wallet";
 export const APP_IDENTITY = {
   name: "OnlyMonkes",
   uri: typeof window !== "undefined" && window.location ? window.location.origin : "https://onlymonkes-actions.jumpstreet25.workers.dev",
-  icon: "/favicon.ico",
+  icon: "favicon.ico",
 };
 
 export function isAndroidBrowser(): boolean {
@@ -26,6 +26,8 @@ export const SOLANA_MOBILE_RELAY = "relay.solanamobile.com";
 /** Wallet Standard name of Solana Mobile's QR (remote) wallet adapter. */
 export const QR_WALLET_NAME = "Remote Mobile Wallet Adapter";
 export const SEEKER_CONNECT_WALLET_NAME = SEEKER_CONNECT_NAME;
+/** Wallet Standard name of Solana Mobile's local (same-phone) wallet adapter. */
+export const MWA_WALLET_NAME = "Mobile Wallet Adapter";
 
 let _mobileRegistered = false;
 

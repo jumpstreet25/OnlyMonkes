@@ -8,28 +8,12 @@ import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from "rea
 import QRCode from "qrcode";
 import { MonkeGlass } from "@/components/MonkeGlass";
 import { THEME, FONTS } from "@/lib/constants";
-import { useAppStore } from "@/store/appStore";
-import { rehydrateForWallet } from "@/lib/walletIdentity";
-import { bindXmtpToWallet, prepareWalletBoundXmtp } from "@/lib/xmtp";
-import { formatShortCode, pairedIdentitySigner, startDesktopPairing, type DesktopPairing, type PairBundle } from "@/web/pairing";
+import { formatShortCode, startDesktopPairing, type DesktopPairing } from "@/web/pairing";
+import { loginWithBundle } from "@/web/bundleLogin";
 import type { WalletAccount } from "@/types";
 
 function siteHost(): string {
   return typeof window !== "undefined" ? window.location.host : "this site";
-}
-
-async function completePairedLogin(bundle: PairBundle): Promise<WalletAccount> {
-  const account: WalletAccount = {
-    address: bundle.wallet,
-    label: "Seeker (paired)",
-    chains: ["solana:mainnet"],
-    features: ["solana:signMessage"],
-  };
-  useAppStore.getState().setWallet(account);
-  await rehydrateForWallet(account.address);
-  bindXmtpToWallet(account.address);
-  await prepareWalletBoundXmtp(account.address, pairedIdentitySigner(bundle));
-  return account;
 }
 
 export function PairModal({ visible, onClose, onPaired }: {
@@ -63,7 +47,7 @@ export function PairModal({ visible, onClose, onPaired }: {
         const bundle = await p.result;
         if (!live) return;
         setStatus("finishing");
-        onPaired(await completePairedLogin(bundle));
+        onPaired(await loginWithBundle(bundle, "Seeker (paired)"));
       } catch (e) {
         if (!live) return;
         setError((e as Error)?.message ?? "Pairing failed");

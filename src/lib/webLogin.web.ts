@@ -1,3 +1,7 @@
+import type { WalletAccount } from "@/types";
+import { collectWithMwa } from "@/web/mwaSession";
+import { loginWithBundle } from "@/web/bundleLogin";
+import { MWA_WALLET_NAME } from "@/web/walletStandard";
 import { clearWebSignIn, getXmtpCredential, signInWithWallet } from "@/web/webAuth";
 
 /**
@@ -21,4 +25,15 @@ export async function signOutOfChat(): Promise<void> {
 export async function joinProofSuffix(): Promise<string> {
   const { value } = await getXmtpCredential();
   return `|t=${value.replace(/^Bearer /, "")}`;
+}
+
+/**
+ * Phone browsers, Mobile Wallet Adapter: the whole login (connect, sign-in,
+ * chat identity) in one wallet launch. Must be called straight from the tap —
+ * Chrome on Android only opens the wallet for a launch that follows a tap.
+ */
+export function startSingleSessionLogin(choiceKey: string): Promise<WalletAccount> | null {
+  if (choiceKey !== MWA_WALLET_NAME) return null;
+  const bundle = collectWithMwa();
+  return bundle.then((b) => loginWithBundle(b, "Seed Vault"));
 }

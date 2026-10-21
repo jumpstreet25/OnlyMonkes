@@ -65,9 +65,23 @@ export async function clearWebSignIn(): Promise<void> {
   await SecureStore.deleteItemAsync(TOKEN_KEY).catch(() => {});
 }
 
+/** Step 1 of sign-in: the one-time message this wallet must sign. */
+export async function requestSignInChallenge(walletAddress: string): Promise<{ nonce: string; message: string }> {
+  const { nonce, message } = await post("/api/auth/challenge", { address: walletAddress });
+  return { nonce, message };
+}
+
+/** Step 2: trade the bare 64-byte signature for a holder token, and keep it. */
+export async function completeSignIn(walletAddress: string, nonce: string, signature: Uint8Array): Promise<Stored> {
+  const r = await post("/api/auth/login", { nonce, signature: toBase64(signature) });
+  const stored: Stored = { token: r.token, expiresAt: r.expiresAt, wallet: walletAddress, tier: r.tier };
+  await save(stored);
+  return stored;
+}
+
 let _signIn: Promise<Stored> | null = null;
 
-/** Wallet-signed sign-in. Throws a readable error for non-holders. */
+/** Wallet-signed sign-in through the selected Wallet Standard wallet. Throws a readable error for non-holders. */
 export function signInWithWallet(walletAddress: string): Promise<Stored> {
   if (_signIn) return _signIn;
   _signIn = (async () => {
@@ -75,12 +89,9 @@ export function signInWithWallet(walletAddress: string): Promise<Stored> {
     const accounts = await connectWallet(wallet, true);
     const account = accounts.find((a) => a.address === walletAddress) ?? accounts[0];
     if (!account || account.address !== walletAddress) throw new Error("Connected wallet does not match this account");
-    const { nonce, message } = await post("/api/auth/challenge", { address: walletAddress });
+    const { nonce, message } = await requestSignInChallenge(walletAddress);
     const sig = await signMessageRaw(wallet, account, new TextEncoder().encode(message));
-    const r = await post("/api/auth/login", { nonce, signature: toBase64(sig) });
-    const stored: Stored = { token: r.token, expiresAt: r.expiresAt, wallet: walletAddress, tier: r.tier };
-    await save(stored);
-    return stored;
+    return completeSignIn(walletAddress, nonce, sig);
   })();
   _signIn.finally(() => { _signIn = null; }).catch(() => {});
   return _signIn;

@@ -126,17 +126,6 @@ export async function startDesktopPairing(): Promise<DesktopPairing> {
   return { id, url, code: pairCode(desktopKey), shortCode, result, cancel: () => { cancelled = true; } };
 }
 
-/** The identity-message signer for prepareWalletBoundXmtp on a paired desktop. */
-export function pairedIdentitySigner(bundle: PairBundle) {
-  const expected = xmtpIdentityMessageBytes(bundle.wallet, 0);
-  return async (bytes: Uint8Array): Promise<Uint8Array> => {
-    if (bytes.length !== expected.length || bytes.some((b, i) => b !== expected[i])) {
-      throw new Error("Paired login can only sign the chat identity message");
-    }
-    return fromB64url(bundle.identity);
-  };
-}
-
 // ─── Phone ───────────────────────────────────────────────────────────────────
 
 /** "k7q4 mx2p" / "K7Q4-MX2P" / "K7Q4MXZP" with O/I/L typos → "K7Q4MX2P", or null. */
@@ -166,22 +155,19 @@ export function readPairLink(hash: string): { id: string; desktopKey: string } |
 }
 
 /**
- * Phone side: with the wallet chosen in the pair screen, sign in (holder
- * token) and sign the chat-identity message, then send both, encrypted to the
- * desktop key. Two wallet approvals.
+ * Phone side, Wallet Standard wallets (Seeker Connect etc.): sign in and sign
+ * the chat-identity message through the wallet chosen on the pair screen.
  */
-export async function approveOnPhone(link: { id: string; desktopKey: string }): Promise<void> {
+export async function collectWithWalletStandard(): Promise<PairBundle> {
   const wallet = await getSelectedWallet();
   const [account] = await connectWallet(wallet, false);
   if (!account) throw new Error("No wallet account connected");
   const signIn = await signInWithWallet(account.address);
   const identity = await signMessageMwaFormat(wallet, account, xmtpIdentityMessageBytes(account.address, 0));
-  const bundle: PairBundle = {
-    wallet: account.address,
-    token: signIn.token,
-    expiresAt: signIn.expiresAt,
-    tier: signIn.tier,
-    identity: toB64url(identity),
-  };
-  await post("/api/pair/complete", { id: link.id, ...(await sealBundle(link.desktopKey, link.id, bundle)) });
+  return { wallet: account.address, token: signIn.token, expiresAt: signIn.expiresAt, tier: signIn.tier, identity: toB64url(identity) };
+}
+
+/** Phone side: encrypt the collected bundle to the desktop key and hand it over. */
+export async function approveOnPhone(link: { id: string; desktopKey: string }, bundle: Promise<PairBundle>): Promise<void> {
+  await post("/api/pair/complete", { id: link.id, ...(await sealBundle(link.desktopKey, link.id, await bundle)) });
 }
