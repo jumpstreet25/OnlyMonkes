@@ -4,7 +4,7 @@ jest.mock("@xmtp/react-native-sdk", () => ({ PublicIdentity: class {} }));
 
 import { webcrypto } from "node:crypto";
 import { x25519 } from "@noble/curves/ed25519";
-import { openBundle, pairCode, readPairLink, sealBundle, toB64url, type PairBundle } from "../web/pairing";
+import { formatShortCode, normalizeShortCode, openBundle, pairCode, readPairLink, sealBundle, toB64url, type PairBundle } from "../web/pairing";
 
 if (!(globalThis as any).crypto?.subtle) (globalThis as any).crypto = webcrypto;
 
@@ -33,5 +33,15 @@ describe("phone → desktop pairing crypto", () => {
     expect(pairCode(desktopKey)).toBe(pairCode(desktopKey));
     expect(readPairLink(`#id=${id}&k=${desktopKey}`)).toEqual({ id, desktopKey });
     expect(readPairLink("#id=nope&k=x")).toBeNull();
+  });
+
+  it("typed short codes forgive case, spaces, dashes and O/I/L typos", () => {
+    expect(normalizeShortCode("k7q4-mx2p")).toBe("K7Q4MX2P");
+    expect(normalizeShortCode(" K7Q4 MX2P ")).toBe("K7Q4MX2P");
+    expect(normalizeShortCode("K7Q4MXOP")).toBe("K7Q4MX0P");
+    expect(normalizeShortCode("K7Q4MXIL")).toBe("K7Q4MX11");
+    expect(normalizeShortCode("K7Q4MX2")).toBeNull();
+    expect(normalizeShortCode("K7Q4MX2U")).toBeNull();
+    expect(formatShortCode("K7Q4MX2P")).toBe("K7Q4-MX2P");
   });
 });

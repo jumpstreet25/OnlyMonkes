@@ -21,6 +21,7 @@ import {
   View,
   Text,
   StyleSheet,
+  Platform,
   Pressable,
   ActivityIndicator,
   Image,
@@ -50,6 +51,10 @@ import { OnboardingCarousel, ONBOARDING_KEY } from "@/components/OnboardingCarou
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { toast } from "sonner-native";
 import { useTranslation } from "react-i18next";
+
+// Web in a phone's browser: approve a desktop login by typing its code (/pair).
+const IS_PHONE_BROWSER =
+  Platform.OS === "web" && typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent);
 
 export default function ConnectScreen() {
   const { t } = useTranslation();
@@ -236,6 +241,11 @@ export default function ConnectScreen() {
             </Text>
           )
         )}
+        {IS_PHONE_BROWSER && (
+          <Pressable onPress={() => router.push("/pair")} accessibilityRole="link" style={styles.pairLink}>
+            <Text style={styles.pairLinkText}>{t("connect.approveComputer")}</Text>
+          </Pressable>
+        )}
       </View>
 
       <PairModal
@@ -408,6 +418,8 @@ const styles = StyleSheet.create({
     width: 28,
     textAlign: "center",
   },
+  pairLink: { alignSelf: "center", marginTop: 14, padding: 6 },
+  pairLinkText: { fontFamily: FONTS.bodyMed, fontSize: 14, color: THEME.accent, textDecorationLine: "underline" },
   sheetEmpty: {
     color: "rgba(255,255,255,0.7)",
     fontSize: 14,

@@ -11,8 +11,12 @@ import { THEME, FONTS } from "@/lib/constants";
 import { useAppStore } from "@/store/appStore";
 import { rehydrateForWallet } from "@/lib/walletIdentity";
 import { bindXmtpToWallet, prepareWalletBoundXmtp } from "@/lib/xmtp";
-import { pairedIdentitySigner, startDesktopPairing, type DesktopPairing, type PairBundle } from "@/web/pairing";
+import { formatShortCode, pairedIdentitySigner, startDesktopPairing, type DesktopPairing, type PairBundle } from "@/web/pairing";
 import type { WalletAccount } from "@/types";
+
+function siteHost(): string {
+  return typeof window !== "undefined" ? window.location.host : "this site";
+}
 
 async function completePairedLogin(bundle: PairBundle): Promise<WalletAccount> {
   const account: WalletAccount = {
@@ -35,6 +39,7 @@ export function PairModal({ visible, onClose, onPaired }: {
 }) {
   const [qr, setQr] = useState<string | null>(null);
   const [code, setCode] = useState("");
+  const [shortCode, setShortCode] = useState("");
   const [status, setStatus] = useState<"starting" | "waiting" | "finishing" | "error">("starting");
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -52,6 +57,7 @@ export function PairModal({ visible, onClose, onPaired }: {
         if (!live) return p.cancel();
         pairing.current = p;
         setCode(p.code);
+        setShortCode(p.shortCode);
         setQr(await QRCode.toDataURL(p.url, { margin: 1, width: 260, errorCorrectionLevel: "M" }));
         setStatus("waiting");
         const bundle = await p.result;
@@ -74,12 +80,13 @@ export function PairModal({ visible, onClose, onPaired }: {
   return (
     <MonkeGlass visible={visible} onClose={onClose} cardStyle={styles.card}>
       <Text style={styles.title}>Log in with your Seeker or Saga</Text>
-      <Text style={styles.step}>1. Scan this code with your phone's camera.</Text>
-      <Text style={styles.step}>2. It opens OnlyMonkes in your phone's browser — check the code matches, then approve in your wallet.</Text>
+      <Text style={styles.step}>1. Scan this QR with your phone's camera or Google Lens. Or open {siteHost()} in your phone's browser, tap "Approving a login on your computer?" and type the code below.</Text>
+      <Text style={styles.step}>2. Check the 4-digit number on your phone matches, then approve in your wallet.</Text>
       <View style={styles.qrBox}>
         {qr ? <Image source={{ uri: qr }} style={styles.qr} /> : <ActivityIndicator color={THEME.accent} />}
       </View>
-      {code ? <Text style={styles.code}>Code: {code}</Text> : null}
+      {shortCode ? <Text style={styles.shortCode}>{formatShortCode(shortCode)}</Text> : null}
+      {code ? <Text style={styles.code}>Match number: {code}</Text> : null}
       {status === "waiting" && <Text style={styles.muted}>Waiting for your phone… (expires in 5 minutes)</Text>}
       {status === "finishing" && <Text style={styles.muted}>Approved — opening chat…</Text>}
       {status === "error" && (
@@ -104,7 +111,8 @@ const styles = StyleSheet.create({
   step: { fontFamily: FONTS.body, fontSize: 14, color: THEME.textMuted, lineHeight: 20, marginBottom: 4 },
   qrBox: { alignSelf: "center", width: 272, height: 272, marginTop: 12, borderRadius: 14, backgroundColor: "#fff", alignItems: "center", justifyContent: "center" },
   qr: { width: 260, height: 260 },
-  code: { fontFamily: FONTS.display, fontSize: 22, letterSpacing: 4, color: THEME.text, textAlign: "center", marginTop: 12 },
+  shortCode: { fontFamily: FONTS.display, fontSize: 30, letterSpacing: 4, color: THEME.gold, textAlign: "center", marginTop: 14 },
+  code: { fontFamily: FONTS.body, fontSize: 15, letterSpacing: 2, color: THEME.text, textAlign: "center", marginTop: 6 },
   muted: { fontFamily: FONTS.body, fontSize: 13, color: THEME.textMuted, textAlign: "center", marginTop: 8 },
   error: { fontFamily: FONTS.body, fontSize: 14, color: THEME.error, textAlign: "center", marginTop: 8 },
   note: { fontFamily: FONTS.body, fontSize: 12, color: THEME.textDim, textAlign: "center", marginTop: 14, lineHeight: 17 },

@@ -5,9 +5,15 @@
  * browser (where Seeker Connect works), signs there, and hands the desktop
  * an encrypted bundle through this relay.
  *
- *   POST /api/pair/start     { desktopKey }            → { id }
+ *   POST /api/pair/start     { desktopKey }            → { id, shortCode }
+ *   POST /api/pair/lookup    { shortCode }             → { id, desktopKey }
  *   POST /api/pair/complete  { id, phoneKey, iv, data } → { ok }
  *   POST /api/pair/poll      { id }                    → { status, bundle? }
+ *
+ * The QR carries the id + desktop key. Phones whose camera or wallet scanner
+ * won't open a website link type the short code instead (lookup). The
+ * 4-digit code both screens show is derived from the desktop key the phone
+ * actually received, so a swapped key would show a different number.
  *
  * The bundle (wallet, access token, chat-identity signature) is encrypted on
  * the phone to the desktop's one-time X25519 key; this worker only ever holds
@@ -28,6 +34,10 @@ export interface WebPairEnv {
 }
 
 const PREFIX = "pair:";
+const CODE_PREFIX = "pairc:";
+// Crockford base32: no I, L, O, U — easy to read and type. 8 chars ≈ 2^40.
+const CODE_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+const SHORT_CODE = /^[0-9A-HJKMNP-TV-Z]{8}$/;
 const TTL_S = 300;
 const KEY_B64URL = /^[A-Za-z0-9_-]{43}$/; // 32-byte X25519 public key
 const ID = /^[0-9a-f]{32}$/;
@@ -75,8 +85,21 @@ export async function handleWebPair(path: string, request: Request, env: WebPair
     if (!desktopKey) return reply({ error: "invalid key" }, 400, origin);
     const id = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("");
     const entry: Entry = { desktopKey, status: "pending" };
+    const shortCode = Array.from(crypto.getRandomValues(new Uint8Array(8)), (b) => CODE_ALPHABET[b & 31]).join("");
     await env.DEVICE_INTEGRITY.put(PREFIX + id, JSON.stringify(entry), { expirationTtl: TTL_S });
-    return reply({ id, expiresIn: TTL_S }, 200, origin);
+    await env.DEVICE_INTEGRITY.put(CODE_PREFIX + shortCode, id, { expirationTtl: TTL_S });
+    return reply({ id, shortCode, expiresIn: TTL_S }, 200, origin);
+  }
+
+  if (path === "/api/pair/lookup") {
+    const shortCode = typeof body.shortCode === "string" ? body.shortCode : "";
+    if (!SHORT_CODE.test(shortCode)) return reply({ error: "invalid code" }, 400, origin);
+    const codeId = await env.DEVICE_INTEGRITY.get(CODE_PREFIX + shortCode);
+    const raw = codeId ? await env.DEVICE_INTEGRITY.get(PREFIX + codeId) : null;
+    if (!codeId || !raw) return reply({ error: "code not found or expired — check it, or show a new one on your computer" }, 404, origin);
+    const entry = JSON.parse(raw) as Entry;
+    if (entry.status !== "pending") return reply({ error: "this code was already used" }, 409, origin);
+    return reply({ id: codeId, desktopKey: entry.desktopKey }, 200, origin);
   }
 
   const id = typeof body.id === "string" && ID.test(body.id) ? body.id : "";

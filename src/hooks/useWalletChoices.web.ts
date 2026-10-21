@@ -6,8 +6,8 @@ export type { WalletChoice };
 
 function labelFor(name: string): string {
   if (name === QR_WALLET_NAME) return "Seeker / Saga — scan QR";
-  if (name === SEEKER_CONNECT_WALLET_NAME) return "Seeker wallet";
-  if (name === "Mobile Wallet Adapter") return "Phone wallet app";
+  if (name === SEEKER_CONNECT_WALLET_NAME) return "Seeker wallet via Seeker Connect (beta)";
+  if (name === "Mobile Wallet Adapter") return "Seed Vault / phone wallet (recommended)";
   return name;
 }
 

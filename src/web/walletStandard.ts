@@ -76,9 +76,14 @@ function isUsable(w: Wallet): boolean {
   );
 }
 
-/** Solana Mobile wallets first: Seeker Connect, then the QR / MWA wallet. */
+/**
+ * Solana Mobile wallets first. Plain Mobile Wallet Adapter leads: it is what
+ * the OnlyMonkes app already uses with Seed Vault. Seeker Connect launches
+ * through the connect.solanamobile.com App Link, which in-app browsers and
+ * wallets without Seeker Connect support turn into a dApp Store redirect.
+ */
 function mobileRank(w: Wallet): number {
-  return w.name === SEEKER_CONNECT_NAME ? 2 : /Mobile Wallet Adapter/.test(w.name) ? 1 : 0;
+  return /Mobile Wallet Adapter/.test(w.name) ? 2 : w.name === SEEKER_CONNECT_NAME ? 1 : 0;
 }
 
 export function listWallets(): Wallet[] {

@@ -88,6 +88,7 @@
     "walletHint": "Requiere una app de wallet de Solana (Phantom, Solflare, etc.)",
     "chooseWallet": "Elige tu Wallet",
     "noWallets": "No se encontró ninguna wallet de Solana en este navegador. Instala Phantom, Solflare o Backpack y recarga.",
+    "approveComputer": "¿Aprobando un inicio de sesión en tu computadora? Ingresa su código",
     "cancel": "Cancelar"
   },
   "autonoWizard": {

@@ -3,24 +3,58 @@
  * lets the user pick the phone's wallet (Seeker Connect / MWA), and sends the
  * encrypted login bundle to the waiting desktop (src/web/pairing.ts).
  */
-import React, { useMemo, useState } from "react";
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import React, { useState } from "react";
+import { Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { THEME, FONTS } from "@/lib/constants";
 import { PAIR_CHOICE_KEY, useWalletChoices } from "@/hooks/useWalletChoices";
-import { approveOnPhone, pairCode, readPairLink } from "@/web/pairing";
+import { approveOnPhone, lookupShortCode, pairCode, readPairLink } from "@/web/pairing";
 
 export default function PairScreen() {
-  const link = useMemo(() => (typeof window !== "undefined" ? readPairLink(window.location.hash) : null), []);
+  const [link, setLink] = useState(() => (typeof window !== "undefined" ? readPairLink(window.location.hash) : null));
   const { choices: all, choose } = useWalletChoices();
   const choices = all.filter((c) => c.key !== PAIR_CHOICE_KEY);
   const [state, setState] = useState<"ready" | "busy" | "done" | "error">("ready");
   const [error, setError] = useState<string | null>(null);
+  const [typed, setTyped] = useState("");
+  const [looking, setLooking] = useState(false);
 
   if (!link) {
+    const submit = async () => {
+      setLooking(true);
+      setError(null);
+      try {
+        setLink(await lookupShortCode(typed));
+      } catch (e) {
+        setError((e as Error)?.message ?? "Code not found");
+      } finally {
+        setLooking(false);
+      }
+    };
     return (
       <View style={styles.page}>
-        <Text style={styles.title}>Pairing link not valid</Text>
-        <Text style={styles.body}>Show a new code on your computer and scan it again.</Text>
+        <Text style={styles.title}>Approve a login on your computer</Text>
+        <Text style={styles.body}>On your computer, choose Login → "Seeker / Saga — scan to log in", then type the 8-character code it shows.</Text>
+        <TextInput
+          value={typed}
+          onChangeText={setTyped}
+          onSubmitEditing={submit}
+          placeholder="K7Q4-MX2P"
+          placeholderTextColor={THEME.textFaint}
+          autoCapitalize="characters"
+          autoCorrect={false}
+          maxLength={11}
+          style={styles.input}
+          accessibilityLabel="Code from your computer"
+        />
+        <Pressable
+          onPress={submit}
+          disabled={looking || typed.replace(/[\s-]/g, "").length < 8}
+          style={({ pressed }) => [styles.button, (pressed || looking) && styles.rowDim]}
+          accessibilityRole="button"
+        >
+          <Text style={styles.buttonText}>{looking ? "Checking…" : "Continue"}</Text>
+        </Pressable>
+        {error && <Text style={styles.error}>{error}</Text>}
       </View>
     );
   }
@@ -45,7 +79,7 @@ export default function PairScreen() {
       <Text style={styles.title}>Log in to OnlyMonkes on your computer?</Text>
       <Text style={styles.code}>{pairCode(link.desktopKey)}</Text>
       <Text style={styles.warn}>
-        Only continue if your computer shows this same code and you started this login yourself.
+        Only continue if your computer shows this same match number and you started this login yourself.
         Approving gives that browser access to your OnlyMonkes chats.
       </Text>
 
@@ -92,4 +126,7 @@ const styles = StyleSheet.create({
   icon: { width: 28, height: 28, borderRadius: 6 },
   iconText: { fontSize: 22, width: 28, textAlign: "center" },
   rowLabel: { flex: 1, fontFamily: FONTS.bodyMed, fontSize: 16, color: THEME.text },
+  input: { fontFamily: FONTS.display, fontSize: 26, letterSpacing: 4, textAlign: "center", color: THEME.text, backgroundColor: THEME.surface, borderWidth: 1, borderColor: THEME.border, borderRadius: 14, paddingVertical: 14, marginTop: 8 },
+  button: { alignSelf: "center", paddingVertical: 12, paddingHorizontal: 28, borderRadius: 12, backgroundColor: THEME.accent },
+  buttonText: { fontFamily: FONTS.bodySemi, fontSize: 16, color: "#fff" },
 });

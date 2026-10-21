@@ -96,6 +96,8 @@ export type DesktopPairing = {
   id: string;
   url: string;
   code: string;
+  /** Typed on the phone when its camera / wallet scanner won't open the QR link. */
+  shortCode: string;
   /** Resolves with the decrypted bundle once the phone approves. */
   result: Promise<PairBundle>;
   cancel: () => void;
@@ -104,7 +106,7 @@ export type DesktopPairing = {
 export async function startDesktopPairing(): Promise<DesktopPairing> {
   const priv = x25519.utils.randomPrivateKey();
   const desktopKey = toB64url(x25519.getPublicKey(priv));
-  const { id } = await post("/api/pair/start", { desktopKey });
+  const { id, shortCode } = await post("/api/pair/start", { desktopKey });
   const url = `${window.location.origin}/pair#id=${id}&k=${desktopKey}`;
   let cancelled = false;
   const result = (async () => {
@@ -121,7 +123,7 @@ export async function startDesktopPairing(): Promise<DesktopPairing> {
     throw new Error(cancelled ? "Pairing cancelled" : "Pairing timed out — show a new code");
   })();
   result.catch(() => {});
-  return { id, url, code: pairCode(desktopKey), result, cancel: () => { cancelled = true; } };
+  return { id, url, code: pairCode(desktopKey), shortCode, result, cancel: () => { cancelled = true; } };
 }
 
 /** The identity-message signer for prepareWalletBoundXmtp on a paired desktop. */
@@ -136,6 +138,24 @@ export function pairedIdentitySigner(bundle: PairBundle) {
 }
 
 // ─── Phone ───────────────────────────────────────────────────────────────────
+
+/** "k7q4 mx2p" / "K7Q4-MX2P" / "K7Q4MXZP" with O/I/L typos → "K7Q4MX2P", or null. */
+export function normalizeShortCode(input: string): string | null {
+  const c = input.toUpperCase().replace(/[\s-]/g, "").replace(/O/g, "0").replace(/[IL]/g, "1");
+  return /^[0-9A-HJKMNP-TV-Z]{8}$/.test(c) ? c : null;
+}
+
+export function formatShortCode(code: string): string {
+  return `${code.slice(0, 4)}-${code.slice(4)}`;
+}
+
+/** Phone: resolve a typed short code to the pairing it belongs to. */
+export async function lookupShortCode(input: string): Promise<{ id: string; desktopKey: string }> {
+  const shortCode = normalizeShortCode(input);
+  if (!shortCode) throw new Error("That code doesn't look right — it's 8 letters and numbers, like K7Q4-MX2P");
+  const r = await post("/api/pair/lookup", { shortCode });
+  return { id: r.id, desktopKey: r.desktopKey };
+}
 
 /** Parse `#id=<id>&k=<desktop key>` from the /pair link. */
 export function readPairLink(hash: string): { id: string; desktopKey: string } | null {
