@@ -146,6 +146,16 @@ export async function lookupShortCode(input: string): Promise<{ id: string; desk
   return { id: r.id, desktopKey: r.desktopKey };
 }
 
+/** Phone: is this pairing still waiting for approval? (Does not consume it.) */
+export async function pairingIsLive(id: string): Promise<boolean> {
+  try {
+    const r = await post("/api/pair/poll", { id });
+    return r?.status === "pending";
+  } catch {
+    return false;
+  }
+}
+
 /** Parse `#id=<id>&k=<desktop key>` from the /pair link. */
 export function readPairLink(hash: string): { id: string; desktopKey: string } | null {
   const p = new URLSearchParams(hash.replace(/^#/, ""));
