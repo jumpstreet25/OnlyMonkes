@@ -3,6 +3,18 @@ main = "src/index.ts"
 compatibility_date = "2026-03-23"
 compatibility_flags = ["nodejs_compat"]
 
+# 2026-10-22: onlymonkes.app is the public site (landing, /get, /open/*,
+# legal, /monke/:mint) served by this worker; the web app moved to
+# app.onlymonkes.app (scripts/web/wrangler.toml on the web-app branch).
+routes = [
+  { pattern = "onlymonkes.app", custom_domain = true },
+  { pattern = "www.onlymonkes.app", custom_domain = true },
+]
+
+# Site images, robots.txt, sitemap.xml — served before the worker runs.
+[assets]
+directory = "site"
+
 # Secrets (set via `wrangler secret put`):
 #   HELIUS_API_KEY  — Helius RPC API key
 #   JUP_API_KEY     — Jupiter Swap v2 API key (portal.jup.ag)
@@ -86,7 +98,7 @@ crons = ["0 */4 * * *", "0 * * * *"]
 # XMTP_JWT_PRIVATE_KEY is a secret (`wrangler secret put`); its public half
 # is in the XMTP backend's backend.toml [auth] keys on the VPS.
 [vars]
-WEB_APP_ORIGINS = "https://onlymonkes.app,https://www.onlymonkes.app,https://onlymonkes-web.jumpstreet25.workers.dev"
+WEB_APP_ORIGINS = "https://app.onlymonkes.app,https://onlymonkes.app,https://www.onlymonkes.app,https://onlymonkes-web.jumpstreet25.workers.dev"
 XMTP_JWT_KID = "om-1"
 # Bot profile import over HTTPS (Caddy route on the VPS → bot :3001/web-profile).
 BOT_PROFILE_URL = "https://157-173-192-39.sslip.io/bot-api"
