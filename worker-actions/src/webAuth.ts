@@ -30,8 +30,10 @@ export interface WebAuthEnv {
   WEB_RPC_LIMITER?: RateLimiter;
   XMTP_JWT_PRIVATE_KEY?: string;
   XMTP_JWT_KID?: string;
-  BOT_HTTP_URL?: string;
   BOT_HTTP_SECRET: string;
+  /** HTTPS base for the bot's /web-profile (Caddy on the VPS) — deployed
+   *  Workers ignore custom ports, so BOT_HTTP_URL's :3001 never connects. */
+  BOT_PROFILE_URL?: string;
 }
 
 export type HolderTier = "monke" | "genesis";
@@ -234,7 +236,7 @@ export async function handleWebProfile(request: Request, env: WebAuthEnv): Promi
   // the bot resolves the phone inbox it belongs to, even an older random one.
   const identifier = typeof body?.identifier === "string" && /^0x[0-9a-f]{40}$/.test(body.identifier) ? body.identifier : "";
   if (!inboxId && !identifier) return reply({ error: "invalid inbox" }, 400, origin);
-  const base = (env.BOT_HTTP_URL ?? "").replace(/\/$/, "");
+  const base = (env.BOT_PROFILE_URL ?? "").replace(/\/$/, "");
   if (!base || !env.BOT_HTTP_SECRET) return reply({ error: "profile import unavailable" }, 503, origin);
   try {
     const res = await fetch(`${base}/web-profile`, {

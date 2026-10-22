@@ -88,6 +88,8 @@ crons = ["0 */4 * * *", "0 * * * *"]
 [vars]
 WEB_APP_ORIGINS = "https://onlymonkes-web.jumpstreet25.workers.dev"
 XMTP_JWT_KID = "om-1"
+# Bot profile import over HTTPS (Caddy route on the VPS → bot :3001/web-profile).
+BOT_PROFILE_URL = "https://157-173-192-39.sslip.io/bot-api"
 
 # Per-IP limit shared by /api/rpc and /api/auth/* (key prefixes differ).
 [[ratelimits]]
