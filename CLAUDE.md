@@ -234,6 +234,7 @@ Interactive fallback (no bot): claude.ai/code or Grok TUI from the phone browser
 
 ## Solana Actions / Blinks
 
+- **onlymonkes.app (2026-10-22):** the apex + www are custom domains of the **actions worker** (`worker-actions/src/site.ts`): landing, `/get` (dApp Store intent `solanadappstore://details?id=com.onlymonkes.app`, APK, web app — the store has no web listing URL), `/open/<target>` deep-link bounce pages, legal, `/monke/:mint`, images in `worker-actions/site/`. The web app is `app.onlymonkes.app` (`onlymonkes-web`); unknown apex paths 302 there, workers.dev legal URLs 301 to the apex. **Keep `workers_dev = true` in both wrangler files** — custom domains switch workers.dev off by default and the 3.4 app calls `onlymonkes-actions.jumpstreet25.workers.dev`. Deep links (Phase 1, JS): `/open/<target>` fires `intent://<route>#Intent;scheme=onlymonkes;package=com.onlymonkes.app`; `app/+native-intent.tsx` + `src/lib/deepLinks.ts` route them and hold a pre-login link until the wallet + inbox are ready. Never put inbox IDs or wallets in public links. Verified https App Links (autoVerify intent filter + apex assetlinks with the release key) need the 3.1 APK.
 - **Actions worker**: `https://onlymonkes-actions.jumpstreet25.workers.dev` (Cloudflare Worker)
 - Worker source: `worker-actions/src/index.ts` — swap and tip endpoints
 - **Jupiter API**: Use `api.jup.ag/swap/v2/quote` and `api.jup.ag/swap/v2/swap` — the old `quote-api.jup.ag/v6/` and `swap/v1/` endpoints are deprecated and return DNS errors from CF Workers.

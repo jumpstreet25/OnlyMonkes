@@ -2,6 +2,9 @@ name = "onlymonkes-actions"
 main = "src/index.ts"
 compatibility_date = "2026-03-23"
 compatibility_flags = ["nodejs_compat"]
+# The published app calls the workers.dev address; custom domains turn it off by default.
+workers_dev = true
+preview_urls = true
 
 # 2026-10-22: onlymonkes.app is the public site (landing, /get, /open/*,
 # legal, /monke/:mint) served by this worker; the web app moved to
