@@ -88,7 +88,7 @@ import { handleGetLumaEvents } from "./lumaEvents";
 import { handlePublishAppConfig } from "./adminConfig";
 import { handleBotCommand, handleInboxReset } from "./botCommand";
 import { handleWebRpc } from "./webRpc";
-import { handleWebAuth } from "./webAuth";
+import { handleWebAuth, handleWebProfile } from "./webAuth";
 import { handleWebPair } from "./webPair";
 import { verifyGenesisTokenOwnership } from "./genesisVerify";
 import { handleMonkeMemeGenerate } from "./monkeMeme";
@@ -3602,6 +3602,10 @@ export default {
     }
     if (path === "/api/rpc") {
       return handleWebRpc(request, env);
+    }
+
+    if (path === "/api/profile/me") {
+      return handleWebProfile(request, env);
     }
 
     if (path.startsWith("/api/pair/")) {

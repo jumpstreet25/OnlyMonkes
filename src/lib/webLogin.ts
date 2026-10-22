@@ -13,3 +13,10 @@ export async function joinProofSuffix(): Promise<string> {
 export function startSingleSessionLogin(_choiceKey: string): Promise<WalletAccount> | null {
   return null;
 }
+
+export type ImportedProfile = { username: string; bio: string; xAccount: string; tipWallet: string; location: string };
+
+/** Native: the phone already has its own profile. */
+export async function importPhoneProfile(): Promise<ImportedProfile | null> {
+  return null;
+}
