@@ -21,6 +21,7 @@ import {
   ScrollView,
   StatusBar,
   Linking,
+  Platform,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
@@ -84,6 +85,20 @@ const EARTH_TEXTURE_CDN_URL = "https://unpkg.com/three-globe/example/img/earth-b
 // them as opaque assets instead of trying to parse them as app source) and
 // inlined as plain <script> bodies in place of the CDN tags.
 
+// Web: the assets are plain URLs on the site and there is no file system;
+// the iframe stand-in for WebView (src/web/shims/webview.tsx) relays
+// window.ReactNativeWebView.postMessage to the screen through parent.postMessage.
+const IS_WEB = Platform.OS === "web";
+const WEB_BRIDGE = "<script>window.ReactNativeWebView={postMessage:function(d){parent.postMessage(d,'*')}};</script>";
+
+function readText(uri: string): Promise<string> {
+  if (!IS_WEB) return FileSystem.readAsStringAsync(uri);
+  return fetch(uri).then((r) => {
+    if (!r.ok) throw new Error(`asset ${r.status}`);
+    return r.text();
+  });
+}
+
 async function loadGlobeHtml(): Promise<string> {
   if (_cachedGlobeHtml) return _cachedGlobeHtml;
   try {
@@ -91,17 +106,22 @@ async function loadGlobeHtml(): Promise<string> {
     const asset = Asset.fromModule(require("../../assets/globe.html"));
     await asset.downloadAsync();
     const uri = asset.localUri ?? asset.uri;
-    let html = await FileSystem.readAsStringAsync(uri);
+    let html = await readText(uri);
+    if (IS_WEB) html = html.replace("<head>", `<head>${WEB_BRIDGE}`);
 
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const textureAsset = Asset.fromModule(require("../../assets/earth-texture.jpg"));
       await textureAsset.downloadAsync();
       const textureUri = textureAsset.localUri ?? textureAsset.uri;
-      const textureB64 = await FileSystem.readAsStringAsync(textureUri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-      html = html.replace(EARTH_TEXTURE_CDN_URL, `data:image/jpeg;base64,${textureB64}`);
+      if (IS_WEB) {
+        html = html.replace(EARTH_TEXTURE_CDN_URL, new URL(textureUri, window.location.href).href);
+      } else {
+        const textureB64 = await FileSystem.readAsStringAsync(textureUri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        html = html.replace(EARTH_TEXTURE_CDN_URL, `data:image/jpeg;base64,${textureB64}`);
+      }
     } catch {
       // Fall back to the CDN URL (still works, just slower/network-dependent)
       // if the local asset fails to resolve for any reason.
@@ -114,8 +134,8 @@ async function loadGlobeHtml(): Promise<string> {
       const orbitAsset = Asset.fromModule(require("../../assets/OrbitControls.js.txt"));
       await Promise.all([threeAsset.downloadAsync(), orbitAsset.downloadAsync()]);
       const [threeJs, orbitJs] = await Promise.all([
-        FileSystem.readAsStringAsync(threeAsset.localUri ?? threeAsset.uri),
-        FileSystem.readAsStringAsync(orbitAsset.localUri ?? orbitAsset.uri),
+        readText(threeAsset.localUri ?? threeAsset.uri),
+        readText(orbitAsset.localUri ?? orbitAsset.uri),
       ]);
       html = html
         .replace("/*__THREE_JS__*/", threeJs)

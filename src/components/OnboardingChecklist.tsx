@@ -42,9 +42,21 @@ async function save() {
   } catch { /* ignore */ }
 }
 
+const _listeners = new Set<(s: OnboardingState) => void>();
+
 export async function markOnboardingStep(step: keyof Omit<OnboardingState, "dismissed">) {
+  await loadOnboarding();
   if (_state[step]) return; // already done
-  _state[step] = true;
+  _state = { ..._state, [step]: true };
+  _listeners.forEach((l) => l(_state));
+  await save();
+}
+
+/** A returning user (profile carried over from the phone) already did these. */
+export async function markOnboardingStepsDone() {
+  await loadOnboarding();
+  _state = { ..._state, sentMessage: true, reactedToMessage: true, openedGlobe: true };
+  _listeners.forEach((l) => l(_state));
   await save();
 }
 
@@ -60,6 +72,8 @@ export function OnboardingChecklist() {
       setState(s);
       setVisible(!s.dismissed);
     });
+    _listeners.add(setState);
+    return () => { _listeners.delete(setState); };
   }, []);
 
   if (!visible) return null;

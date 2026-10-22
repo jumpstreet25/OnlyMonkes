@@ -12,6 +12,7 @@ import { saveUserProfile } from "@/lib/userProfile";
 import { applyProfileSnapshot } from "@/lib/reclaim";
 import { getXmtpClient } from "@/hooks/useXmtp";
 import { getXmtpCredential } from "./webAuth";
+import { markOnboardingStepsDone } from "@/components/OnboardingChecklist";
 
 const WORKER = "https://onlymonkes-actions.jumpstreet25.workers.dev";
 const INBOX_WAIT_MS = 60_000;
@@ -73,6 +74,7 @@ export function importPhoneProfile(): Promise<ImportedProfile | null> {
       pfpBindings: p.pb && typeof p.pb === "object" ? (p.pb as Record<string, string[]>) : undefined,
       legendary: p.lg === 1,
     }).catch(() => {});
+    await markOnboardingStepsDone().catch(() => {});
     return imported;
   })().catch(() => null);
   // Don't remember a miss: the next chat screen mount tries again.

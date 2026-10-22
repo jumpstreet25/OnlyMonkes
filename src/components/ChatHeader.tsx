@@ -5,6 +5,8 @@ import {
   StyleSheet,
   Pressable,
   ImageBackground,
+  Image,
+  Platform,
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -15,6 +17,10 @@ import { getLocatedUserCount, useProfileVersion } from "@/lib/userProfile";
 import { markOnboardingStep } from "@/components/OnboardingChecklist";
 import { BotCommandTicker } from "@/components/BotCommandTicker";
 import { useAppStore } from "@/store/appStore";
+
+// react-native-web's ImageBackground puts its image at zIndex -1, behind the
+// header's own background, so the banner vanished on the web app.
+const Banner = (Platform.OS === "web" ? Image : ImageBackground) as React.ComponentType<React.ComponentProps<typeof ImageBackground>>;
 
 // 2026-07-24: always-on glass — was themeSurface (#12121A, fully opaque)
 // when no world is equipped, which hid the BlurView below completely.
@@ -126,7 +132,7 @@ export function ChatHeader({
       </View>
 
       {/* Center: decorative banner image */}
-      <ImageBackground
+      <Banner
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         source={logoSource ?? require("../../assets/header.png")}
         style={[styles.headerCenter, { transform: [{ scale: logoScale }] }]}
