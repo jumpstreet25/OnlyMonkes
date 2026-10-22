@@ -194,8 +194,8 @@ export function renderLanding(stats: SiteStats | null): Response {
   const statChips = stats
     ? [
         `<div class="stat"><b>${stats.holders.toLocaleString("en-US")}</b><span>Saga Monkes holders</span></div>`,
-        stats.floorSol != null ? `<div class="stat"><b>${stats.floorSol.toFixed(2)} SOL</b><span>floor</span></div>` : "",
-        stats.volume24hSol != null ? `<div class="stat"><b>${stats.volume24hSol.toFixed(1)} SOL</b><span>24h volume</span></div>` : "",
+        stats.floorSol ? `<div class="stat"><b>${stats.floorSol.toFixed(2)} SOL</b><span>floor</span></div>` : "",
+        stats.volume24hSol ? `<div class="stat"><b>${stats.volume24hSol.toFixed(1)} SOL</b><span>24h volume</span></div>` : "",
       ].join("")
     : "";
   const chips = Object.entries(OPEN_TARGETS)
