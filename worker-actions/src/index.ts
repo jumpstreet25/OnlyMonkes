@@ -32,7 +32,7 @@
  *   TIP_ESCROW — stores encrypted ephemeral keypairs for tip links (72h TTL)
  */
 
-import { renderLanding, renderGet, renderOpen, isSitePath, LEGAL_PATHS, SITE_BASE, WEB_APP_BASE } from "./site";
+import { renderLanding, renderGet, renderOpen, LEGAL_PATHS, SITE_BASE } from "./site";
 import {
   Connection,
   Keypair,
@@ -2077,6 +2077,35 @@ async function getLatestApkUrl(env: Env): Promise<string> {
   }
 }
 
+/** Newest test build: the latest GitHub pre-release tagged `test-*` with an
+ *  .apk attached. Kept apart from /download/apk so the published link never
+ *  serves a test build. */
+async function getTestApkUrl(env: Env): Promise<string> {
+  const cached = await env.FRAME_ALERTS.get("apk:test-url");
+  if (cached) {
+    try {
+      const { url, ts } = JSON.parse(cached) as { url: string; ts: number };
+      if (Date.now() - ts < 10 * 60 * 1000) return url;
+    } catch { /* fall through to re-resolve */ }
+  }
+  try {
+    const res = await fetchWithTimeout("https://api.github.com/repos/jumpstreet25/OnlyMonkes/releases?per_page=30", {
+      headers: { "User-Agent": "OnlyMonkes-Web/1.0", "Accept": "application/vnd.github+json" },
+    }, 8_000);
+    if (!res.ok) throw new Error(`GitHub API ${res.status}`);
+    const releases = await res.json() as any[];
+    const rel = releases.find((r) => r?.prerelease && typeof r?.tag_name === "string" && r.tag_name.startsWith("test-")
+      && (r.assets ?? []).some((a: any) => typeof a?.name === "string" && a.name.endsWith(".apk")));
+    const url = rel
+      ? rel.assets.find((a: any) => a.name.endsWith(".apk")).browser_download_url
+      : "https://github.com/jumpstreet25/OnlyMonkes/releases";
+    await env.FRAME_ALERTS.put("apk:test-url", JSON.stringify({ url, ts: Date.now() }), { expirationTtl: 24 * 60 * 60 });
+    return url;
+  } catch {
+    return "https://github.com/jumpstreet25/OnlyMonkes/releases";
+  }
+}
+
 /** GET /download/apk — redirects to whichever APK is attached to the
  *  current latest GitHub release, resolved dynamically so this link never
  *  needs updating as new versions ship. */
@@ -3468,15 +3497,12 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
 
-    // 2026-10-22: onlymonkes.app is the public site; the web app moved to
-    // app.onlymonkes.app. Old web-app links and the workers.dev legal URLs
-    // (linked from the 3.4 app's About screen) land on the right host.
+    // 2026-10-22: onlymonkes.app belongs to the web app (onlymonkes-web), whose
+    // front door forwards the public-site paths here with the host unchanged.
+    // The workers.dev legal URLs (the 3.4 app's About screen) move there too.
     if (request.method === "GET" || request.method === "HEAD") {
       if (url.hostname === "www.onlymonkes.app") {
         return Response.redirect(`${SITE_BASE}${path}${url.search}`, 301);
-      }
-      if (url.hostname === "onlymonkes.app" && !isSitePath(path)) {
-        return Response.redirect(`${WEB_APP_BASE}${path}${url.search}`, 302);
       }
       if (url.hostname.endsWith(".workers.dev") && LEGAL_PATHS.test(path)) {
         return Response.redirect(`${SITE_BASE}${path}`, 301);
@@ -3490,7 +3516,7 @@ export default {
 
     // 2026-07-30: public "Check Your Monke" growth page — see the section
     // comment above SAGA_COLLECTION_MINT for context.
-    if (path === "/") {
+    if (path === "/" || path === "/welcome") {
       if (request.method === "GET") return renderLanding(await getCachedStats(env));
       return errorResponse("Method not allowed", 405);
     }
@@ -3502,7 +3528,7 @@ export default {
     if (openMatch && request.method === "GET") {
       const page = renderOpen(openMatch[1]);
       if (page) return page;
-      return Response.redirect(`${SITE_BASE}/`, 302);
+      return Response.redirect(`${SITE_BASE}/welcome`, 302);
     }
     if (path === "/api/stats") {
       if (request.method === "GET") return handleStatsApi(env);
@@ -3669,6 +3695,10 @@ export default {
     }
     if (path === "/download/apk") {
       if (request.method === "GET") return handleDownloadApk(env);
+      return errorResponse("Method not allowed", 405);
+    }
+    if (path === "/download/apk/test") {
+      if (request.method === "GET") return Response.redirect(await getTestApkUrl(env), 302);
       return errorResponse("Method not allowed", 405);
     }
     const monkeImageMatch = path.match(/^\/monke\/([^/]+)\/image$/);

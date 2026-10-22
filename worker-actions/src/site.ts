@@ -1,6 +1,8 @@
 /**
  * onlymonkes.app — public landing page, install page and deep-link bounce
- * pages (2026-10-22). The web app itself lives at app.onlymonkes.app.
+ * pages (2026-10-22). The web app owns "/" on onlymonkes.app (owner, same
+ * evening); its front door (scripts/web/site-router.ts on web-app) forwards
+ * the site paths below to this worker, so the landing page is /welcome.
  *
  * Deep links (Phase 1, works on the published 3.4 binary): /open/<target>
  * fires an Android intent for the app's own `onlymonkes://` scheme, with a
@@ -9,7 +11,7 @@
  */
 
 export const SITE_BASE = "https://onlymonkes.app";
-export const WEB_APP_BASE = "https://app.onlymonkes.app";
+export const WEB_APP_BASE = SITE_BASE;
 export const ANDROID_PACKAGE = "com.onlymonkes.app";
 const TENSOR_URL = "https://www.tensor.trade/trade/sagamonkes";
 const CONTACT_EMAIL = "Jumpstreet25@icloud.com";
@@ -86,21 +88,21 @@ function head(title: string, description: string, path: string, extraCss = ""): 
 <title>${esc(title)}</title>
 <meta name="description" content="${esc(description)}">
 <link rel="canonical" href="${esc(url)}">
-<link rel="icon" type="image/png" href="/favicon.png">
-<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="/site/favicon.png">
+<link rel="apple-touch-icon" href="/site/apple-touch-icon.png">
 <meta name="theme-color" content="#050b1a">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="OnlyMonkes">
 <meta property="og:title" content="${esc(title)}">
 <meta property="og:description" content="${esc(description)}">
 <meta property="og:url" content="${esc(url)}">
-<meta property="og:image" content="${SITE_BASE}/og.png">
+<meta property="og:image" content="${SITE_BASE}/site/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="${esc(title)}">
 <meta name="twitter:description" content="${esc(description)}">
-<meta name="twitter:image" content="${SITE_BASE}/og.png">
+<meta name="twitter:image" content="${SITE_BASE}/site/og.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@600;700&display=swap" rel="stylesheet">
@@ -108,11 +110,11 @@ function head(title: string, description: string, path: string, extraCss = ""): 
 </head>
 <body>
 <header class="top"><div class="wrap">
-  <a href="/" aria-label="OnlyMonkes home"><img src="/logo.png" alt="OnlyMonkes" width="146" height="34"></a>
+  <a href="/welcome" aria-label="OnlyMonkes home"><img src="/site/logo.png" alt="OnlyMonkes" width="146" height="34"></a>
   <nav>
-    <a class="hide-sm" href="/#access">Access</a>
-    <a class="hide-sm" href="/#features">Features</a>
-    <a class="hide-sm" href="/#faq">FAQ</a>
+    <a class="hide-sm" href="/welcome#access">Access</a>
+    <a class="hide-sm" href="/welcome#features">Features</a>
+    <a class="hide-sm" href="/welcome#faq">FAQ</a>
     <a class="btn sm ghost" href="${WEB_APP_BASE}">Web app</a>
     <a class="btn sm primary" href="/get">Get the app</a>
   </nav>
@@ -206,7 +208,7 @@ export function renderLanding(stats: SiteStats | null): Response {
   const body = `${head(
     "OnlyMonkes — the home of Saga Monkes on Solana Mobile",
     "Encrypted holder chat, a trading bot in your DMs, a marketplace and memes — for Saga Monkes and Genesis Token holders on Seeker and Saga.",
-    "/",
+    "/welcome",
     LANDING_CSS,
   )}
 <main>
@@ -221,7 +223,7 @@ export function renderLanding(stats: SiteStats | null): Response {
     <p class="note">For Seeker and Saga, on the Solana dApp Store.</p>
     <div class="stats">${statChips}</div>
   </div>
-  <img class="mascot" src="/icon-512.png" alt="" width="340" height="340">
+  <img class="mascot" src="/site/icon-512.png" alt="" width="340" height="340">
 </div></div>
 
 <section id="access"><div class="wrap">
@@ -317,7 +319,7 @@ export function renderGet(): Response {
   const apk = `${SITE_BASE}/download/apk`;
   const body = `${head("Get OnlyMonkes", "Install OnlyMonkes from the Solana dApp Store on Seeker or Saga.", "/get", PAGE_CSS)}
 <main class="page">
-  <img class="mascot" src="/icon-512.png" alt="">
+  <img class="mascot" src="/site/icon-512.png" alt="">
   <h1>Get OnlyMonkes</h1>
   <p>OnlyMonkes is on the Solana dApp Store for Seeker and Saga.</p>
   <div class="stack">
@@ -347,7 +349,7 @@ export function renderOpen(key: string): Response | null {
   const need = t.tier === "genesis" ? "a Saga or Seeker Genesis Token (or a Saga Monke)" : "a Saga Monke";
   const body = `${head(`${t.label} — OnlyMonkes`, `Open ${t.label} in OnlyMonkes. Needs ${need} in your wallet.`, `/open/${key}`, PAGE_CSS)}
 <main class="page">
-  <img class="mascot" src="/icon-512.png" alt="">
+  <img class="mascot" src="/site/icon-512.png" alt="">
   <h1>Opening ${esc(t.label)}…</h1>
   <p>${esc(t.label)} needs ${esc(need)} in your wallet.</p>
   <div class="stack">
@@ -366,19 +368,6 @@ location.href=${JSON.stringify(intent)};
 </script>
 ${foot()}`;
   return html(body);
-}
-
-/** Paths the site worker answers on onlymonkes.app; anything else belonged to the
- *  web app before it moved and is redirected to app.onlymonkes.app. */
-export function isSitePath(path: string): boolean {
-  return (
-    path === "/" || path === "/get" || path === "/health" || path === "/actions.json" || path === "/claim" || path === "/escrow" ||
-    path === "/robots.txt" || path === "/sitemap.xml" ||
-    /^\/(legal|terms|privacy|copyright)(\/|\.html)?$/.test(path) ||
-    /^\/(open|monke|api|frames|download|\.well-known)\//.test(path) ||
-    /^\/helius-(webhook|events)$/.test(path) ||
-    /^\/[\w-]+\.(png|ico|svg|txt|xml)$/.test(path)
-  );
 }
 
 export const LEGAL_PATHS = /^\/(legal|terms|privacy|copyright)(\/|\.html)?$/;

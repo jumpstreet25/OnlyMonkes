@@ -6,15 +6,12 @@ compatibility_flags = ["nodejs_compat"]
 workers_dev = true
 preview_urls = true
 
-# 2026-10-22: onlymonkes.app is the public site (landing, /get, /open/*,
-# legal, /monke/:mint) served by this worker; the web app moved to
-# app.onlymonkes.app (scripts/web/wrangler.toml on the web-app branch).
-routes = [
-  { pattern = "onlymonkes.app", custom_domain = true },
-  { pattern = "www.onlymonkes.app", custom_domain = true },
-]
+# 2026-10-22: onlymonkes.app + www + app. belong to onlymonkes-web; its front
+# door (scripts/web/site-router.ts on web-app) forwards the public-site paths
+# (/welcome, /get, /open/*, legal, /site/*, /download/*, /monke/*, /api/*…)
+# here over a service binding. No custom domains on this worker.
 
-# Site images, robots.txt, sitemap.xml — served before the worker runs.
+# Site images (/site/*), robots.txt, sitemap.xml — served before the worker runs.
 [assets]
 directory = "site"
 
