@@ -3,58 +3,45 @@
  * web only — the Android bundle never sees this file).
  *
  * Exposes the subset of the RN SDK v5 API that src/lib/xmtp.ts and the hooks
- * use, backed by `@xmtp/browser-sdk` v8 against OnlyMonkes' self-hosted XMTP
- * backend. The browser SDK runs in a Web Worker that Metro can't bundle, so
- * it is pre-built by scripts/web/build-xmtp.mjs into public/xmtp/ and loaded
- * here as a native ES module.
+ * use, backed by `@xmtp/browser-sdk` 7.1 on XMTP's shared production network —
+ * the same network, groups and wallet-bound inbox as the phone app, so Main
+ * Chat, Genesis and DMs follow a holder between phone and browser. (The
+ * self-hosted backend in Monke_Eliza VPS.md is for the SDK 8 move, which phones
+ * and web make together.) The browser SDK runs in a Web Worker that Metro
+ * can't bundle, so it is pre-built by scripts/web/build-xmtp.mjs into
+ * public/xmtp/ and loaded here as a native ES module.
  *
  * Shapes returned match the RN SDK so callers stay unchanged: `content()` is a
  * string for text, `{ reaction }`, `{ reply }`, `{ remoteAttachment }` for the
  * native codecs; `sentNs` is a number; `messages()` defaults to newest-first.
  */
 
-import { getXmtpCredential } from "./webAuth";
-
 type Sdk = any;
 
 const SDK_URL = "/xmtp/sdk.js";
-
-// Staging deployment on the VPS (Monke_Eliza agents/monke-trader/VPS.md).
-// Production moves to Fly.io under its own deployment identifier.
-const DEFAULT_BACKEND_URL = "https://157-173-192-39.sslip.io";
-const APP_VERSION = "onlymonkes-web/1";
-
-// The old network registered inboxes with nonce 1; v8 defaults to 0. Keeping
-// 1 gives every wallet the same inbox ID it has today (bot, admin and
-// profile-cache IDs all key on it).
-const REGISTRATION_NONCE = 1n;
+// A local test page may switch to XMTP's dev network; the live site can't.
+function xmtpEnv(): string {
+  const override = (globalThis as any).__OM_XMTP_ENV;
+  const local = typeof location !== "undefined" && /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+  return local && override === "dev" ? "dev" : "production";
+}
+const APP_VERSION = "onlymonkes-web/2";
 
 // How many recent messages a catch-up scans for reactions newer than its window.
 const CATCH_UP_REACTION_SCAN = 200;
 
-function backendUrl(): string {
-  const override = (globalThis as any).__OM_XMTP_BACKEND_URL;
-  return typeof override === "string" && /^https?:\/\//.test(override) ? override : DEFAULT_BACKEND_URL;
-}
-
-/**
- * Bearer credential for the backend's [auth]: the holder token from the web
- * sign-in (src/web/webAuth.ts). A test harness may pre-set
- * `__OM_XMTP_TEST_CREDENTIAL` (API key or token) in the page instead.
- */
-const credentialSource = {
-  async credential() {
-    const test = (globalThis as any).__OM_XMTP_TEST_CREDENTIAL;
-    if (typeof test === "string" && test.length >= 32) {
-      return { value: `Bearer ${test}`, expiresAtSeconds: BigInt(Math.floor(Date.now() / 1000) + 3600) };
-    }
-    return getXmtpCredential();
-  },
-};
-
-function backendSource() {
-  return { url: backendUrl(), appVersion: APP_VERSION, credentials: credentialSource };
-}
+// wasm-bindings enums (numeric in 7.x).
+const CONSENT_TO_SDK: Record<RnConsent, number> = { unknown: 0, allowed: 1, denied: 2 };
+const CONSENT_FROM_SDK: RnConsent[] = ["unknown", "allowed", "denied"];
+const IDENTIFIER_ETHEREUM = 0;
+const REACTION_ADDED = 1;
+const REACTION_REMOVED = 2;
+const SCHEMA = { unicode: 1, shortcode: 2, custom: 3 } as const;
+const SORT_ASC = 0;
+const SORT_DESC = 1;
+const SORT_BY_SENT = 0;
+const DELIVERY = ["unpublished", "published", "failed"];
+const PERMISSION = ["member", "admin", "super_admin"];
 
 let _sdk: Promise<Sdk> | null = null;
 
@@ -69,9 +56,6 @@ function loadSdk(): Promise<Sdk> {
     s.onload = () => (g.__OM_XMTP_SDK ? resolve(g.__OM_XMTP_SDK) : reject(new Error("XMTP web SDK failed to initialise")));
     s.onerror = () => reject(new Error("XMTP web SDK failed to load"));
     document.head.appendChild(s);
-  }).then(async (sdk) => {
-    await sdk.pure.initPureWasm();
-    return sdk;
   });
   _sdk.catch(() => { _sdk = null; });
   return _sdk;
@@ -117,18 +101,13 @@ function bytesToHex(b: Uint8Array | ArrayBuffer | undefined): string {
 
 type RnConsent = "allowed" | "unknown" | "denied";
 
-const ALL_CONSENT: RnConsent[] = ["allowed", "unknown", "denied"];
+const ALL_CONSENT = [1, 0, 2];
 
-function nsOf(t: any): bigint {
-  return t?.ns != null ? BigInt(t.ns) : 0n;
+function nsOf(m: any): bigint {
+  return m?.sentAtNs != null ? BigInt(m.sentAtNs) : 0n;
 }
 
 // ─── Messages ────────────────────────────────────────────────────────────────
-
-/** Text of a v8 reply body / message body, if it carries text. */
-function bodyText(body: any): string | undefined {
-  return body && (body.kind === "text" || body.kind === "markdown") ? body.value : undefined;
-}
 
 function mapRemoteAttachment(v: any) {
   return {
@@ -147,8 +126,8 @@ function mapReaction(reference: string, r: any) {
   return {
     reaction: {
       reference,
-      action: r?.action === "removed" ? "removed" : "added",
-      schema: r?.schema === "custom" || r?.schema === "shortcode" ? r.schema : "unicode",
+      action: r?.action === REACTION_REMOVED ? "removed" : "added",
+      schema: r?.schema === SCHEMA.custom ? "custom" : r?.schema === SCHEMA.shortcode ? "shortcode" : "unicode",
       content: r?.content ?? "",
     },
   };
@@ -192,33 +171,30 @@ class WebDecodedMessage {
     this.nativeContent = typeof fields.content === "string" ? { text: fields.content } : (fields.content as Record<string, unknown>) ?? {};
   }
 
-  static fromV8(m: any): WebDecodedMessage {
-    const c = m.content ?? {};
+  static fromSdk(m: any): WebDecodedMessage {
+    const c = m.content;
     let content: unknown;
-    switch (c.kind) {
+    switch (m.contentType?.typeId) {
       case "text":
       case "markdown":
-        content = typeof c.value === "string" ? c.value : "";
+        content = typeof c === "string" ? c : "";
         break;
       case "reaction":
-        content = mapReaction(c.reference ?? "", c.reaction);
+        content = mapReaction(c?.reference ?? "", c);
         break;
       case "reply": {
-        const text = bodyText(c.body);
-        content = { reply: { reference: c.referenceId ?? "", content: text != null ? { text } : {} } };
+        const text = typeof c?.content === "string" ? c.content : undefined;
+        content = { reply: { reference: c?.referenceId ?? c?.reference ?? "", content: text != null ? { text } : {} } };
         break;
       }
-      case "remoteAttachment":
-        content = { remoteAttachment: mapRemoteAttachment(c.value) };
+      case "remoteStaticAttachment":
+        content = { remoteAttachment: mapRemoteAttachment(c) };
         break;
       case "readReceipt":
         content = { readReceipt: {} };
         break;
-      case "groupUpdated":
-        content = { groupUpdated: c.value ?? {} };
-        break;
-      case "deletedMessage":
-        content = { deletedMessage: c.value ?? {} };
+      case "group_updated":
+        content = { groupUpdated: c ?? {} };
         break;
       default:
         content = m.fallback ? { text: m.fallback } : null;
@@ -226,28 +202,26 @@ class WebDecodedMessage {
     return new WebDecodedMessage({
       id: m.id,
       senderInboxId: m.senderInboxId,
-      sentAtNs: nsOf(m.sentAt),
+      sentAtNs: nsOf(m),
       conversationId: m.conversationId,
-      topic: m.topic,
       fallback: m.fallback,
       contentType: m.contentType,
-      deliveryStatus: m.deliveryStatus,
+      deliveryStatus: DELIVERY[m.deliveryStatus] ?? "published",
       content,
     });
   }
 
-  /** v8 folds reactions into their target; the RN SDK lists them as messages. */
+  /** The SDK folds reactions into their target; the RN SDK lists them as messages. */
   static reactionsOf(m: any): WebDecodedMessage[] {
     if (!Array.isArray(m.reactions)) return [];
     return m.reactions.map((r: any) => new WebDecodedMessage({
       id: r.id,
       senderInboxId: r.senderInboxId,
-      sentAtNs: nsOf(r.sentAt),
+      sentAtNs: nsOf(r),
       conversationId: m.conversationId,
-      topic: m.topic,
       contentType: { authorityId: "xmtp.org", typeId: "reaction", versionMajor: 2, versionMinor: 0 },
-      deliveryStatus: r.deliveryStatus,
-      content: mapReaction(m.id, r.reaction),
+      deliveryStatus: DELIVERY[r.deliveryStatus] ?? "published",
+      content: mapReaction(m.id, r.content),
     }));
   }
 
@@ -268,12 +242,10 @@ type MessageCb = (m: WebDecodedMessage) => void | Promise<void>;
 // ─── Live message hub ────────────────────────────────────────────────────────
 
 /**
- * v8 allows one default message reader per database; a second one fails with
- * ConsumerOwned. The app opens several (Main Chat, bot channels, open DMs and
- * the all-DM stream), so each client runs one reader here and fans messages
- * out by conversation. A reader replays retained messages when it opens; the
- * app does its own catch-up through messages({ afterNs }), so anything sent
- * before the hub started is skipped here rather than shown as new.
+ * One all-messages stream per client, fanned out by conversation (the app
+ * opens several: Main Chat, bot channels, open DMs and the all-DM stream).
+ * The app does its own catch-up through messages({ afterNs }), so anything
+ * sent before the hub started is skipped here rather than shown as new.
  */
 class MessageHub {
   private readonly byConversation = new Map<string, Set<MessageCb>>();
@@ -286,32 +258,33 @@ class MessageHub {
 
   private starting = false;
 
-  // An independent reader starting at "now", not the default consumer: the
-  // default one holds a database lease, so after a page reload it can fail
-  // with "A default message consumer is already active" (hit on the staging
-  // helper). The app catches up on history itself via messages().
   private ensure(): void {
     if (this.stream || this.starting) return;
     this.starting = true;
     this.startedNs = BigInt(Date.now() - 120_000) * 1_000_000n;
-    (async () => {
-      const selection = { consentStates: ALL_CONSENT };
-      const { cursor } = await this.inner.conversations.messageHistorySnapshot(1, selection);
-      this.stream = this.inner.conversations.streamAllMessages({ ...selection, from: cursor });
-      this.starting = false;
-      await this.stream.onValue((m: any) => this.dispatch(m));
-    })().catch((e: unknown) => {
-      console.warn("[XMTP web] message stream ended:", (e as Error)?.message);
-    }).finally(() => {
-      this.starting = false;
+    const restart = () => {
       this.stream = null;
       if (this.byConversation.size || this.all.size) setTimeout(() => this.ensure(), 3000);
+    };
+    this.inner.conversations.streamAllMessages({
+      consentStates: ALL_CONSENT,
+      onValue: (m: any) => this.dispatch(m),
+      onError: (e: Error) => console.warn("[XMTP web] message stream error:", e?.message),
+      // The SDK retries on its own; onFail means it gave up.
+      onFail: restart,
+    }).then((stream: any) => {
+      this.stream = stream;
+    }).catch((e: unknown) => {
+      console.warn("[XMTP web] message stream failed to start:", (e as Error)?.message);
+      restart();
+    }).finally(() => {
+      this.starting = false;
     });
   }
 
   private dispatch(m: any): void {
-    if (nsOf(m.sentAt) < this.startedNs) return;
-    const out = [WebDecodedMessage.fromV8(m), ...WebDecodedMessage.reactionsOf(m)];
+    if (nsOf(m) < this.startedNs) return;
+    const out = [WebDecodedMessage.fromSdk(m), ...WebDecodedMessage.reactionsOf(m)];
     for (const msg of out) {
       if (this.seen.has(msg.id)) continue;
       this.seen.add(msg.id);
@@ -339,7 +312,7 @@ class MessageHub {
   close(): void {
     this.byConversation.clear();
     this.all.clear();
-    this.stream?.end?.().catch?.(() => {});
+    this.stream?.end?.()?.catch?.(() => {});
     this.stream = null;
   }
 }
@@ -347,61 +320,48 @@ class MessageHub {
 // ─── Conversations ───────────────────────────────────────────────────────────
 
 class WebConversation {
-  private _state: { name?: string; imageUrl?: string; description?: string } = {};
-
   constructor(private readonly sdk: Sdk, readonly inner: any, private readonly hub: MessageHub) {}
 
-  /** Groups read name/image through state(); cache it so `.name` stays sync. */
   static async wrap(sdk: Sdk, inner: any, hub: MessageHub): Promise<WebConversation> {
-    const c = new WebConversation(sdk, inner, hub);
-    if (inner.kind === "group") await c.refreshState();
-    return c;
+    return new WebConversation(sdk, inner, hub);
   }
 
-  private async refreshState(): Promise<void> {
-    try {
-      const s = await this.inner.state();
-      this._state = { name: s.name || undefined, imageUrl: s.imageUrl || undefined, description: s.description || undefined };
-    } catch { /* keep the last values */ }
-  }
+  private get isDm(): boolean { return typeof this.inner.peerInboxId === "function"; }
 
   get id(): string { return this.inner.id; }
   get topic(): string { return this.inner.topic ?? this.inner.id; }
-  get name(): string | undefined { return this._state.name; }
-  get imageUrl(): string | undefined { return this._state.imageUrl; }
-  get description(): string | undefined { return this._state.description; }
-  get createdAt(): number | undefined { return this.inner.createdAt?.date?.getTime?.(); }
-  get version(): string { return this.inner.kind === "dm" ? "DM" : "GROUP"; }
+  get name(): string | undefined { return this.isDm ? undefined : this.inner.name || undefined; }
+  get imageUrl(): string | undefined { return this.isDm ? undefined : this.inner.imageUrl || undefined; }
+  get description(): string | undefined { return this.isDm ? undefined : this.inner.description || undefined; }
+  get createdAt(): number | undefined { return this.inner.createdAt?.getTime?.(); }
+  get version(): string { return this.isDm ? "DM" : "GROUP"; }
 
   async sync(): Promise<void> {
     await this.inner.sync();
-    if (this.inner.kind === "group") await this.refreshState();
   }
 
   async messages(opts: RnListOpts = {}): Promise<WebDecodedMessage[]> {
-    const { Timestamp } = this.sdk;
     const asc = opts.direction === "ASCENDING";
-    const o: Record<string, unknown> = { direction: asc ? "ascending" : "descending", sortBy: "sentAt" };
-    if (opts.limit != null) o.limit = Math.max(0, Math.floor(opts.limit));
+    const o: Record<string, unknown> = { direction: asc ? SORT_ASC : SORT_DESC, sortBy: SORT_BY_SENT };
+    if (opts.limit != null) o.limit = BigInt(Math.max(0, Math.floor(opts.limit)));
     const after = opts.afterNs != null ? BigInt(Math.floor(opts.afterNs)) : undefined;
     const before = opts.beforeNs != null ? BigInt(Math.floor(opts.beforeNs)) : undefined;
-    if (after != null) o.sentAfter = new Timestamp(after);
-    if (before != null) o.sentBefore = new Timestamp(before);
+    if (after != null) o.sentAfterNs = after;
+    if (before != null) o.sentBeforeNs = before;
     const raw: any[] = await this.inner.messages(o);
 
-    // v8 keeps reactions only inside their target message (they can't be
-    // queried on their own). A catch-up window ("since X") would miss new
-    // reactions on older messages, so also scan the latest messages for
-    // reactions newer than X.
+    // Reactions come folded into their target message. A catch-up window
+    // ("since X") would miss new reactions on older messages, so also scan
+    // the latest messages for reactions newer than X.
     const out = new Map<string, WebDecodedMessage>();
     for (const m of raw) {
-      const msg = WebDecodedMessage.fromV8(m);
+      const msg = WebDecodedMessage.fromSdk(m);
       out.set(msg.id, msg);
       for (const r of WebDecodedMessage.reactionsOf(m)) out.set(r.id, r);
     }
     if (after != null) {
       try {
-        const recent: any[] = await this.inner.messages({ direction: "descending", sortBy: "sentAt", limit: CATCH_UP_REACTION_SCAN });
+        const recent: any[] = await this.inner.messages({ direction: SORT_DESC, sortBy: SORT_BY_SENT, limit: BigInt(CATCH_UP_REACTION_SCAN) });
         for (const m of recent) {
           for (const r of WebDecodedMessage.reactionsOf(m)) if (!out.has(r.id)) out.set(r.id, r);
         }
@@ -422,16 +382,18 @@ class WebConversation {
     if (typeof c.text === "string") return this.inner.sendText(c.text);
     if (c.reaction) {
       const r = c.reaction;
-      return this.inner.sendReaction(r.reference, r.referenceInboxId || undefined, {
+      return this.inner.sendReaction({
+        reference: r.reference,
+        referenceInboxId: r.referenceInboxId ?? "",
         content: r.content,
-        action: r.action === "removed" ? "removed" : "added",
-        schema: r.schema === "custom" || r.schema === "shortcode" ? r.schema : "unicode",
+        action: r.action === "removed" ? REACTION_REMOVED : REACTION_ADDED,
+        schema: r.schema === "custom" ? SCHEMA.custom : r.schema === "shortcode" ? SCHEMA.shortcode : SCHEMA.unicode,
       });
     }
     if (c.reply) {
       const inner = c.reply.content;
       const text = typeof inner === "string" ? inner : typeof inner?.text === "string" ? inner.text : "";
-      return this.inner.sendReply(c.reply.reference, undefined, this.sdk.pure.encodeText(text));
+      return this.inner.sendReply({ reference: c.reply.reference, content: await this.sdk.encodeText(text) });
     }
     if (c.remoteAttachment) {
       const a = c.remoteAttachment;
@@ -457,9 +419,9 @@ class WebConversation {
     const ms: any[] = await this.inner.members();
     return ms.map((m) => ({
       inboxId: m.inboxId,
-      identities: (m.identities ?? []).map((i: any) => ({ identifier: i.identifier, kind: String(i.kind).toUpperCase() })),
-      permissionLevel: m.permissionLevel === "superAdmin" ? "super_admin" : m.permissionLevel,
-      consentState: m.consentState,
+      identities: (m.accountIdentifiers ?? []).map((i: any) => ({ identifier: i.identifier, kind: i.identifierKind === IDENTIFIER_ETHEREUM ? "ETHEREUM" : "PASSKEY" })),
+      permissionLevel: PERMISSION[m.permissionLevel] ?? "member",
+      consentState: CONSENT_FROM_SDK[m.consentState] ?? "unknown",
     }));
   }
 
@@ -477,18 +439,13 @@ class WebConversation {
   async removeMembers(ids: string[]): Promise<void> { await this.inner.removeMembers(ids); }
   async isAdmin(id: string): Promise<boolean> { return this.inner.isAdmin(id); }
   async isSuperAdmin(id: string): Promise<boolean> { return this.inner.isSuperAdmin(id); }
-  async isActive(): Promise<boolean> { return (await this.commonState()).isActive; }
-  async consentState(): Promise<RnConsent> { return (await this.commonState()).consentState; }
-  async updateConsent(state: RnConsent): Promise<void> { await this.inner.updateConsentState(state); }
-
-  private async commonState(): Promise<{ isActive: boolean; consentState: RnConsent }> {
-    const s = await this.inner.state();
-    return s.common ?? s;
-  }
+  async isActive(): Promise<boolean> { return this.inner.isActive(); }
+  async consentState(): Promise<RnConsent> { return CONSENT_FROM_SDK[await this.inner.consentState()] ?? "unknown"; }
+  async updateConsent(state: RnConsent): Promise<void> { await this.inner.updateConsentState(CONSENT_TO_SDK[state] ?? 0); }
 
   async lastMessage(): Promise<WebDecodedMessage | undefined> {
     const m = await this.inner.lastMessage();
-    return m ? WebDecodedMessage.fromV8(m) : undefined;
+    return m ? WebDecodedMessage.fromSdk(m) : undefined;
   }
 }
 
@@ -500,17 +457,17 @@ class WebConversations {
   async sync(): Promise<void> { await this.inner.sync(); }
 
   async syncAllConversations(states?: RnConsent[]): Promise<number> {
-    await this.inner.syncAll(Array.isArray(states) && states.length ? states : undefined);
+    await this.inner.syncAll(Array.isArray(states) && states.length ? states.map((x) => CONSENT_TO_SDK[x] ?? 0) : undefined);
     return 0;
   }
 
   async findGroup(id: string): Promise<WebConversation | undefined> {
-    const c = await this.inner.getById(id);
-    return c?.kind === "group" ? this.wrap(c) : undefined;
+    const c = await this.inner.getConversationById(id);
+    return c && typeof c.peerInboxId !== "function" ? this.wrap(c) : undefined;
   }
 
   async findConversation(id: string): Promise<WebConversation | undefined> {
-    return this.wrap(await this.inner.getById(id));
+    return this.wrap(await this.inner.getConversationById(id));
   }
 
   async findDmByInboxId(inboxId: string): Promise<WebConversation | undefined> {
@@ -524,17 +481,17 @@ class WebConversations {
 
   async newGroup(inboxIds: string[], opts?: { name?: string; imageUrl?: string; description?: string }): Promise<WebConversation> {
     const g = await this.inner.createGroup(inboxIds, {
-      name: opts?.name,
-      imageUrl: opts?.imageUrl,
-      description: opts?.description,
+      groupName: opts?.name,
+      groupImageUrlSquare: opts?.imageUrl,
+      groupDescription: opts?.description,
     });
     return (await this.wrap(g))!;
   }
 
   private listOpts(limit?: number, states?: RnConsent[]) {
     const o: Record<string, unknown> = {};
-    if (Array.isArray(states) && states.length) o.consentStates = states;
-    if (limit != null) o.limit = limit;
+    if (Array.isArray(states) && states.length) o.consentStates = states.map((x) => CONSENT_TO_SDK[x] ?? 0);
+    if (limit != null) o.limit = BigInt(limit);
     return o;
   }
 
@@ -575,27 +532,29 @@ type RnSigner = {
   signMessage: (message: string) => Promise<{ signature: string }>;
 };
 
+function sdkIdentifier(identifier: string) {
+  return { identifier: identifier.toLowerCase(), identifierKind: IDENTIFIER_ETHEREUM };
+}
+
 function toWebSigner(signer: RnSigner) {
   return {
-    identity: async () => ({ identifier: (await signer.getIdentifier()).identifier.toLowerCase(), kind: "ethereum" as const }),
-    kind: async () => ({ kind: "eoa" as const }),
-    sign: async (request: { text: string }) => ({
-      kind: "ecdsa" as const,
-      value: hexToBytes((await signer.signMessage(request.text)).signature),
-    }),
+    type: "EOA" as const,
+    getIdentifier: async () => sdkIdentifier((await signer.getIdentifier()).identifier),
+    signMessage: async (text: string) => hexToBytes((await signer.signMessage(text)).signature),
   };
 }
 
 function clientOptions() {
-  return {
-    backend: backendSource(),
-    // Explicitly the SDK's own browser default. Its "default" picks
-    // `${process.cwd()}/xmtp` whenever a `process` global exists — and the app
-    // installs a process shim (global.ts) for Solana libs, which broke OPFS
-    // ("storage location cannot access OPFS").
-    storage: { location: { directory: "xmtp-sdk" } },
-    registration: { nonce: REGISTRATION_NONCE },
-  };
+  return { env: xmtpEnv(), appVersion: APP_VERSION };
+}
+
+let _backend: Promise<unknown> | null = null;
+function backend(sdk: Sdk): Promise<unknown> {
+  if (!_backend) {
+    _backend = sdk.createBackend({ env: xmtpEnv(), appVersion: APP_VERSION });
+    _backend!.catch(() => { _backend = null; });
+  }
+  return _backend!;
 }
 
 const _clients = new Map<string, WebClient>();
@@ -654,11 +613,8 @@ export class Client {
     if (existing) return existing;
     await acquireTabLock();
     const sdk = await loadSdk();
-    const inner = await withStorageRetry(() => sdk.Client.build(
-      { identifier: identity.identifier.toLowerCase(), kind: "ethereum" },
-      clientOptions(),
-      inboxId || undefined,
-    ));
+    void inboxId;
+    const inner = await withStorageRetry(() => sdk.Client.build(sdkIdentifier(identity.identifier), clientOptions()));
     const client = WebClient.register(sdk, inner, identity);
     _byIdentity.set(identity.identifier.toLowerCase(), Promise.resolve(client));
     return client;
@@ -671,13 +627,10 @@ export class Client {
     await c?.close();
   }
 
-  /** Inbox ID registered for an identity on this backend, or undefined. */
+  /** Inbox ID registered for an identity on the network, or undefined. */
   static async getInboxIdForIdentifier(identity: PublicIdentity): Promise<string | undefined> {
     const sdk = await loadSdk();
-    const id = { identifier: identity.identifier.toLowerCase(), kind: "ethereum" as const };
-    const reachable: Map<string, boolean> = await sdk.Client.canMessage([id], backendSource());
-    const registered = [...reachable.values()].some(Boolean);
-    return registered ? sdk.Client.inboxIdFor(id, backendSource()) : undefined;
+    return sdk.getInboxIdForIdentifier(await backend(sdk), sdkIdentifier(identity.identifier));
   }
 }
 
@@ -704,27 +657,29 @@ export class WebClient {
     throw new Error("xmtpCompat: addAccount is not used on web");
   }
 
-  /** v8 has no history-sync request; device sync runs on its own. */
-  async sendSyncRequest(): Promise<void> {}
+  /** Ask the inbox's other devices (the phone) to share message history. */
+  async sendSyncRequest(): Promise<void> {
+    await this.inner.sendSyncRequest();
+  }
 
   async inboxState(refresh = false): Promise<{ inboxId: string; installations: { id: string; createdAt?: number }[] }> {
-    const s = await this.inner.inboxState(refresh);
+    const s = await this.inner.preferences.inboxState(refresh);
     return {
       inboxId: s.inboxId,
       installations: (s.installations ?? []).map((i: any) => ({
         id: i.id,
-        createdAt: i.createdAt?.date?.getTime?.(),
+        createdAt: i.clientTimestampNs != null ? Number(BigInt(i.clientTimestampNs) / 1_000_000n) : undefined,
       })),
     };
   }
 
-  async revokeInstallations(signer: RnSigner, installationIds: string[]): Promise<void> {
-    await this.inner.revokeInstallations(toWebSigner(signer), installationIds);
+  async revokeInstallations(_signer: RnSigner, installationIds: string[]): Promise<void> {
+    await this.inner.revokeInstallations(installationIds.map(hexToBytes));
   }
 
   async close(): Promise<void> {
     this.hub.close();
-    await this.inner.end?.();
+    this.inner.close?.();
   }
 }
 

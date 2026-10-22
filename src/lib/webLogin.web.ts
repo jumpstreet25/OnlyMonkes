@@ -2,7 +2,7 @@ import type { WalletAccount } from "@/types";
 import { collectWithMwa } from "@/web/mwaSession";
 import { loginWithBundle } from "@/web/bundleLogin";
 import { MWA_WALLET_NAME } from "@/web/walletStandard";
-import { clearWebSignIn, getXmtpCredential, signInWithWallet } from "@/web/webAuth";
+import { clearWebSignIn, signInWithWallet } from "@/web/webAuth";
 
 /**
  * Web: a wallet-signed sign-in proves the wallet and its Saga Monke / Genesis
@@ -18,13 +18,12 @@ export async function signOutOfChat(): Promise<void> {
 }
 
 /**
- * Web: join requests also carry the sign-in token (sent only to the staging
- * helper over the E2E-encrypted DM) so it can admit the sender's inbox without
- * trusting a claimed wallet. See scripts/web/staging-helper.
+ * Join requests are the same as the phone app's: the bot checks the claimed
+ * wallet's holdings itself and admits the sending inbox. (The staging helper's
+ * token proof is only for the self-hosted test backend.)
  */
 export async function joinProofSuffix(): Promise<string> {
-  const { value } = await getXmtpCredential();
-  return `|t=${value.replace(/^Bearer /, "")}`;
+  return "";
 }
 
 /**
