@@ -52,6 +52,8 @@ export const WebView = forwardRef(function WebView(props: Props & Record<string,
     src: source?.uri,
     srcDoc: source?.html,
     sandbox: "allow-scripts allow-same-origin allow-popups allow-forms",
+    // Same-site pages (the 3D viewer's face tracking) may ask for the camera.
+    allow: source?.uri?.startsWith("/") ? "camera" : undefined,
     referrerPolicy: "no-referrer",
     style: { border: 0, width: "100%", height: "100%", ...flatten(style) },
     onLoad: () => {

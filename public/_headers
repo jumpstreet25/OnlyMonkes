@@ -6,3 +6,7 @@
 
 /xmtp/*
   Cache-Control: public, max-age=3600
+
+/viewer/*
+  ! X-Frame-Options
+  Content-Security-Policy: frame-ancestors 'self'

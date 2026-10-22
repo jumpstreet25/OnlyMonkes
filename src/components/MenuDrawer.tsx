@@ -665,6 +665,13 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                     onPress={() => { onClose(); setTimeout(() => router.push('/monkememe' as any), 300); }}
                   />
                 )}
+                {Platform.OS === "web" && (
+                  <GridButton
+                    iconName="monkeface"
+                    label="3D Monke"
+                    onPress={() => { onClose(); setTimeout(() => router.push('/monke3d' as any), 300); }}
+                  />
+                )}
                 <GridButton
                   iconName="globe"
                   label={t("menuDrawer.globe")}

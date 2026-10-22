@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Monke 3D</title>
+<!--
+  OnlyMonkes 3D avatar viewer (VRM). Runs on its own so the web app (iframe)
+  and the phone app (WebView, OTA) can both show it.
+  - ?vrm=<url>: model to load (same site or arweave.net only); default is the
+    CC0 placeholder until Saga Monke models exist.
+  - "Use my camera": MediaPipe face tracking drives the model. Video stays in
+    this page; nothing is uploaded.
+  - postMessage {type:"blendshapes", values, headRotation} from the host page
+    drives it too (Avatar Room data channel), using the same blendshape names
+    as src/lib/faceTracking.ts. Only numbers are read from messages.
+-->
+<style>
+  :root { --bg: #0A0A0F; --text: #EDEDF3; --muted: #9A9AB0; --accent: #7c5cfc; --line: rgba(255,255,255,0.12); }
+  html, body { margin: 0; height: 100%; height: 100dvh; background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; overflow: hidden; }
+  canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+  .bar { position: fixed; left: 0; right: 0; bottom: 0; display: flex; gap: 10px; align-items: center; justify-content: center; padding: 14px 16px calc(14px + env(safe-area-inset-bottom)); }
+  button { font: inherit; font-weight: 600; color: #fff; background: var(--accent); border: 0; border-radius: 12px; padding: 10px 16px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  button.ghost { background: transparent; border: 1px solid var(--line); color: var(--text); }
+  button:disabled { opacity: 0.5; cursor: default; }
+  #status { position: fixed; top: 12px; left: 0; right: 0; text-align: center; color: var(--muted); font-size: 13px; padding: 0 16px; pointer-events: none; }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.min.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.185.1/examples/jsm/",
+    "@pixiv/three-vrm": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.5.5/lib/three-vrm.module.min.js"
+  }
+}
+</script>
+</head>
+<body>
+<div id="status">Loading model…</div>
+<div class="bar">
+  <button id="cam" disabled>Use my camera</button>
+  <button id="reset" class="ghost">Reset view</button>
+</div>
+<script type="module">
+import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { VRMLoaderPlugin, VRMUtils } from "@pixiv/three-vrm";
+
+const statusEl = document.getElementById("status");
+const camBtn = document.getElementById("cam");
+const setStatus = (t) => { statusEl.textContent = t; };
+
+// ── Model URL: same site or Arweave only ──
+const DEFAULT_VRM = "/viewer/placeholder.vrm";
+function modelUrl() {
+  const raw = new URLSearchParams(location.search).get("vrm");
+  if (!raw) return DEFAULT_VRM;
+  try {
+    const u = new URL(raw, location.href);
+    if (u.origin === location.origin || u.hostname === "arweave.net") return u.href;
+  } catch {}
+  return DEFAULT_VRM;
+}
+
+// ── Scene ──
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.prepend(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, 0.1, 20);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.minDistance = 0.6;
+controls.maxDistance = 5;
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0x3a3050, 1.6));
+const key = new THREE.DirectionalLight(0xffffff, 1.4);
+key.position.set(1, 2, 2);
+scene.add(key);
+const rim = new THREE.DirectionalLight(0x9d86ff, 0.8);
+rim.position.set(-2, 1.5, -2);
+scene.add(rim);
+
+const HOME = { pos: new THREE.Vector3(0, 1.35, 2.2), target: new THREE.Vector3(0, 1.25, 0) };
+function resetView() {
+  camera.position.copy(HOME.pos);
+  controls.target.copy(HOME.target);
+  controls.update();
+}
+resetView();
+document.getElementById("reset").onclick = resetView;
+addEventListener("resize", () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+// ── Load VRM ──
+let vrm = null;
+const loader = new GLTFLoader();
+loader.register((parser) => new VRMLoaderPlugin(parser));
+loader.load(modelUrl(), (gltf) => {
+  vrm = gltf.userData.vrm;
+  VRMUtils.removeUnnecessaryVertices(gltf.scene);
+  VRMUtils.combineSkeletons(gltf.scene);
+  VRMUtils.rotateVRM0(vrm);
+  scene.add(vrm.scene);
+  // Frame the head whatever the model's height.
+  // Relaxed arms instead of the T-pose models ship in.
+  const arm = (name, z) => { const b = vrm.humanoid?.getNormalizedBoneNode(name); if (b) b.rotation.z = z; };
+  arm("leftUpperArm", 1.15);
+  arm("rightUpperArm", -1.15);
+  arm("leftLowerArm", 0.15);
+  arm("rightLowerArm", -0.15);
+  // Frame head-and-shoulders whatever the model's height.
+  vrm.scene.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(vrm.scene);
+  const h = box.max.y - box.min.y;
+  const head = vrm.humanoid?.getNormalizedBoneNode("head");
+  const hp = new THREE.Vector3();
+  if (head) head.getWorldPosition(hp); else hp.set(0, box.max.y * 0.85, 0);
+  HOME.target.set(0, hp.y - h * 0.22, 0);
+  HOME.pos.set(0, hp.y - h * 0.1, Math.max(1.6, h * 2.6));
+  resetView();
+  camBtn.disabled = false;
+  setStatus("");
+}, undefined, (e) => setStatus("Could not load the model"));
+
+// ── Face → model ──
+// faceTracking.ts names → VRM expressions (three-vrm maps VRM 0.x presets to these).
+let face = null;            // latest { values, headRotation }
+let faceAt = 0;             // when it arrived (ms)
+const clamp01 = (x) => Math.max(0, Math.min(1, Number(x) || 0));
+const DEG = Math.PI / 180;
+
+function applyFace(dt) {
+  const em = vrm.expressionManager;
+  const head = vrm.humanoid?.getNormalizedBoneNode("head");
+  const live = face && performance.now() - faceAt < 1500;
+  if (!live) {
+    // Idle: slow blink and a little breathing when nothing is driving it.
+    const t = performance.now() / 1000;
+    em?.setValue("blink", (t % 4) < 0.12 ? 1 : 0);
+    em?.setValue("aa", 0);
+    if (head) head.rotation.set(Math.sin(t * 0.6) * 0.03, Math.sin(t * 0.4) * 0.06, 0);
+    return;
+  }
+  const v = face.values;
+  const smile = (clamp01(v.mouthSmileLeft) + clamp01(v.mouthSmileRight)) / 2;
+  em?.setValue("aa", clamp01(v.jawOpen * 1.4));
+  em?.setValue("ou", clamp01(v.mouthPucker));
+  em?.setValue("ih", smile * 0.5);
+  em?.setValue("happy", smile);
+  const bl = clamp01(v.eyeBlinkLeft), br = clamp01(v.eyeBlinkRight);
+  if (em?.getExpression("blinkLeft") && em?.getExpression("blinkRight")) {
+    em.setValue("blinkLeft", bl);
+    em.setValue("blinkRight", br);
+  } else {
+    em?.setValue("blink", (bl + br) / 2);
+  }
+  em?.setValue("surprised", clamp01(v.browInnerUp) * 0.7);
+  if (head) {
+    const r = face.headRotation || {};
+    const k = 1 - Math.exp(-dt * 12); // smooth
+    // Mirror yaw/roll so the model moves like a mirror image of you.
+    head.rotation.x += ((Number(r.x) || 0) * DEG * 0.8 - head.rotation.x) * k;
+    head.rotation.y += (-(Number(r.y) || 0) * DEG * 0.8 - head.rotation.y) * k;
+    head.rotation.z += (-(Number(r.z) || 0) * DEG * 0.8 - head.rotation.z) * k;
+  }
+}
+
+function takeFace(values, headRotation) {
+  if (!values || typeof values !== "object") return;
+  const clean = {};
+  for (const [k, x] of Object.entries(values)) if (/^[a-zA-Z]{2,24}$/.test(k)) clean[k] = clamp01(x);
+  face = { values: clean, headRotation: headRotation && typeof headRotation === "object" ? headRotation : {} };
+  faceAt = performance.now();
+}
+
+// Host page (Avatar Room) can drive the model. Data only — never code.
+function onHostMessage(e) {
+  let d = e.data;
+  if (typeof d === "string") { try { d = JSON.parse(d); } catch { return; } }
+  if (d && d.type === "blendshapes") takeFace(d.values, d.headRotation);
+}
+addEventListener("message", onHostMessage);
+document.addEventListener("message", onHostMessage); // Android WebView
+
+// ── Own camera (MediaPipe, same pinned loader as FaceTracker.web.tsx) ──
+let tracking = false;
+camBtn.onclick = async () => {
+  if (tracking) return;
+  camBtn.disabled = true;
+  setStatus("Starting camera…");
+  try {
+    const vision = await new Promise((resolve, reject) => {
+      if (globalThis.__OM_MEDIAPIPE) return resolve(globalThis.__OM_MEDIAPIPE);
+      addEventListener("om-mediapipe-ready", () => resolve(globalThis.__OM_MEDIAPIPE), { once: true });
+      const s = document.createElement("script");
+      s.type = "module";
+      s.src = "/vendor/mediapipe-loader.mjs";
+      s.onerror = () => reject(new Error("tracker failed to load"));
+      document.head.appendChild(s);
+    });
+    const base = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.1.0";
+    const fileset = await vision.FilesetResolver.forVisionTasks(`${base}/wasm`);
+    const lm = await vision.FaceLandmarker.createFromOptions(fileset, {
+      baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task", delegate: "GPU" },
+      runningMode: "VIDEO", numFaces: 1, outputFaceBlendshapes: true, outputFacialTransformationMatrixes: true,
+    });
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: 320, height: 240 }, audio: false });
+    const video = document.createElement("video");
+    video.muted = true; video.playsInline = true; video.srcObject = stream;
+    await video.play();
+    tracking = true;
+    camBtn.textContent = "Camera on";
+    setStatus("");
+    let last = 0;
+    const tick = (now) => {
+      requestAnimationFrame(tick);
+      if (now - last < 50 || video.readyState < 2) return;
+      last = now;
+      const res = lm.detectForVideo(video, now);
+      const cats = res?.faceBlendshapes?.[0]?.categories;
+      if (!cats) return;
+      const values = {};
+      for (const c of cats) values[c.categoryName] = c.score;
+      const m = res.facialTransformationMatrixes?.[0]?.data;
+      const r = (row, col) => m[col * 4 + row];
+      const hr = m ? {
+        x: Math.atan2(r(2, 1), r(2, 2)) / DEG,
+        y: Math.asin(Math.max(-1, Math.min(1, -r(2, 0)))) / DEG,
+        z: Math.atan2(r(1, 0), r(0, 0)) / DEG,
+      } : {};
+      takeFace(values, hr);
+    };
+    requestAnimationFrame(tick);
+  } catch (e) {
+    camBtn.disabled = false;
+    setStatus(e?.name === "NotAllowedError" ? "Camera permission was denied" : "Camera tracking isn't available here");
+  }
+};
+
+// ── Loop ──
+let prev = performance.now();
+renderer.setAnimationLoop(() => {
+  const now = performance.now();
+  const dt = Math.min(0.1, (now - prev) / 1000);
+  prev = now;
+  if (vrm) {
+    applyFace(dt);
+    vrm.update(dt);
+  }
+  controls.update();
+  renderer.render(scene, camera);
+});
+</script>
+</body>
+</html>
