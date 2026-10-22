@@ -75,5 +75,7 @@ export function importPhoneProfile(): Promise<ImportedProfile | null> {
     }).catch(() => {});
     return imported;
   })().catch(() => null);
+  // Don't remember a miss: the next chat screen mount tries again.
+  void _once.then((r) => { if (!r) _once = null; });
   return _once;
 }
