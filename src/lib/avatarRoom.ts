@@ -318,6 +318,20 @@ export async function connectToAvatarRoom(
   _room.on(RoomEvent.TrackMuted,              refresh);
   _room.on(RoomEvent.TrackUnmuted,            refresh);
 
+  // Web: browsers only play a remote track attached to a media element (the
+  // phone's native WebRTC plays audio by itself).
+  if (Platform.OS === 'web') {
+    _room.on(RoomEvent.TrackSubscribed, (track: any) => {
+      if (track?.kind !== 'audio') return;
+      const el = track.attach();
+      el.style.display = 'none';
+      document.body.appendChild(el);
+    });
+    _room.on(RoomEvent.TrackUnsubscribed, (track: any) => {
+      if (track?.kind === 'audio') track.detach().forEach((el: HTMLElement) => el.remove());
+    });
+  }
+
   _room.on(RoomEvent.Reconnecting, () => console.log('[AvatarRoom] Reconnecting...'));
   _room.on(RoomEvent.Reconnected, () => { console.log('[AvatarRoom] Reconnected'); _notify(); });
 
@@ -386,6 +400,7 @@ export async function connectToAvatarRoom(
 
   await AudioSession.startAudioSession();
   await _room.connect(url, token);
+  if (Platform.OS === 'web') await _room.startAudio().catch(() => {});
   await _room.localParticipant.setMicrophoneEnabled(true);
 
   // Enable Krisp noise cancellation on the mic track (non-fatal if unsupported)
