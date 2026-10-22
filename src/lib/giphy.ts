@@ -5,6 +5,7 @@
  * Uses the v1 REST API with a public API key.
  */
 
+import { Platform } from 'react-native';
 import { GIPHY_API_KEY } from '@/lib/constants';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 const API_KEY: string = GIPHY_API_KEY;
@@ -50,7 +51,13 @@ function parseItems(data: any[]): GiphyItem[] {
 
 const SAGA_GIPHY_USER = "sagamonkes";
 
+// Web: a public site can't hold the GIPHY key, so the actions worker adds it.
+const WEB_GIPHY_URL = "https://onlymonkes-actions.jumpstreet25.workers.dev/api/giphy";
+
 function giphyUrl(kind: "gifs" | "stickers", path: "search" | "trending", extra: Record<string, string>): string {
+  if (Platform.OS === "web") {
+    return `${WEB_GIPHY_URL}/${kind}/${path}?${new URLSearchParams({ rating: "g", ...extra }).toString()}`;
+  }
   const params = new URLSearchParams({
     api_key: API_KEY,
     rating: "g",
@@ -80,7 +87,7 @@ function setStatus(s: string): void {
  * with no diagnostic.
  */
 async function fetchGiphy(label: string, url: string): Promise<GiphyItem[]> {
-  if (!API_KEY) {
+  if (!API_KEY && Platform.OS !== "web") {
     setStatus(`${label}: API key MISSING in bundle`);
     return [];
   }

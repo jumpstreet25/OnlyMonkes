@@ -28,6 +28,7 @@ const WEB_ALIASES = {
   '@livekit/react-native': 'src/web/shims/livekitNative.ts',
   '@livekit/react-native-krisp-noise-filter': 'src/web/shims/krisp.ts',
   'react-native-webview': 'src/web/shims/webview.tsx',
+  'expo-file-system/legacy': 'src/web/shims/fileSystemLegacy.ts',
 };
 const defaultResolve = config.resolver.resolveRequest;
 config.resolver.resolveRequest = (context, moduleName, platform) => {

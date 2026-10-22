@@ -1,6 +1,7 @@
 import * as VideoThumbnails from 'expo-video-thumbnails';
 import * as FileSystem from 'expo-file-system/legacy';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
+import { Platform } from 'react-native';
 import { CLOUDINARY_CLOUD_NAME, CLOUDINARY_UPLOAD_PRESET } from '@/lib/constants';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 
@@ -78,6 +79,10 @@ export async function uploadVideo(videoUri: string): Promise<{ videoUrl: string;
  * Returns the public HTTPS URL.
  */
 export async function uploadFile(uri: string, filename: string, mimeType: string): Promise<string> {
+  if (Platform.OS === 'web') {
+    const { uploadViaWorker } = await import('@/lib/webUpload');
+    return uploadViaWorker(uri, filename, mimeType);
+  }
   const form = new FormData();
   form.append('file', { uri, type: mimeType, name: filename } as any);
   form.append('upload_preset', UPLOAD_PRESET);
