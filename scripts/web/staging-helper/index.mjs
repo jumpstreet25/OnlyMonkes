@@ -76,7 +76,9 @@ async function ensureGroups(client) {
   writeFileSync(path, JSON.stringify(ids, null, 2));
   writeFileSync(join(DATA, "app-config.json"), JSON.stringify({
     globalGroupId: ids.main,
-    adminInboxId: "",
+    // The app only sends join requests when an admin inbox is configured; on
+    // staging the helper is both the "bot" and the admin.
+    adminInboxId: client.inboxId,
     botInboxId: client.inboxId,
     botChannels: { trades: ids.trades },
     genesisGroupId: ids.genesis,
@@ -105,6 +107,7 @@ function readToken(token) {
   }
 }
 
+const recent = new Map();
 const REQUEST = /^(JOIN_REQUEST|GENESIS_JOIN_REQUEST):([1-9A-HJ-NP-Za-km-z]{32,44})\|t=([\w-]+\.[\w-]+\.[\w-]+)$/;
 
 async function handle(client, ids, message) {
@@ -127,6 +130,11 @@ async function handle(client, ids, message) {
     log(`refused ${kind} from ${short(message.senderInboxId)}: tier ${claims.tier}`);
     return reply(kind === "GENESIS_JOIN_REQUEST" ? "Genesis Chat needs a Saga or Seeker Genesis Token." : "Main Chat needs a Saga Monke.");
   }
+  // The app DMs the bot and the admin inbox — both are this helper here — so
+  // each join arrives twice. Admit once; skip the repeat quietly.
+  const key = `${message.senderInboxId}:${targets.join("+")}`;
+  if (Date.now() - (recent.get(key) ?? 0) < 10 * 60_000) return;
+  recent.set(key, Date.now());
   for (const t of targets) {
     try {
       const g = await client.conversations.getById(ids[t]);
@@ -144,11 +152,21 @@ log(`staging helper inbox ${client.inboxId}`);
 const ids = await ensureGroups(client);
 log("groups", JSON.stringify(ids));
 
+// An independent reader with a saved position, not the default consumer: the
+// default one keeps a database lease, so a quick restart failed with
+// "A default message consumer is already active" and crash-looped. First
+// start begins from "now"; restarts resume where the last run stopped.
+const selection = { conversationKind: "dm", consentStates: ["allowed", "unknown"] };
+const cursorPath = join(DATA, "dm-cursor.txt");
+const savedCursor = existsSync(cursorPath) ? readFileSync(cursorPath, "utf8").trim() : "";
+const from = savedCursor || (await client.conversations.messageHistorySnapshot(1, selection)).cursor;
 const seen = new Set();
-const stream = client.conversations.streamAllMessages({ conversationKind: "dm", consentStates: ["allowed", "unknown"] });
+const stream = client.conversations.streamAllMessages({ ...selection, from });
 for await (const message of stream) {
-  if (seen.has(message.id)) continue;
-  seen.add(message.id);
-  if (seen.size > 10000) seen.delete(seen.values().next().value);
-  await handle(client, ids, message).catch((e) => log("handle error:", e?.message));
+  if (!seen.has(message.id)) {
+    seen.add(message.id);
+    if (seen.size > 10000) seen.delete(seen.values().next().value);
+    await handle(client, ids, message).catch((e) => log("handle error:", e?.message));
+  }
+  if (message.deliveryCursor) writeFileSync(cursorPath, message.deliveryCursor);
 }

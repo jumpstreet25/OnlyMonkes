@@ -71,3 +71,4 @@ google-services.json
 # Web build: generated XMTP browser SDK bundle (scripts/web/build-xmtp.mjs)
 /public/xmtp/
 /dist-web/
+/public/canvaskit.wasm

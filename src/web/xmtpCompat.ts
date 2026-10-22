@@ -284,12 +284,26 @@ class MessageHub {
 
   constructor(private readonly inner: any) {}
 
+  private starting = false;
+
+  // An independent reader starting at "now", not the default consumer: the
+  // default one holds a database lease, so after a page reload it can fail
+  // with "A default message consumer is already active" (hit on the staging
+  // helper). The app catches up on history itself via messages().
   private ensure(): void {
-    if (this.stream) return;
+    if (this.stream || this.starting) return;
+    this.starting = true;
     this.startedNs = BigInt(Date.now() - 120_000) * 1_000_000n;
-    this.stream = this.inner.conversations.streamAllMessages({ consentStates: ALL_CONSENT });
-    this.stream.onValue((m: any) => this.dispatch(m)).catch((e: unknown) => {
+    (async () => {
+      const selection = { consentStates: ALL_CONSENT };
+      const { cursor } = await this.inner.conversations.messageHistorySnapshot(1, selection);
+      this.stream = this.inner.conversations.streamAllMessages({ ...selection, from: cursor });
+      this.starting = false;
+      await this.stream.onValue((m: any) => this.dispatch(m));
+    })().catch((e: unknown) => {
       console.warn("[XMTP web] message stream ended:", (e as Error)?.message);
+    }).finally(() => {
+      this.starting = false;
       this.stream = null;
       if (this.byConversation.size || this.all.size) setTimeout(() => this.ensure(), 3000);
     });
@@ -575,35 +589,85 @@ function toWebSigner(signer: RnSigner) {
 function clientOptions() {
   return {
     backend: backendSource(),
-    storage: { location: "default" as const },
+    // Explicitly the SDK's own browser default. Its "default" picks
+    // `${process.cwd()}/xmtp` whenever a `process` global exists — and the app
+    // installs a process shim (global.ts) for Solana libs, which broke OPFS
+    // ("storage location cannot access OPFS").
+    storage: { location: { directory: "xmtp-sdk" } },
     registration: { nonce: REGISTRATION_NONCE },
   };
 }
 
 const _clients = new Map<string, WebClient>();
 
+// The browser database allows one connection, but the app can ask for the
+// same client twice at once (login-screen prefetch + chat screen) — the second
+// then fails with "cannot access OPFS". One client per identity, shared.
+const _byIdentity = new Map<string, Promise<WebClient>>();
+
+/**
+ * The SDK's storage worker can still hold the database for a moment after a
+ * reload or a closed client; opening then fails with "cannot access OPFS".
+ * Retry briefly instead of showing "Connection Failed".
+ */
+let _opSeq = 0;
+function trace(msg: string): void {
+  console.warn(`[XMTP web] ${msg}`);
+}
+
+async function withStorageRetry<T>(open: () => Promise<T>, label = "open"): Promise<T> {
+  const op = ++_opSeq;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await open();
+    } catch (e) {
+      trace(`#${op} ${label} failed: ${String((e as Error)?.message).slice(0, 160)}`);
+      if (attempt >= 5 || !/OPFS|access handle|NoModificationAllowed/i.test(String((e as Error)?.message))) throw e;
+      await new Promise((r) => setTimeout(r, 750 * (attempt + 1)));
+    }
+  }
+}
+
+function onePerIdentity(identifier: string, open: () => Promise<WebClient>): Promise<WebClient> {
+  const key = identifier.toLowerCase();
+  const existing = _byIdentity.get(key);
+  if (existing) return existing;
+  const p = withStorageRetry(open, `create ${key.slice(0, 8)}`);
+  _byIdentity.set(key, p);
+  p.catch(() => { if (_byIdentity.get(key) === p) _byIdentity.delete(key); });
+  return p;
+}
+
 export class Client {
   static async create(signer: RnSigner, _opts?: unknown): Promise<WebClient> {
-    await acquireTabLock();
-    const sdk = await loadSdk();
-    const inner = await sdk.Client.create(toWebSigner(signer), clientOptions());
-    return WebClient.register(sdk, inner, await signer.getIdentifier());
+    const identity = await signer.getIdentifier();
+    return onePerIdentity(identity.identifier, async () => {
+      await acquireTabLock();
+      const sdk = await loadSdk();
+      const inner = await sdk.Client.create(toWebSigner(signer), clientOptions());
+      return WebClient.register(sdk, inner, identity);
+    });
   }
 
   static async build(identity: PublicIdentity, _opts?: unknown, inboxId?: string): Promise<WebClient> {
+    const existing = _byIdentity.get(identity.identifier.toLowerCase());
+    if (existing) return existing;
     await acquireTabLock();
     const sdk = await loadSdk();
-    const inner = await sdk.Client.build(
+    const inner = await withStorageRetry(() => sdk.Client.build(
       { identifier: identity.identifier.toLowerCase(), kind: "ethereum" },
       clientOptions(),
       inboxId || undefined,
-    );
-    return WebClient.register(sdk, inner, identity);
+    ));
+    const client = WebClient.register(sdk, inner, identity);
+    _byIdentity.set(identity.identifier.toLowerCase(), Promise.resolve(client));
+    return client;
   }
 
   static async dropClient(installationId: string): Promise<void> {
     const c = _clients.get(installationId);
     _clients.delete(installationId);
+    if (c) _byIdentity.delete(c.publicIdentity.identifier.toLowerCase());
     await c?.close();
   }
 

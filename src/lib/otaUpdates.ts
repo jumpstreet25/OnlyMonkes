@@ -11,10 +11,13 @@
  * inside a component that re-runs its effects on every mount.
  */
 import * as Updates from 'expo-updates';
+import { Platform } from 'react-native';
 
 /** Call once on app launch, before anything else touches the OTA cache. */
 export async function clearStaleOtaCacheIfNeeded() {
   if (__DEV__) return; // skip in dev mode
+  // The web app has no OTA bundles; reloading there only interrupted logins.
+  if (Platform.OS === 'web') return;
 
   // Force clear stale OTA cache from old runtimeVersion on first v3.1 launch
   try {

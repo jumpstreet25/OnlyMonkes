@@ -40,6 +40,7 @@ import { Alert, Linking } from 'react-native';
 import { router } from 'expo-router';
 import { useFreeRasp } from 'freerasp-react-native';
 import { useFonts } from 'expo-font';
+import { useSkiaReady } from '../src/hooks/useSkiaReady';
 import { RASP_CONFIG, THREAT_ACTIONS } from '../src/lib/security';
 
 // Initialize Sentry crash reporting (no-op if SENTRY_DSN not set)
@@ -51,6 +52,7 @@ const queryClient = new QueryClient();
 
 export default function RootLayout() {
   useFreeRasp(RASP_CONFIG, THREAT_ACTIONS);
+  const skiaReady = useSkiaReady();
   // In-app "Update ready" prompt — lets a downloaded OTA be applied with a
   // tap instead of requiring a force-close + reopen. See useUpdatePrompt.ts.
   const { visible: updatePromptVisible, applyUpdate, dismiss: dismissUpdatePrompt } = useUpdatePrompt();
@@ -223,10 +225,13 @@ export default function RootLayout() {
     return () => sub.remove();
   }, []);
 
+  const rootBg = useThemeColor('bg');
+  if (!skiaReady) return null;
+
   return (
     <QueryClientProvider client={queryClient}>
       <SafeAreaProvider>
-        <GestureHandlerRootView style={{ flex: 1, backgroundColor: useThemeColor('bg') }}>
+        <GestureHandlerRootView style={{ flex: 1, backgroundColor: rootBg }}>
           {/* 2026-08-03: edge-to-edge alone (MainActivity.kt) only makes the
               status bar transparent — content draws behind it, but the
               clock/battery/wifi icons still render on top. Matching the

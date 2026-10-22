@@ -123,7 +123,10 @@ export const RASP_CONFIG: TalsecConfig = {
 // a Base64-encoded SHA-256 digest (44 chars, trailing '=') — the format
 // freerasp 5's native Talsec module actually requires. Catches both the
 // literal placeholder AND a stale hash from a rotated keystore.
-if (!__DEV__) {
+// Web has no RASP at all (freerasp is native-only): the web app is the
+// lower-trust tier where every money action is signed in the user's own
+// wallet, so the self-check would only block the chat-identity signature.
+if (!__DEV__ && Platform.OS !== 'web') {
   const ANDROID_HASH_RE = /^[A-Za-z0-9+/]{43}=$/;
   const androidHash = RASP_CONFIG.androidConfig?.certificateHashes?.[0] ?? '';
   const androidValid = ANDROID_HASH_RE.test(androidHash);
