@@ -1,17 +1,25 @@
 # OnlyMonkes web app (Expo web export) on Cloudflare Workers static assets.
 # Deploy with scripts/web/deploy-site.sh — it builds dist-web/ first.
-# The XMTP client wasm (40 MB) is over the 25 MiB per-file limit and is
-# served from the VPS instead (Caddy /assets/*).
 name = "onlymonkes-web"
+main = "site-router.ts"
 compatibility_date = "2026-10-01"
+# Custom domains switch workers.dev off by default; testers use that link.
+workers_dev = true
 
-# app.onlymonkes.app (2026-10-22). onlymonkes.app itself is the public site,
-# served by the actions worker (worker-actions/src/site.ts), which redirects
-# old web-app paths here. The workers.dev link keeps working too.
+# Owner 2026-10-22: the web app is onlymonkes.app. site-router.ts hands the
+# public-site paths (landing /welcome, /get, /download/apk, /open/*, legal,
+# Blinks, webhooks) to onlymonkes-actions; everything else is the app.
+# app.onlymonkes.app stays as an alias.
 routes = [
+  { pattern = "onlymonkes.app", custom_domain = true },
+  { pattern = "www.onlymonkes.app", custom_domain = true },
   { pattern = "app.onlymonkes.app", custom_domain = true },
 ]
 
+services = [{ binding = "ACTIONS", service = "onlymonkes-actions" }]
+
 [assets]
 directory = "../../dist-web"
+binding = "ASSETS"
 not_found_handling = "single-page-application"
+run_worker_first = true
