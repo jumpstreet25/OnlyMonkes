@@ -30,6 +30,8 @@ export interface WebAuthEnv {
   WEB_RPC_LIMITER?: RateLimiter;
   XMTP_JWT_PRIVATE_KEY?: string;
   XMTP_JWT_KID?: string;
+  BOT_HTTP_URL?: string;
+  BOT_HTTP_SECRET: string;
 }
 
 export type HolderTier = "monke" | "genesis";
@@ -204,4 +206,50 @@ export async function handleWebAuth(path: string, request: Request, env: WebAuth
   }
 
   return reply({ error: "not found" }, 404, origin);
+}
+
+const PROFILE_FIELDS = ["u", "b", "x", "tw", "loc", "ni", "nm", "lg", "bd", "ss", "bb", "so", "pb", "sm"];
+
+/**
+ * POST /api/profile/me  { inboxId, identifier }  Authorization: Bearer <holder token>
+ *
+ * Phone → web profile import. The web app passes its own XMTP inbox ID, which
+ * is the same wallet-bound inbox the phone app broadcasts from, and gets back
+ * the latest public profile that inbox broadcast (the bot keeps it, see the
+ * bot's lib/reclaim/inboxProfiles.ts). Holders only.
+ */
+export async function handleWebProfile(request: Request, env: WebAuthEnv): Promise<Response> {
+  const origin = allowedOrigin(request.headers.get("Origin"), env);
+  if (!origin) return reply({ error: "origin not allowed" }, 403, null);
+  if (request.method !== "POST") return reply({ error: "POST only" }, 405, origin);
+  if (!env.XMTP_JWT_PRIVATE_KEY) return reply({ error: "sign-in not configured" }, 503, origin);
+  if (await rateLimited(env, request)) return reply({ error: "rate limited" }, 429, origin);
+  const auth = request.headers.get("Authorization") ?? "";
+  const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
+  const claims = token ? await readOwnToken(env, token) : null;
+  if (!claims || claims.exp <= Math.floor(Date.now() / 1000)) return reply({ error: "sign in again" }, 401, origin);
+  const body = await readJson(request);
+  const inboxId = typeof body?.inboxId === "string" && /^[0-9a-f]{64}$/.test(body.inboxId) ? body.inboxId : "";
+  // The web client's XMTP identity (0x key derived from the wallet signature);
+  // the bot resolves the phone inbox it belongs to, even an older random one.
+  const identifier = typeof body?.identifier === "string" && /^0x[0-9a-f]{40}$/.test(body.identifier) ? body.identifier : "";
+  if (!inboxId && !identifier) return reply({ error: "invalid inbox" }, 400, origin);
+  const base = (env.BOT_HTTP_URL ?? "").replace(/\/$/, "");
+  if (!base || !env.BOT_HTTP_SECRET) return reply({ error: "profile import unavailable" }, 503, origin);
+  try {
+    const res = await fetch(`${base}/web-profile`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.BOT_HTTP_SECRET}` },
+      body: JSON.stringify({ inboxId, identifier }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (res.status === 404) return reply({ profile: null }, 200, origin);
+    if (!res.ok) return reply({ error: "profile import unavailable" }, 502, origin);
+    const raw = ((await res.json()) as { profile?: Record<string, unknown> }).profile ?? {};
+    const profile: Record<string, unknown> = {};
+    for (const k of PROFILE_FIELDS) if (raw[k] !== undefined) profile[k] = raw[k];
+    return reply({ profile }, 200, origin);
+  } catch {
+    return reply({ error: "profile import unavailable" }, 502, origin);
+  }
 }
