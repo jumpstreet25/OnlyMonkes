@@ -92,6 +92,7 @@ import { handleWebRpc } from "./webRpc";
 import { handleWebAuth, handleWebProfile } from "./webAuth";
 import { handleWebMedia, isWebMediaPath } from "./webMedia";
 import { handleLivekitAuthorize, INTERNAL_HOST } from "./livekitAuth";
+import { handleApkDownload, isApkDownloadPath } from "./apkDownloads";
 import { handleWebPair } from "./webPair";
 import { verifyGenesisTokenOwnership } from "./genesisVerify";
 import { handleMonkeMemeGenerate } from "./monkeMeme";
@@ -186,7 +187,7 @@ interface ExecutionContext {
 
 // Cloudflare Worker handler type (declared locally to avoid @cloudflare/workers-types dependency in app tsconfig)
 type ExportedHandler<E = unknown> = {
-  fetch: (request: Request, env: E) => Promise<Response>;
+  fetch: (request: Request, env: E, ctx: ExecutionContext) => Promise<Response>;
   scheduled?: (event: ScheduledEvent, env: E, ctx: ExecutionContext) => Promise<void>;
 };
 
@@ -2077,43 +2078,6 @@ async function getLatestApkUrl(env: Env): Promise<string> {
   }
 }
 
-/** Newest test build: the latest GitHub pre-release tagged `test-*` with an
- *  .apk attached. Kept apart from /download/apk so the published link never
- *  serves a test build. */
-async function getTestApkUrl(env: Env): Promise<string> {
-  const cached = await env.FRAME_ALERTS.get("apk:test-url");
-  if (cached) {
-    try {
-      const { url, ts } = JSON.parse(cached) as { url: string; ts: number };
-      if (Date.now() - ts < 10 * 60 * 1000) return url;
-    } catch { /* fall through to re-resolve */ }
-  }
-  try {
-    const res = await fetchWithTimeout("https://api.github.com/repos/jumpstreet25/OnlyMonkes/releases?per_page=30", {
-      headers: { "User-Agent": "OnlyMonkes-Web/1.0", "Accept": "application/vnd.github+json" },
-    }, 8_000);
-    if (!res.ok) throw new Error(`GitHub API ${res.status}`);
-    const releases = await res.json() as any[];
-    const rel = releases.find((r) => r?.prerelease && typeof r?.tag_name === "string" && r.tag_name.startsWith("test-")
-      && (r.assets ?? []).some((a: any) => typeof a?.name === "string" && a.name.endsWith(".apk")));
-    const url = rel
-      ? rel.assets.find((a: any) => a.name.endsWith(".apk")).browser_download_url
-      : "https://github.com/jumpstreet25/OnlyMonkes/releases";
-    await env.FRAME_ALERTS.put("apk:test-url", JSON.stringify({ url, ts: Date.now() }), { expirationTtl: 24 * 60 * 60 });
-    return url;
-  } catch {
-    return "https://github.com/jumpstreet25/OnlyMonkes/releases";
-  }
-}
-
-/** GET /download/apk — redirects to whichever APK is attached to the
- *  current latest GitHub release, resolved dynamically so this link never
- *  needs updating as new versions ship. */
-async function handleDownloadApk(env: Env): Promise<Response> {
-  const url = await getLatestApkUrl(env);
-  return Response.redirect(url, 302);
-}
-
 /** Fetch a single Saga Monke's metadata by mint/asset id — Helius DAS
  *  getAsset, same call shape as sagaMonkesSales.ts's fetchNftImage/fetchNftName. */
 async function fetchMonkeByMint(mint: string, env: Env): Promise<MonkeAsset | null> {
@@ -3488,7 +3452,7 @@ function handleCopyright(): Response {
 // ─── Router ───────────────────────────────────────────────────────────────────
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     // CORS preflight
     if (request.method === "OPTIONS") {
       return new Response(null, { headers: CORS_HEADERS });
@@ -3693,13 +3657,9 @@ export default {
       if (request.method === "GET") return handleDeviceIntegrityStatus(url, env);
       return errorResponse("Method not allowed", 405);
     }
-    if (path === "/download/apk") {
-      if (request.method === "GET") return handleDownloadApk(env);
-      return errorResponse("Method not allowed", 405);
-    }
-    if (path === "/download/apk/test") {
-      if (request.method === "GET") return Response.redirect(await getTestApkUrl(env), 302);
-      return errorResponse("Method not allowed", 405);
+    // APKs on onlymonkes.app (R2, apkDownloads.ts). GitHub v3.0 is only the fallback.
+    if (isApkDownloadPath(path)) {
+      return handleApkDownload(path, request, env as any, ctx, () => getLatestApkUrl(env));
     }
     const monkeImageMatch = path.match(/^\/monke\/([^/]+)\/image$/);
     if (monkeImageMatch) {
