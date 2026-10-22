@@ -5,6 +5,13 @@
 name = "onlymonkes-web"
 compatibility_date = "2026-10-01"
 
+# onlymonkes.app (Cloudflare Registrar, 2026-10-22). The workers.dev link
+# keeps working too.
+routes = [
+  { pattern = "onlymonkes.app", custom_domain = true },
+  { pattern = "www.onlymonkes.app", custom_domain = true },
+]
+
 [assets]
 directory = "../../dist-web"
 not_found_handling = "single-page-application"
