@@ -89,6 +89,7 @@ import { handlePublishAppConfig } from "./adminConfig";
 import { handleBotCommand, handleInboxReset } from "./botCommand";
 import { handleWebRpc } from "./webRpc";
 import { handleWebAuth, handleWebProfile } from "./webAuth";
+import { handleWebMedia, isWebMediaPath } from "./webMedia";
 import { handleWebPair } from "./webPair";
 import { verifyGenesisTokenOwnership } from "./genesisVerify";
 import { handleMonkeMemeGenerate } from "./monkeMeme";
@@ -3606,6 +3607,10 @@ export default {
 
     if (path === "/api/profile/me") {
       return handleWebProfile(request, env);
+    }
+
+    if (isWebMediaPath(path)) {
+      return handleWebMedia(path, request, env);
     }
 
     if (path.startsWith("/api/pair/")) {

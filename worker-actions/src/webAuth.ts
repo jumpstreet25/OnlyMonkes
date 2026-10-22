@@ -255,3 +255,12 @@ export async function handleWebProfile(request: Request, env: WebAuthEnv): Promi
     return reply({ error: "profile import unavailable" }, 502, origin);
   }
 }
+
+/** The signed-in holder's wallet from `Authorization: Bearer <token>`, or null. */
+export async function holderWalletFromRequest(request: Request, env: WebAuthEnv): Promise<string | null> {
+  if (!env.XMTP_JWT_PRIVATE_KEY) return null;
+  const auth = request.headers.get("Authorization") ?? "";
+  const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
+  const claims = token ? await readOwnToken(env, token) : null;
+  return claims && claims.exp > Math.floor(Date.now() / 1000) ? claims.sub : null;
+}
