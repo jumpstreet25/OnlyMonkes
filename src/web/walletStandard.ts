@@ -49,6 +49,12 @@ export const SEEKER_CONNECT_WALLET_NAME = SEEKER_CONNECT_NAME;
 export const MWA_WALLET_NAME = "Mobile Wallet Adapter";
 
 let _mobileRegistered = false;
+/**
+ * Off until Seed Vault supports Seeker Connect: today its connect.solanamobile.com
+ * link falls through to the dApp Store (owner's Seeker, 2026-10-22). Mobile
+ * Wallet Adapter covers Seed Vault in Chrome meanwhile.
+ */
+const SEEKER_CONNECT_ENABLED = false;
 
 /**
  * Solana Mobile wallets, both over Solana Mobile's Nostr relay (using it
@@ -79,6 +85,7 @@ async function registerMobileWalletsOnce(): Promise<void> {
   } catch (e) {
     console.warn("[wallet] Mobile Wallet Adapter unavailable:", (e as Error)?.message);
   }
+  if (!SEEKER_CONNECT_ENABLED) return;
   try {
     const { registerSeekerConnect } = await import("@solana-mobile/seeker-connect-wallet-standard");
     registerSeekerConnect({ identity: APP_IDENTITY, relayDomain: SOLANA_MOBILE_RELAY } as any);
