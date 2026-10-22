@@ -41,6 +41,7 @@ import { router } from 'expo-router';
 import { useFreeRasp } from 'freerasp-react-native';
 import { useFonts } from 'expo-font';
 import { useSkiaReady } from '../src/hooks/useSkiaReady';
+import '../src/lib/webChrome';
 import { RASP_CONFIG, THREAT_ACTIONS } from '../src/lib/security';
 
 // Initialize Sentry crash reporting (no-op if SENTRY_DSN not set)

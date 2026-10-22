@@ -6,9 +6,15 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 import { fetchWithTimeout } from './fetchWithTimeout';
 
-const AK_LUMA_CACHE = 'luma_events_v6'; // v6: hardcoded fallback events guarantee globe content
+// Web: api.lu.ma and solana.com send no CORS headers, so the browser reads the
+// actions worker's KV-cached copy of the same sources instead.
+const IS_WEB = Platform.OS === 'web';
+const WORKER_LUMA_URL = 'https://onlymonkes-actions.jumpstreet25.workers.dev/api/community/luma-events';
+
+const AK_LUMA_CACHE = IS_WEB ? 'luma_events_web_v1' : 'luma_events_v6'; // v6: hardcoded fallback events guarantee globe content
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
 
 export interface LumaEvent {
@@ -244,6 +250,15 @@ function getHardcodedEvents(): LumaEvent[] {
   ].filter(e => new Date(e.endAt ?? e.startAt).getTime() > now - 7 * 86400000);
 }
 
+async function fetchWorkerEvents(): Promise<LumaEvent[]> {
+  const res = await fetchWithTimeout(WORKER_LUMA_URL, { headers: { Accept: 'application/json' }, timeoutMs: 10_000 });
+  if (!res.ok) throw new Error(`luma-events ${res.status}`);
+  const data = (await res.json()) as { events?: unknown };
+  return Array.isArray(data.events)
+    ? (data.events as LumaEvent[]).filter((e) => e && typeof e.name === 'string' && typeof e.startAt === 'string')
+    : [];
+}
+
 /**
  * Fetch all Solana ecosystem events from solana.com + Lu.ma calendars.
  * Uses a 6-hour cache to avoid hammering the sites.
@@ -266,10 +281,11 @@ export async function fetchSolanaEvents(): Promise<LumaEvent[]> {
   const seen = new Set<string>();
 
   try {
-    const results = await Promise.allSettled([
-      fetchSolanaComEvents(),
-      ...CALENDARS.map(cal => fetchCalendarEvents(cal)),
-    ]);
+    const results = await Promise.allSettled(
+      IS_WEB
+        ? [fetchWorkerEvents()]
+        : [fetchSolanaComEvents(), ...CALENDARS.map(cal => fetchCalendarEvents(cal))],
+    );
     for (const result of results) {
       if (result.status === "fulfilled") {
         for (const evt of result.value) {

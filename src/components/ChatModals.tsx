@@ -238,7 +238,8 @@ export function ChatModals(props: ChatModalsProps) {
       {showConfetti && <ConfettiView onDone={() => setShowConfetti(false)} />}
 
       <BananaClaimModal
-        visible={!!bananaClaim}
+        // Wait for the profile sheet: both at once stacked on first login.
+        visible={!!bananaClaim && !showUsernameModal}
         claim={bananaClaim}
         onDismiss={() => setBananaClaim(null)}
       />

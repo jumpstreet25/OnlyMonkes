@@ -41,6 +41,7 @@ import {
   Animated,
   BackHandler,
   Dimensions,
+  Platform,
   type ViewStyle,
 } from "react-native";
 import { LiquidGlass as BlurView } from "@/components/LiquidGlass";
@@ -211,6 +212,8 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
+    // Web on a wide window: a centered sheet, not one stretched edge to edge.
+    ...(Platform.OS === "web" ? { maxWidth: 560, marginHorizontal: "auto" as const } : null),
     borderBottomLeftRadius: 0,
     borderBottomRightRadius: 0,
     padding: 20,
