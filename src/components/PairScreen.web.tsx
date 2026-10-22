@@ -10,7 +10,7 @@ import { PAIR_CHOICE_KEY, useWalletChoices } from "@/hooks/useWalletChoices";
 import { approveOnPhone, collectWithWalletStandard, lookupShortCode, pairCode, pairingIsLive, readPairLink } from "@/web/pairing";
 import { router } from "expo-router";
 import { collectWithMwa } from "@/web/mwaSession";
-import { MWA_WALLET_NAME } from "@/web/walletStandard";
+import { MWA_WALLET_NAME, isInAppBrowser, openInChrome } from "@/web/walletStandard";
 
 export default function PairScreen() {
   const [link, setLink] = useState(() => (typeof window !== "undefined" ? readPairLink(window.location.hash) : null));
@@ -54,6 +54,25 @@ export default function PairScreen() {
           <Text style={styles.buttonText}>Enter a new code</Text>
         </Pressable>
         {homeLink}
+      </View>
+    );
+  }
+
+  // Opened from Google Lens / the camera: those in-app browsers
+  // can't open a wallet (the Seeker Connect link lands on solanamobile.com).
+  if (isInAppBrowser()) {
+    return (
+      <View style={styles.page}>
+        <Text style={styles.title}>Open this page in Chrome</Text>
+        {link && <Text style={styles.code}>{pairCode(link.desktopKey)}</Text>}
+        <Text style={styles.body}>
+          This page opened inside another app's browser, and your wallet can't open from there. Tap below to continue in Chrome
+          {link ? " — the match number stays the same." : "."}
+        </Text>
+        <Pressable onPress={openInChrome} style={styles.button} accessibilityRole="button">
+          <Text style={styles.buttonText}>Open in Chrome</Text>
+        </Pressable>
+        <Text style={styles.body}>Nothing happens? Tap ⋮ (top right) → "Open in Chrome" / "Open in browser".</Text>
       </View>
     );
   }

@@ -56,6 +56,17 @@ import { useTranslation } from "react-i18next";
 // Web in a phone's browser: approve a desktop login by typing its code (/pair).
 const IS_PHONE_BROWSER =
   Platform.OS === "web" && typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent);
+// Android in-app browsers (Google Lens / camera scans) can't open a wallet;
+// same test as src/web/walletStandard.ts isInAppBrowser.
+const IS_IN_APP_BROWSER =
+  IS_PHONE_BROWSER &&
+  !/SolanaMobileWebShell/i.test(navigator.userAgent) &&
+  /(WebView|Version\/.+(Chrome)\/(\d+)\.(\d+)\.(\d+)\.(\d+)|; wv\).+(Chrome)\/(\d+)\.(\d+)\.(\d+)\.(\d+))/i.test(navigator.userAgent);
+
+function openInChrome() {
+  const { host, pathname, search, hash } = window.location;
+  window.location.href = `intent://${host}${pathname}${search}${hash}#Intent;scheme=https;package=com.android.chrome;end`;
+}
 
 export default function ConnectScreen() {
   const { t } = useTranslation();
@@ -241,6 +252,11 @@ export default function ConnectScreen() {
               {t("connect.walletHint")}
             </Text>
           )
+        )}
+        {IS_IN_APP_BROWSER && (
+          <Pressable onPress={openInChrome} accessibilityRole="button" style={styles.pairLink}>
+            <Text style={styles.pairLinkText}>{t("connect.openInChrome")}</Text>
+          </Pressable>
         )}
         {IS_PHONE_BROWSER && (
           <Pressable onPress={() => router.push("/pair")} accessibilityRole="link" style={styles.pairLink}>

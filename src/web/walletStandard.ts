@@ -22,6 +22,25 @@ export function isAndroidBrowser(): boolean {
   return typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent);
 }
 
+/**
+ * Android in-app browsers (Google app / Lens camera scans, other apps' link viewers) are WebViews:
+ * Mobile Wallet Adapter refuses to register there and Seeker Connect's App
+ * Link opens solanamobile.com instead of the wallet. Same test as
+ * @solana-mobile/wallet-standard-mobile's isWebView.
+ */
+export function isInAppBrowser(): boolean {
+  if (!isAndroidBrowser()) return false;
+  const ua = navigator.userAgent;
+  if (/SolanaMobileWebShell/i.test(ua)) return false;
+  return /(WebView|Version\/.+(Chrome)\/(\d+)\.(\d+)\.(\d+)\.(\d+)|; wv\).+(Chrome)\/(\d+)\.(\d+)\.(\d+)\.(\d+))/i.test(ua);
+}
+
+/** Reopen the current page (path + #fragment) in Chrome via an Android intent link. */
+export function openInChrome(): void {
+  const { host, pathname, search, hash } = window.location;
+  window.location.href = `intent://${host}${pathname}${search}${hash}#Intent;scheme=https;package=com.android.chrome;end`;
+}
+
 export const SOLANA_MOBILE_RELAY = "relay.solanamobile.com";
 /** Wallet Standard name of Solana Mobile's QR (remote) wallet adapter. */
 export const QR_WALLET_NAME = "Remote Mobile Wallet Adapter";
@@ -46,7 +65,7 @@ let _mobileRegistered = false;
 async function registerMobileWalletsOnce(): Promise<void> {
   if (_mobileRegistered || typeof window === "undefined") return;
   _mobileRegistered = true;
-  if (!isAndroidBrowser()) return;
+  if (!isAndroidBrowser() || isInAppBrowser()) return;
   try {
     const mwa = await import("@solana-mobile/wallet-standard-mobile");
     mwa.registerMwa({

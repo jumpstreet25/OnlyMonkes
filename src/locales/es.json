@@ -89,6 +89,7 @@
     "chooseWallet": "Elige tu Wallet",
     "noWallets": "No se encontró ninguna wallet de Solana en este navegador. Instala Phantom, Solflare o Backpack y recarga.",
     "approveComputer": "¿Aprobando un inicio de sesión en tu computadora? Ingresa su código",
+    "openInChrome": "¿La wallet no se abre? Este es el navegador de otra app — toca para abrir en Chrome",
     "cancel": "Cancelar"
   },
   "autonoWizard": {
