@@ -18,7 +18,7 @@ import { THEME, FONTS, DEV_WALLET } from "@/lib/constants";
 import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
 import { WorldScreenShell, useWorldGlassCardStyle } from "@/components/worlds/WorldScreenShell";
 
-const ACTIONS_BASE = "https://onlymonkes-actions.jumpstreet25.workers.dev";
+const ACTIONS_BASE = "https://onlymonkes.app";
 
 interface TreasuryMonke {
   mint: string;

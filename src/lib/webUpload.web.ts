@@ -1,6 +1,6 @@
 import { getXmtpCredential } from "@/web/webAuth";
 
-const UPLOAD_URL = "https://onlymonkes-actions.jumpstreet25.workers.dev/api/upload";
+const UPLOAD_URL = "https://onlymonkes.app/api/upload";
 const MAX_BYTES = 10 * 1024 * 1024;
 
 /**

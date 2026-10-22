@@ -10,7 +10,7 @@
 import * as SecureStore from "expo-secure-store";
 import { connectWallet, getSelectedWallet, signMessageRaw } from "./walletStandard";
 
-const DEFAULT_WORKER = "https://onlymonkes-actions.jumpstreet25.workers.dev";
+const DEFAULT_WORKER = "https://onlymonkes.app";
 
 /** Actions worker; a local test harness may point it at `wrangler dev`. */
 function workerUrl(): string {

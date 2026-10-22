@@ -1186,7 +1186,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
               <View style={styles.settingsCard}>
                 <Pressable
                   style={styles.settingRow}
-                  onPress={() => Linking.openURL("https://onlymonkes-actions.jumpstreet25.workers.dev/terms")}
+                  onPress={() => Linking.openURL("https://onlymonkes.app/terms")}
                 >
                   <View style={styles.settingInfo}>
                     <Text style={styles.settingTitle}>{t("menuDrawer.termsOfUse")}</Text>
@@ -1197,7 +1197,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                 <View style={styles.settingDivider} />
                 <Pressable
                   style={styles.settingRow}
-                  onPress={() => Linking.openURL("https://onlymonkes-actions.jumpstreet25.workers.dev/privacy")}
+                  onPress={() => Linking.openURL("https://onlymonkes.app/privacy")}
                 >
                   <View style={styles.settingInfo}>
                     <Text style={styles.settingTitle}>{t("menuDrawer.privacyPolicy")}</Text>
@@ -1208,7 +1208,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                 <View style={styles.settingDivider} />
                 <Pressable
                   style={styles.settingRow}
-                  onPress={() => Linking.openURL("https://onlymonkes-actions.jumpstreet25.workers.dev/copyright")}
+                  onPress={() => Linking.openURL("https://onlymonkes.app/copyright")}
                 >
                   <View style={styles.settingInfo}>
                     <Text style={styles.settingTitle}>{t("menuDrawer.copyrightDmca")}</Text>

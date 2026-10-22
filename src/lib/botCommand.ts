@@ -20,7 +20,7 @@ import { isAllowedBotCommand } from "./botCommandAllowlist";
 
 export { isAllowedBotCommand };
 
-const ACTIONS_BASE = "https://onlymonkes-actions.jumpstreet25.workers.dev";
+const ACTIONS_BASE = "https://onlymonkes.app";
 const BROKEN_KEY = "bot_dm_broken_v1";
 
 export async function markBotDmBroken(): Promise<void> {

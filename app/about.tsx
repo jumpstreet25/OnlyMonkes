@@ -45,9 +45,9 @@ export default function AboutScreen() {
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Legal</Text>
-          <LinkRow label="Terms of Use & EULA" url="https://onlymonkes-actions.jumpstreet25.workers.dev/terms" />
-          <LinkRow label="Privacy Policy" url="https://onlymonkes-actions.jumpstreet25.workers.dev/privacy" />
-          <LinkRow label="Copyright & DMCA" url="https://onlymonkes-actions.jumpstreet25.workers.dev/copyright" />
+          <LinkRow label="Terms of Use & EULA" url="https://onlymonkes.app/terms" />
+          <LinkRow label="Privacy Policy" url="https://onlymonkes.app/privacy" />
+          <LinkRow label="Copyright & DMCA" url="https://onlymonkes.app/copyright" />
         </View>
 
         <View style={styles.section}>

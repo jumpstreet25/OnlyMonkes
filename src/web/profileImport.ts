@@ -14,7 +14,7 @@ import { getXmtpClient } from "@/hooks/useXmtp";
 import { getXmtpCredential } from "./webAuth";
 import { markOnboardingStepsDone } from "@/components/OnboardingChecklist";
 
-const WORKER = "https://onlymonkes-actions.jumpstreet25.workers.dev";
+const WORKER = "https://onlymonkes.app";
 const INBOX_WAIT_MS = 60_000;
 
 export type ImportedProfile = {

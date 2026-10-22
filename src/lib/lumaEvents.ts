@@ -12,7 +12,7 @@ import { fetchWithTimeout } from './fetchWithTimeout';
 // Web: api.lu.ma and solana.com send no CORS headers, so the browser reads the
 // actions worker's KV-cached copy of the same sources instead.
 const IS_WEB = Platform.OS === 'web';
-const WORKER_LUMA_URL = 'https://onlymonkes-actions.jumpstreet25.workers.dev/api/community/luma-events';
+const WORKER_LUMA_URL = 'https://onlymonkes.app/api/community/luma-events';
 
 const AK_LUMA_CACHE = IS_WEB ? 'luma_events_web_v1' : 'luma_events_v6'; // v6: hardcoded fallback events guarantee globe content
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours

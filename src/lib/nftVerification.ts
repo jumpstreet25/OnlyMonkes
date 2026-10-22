@@ -496,7 +496,7 @@ export async function verifyNFTOwnership(
   // through to the full chain below exactly as before. Never used to deny.
   try {
     const res = await fetchWithAbort(
-      `https://onlymonkes-actions.jumpstreet25.workers.dev/api/holders/lookup?wallet=${encodeURIComponent(walletAddress)}`,
+      `https://onlymonkes.app/api/holders/lookup?wallet=${encodeURIComponent(walletAddress)}`,
       { method: "GET" },
       5_000,
     );
@@ -674,7 +674,7 @@ export async function verifyNFTOwnership(
   {
     try {
       const res = await fetchWithAbort(
-        `https://onlymonkes-actions.jumpstreet25.workers.dev/api/verify?wallet=${encodeURIComponent(walletAddress)}`,
+        `https://onlymonkes.app/api/verify?wallet=${encodeURIComponent(walletAddress)}`,
         { method: "GET" },
       );
       if (res.ok) {

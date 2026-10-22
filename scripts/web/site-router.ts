@@ -12,7 +12,7 @@ interface Env {
 
 function isSitePath(path: string): boolean {
   return (
-    path === "/welcome" || path === "/get" || path === "/health" || path === "/actions.json" || path === "/claim" || path === "/escrow" ||
+    path === "/welcome" || path === "/get" || path === "/bot" || path === "/health" || path === "/actions.json" || path === "/claim" || path === "/escrow" ||
     path === "/robots.txt" || path === "/sitemap.xml" ||
     /^\/(legal|terms|privacy|copyright)(\/|\.html)?$/.test(path) ||
     /^\/(open|monke|api|frames|download|site|\.well-known)\//.test(path) ||

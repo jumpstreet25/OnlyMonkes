@@ -52,7 +52,7 @@ function parseItems(data: any[]): GiphyItem[] {
 const SAGA_GIPHY_USER = "sagamonkes";
 
 // Web: a public site can't hold the GIPHY key, so the actions worker adds it.
-const WEB_GIPHY_URL = "https://onlymonkes-actions.jumpstreet25.workers.dev/api/giphy";
+const WEB_GIPHY_URL = "https://onlymonkes.app/api/giphy";
 
 function giphyUrl(kind: "gifs" | "stickers", path: "search" | "trending", extra: Record<string, string>): string {
   if (Platform.OS === "web") {

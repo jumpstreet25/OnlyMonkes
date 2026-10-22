@@ -18,7 +18,7 @@ import { xmtpIdentityMessageBytes } from "@/lib/xmtpIdentity";
 import { saveWebSignIn, signInWithWallet } from "./webAuth";
 import { connectWallet, getSelectedWallet, signMessageMwaFormat } from "./walletStandard";
 
-const DEFAULT_WORKER = "https://onlymonkes-actions.jumpstreet25.workers.dev";
+const DEFAULT_WORKER = "https://onlymonkes.app";
 const POLL_MS = 2000;
 const PAIR_TTL_MS = 5 * 60 * 1000;
 const INFO = new TextEncoder().encode("onlymonkes-pair-v1");

@@ -12,7 +12,7 @@
 import { Buffer } from "buffer";
 import { getDevicePublicKeyBase64 } from "./deviceAttest";
 
-const WORKER_BASE = "https://onlymonkes-actions.jumpstreet25.workers.dev";
+const WORKER_BASE = "https://onlymonkes.app";
 
 function buildBindingMessage(devicePubKeyBase64: string, ts: number): string {
   return `OnlyMonkes Sentiment Oracle Device Registration\ndevice:${devicePubKeyBase64}\nts:${ts}`;

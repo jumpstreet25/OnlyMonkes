@@ -93,7 +93,7 @@ const _str = (v: unknown): string => (typeof v === 'string' ? v : '');
 // "is Helius configured" gates still pass.
 const IS_WEB = Platform.OS === 'web';
 const WEB_KEY_MARKER = 'web-proxy';
-export const WEB_RPC_PROXY_URL = 'https://onlymonkes-actions.jumpstreet25.workers.dev/api/rpc';
+export const WEB_RPC_PROXY_URL = 'https://onlymonkes.app/api/rpc';
 
 export const HELIUS_API_KEY: string = IS_WEB ? WEB_KEY_MARKER : ENV_HELIUS || _str(_extra.heliusApiKey);
 // Dedicated key for wallet / Saga Monke ownership checks only.

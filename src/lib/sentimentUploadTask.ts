@@ -17,7 +17,7 @@ import { getActiveThreats } from "./security";
 
 export const HEADLESS_SENTIMENT_UPLOAD_TASK_NAME = "OnlyMonkesSentimentUpload";
 
-const WORKER_BASE = "https://onlymonkes-actions.jumpstreet25.workers.dev";
+const WORKER_BASE = "https://onlymonkes.app";
 // Matches sentimentOracle.ts's MAX_EVENTS_PER_BATCH.
 const MAX_EVENTS_PER_BATCH = 200;
 
