@@ -12,7 +12,7 @@
  *         actual GitHub credential — no GitHub token ever touches the phone.
  */
 
-const WORKER_BASE = 'https://onlymonkes-actions.jumpstreet25.workers.dev';
+const WORKER_BASE = 'https://onlymonkes.app';
 
 export interface AppRemoteConfig {
   globalGroupId: string;

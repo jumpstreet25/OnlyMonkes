@@ -24,7 +24,7 @@ import { geocodeLocation } from "./geocode";
 import { useAppStore } from "@/store/appStore";
 import type { CalendarEvent } from "@/store/appStore";
 
-const ACTIONS_BASE = "https://onlymonkes-actions.jumpstreet25.workers.dev";
+const ACTIONS_BASE = "https://onlymonkes.app";
 
 async function signAuth(action: string, wallet: string): Promise<{ ts: number; signature: string }> {
   const ts = Date.now();

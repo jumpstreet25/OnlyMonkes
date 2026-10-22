@@ -10,7 +10,7 @@ import { Platform } from "react-native";
 import { useAppStore } from "@/store/appStore";
 import { getDevicePublicKeyBase64, isDeviceAttestAvailable, signWithDeviceKey } from "@/lib/deviceAttest";
 
-const WORKER_BASE = "https://onlymonkes-actions.jumpstreet25.workers.dev";
+const WORKER_BASE = "https://onlymonkes.app";
 
 export async function livekitProof(roomName: string, identity: string): Promise<Record<string, string> | undefined> {
   if (Platform.OS !== "android" || !isDeviceAttestAvailable()) return undefined;

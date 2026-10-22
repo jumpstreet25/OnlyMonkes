@@ -14,7 +14,7 @@ import { Buffer } from "buffer";
 import { getDevicePublicKeyBase64, getDeviceAttestationCertChain, signWithDeviceKey } from "./deviceAttest";
 import { getActiveThreats } from "./security";
 
-const WORKER_BASE = "https://onlymonkes-actions.jumpstreet25.workers.dev";
+const WORKER_BASE = "https://onlymonkes.app";
 
 function buildBindingMessage(devicePubKeyBase64: string, nonce: string): string {
   return `OnlyMonkes Device Integrity Attestation\ndevice:${devicePubKeyBase64}\nnonce:${nonce}`;

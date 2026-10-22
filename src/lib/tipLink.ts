@@ -40,8 +40,8 @@ const APP_IDENTITY = {
   icon: "favicon.ico",
 };
 
-const CLAIM_BASE = "https://onlymonkes-actions.jumpstreet25.workers.dev/claim";
-const ESCROW_ENDPOINT = "https://onlymonkes-actions.jumpstreet25.workers.dev/escrow";
+const CLAIM_BASE = "https://onlymonkes.app/claim";
+const ESCROW_ENDPOINT = "https://onlymonkes.app/escrow";
 
 export interface TipLinkResult {
   claimUrl: string;

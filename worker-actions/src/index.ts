@@ -32,7 +32,8 @@
  *   TIP_ESCROW — stores encrypted ephemeral keypairs for tip links (72h TTL)
  */
 
-import { renderLanding, renderGet, renderOpen, LEGAL_PATHS, SITE_BASE } from "./site";
+import { renderLanding, renderGet, renderOpen, renderBot, LEGAL_PATHS, SITE_BASE, type BotCommand } from "./site";
+import botCommands from "../../config/bot-commands.json";
 import {
   Connection,
   Keypair,
@@ -3657,6 +3658,10 @@ export default {
       if (request.method === "GET") return handleDeviceIntegrityStatus(url, env);
       return errorResponse("Method not allowed", 405);
     }
+    if (path === "/bot" && request.method === "GET") {
+      return renderBot((botCommands as { commands: BotCommand[] }).commands);
+    }
+
     // APKs on onlymonkes.app (R2, apkDownloads.ts). GitHub v3.0 is only the fallback.
     if (isApkDownloadPath(path)) {
       return handleApkDownload(path, request, env as any, ctx, () => getLatestApkUrl(env));

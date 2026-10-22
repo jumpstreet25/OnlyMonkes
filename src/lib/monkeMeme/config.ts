@@ -41,7 +41,7 @@ export const DEFAULT_MONKEMEME_CONFIG: MonkeMemeConfig = {
   enabled: true,
   spaceUrl: "https://black-forest-labs-flux-2-klein-4b.hf.space",
   styleRefUrl: "https://raw.githubusercontent.com/jumpstreet25/OnlyMonkes/master/config/monkememe/style-ref-1.png",
-  fallbackUrl: "https://onlymonkes-actions.jumpstreet25.workers.dev",
+  fallbackUrl: "https://onlymonkes.app",
   dailyLimit: 6,
   testersOnly: true,
   testerWalletHashes: [],

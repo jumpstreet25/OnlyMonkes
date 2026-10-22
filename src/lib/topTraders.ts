@@ -10,7 +10,7 @@
  *   kind=bot_monitored — smart-money wallets the bot tracks
  */
 
-const TOP_TRADERS_URL = "https://onlymonkes-actions.jumpstreet25.workers.dev/api/top-traders";
+const TOP_TRADERS_URL = "https://onlymonkes.app/api/top-traders";
 const CACHE_MS = 10 * 60 * 1000; // 10 min
 
 /** Hardcoded bot identity — always available even if CDN/worker omits fields. */

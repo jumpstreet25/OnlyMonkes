@@ -107,7 +107,7 @@ export async function handleWebMedia(path: string, request: Request, env: WebMed
   let file: File | null = null;
   try {
     const form = await request.formData();
-    const f = form.get("file");
+    const f = (form as unknown as { get(name: string): unknown }).get("file");
     file = f && typeof f !== "string" ? (f as File) : null;
   } catch { /* handled below */ }
   if (!file) return reply({ error: "missing file" }, 400, origin);

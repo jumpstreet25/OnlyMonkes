@@ -371,3 +371,64 @@ ${foot()}`;
 }
 
 export const LEGAL_PATHS = /^\/(legal|terms|privacy|copyright)(\/|\.html)?$/;
+
+// ─── /bot — what the bot does (owner, 2026-10-22) ────────────────────────────
+// Public commands only, from an allowlist. Nothing from MonkeBrain / the TA
+// scanner / AutonoMonke (no scores, alerts, reports or win rates): that code
+// is private and its signals are a holder perk.
+
+export type BotCommand = { cmd: string; args?: string; group?: string; admin?: boolean; desc?: { en?: string } };
+
+const BOT_PAGE_GROUPS: { title: string; cmds: string[] }[] = [
+  { title: "Prices & charts", cmds: ["/price", "/chart"] },
+  { title: "Watchlist", cmds: ["/watchlist", "/watch", "/unwatch", "/mywatchlist"] },
+  { title: "Trade from your own wallet", cmds: ["/buy", "/sell", "/swap", "/limit", "/positions", "/claim-rent", "/stake", "/unstake"] },
+  { title: "Tips", cmds: ["/tip", "/tiplink", "/donate"] },
+  { title: "Your account", cmds: ["/reclaim", "/myid", "/help"] },
+];
+
+const BOT_CSS = `
+.bot{max-width:760px;margin:0 auto;padding:56px 20px 0}
+.bot .intro{text-align:center;margin-bottom:34px}
+.bot .intro img{width:104px;height:104px;margin-bottom:14px}
+.bot h1{font-size:clamp(28px,5vw,40px);margin-bottom:8px}
+.bot .intro p{color:var(--mut);max-width:560px;margin:0 auto 18px}
+.bot .row{display:flex;flex-wrap:wrap;gap:10px;justify-content:center}
+.bot h2{font-size:20px;margin:30px 0 10px}
+.bot ul{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.bot li{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:flex;flex-wrap:wrap;gap:4px 14px;align-items:baseline}
+.bot code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:14px;color:var(--text);white-space:nowrap}
+.bot code .a{color:var(--mut)}
+.bot li span{color:var(--mut);font-size:14px;flex:1 1 220px}
+.bot .note{margin-top:26px;font-size:14px;color:var(--mut);background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+`;
+
+export function renderBot(commands: BotCommand[]): Response {
+  const byCmd = new Map<string, BotCommand>();
+  for (const c of commands) if (c?.cmd && !c.admin && !byCmd.has(c.cmd)) byCmd.set(c.cmd, c);
+  const sections = BOT_PAGE_GROUPS.map((g) => {
+    const items = g.cmds.map((k) => byCmd.get(k)).filter((c): c is BotCommand => !!c);
+    if (!items.length) return "";
+    const rows = items.map((c) => {
+      const desc = (c.desc?.en ?? "").split(" — ")[0].slice(0, 120);
+      return `<li><code>${esc(c.cmd)}${c.args ? ` <span class="a">${esc(c.args)}</span>` : ""}</code><span>${esc(desc)}</span></li>`;
+    }).join("");
+    return `<h2>${esc(g.title)}</h2><ul>${rows}</ul>`;
+  }).join("");
+  const body = `${head("Meet Monke — the OnlyMonkes bot", "Monke (AI Agent #9385) lives in OnlyMonkes chat: prices, charts, wallet trades, tips and more for Saga Monkes holders.", "/bot", BOT_CSS)}
+<main class="bot">
+  <div class="intro">
+    <img src="/site/icon-512.png" alt="">
+    <h1>Meet Monke</h1>
+    <p>Monke (AI Agent #9385) lives in the OnlyMonkes chat. Ask it things in Main Chat or send it a DM: prices, charts, trades from your own wallet, tips and more. It's for Saga Monkes holders.</p>
+    <div class="row">
+      <a class="btn primary" href="/open/dms">Message Monke</a>
+      <a class="btn ghost" href="/open/chat">Open Main Chat</a>
+    </div>
+  </div>
+  ${sections}
+  <p class="note">Trades always come from your own wallet and wait for you to reply YES before anything happens. Crypto is risky: you can lose money, and nothing Monke says is financial advice. See the <a href="/terms">terms</a>. Type <code>/help</code> in a DM for the full list.</p>
+</main>
+${foot()}`;
+  return html(body);
+}
