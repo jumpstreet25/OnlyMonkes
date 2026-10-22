@@ -5,11 +5,11 @@
 name = "onlymonkes-web"
 compatibility_date = "2026-10-01"
 
-# onlymonkes.app (Cloudflare Registrar, 2026-10-22). The workers.dev link
-# keeps working too.
+# app.onlymonkes.app (2026-10-22). onlymonkes.app itself is the public site,
+# served by the actions worker (worker-actions/src/site.ts), which redirects
+# old web-app paths here. The workers.dev link keeps working too.
 routes = [
-  { pattern = "onlymonkes.app", custom_domain = true },
-  { pattern = "www.onlymonkes.app", custom_domain = true },
+  { pattern = "app.onlymonkes.app", custom_domain = true },
 ]
 
 [assets]
