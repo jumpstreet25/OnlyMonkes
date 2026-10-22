@@ -7,12 +7,24 @@
  * Secrets (set via `wrangler secret put`):
  *   LK_API_KEY    — LiveKit API key
  *   LK_API_SECRET — LiveKit API secret
+ *
+ * Holders only (2026-10-22): every request carries a `proof` that the actions
+ * worker checks over the ACTIONS service binding (worker-actions/src/
+ * livekitAuth.ts) — the web app's holder sign-in token, or the phone's
+ * Device-Integrity hardware key signing this room + identity. The verified
+ * wallet goes into the token's metadata. ALLOW_UNVERIFIED="1" keeps old
+ * proof-less clients working while the OTA rolls out; set it to "0" after.
  */
 
 interface Env {
   LK_API_KEY: string;
   LK_API_SECRET: string;
+  ACTIONS: { fetch: (input: Request | string, init?: RequestInit) => Promise<Response> };
+  ALLOW_UNVERIFIED?: string;
 }
+
+const ROOM = /^omv?-\d{10,14}-[A-Za-z0-9]{1,8}$/;
+const TOKEN_TTL_S = 2 * 3600;
 
 type ExportedHandler<E = unknown> = {
   fetch: (request: Request, env: E) => Promise<Response>;
@@ -23,6 +35,7 @@ interface TokenRequest {
   identity: string;
   name?: string;
   canPublish?: boolean;
+  proof?: unknown;
 }
 
 // ─── JWT helpers (Web Crypto API — runs natively on CF Workers) ──────────────
@@ -46,6 +59,7 @@ async function createToken(
   identity: string,
   name: string,
   canPublish: boolean,
+  metadata: string,
 ): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
 
@@ -56,7 +70,8 @@ async function createToken(
     iss: apiKey,
     iat: now,
     nbf: now - 60,
-    exp: now + 6 * 3600,
+    exp: now + TOKEN_TTL_S,
+    metadata,
     video: {
       // Hosts must create rooms; canPublish true ≈ publisher/host path.
       // LiveKit rejects first join when roomCreate is false and room is empty.
@@ -86,6 +101,8 @@ async function createToken(
 
 // ─── Worker handler ──────────────────────────────────────────────────────────
 
+const CORS = { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' };
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     // CORS preflight
@@ -114,8 +131,31 @@ export default {
       return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
     }
 
-    if (!body.roomName || !body.identity) {
-      return Response.json({ error: 'Missing roomName or identity' }, { status: 400 });
+    const name = typeof body.name === 'string' && body.name ? body.name.slice(0, 40) : '';
+    if (typeof body.roomName !== 'string' || !ROOM.test(body.roomName) || typeof body.identity !== 'string' || !body.identity || body.identity.length > 128) {
+      return Response.json({ error: 'Invalid roomName or identity' }, { status: 400, headers: CORS });
+    }
+
+    let wallet = '';
+    if (body.proof) {
+      const res = await env.ACTIONS.fetch('https://internal.onlymonkes/api/livekit/authorize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roomName: body.roomName, identity: body.identity, proof: body.proof }),
+      });
+      const auth = (await res.json().catch(() => ({}))) as { ok?: boolean; wallet?: string; error?: string };
+      if (res.ok && auth.ok && auth.wallet) {
+        wallet = auth.wallet;
+        console.log(`[token] verified room=${body.roomName}`);
+      } else if (env.ALLOW_UNVERIFIED === '1') {
+        console.log(`[token] proof rejected (${auth.error ?? res.status}), allowed during rollout room=${body.roomName}`);
+      } else {
+        return Response.json({ error: auth.error ?? 'Not authorized' }, { status: res.status === 200 ? 403 : res.status, headers: CORS });
+      }
+    } else if (env.ALLOW_UNVERIFIED === '1') {
+      console.log(`[token] unverified request room=${body.roomName}`);
+    } else {
+      return Response.json({ error: 'Holders only — update the app' }, { status: 401, headers: CORS });
     }
 
     const token = await createToken(
@@ -123,15 +163,11 @@ export default {
       env.LK_API_SECRET,
       body.roomName,
       body.identity,
-      body.name || body.identity,
+      name || body.identity,
       body.canPublish ?? true,
+      JSON.stringify(wallet ? { wallet } : { unverified: true }),
     );
 
-    return Response.json({ token }, {
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Content-Type': 'application/json',
-      },
-    });
+    return Response.json({ token, verified: !!wallet }, { headers: CORS });
   },
 } satisfies ExportedHandler<Env>;

@@ -10,6 +10,7 @@
  */
 
 import { LIVEKIT_URL_ENV, LIVEKIT_TOKEN_URL_ENV } from '@/lib/constants';
+import { livekitProof } from '@/lib/livekitProof';
 
 export const LK_URL       = LIVEKIT_URL_ENV;
 const LK_TOKEN_URL        = LIVEKIT_TOKEN_URL_ENV || 'https://onlymonkes-livekit-token.jumpstreet25.workers.dev';
@@ -49,6 +50,9 @@ export async function createLivekitToken(
     throw new Error('LIVEKIT_TOKEN_URL not configured. Deploy the Firebase Cloud Function and add the URL to .env');
   }
 
+  // Holders only: the token server checks this before minting (livekitProof.ts).
+  const proof = await livekitProof(roomName, participantIdentity);
+
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 10_000);
 
@@ -60,6 +64,7 @@ export async function createLivekitToken(
       identity: participantIdentity,
       name: participantName,
       canPublish,
+      proof,
     }),
     signal: controller.signal,
   });

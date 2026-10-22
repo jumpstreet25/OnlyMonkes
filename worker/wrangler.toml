@@ -5,3 +5,14 @@ compatibility_date = "2024-01-01"
 # Secrets (set via `wrangler secret put`):
 #   LK_API_KEY
 #   LK_API_SECRET
+
+# Holder check lives in the actions worker (worker-actions/src/livekitAuth.ts).
+services = [{ binding = "ACTIONS", service = "onlymonkes-actions" }]
+
+[vars]
+# "1" while phones pick up the OTA that sends a proof; then "0" (holders only).
+ALLOW_UNVERIFIED = "1"
+
+# Keep logs so the rollout counts ([token] verified / unverified / rejected) can be read.
+[observability]
+enabled = true

@@ -264,3 +264,10 @@ export async function holderWalletFromRequest(request: Request, env: WebAuthEnv)
   const claims = token ? await readOwnToken(env, token) : null;
   return claims && claims.exp > Math.floor(Date.now() / 1000) ? claims.sub : null;
 }
+
+/** Wallet in a valid, unexpired holder token, or null. */
+export async function holderWalletFromToken(env: WebAuthEnv, token: string): Promise<string | null> {
+  if (!env.XMTP_JWT_PRIVATE_KEY || !token) return null;
+  const claims = await readOwnToken(env, token);
+  return claims && claims.exp > Math.floor(Date.now() / 1000) ? claims.sub : null;
+}

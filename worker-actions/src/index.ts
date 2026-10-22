@@ -90,6 +90,7 @@ import { handleBotCommand, handleInboxReset } from "./botCommand";
 import { handleWebRpc } from "./webRpc";
 import { handleWebAuth, handleWebProfile } from "./webAuth";
 import { handleWebMedia, isWebMediaPath } from "./webMedia";
+import { handleLivekitAuthorize, INTERNAL_HOST } from "./livekitAuth";
 import { handleWebPair } from "./webPair";
 import { verifyGenesisTokenOwnership } from "./genesisVerify";
 import { handleMonkeMemeGenerate } from "./monkeMeme";
@@ -3607,6 +3608,11 @@ export default {
 
     if (path === "/api/profile/me") {
       return handleWebProfile(request, env);
+    }
+
+    // Service-binding only (onlymonkes-livekit-token); public requests never carry this host.
+    if (url.hostname === INTERNAL_HOST && path === "/api/livekit/authorize") {
+      return handleLivekitAuthorize(request, env);
     }
 
     if (isWebMediaPath(path)) {
