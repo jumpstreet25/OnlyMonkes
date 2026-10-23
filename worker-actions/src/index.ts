@@ -3515,7 +3515,7 @@ export default {
     }
 
     if (isWebMediaPath(path)) {
-      return handleWebMedia(path, request, env);
+      return handleWebMedia(path, request, env, ctx);
     }
 
     if (path.startsWith("/api/pair/")) {

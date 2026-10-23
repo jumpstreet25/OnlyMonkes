@@ -39,6 +39,7 @@ export interface ApkEnv {
 }
 
 const R2_READS_MONTHLY_CAP = 1_000_000;
+const COUNT_SAMPLE = 10;
 const TEST_PATH = /^\/download\/t\/([0-9a-f]{32})\/([A-Za-z0-9._-]{1,80}\.apk)$/;
 const APK_TYPE = "application/vnd.android.package-archive";
 
@@ -50,13 +51,19 @@ function monthKey(): string {
   return `apk:r2reads:${new Date().toISOString().slice(0, 7)}`;
 }
 
-/** Counts an R2 read; false once this month's cap is reached. */
+/**
+ * Counts an R2 read; false once this month's cap is reached. Writes 1 in
+ * COUNT_SAMPLE reads (adding COUNT_SAMPLE) so download managers' many Range
+ * requests stay well inside KV's daily write allowance.
+ */
 async function underMonthlyCap(env: ApkEnv): Promise<boolean> {
   try {
     const key = monthKey();
     const n = parseInt((await env.FRAME_ALERTS.get(key)) ?? "0", 10) || 0;
     if (n >= R2_READS_MONTHLY_CAP) return false;
-    await env.FRAME_ALERTS.put(key, String(n + 1), { expirationTtl: 40 * 86400 });
+    if (Math.random() < 1 / COUNT_SAMPLE) {
+      await env.FRAME_ALERTS.put(key, String(n + COUNT_SAMPLE), { expirationTtl: 40 * 86400 });
+    }
     return true;
   } catch {
     return true; // KV hiccup: the edge cache + rate limit still bound reads

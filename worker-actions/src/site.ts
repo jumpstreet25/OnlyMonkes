@@ -176,6 +176,8 @@ section p.sub{color:var(--mut);max-width:640px;margin-bottom:28px}
 .card .ic{font-size:28px}
 .card h3{font-size:20px;margin:8px 0 6px}
 .card p{color:var(--mut);font-size:15px}
+.risk{margin-top:18px;font-size:14px;color:var(--mut)}
+.risk a{color:inherit}
 .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;counter-reset:s}
 .step{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:22px;counter-increment:s}
 .step::before{content:counter(s);display:inline-grid;place-items:center;width:34px;height:34px;border-radius:50%;background:var(--blue);color:#04101f;font-weight:800;margin-bottom:10px}
@@ -270,6 +272,7 @@ export function renderLanding(stats: SiteStats | null): Response {
     <div class="card"><div class="ic">🎨</div><h3>MonkeMeme</h3><p>Turn any Saga Monke into a cartoon meme from its own traits, then share it to X.</p></div>
     <div class="card"><div class="ic">🎙️</div><h3>Avatar Rooms</h3><p>Voice rooms where your monke PFP talks when you do.</p></div>
   </div>
+  <p class="risk">MonkeTrades alerts and AutonoMonke are not financial advice. Crypto trading is risky and can lose money; past results don't predict future ones. See the <a href="/terms">terms</a>.</p>
 </div></section>
 
 <section id="start"><div class="wrap">
