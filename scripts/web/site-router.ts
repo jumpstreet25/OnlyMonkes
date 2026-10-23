@@ -20,9 +20,27 @@ function isSitePath(path: string): boolean {
   );
 }
 
+// public/_headers isn't applied once this worker runs first, so the app's
+// responses get the same security headers here. The 3D viewer may be framed
+// by our own pages only.
+function withSecurityHeaders(res: Response, path: string): Response {
+  const out = new Response(res.body, res);
+  out.headers.set("X-Content-Type-Options", "nosniff");
+  out.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  out.headers.set("Permissions-Policy", "camera=(self), microphone=(self), geolocation=(self), payment=()");
+  if (path.startsWith("/viewer/")) {
+    out.headers.delete("X-Frame-Options");
+    out.headers.set("Content-Security-Policy", "frame-ancestors 'self'");
+  } else {
+    out.headers.set("X-Frame-Options", "DENY");
+  }
+  return out;
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const path = new URL(request.url).pathname;
-    return isSitePath(path) ? env.ACTIONS.fetch(request) : env.ASSETS.fetch(request);
+    if (isSitePath(path)) return env.ACTIONS.fetch(request);
+    return withSecurityHeaders(await env.ASSETS.fetch(request), path);
   },
 };

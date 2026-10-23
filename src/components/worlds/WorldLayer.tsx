@@ -11,7 +11,7 @@
  */
 
 import React from "react";
-import { View, Text, StyleSheet, Image as RNImage } from "react-native";
+import { View, Text, StyleSheet, Image as RNImage, Platform } from "react-native";
 import {
   Canvas,
   Rect,
@@ -33,7 +33,10 @@ interface WorldLayerProps {
   active?: boolean;
 }
 
-export function WorldLayer({ active = true }: WorldLayerProps) {
+export function WorldLayer({ active: activeProp = true }: WorldLayerProps) {
+  // Web: worlds render as a still frame. A moving world would redraw its Skia
+  // canvas every frame, and web canvases are static (src/web/shims/skia.tsx).
+  const active = Platform.OS === "web" ? false : activeProp;
   const worldId = useAppStore((s) => s.shopStyles?.worldId) as string | undefined;
 
   // Absolute fill wrapper so every world is pinned behind the full chat
