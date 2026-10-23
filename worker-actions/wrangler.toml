@@ -100,7 +100,8 @@ crons = ["0 */4 * * *", "0 * * * *"]
 [vars]
 WEB_APP_ORIGINS = "https://app.onlymonkes.app,https://onlymonkes.app,https://www.onlymonkes.app,https://onlymonkes-web.jumpstreet25.workers.dev"
 XMTP_JWT_KID = "om-1"
-# Bot profile import: Cloudflare Tunnel onlymonkes-bot on the VPS (only /web-profile → bot :3001; all else 404).
+# Bot base URL: Cloudflare Tunnel onlymonkes-bot on the VPS. Its ingress passes only
+# /web-profile, /command, /inbox-reset, /api/sales-stats and /sentry-webhook to bot :3001; all else 404.
 BOT_PROFILE_URL = "https://bot.onlymonkes.app"
 
 # APKs on onlymonkes.app (apkDownloads.ts). Test builds expire after 30 days

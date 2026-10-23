@@ -31,8 +31,8 @@ export interface WebAuthEnv {
   XMTP_JWT_PRIVATE_KEY?: string;
   XMTP_JWT_KID?: string;
   BOT_HTTP_SECRET: string;
-  /** HTTPS base for the bot's /web-profile (Caddy on the VPS) — deployed
-   *  Workers ignore custom ports, so BOT_HTTP_URL's :3001 never connects. */
+  /** Bot base URL — Cloudflare Tunnel at bot.onlymonkes.app (deployed Workers
+   *  ignore custom ports, so the bot's :3001 is never reached directly). */
   BOT_PROFILE_URL?: string;
 }
 

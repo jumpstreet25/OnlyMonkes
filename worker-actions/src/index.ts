@@ -23,7 +23,7 @@
  *   HELIUS_NFT_API_KEY — Helius key used only by /api/verify wallet checks
  *   JUP_API_KEY        — Jupiter Swap API v2 key (get from portal.jup.ag)
  *   BOT_HTTP_SECRET    — Bearer token for authenticated bot endpoints
- *   BOT_HTTP_URL       — bot Express base URL (VPS :3001) for /api/bot-command + /api/inbox-reset
+ *   BOT_PROFILE_URL    — bot base URL (tunnel, wrangler.toml) for profile import, /api/bot-command, /api/inbox-reset, sales stats
  *   ESCROW_ENCRYPT_KEY — 256-bit hex key for AES-GCM encryption of ephemeral secrets in KV
  *   ADMIN_WALLET_PUBKEY — admin's Solana wallet base58 address (see adminConfig.ts)
  *   ADMIN_GITHUB_PAT     — fine-grained GitHub PAT, scoped to this repo's Contents only
@@ -122,8 +122,9 @@ export interface Env {
   JUP_API_KEY: string;
   BOT_HTTP_SECRET: string;
   // Bot Express on the VPS (`AGENT_HTTP_PORT`, default 3001, BIND_HOST 0.0.0.0).
-  // Set via `wrangler secret put BOT_HTTP_URL` (e.g. http://157.173.192.39:3001).
-  BOT_HTTP_URL?: string;
+  /** Bot base URL — the Cloudflare Tunnel at bot.onlymonkes.app (wrangler.toml). Workers
+   *  can't reach the bot's :3001 directly; the tunnel passes only the routes the worker uses. */
+  BOT_PROFILE_URL?: string;
   ESCROW_ENCRYPT_KEY: string;
   // Optional in dev — DFlow's dev quote endpoint requires no key. Set in
   // production via `wrangler secret put DFLOW_API_KEY` once we cut over.
@@ -1925,13 +1926,12 @@ async function fetchMonkeHolderCount(env: Env): Promise<number> {
 }
 
 // Bot's own sales-book, exposed for exactly this purpose (see sagaMonkesSales.ts +
-// xmtpOnlyMonkes.ts's /api/sales-stats). nip.io hostname, not the bare IP — Cloudflare Workers'
-// fetch() refuses a literal IP address (same reasoning as MonkeLedger's own worker).
-const BOT_SALES_STATS_URL = "http://157-173-192-39.nip.io:3001/api/sales-stats";
-
-async function fetchSalesStatsFromBot(): Promise<{ floorSol: number; volume24hSol: number; recentSales: StatsSnapshot["recentSales"] } | null> {
+// xmtpOnlyMonkes.ts's /api/sales-stats), reached through the bot tunnel (BOT_PROFILE_URL).
+async function fetchSalesStatsFromBot(env: Env): Promise<{ floorSol: number; volume24hSol: number; recentSales: StatsSnapshot["recentSales"] } | null> {
   try {
-    const res = await fetchWithTimeout(BOT_SALES_STATS_URL, {}, 8_000);
+    const base = (env.BOT_PROFILE_URL ?? "").replace(/\/$/, "");
+    if (!base) return null;
+    const res = await fetchWithTimeout(`${base}/api/sales-stats`, {}, 8_000);
     if (!res.ok) return null;
     const d = await res.json() as any;
     if (typeof d?.volume24hSol !== "number") return null;
@@ -1954,7 +1954,7 @@ async function fetchFloorAndMarket(env: Env): Promise<{ floorSol: number | null;
   let volume24hSol: number | null = null;
   let skrPriceUsd: number | null = null;
 
-  const fromBot = await fetchSalesStatsFromBot();
+  const fromBot = await fetchSalesStatsFromBot(env);
   if (fromBot) {
     floorSol = fromBot.floorSol;
     volume24hSol = fromBot.volume24hSol;
@@ -1994,7 +1994,7 @@ async function fetchFloorAndMarket(env: Env): Promise<{ floorSol: number | null;
  *  SagaMonkesSalesMonitor, trimmed to a short public-safe feed (no buyer/seller wallets, no name
  *  lookup per sale to avoid N extra DAS calls on every cron run). */
 async function fetchRecentSales(env: Env): Promise<StatsSnapshot["recentSales"]> {
-  const fromBot = await fetchSalesStatsFromBot();
+  const fromBot = await fetchSalesStatsFromBot(env);
   if (fromBot && fromBot.recentSales.length > 0) return fromBot.recentSales;
 
   try {

@@ -8,7 +8,7 @@
  * changes the global XMTP_IDENTITY_DOMAIN.
  *
  * Auth: ed25519 over a fixed message + Saga Monke or Genesis Token on-chain.
- * Worker then Bearer-forwards to the bot's :3001 (BOT_HTTP_URL).
+ * Worker then Bearer-forwards to the bot through its tunnel (BOT_PROFILE_URL).
  *
  * Allowlist must stay in lockstep with:
  *   Monke_Eliza/.../lib/botHttpCommand.ts
@@ -111,7 +111,7 @@ async function botPost(
   path: string,
   body: unknown,
 ): Promise<{ ok: true; json: any } | { ok: false; error: string; status: number }> {
-  const base = (env.BOT_HTTP_URL ?? "").replace(/\/$/, "");
+  const base = (env.BOT_PROFILE_URL ?? "").replace(/\/$/, "");
   if (!base) return { ok: false, error: "Bot HTTP URL not configured", status: 503 };
   if (!env.BOT_HTTP_SECRET) return { ok: false, error: "Bot HTTP secret not configured", status: 503 };
   try {
