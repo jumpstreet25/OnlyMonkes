@@ -3481,16 +3481,18 @@ export default {
 
     // 2026-07-30: public "Check Your Monke" growth page — see the section
     // comment above SAGA_COLLECTION_MINT for context.
+    // Link-preview bots (X, Discord…) often send HEAD first; answer it like GET.
+    const isPageRead = request.method === "GET" || request.method === "HEAD";
     if (path === "/" || path === "/welcome") {
-      if (request.method === "GET") return renderLanding(await getCachedStats(env));
+      if (isPageRead) return renderLanding(await getCachedStats(env));
       return errorResponse("Method not allowed", 405);
     }
     if (path === "/get") {
-      if (request.method === "GET") return renderGet();
+      if (isPageRead) return renderGet();
       return errorResponse("Method not allowed", 405);
     }
     const openMatch = path.match(/^\/open\/([a-z]+)\/?$/);
-    if (openMatch && request.method === "GET") {
+    if (openMatch && isPageRead) {
       const page = renderOpen(openMatch[1]);
       if (page) return page;
       return Response.redirect(`${SITE_BASE}/welcome`, 302);
@@ -3658,7 +3660,7 @@ export default {
       if (request.method === "GET") return handleDeviceIntegrityStatus(url, env);
       return errorResponse("Method not allowed", 405);
     }
-    if (path === "/bot" && request.method === "GET") {
+    if (path === "/bot" && isPageRead) {
       return renderBot((botCommands as { commands: BotCommand[] }).commands);
     }
 
