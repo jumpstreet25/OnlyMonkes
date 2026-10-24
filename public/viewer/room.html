@@ -222,7 +222,7 @@ function takeRoom(list) {
       const label = document.createElement("div");
       label.className = "name";
       labelsEl.append(label);
-      m = { id, n, name, muted: false, speaking: false, energy: 0, talkUntil: 0, face: null, faceAt: 0, slot: null, monke: null, placeholder: null, label, scale: 1 };
+      m = { id, n, name, muted: false, speaking: false, energy: 0, talkUntil: 0, face: null, faceAt: 0, slot: null, monke: null, placeholder: null, label, scale: 1, phase: Math.random() * 6 };
       members.set(id, m);
       attachModel(m);
     } else if (m.n !== n) {
@@ -304,9 +304,19 @@ renderer.setAnimationLoop(() => {
     if (!m.monke) continue;
     let face = null;
     if (talking) {
-      face = m.face && now - m.faceAt < FACE_FRESH_MS
-        ? m.face
-        : { values: { jawOpen: Math.min(1, m.energy * 1.4) }, headRotation: {} }; // no camera: mouth follows the voice
+      // The voice level arrives only a few times a second and phone face trackers
+      // barely open the mouth, so speech is shaped into a syllable-like flap and
+      // the mouth opens with whichever is stronger, face or voice.
+      const t = now / 1000 + m.phase;
+      const flap = 0.3 + 0.7 * Math.abs(Math.sin(t * 11));
+      const voiceJaw = Math.min(1, (0.3 + m.energy) * flap);
+      const fresh = m.face && now - m.faceAt < FACE_FRESH_MS;
+      const values = fresh ? { ...m.face.values } : {};
+      values.jawOpen = Math.max(clamp01(values.jawOpen), voiceJaw / 1.6); // driveMonke scales jawOpen by 1.6
+      const headRotation = fresh
+        ? m.face.headRotation
+        : { x: Math.sin(t * 2.3) * 5, y: Math.sin(t * 1.1) * 10, z: Math.sin(t * 1.7) * 3 }; // talking bob, no camera
+      face = { values, headRotation };
     }
     if (driveMonke(m.monke, face, dt, false)) moving = true;
     const s = talking ? 1.06 : 1;
