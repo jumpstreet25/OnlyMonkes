@@ -23,3 +23,6 @@ export async function importPhoneProfile(): Promise<ImportedProfile | null> {
 
 /** Native: the phone's bananas are its own. */
 export async function refreshPhoneBananas(): Promise<void> {}
+
+/** Native: the phone already has its own Main Chat history. */
+export async function loadWebHistory(): Promise<void> {}

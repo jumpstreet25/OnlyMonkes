@@ -18,7 +18,7 @@
  *  - UserProfileModal when username tapped
  */
 
-import { importPhoneProfile, refreshPhoneBananas } from "@/lib/webLogin";
+import { importPhoneProfile, loadWebHistory, refreshPhoneBananas } from "@/lib/webLogin";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
@@ -594,6 +594,12 @@ export default function ChatScreen() {
     return () => clearInterval(id);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isGroupMember, messages.length >= 10 ? 1 : 0]);
+
+  // Web: Main Chat history from before this browser joined (no-op on the phone).
+  // After the first XMTP load, so its setMessages doesn't replace these.
+  useEffect(() => {
+    if (isGroupMember && myInboxId && !isLoadingHistory) void loadWebHistory();
+  }, [isGroupMember, myInboxId, isLoadingHistory]);
 
   // ─── Load saved profile, show modal if no username yet ───────────────────
   useEffect(() => {

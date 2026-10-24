@@ -38,3 +38,4 @@ export function startSingleSessionLogin(choiceKey: string): Promise<WalletAccoun
 }
 
 export { importPhoneProfile, refreshPhoneBananas } from "@/web/profileImport";
+export { loadWebHistory } from "@/web/chatHistory";
