@@ -28,6 +28,14 @@ function withSecurityHeaders(res: Response, path: string): Response {
   out.headers.set("X-Content-Type-Options", "nosniff");
   out.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   out.headers.set("Permissions-Policy", "camera=(self), microphone=(self), geolocation=(self), payment=()");
+  // Export file names carry a content hash, so a browser can keep them for
+  // good; the default (max-age=0, must-revalidate) re-checked ~10 MB of app
+  // code on every visit. canvaskit.wasm has a fixed name: an hour.
+  if (path.startsWith("/_expo/static/") || path.startsWith("/assets/")) {
+    out.headers.set("Cache-Control", "public, max-age=31536000, immutable");
+  } else if (path === "/canvaskit.wasm") {
+    out.headers.set("Cache-Control", "public, max-age=3600");
+  }
   if (path.startsWith("/viewer/")) {
     out.headers.delete("X-Frame-Options");
     out.headers.set("Content-Security-Policy", "frame-ancestors 'self'");

@@ -43,6 +43,10 @@ import { useFonts } from 'expo-font';
 import { useSkiaReady } from '../src/hooks/useSkiaReady';
 import '../src/lib/webChrome';
 import { RASP_CONFIG, THREAT_ACTIONS } from '../src/lib/security';
+import { startPerfMeterIfAsked } from '../src/lib/perfMeter';
+
+// Web: ?perf=1 shows the speed meter (no-op on the phone).
+startPerfMeterIfAsked();
 
 // Initialize Sentry crash reporting (no-op if SENTRY_DSN not set)
 initSentry();
