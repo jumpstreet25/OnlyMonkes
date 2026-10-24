@@ -36,7 +36,41 @@ function b64url(bytes: Uint8Array): string {
   return b64(bytes).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
+/**
+ * Chrome's Local Network Access permission ("loopback-network", Chrome 142+)
+ * gates the localhost WebSocket MWA talks to the wallet over. Without it the
+ * wallet session hangs silently (owner's Seeker, 2026-10-24: code shown,
+ * "Waiting for your wallet…" forever). Same check as
+ * @solana-mobile/wallet-standard-mobile ≥0.5. The state is read ahead of time
+ * because the tap handler can't await before launching the wallet.
+ */
+let loopback: "granted" | "prompt" | "denied" | "unsupported" = "unsupported";
+const permissions = typeof navigator !== "undefined" ? (navigator as any).permissions : undefined;
+if (permissions?.query) {
+  permissions
+    .query({ name: "loopback-network" })
+    .then((p: { state: typeof loopback; addEventListener: (t: string, f: () => void) => void }) => {
+      loopback = p.state;
+      p.addEventListener("change", () => { loopback = p.state; });
+    })
+    .catch(() => { /* browser without the permission: nothing to ask */ });
+}
+
+function loopbackBlocked(): Error | null {
+  if (loopback === "prompt") {
+    // Ask from inside the tap: this request is what makes Chrome show its prompt.
+    fetch("http://localhost").catch(() => {});
+    return new Error("Chrome needs your OK to reach your wallet. Tap Allow on its prompt, then tap your wallet again.");
+  }
+  if (loopback === "denied") {
+    return new Error("Chrome is blocking the connection to your wallet. Tap the icon left of the address bar, then Permissions, and allow Local network access. Then tap your wallet again.");
+  }
+  return null;
+}
+
 export function collectWithMwa(): Promise<WalletBundle> {
+  const blocked = loopbackBlocked();
+  if (blocked) return Promise.reject(blocked);
   let nonce = "";
   let wallet = "";
   // transact() must start in this synchronous call (see top of file).
