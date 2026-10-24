@@ -694,7 +694,8 @@
     "phoneDone": "Done",
     "phoneStop": "Stop using the phone",
     "phoneClose": "Close",
-    "phoneFailed": "Couldn't make the phone link. Try again."
+    "phoneFailed": "Couldn't make the phone link. Try again.",
+    "stage3dFailed": "3D couldn't load, so the room switched to 2D."
   },
   "useXmtp": {
     "joinRetrying": "Couldn't reach the bot to join — retrying automatically.",

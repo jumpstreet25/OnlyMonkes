@@ -694,7 +694,8 @@
     "phoneDone": "Listo",
     "phoneStop": "Dejar de usar el teléfono",
     "phoneClose": "Cerrar",
-    "phoneFailed": "No se pudo crear el enlace del teléfono. Inténtalo de nuevo."
+    "phoneFailed": "No se pudo crear el enlace del teléfono. Inténtalo de nuevo.",
+    "stage3dFailed": "No se pudo cargar el 3D, así que la sala cambió a 2D."
   },
   "useXmtp": {
     "joinRetrying": "No se pudo contactar al bot para unirte — reintentando automáticamente.",
