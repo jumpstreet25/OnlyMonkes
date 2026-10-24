@@ -336,11 +336,12 @@ export function buildMonke({ px, solid }) {
  * Eases the monke toward a face ({ values, headRotation }, blendshape names as
  * src/lib/faceTracking.ts). face null + idle: slow blink and a little sway;
  * face null, not idle: back to rest and still. Returns true while still moving.
+ * rate: how fast it eases toward the target (higher = snappier).
  */
-export function driveMonke(monke, face, dt, idle) {
+export function driveMonke(monke, face, dt, idle, rate = 14) {
   const t = performance.now() / 1000;
   const live = !!face;
-  const k = 1 - Math.exp(-dt * 14);
+  const k = 1 - Math.exp(-dt * rate);
   let jaw = 0, bl = 0, br = 0, rx = 0, ry = 0, rz = 0;
   if (live) {
     const v = face.values, r = face.headRotation || {};

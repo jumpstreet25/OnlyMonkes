@@ -64,6 +64,11 @@ const labelsEl = document.getElementById("labels");
 const statusEl = document.getElementById("status");
 const TALK_HOLD_MS = 1200;  // keep moving through the gaps between words
 const FACE_FRESH_MS = 600;
+// Parted lips on fresh face numbers also count as talking: the server's speaking
+// flag comes in coarse updates, often half a second after you start.
+const FACE_TALK_JAW = 0.18;
+const FACE_TALK_HOLD_MS = 500;
+const EASE_RATE = 28; // snappier than the single viewer (14): speech is fast
 const MAX_MEMBERS = 16;
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -207,6 +212,12 @@ function cleanFace(values, headRotation) {
   return { values: v, headRotation: { x: Number(r.x) || 0, y: Number(r.y) || 0, z: Number(r.z) || 0 } };
 }
 
+function takeMemberFace(m, f, now) {
+  m.face = f;
+  m.faceAt = now;
+  if ((f.values.jawOpen || 0) > FACE_TALK_JAW) m.faceTalkUntil = now + FACE_TALK_HOLD_MS;
+}
+
 function takeRoom(list) {
   if (!Array.isArray(list)) return;
   const now = performance.now();
@@ -222,7 +233,7 @@ function takeRoom(list) {
       const label = document.createElement("div");
       label.className = "name";
       labelsEl.append(label);
-      m = { id, n, name, muted: false, speaking: false, energy: 0, talkUntil: 0, face: null, faceAt: 0, slot: null, monke: null, placeholder: null, label, scale: 1, phase: Math.random() * 6 };
+      m = { id, n, name, muted: false, speaking: false, energy: 0, talkUntil: 0, faceTalkUntil: 0, face: null, faceAt: 0, slot: null, monke: null, placeholder: null, label, scale: 1, phase: Math.random() * 6 };
       members.set(id, m);
       attachModel(m);
     } else if (m.n !== n) {
@@ -235,9 +246,9 @@ function takeRoom(list) {
     m.speaking = !!raw.speaking && !m.muted;
     m.energy = clamp01(raw.energy);
     if (wasSpeaking && !m.speaking) m.talkUntil = now + TALK_HOLD_MS;
-    if (m.muted) m.talkUntil = 0;
+    if (m.muted) { m.talkUntil = 0; m.faceTalkUntil = 0; }
     const f = cleanFace(raw.face?.values, raw.face?.headRotation);
-    if (f && !m.muted) { m.face = f; m.faceAt = now; }
+    if (f && !m.muted) takeMemberFace(m, f, now);
     m.label.textContent = name || "Monke";
   }
   for (const id of [...members.keys()]) if (!next.includes(id)) removeMember(id);
@@ -259,7 +270,7 @@ function onHostMessage(e) {
   else if (d.type === "face") {
     const m = members.get(cleanId(d.id));
     const f = cleanFace(d.values, d.headRotation);
-    if (m && f && !m.muted) { m.face = f; m.faceAt = performance.now(); dirty = true; }
+    if (m && f && !m.muted) { takeMemberFace(m, f, performance.now()); dirty = true; }
   }
 }
 addEventListener("message", onHostMessage);
@@ -298,7 +309,7 @@ renderer.setAnimationLoop(() => {
   let moving = false;
   for (const id of order) {
     const m = members.get(id);
-    const talking = !m.muted && (m.speaking || now < m.talkUntil);
+    const talking = !m.muted && (m.speaking || now < m.talkUntil || now < m.faceTalkUntil);
     m.label.classList.toggle("talking", talking);
     m.label.classList.toggle("muted", m.muted);
     if (!m.monke) continue;
@@ -308,7 +319,7 @@ renderer.setAnimationLoop(() => {
       // barely open the mouth, so speech is shaped into a syllable-like flap and
       // the mouth opens with whichever is stronger, face or voice.
       const t = now / 1000 + m.phase;
-      const flap = 0.3 + 0.7 * Math.abs(Math.sin(t * 11));
+      const flap = 0.3 + 0.7 * Math.abs(Math.sin(t * 16)); // ~5 openings a second, like syllables
       const voiceJaw = Math.min(1, (0.3 + m.energy) * flap);
       const fresh = m.face && now - m.faceAt < FACE_FRESH_MS;
       const values = fresh ? { ...m.face.values } : {};
@@ -318,7 +329,7 @@ renderer.setAnimationLoop(() => {
         : { x: Math.sin(t * 2.3) * 5, y: Math.sin(t * 1.1) * 10, z: Math.sin(t * 1.7) * 3 }; // talking bob, no camera
       face = { values, headRotation };
     }
-    if (driveMonke(m.monke, face, dt, false)) moving = true;
+    if (driveMonke(m.monke, face, dt, false, EASE_RATE)) moving = true;
     const s = talking ? 1.06 : 1;
     m.scale += (s - m.scale) * (1 - Math.exp(-dt * 10));
     if (Math.abs(s - m.scale) > 0.001) moving = true;
