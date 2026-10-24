@@ -192,9 +192,12 @@ export default function AvatarRoomScreen() {
         setConnecting(false);
         showMicProblem(true);
       })
-      .catch(() => {
+      .catch((err) => {
         setConnecting(false);
-        showGlassAlert(t('avatarRoom.connectionFailed'), t('avatarRoom.couldNotJoinRoom'));
+        // The real reason (LiveKit / browser error) — "could not join" alone can't be diagnosed.
+        const detail = [err?.name, err?.message].filter(Boolean).join(': ').slice(0, 200);
+        console.warn('[AvatarRoom] join failed:', err);
+        showGlassAlert(t('avatarRoom.connectionFailed'), detail ? `${t('avatarRoom.couldNotJoinRoom')}\n\n${detail}` : t('avatarRoom.couldNotJoinRoom'));
         router.back();
       });
 
