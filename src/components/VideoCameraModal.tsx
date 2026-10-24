@@ -12,7 +12,7 @@ import { showGlassAlert } from "@/lib/glassAlert";
 import { useTranslation } from "react-i18next";
 import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useVideoPlayer, VideoView } from 'expo-video';
+import WebVideo from './WebVideo';
 import { uploadVideo } from '@/lib/videoUpload';
 import { THEME, FONTS } from '@/lib/constants';
 
@@ -35,14 +35,6 @@ export function VideoCameraModal({ visible, onClose, onSend }: Props) {
   const [uploading, setUploading] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  // expo-video: player is recreated automatically whenever videoUri changes
-  // (useReleasingSharedObject keys on the source) — mirrors the old
-  // <Video source={{uri}} shouldPlay isLooping /> behavior.
-  const previewPlayer = useVideoPlayer(videoUri, (player) => {
-    player.loop = true;
-    player.play();
-  });
 
   // Reset state when modal opens
   useEffect(() => {
@@ -147,12 +139,8 @@ export function VideoCameraModal({ visible, onClose, onSend }: Props) {
         ) : videoUri ? (
           // ── Preview mode ──
           <View style={styles.container}>
-            <VideoView
-              player={previewPlayer}
-              style={styles.preview}
-              contentFit="contain"
-              nativeControls={false}
-            />
+            {/* WebView playback: expo-video crashes the published 3.4 binary (see WebVideo.tsx). */}
+            <WebVideo uri={videoUri} style={styles.preview} controls={false} loop fit="contain" />
             {/* Close button */}
             <Pressable style={[styles.closeBtn, { top: insets.top + 12 }]} onPress={onClose} hitSlop={10}>
               <Text style={styles.closeBtnText}>✕</Text>

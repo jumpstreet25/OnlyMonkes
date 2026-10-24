@@ -586,7 +586,8 @@ export default function ChatScreen() {
     if (messages.length >= 10) return;
     let count = 0;
     const id = setInterval(() => {
-      syncMessages();
+      // A stale stream throws; reconnect instead of leaving an unhandled rejection.
+      syncMessages().catch(() => { initialize().catch(() => {}); });
       count++;
       if (count >= 15) clearInterval(id);
     }, 8_000);
