@@ -26,6 +26,13 @@ export function startPerfMeterIfAsked(): void {
   (window as any).__omPerf = true;
 
   const t0 = performance.now();
+  // Count WebGL contexts made: every Skia canvas makes one on the web.
+  let glMade = 0;
+  const origGetContext = HTMLCanvasElement.prototype.getContext;
+  (HTMLCanvasElement.prototype as any).getContext = function (this: HTMLCanvasElement, type: string, ...rest: unknown[]) {
+    if (/webgl/.test(type)) glMade++;
+    return (origGetContext as any).call(this, type, ...rest);
+  };
   const freezes: Freeze[] = [];
   let blocked = 0, count = 0, worstGap = 0;
   const add = (f: Freeze) => {
@@ -41,10 +48,15 @@ export function startPerfMeterIfAsked(): void {
     new PerformanceObserver((list) => {
       for (const e of list.getEntries() as any[]) {
         if (e.duration < 200) continue;
-        const top = [...(e.scripts ?? [])].sort((a: any, b: any) => b.duration - a.duration)[0];
+        const scripts = [...(e.scripts ?? [])] as any[];
+        const top = scripts.sort((a, b) => b.duration - a.duration)[0];
+        const js = Math.round(scripts.reduce((a, s) => a + s.duration, 0));
+        const forced = Math.round(scripts.reduce((a, s) => a + (s.forcedStyleAndLayoutDuration || 0), 0));
+        const layout = Math.round(e.styleAndLayoutStart ? e.startTime + e.duration - e.styleAndLayoutStart : 0);
+        const split = `js ${js} (forced layout ${forced}) · style/layout/paint ${layout}`;
         const what = top
-          ? `${top.invokerType ?? ""} ${top.sourceFunctionName || top.invoker || ""} @${shortUrl(top.sourceURL)} (${Math.round(top.duration)}ms js)`.trim()
-          : `render/layout ${Math.round(e.styleAndLayoutStart ? e.startTime + e.duration - e.styleAndLayoutStart : 0)}ms`;
+          ? `${top.invokerType ?? ""} ${top.sourceFunctionName || top.invoker || ""} @${shortUrl(top.sourceURL)}:${top.sourceCharPosition ?? "?"} · ${split}`.trim()
+          : split;
         add({ at: e.startTime, ms: Math.round(e.duration), what });
       }
     }).observe({ type: "long-animation-frame", buffered: true });
@@ -89,6 +101,7 @@ export function startPerfMeterIfAsked(): void {
       `OnlyMonkes speed · ${Math.round((performance.now() - t0) / 1000)}s on page · ${location.pathname}`,
       `freezes ≥200ms: ${count} · total ${Math.round(blocked / 1000 * 10) / 10}s · worst timer gap ${Math.round(worstGap)}ms`,
       mem ? `JS heap ${Math.round(mem.usedJSHeapSize / 1048576)}MB` : "",
+      `WebGL contexts made ${glMade} · canvases now ${document.getElementsByTagName("canvas").length} · page elements ${document.getElementsByTagName("*").length}`,
       "longest:",
       ...freezes.map((f) => `  ${f.ms}ms @${Math.round(f.at / 1000)}s ${f.what}`),
       res.length ? "biggest downloads:" : "",
