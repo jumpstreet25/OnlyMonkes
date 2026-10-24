@@ -677,7 +677,14 @@
     "raidShowedUp": "🐒 ¡Redada de Bananas! +{{amount}} 🍌 por aparecer",
     "connectionFailed": "Conexión Fallida",
     "couldNotJoinRoom": "No se pudo unir a la sala.",
-    "joiningRoom": "Uniéndose a la sala..."
+    "joiningRoom": "Uniéndose a la sala...",
+    "micJoinedMuted": "Entraste silenciado",
+    "micOffTitle": "El micrófono está apagado",
+    "micBlockedWeb": "Tu navegador bloqueó el micrófono. Haz clic en el icono a la izquierda de la barra de direcciones, elige Restablecer permiso (o pon Micrófono en Preguntar), recarga, toca el botón del micrófono y haz clic en Permitir.",
+    "micBlockedPhone": "OnlyMonkes no tiene permiso para usar el micrófono. Actívalo en Ajustes de Android → Aplicaciones → OnlyMonkes → Permisos y toca el botón del micrófono.",
+    "micNone": "No se encontró ningún micrófono. Conecta uno y toca el botón del micrófono.",
+    "micBusy": "Otra app está usando tu micrófono. Ciérrala y toca el botón del micrófono.",
+    "micError": "No se pudo activar el micrófono. Revisa que esta app (o tu navegador) tenga permiso para usarlo y toca el botón del micrófono."
   },
   "useXmtp": {
     "joinRetrying": "No se pudo contactar al bot para unirte — reintentando automáticamente.",
