@@ -14,13 +14,17 @@
  * Wallets are stored only as hashes and never shown.
  *
  *   POST /api/referral/me        { proof, name?, pfp? } → your code, link, card, counts, badges, season
- *   POST /api/referral/collect   { proof }              → { bananas } (credits not yet collected, once)
+ *   POST /api/referral/collect   { proof }              → { bananas } (everything owed, once; PHONE ONLY)
  *   POST /api/referral/claim     { proof, code }        → { ok, bananas, name } | { error, reason }
+ *
+ * Bananas live on the phone (the web only mirrors the phone's balance), so a
+ * claim only records the invite and the phone app collects every banana owed —
+ * as referrer and as the new holder — through /collect.
  *   GET  /api/referral/code/<C>                          → { name, pfp } (invite screen)
  *   GET  /api/referral/leaderboard                       → { season, top }
  *   GET  /r/<C> · /r/<C>/card.png · /referrals           pages
  *
- * KV (REFERRALS): code:<C> { o, n, p, t, c, k } · owner:<id> → C · by:<id> { c, t }
+ * KV (REFERRALS): code:<C> { o, n, p, t, c, k } · owner:<id> → C · by:<id> { c, t, g: new-holder bananas collected }
  *                 season { id, start, end } · s:<season>:<C> → count
  */
 import type { Env } from "./index";
@@ -160,13 +164,26 @@ async function collect(request: Request, env: Env): Promise<Response> {
   const body = await readBody(request);
   const id = await who(env, body?.proof, "collect");
   if ("error" in id) return json({ error: id.error }, id.status);
-  const code = await env.REFERRALS!.get(`owner:${await idFor(id.wallet)}`);
+  // Mark first, pay after: a lost reply costs bananas, a retry never doubles them.
+  const myId = await idFor(id.wallet);
+  let bananas = 0, referrals = 0, welcome = false;
+  const code = await env.REFERRALS!.get(`owner:${myId}`);
   const rec = code ? await getRec(env, code) : null;
-  if (!code || !rec || rec.c <= rec.k) return json({ bananas: 0 });
-  const n = rec.c - rec.k;
-  rec.k = rec.c; // mark first: a lost reply costs bananas, a retry never doubles them
-  await putRec(env, code, rec);
-  return json({ bananas: n * REFERRER_BANANAS, referrals: n });
+  if (code && rec && rec.c > rec.k) {
+    referrals = rec.c - rec.k;
+    rec.k = rec.c;
+    await putRec(env, code, rec);
+    bananas += referrals * REFERRER_BANANAS;
+  }
+  const byRaw = await env.REFERRALS!.get(`by:${myId}`);
+  const by = byRaw ? (JSON.parse(byRaw) as { c: string; t: number; g?: boolean }) : null;
+  if (by && !by.g) {
+    by.g = true;
+    await env.REFERRALS!.put(`by:${myId}`, JSON.stringify(by));
+    bananas += NEW_HOLDER_BANANAS;
+    welcome = true;
+  }
+  return json({ bananas, referrals, welcome });
 }
 
 async function claim(request: Request, env: Env): Promise<Response> {
