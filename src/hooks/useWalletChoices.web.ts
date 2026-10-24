@@ -5,13 +5,13 @@ import { PAIR_CHOICE_KEY, type WalletChoice } from "./useWalletChoices";
 export type { WalletChoice };
 
 function labelFor(name: string): string {
-  if (name === QR_WALLET_NAME) return "Seeker / Saga — scan QR";
+  if (name === QR_WALLET_NAME) return "Phone wallet — scan QR";
   if (name === SEEKER_CONNECT_WALLET_NAME) return "Seeker wallet via Seeker Connect (beta)";
   if (name === "Mobile Wallet Adapter") return "Seed Vault / phone wallet (recommended)";
   return name;
 }
 
-const PAIR_CHOICE: WalletChoice = { key: PAIR_CHOICE_KEY, label: "Seeker / Saga — scan to log in", icon: "📱" };
+const PAIR_CHOICE: WalletChoice = { key: PAIR_CHOICE_KEY, label: "Phone wallet — scan to log in", icon: "📱" };
 
 function current(): WalletChoice[] {
   const pair = isAndroidBrowser() ? [] : [PAIR_CHOICE];

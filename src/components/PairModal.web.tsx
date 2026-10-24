@@ -47,7 +47,7 @@ export function PairModal({ visible, onClose, onPaired }: {
         const bundle = await p.result;
         if (!live) return;
         setStatus("finishing");
-        onPaired(await loginWithBundle(bundle, "Seeker (paired)"));
+        onPaired(await loginWithBundle(bundle, "Phone (paired)"));
       } catch (e) {
         if (!live) return;
         setError((e as Error)?.message ?? "Pairing failed");
@@ -63,7 +63,8 @@ export function PairModal({ visible, onClose, onPaired }: {
 
   return (
     <MonkeGlass visible={visible} onClose={onClose} cardStyle={styles.card}>
-      <Text style={styles.title}>Log in with your Seeker or Saga</Text>
+      <Text style={styles.title}>Log in with your phone's wallet</Text>
+      <Text style={styles.step}>Any Android phone with a Solana wallet app works: Seed Vault (Seeker, Saga), Phantom, Solflare, Backpack and others.</Text>
       <Text style={styles.step}>1. Scan this QR with your phone's camera or Google Lens. Or open {siteHost()} in your phone's browser, tap "Approving a login on your computer?" and type the code below.</Text>
       <Text style={styles.step}>2. Check the 4-digit number on your phone matches, then approve in your wallet.</Text>
       <View style={styles.qrBox}>

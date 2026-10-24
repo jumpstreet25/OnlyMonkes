@@ -93,7 +93,7 @@ export default function PairScreen() {
       <View style={styles.page}>
         <Text style={styles.title}>Approve a login on your computer</Text>
         <Text style={styles.body}>This page is only for logging in on a computer with your phone.</Text>
-        <Text style={styles.body}>1. On your computer, open this site and choose Login → "Seeker / Saga — scan to log in".</Text>
+        <Text style={styles.body}>1. On your computer, open this site and choose Login → "Phone wallet — scan to log in".</Text>
         <Text style={styles.body}>2. Type the gold 8-character code your computer shows here, then tap Continue.</Text>
         <TextInput
           value={typed}
@@ -151,7 +151,7 @@ export default function PairScreen() {
         <Text style={styles.ok}>Approved. Continue on your computer — you can close this page.</Text>
       ) : choices.length === 0 ? (
         <Text style={styles.body}>
-          No wallet found in this browser. Open this page in your Seeker or Saga's built-in browser.
+          No wallet found in this browser. On Android, open this page in Chrome with a Solana wallet app installed (Seed Vault, Phantom, Solflare, Backpack…). On iPhone, open it inside your wallet app's own browser (for example Phantom → Browser).
         </Text>
       ) : (
         <View style={styles.list}>

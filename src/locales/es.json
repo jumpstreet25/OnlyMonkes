@@ -88,6 +88,7 @@
     "walletHint": "Requiere una app de wallet de Solana (Phantom, Solflare, etc.)",
     "chooseWallet": "Elige tu Wallet",
     "noWallets": "No se encontró ninguna wallet de Solana en este navegador. Instala Phantom, Solflare o Backpack y recarga.",
+    "extensionHint": "¿Usas Phantom, Solflare o Backpack en este navegador? Instala o desbloquea la extensión y recarga; aparecerá aquí.",
     "approveComputer": "¿Aprobando un inicio de sesión en tu computadora? Ingresa su código",
     "openInChrome": "¿La wallet no se abre? Este es el navegador de otra app — toca para abrir en Chrome",
     "cancel": "Cancelar"

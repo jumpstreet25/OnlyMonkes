@@ -287,6 +287,9 @@ export default function ConnectScreen() {
         {walletChoices.length === 0 && (
           <Text style={styles.sheetEmpty}>{t("connect.noWallets")}</Text>
         )}
+        {Platform.OS === "web" && walletChoices.length > 0 && walletChoices.every((c) => c.key === PAIR_CHOICE_KEY) && (
+          <Text style={styles.sheetEmpty}>{t("connect.extensionHint")}</Text>
+        )}
 
         {walletChoices.map((choice) => ({
           ...choice,
