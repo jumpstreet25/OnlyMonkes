@@ -92,6 +92,7 @@ import { handleBotCommand, handleInboxReset } from "./botCommand";
 import { handleWebRpc } from "./webRpc";
 import { handleWebAuth, handleWebHistory, handleWebProfile } from "./webAuth";
 import { handleWebMedia, isWebMediaPath } from "./webMedia";
+import { handleShareCard, isShareCardPath } from "./shareCard";
 import { handleLivekitAuthorize, INTERNAL_HOST } from "./livekitAuth";
 import { handleApkDownload, isApkDownloadPath } from "./apkDownloads";
 import { handleWebPair } from "./webPair";
@@ -3679,6 +3680,8 @@ export default {
     if (isApkDownloadPath(path)) {
       return handleApkDownload(path, request, env as any, ctx, () => getLatestApkUrl(env));
     }
+    // /monke/<number>[/card.png]: share page + pixel card (shareCard.ts); /monke/<mint> below.
+    if (isShareCardPath(path)) return handleShareCard(path, request, ctx);
     const monkeImageMatch = path.match(/^\/monke\/([^/]+)\/image$/);
     if (monkeImageMatch) {
       if (request.method === "GET") return handleMonkeImage(decodeURIComponent(monkeImageMatch[1]), env);
