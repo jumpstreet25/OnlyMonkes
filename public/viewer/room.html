@@ -27,6 +27,24 @@
   #status { position: fixed; top: 10px; left: 0; right: 0; text-align: center; color: var(--muted); pointer-events: none; padding: 0 16px; }
   #status a { color: var(--accent); pointer-events: auto; }
 </style>
+<script>
+  // Report load/runtime errors to the app (WebView / iframe): a stage that fails
+  // is otherwise just a dark page. The app falls back to 2D and logs the reason.
+  (function () {
+    function post(m) {
+      try {
+        var s = JSON.stringify({ type: "error", message: String(m || "error").slice(0, 300) });
+        if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage(s);
+        else if (parent !== window) parent.postMessage(s, "*");
+      } catch (e) { /* nothing to report to */ }
+    }
+    addEventListener("error", function (e) {
+      var t = e.target;
+      post(e.message || (t && (t.src || t.href) ? "failed to load " + (t.src || t.href) : "load error"));
+    }, true);
+    addEventListener("unhandledrejection", function (e) { post(e.reason && e.reason.message || e.reason); });
+  })();
+</script>
 <script type="importmap">
 {
   "imports": {

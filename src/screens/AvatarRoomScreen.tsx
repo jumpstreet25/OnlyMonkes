@@ -43,6 +43,7 @@ import { MonkeRoomStage, type MonkeRoomStageHandle } from '@/components/MonkeRoo
 import { PhoneLinkModal } from '@/components/PhoneLinkModal';
 import { startPhoneLink, type PhoneLink } from '@/lib/phoneCompanion';
 import { stageMembers } from '@/lib/roomStage';
+import { captureError } from '@/lib/sentry';
 import { monkeNumberFromImage, parseMonkeNumber } from '@/lib/monkeMeme/monkeNumbers';
 import { DEFAULT_MOUTH_TRAIT, type MouthTrait, parseMouthTrait } from '@/lib/mouthOverlays';
 import {
@@ -280,6 +281,13 @@ export default function AvatarRoomScreen() {
     }
   }, [username, t]);
 
+  // The 3D page didn't start: fall back to 2D and report why (it's otherwise just a dark screen).
+  const handleStageFail = useCallback((reason: string) => {
+    setShow3d(false);
+    toast(t('avatarRoom.stage3dFailed'));
+    captureError(new Error(`Avatar Room 3D stage failed: ${reason}`), { area: 'avatarRoom3d', reason });
+  }, [t]);
+
   const handleStopPhone = useCallback(() => {
     phoneLink.current?.stop();
     phoneLink.current = null;
@@ -350,7 +358,7 @@ export default function AvatarRoomScreen() {
 
       {/* 3D stage or 2D grid */}
       {show3d ? (
-        <MonkeRoomStage ref={stageRef} members={members} />
+        <MonkeRoomStage ref={stageRef} members={members} onFail={handleStageFail} />
       ) : (
       <GridWrapper style={styles.grid}>
         <View style={styles.gridInner}>

@@ -16,18 +16,34 @@ import type { StageMember } from "@/lib/roomStage";
 
 const STAGE_URL = Platform.OS === "web" ? "/viewer/room" : "https://onlymonkes.app/viewer/room";
 const SEND_EVERY_MS = 80;
+/** No "ready" from the page by then → the stage failed (no WebGL, page blocked, offline…). */
+const READY_TIMEOUT_MS = 12_000;
 
 export interface MonkeRoomStageHandle {
   /** The local user's own face (their tracker's output isn't in the room state). */
   sendFace(id: string, params: BlendshapeParams): void;
 }
 
-export const MonkeRoomStage = forwardRef<MonkeRoomStageHandle, { members: StageMember[] }>(function MonkeRoomStage({ members }, ref) {
+export const MonkeRoomStage = forwardRef<MonkeRoomStageHandle, { members: StageMember[]; onFail?: (reason: string) => void }>(function MonkeRoomStage({ members, onFail }, ref) {
   const web = useRef<any>(null);
   const latest = useRef(members);
   latest.current = members;
   const lastSent = useRef(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const ready = useRef(false);
+  const failed = useRef(false);
+  const onFailRef = useRef(onFail);
+  onFailRef.current = onFail;
+  const fail = useCallback((reason: string) => {
+    if (failed.current) return;
+    failed.current = true;
+    onFailRef.current?.(reason);
+  }, []);
+  useEffect(() => {
+    const id = setTimeout(() => { if (!ready.current) fail("timeout: the 3D page never started"); }, READY_TIMEOUT_MS);
+    return () => clearTimeout(id);
+  }, [fail]);
 
   const post = useCallback((msg: object) => web.current?.postMessage(JSON.stringify(msg)), []);
   const sendRoom = useCallback(() => {
@@ -49,9 +65,18 @@ export const MonkeRoomStage = forwardRef<MonkeRoomStageHandle, { members: StageM
 
   const onMessage = useCallback((e: { nativeEvent: { data: string } }) => {
     try {
-      if (JSON.parse(e.nativeEvent.data)?.type === "ready") sendRoom();
+      const d = JSON.parse(e.nativeEvent.data);
+      if (d?.type === "ready") {
+        ready.current = true;
+        sendRoom();
+      } else if (d?.type === "error") {
+        // Page errors (a CDN script that didn't load, no WebGL…): fatal only before the page is ready.
+        const reason = `page: ${String(d.message ?? "").slice(0, 300)}`;
+        if (ready.current) console.warn("[MonkeRoomStage]", reason);
+        else fail(reason);
+      }
     } catch { /* not ours */ }
-  }, [sendRoom]);
+  }, [sendRoom, fail]);
 
   return (
     <WebView
@@ -60,6 +85,8 @@ export const MonkeRoomStage = forwardRef<MonkeRoomStageHandle, { members: StageM
       style={styles.stage}
       onMessage={onMessage}
       onShouldStartLoadWithRequest={(req) => req.url.split("?")[0] === STAGE_URL}
+      onError={(e: any) => fail(`load: ${e?.nativeEvent?.description ?? "error"} (${e?.nativeEvent?.code ?? ""})`)}
+      onHttpError={(e: any) => fail(`http ${e?.nativeEvent?.statusCode ?? "?"}`)}
       javaScriptEnabled
       scrollEnabled={false}
       overScrollMode="never"
