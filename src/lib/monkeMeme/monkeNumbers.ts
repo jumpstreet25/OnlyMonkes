@@ -34,6 +34,14 @@ export function isWave2(n: number): boolean {
   return n >= WAVE2_RANGE[0] && n <= WAVE2_RANGE[1];
 }
 
+/** A Saga Monke image URL (`<arweave folder>/<n>.png`, as in profiles) → n; anything else → null. */
+export function monkeNumberFromImage(url: string | null | undefined): number | null {
+  const m = String(url ?? "").match(/^(https:\/\/arweave\.net\/[\w-]+)\/(\d{1,5})\.(?:png|gif)(?:[?#].*)?$/);
+  if (!m) return null;
+  const n = parseInt(m[2], 10);
+  return monkeImageForNumber(n)?.startsWith(m[1] + "/") ? n : null;
+}
+
 /** "MONKE #1760" / "#1760" / "1760" → 1760; anything else → null. */
 export function parseMonkeNumber(text: string | null | undefined): number | null {
   const m = String(text ?? "").match(/#?\s*(\d{1,5})\s*$/);

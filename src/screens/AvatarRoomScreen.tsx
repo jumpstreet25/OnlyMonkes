@@ -1,8 +1,9 @@
 /**
  * AvatarRoomScreen — Full-screen animated avatar live room.
  *
- * Grid of AnimatedAvatar tiles (NFT PFPs with mouth overlays driven by audio).
- * No camera feeds — everyone is their animated Monke.
+ * 3D (default): every member's monke in one shared scene (MonkeRoomStage);
+ * only talking members move. 2D: grid of AnimatedAvatar tiles (NFT PFPs with
+ * mouth overlays driven by audio). No camera feeds — everyone is their Monke.
  *
  * Grid layout:
  *   1 = fullscreen    2 = 1×2 vertical
@@ -12,7 +13,7 @@
  * Controls: 🎤 Mute  🐵 Reactions  📞 Leave/End
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -37,6 +38,9 @@ import { LK_URL } from '@/lib/livekit';
 import { getCachedProfile } from '@/lib/userProfile';
 import { useAppStore } from '@/store/appStore';
 import { AnimatedAvatar } from '@/components/AnimatedAvatar';
+import { MonkeRoomStage, type MonkeRoomStageHandle } from '@/components/MonkeRoomStage';
+import { stageMembers } from '@/lib/roomStage';
+import { monkeNumberFromImage, parseMonkeNumber } from '@/lib/monkeMeme/monkeNumbers';
 import { DEFAULT_MOUTH_TRAIT, type MouthTrait, parseMouthTrait } from '@/lib/mouthOverlays';
 import {
   connectToAvatarRoom,
@@ -138,6 +142,8 @@ export default function AvatarRoomScreen() {
   const [connecting, setConnecting] = useState(true);
   const [stickerTrayOpen, setStickerTrayOpen] = useState(false);
   const [faceTrackingEnabled, setFaceTrackingEnabled] = useState(true);
+  const [show3d, setShow3d] = useState(true);
+  const stageRef = useRef<MonkeRoomStageHandle>(null);
 
   const isHost = params.isHost === 'true';
 
@@ -218,13 +224,20 @@ export default function AvatarRoomScreen() {
     sendFaceTrackingData(params);
   }, []);
 
+  const localIdentity = state.participants.find(p => p.isLocal)?.identity;
   const handleBlendshapes = useCallback((params: BlendshapeParams) => {
     sendBlendshapes(params);
-  }, []);
+    if (localIdentity) stageRef.current?.sendFace(localIdentity, params);
+  }, [localIdentity]);
 
   // ── Layout ─────────────────────────────────────────────────────────────────
 
   const participants = state.participants;
+  const myMonke = parseMonkeNumber(verifiedNft?.name);
+  const members = useMemo(
+    () => stageMembers(participants, (id, isLocal) => (isLocal ? myMonke : monkeNumberFromImage(getCachedProfile(id)?.nftImage))),
+    [participants, myMonke],
+  );
   const gridH = SCREEN_H - insets.top - insets.bottom - 60 - 56; // header + controls
   const { cols, tileW, tileH } = calcGrid(participants.length, SCREEN_W, gridH);
   const needsScroll = participants.length > 9;
@@ -271,7 +284,10 @@ export default function AvatarRoomScreen() {
         </Pressable>
       </View>
 
-      {/* Grid */}
+      {/* 3D stage or 2D grid */}
+      {show3d ? (
+        <MonkeRoomStage ref={stageRef} members={members} />
+      ) : (
       <GridWrapper style={styles.grid}>
         <View style={styles.gridInner}>
           {participants.map(p => (
@@ -284,6 +300,7 @@ export default function AvatarRoomScreen() {
           ))}
         </View>
       </GridWrapper>
+      )}
 
       {/* Reaction overlay */}
       <VideoReactionOverlay reactionSource={addReactionListener} />
@@ -315,6 +332,15 @@ export default function AvatarRoomScreen() {
           <Text style={styles.controlIcon}>👤</Text>
         </Pressable>
 
+        {/* 3D stage / 2D tiles */}
+        <Pressable
+          onPress={() => setShow3d(v => !v)}
+          style={[styles.controlBtn, show3d && styles.controlBtnActive]}
+          accessibilityRole="button"
+          accessibilityLabel={show3d ? 'Show 2D avatars' : 'Show 3D monkes'}
+        >
+          <Text style={styles.controlLabel}>{show3d ? '3D' : '2D'}</Text>
+        </Pressable>
         {/* Reactions */}
         <Pressable
           onPress={() => setStickerTrayOpen(o => !o)}
@@ -442,5 +468,10 @@ const styles = StyleSheet.create({
   },
   controlIcon: {
     fontSize: 22,
+  },
+  controlLabel: {
+    fontFamily: FONTS.display,
+    fontSize: 15,
+    color: THEME.text,
   },
 });
