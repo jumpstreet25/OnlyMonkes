@@ -595,6 +595,26 @@ export default function ChatScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isGroupMember, messages.length >= 10 ? 1 : 0]);
 
+  // ─── Re-broadcast the profile after the banana balance changes ──────────
+  // The web app shows the balance the phone last broadcast (via the bot), and
+  // the phone used to broadcast only on profile edits, so spends never reached
+  // it. PROFILE_UPDATE goes to the whole group: one send a minute after a
+  // change, at most every 10 minutes.
+  useEffect(() => {
+    if (Platform.OS === "web" || !isGroupMember) return;
+    let last = useAppStore.getState().bananaBalance;
+    let lastSent = 0;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const unsub = useAppStore.subscribe((st) => {
+      if (st.bananaBalance === last) return;
+      last = st.bananaBalance;
+      if (timer) return;
+      const wait = Math.max(60_000, lastSent + 10 * 60_000 - Date.now());
+      timer = setTimeout(() => { timer = null; lastSent = Date.now(); void broadcastProfile(); }, wait);
+    });
+    return () => { unsub(); if (timer) clearTimeout(timer); };
+  }, [isGroupMember, broadcastProfile]);
+
   // ─── Load saved profile, show modal if no username yet ───────────────────
   useEffect(() => {
     loadUserProfile().then(({ username: saved, bio, xAccount: savedX, tipWallet: savedTip, location: savedLoc }) => {
