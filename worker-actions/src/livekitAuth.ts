@@ -48,28 +48,42 @@ export async function handleLivekitAuthorize(request: Request, env: Env): Promis
   }
 
   if (proof?.kind === "device") {
-    const wallet = typeof proof.wallet === "string" ? proof.wallet : "";
-    const devicePubKey = typeof proof.devicePubKey === "string" ? proof.devicePubKey : "";
-    const nonce = typeof proof.nonce === "string" ? proof.nonce : "";
-    const sig = typeof proof.sig === "string" ? proof.sig : "";
-    if (base58ToBytes(wallet)?.length !== 32 || !devicePubKey || !nonce || !sig) return json({ error: "invalid proof" }, 400);
-
-    const nonceKey = `nonce:${nonce}`;
-    if (!(await env.DEVICE_INTEGRITY.get(nonceKey))) return json({ error: "nonce expired" }, 401);
-    await env.DEVICE_INTEGRITY.delete(nonceKey);
-
-    const raw = await env.DEVICE_INTEGRITY.get(`wallet:${wallet}`);
-    const verdict = raw ? (JSON.parse(raw) as DeviceIntegrityVerdict) : null;
-    if (!verdict || verdict.expiresAt < Date.now() || !verdict.hardwareVerified || !verdict.raspClean || verdict.holderTier === "none") {
-      return json({ error: "device not verified for this wallet" }, 403);
-    }
-    let keyBytes: Uint8Array, sigBytes: Uint8Array;
-    try { keyBytes = base64ToBytes(devicePubKey); sigBytes = base64ToBytes(sig); } catch { return json({ error: "invalid proof" }, 400); }
-    if ((await sha256Hex(keyBytes)) !== verdict.deviceHash) return json({ error: "device not verified for this wallet" }, 403);
-    const message = new TextEncoder().encode(livekitProofMessage(roomName, identity, nonce));
-    if (!(await verifyEcdsaP256(keyBytes, message, sigBytes))) return json({ error: "bad device signature" }, 401);
-    return json({ ok: true, wallet, tier: verdict.holderTier, via: "device" });
+    const r = await walletFromDeviceProof(env, proof, (nonce) => livekitProofMessage(roomName, identity, nonce));
+    return "error" in r ? json({ error: r.error }, r.status) : json({ ok: true, wallet: r.wallet, tier: r.tier, via: "device" });
   }
 
   return json({ error: "proof required" }, 401);
+}
+
+/**
+ * The phone's hardware-key proof: { wallet, devicePubKey, nonce, sig }, where sig
+ * signs message(nonce) and the key is the one Device Integrity verified and
+ * bound to this holder wallet. The nonce is single use. Shared by LiveKit
+ * tokens and referrals (referrals.ts).
+ */
+export async function walletFromDeviceProof(
+  env: Env,
+  proof: any,
+  message: (nonce: string) => string,
+): Promise<{ wallet: string; tier: string } | { error: string; status: number }> {
+  const wallet = typeof proof?.wallet === "string" ? proof.wallet : "";
+  const devicePubKey = typeof proof?.devicePubKey === "string" ? proof.devicePubKey : "";
+  const nonce = typeof proof?.nonce === "string" ? proof.nonce : "";
+  const sig = typeof proof?.sig === "string" ? proof.sig : "";
+  if (base58ToBytes(wallet)?.length !== 32 || !devicePubKey || !nonce || !sig) return { error: "invalid proof", status: 400 };
+
+  const nonceKey = `nonce:${nonce}`;
+  if (!(await env.DEVICE_INTEGRITY.get(nonceKey))) return { error: "nonce expired", status: 401 };
+  await env.DEVICE_INTEGRITY.delete(nonceKey);
+
+  const raw = await env.DEVICE_INTEGRITY.get(`wallet:${wallet}`);
+  const verdict = raw ? (JSON.parse(raw) as DeviceIntegrityVerdict) : null;
+  if (!verdict || verdict.expiresAt < Date.now() || !verdict.hardwareVerified || !verdict.raspClean || verdict.holderTier === "none") {
+    return { error: "device not verified for this wallet", status: 403 };
+  }
+  let keyBytes: Uint8Array, sigBytes: Uint8Array;
+  try { keyBytes = base64ToBytes(devicePubKey); sigBytes = base64ToBytes(sig); } catch { return { error: "invalid proof", status: 400 }; }
+  if ((await sha256Hex(keyBytes)) !== verdict.deviceHash) return { error: "device not verified for this wallet", status: 403 };
+  if (!(await verifyEcdsaP256(keyBytes, new TextEncoder().encode(message(nonce)), sigBytes))) return { error: "bad device signature", status: 401 };
+  return { wallet, tier: verdict.holderTier };
 }

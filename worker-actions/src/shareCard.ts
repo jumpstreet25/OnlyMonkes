@@ -56,17 +56,39 @@ const GLYPHS: Record<string, string[]> = {
   "9": ["01110", "10001", "10001", "01111", "00001", "00010", "01100"],
   "#": ["01010", "01010", "11111", "01010", "11111", "01010", "01010"],
   ".": ["00000", "00000", "00000", "00000", "00000", "01100", "01100"],
+  B: ["11110", "10001", "10001", "11110", "10001", "10001", "11110"],
+  C: ["01110", "10001", "10000", "10000", "10000", "10001", "01110"],
+  D: ["11100", "10010", "10001", "10001", "10001", "10010", "11100"],
+  F: ["11111", "10000", "10000", "11110", "10000", "10000", "10000"],
+  H: ["10001", "10001", "10001", "11111", "10001", "10001", "10001"],
+  I: ["01110", "00100", "00100", "00100", "00100", "00100", "01110"],
+  J: ["00111", "00010", "00010", "00010", "00010", "10010", "01100"],
+  Q: ["01110", "10001", "10001", "10001", "10101", "10010", "01101"],
+  R: ["11110", "10001", "10001", "11110", "10100", "10010", "10001"],
+  T: ["11111", "00100", "00100", "00100", "00100", "00100", "00100"],
+  U: ["10001", "10001", "10001", "10001", "10001", "10001", "01110"],
+  V: ["10001", "10001", "10001", "10001", "10001", "01010", "00100"],
+  W: ["10001", "10001", "10001", "10101", "10101", "10101", "01010"],
+  X: ["10001", "10001", "01010", "00100", "01010", "10001", "10001"],
+  Z: ["11111", "00001", "00010", "00100", "01000", "10000", "11111"],
+  "/": ["00001", "00010", "00010", "00100", "01000", "01000", "10000"],
+  "-": ["00000", "00000", "00000", "11111", "00000", "00000", "00000"],
+  _: ["00000", "00000", "00000", "00000", "00000", "00000", "11111"],
+  ":": ["00000", "01100", "01100", "00000", "01100", "01100", "00000"],
+  "!": ["00100", "00100", "00100", "00100", "00100", "00000", "00100"],
+  "?": ["01110", "10001", "00001", "00010", "00100", "00000", "00100"],
   " ": ["00000", "00000", "00000", "00000", "00000", "00000", "00000"],
 };
 
-type RGB = [number, number, number];
-const W = 1200, H = 630;
-const BG: RGB = [10, 10, 15];
-const ACCENT: RGB = [233, 22, 113];
-const TEXT: RGB = [237, 237, 243];
-const MUTED: RGB = [154, 154, 176];
+export type RGB = [number, number, number];
+export const W = 1200, H = 630;
+export const BG: RGB = [10, 10, 15];
+export const ACCENT: RGB = [233, 22, 113];
+export const TEXT: RGB = [237, 237, 243];
+export const MUTED: RGB = [154, 154, 176];
 
-class Canvas {
+/** Pixel-font capable 1200×630 RGB canvas (text is drawn upper-case; unknown characters are blanks). */
+export class Canvas {
   px = new Uint8Array(W * H * 3);
   constructor(bg: RGB) { for (let i = 0; i < W * H; i++) this.px.set(bg, i * 3); }
   rect(x: number, y: number, w: number, h: number, c: RGB) {
@@ -78,13 +100,13 @@ class Canvas {
   }
   text(s: string, x: number, y: number, scale: number, c: RGB) {
     for (const ch of s) {
-      const g = GLYPHS[ch] ?? GLYPHS[" "];
+      const g = GLYPHS[ch.toUpperCase()] ?? GLYPHS[" "];
       for (let r = 0; r < 7; r++) for (let k = 0; k < 5; k++) if (g[r][k] === "1") this.rect(x + k * scale, y + r * scale, scale, scale, c);
       x += 6 * scale;
     }
   }
 }
-const textWidth = (s: string, scale: number) => s.length * 6 * scale - scale;
+export const textWidth = (s: string, scale: number) => s.length * 6 * scale - scale;
 
 // ── PNG (truecolour, native deflate) ──
 const CRC = (() => {
@@ -106,7 +128,7 @@ function chunk(type: string, data: Uint8Array): Uint8Array {
   v.setUint32(8 + data.length, crc32(out.subarray(4, 8 + data.length)));
   return out;
 }
-async function encodePng(px: Uint8Array): Promise<Uint8Array> {
+export async function encodePng(px: Uint8Array): Promise<Uint8Array> {
   const raw = new Uint8Array(H * (1 + W * 3));
   for (let y = 0; y < H; y++) raw.set(px.subarray(y * W * 3, (y + 1) * W * 3), y * (1 + W * 3) + 1); // filter 0
   const z = new Uint8Array(await new Response(new Blob([raw]).stream().pipeThrough(new CompressionStream("deflate"))).arrayBuffer());
@@ -122,7 +144,7 @@ async function encodePng(px: Uint8Array): Promise<Uint8Array> {
 }
 
 /** The 16×16 art: centre sample of each cell of the on-chain image. */
-async function readArt(url: string): Promise<RGB[][] | null> {
+export async function readArt(url: string): Promise<RGB[][] | null> {
   // Arweave's gateway answers 403 to requests without a User-Agent.
   const res = await fetch(url, { redirect: "follow", headers: { "User-Agent": "OnlyMonkes-ShareCard/1.0 (+https://onlymonkes.app)" }, signal: AbortSignal.timeout(10_000) });
   if (!res.ok) return null;
@@ -165,7 +187,7 @@ async function buildCard(n: number, art: RGB[][] | null): Promise<Uint8Array> {
   return encodePng(c.px);
 }
 
-function esc(s: string): string {
+export function esc(s: string): string {
   return s.replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]!);
 }
 

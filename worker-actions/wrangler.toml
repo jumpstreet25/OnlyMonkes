@@ -63,6 +63,11 @@ id = "b0b8d8e361a749d28074f32134fe4fbf"
 # "rsvp:<eventId>:<wallet>" for the community events calendar. Locations and
 # events are separate keys from onchainHolder.ts's own KV — this is
 # community-contributed/self-reported data, not verified NFT ownership state.
+# Referral ledger: codes, who invited whom (hashed wallets), season counts (src/referrals.ts).
+[[kv_namespaces]]
+binding = "REFERRALS"
+id = "cd82ac6966424134959b7924bbed1853"
+
 [[kv_namespaces]]
 binding = "COMMUNITY_DATA"
 id = "272632d79eb043a69586f7cb4013c080"

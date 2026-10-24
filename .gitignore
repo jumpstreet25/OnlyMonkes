@@ -68,3 +68,5 @@ google-services.json
 *.bak2
 
 *.apk *
+.dev.vars
+.wrangler/

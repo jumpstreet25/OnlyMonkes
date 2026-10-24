@@ -302,6 +302,13 @@ export async function holderWalletFromRequest(request: Request, env: WebAuthEnv)
 }
 
 /** Wallet in a valid, unexpired holder token, or null. */
+/** Wallet + holder tier from a valid sign-in token, or null. */
+export async function holderClaimsFromToken(env: WebAuthEnv, token: string): Promise<{ wallet: string; tier: string | undefined } | null> {
+  const claims = token ? await readOwnToken(env, token) : null;
+  if (!claims || claims.exp <= Math.floor(Date.now() / 1000)) return null;
+  return { wallet: claims.sub, tier: claims.tier };
+}
+
 export async function holderWalletFromToken(env: WebAuthEnv, token: string): Promise<string | null> {
   if (!env.XMTP_JWT_PRIVATE_KEY || !token) return null;
   const claims = await readOwnToken(env, token);

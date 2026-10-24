@@ -93,6 +93,7 @@ import { handleWebRpc } from "./webRpc";
 import { handleWebAuth, handleWebHistory, handleWebProfile } from "./webAuth";
 import { handleWebMedia, isWebMediaPath } from "./webMedia";
 import { handleShareCard, isShareCardPath } from "./shareCard";
+import { handleReferral, isReferralPath } from "./referrals";
 import { handleLivekitAuthorize, INTERNAL_HOST } from "./livekitAuth";
 import { handleApkDownload, isApkDownloadPath } from "./apkDownloads";
 import { handleWebPair } from "./webPair";
@@ -151,6 +152,8 @@ export interface Env {
   // Device Integrity Attestation — see deviceIntegrity.ts. Backend-verified
   // (Key Attestation chain + RASP + Saga/Genesis ownership), no on-chain write.
   DEVICE_INTEGRITY: KVNamespace;
+  /** Referral ledger (referrals.ts). */
+  REFERRALS?: KVNamespace;
   // MonkeGlobe/MonkeEvents public web repo backend — see community.ts.
   COMMUNITY_DATA: KVNamespace;
   // Service Binding to the MonkeLedger worker (same Cloudflare account) — see wrangler.toml's
@@ -3680,6 +3683,8 @@ export default {
     if (isApkDownloadPath(path)) {
       return handleApkDownload(path, request, env as any, ctx, () => getLatestApkUrl(env));
     }
+    // Referrals: /api/referral/*, /r/<code>[/card.png], /referrals (referrals.ts).
+    if (isReferralPath(path)) return handleReferral(path, request, env, ctx);
     // /monke/<number>[/card.png]: share page + pixel card (shareCard.ts); /monke/<mint> below.
     if (isShareCardPath(path)) return handleShareCard(path, request, ctx);
     const monkeImageMatch = path.match(/^\/monke\/([^/]+)\/image$/);
