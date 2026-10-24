@@ -24,7 +24,8 @@
   .name { position: absolute; transform: translate(-50%, 0); max-width: 40vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 2px 8px; border-radius: 9px; background: rgba(20,20,31,0.75); color: var(--text); font-weight: 600; }
   .name.talking { background: var(--accent); color: #fff; }
   .name.muted::after { content: " 🔇"; }
-  #status { position: fixed; top: 10px; left: 0; right: 0; text-align: center; color: var(--muted); pointer-events: none; }
+  #status { position: fixed; top: 10px; left: 0; right: 0; text-align: center; color: var(--muted); pointer-events: none; padding: 0 16px; }
+  #status a { color: var(--accent); pointer-events: auto; }
 </style>
 <script type="importmap">
 {
@@ -232,7 +233,11 @@ function onHostMessage(e) {
   let d = e.data;
   if (typeof d === "string") { try { d = JSON.parse(d); } catch { return; } }
   if (!d || typeof d !== "object") return;
-  if (d.type === "room") takeRoom(d.members);
+  if (d.type === "room") {
+    if (demo) { clearInterval(demo); demo = null; }
+    statusEl.textContent = "";
+    takeRoom(d.members);
+  }
   else if (d.type === "face") {
     const m = members.get(cleanId(d.id));
     const f = cleanFace(d.values, d.headRotation);
@@ -244,8 +249,27 @@ document.addEventListener("message", onHostMessage); // Android WebView
 
 // Tell the host we're listening so it sends the room right away.
 const ready = JSON.stringify({ type: "ready" });
+const hosted = !!window.ReactNativeWebView || parent !== window;
 if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage(ready);
 else if (parent !== window) parent.postMessage(ready, "*");
+
+// Opened on its own (no app around it): a short preview where three random
+// monkes take turns talking. Any real room message ends it.
+let demo = null;
+if (!hosted) {
+  statusEl.innerHTML = 'Avatar Room 3D stage: preview. It comes alive inside an Avatar Room. <a href="/viewer/monke3d">See your monke in 3D</a>';
+  const pick = () => { let n; do n = 1 + Math.floor(Math.random() * 8888); while (!imageFor(n)); return n; };
+  const cast = [{ id: "d1", n: pick(), name: "Monke 1" }, { id: "d2", n: pick(), name: "Monke 2" }, { id: "d3", n: pick(), name: "Monke 3 (muted)", muted: true }];
+  const t0 = performance.now();
+  const step = () => {
+    const talker = cast[Math.floor((performance.now() - t0) / 2500) % 2].id;
+    takeRoom(cast.map((c) => ({ ...c, speaking: c.id === talker, energy: c.id === talker ? Math.random() : 0 })));
+  };
+  step();
+  demo = setInterval(step, 150);
+} else {
+  statusEl.textContent = "Waiting for the room…";
+}
 
 // ── Loop: draw only while something moves ──
 let prev = performance.now();
@@ -279,7 +303,6 @@ renderer.setAnimationLoop(() => {
   }
 });
 
-statusEl.textContent = "";
 </script>
 </body>
 </html>
