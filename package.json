@@ -8,7 +8,7 @@
     "react-dom": "$react",
     "react-test-renderer": "$react",
     "protobufjs": "^7.6.6",
-    "undici": "^6.28.1",
+    "undici": "^6.29.1",
     "@expo/server": {
       "undici": "^7.28.1"
     },
