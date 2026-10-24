@@ -348,12 +348,14 @@ export async function backfillProfileHistory(): Promise<{ scanned: number; newPr
     // persisted so the threshold NEVER cleared, flooding bot DMs with
     // LOCATION_SYNC_REQUEST on every relaunch (and the user saw each one
     // live in the bot thread). Bot also broadcasts LOCATION_SYNC on a
-    // scheduler + at startup. Cap to once per 24h, and only when truly empty.
+    // scheduler + at startup. Cap to once per 24h.
+    // 2026-10-24: no longer only when truly empty — a phone missing one or two
+    // pins never asked, so its globe showed 17 while the web (fresh, empty,
+    // so it asked) showed the bot's full 18 + self. Once a day for everyone.
     // Protocol message is hidden from chat UI (decodeMessage structured list).
     const LOCATION_SYNC_REQ_KEY = "location_sync_request_at_v1";
     const LOCATION_SYNC_COOLDOWN_MS = 24 * 60 * 60 * 1000;
-    const located = getLocatedUserCount();
-    if (located < 3) {
+    {
       try {
         const lastRaw = await AsyncStorage.getItem(LOCATION_SYNC_REQ_KEY);
         const lastAt = lastRaw ? parseInt(lastRaw, 10) : 0;

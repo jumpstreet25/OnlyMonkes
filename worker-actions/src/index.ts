@@ -90,7 +90,7 @@ import { handleGetLumaEvents } from "./lumaEvents";
 import { handlePublishAppConfig } from "./adminConfig";
 import { handleBotCommand, handleInboxReset } from "./botCommand";
 import { handleWebRpc } from "./webRpc";
-import { handleWebAuth, handleWebProfile } from "./webAuth";
+import { handleWebAuth, handleWebHistory, handleWebProfile } from "./webAuth";
 import { handleWebMedia, isWebMediaPath } from "./webMedia";
 import { handleLivekitAuthorize, INTERNAL_HOST } from "./livekitAuth";
 import { handleApkDownload, isApkDownloadPath } from "./apkDownloads";
@@ -3510,6 +3510,10 @@ export default {
 
     if (path === "/api/profile/me") {
       return handleWebProfile(request, env);
+    }
+
+    if (path === "/api/chat/history") {
+      return handleWebHistory(request, env);
     }
 
     // Service-binding only (onlymonkes-livekit-token); public requests never carry this host.

@@ -118,7 +118,7 @@ async function issueToken(env: WebAuthEnv, wallet: string, tier: HolderTier) {
 }
 
 /** Our own token's claims, if its signature is ours. Expiry is the caller's call. */
-async function readOwnToken(env: WebAuthEnv, token: string): Promise<{ sub: string; exp: number } | null> {
+async function readOwnToken(env: WebAuthEnv, token: string): Promise<{ sub: string; exp: number; tier?: string } | null> {
   const parts = token.split(".");
   if (parts.length !== 3) return null;
   const sig = fromB64(parts[2]);
@@ -129,7 +129,7 @@ async function readOwnToken(env: WebAuthEnv, token: string): Promise<{ sub: stri
   try {
     const claims = JSON.parse(new TextDecoder().decode(fromB64(parts[1]) ?? new Uint8Array()));
     if (claims.iss !== JWT_ISSUER || claims.aud !== AUDIENCE || typeof claims.sub !== "string" || typeof claims.exp !== "number") return null;
-    return { sub: claims.sub, exp: claims.exp };
+    return { sub: claims.sub, exp: claims.exp, tier: typeof claims.tier === "string" ? claims.tier : undefined };
   } catch {
     return null;
   }
@@ -253,6 +253,42 @@ export async function handleWebProfile(request: Request, env: WebAuthEnv): Promi
     return reply({ profile }, 200, origin);
   } catch {
     return reply({ error: "profile import unavailable" }, 502, origin);
+  }
+}
+
+/**
+ * POST /api/chat/history — recent Main Chat for the web app. A browser joins
+ * the MLS group as a new installation and can't read anything sent before it
+ * was added, so the bot (a member) serves the newest content messages. Saga
+ * Monke holders only: Main Chat isn't open to Genesis-only sign-ins.
+ */
+export async function handleWebHistory(request: Request, env: WebAuthEnv): Promise<Response> {
+  const origin = allowedOrigin(request.headers.get("Origin"), env);
+  if (!origin) return reply({ error: "origin not allowed" }, 403, null);
+  if (request.method !== "POST") return reply({ error: "POST only" }, 405, origin);
+  if (!env.XMTP_JWT_PRIVATE_KEY) return reply({ error: "sign-in not configured" }, 503, origin);
+  if (await rateLimited(env, request)) return reply({ error: "rate limited" }, 429, origin);
+  const auth = request.headers.get("Authorization") ?? "";
+  const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
+  const claims = token ? await readOwnToken(env, token) : null;
+  if (!claims || claims.exp <= Math.floor(Date.now() / 1000)) return reply({ error: "sign in again" }, 401, origin);
+  if (claims.tier !== "monke") return reply({ error: "Main Chat is for Saga Monke holders" }, 403, origin);
+  const base = (env.BOT_PROFILE_URL ?? "").replace(/\/$/, "");
+  if (!base || !env.BOT_HTTP_SECRET) return reply({ error: "history unavailable" }, 503, origin);
+  try {
+    const res = await fetch(`${base}/web-history`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.BOT_HTTP_SECRET}` },
+      body: "{}",
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) return reply({ error: "history unavailable" }, 502, origin);
+    const body = (await res.json()) as { messages?: unknown; profiles?: unknown };
+    const messages = Array.isArray(body.messages) ? body.messages.slice(0, 60) : [];
+    const profiles = body.profiles && typeof body.profiles === "object" ? body.profiles : {};
+    return reply({ messages, profiles }, 200, origin);
+  } catch {
+    return reply({ error: "history unavailable" }, 502, origin);
   }
 }
 
