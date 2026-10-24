@@ -72,7 +72,7 @@ const EASE_RATE = 28; // snappier than the single viewer (14): speech is fast
 const MAX_MEMBERS = 16;
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5)); // phones draw faster; small monkes don't need 2×
 renderer.setSize(innerWidth, innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 document.body.prepend(renderer.domElement);
@@ -319,11 +319,16 @@ renderer.setAnimationLoop(() => {
       // barely open the mouth, so speech is shaped into a syllable-like flap and
       // the mouth opens with whichever is stronger, face or voice.
       const t = now / 1000 + m.phase;
-      const flap = 0.3 + 0.7 * Math.abs(Math.sin(t * 16)); // ~5 openings a second, like syllables
-      const voiceJaw = Math.min(1, (0.3 + m.energy) * flap);
       const fresh = m.face && now - m.faceAt < FACE_FRESH_MS;
       const values = fresh ? { ...m.face.values } : {};
-      values.jawOpen = Math.max(clamp01(values.jawOpen), voiceJaw / 1.6); // driveMonke scales jawOpen by 1.6
+      if (fresh) {
+        // Real lips, in real time: closes when they close (no flapping after you stop).
+        values.jawOpen = Math.min(1, clamp01(values.jawOpen) * 1.3);
+      } else {
+        // No camera: a syllable-like flap from the voice level (~5 openings a second).
+        const flap = 0.3 + 0.7 * Math.abs(Math.sin(t * 16));
+        values.jawOpen = Math.min(1, (0.3 + m.energy) * flap) / 1.6; // driveMonke scales jawOpen by 1.6
+      }
       const headRotation = fresh
         ? m.face.headRotation
         : { x: Math.sin(t * 2.3) * 5, y: Math.sin(t * 1.1) * 10, z: Math.sin(t * 1.7) * 3 }; // talking bob, no camera
