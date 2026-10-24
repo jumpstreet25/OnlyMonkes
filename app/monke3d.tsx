@@ -1,19 +1,28 @@
 /**
- * 3D Monke (beta) — the VRM viewer page (public/viewer/monke3d.html) inside
- * the app. Web: same-site iframe. Phone: the WebView already in the binary,
- * loading the page from onlymonkes.app, so it ships without a new APK.
+ * 3D Monke (beta) — the voxel viewer page (public/viewer/monke3d.html) inside
+ * the app, opened on the holder's own monke. Web: same-site iframe. Phone:
+ * the WebView already in the binary, loading the page from onlymonkes.app,
+ * so it ships without a new APK.
  */
-import React from "react";
+import React, { useMemo } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
 import { FONTS, THEME } from "@/lib/constants";
+import { useAppStore } from "@/store/appStore";
+import { parseMonkeNumber } from "@/lib/monkeMeme/monkeNumbers";
 
 const VIEWER_URL = Platform.OS === "web" ? "/viewer/monke3d" : "https://onlymonkes.app/viewer/monke3d";
 
 export default function Monke3DRoute() {
   const insets = useSafeAreaInsets();
+  const verifiedNft = useAppStore((s) => s.verifiedNft);
+  const allNfts = useAppStore((s) => s.allNfts);
+  const uri = useMemo(() => {
+    const n = parseMonkeNumber(verifiedNft?.name) ?? allNfts.map((x) => parseMonkeNumber(x.name)).find((x) => x != null);
+    return n ? `${VIEWER_URL}?n=${n}` : VIEWER_URL;
+  }, [verifiedNft, allNfts]);
   return (
     <View style={[styles.page, { paddingTop: insets.top }]}>
       <View style={styles.header}>
@@ -24,7 +33,7 @@ export default function Monke3DRoute() {
         <Text style={styles.beta}>beta</Text>
       </View>
       <WebView
-        source={{ uri: VIEWER_URL }}
+        source={{ uri }}
         style={styles.viewer}
         mediaCapturePermissionGrantType="grantIfSameHostElsePrompt"
         allowsInlineMediaPlayback

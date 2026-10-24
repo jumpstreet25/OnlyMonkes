@@ -5,65 +5,71 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>Monke 3D</title>
 <!--
-  OnlyMonkes 3D avatar viewer (VRM). Runs on its own so the web app (iframe)
-  and the phone app (WebView, OTA) can both show it.
-  - ?vrm=<url>: model to load (same site or arweave.net only); default is the
-    CC0 placeholder until Saga Monke models exist.
-  - "Use my camera": MediaPipe face tracking drives the model. Video stays in
-    this page; nothing is uploaded.
+  OnlyMonkes 3D avatar viewer. Every Saga Monke is 16×16 pixel art, so the
+  page builds a voxel monke from the monke's own Arweave image at load time.
+  Runs on its own so the web app (iframe) and the phone app (WebView, OTA)
+  can both show it.
+  - ?n=<monke number>: which monke (the app passes the holder's own).
+  - "Use my camera": MediaPipe face tracking drives jaw, blinks and head.
+    Video stays in this page; nothing is uploaded.
   - postMessage {type:"blendshapes", values, headRotation} from the host page
     drives it too (Avatar Room data channel), using the same blendshape names
-    as src/lib/faceTracking.ts. Only numbers are read from messages.
+    as src/lib/faceTracking.ts; {type:"monke", n} switches monke. Only
+    numbers are read from messages.
 -->
 <style>
-  :root { --bg: #0A0A0F; --text: #EDEDF3; --muted: #9A9AB0; --accent: #7c5cfc; --line: rgba(255,255,255,0.12); }
-  html, body { margin: 0; height: 100%; height: 100dvh; background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; overflow: hidden; }
+  :root { --bg: #0A0A0F; --text: #EDEDF3; --muted: #9A9AB0; --accent: #e91671; --line: rgba(255,255,255,0.12); }
+  html, body { margin: 0; height: 100%; height: 100dvh; color: var(--text); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; overflow: hidden; }
+  body { background: radial-gradient(circle at 50% 38%, #232335, var(--bg) 70%) var(--bg); }
   canvas { display: block; width: 100%; height: 100%; touch-action: none; }
-  .bar { position: fixed; left: 0; right: 0; bottom: 0; display: flex; gap: 10px; align-items: center; justify-content: center; padding: 14px 16px calc(14px + env(safe-area-inset-bottom)); }
+  .bar { position: fixed; left: 0; right: 0; bottom: 0; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: center; padding: 14px max(16px, env(safe-area-inset-right)) calc(14px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
   button { font: inherit; font-weight: 600; color: #fff; background: var(--accent); border: 0; border-radius: 12px; padding: 10px 16px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
   button.ghost { background: transparent; border: 1px solid var(--line); color: var(--text); }
   button:disabled { opacity: 0.5; cursor: default; }
+  button:focus-visible, input:focus-visible { outline: 2px solid #f5d34a; outline-offset: 2px; }
+  form { display: flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 12px; padding: 3px 3px 3px 12px; }
+  form label { color: var(--muted); }
+  input { width: 64px; font: inherit; color: var(--text); background: transparent; border: 0; padding: 7px 4px; }
+  form button { padding: 7px 12px; border-radius: 9px; }
   #status { position: fixed; top: 12px; left: 0; right: 0; text-align: center; color: var(--muted); font-size: 13px; padding: 0 16px; pointer-events: none; }
 </style>
 <script type="importmap">
 {
   "imports": {
     "three": "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.min.js",
-    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.185.1/examples/jsm/",
-    "@pixiv/three-vrm": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.5.5/lib/three-vrm.module.min.js"
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.185.1/examples/jsm/"
   }
 }
 </script>
 </head>
 <body>
-<div id="status">Loading model…</div>
+<div id="status">Loading monke…</div>
 <div class="bar">
+  <form id="pick"><label for="num">Monke #</label><input id="num" inputmode="numeric" autocomplete="off" maxlength="5" /><button type="submit">Load</button></form>
   <button id="cam" disabled>Use my camera</button>
   <button id="reset" class="ghost">Reset view</button>
 </div>
 <script type="module">
 import * as THREE from "three";
-import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { VRMLoaderPlugin, VRMUtils } from "@pixiv/three-vrm";
 
 const statusEl = document.getElementById("status");
 const camBtn = document.getElementById("cam");
+const numInput = document.getElementById("num");
 const setStatus = (t) => { statusEl.textContent = t; };
 
-// ── Model URL: same site or Arweave only ──
-const DEFAULT_VRM = "/viewer/placeholder.vrm";
-function modelUrl() {
-  const raw = new URLSearchParams(location.search).get("vrm");
-  if (!raw) return DEFAULT_VRM;
-  try {
-    const u = new URL(raw, location.href);
-    if (u.origin === location.origin || u.hostname === "arweave.net") return u.href;
-  } catch {}
-  return DEFAULT_VRM;
+// ── Monke number → Arweave image (same table as src/lib/monkeMeme/monkeNumbers.ts) ──
+const BASE_A = "https://arweave.net/8bJFg1KcX8M_ahz3wJplqdG4-8we_Ts1pTSi5wephHE";
+const BASE_B = "https://arweave.net/2x92sGwXGIDCumAN1vawXd6CitHeqyjuZ1fUWOVmfsY";
+const GIFS = new Set([8986, 8987, 8988]);
+const BURNED = new Set([411, 2976, 3109, 3140, 3850, 3970, 4747, 4979, 5203, 5363, 5462, 5952, 6692, 6797, 7894]);
+function imageFor(n) {
+  if (!Number.isInteger(n) || n < 1 || n > 10014 || BURNED.has(n)) return null;
+  return `${n >= 8989 ? BASE_B : BASE_A}/${n}.${GIFS.has(n) ? "gif" : "png"}`;
 }
 
 // ── Scene ──
+const DEG = Math.PI / 180;
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
@@ -71,24 +77,28 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 document.body.prepend(renderer.domElement);
 
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, 0.1, 20);
+const camera = new THREE.PerspectiveCamera(32, innerWidth / innerHeight, 0.1, 200);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
-controls.minDistance = 0.6;
-controls.maxDistance = 5;
+controls.enablePan = false;
+controls.minDistance = 14;
+controls.maxDistance = 60;
 
-scene.add(new THREE.HemisphereLight(0xffffff, 0x3a3050, 1.6));
-const key = new THREE.DirectionalLight(0xffffff, 1.4);
-key.position.set(1, 2, 2);
+scene.add(new THREE.AmbientLight(0xffffff, 1.9));
+const key = new THREE.DirectionalLight(0xffffff, 2.2);
+key.position.set(6, 10, 14);
 scene.add(key);
-const rim = new THREE.DirectionalLight(0x9d86ff, 0.8);
-rim.position.set(-2, 1.5, -2);
+const rim = new THREE.DirectionalLight(0xe91671, 1.1);
+rim.position.set(-10, 4, -8);
 scene.add(rim);
 
-const HOME = { pos: new THREE.Vector3(0, 1.35, 2.2), target: new THREE.Vector3(0, 1.25, 0) };
+// Far enough back that the whole 16-wide monke fits a narrow phone screen too.
 function resetView() {
-  camera.position.copy(HOME.pos);
-  controls.target.copy(HOME.target);
+  const halfFov = Math.atan(Math.tan((camera.fov * DEG) / 2) * Math.min(1, camera.aspect));
+  const dist = Math.max(26, 7 / Math.tan(halfFov));
+  camera.position.set(-0.33 * dist, 0.08 * dist, dist);
+  controls.target.set(0, -0.5, 0);
+  controls.maxDistance = Math.max(60, dist * 1.6);
   controls.update();
 }
 resetView();
@@ -99,78 +109,219 @@ addEventListener("resize", () => {
   renderer.setSize(innerWidth, innerHeight);
 });
 
-// ── Load VRM ──
-let vrm = null;
-const loader = new GLTFLoader();
-loader.register((parser) => new VRMLoaderPlugin(parser));
-loader.load(modelUrl(), (gltf) => {
-  vrm = gltf.userData.vrm;
-  VRMUtils.removeUnnecessaryVertices(gltf.scene);
-  VRMUtils.combineSkeletons(gltf.scene);
-  VRMUtils.rotateVRM0(vrm);
-  scene.add(vrm.scene);
-  // Frame the head whatever the model's height.
-  // Relaxed arms instead of the T-pose models ship in.
-  const arm = (name, z) => { const b = vrm.humanoid?.getNormalizedBoneNode(name); if (b) b.rotation.z = z; };
-  arm("leftUpperArm", 1.15);
-  arm("rightUpperArm", -1.15);
-  arm("leftLowerArm", 0.15);
-  arm("rightLowerArm", -0.15);
-  // Frame head-and-shoulders whatever the model's height.
-  vrm.scene.updateMatrixWorld(true);
-  const box = new THREE.Box3().setFromObject(vrm.scene);
-  const h = box.max.y - box.min.y;
-  const head = vrm.humanoid?.getNormalizedBoneNode("head");
-  const hp = new THREE.Vector3();
-  if (head) head.getWorldPosition(hp); else hp.set(0, box.max.y * 0.85, 0);
-  HOME.target.set(0, hp.y - h * 0.22, 0);
-  HOME.pos.set(0, hp.y - h * 0.1, Math.max(1.6, h * 2.6));
-  resetView();
-  camBtn.disabled = false;
-  setStatus("");
-}, undefined, (e) => setStatus("Could not load the model"));
+// ── Pixel art → voxels ──
+// Standard monkes share one template: eyes at (7,9) and (10,9), mouth on
+// row 11 at x 7–10, neck below row 11.
+const EYES = [[7, 9], [10, 9]];
+const MOUTH_ROW = 11, MOUTH_X = [7, 8, 9, 10];
+const NECK_ROW = 12;
+const isBg = (r, g, b, a) => a < 128 || (Math.max(r, g, b) <= 0x30 && Math.min(r, g, b) >= 0x1b);
 
-// ── Face → model ──
-// faceTracking.ts names → VRM expressions (three-vrm maps VRM 0.x presets to these).
+function loadImage(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("image"));
+    img.src = url;
+  });
+}
+
+function readGrid(img) {
+  const c = document.createElement("canvas");
+  c.width = img.naturalWidth; c.height = img.naturalHeight;
+  const ctx = c.getContext("2d", { willReadFrequently: true });
+  ctx.drawImage(img, 0, 0);
+  const cell = c.width / 16;
+  const px = [];
+  for (let y = 0; y < 16; y++) {
+    const row = [];
+    for (let x = 0; x < 16; x++) {
+      const d = ctx.getImageData(Math.floor((x + 0.5) * cell), Math.floor((y + 0.5) * cell), 1, 1).data;
+      row.push([d[0], d[1], d[2], d[3]]);
+    }
+    px.push(row);
+  }
+  // Background is whatever bg-coloured pixels touch the border.
+  const solid = px.map((r) => r.map(() => true));
+  const q = [];
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++)
+    if ((x === 0 || y === 0 || x === 15 || y === 15) && isBg(...px[y][x])) { solid[y][x] = false; q.push([x, y]); }
+  while (q.length) {
+    const [x, y] = q.pop();
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + dx, ny = y + dy;
+      if (nx < 0 || ny < 0 || nx > 15 || ny > 15 || !solid[ny][nx]) continue;
+      if (isBg(...px[ny][nx])) { solid[ny][nx] = false; q.push([nx, ny]); }
+    }
+  }
+  return { px, solid };
+}
+
+// Distance to the outline, so the middle of the head is thicker than its edges.
+function thickness(solid) {
+  const d = solid.map((r) => r.map((s) => (s ? 99 : 0)));
+  for (let pass = 0; pass < 8; pass++)
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+      if (!d[y][x]) continue;
+      let m = 99;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = x + dx, ny = y + dy;
+        m = Math.min(m, nx < 0 || ny < 0 || nx > 15 || ny > 15 ? 0 : d[ny][nx]);
+      }
+      d[y][x] = Math.min(d[y][x], m + 1);
+    }
+  return d;
+}
+
+const same = (a, b) => a[0] === b[0] && a[1] === b[1] && a[2] === b[2];
+const css = (p) => `rgb(${p[0]},${p[1]},${p[2]})`;
+const box = new THREE.BoxGeometry(0.96, 0.96, 0.96);
+const voxelMat = new THREE.MeshLambertMaterial();
+
+function meshFrom(list) {
+  const m = new THREE.InstancedMesh(box, voxelMat, Math.max(1, list.length));
+  const o = new THREE.Object3D(), c = new THREE.Color();
+  list.forEach((v, i) => { o.position.set(v.x, v.y, v.z); o.updateMatrix(); m.setMatrixAt(i, o.matrix); m.setColorAt(i, c.set(v.color)); });
+  m.count = list.length;
+  if (m.instanceColor) m.instanceColor.needsUpdate = true;
+  return m;
+}
+
+let monke = null;
+
+function disposeMonke() {
+  if (!monke) return;
+  scene.remove(monke.root);
+  monke.root.traverse((o) => { if (o.isInstancedMesh) o.dispose(); else if (o.isMesh && o.geometry !== box) o.geometry.dispose(); });
+  monke = null;
+}
+
+function buildMonke({ px, solid }) {
+  disposeMonke();
+  const d = thickness(solid);
+  const skin = css(px[8][8]);
+  // Template check: the moving parts only switch on where they'll look right
+  // (sunglasses, masks and odd 1/1s keep their faces still).
+  const eyesOk = EYES.every(([x, y]) => solid[y][x]) && same(px[9][7], px[9][10]) && !same(px[9][7], px[9][8]) && same(px[9][8], px[9][9]);
+  const jawOk = MOUTH_X.every((x) => solid[MOUTH_ROW][x]) && same(px[10][8], px[10][9]);
+  const pivotY = 15 - NECK_ROW + 0.5;
+  const head = [], body = [], jaw = [], eyes = [];
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+    if (!solid[y][x]) continue;
+    const isHead = y < NECK_ROW;
+    const half = isHead ? Math.min(1 + Math.floor(d[y][x] * 0.9), 4) : Math.min(1 + Math.floor(d[y][x] * 0.6), 2);
+    const color = css(px[y][x]);
+    const isEye = eyesOk && EYES.some(([ex, ey]) => ex === x && ey === y);
+    const isMouth = jawOk && y === MOUTH_ROW && MOUTH_X.includes(x);
+    for (let z = -half; z <= half; z++) {
+      const front = z === half;
+      const v = { x: x - 7.5, y: 15 - y - (isHead ? pivotY : 0), z, color: (isEye || isMouth) && !front ? skin : color };
+      if (isEye && front) eyes.push(v);
+      else if (isMouth) jaw.push(v);
+      else (isHead ? head : body).push(v);
+    }
+  }
+  const root = new THREE.Group();
+  const headGroup = new THREE.Group();
+  headGroup.position.y = pivotY;
+  const jawMesh = meshFrom(jaw);
+  headGroup.add(meshFrom(head), meshFrom(eyes), jawMesh);
+  const mouthY = 15 - MOUTH_ROW - pivotY;
+  let cavity = null;
+  if (jaw.length) {
+    const frontZ = Math.max(...jaw.map((v) => v.z));
+    cavity = new THREE.Mesh(new THREE.BoxGeometry(MOUTH_X.length, 1, 0.9), new THREE.MeshLambertMaterial({ color: 0x3a0d16 }));
+    cavity.position.set((MOUTH_X[0] + MOUTH_X[MOUTH_X.length - 1]) / 2 - 7.5, mouthY + 0.5, frontZ - 0.3);
+    cavity.scale.y = 0.001;
+    headGroup.add(cavity);
+  }
+  const lidMat = new THREE.MeshLambertMaterial({ color: skin });
+  const lids = eyes.map((v) => {
+    const lid = new THREE.Mesh(box, lidMat);
+    lid.userData.top = v.y + 0.5;
+    lid.position.set(v.x, v.y + 0.5, v.z + 0.02);
+    lid.scale.y = 0.001;
+    headGroup.add(lid);
+    return lid;
+  });
+  root.add(meshFrom(body), headGroup);
+  root.position.y = -7.5 + 0.5;
+  scene.add(root);
+  monke = { root, headGroup, jawMesh, cavity, lids, mouthY, jaw: 0, blinkL: 0, blinkR: 0 };
+}
+
+let current = null;
+let loadSeq = 0;
+async function showMonke(n) {
+  const url = imageFor(n);
+  if (!url) { setStatus(`#${n} isn't a live Saga Monke`); return; }
+  const seq = ++loadSeq;
+  setStatus(`Loading #${n}…`);
+  try {
+    const img = await loadImage(url);
+    if (seq !== loadSeq) return;
+    buildMonke(readGrid(img));
+    current = n;
+    numInput.value = String(n);
+    camBtn.disabled = false;
+    setStatus("");
+  } catch {
+    if (seq === loadSeq) setStatus(`Couldn't load #${n}. Check your connection and try again.`);
+  }
+}
+
+document.getElementById("pick").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const n = parseInt(numInput.value.replace(/\D/g, ""), 10);
+  if (n && n !== current) showMonke(n);
+});
+
+// ── Face → monke ──
 let face = null;            // latest { values, headRotation }
 let faceAt = 0;             // when it arrived (ms)
 const clamp01 = (x) => Math.max(0, Math.min(1, Number(x) || 0));
-const DEG = Math.PI / 180;
 
 function applyFace(dt) {
-  const em = vrm.expressionManager;
-  const head = vrm.humanoid?.getNormalizedBoneNode("head");
+  if (!monke) return;
+  const t = performance.now() / 1000;
   const live = face && performance.now() - faceAt < 1500;
-  if (!live) {
-    // Idle: slow blink and a little breathing when nothing is driving it.
-    const t = performance.now() / 1000;
-    em?.setValue("blink", (t % 4) < 0.12 ? 1 : 0);
-    em?.setValue("aa", 0);
-    if (head) head.rotation.set(Math.sin(t * 0.6) * 0.03, Math.sin(t * 0.4) * 0.06, 0);
-    return;
-  }
-  const v = face.values;
-  const smile = (clamp01(v.mouthSmileLeft) + clamp01(v.mouthSmileRight)) / 2;
-  em?.setValue("aa", clamp01(v.jawOpen * 1.4));
-  em?.setValue("ou", clamp01(v.mouthPucker));
-  em?.setValue("ih", smile * 0.5);
-  em?.setValue("happy", smile);
-  const bl = clamp01(v.eyeBlinkLeft), br = clamp01(v.eyeBlinkRight);
-  if (em?.getExpression("blinkLeft") && em?.getExpression("blinkRight")) {
-    em.setValue("blinkLeft", bl);
-    em.setValue("blinkRight", br);
+  const k = 1 - Math.exp(-dt * 14);
+  let jaw = 0, bl = 0, br = 0, rx = 0, ry = 0, rz = 0;
+  if (live) {
+    const v = face.values, r = face.headRotation || {};
+    jaw = clamp01(v.jawOpen * 1.6);
+    bl = clamp01(v.eyeBlinkLeft * 1.3);
+    br = clamp01(v.eyeBlinkRight * 1.3);
+    // Mirror yaw/roll so the monke moves like a mirror image of you.
+    rx = Math.max(-25, Math.min(25, Number(r.x) || 0)) * DEG;
+    ry = -Math.max(-35, Math.min(35, Number(r.y) || 0)) * DEG;
+    rz = -Math.max(-25, Math.min(25, Number(r.z) || 0)) * DEG;
   } else {
-    em?.setValue("blink", (bl + br) / 2);
+    // Idle: slow blink and a little sway when nothing is driving it.
+    bl = br = (t % 4) < 0.14 ? 1 : 0;
+    rx = Math.sin(t * 0.8) * 0.04;
+    ry = Math.sin(t * 0.45) * 0.12;
   }
-  em?.setValue("surprised", clamp01(v.browInnerUp) * 0.7);
-  if (head) {
-    const r = face.headRotation || {};
-    const k = 1 - Math.exp(-dt * 12); // smooth
-    // Mirror yaw/roll so the model moves like a mirror image of you.
-    head.rotation.x += ((Number(r.x) || 0) * DEG * 0.8 - head.rotation.x) * k;
-    head.rotation.y += (-(Number(r.y) || 0) * DEG * 0.8 - head.rotation.y) * k;
-    head.rotation.z += (-(Number(r.z) || 0) * DEG * 0.8 - head.rotation.z) * k;
+  monke.jaw += (jaw - monke.jaw) * k;
+  monke.blinkL += (bl - monke.blinkL) * Math.min(1, k * 2);
+  monke.blinkR += (br - monke.blinkR) * Math.min(1, k * 2);
+  const drop = monke.jaw * 1.1;
+  monke.jawMesh.position.y = -drop;
+  if (monke.cavity) {
+    monke.cavity.scale.y = Math.max(0.001, drop);
+    monke.cavity.position.y = monke.mouthY + 0.5 - drop / 2;
   }
+  // The monke faces you, so its left eye is on screen right (higher x).
+  monke.lids.forEach((lid) => {
+    const b = lid.position.x > 0 ? monke.blinkL : monke.blinkR;
+    lid.scale.y = Math.max(0.001, b);
+    lid.position.y = lid.userData.top - b / 2;
+  });
+  const h = monke.headGroup.rotation;
+  h.x += (rx - h.x) * k;
+  h.y += (ry - h.y) * k;
+  h.z += (rz - h.z) * k;
 }
 
 function takeFace(values, headRotation) {
@@ -181,11 +332,13 @@ function takeFace(values, headRotation) {
   faceAt = performance.now();
 }
 
-// Host page (Avatar Room) can drive the model. Data only — never code.
+// Host page (app / Avatar Room) can drive the monke. Data only — never code.
 function onHostMessage(e) {
   let d = e.data;
   if (typeof d === "string") { try { d = JSON.parse(d); } catch { return; } }
-  if (d && d.type === "blendshapes") takeFace(d.values, d.headRotation);
+  if (!d || typeof d !== "object") return;
+  if (d.type === "blendshapes") takeFace(d.values, d.headRotation);
+  else if (d.type === "monke" && Number.isInteger(d.n) && d.n !== current) showMonke(d.n);
 }
 addEventListener("message", onHostMessage);
 document.addEventListener("message", onHostMessage); // Android WebView
@@ -245,16 +398,18 @@ camBtn.onclick = async () => {
   }
 };
 
-// ── Loop ──
+// ── Start ──
+const asked = parseInt(new URLSearchParams(location.search).get("n") || "", 10);
+let first = asked;
+while (!imageFor(first)) first = 1 + Math.floor(Math.random() * 8888);
+showMonke(first);
+
 let prev = performance.now();
 renderer.setAnimationLoop(() => {
   const now = performance.now();
   const dt = Math.min(0.1, (now - prev) / 1000);
   prev = now;
-  if (vrm) {
-    applyFace(dt);
-    vrm.update(dt);
-  }
+  applyFace(dt);
   controls.update();
   renderer.render(scene, camera);
 });
