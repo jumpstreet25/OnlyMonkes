@@ -1,7 +1,19 @@
 name = "onlymonkes-actions"
-main = "src/index.ts"
+main = "src/worker.ts"
 compatibility_date = "2026-03-23"
 compatibility_flags = ["nodejs_compat"]
+# The published app calls the workers.dev address; custom domains turn it off by default.
+workers_dev = true
+preview_urls = true
+
+# 2026-10-22: onlymonkes.app + www + app. belong to onlymonkes-web; its front
+# door (scripts/web/site-router.ts on web-app) forwards the public-site paths
+# (/welcome, /get, /open/*, legal, /site/*, /download/*, /monke/*, /api/*…)
+# here over a service binding. No custom domains on this worker.
+
+# Site images (/site/*), robots.txt, sitemap.xml — served before the worker runs.
+[assets]
+directory = "site"
 
 # Secrets (set via `wrangler secret put`):
 #   HELIUS_API_KEY  — Helius RPC API key
@@ -51,6 +63,11 @@ id = "b0b8d8e361a749d28074f32134fe4fbf"
 # "rsvp:<eventId>:<wallet>" for the community events calendar. Locations and
 # events are separate keys from onchainHolder.ts's own KV — this is
 # community-contributed/self-reported data, not verified NFT ownership state.
+# Referral ledger: codes, who invited whom (hashed wallets), season counts (src/referrals.ts).
+[[kv_namespaces]]
+binding = "REFERRALS"
+id = "cd82ac6966424134959b7924bbed1853"
+
 [[kv_namespaces]]
 binding = "COMMUNITY_DATA"
 id = "272632d79eb043a69586f7cb4013c080"
@@ -86,13 +103,36 @@ crons = ["0 */4 * * *", "0 * * * *"]
 # XMTP_JWT_PRIVATE_KEY is a secret (`wrangler secret put`); its public half
 # is in the XMTP backend's backend.toml [auth] keys on the VPS.
 [vars]
-WEB_APP_ORIGINS = "https://onlymonkes-web.jumpstreet25.workers.dev"
+WEB_APP_ORIGINS = "https://app.onlymonkes.app,https://onlymonkes.app,https://www.onlymonkes.app,https://onlymonkes-web.jumpstreet25.workers.dev"
 XMTP_JWT_KID = "om-1"
-# Bot profile import over HTTPS (Caddy route on the VPS → bot :3001/web-profile).
-BOT_PROFILE_URL = "https://157-173-192-39.sslip.io/bot-api"
+# Bot base URL: Cloudflare Tunnel onlymonkes-bot on the VPS. Its ingress passes only
+# /web-profile, /command, /inbox-reset, /api/sales-stats and /sentry-webhook to bot :3001; all else 404.
+BOT_PROFILE_URL = "https://bot.onlymonkes.app"
+
+# APKs on onlymonkes.app (apkDownloads.ts). Test builds expire after 30 days
+# (lifecycle rule "test-expiry" on test/). Uploads: scripts/apk/upload-apk.sh.
+[[r2_buckets]]
+binding = "APKS"
+bucket_name = "onlymonkes-apks"
+
+# Per-IP download limit for /download/* (R2 never-charged guardrail).
+[[ratelimits]]
+name = "APK_LIMITER"
+namespace_id = "1002"
+simple = { limit = 6, period = 60 }
 
 # Per-IP limit shared by /api/rpc and /api/auth/* (key prefixes differ).
 [[ratelimits]]
 name = "WEB_RPC_LIMITER"
 namespace_id = "1001"
 simple = { limit = 120, period = 60 }
+
+# Phone as the website's camera (phoneCam.ts): one relay room per QR, WebSocket
+# hibernation, sealed face numbers only. SQLite-backed so it runs on the free plan.
+[[durable_objects.bindings]]
+name = "PHONE_CAM"
+class_name = "PhoneCamRoom"
+
+[[migrations]]
+tag = "v1-phone-cam"
+new_sqlite_classes = ["PhoneCamRoom"]

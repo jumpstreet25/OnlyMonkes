@@ -436,7 +436,8 @@
     "supportSub": "One-tap $SKR tip to the dev wallet 🐒\nBiometric confirm — never leaves the app.",
     "sendingEllipsis": "Sending…",
     "sendSkr": "Send {{amount}} $SKR  🐒",
-    "monkeMeme": "MonkeMeme"
+    "monkeMeme": "MonkeMeme",
+    "invite": "Invite"
   },
   "watchlist": {
     "title": "Watchlist",
@@ -998,5 +999,37 @@
     "loadNumber": "Load",
     "wave2": "Wave 2 1/1",
     "artOnly": "This monke is drawn straight from its own art — no trait board needed."
+  },
+  "invite": {
+    "title": "Invite friends",
+    "intro": "Invite new Saga Monke holders. When one joins with your link, you get {{referrer}} bananas and they get {{newHolder}}.",
+    "loading": "Getting your invite…",
+    "yourLink": "Your invite link",
+    "share": "Share",
+    "copy": "Copy link",
+    "copied": "Link copied",
+    "postOnX": "Post on X",
+    "shareText": "Join me on OnlyMonkes, the app for Saga Monkes holders. You get {{newHolder}} bananas when you join with my invite:",
+    "stats": "{{count}} joined with your invite",
+    "badges": "Recruiter badges",
+    "nextBadge": "Next badge at {{n}}",
+    "allBadges": "You have every Recruiter badge",
+    "seasonOff": "Monthly seasons with a prize for the top recruiter are coming soon.",
+    "seasonOn": "Season {{id}}: {{count}} invites so far",
+    "haveCode": "Got an invite code?",
+    "toastReferrer_one": "+{{bananas}} bananas — a new holder joined with your invite",
+    "toastReferrer_other": "+{{bananas}} bananas — {{count}} new holders joined with your invite",
+    "toastWelcome": "+{{bananas}} bananas for joining with an invite",
+    "acceptTitle": "Your invite",
+    "invitedBy": "{{name}} invited you",
+    "acceptIntro": "Accept to give {{name}} {{referrer}} bananas. You get {{newHolder}}.",
+    "accept": "Accept invite",
+    "accepted": "Invite accepted. Your bananas are on the way.",
+    "alreadyAccepted": "You already accepted this invite.",
+    "enterCode": "Enter an invite code",
+    "codePlaceholder": "6 letters, e.g. 5NFG8A",
+    "lookUp": "Look up",
+    "notFound": "That invite code isn't valid.",
+    "done": "Done"
   }
 }

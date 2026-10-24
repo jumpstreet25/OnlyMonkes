@@ -23,7 +23,7 @@
  *   HELIUS_NFT_API_KEY — Helius key used only by /api/verify wallet checks
  *   JUP_API_KEY        — Jupiter Swap API v2 key (get from portal.jup.ag)
  *   BOT_HTTP_SECRET    — Bearer token for authenticated bot endpoints
- *   BOT_HTTP_URL       — bot Express base URL (VPS :3001) for /api/bot-command + /api/inbox-reset
+ *   BOT_PROFILE_URL    — bot base URL (tunnel, wrangler.toml) for profile import, /api/bot-command, /api/inbox-reset, sales stats
  *   ESCROW_ENCRYPT_KEY — 256-bit hex key for AES-GCM encryption of ephemeral secrets in KV
  *   ADMIN_WALLET_PUBKEY — admin's Solana wallet base58 address (see adminConfig.ts)
  *   ADMIN_GITHUB_PAT     — fine-grained GitHub PAT, scoped to this repo's Contents only
@@ -32,6 +32,8 @@
  *   TIP_ESCROW — stores encrypted ephemeral keypairs for tip links (72h TTL)
  */
 
+import { renderLanding, renderGet, renderOpen, renderBot, LEGAL_PATHS, SITE_BASE, type BotCommand } from "./site";
+import botCommands from "../../config/bot-commands.json";
 import {
   Connection,
   Keypair,
@@ -88,8 +90,14 @@ import { handleGetLumaEvents } from "./lumaEvents";
 import { handlePublishAppConfig } from "./adminConfig";
 import { handleBotCommand, handleInboxReset } from "./botCommand";
 import { handleWebRpc } from "./webRpc";
-import { handleWebAuth, handleWebProfile } from "./webAuth";
+import { handleWebAuth, handleWebHistory, handleWebProfile } from "./webAuth";
+import { handleWebMedia, isWebMediaPath } from "./webMedia";
+import { handleShareCard, isShareCardPath } from "./shareCard";
+import { handleReferral, isReferralPath } from "./referrals";
+import { handleLivekitAuthorize, INTERNAL_HOST } from "./livekitAuth";
+import { handleApkDownload, isApkDownloadPath } from "./apkDownloads";
 import { handleWebPair } from "./webPair";
+import { handlePhoneCam } from "./phoneCam";
 import { verifyGenesisTokenOwnership } from "./genesisVerify";
 import { handleMonkeMemeGenerate } from "./monkeMeme";
 
@@ -117,8 +125,9 @@ export interface Env {
   JUP_API_KEY: string;
   BOT_HTTP_SECRET: string;
   // Bot Express on the VPS (`AGENT_HTTP_PORT`, default 3001, BIND_HOST 0.0.0.0).
-  // Set via `wrangler secret put BOT_HTTP_URL` (e.g. http://157.173.192.39:3001).
-  BOT_HTTP_URL?: string;
+  /** Bot base URL — the Cloudflare Tunnel at bot.onlymonkes.app (wrangler.toml). Workers
+   *  can't reach the bot's :3001 directly; the tunnel passes only the routes the worker uses. */
+  BOT_PROFILE_URL?: string;
   ESCROW_ENCRYPT_KEY: string;
   // Optional in dev — DFlow's dev quote endpoint requires no key. Set in
   // production via `wrangler secret put DFLOW_API_KEY` once we cut over.
@@ -143,6 +152,8 @@ export interface Env {
   // Device Integrity Attestation — see deviceIntegrity.ts. Backend-verified
   // (Key Attestation chain + RASP + Saga/Genesis ownership), no on-chain write.
   DEVICE_INTEGRITY: KVNamespace;
+  /** Referral ledger (referrals.ts). */
+  REFERRALS?: KVNamespace;
   // MonkeGlobe/MonkeEvents public web repo backend — see community.ts.
   COMMUNITY_DATA: KVNamespace;
   // Service Binding to the MonkeLedger worker (same Cloudflare account) — see wrangler.toml's
@@ -164,6 +175,8 @@ export interface Env {
   // ([vars] in wrangler.toml) and an optional per-IP rate-limit binding.
   WEB_APP_ORIGINS?: string;
   WEB_RPC_LIMITER?: { limit: (opts: { key: string }) => Promise<{ success: boolean }> };
+  /** Phone-as-camera relay rooms (phoneCam.ts). */
+  PHONE_CAM: DurableObjectNamespace;
   // Web sign-in (webAuth.ts): Ed25519 PKCS8 (base64) signing the XMTP access
   // JWTs; the self-hosted XMTP backend holds the matching public key.
   XMTP_JWT_PRIVATE_KEY?: string;
@@ -183,7 +196,7 @@ interface ExecutionContext {
 
 // Cloudflare Worker handler type (declared locally to avoid @cloudflare/workers-types dependency in app tsconfig)
 type ExportedHandler<E = unknown> = {
-  fetch: (request: Request, env: E) => Promise<Response>;
+  fetch: (request: Request, env: E, ctx: ExecutionContext) => Promise<Response>;
   scheduled?: (event: ScheduledEvent, env: E, ctx: ExecutionContext) => Promise<void>;
 };
 
@@ -1603,7 +1616,7 @@ interface FrameAlertData {
 
 const WORKER_BASE = "https://onlymonkes-actions.jumpstreet25.workers.dev";
 const APP_DEEP_LINK = "https://onlymonkes.app";
-const DAPP_STORE_LINK = "https://dappstore.app/onlymonkes";
+const DAPP_STORE_LINK = `${SITE_BASE}/get`;
 // 2026-07-30: not everyone sharing/receiving a /monke/:mint link is on a
 // Solana Mobile device with the dApp Store available — a direct APK link
 // is the fallback for regular Android phones. Resolved dynamically (see
@@ -1920,13 +1933,12 @@ async function fetchMonkeHolderCount(env: Env): Promise<number> {
 }
 
 // Bot's own sales-book, exposed for exactly this purpose (see sagaMonkesSales.ts +
-// xmtpOnlyMonkes.ts's /api/sales-stats). nip.io hostname, not the bare IP — Cloudflare Workers'
-// fetch() refuses a literal IP address (same reasoning as MonkeLedger's own worker).
-const BOT_SALES_STATS_URL = "http://157-173-192-39.nip.io:3001/api/sales-stats";
-
-async function fetchSalesStatsFromBot(): Promise<{ floorSol: number; volume24hSol: number; recentSales: StatsSnapshot["recentSales"] } | null> {
+// xmtpOnlyMonkes.ts's /api/sales-stats), reached through the bot tunnel (BOT_PROFILE_URL).
+async function fetchSalesStatsFromBot(env: Env): Promise<{ floorSol: number; volume24hSol: number; recentSales: StatsSnapshot["recentSales"] } | null> {
   try {
-    const res = await fetchWithTimeout(BOT_SALES_STATS_URL, {}, 8_000);
+    const base = (env.BOT_PROFILE_URL ?? "").replace(/\/$/, "");
+    if (!base) return null;
+    const res = await fetchWithTimeout(`${base}/api/sales-stats`, {}, 8_000);
     if (!res.ok) return null;
     const d = await res.json() as any;
     if (typeof d?.volume24hSol !== "number") return null;
@@ -1949,7 +1961,7 @@ async function fetchFloorAndMarket(env: Env): Promise<{ floorSol: number | null;
   let volume24hSol: number | null = null;
   let skrPriceUsd: number | null = null;
 
-  const fromBot = await fetchSalesStatsFromBot();
+  const fromBot = await fetchSalesStatsFromBot(env);
   if (fromBot) {
     floorSol = fromBot.floorSol;
     volume24hSol = fromBot.volume24hSol;
@@ -1989,7 +2001,7 @@ async function fetchFloorAndMarket(env: Env): Promise<{ floorSol: number | null;
  *  SagaMonkesSalesMonitor, trimmed to a short public-safe feed (no buyer/seller wallets, no name
  *  lookup per sale to avoid N extra DAS calls on every cron run). */
 async function fetchRecentSales(env: Env): Promise<StatsSnapshot["recentSales"]> {
-  const fromBot = await fetchSalesStatsFromBot();
+  const fromBot = await fetchSalesStatsFromBot(env);
   if (fromBot && fromBot.recentSales.length > 0) return fromBot.recentSales;
 
   try {
@@ -2072,14 +2084,6 @@ async function getLatestApkUrl(env: Env): Promise<string> {
   } catch {
     return GITHUB_RELEASES_PAGE;
   }
-}
-
-/** GET /download/apk — redirects to whichever APK is attached to the
- *  current latest GitHub release, resolved dynamically so this link never
- *  needs updating as new versions ship. */
-async function handleDownloadApk(env: Env): Promise<Response> {
-  const url = await getLatestApkUrl(env);
-  return Response.redirect(url, 302);
 }
 
 /** Fetch a single Saga Monke's metadata by mint/asset id — Helius DAS
@@ -2386,127 +2390,6 @@ function timeAgo(ts: number): string {
   return `${Math.round(diffH / 24)}d ago`;
 }
 
-/** GET / — public landing page. Live "proof of life" stats + wallet connect
- *  entry point into /monke/:mint + a Get OnlyMonkes CTA. Reads the cron-
- *  refreshed stats:latest KV cache (see scheduled() below) rather than
- *  fetching anything live, so the page loads fast regardless of API health. */
-async function handleLandingPage(env: Env): Promise<Response> {
-  const stats = await getCachedStats(env);
-
-  const holdersLine = stats
-    ? `${stats.holders.toLocaleString()} holders` + (stats.holdersDelta ? ` (${stats.holdersDelta > 0 ? "+" : ""}${stats.holdersDelta} since last check)` : "")
-    : "Loading holder count…";
-  const floorLine = stats?.floorSol != null ? `${stats.floorSol.toFixed(2)} SOL floor` : "Floor price unavailable";
-  const skrLine = stats?.skrPriceUsd != null ? `$SKR $${stats.skrPriceUsd.toFixed(6)}` : "";
-  const volLine = stats?.volume24hSol != null ? `${stats.volume24hSol.toFixed(1)} SOL volume (24h)` : "";
-
-  const salesRows = (stats?.recentSales ?? []).map(s => `
-    <div class="sale-row">
-      <span class="sale-price">${s.priceSol.toFixed(2)} SOL</span>
-      <span class="sale-source">${escapeHtml(s.source ?? "")}</span>
-      <span class="sale-time">${timeAgo(s.ts)}</span>
-      <a class="sale-link" href="https://solscan.io/tx/${encodeURIComponent(s.signature)}" target="_blank" rel="noopener">view</a>
-    </div>`).join("") || `<p class="muted">No recent sales in the feed yet.</p>`;
-
-  const html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="robots" content="index, follow">
-  <title>OnlyMonkes — Check Your Monke</title>
-  <meta property="og:title" content="OnlyMonkes — Check Your Monke" />
-  <meta property="og:description" content="Live Saga Monkes community stats. Connect your wallet to find your Monke." />
-  <meta property="og:type" content="website" />
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0A0A0F; color: #F8F8FF; line-height: 1.6; padding: 40px 20px; }
-    .container { max-width: 560px; margin: 0 auto; }
-    h1 { font-size: 30px; color: #6CB4EE; margin-bottom: 6px; }
-    .tagline { color: #8B8B9E; font-size: 15px; margin-bottom: 32px; }
-    .stat-card { background: #12121A; border: 1px solid #1E1E2E; border-radius: 16px; padding: 22px; margin-bottom: 20px; }
-    .stat-row { display: flex; justify-content: space-between; align-items: baseline; font-size: 16px; padding: 6px 0; }
-    .stat-row strong { color: #F8F8FF; font-size: 18px; }
-    .muted { color: #8B8B9E; font-size: 13px; }
-    h2 { font-size: 15px; color: #8B8B9E; text-transform: uppercase; letter-spacing: 0.5px; margin: 24px 0 10px; }
-    .sale-row { display: flex; gap: 10px; align-items: center; font-size: 14px; padding: 8px 0; border-bottom: 1px solid #1E1E2E; }
-    .sale-price { color: #14F195; font-weight: 600; min-width: 80px; }
-    .sale-source { color: #8B8B9E; flex: 1; }
-    .sale-time { color: #8B8B9E; }
-    .sale-link { color: #6CB4EE; text-decoration: none; }
-    button, .cta { display: block; width: 100%; text-align: center; border: none; border-radius: 14px; padding: 16px; font-size: 16px; font-weight: 600; margin-top: 12px; cursor: pointer; text-decoration: none; }
-    .btn-primary { background: #6CB4EE; color: #0A0A0F; }
-    .btn-secondary { background: transparent; border: 1px solid #6CB4EE; color: #6CB4EE; }
-    #wallet-status { text-align: center; font-size: 13px; color: #8B8B9E; margin-top: 10px; min-height: 18px; }
-    .footer { margin-top: 40px; text-align: center; font-size: 12px; color: #8B8B9E; }
-    .footer a { color: #6CB4EE; text-decoration: none; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h1>🐒 OnlyMonkes</h1>
-    <p class="tagline">The Saga Monkes chat, trading bot, and community — live right now.</p>
-
-    <div class="stat-card">
-      <div class="stat-row"><span>Holders</span><strong>${escapeHtml(holdersLine)}</strong></div>
-      <div class="stat-row"><span>Floor</span><strong>${escapeHtml(floorLine)}</strong></div>
-      ${volLine ? `<div class="stat-row"><span>24h Volume</span><strong>${escapeHtml(volLine)}</strong></div>` : ""}
-      ${skrLine ? `<div class="stat-row"><span>$SKR</span><strong>${escapeHtml(skrLine)}</strong></div>` : ""}
-      <p class="muted">${stats ? `Updated ${timeAgo(stats.updatedAt)}` : ""}</p>
-    </div>
-
-    <h2>Recent Sales</h2>
-    ${salesRows}
-
-    <button class="btn-secondary" onclick="connectWallet()">🔗 Connect Wallet — Find Your Monke</button>
-    <div id="wallet-status"></div>
-
-    <a class="cta btn-primary" href="${DAPP_STORE_LINK}">Get OnlyMonkes</a>
-
-    <div class="footer">
-      <a href="/legal">Legal</a> &nbsp;·&nbsp; <a href="/terms">Terms</a> &nbsp;·&nbsp; <a href="/privacy">Privacy</a>
-    </div>
-  </div>
-
-  <script>
-    async function connectWallet() {
-      const statusEl = document.getElementById('wallet-status');
-      statusEl.textContent = 'Connecting…';
-      try {
-        const provider = (window.solana && window.solana.isPhantom) ? window.solana : window.solflare;
-        if (!provider) {
-          statusEl.textContent = 'No Solana wallet extension found — open this page with Phantom or Solflare installed.';
-          return;
-        }
-        const resp = await provider.connect();
-        const pubkey = (resp && resp.publicKey) ? resp.publicKey : provider.publicKey;
-        const address = pubkey.toString();
-        statusEl.textContent = 'Checking for your Monke…';
-        const res = await fetch('/api/verify?wallet=' + encodeURIComponent(address));
-        const data = await res.json();
-        if (data.owned) {
-          window.location.href = '/monke/' + encodeURIComponent(data.mint);
-        } else {
-          statusEl.textContent = 'No Saga Monke found in this wallet.';
-        }
-      } catch (err) {
-        statusEl.textContent = 'Connection failed — try again.';
-      }
-    }
-  </script>
-</body>
-</html>`;
-
-  return new Response(html, {
-    status: 200,
-    headers: {
-      "Content-Type": "text/html; charset=utf-8",
-      "Cache-Control": "public, max-age=60",
-      ...CORS_HEADERS,
-    },
-  });
-}
-
 /** GET /api/stats — public JSON, no auth. Reads the cron-refreshed KV cache. */
 async function handleStatsApi(env: Env): Promise<Response> {
   const stats = await getCachedStats(env);
@@ -2760,7 +2643,7 @@ async function handleMonkePage(mint: string, env: Env): Promise<Response> {
   const traitsLine = monke.traits.slice(0, 4).map(t => `${escapeHtml(t.trait_type)}: ${escapeHtml(t.value)}`).join(" · ");
   const floorLine = stats?.floorSol != null ? `Floor: ${stats.floorSol.toFixed(2)} SOL` : "";
   const description = [traitsLine, floorLine].filter(Boolean).join(" — ") || "Saga Monkes holder on OnlyMonkes";
-  const pageUrl = `${WORKER_BASE}/monke/${encodeURIComponent(mint)}`;
+  const pageUrl = `${SITE_BASE}/monke/${encodeURIComponent(mint)}`;
   // Watermarked composite (see handleMonkeImage) so the OnlyMonkes brand
   // shows up wherever this card gets shared, not just the raw NFT art.
   const imageUrl = monke.image ? `${WORKER_BASE}/monke/${encodeURIComponent(mint)}/image` : WATERMARK_URL;
@@ -3149,6 +3032,7 @@ function legalShell(title: string, body: string): Response {
 <body>
   <div class="container">
     <nav>
+      <a href="/">OnlyMonkes</a>
       <a href="/legal">Legal Index</a>
       <a href="/terms">Terms of Use</a>
       <a href="/privacy">Privacy Policy</a>
@@ -3576,7 +3460,7 @@ function handleCopyright(): Response {
 // ─── Router ───────────────────────────────────────────────────────────────────
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     // CORS preflight
     if (request.method === "OPTIONS") {
       return new Response(null, { headers: CORS_HEADERS });
@@ -3585,6 +3469,18 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
 
+    // 2026-10-22: onlymonkes.app belongs to the web app (onlymonkes-web), whose
+    // front door forwards the public-site paths here with the host unchanged.
+    // The workers.dev legal URLs (the 3.4 app's About screen) move there too.
+    if (request.method === "GET" || request.method === "HEAD") {
+      if (url.hostname === "www.onlymonkes.app") {
+        return Response.redirect(`${SITE_BASE}${path}${url.search}`, 301);
+      }
+      if (url.hostname.endsWith(".workers.dev") && LEGAL_PATHS.test(path)) {
+        return Response.redirect(`${SITE_BASE}${path}`, 301);
+      }
+    }
+
     // Health check
     if (path === "/health") {
       return jsonResponse({ status: "ok", version: "1.10.0", endpoints: ["/api/actions/swap", "/api/actions/tip", "/api/actions/predict", "/api/actions/bet", "/api/actions/kalshi-bet", "/api/actions/treasury-swap", "/api/actions/treasury-stake", "/api/treasury/status", "/api/treasury/threshold-check", "/api/treasury/weekly-summary", "/escrow", "/claim", "/frames/alert", "/legal", "/terms", "/privacy", "/copyright", "/", "/api/stats", "/api/verify", "/api/holders/index", "/api/top-traders", "/api/signals", "/monke/:mint", "/api/sentiment/register-device", "/api/sentiment/unregister-device", "/api/sentiment/ingest", "/api/sentiment/score", "/api/community/locations", "/api/community/location", "/api/community/bulk-locations", "/api/community/events", "/api/community/bulk-events", "/api/community/luma-events", "/api/community/events/:id", "/api/community/events/:id/rsvp", "/api/community/events/:id/rsvps", "/api/admin/publish-app-config"] });
@@ -3592,9 +3488,21 @@ export default {
 
     // 2026-07-30: public "Check Your Monke" growth page — see the section
     // comment above SAGA_COLLECTION_MINT for context.
-    if (path === "/") {
-      if (request.method === "GET") return handleLandingPage(env);
+    // Link-preview bots (X, Discord…) often send HEAD first; answer it like GET.
+    const isPageRead = request.method === "GET" || request.method === "HEAD";
+    if (path === "/" || path === "/welcome") {
+      if (isPageRead) return renderLanding(await getCachedStats(env));
       return errorResponse("Method not allowed", 405);
+    }
+    if (path === "/get") {
+      if (isPageRead) return renderGet();
+      return errorResponse("Method not allowed", 405);
+    }
+    const openMatch = path.match(/^\/open\/([a-z]+)\/?$/);
+    if (openMatch && isPageRead) {
+      const page = renderOpen(openMatch[1]);
+      if (page) return page;
+      return Response.redirect(`${SITE_BASE}/welcome`, 302);
     }
     if (path === "/api/stats") {
       if (request.method === "GET") return handleStatsApi(env);
@@ -3608,8 +3516,25 @@ export default {
       return handleWebProfile(request, env);
     }
 
+    if (path === "/api/chat/history") {
+      return handleWebHistory(request, env);
+    }
+
+    // Service-binding only (onlymonkes-livekit-token); public requests never carry this host.
+    if (url.hostname === INTERNAL_HOST && path === "/api/livekit/authorize") {
+      return handleLivekitAuthorize(request, env);
+    }
+
+    if (isWebMediaPath(path)) {
+      return handleWebMedia(path, request, env, ctx);
+    }
+
     if (path.startsWith("/api/pair/")) {
       return handleWebPair(path, request, env);
+    }
+
+    if (path.startsWith("/api/cam/")) {
+      return handlePhoneCam(path, request, env);
     }
 
     if (path.startsWith("/api/auth/")) {
@@ -3750,10 +3675,18 @@ export default {
       if (request.method === "GET") return handleDeviceIntegrityStatus(url, env);
       return errorResponse("Method not allowed", 405);
     }
-    if (path === "/download/apk") {
-      if (request.method === "GET") return handleDownloadApk(env);
-      return errorResponse("Method not allowed", 405);
+    if (path === "/bot" && isPageRead) {
+      return renderBot((botCommands as { commands: BotCommand[] }).commands);
     }
+
+    // APKs on onlymonkes.app (R2, apkDownloads.ts). GitHub v3.0 is only the fallback.
+    if (isApkDownloadPath(path)) {
+      return handleApkDownload(path, request, env as any, ctx, () => getLatestApkUrl(env));
+    }
+    // Referrals: /api/referral/*, /r/<code>[/card.png], /referrals (referrals.ts).
+    if (isReferralPath(path)) return handleReferral(path, request, env, ctx);
+    // /monke/<number>[/card.png]: share page + pixel card (shareCard.ts); /monke/<mint> below.
+    if (isShareCardPath(path)) return handleShareCard(path, request, ctx);
     const monkeImageMatch = path.match(/^\/monke\/([^/]+)\/image$/);
     if (monkeImageMatch) {
       if (request.method === "GET") return handleMonkeImage(decodeURIComponent(monkeImageMatch[1]), env);

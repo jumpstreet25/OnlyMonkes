@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import type { FlashListRef } from "@shopify/flash-list";
 import { router } from "expo-router";
-import { useVideoPlayer, VideoView } from "expo-video";
+import WebVideo from "./WebVideo";
 import { THEME, FONTS } from "@/lib/constants";
 import { ConfettiView } from "@/components/ConfettiView";
 import { BananaClaimModal } from "@/components/BananaClaimModal";
@@ -45,21 +45,10 @@ import type { SwapQuote } from "@/lib/jupiterSwap";
 import type { Badge } from "@/lib/activityBadges";
 import type { TipAmount } from "@/lib/constants";
 
-// 2026-07-22: was dynamically importing expo-av to defer its startup cost —
-// no longer meaningful now that VideoCameraModal (imported statically just
-// above) already pulls expo-video into this same file's module graph
-// unconditionally. A dynamic import here would also make useVideoPlayer a
-// conditionally-called hook, which Rules of Hooks disallows.
+// 2026-10-24: WebView playback — expo-video crashes the published 3.4 binary
+// (mixed media3 versions, see WebVideo.tsx).
 function LazyVideo({ uri }: { uri: string }) {
-  const player = useVideoPlayer(uri, (p) => { p.play(); });
-  return (
-    <VideoView
-      player={player}
-      style={{ flex: 1 }}
-      nativeControls
-      contentFit="contain"
-    />
-  );
+  return <WebVideo uri={uri} style={{ flex: 1 }} controls fit="contain" />;
 }
 
 export interface ChatModalsProps {

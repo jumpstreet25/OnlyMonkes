@@ -72,3 +72,6 @@ google-services.json
 /public/xmtp/
 /dist-web/
 /public/canvaskit.wasm
+*.apk *
+.dev.vars
+.wrangler/

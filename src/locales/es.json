@@ -436,7 +436,8 @@
     "supportSub": "Propina de $SKR con un toque a la billetera del desarrollador 🐒\nConfirmación biométrica — nunca sale de la app.",
     "sendingEllipsis": "Enviando…",
     "sendSkr": "Enviar {{amount}} $SKR  🐒",
-    "monkeMeme": "MonkeMeme"
+    "monkeMeme": "MonkeMeme",
+    "invite": "Invitar"
   },
   "watchlist": {
     "title": "Lista de Seguimiento",
@@ -998,5 +999,37 @@
     "loadNumber": "Cargar",
     "wave2": "Wave 2 1/1",
     "artOnly": "Este monke se dibuja directo de su propio arte — sin tablero de rasgos."
+  },
+  "invite": {
+    "title": "Invitar amigos",
+    "intro": "Invita a nuevos holders de Saga Monke. Cuando uno se une con tu enlace, tú recibes {{referrer}} bananas y él {{newHolder}}.",
+    "loading": "Preparando tu invitación…",
+    "yourLink": "Tu enlace de invitación",
+    "share": "Compartir",
+    "copy": "Copiar enlace",
+    "copied": "Enlace copiado",
+    "postOnX": "Publicar en X",
+    "shareText": "Únete a OnlyMonkes, la app para holders de Saga Monkes. Recibes {{newHolder}} bananas al unirte con mi invitación:",
+    "stats": "{{count}} se unieron con tu invitación",
+    "badges": "Insignias de reclutador",
+    "nextBadge": "Siguiente insignia en {{n}}",
+    "allBadges": "Tienes todas las insignias de reclutador",
+    "seasonOff": "Pronto llegan las temporadas mensuales con premio para el mejor reclutador.",
+    "seasonOn": "Temporada {{id}}: {{count}} invitaciones",
+    "haveCode": "¿Tienes un código de invitación?",
+    "toastReferrer_one": "+{{bananas}} bananas: un nuevo holder se unió con tu invitación",
+    "toastReferrer_other": "+{{bananas}} bananas: {{count}} nuevos holders se unieron con tu invitación",
+    "toastWelcome": "+{{bananas}} bananas por unirte con una invitación",
+    "acceptTitle": "Tu invitación",
+    "invitedBy": "{{name}} te invitó",
+    "acceptIntro": "Acepta para darle a {{name}} {{referrer}} bananas. Tú recibes {{newHolder}}.",
+    "accept": "Aceptar invitación",
+    "accepted": "Invitación aceptada. Tus bananas van en camino.",
+    "alreadyAccepted": "Ya aceptaste esta invitación.",
+    "enterCode": "Escribe un código de invitación",
+    "codePlaceholder": "6 letras, p. ej. 5NFG8A",
+    "lookUp": "Buscar",
+    "notFound": "Ese código de invitación no es válido.",
+    "done": "Listo"
   }
 }

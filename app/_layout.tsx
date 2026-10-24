@@ -12,7 +12,7 @@ import { IS_IMMERSIVE_SHELL } from '../src/lib/immersiveStatusBar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Toaster } from 'sonner-native';
+import { Toaster, toast } from 'sonner-native';
 import { BananaBetPopup } from '../src/components/BananaBetPopup';
 import { TradeCloseSharePrompt } from '../src/components/TradeCloseSharePrompt';
 import { BananaBetResultPopup } from '../src/components/BananaBetResultPopup';
@@ -36,8 +36,11 @@ import { GlassAlertRoot } from '../src/lib/glassAlert';
 import { logAppOpen, logDailySession } from '../src/lib/analytics';
 import { loadBadgeData, setOnBadgeEarned, getBadgeBananaReward, type BadgeDef } from '../src/lib/badges';
 import { addBananas } from '../src/lib/bananaRewards';
-import { Alert, Linking } from 'react-native';
+import { Alert, Platform } from 'react-native';
 import { router } from 'expo-router';
+import { takeHeldLink } from '../src/lib/deepLinks';
+import { collectReferralBananas } from '../src/lib/referrals';
+import i18n from '../src/lib/i18n';
 import { useFreeRasp } from 'freerasp-react-native';
 import { useFonts } from 'expo-font';
 import { useSkiaReady } from '../src/hooks/useSkiaReady';
@@ -208,27 +211,31 @@ export default function RootLayout() {
       }).catch(err => console.warn('[Layout] Push token error:', err));
     }, 2000);
 
-    // Deep link handler — onlymonkes://chat, onlymonkes://dm/<inboxId>, etc.
-    // Guard: only navigate if user is authenticated (has wallet + XMTP client)
-    const handleDeepLink = ({ url }: { url: string }) => {
-      try {
-        const { wallet, myInboxId } = useAppStore.getState();
-        if (!wallet || !myInboxId) return; // Not authenticated yet — ignore deep link
-        const path = url.replace(/^onlymonkes:\/\//, "").replace(/^exp\+onlymonkes:\/\//, "");
-        if (!path) return;
-        if (path === "chat") router.push("/chat" as any);
-        else if (path === "dms") router.push("/dms" as any);
-        else if (path.startsWith("dm/")) router.push(`/dm/${path.slice(3)}` as any);
-        else if (path === "globe") router.push("/globe" as any);
-        else if (path === "marketplace") router.push("/marketplace" as any);
-        else if (path.startsWith("channel/")) router.push(`/bot-channel?channelId=${path.slice(8)}` as any);
-      } catch { /* ignore invalid deep links */ }
-    };
-    const sub = Linking.addEventListener("url", handleDeepLink);
-    // Check if app was opened via deep link
-    Linking.getInitialURL().then(url => { if (url) handleDeepLink({ url }); }).catch(() => {});
-    return () => sub.remove();
+    // Deep links are routed by app/+native-intent.tsx (src/lib/deepLinks.ts).
   }, []);
+
+  // Referral bananas owed to this wallet (as inviter, or for joining with an
+  // invite) are paid once the user is in; src/lib/referrals.ts throttles it.
+  const _verified = useAppStore(s => s.verified);
+  useEffect(() => {
+    if (!_verified || Platform.OS === 'web') return;
+    if (_pathname !== '/chat' && _pathname !== '/genesis-chat') return;
+    collectReferralBananas().then((got) => {
+      if (got.referrals > 0) toast(i18n.t('invite.toastReferrer', { bananas: got.referrals * 250, count: got.referrals }));
+      if (got.welcome) toast(i18n.t('invite.toastWelcome', { bananas: 100 }));
+    }).catch(() => {});
+  }, [_verified, _pathname]);
+
+  // A deep link that arrived before login waits until the wallet + inbox are
+  // ready and the post-login screen (Main or Genesis Chat) has opened.
+  const _wallet = useAppStore(s => s.wallet);
+  const _myInboxId = useAppStore(s => s.myInboxId);
+  useEffect(() => {
+    if (!_wallet || !_myInboxId) return;
+    if (_pathname !== '/chat' && _pathname !== '/genesis-chat') return;
+    const route = takeHeldLink();
+    if (route && route !== _pathname) router.push(route as any);
+  }, [_wallet, _myInboxId, _pathname]);
 
   const rootBg = useThemeColor('bg');
   if (!skiaReady) return null;

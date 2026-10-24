@@ -587,7 +587,8 @@ export default function ChatScreen() {
     if (messages.length >= 10) return;
     let count = 0;
     const id = setInterval(() => {
-      syncMessages();
+      // A stale stream throws; reconnect instead of leaving an unhandled rejection.
+      syncMessages().catch(() => { initialize().catch(() => {}); });
       count++;
       if (count >= 15) clearInterval(id);
     }, 8_000);
@@ -600,6 +601,26 @@ export default function ChatScreen() {
   useEffect(() => {
     if (isGroupMember && myInboxId && !isLoadingHistory) void loadWebHistory();
   }, [isGroupMember, myInboxId, isLoadingHistory]);
+
+  // ─── Re-broadcast the profile after the banana balance changes ──────────
+  // The web app shows the balance the phone last broadcast (via the bot), and
+  // the phone used to broadcast only on profile edits, so spends never reached
+  // it. PROFILE_UPDATE goes to the whole group: one send a minute after a
+  // change, at most every 10 minutes.
+  useEffect(() => {
+    if (Platform.OS === "web" || !isGroupMember) return;
+    let last = useAppStore.getState().bananaBalance;
+    let lastSent = 0;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const unsub = useAppStore.subscribe((st) => {
+      if (st.bananaBalance === last) return;
+      last = st.bananaBalance;
+      if (timer) return;
+      const wait = Math.max(60_000, lastSent + 10 * 60_000 - Date.now());
+      timer = setTimeout(() => { timer = null; lastSent = Date.now(); void broadcastProfile(); }, wait);
+    });
+    return () => { unsub(); if (timer) clearTimeout(timer); };
+  }, [isGroupMember, broadcastProfile]);
 
   // ─── Load saved profile, show modal if no username yet ───────────────────
   useEffect(() => {

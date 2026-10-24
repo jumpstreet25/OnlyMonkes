@@ -673,6 +673,11 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                   />
                 )}
                 <GridButton
+                  iconName="gift"
+                  label={t("menuDrawer.invite")}
+                  onPress={() => { onClose(); setTimeout(() => router.push('/invite-friends' as any), 300); }}
+                />
+                <GridButton
                   iconName="globe"
                   label={t("menuDrawer.globe")}
                   onPress={() => { onClose(); setTimeout(() => router.push('/globe' as any), 300); }}
