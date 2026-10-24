@@ -13,8 +13,11 @@ unset HELIUS_API_KEY HELIUS_NFT_API_KEY QUICKNODE_DAS_URL ALCHEMY_API_KEY GROQ_A
 # Avatar Rooms: the LiveKit server address (a public wss:// URL every browser
 # sees when it connects; EAS marks it sensitive, but it is not a secret).
 if [ -z "${LIVEKIT_URL:-}" ]; then
-  LIVEKIT_URL=$(npx eas env:list --environment production --include-sensitive 2>/dev/null | sed -n 's/^LIVEKIT_URL=//p' | head -1)
+  # A failed lookup (not logged in to EAS, offline) must not end the script
+  # silently under set -e; it only means no Avatar Rooms on the web.
+  LIVEKIT_URL=$(npx eas env:list --environment production --include-sensitive 2>/dev/null | sed -n 's/^LIVEKIT_URL=//p' | head -1) || LIVEKIT_URL=""
 fi
+echo "deploy-site: building $(git rev-parse --short HEAD)" >&2
 case "$LIVEKIT_URL" in wss://*) export LIVEKIT_URL ;; *) echo "deploy-site: no LIVEKIT_URL — Avatar Rooms stay off on the web" >&2; unset LIVEKIT_URL ;; esac
 node scripts/web/build-xmtp.mjs
 # Skia on the web runs on CanvasKit; useSkiaReady.web.ts loads /canvaskit.wasm.
