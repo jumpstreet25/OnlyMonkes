@@ -6,6 +6,9 @@ describe("monkeNumberFromImage", () => {
     expect(monkeNumberFromImage("https://arweave.net/8bJFg1KcX8M_ahz3wJplqdG4-8we_Ts1pTSi5wephHE/1760.png")).toBe(1760);
     expect(monkeNumberFromImage("https://arweave.net/2x92sGwXGIDCumAN1vawXd6CitHeqyjuZ1fUWOVmfsY/9048.png?ext=png")).toBe(9048);
     expect(monkeNumberFromImage("https://arweave.net/8bJFg1KcX8M_ahz3wJplqdG4-8we_Ts1pTSi5wephHE/8987.gif")).toBe(8987);
+    // wrapped in an image CDN proxy
+    expect(monkeNumberFromImage("https://cdn.helius-rpc.com/cdn-cgi/image//https://arweave.net/8bJFg1KcX8M_ahz3wJplqdG4-8we_Ts1pTSi5wephHE/1760.png")).toBe(1760);
+    expect(monkeNumberFromImage("https://arweave.net/8bJFg1KcX8M_ahz3wJplqdG4-8we_Ts1pTSi5wephHE/1760.pngx")).toBeNull();
   });
   it("rejects the wrong folder, other collections, burned numbers and nothing", () => {
     expect(monkeNumberFromImage("https://arweave.net/2x92sGwXGIDCumAN1vawXd6CitHeqyjuZ1fUWOVmfsY/1760.png")).toBeNull();

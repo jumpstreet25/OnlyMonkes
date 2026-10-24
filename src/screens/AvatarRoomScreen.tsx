@@ -101,13 +101,16 @@ const AvatarTile = React.memo(function AvatarTile({
   participant,
   width,
   height,
+  localPfp,
 }: {
   participant: AvatarParticipant;
   width: number;
   height: number;
+  localPfp: string | null;
 }) {
   const profile = getCachedProfile(participant.identity);
-  const pfpUri = profile?.nftImage ?? null;
+  // Your own profile often isn't in the profile cache: use your verified monke.
+  const pfpUri = (participant.isLocal ? localPfp : null) ?? profile?.nftImage ?? null;
   const avatarSize = Math.min(width, height) * 0.65;
 
   return (
@@ -289,7 +292,12 @@ export default function AvatarRoomScreen() {
   // ── Layout ─────────────────────────────────────────────────────────────────
 
   const participants = state.participants;
-  const myMonke = parseMonkeNumber(verifiedNft?.name);
+  const allNfts = useAppStore(s => s.allNfts);
+  // Your own monke: the verified NFT, else any Saga Monke you hold, else your cached profile.
+  const ownNfts = verifiedNft ? [verifiedNft, ...allNfts] : allNfts;
+  const myMonke = ownNfts.map(n => parseMonkeNumber(n.name) ?? monkeNumberFromImage(n.image)).find(n => n != null)
+    ?? monkeNumberFromImage(myInboxId ? getCachedProfile(myInboxId)?.nftImage : null);
+  const localPfp = ownNfts.find(n => n.image)?.image ?? (myInboxId ? getCachedProfile(myInboxId)?.nftImage ?? null : null);
   const members = useMemo(
     () => stageMembers(participants, (id, isLocal) => (isLocal ? myMonke : monkeNumberFromImage(getCachedProfile(id)?.nftImage))),
     [participants, myMonke],
@@ -352,6 +360,7 @@ export default function AvatarRoomScreen() {
               participant={p}
               width={tileW}
               height={tileH}
+              localPfp={localPfp}
             />
           ))}
         </View>
