@@ -39,6 +39,9 @@ export function routeForLink(url: string): string | null {
     return CHANNELS.has(id) ? `/bot-channel?channelId=${id}` : null;
   }
   if (/^dm\/[0-9a-f]{64}$/i.test(path)) return `/${path}`;
+  // Invites: onlymonkes://invite/<code> (the /r/<code> page) or the link itself.
+  const invite = path.match(/^(?:invite|r)\/([2-9a-hj-np-z]{6})$/i);
+  if (invite) return `/invite?code=${invite[1].toUpperCase()}`;
   return OPEN[path] ?? null;
 }
 

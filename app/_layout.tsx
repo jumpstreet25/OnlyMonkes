@@ -12,7 +12,7 @@ import { IS_IMMERSIVE_SHELL } from '../src/lib/immersiveStatusBar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Toaster } from 'sonner-native';
+import { Toaster, toast } from 'sonner-native';
 import { BananaBetPopup } from '../src/components/BananaBetPopup';
 import { TradeCloseSharePrompt } from '../src/components/TradeCloseSharePrompt';
 import { BananaBetResultPopup } from '../src/components/BananaBetResultPopup';
@@ -36,9 +36,11 @@ import { GlassAlertRoot } from '../src/lib/glassAlert';
 import { logAppOpen, logDailySession } from '../src/lib/analytics';
 import { loadBadgeData, setOnBadgeEarned, getBadgeBananaReward, type BadgeDef } from '../src/lib/badges';
 import { addBananas } from '../src/lib/bananaRewards';
-import { Alert } from 'react-native';
+import { Alert, Platform } from 'react-native';
 import { router } from 'expo-router';
 import { takeHeldLink } from '../src/lib/deepLinks';
+import { collectReferralBananas } from '../src/lib/referrals';
+import i18n from '../src/lib/i18n';
 import { useFreeRasp } from 'freerasp-react-native';
 import { useFonts } from 'expo-font';
 import { RASP_CONFIG, THREAT_ACTIONS } from '../src/lib/security';
@@ -204,6 +206,18 @@ export default function RootLayout() {
 
     // Deep links are routed by app/+native-intent.tsx (src/lib/deepLinks.ts).
   }, []);
+
+  // Referral bananas owed to this wallet (as inviter, or for joining with an
+  // invite) are paid once the user is in; src/lib/referrals.ts throttles it.
+  const _verified = useAppStore(s => s.verified);
+  useEffect(() => {
+    if (!_verified || Platform.OS === 'web') return;
+    if (_pathname !== '/chat' && _pathname !== '/genesis-chat') return;
+    collectReferralBananas().then((got) => {
+      if (got.referrals > 0) toast(i18n.t('invite.toastReferrer', { bananas: got.referrals * 250, count: got.referrals }));
+      if (got.welcome) toast(i18n.t('invite.toastWelcome', { bananas: 100 }));
+    }).catch(() => {});
+  }, [_verified, _pathname]);
 
   // A deep link that arrived before login waits until the wallet + inbox are
   // ready and the post-login screen (Main or Genesis Chat) has opened.

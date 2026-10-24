@@ -1,6 +1,13 @@
 import { routeForLink, holdLink, takeHeldLink } from '../lib/deepLinks';
 
 describe('routeForLink', () => {
+  it('opens invites from the app scheme and the /r/ link', () => {
+    expect(routeForLink('onlymonkes://invite/5nfg8a')).toBe('/invite?code=5NFG8A');
+    expect(routeForLink('https://onlymonkes.app/r/5NFG8A')).toBe('/invite?code=5NFG8A');
+    expect(routeForLink('onlymonkes://invite/5NFG8')).toBeNull();
+    expect(routeForLink('onlymonkes://invite/5NFG8I')).toBeNull();
+  });
+
   it('maps onlymonkes.app/open targets and their app intents', () => {
     expect(routeForLink('onlymonkes://chat')).toBe('/chat');
     expect(routeForLink('onlymonkes://open/genesis')).toBe('/genesis-chat');
