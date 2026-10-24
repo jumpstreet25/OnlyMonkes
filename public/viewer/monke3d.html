@@ -12,6 +12,9 @@
   - ?n=<monke number>: which monke (the app passes the holder's own).
   - "Use my camera": MediaPipe face tracking drives jaw, blinks and head.
     Video stays in this page; nothing is uploaded.
+  - "Use my phone": a QR opens /viewer/cam on any phone, which tracks the face
+    there and streams sealed face numbers back (phonecam.js). For computers
+    without a webcam.
   - postMessage {type:"blendshapes", values, headRotation} from the host page
     drives it too (Avatar Room data channel), using the same blendshape names
     as src/lib/faceTracking.ts; {type:"monke", n} switches monke. Only
@@ -31,6 +34,14 @@
   form label { color: var(--muted); }
   input { width: 64px; font: inherit; color: var(--text); background: transparent; border: 0; padding: 7px 4px; }
   form button { padding: 7px 12px; border-radius: 9px; }
+  [hidden] { display: none !important; }
+  .small { font-size: 12px; }
+  #qr { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(10,10,15,0.82); padding: 24px max(16px, env(safe-area-inset-right)) 24px max(16px, env(safe-area-inset-left)); }
+  #qr .card { width: 100%; max-width: 340px; display: grid; gap: 12px; justify-items: center; text-align: center; background: #14141f; border: 1px solid var(--line); border-radius: 18px; padding: 22px 20px; }
+  #qr h2 { margin: 0; font-size: 18px; }
+  #qr p { margin: 0; color: var(--muted); }
+  #qr canvas { width: 220px; height: 220px; border-radius: 10px; background: #fff; }
+  #qr .card button { width: 100%; }
   #status { position: fixed; top: 12px; left: 0; right: 0; text-align: center; color: var(--muted); font-size: 13px; padding: 0 16px; pointer-events: none; }
 </style>
 <script type="importmap">
@@ -47,14 +58,27 @@
 <div class="bar">
   <form id="pick"><label for="num">Monke #</label><input id="num" inputmode="numeric" autocomplete="off" maxlength="5" /><button type="submit">Load</button></form>
   <button id="cam" disabled>Use my camera</button>
+  <button id="phone" class="ghost" disabled>Use my phone</button>
   <button id="reset" class="ghost">Reset view</button>
+</div>
+<div id="qr" hidden role="dialog" aria-labelledby="qrTitle">
+  <div class="card">
+    <h2 id="qrTitle">Use your phone as the camera</h2>
+    <canvas id="qrCanvas" width="220" height="220" aria-label="QR code to open on your phone"></canvas>
+    <p id="qrState">Scan this with your phone's camera, then tap Start camera.</p>
+    <p class="small">Only face movements are sent, encrypted. Video stays on the phone.</p>
+    <button id="qrCopy" class="ghost">Copy link instead</button>
+    <button id="qrClose" class="ghost">Close</button>
+  </div>
 </div>
 <script type="module">
 import * as THREE from "three";
+import { newSession, phoneUrl, importKey, open, connect, startFaceTracking, cameraError } from "/viewer/phonecam.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 
 const statusEl = document.getElementById("status");
 const camBtn = document.getElementById("cam");
+const phoneBtn = document.getElementById("phone");
 const numInput = document.getElementById("num");
 const setStatus = (t) => { statusEl.textContent = t; };
 
@@ -265,6 +289,7 @@ async function showMonke(n) {
     current = n;
     numInput.value = String(n);
     camBtn.disabled = false;
+    phoneBtn.disabled = false;
     setStatus("");
   } catch {
     if (seq === loadSeq) setStatus(`Couldn't load #${n}. Check your connection and try again.`);
@@ -343,60 +368,73 @@ function onHostMessage(e) {
 addEventListener("message", onHostMessage);
 document.addEventListener("message", onHostMessage); // Android WebView
 
-// ── Own camera (MediaPipe, same pinned loader as FaceTracker.web.tsx) ──
+// ── Own camera ──
 let tracking = false;
 camBtn.onclick = async () => {
   if (tracking) return;
   camBtn.disabled = true;
   setStatus("Starting camera…");
   try {
-    const vision = await new Promise((resolve, reject) => {
-      if (globalThis.__OM_MEDIAPIPE) return resolve(globalThis.__OM_MEDIAPIPE);
-      addEventListener("om-mediapipe-ready", () => resolve(globalThis.__OM_MEDIAPIPE), { once: true });
-      const s = document.createElement("script");
-      s.type = "module";
-      s.src = "/vendor/mediapipe-loader.mjs";
-      s.onerror = () => reject(new Error("tracker failed to load"));
-      document.head.appendChild(s);
-    });
-    const base = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.1.0";
-    const fileset = await vision.FilesetResolver.forVisionTasks(`${base}/wasm`);
-    const lm = await vision.FaceLandmarker.createFromOptions(fileset, {
-      baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task", delegate: "GPU" },
-      runningMode: "VIDEO", numFaces: 1, outputFaceBlendshapes: true, outputFacialTransformationMatrixes: true,
-    });
-    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: 320, height: 240 }, audio: false });
-    const video = document.createElement("video");
-    video.muted = true; video.playsInline = true; video.srcObject = stream;
-    await video.play();
+    await startFaceTracking(document.createElement("video"), takeFace);
     tracking = true;
     camBtn.textContent = "Camera on";
     setStatus("");
-    let last = 0;
-    const tick = (now) => {
-      requestAnimationFrame(tick);
-      if (now - last < 50 || video.readyState < 2) return;
-      last = now;
-      const res = lm.detectForVideo(video, now);
-      const cats = res?.faceBlendshapes?.[0]?.categories;
-      if (!cats) return;
-      const values = {};
-      for (const c of cats) values[c.categoryName] = c.score;
-      const m = res.facialTransformationMatrixes?.[0]?.data;
-      const r = (row, col) => m[col * 4 + row];
-      const hr = m ? {
-        x: Math.atan2(r(2, 1), r(2, 2)) / DEG,
-        y: Math.asin(Math.max(-1, Math.min(1, -r(2, 0)))) / DEG,
-        z: Math.atan2(r(1, 0), r(0, 0)) / DEG,
-      } : {};
-      takeFace(values, hr);
-    };
-    requestAnimationFrame(tick);
   } catch (e) {
     camBtn.disabled = false;
-    setStatus(e?.name === "NotAllowedError" ? "Camera permission was denied" : "Camera tracking isn't available here");
+    setStatus(e?.name === "NotFoundError" || e?.name === "OverconstrainedError" ? "No camera on this computer. Tap Use my phone instead." : cameraError(e));
   }
 };
+
+// ── Phone as the camera ──
+const qr = document.getElementById("qr");
+const qrState = document.getElementById("qrState");
+let phone = null; // { relay, session }
+phoneBtn.onclick = async () => {
+  if (phone) { qr.hidden = false; return; }
+  phoneBtn.disabled = true;
+  try {
+    const session = newSession();
+    const key = await importKey(session.key);
+    const QR = await import("https://cdn.jsdelivr.net/npm/qrcode@1.5.4/+esm");
+    await QR.toCanvas(document.getElementById("qrCanvas"), phoneUrl(session), { width: 220, margin: 2, errorCorrectionLevel: "M" });
+    const relay = connect({
+      room: session.room,
+      role: "viewer",
+      onStatus: (st) => {
+        if (st.camera) {
+          qr.hidden = true;
+          phoneBtn.textContent = "Phone connected";
+          setStatus("");
+        } else {
+          phoneBtn.textContent = "Use my phone";
+          qrState.textContent = "Scan this with your phone's camera, then tap Start camera.";
+        }
+      },
+      onFrame: async (data) => {
+        const f = await open(key, data);
+        if (f) takeFace(f.values, f.headRotation);
+      },
+      onState: (st) => {
+        if (st === "expired") { phone = null; phoneBtn.textContent = "Use my phone"; setStatus("The phone link expired. Tap Use my phone for a new one."); }
+        else if (st === "closed") qrState.textContent = "Reconnecting…";
+      },
+    });
+    phone = { relay, session };
+    qr.hidden = false;
+    qr.dataset.url = phoneUrl(session);
+  } catch {
+    setStatus("Couldn't make the phone link. Check your connection and try again.");
+  } finally {
+    phoneBtn.disabled = false;
+  }
+};
+document.getElementById("qrClose").onclick = () => { qr.hidden = true; };
+// For phones whose camera won't open links: send yourself the link (it holds the key, so only to yourself).
+document.getElementById("qrCopy").onclick = async (e) => {
+  try { await navigator.clipboard.writeText(qr.dataset.url || ""); e.target.textContent = "Copied. Open it on your phone"; }
+  catch { e.target.textContent = "Couldn't copy"; }
+};
+addEventListener("keydown", (e) => { if (e.key === "Escape") qr.hidden = true; });
 
 // ── Start ──
 const asked = parseInt(new URLSearchParams(location.search).get("n") || "", 10);

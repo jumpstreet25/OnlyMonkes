@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="referrer" content="no-referrer" />
+<title>Monke Cam</title>
+<!--
+  Phone as the website's camera. Opened from the QR on the 3D Monke viewer
+  (#r=<room>&k=<key>). Tracks the face here with MediaPipe and sends only the
+  sealed face numbers to the computer (public/viewer/phonecam.js). The video
+  stays on this phone.
+-->
+<style>
+  :root { --bg: #0A0A0F; --text: #EDEDF3; --muted: #9A9AB0; --accent: #e91671; --ok: #3ddc84; --line: rgba(255,255,255,0.12); }
+  html, body { margin: 0; min-height: 100%; min-height: 100dvh; color: var(--text); font: 16px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  body { background: radial-gradient(circle at 50% 30%, #232335, var(--bg) 70%) var(--bg); display: grid; place-items: center; padding: max(24px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left)); box-sizing: border-box; }
+  main { width: 100%; max-width: 380px; display: grid; gap: 18px; justify-items: center; text-align: center; }
+  h1 { margin: 0; font-size: 22px; }
+  p { margin: 0; color: var(--muted); }
+  .preview { width: 168px; height: 168px; border-radius: 50%; overflow: hidden; border: 3px solid var(--line); background: #15151f; }
+  .preview.live { border-color: var(--ok); }
+  video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+  #state { font-weight: 600; color: var(--text); }
+  #state.ok { color: var(--ok); }
+  button { font: inherit; font-weight: 600; color: #fff; background: var(--accent); border: 0; border-radius: 14px; padding: 14px 22px; width: 100%; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  button.ghost { background: transparent; border: 1px solid var(--line); color: var(--text); }
+  button:focus-visible { outline: 2px solid #f5d34a; outline-offset: 2px; }
+  .small { font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Monke Cam</h1>
+  <div class="preview" id="preview"><video id="video"></video></div>
+  <p id="state">Your phone becomes the camera for your monke on the computer.</p>
+  <button id="start">Start camera</button>
+  <button id="stop" class="ghost" hidden>Stop</button>
+  <p class="small">Only face movements are sent, encrypted. The video stays on this phone.</p>
+</main>
+<script type="module">
+import { sessionFromHash, importKey, seal, connect, startFaceTracking, cameraError } from "/viewer/phonecam.js";
+
+const stateEl = document.getElementById("state");
+const startBtn = document.getElementById("start");
+const stopBtn = document.getElementById("stop");
+const preview = document.getElementById("preview");
+const setState = (text, ok = false) => { stateEl.textContent = text; stateEl.classList.toggle("ok", ok); };
+
+const session = sessionFromHash(location.hash);
+if (!session) {
+  setState("This link is missing its code. Scan the QR on your computer again.");
+  startBtn.hidden = true;
+}
+
+let relay = null, stopTracking = null, wakeLock = null, viewerHere = false, sending = false;
+
+function showLinkState() {
+  if (!sending) return;
+  setState(viewerHere ? "Connected. Your monke is following you." : "Waiting for the computer… keep the 3D Monke page open there.", viewerHere);
+}
+
+async function keepAwake() {
+  try { wakeLock = await navigator.wakeLock?.request("screen"); } catch { /* optional */ }
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && sending) keepAwake();
+});
+
+async function start() {
+  startBtn.disabled = true;
+  setState("Starting camera…");
+  try {
+    const key = await importKey(session.key);
+    relay = connect({
+      room: session.room,
+      role: "camera",
+      onStatus: (s) => { viewerHere = s.viewers > 0; showLinkState(); },
+      onState: (s) => {
+        if (s === "expired") { setState("This link has expired. Make a new QR on your computer."); stop(); }
+        else if (s === "replaced") { setState("Another phone took over as the camera."); stop(); }
+        else if (s === "closed" && sending) setState("Reconnecting…");
+      },
+    });
+    stopTracking = await startFaceTracking(document.getElementById("video"), async (values, headRotation) => {
+      relay?.send(await seal(key, values, headRotation));
+    });
+    sending = true;
+    preview.classList.add("live");
+    startBtn.hidden = true;
+    stopBtn.hidden = false;
+    keepAwake();
+    showLinkState();
+  } catch (e) {
+    relay?.close();
+    relay = null;
+    startBtn.disabled = false;
+    setState(cameraError(e));
+  }
+}
+
+function stop() {
+  sending = false;
+  stopTracking?.();
+  stopTracking = null;
+  relay?.close();
+  relay = null;
+  try { wakeLock?.release(); } catch { /* ignore */ }
+  preview.classList.remove("live");
+  stopBtn.hidden = true;
+  startBtn.hidden = false;
+  startBtn.disabled = false;
+}
+
+startBtn.onclick = start;
+stopBtn.onclick = () => { stop(); setState("Stopped. Tap Start to send again."); };
+</script>
+</body>
+</html>
