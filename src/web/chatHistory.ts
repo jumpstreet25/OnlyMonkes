@@ -10,6 +10,7 @@ import { useChatStore } from "@/store/chatStore";
 import { decodeMessage } from "@/lib/xmtp";
 import { cacheProfile } from "@/lib/userProfile";
 import { getXmtpCredential } from "./webAuth";
+import type { ChatMessage } from "@/types";
 
 const WORKER = "https://onlymonkes.app";
 const HEX64 = /^[0-9a-f]{64}$/;
@@ -48,13 +49,22 @@ export function loadWebHistory(): Promise<void> {
       typeof (m as HistoryItem).senderInboxId === "string" && HEX64.test((m as HistoryItem).senderInboxId) &&
       typeof (m as HistoryItem).sentNs === "string" && /^\d{1,20}$/.test((m as HistoryItem).sentNs) &&
       typeof (m as HistoryItem).content === "string");
-    const { mergeMessage } = useChatStore.getState();
+    const decoded: ChatMessage[] = [];
     for (const m of items) {
-      const decoded = decodeMessage(
+      const d = decodeMessage(
         { id: m.id, senderInboxId: m.senderInboxId, sentNs: Number(m.sentNs), content: () => m.content },
         myInboxId,
       );
-      if (decoded) mergeMessage(decoded);
+      if (d) decoded.push(d);
+    }
+    // One sorted write. mergeMessage puts every new message at the front (it
+    // assumes live, newest), which showed the oldest history as the latest
+    // message and re-rendered the list once per message.
+    const { messages, _msgIdSet, setMessages } = useChatStore.getState();
+    const fresh = decoded.filter((d) => !_msgIdSet.has(d.id));
+    if (fresh.length) {
+      const merged = [...messages, ...fresh].sort((a, b) => b.sentAt.getTime() - a.sentAt.getTime()).slice(0, 300);
+      setMessages(merged);
     }
     _loaded = true;
   })()
