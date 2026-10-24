@@ -11,8 +11,8 @@
  * (left edge = past the PFP, right edge = before the menu buttons).
  */
 
-import React, { useEffect, useMemo, useRef } from "react";
-import { View, Text, StyleSheet, Animated, Dimensions } from "react-native";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { View, Text, StyleSheet, Animated, Dimensions, Platform } from "react-native";
 import { useTranslation } from "react-i18next";
 import { FONTS, THEME } from "@/lib/constants";
 import { useAppStore } from "@/store/appStore";
@@ -20,6 +20,10 @@ import { useBotCommands, commandsFor, commandDesc } from "@/lib/botCommands";
 
 const SCREEN_W = Dimensions.get("window").width;
 const SCROLL_SPEED = 40; // pixels per second
+// Web: a CSS animation. The JS-driven Animated loop stalled there while the
+// main thread was busy (XMTP sync) and restarted on every re-layout, so the
+// ticker looked frozen. The browser runs this one on its own.
+const IS_WEB = Platform.OS === "web";
 
 interface Command {
   cmd: string;
@@ -65,7 +69,10 @@ export function BotCommandTicker({ variant = "chat" }: BotCommandTickerProps) {
   const contentWidth = useRef(0);
   const animRef = useRef<Animated.CompositeAnimation | null>(null);
 
+  const [webWidth, setWebWidth] = useState(0);
+
   const startScroll = (width: number) => {
+    if (IS_WEB) return;
     if (animRef.current) animRef.current.stop();
     scrollX.setValue(0);
 
@@ -96,6 +103,28 @@ export function BotCommandTicker({ variant = "chat" }: BotCommandTickerProps) {
     }
   };
 
+  if (IS_WEB) {
+    // Two identical copies (each ends with its separator), so moving the row
+    // by -50% lands exactly where it started.
+    const copy = (key: string) => (
+      <View style={styles.textRow} onLayout={key === "a" ? (e) => {
+        const w = e.nativeEvent.layout.width;
+        if (w > 0 && Math.abs(w - webWidth) > 10) setWebWidth(w);
+      } : undefined}>
+        {buildTickerNodes(commands, key)}
+        <Text style={styles.dot}>{" ● "}</Text>
+      </View>
+    );
+    return (
+      <View style={styles.container}>
+        <View style={[styles.scrollRow, webWidth > 0 && [styles.webScroll, { animationDuration: `${webWidth / SCROLL_SPEED}s` } as any]]}>
+          {copy("a")}
+          {copy("b")}
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <Animated.View
@@ -119,6 +148,12 @@ export function BotCommandTicker({ variant = "chat" }: BotCommandTickerProps) {
 }
 
 const styles = StyleSheet.create({
+  // react-native-web builds CSS keyframes only from StyleSheet.create.
+  webScroll: {
+    animationKeyframes: [{ "0%": { transform: "translateX(0%)" }, "100%": { transform: "translateX(-50%)" } }],
+    animationTimingFunction: "linear",
+    animationIterationCount: "infinite",
+  } as any,
   container: {
     overflow: "hidden",
     height: 18,
