@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Monke Room</title>
+<!--
+  Avatar Room stage: every member's 3D monke in ONE scene (one WebGL context,
+  however many people are in the room). The app shows it in a WebView (phone,
+  OTA) or an iframe (web) and drives it with data messages only:
+    {type:"room", members:[{id, n, name, muted, speaking, energy, face?}]}
+    {type:"face", id, values, headRotation}   (the local user's own tracker)
+  A monke moves only while its person is talking (unmuted and speaking, plus
+  a short hold between words): face numbers when they're fresh, else the mouth
+  follows the voice level. Muted / quiet members hold still, and when nobody
+  moves the scene stops redrawing.
+-->
+<style>
+  :root { --text: #EDEDF3; --muted: #9A9AB0; --accent: #e91671; }
+  html, body { margin: 0; height: 100%; height: 100dvh; overflow: hidden; color: var(--text); font: 13px/1.3 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  body { background: radial-gradient(circle at 50% 40%, #1d1d2c, #0A0A0F 75%) #0A0A0F; }
+  canvas { display: block; width: 100%; height: 100%; }
+  #labels { position: fixed; inset: 0; pointer-events: none; }
+  .name { position: absolute; transform: translate(-50%, 0); max-width: 40vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 2px 8px; border-radius: 9px; background: rgba(20,20,31,0.75); color: var(--text); font-weight: 600; }
+  .name.talking { background: var(--accent); color: #fff; }
+  .name.muted::after { content: " 🔇"; }
+  #status { position: fixed; top: 10px; left: 0; right: 0; text-align: center; color: var(--muted); pointer-events: none; }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.min.js"
+  }
+}
+</script>
+</head>
+<body>
+<div id="labels"></div>
+<div id="status"></div>
+<script type="module">
+import * as THREE from "three";
+import { imageFor, loadImage, readGrid, buildMonke, disposeMonke, driveMonke } from "/viewer/monkeModel.js";
+
+const labelsEl = document.getElementById("labels");
+const statusEl = document.getElementById("status");
+const TALK_HOLD_MS = 1200;  // keep moving through the gaps between words
+const FACE_FRESH_MS = 600;
+const MAX_MEMBERS = 16;
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.prepend(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, 0.1, 400);
+scene.add(new THREE.AmbientLight(0xffffff, 1.9));
+const key = new THREE.DirectionalLight(0xffffff, 2.2);
+key.position.set(6, 10, 14);
+scene.add(key);
+const rim = new THREE.DirectionalLight(0xe91671, 1.1);
+rim.position.set(-10, 4, -8);
+scene.add(rim);
+
+// id → { id, n, name, muted, speaking, energy, talkUntil, face, faceAt, slot,
+//        monke, placeholder, label, scale }
+const members = new Map();
+let order = [];
+let dirty = true;
+const grids = new Map(); // monke number → pixel grid (Promise)
+
+// ── Layout: a grid of cells, sized to fit the window ──
+const CELL_W = 19, CELL_H = 21;
+function layout() {
+  const n = order.length;
+  if (!n) { dirty = true; return; }
+  const aspect = innerWidth / innerHeight;
+  const cols = Math.max(1, Math.min(n, Math.round(Math.sqrt(n * aspect * (CELL_H / CELL_W)))));
+  const rows = Math.ceil(n / cols);
+  order.forEach((id, i) => {
+    const m = members.get(id);
+    const r = Math.floor(i / cols);
+    const inRow = r === rows - 1 ? n - r * cols : cols; // centre a short last row
+    const c = i - r * cols;
+    m.slot = new THREE.Vector3((c - (inRow - 1) / 2) * CELL_W, ((rows - 1) / 2 - r) * CELL_H + 1, 0);
+    const obj = m.monke?.root ?? m.placeholder;
+    if (obj) obj.position.copy(m.slot);
+  });
+  const w = cols * CELL_W, h = rows * CELL_H;
+  const vFov = camera.fov * Math.PI / 180;
+  const distH = (h / 2) / Math.tan(vFov / 2);
+  const distW = (w / 2) / (Math.tan(vFov / 2) * aspect);
+  camera.position.set(0, 0, Math.max(distH, distW) * 1.08 + 4);
+  camera.lookAt(0, 0, 0);
+  camera.updateProjectionMatrix();
+  dirty = true;
+}
+
+function placeLabels() {
+  const v = new THREE.Vector3();
+  for (const id of order) {
+    const m = members.get(id);
+    if (!m.slot) continue;
+    v.set(m.slot.x, m.slot.y - 9.2, 0).project(camera);
+    m.label.style.left = `${(v.x + 1) / 2 * innerWidth}px`;
+    m.label.style.top = `${(1 - v.y) / 2 * innerHeight}px`;
+  }
+}
+
+addEventListener("resize", () => {
+  camera.aspect = innerWidth / innerHeight;
+  renderer.setSize(innerWidth, innerHeight);
+  layout();
+});
+
+// ── Models ──
+function gridFor(n) {
+  if (!grids.has(n)) grids.set(n, loadImage(imageFor(n)).then(readGrid));
+  return grids.get(n);
+}
+
+// Someone without a Saga Monke PFP: a round plate with their initial.
+function makePlaceholder(name) {
+  const cv = document.createElement("canvas");
+  cv.width = cv.height = 128;
+  const ctx = cv.getContext("2d");
+  ctx.fillStyle = "#2a2a3d";
+  ctx.beginPath(); ctx.arc(64, 64, 62, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "#EDEDF3";
+  ctx.font = "bold 64px system-ui, sans-serif";
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText((name.trim()[0] || "?").toUpperCase(), 64, 68);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return new THREE.Mesh(new THREE.CircleGeometry(6.5, 48), new THREE.MeshBasicMaterial({ map: tex, transparent: true }));
+}
+
+function disposeObject(o) {
+  o.removeFromParent();
+  o.traverse((x) => {
+    if (!x.isMesh) return;
+    x.geometry.dispose();
+    for (const mat of [].concat(x.material)) { mat.map?.dispose(); mat.dispose(); }
+  });
+}
+
+async function attachModel(m) {
+  const want = m.n;
+  if (want && imageFor(want)) {
+    try {
+      const grid = await gridFor(want);
+      if (!members.has(m.id) || m.n !== want) return;
+      if (m.monke) disposeMonke(m.monke);
+      if (m.placeholder) { disposeObject(m.placeholder); m.placeholder = null; }
+      m.monke = buildMonke(grid);
+      scene.add(m.monke.root);
+      if (m.slot) m.monke.root.position.copy(m.slot);
+      dirty = true;
+      return;
+    } catch { grids.delete(want); /* fall through to the plate */ }
+  }
+  if (!m.placeholder && !m.monke) {
+    m.placeholder = makePlaceholder(m.name);
+    scene.add(m.placeholder);
+    if (m.slot) m.placeholder.position.copy(m.slot);
+    dirty = true;
+  }
+}
+
+function removeMember(id) {
+  const m = members.get(id);
+  if (!m) return;
+  if (m.monke) disposeMonke(m.monke);
+  if (m.placeholder) disposeObject(m.placeholder);
+  m.label.remove();
+  members.delete(id);
+}
+
+// ── Messages (data only, never code) ──
+const cleanId = (x) => (typeof x === "string" && x.length > 0 && x.length <= 128 ? x : null);
+const clamp01 = (x) => Math.max(0, Math.min(1, Number(x) || 0));
+function cleanFace(values, headRotation) {
+  if (!values || typeof values !== "object") return null;
+  const v = {};
+  for (const [k, x] of Object.entries(values)) if (/^[a-zA-Z]{2,24}$/.test(k)) v[k] = clamp01(x);
+  const r = headRotation && typeof headRotation === "object" ? headRotation : {};
+  return { values: v, headRotation: { x: Number(r.x) || 0, y: Number(r.y) || 0, z: Number(r.z) || 0 } };
+}
+
+function takeRoom(list) {
+  if (!Array.isArray(list)) return;
+  const now = performance.now();
+  const next = [];
+  for (const raw of list.slice(0, MAX_MEMBERS)) {
+    const id = cleanId(raw?.id);
+    if (!id || next.includes(id)) continue;
+    next.push(id);
+    const n = Number.isInteger(raw.n) ? raw.n : null;
+    const name = String(raw.name ?? "").slice(0, 40);
+    let m = members.get(id);
+    if (!m) {
+      const label = document.createElement("div");
+      label.className = "name";
+      labelsEl.append(label);
+      m = { id, n, name, muted: false, speaking: false, energy: 0, talkUntil: 0, face: null, faceAt: 0, slot: null, monke: null, placeholder: null, label, scale: 1 };
+      members.set(id, m);
+      attachModel(m);
+    } else if (m.n !== n) {
+      m.n = n;
+      attachModel(m);
+    }
+    m.name = name;
+    const wasSpeaking = m.speaking;
+    m.muted = !!raw.muted;
+    m.speaking = !!raw.speaking && !m.muted;
+    m.energy = clamp01(raw.energy);
+    if (wasSpeaking && !m.speaking) m.talkUntil = now + TALK_HOLD_MS;
+    if (m.muted) m.talkUntil = 0;
+    const f = cleanFace(raw.face?.values, raw.face?.headRotation);
+    if (f && !m.muted) { m.face = f; m.faceAt = now; }
+    m.label.textContent = name || "Monke";
+  }
+  for (const id of [...members.keys()]) if (!next.includes(id)) removeMember(id);
+  const changed = next.length !== order.length || next.some((id, i) => id !== order[i]);
+  order = next;
+  if (changed) layout();
+  dirty = true;
+}
+
+function onHostMessage(e) {
+  let d = e.data;
+  if (typeof d === "string") { try { d = JSON.parse(d); } catch { return; } }
+  if (!d || typeof d !== "object") return;
+  if (d.type === "room") takeRoom(d.members);
+  else if (d.type === "face") {
+    const m = members.get(cleanId(d.id));
+    const f = cleanFace(d.values, d.headRotation);
+    if (m && f && !m.muted) { m.face = f; m.faceAt = performance.now(); dirty = true; }
+  }
+}
+addEventListener("message", onHostMessage);
+document.addEventListener("message", onHostMessage); // Android WebView
+
+// Tell the host we're listening so it sends the room right away.
+const ready = JSON.stringify({ type: "ready" });
+if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage(ready);
+else if (parent !== window) parent.postMessage(ready, "*");
+
+// ── Loop: draw only while something moves ──
+let prev = performance.now();
+renderer.setAnimationLoop(() => {
+  const now = performance.now();
+  const dt = Math.min(0.1, (now - prev) / 1000);
+  prev = now;
+  let moving = false;
+  for (const id of order) {
+    const m = members.get(id);
+    const talking = !m.muted && (m.speaking || now < m.talkUntil);
+    m.label.classList.toggle("talking", talking);
+    m.label.classList.toggle("muted", m.muted);
+    if (!m.monke) continue;
+    let face = null;
+    if (talking) {
+      face = m.face && now - m.faceAt < FACE_FRESH_MS
+        ? m.face
+        : { values: { jawOpen: Math.min(1, m.energy * 1.4) }, headRotation: {} }; // no camera: mouth follows the voice
+    }
+    if (driveMonke(m.monke, face, dt, false)) moving = true;
+    const s = talking ? 1.06 : 1;
+    m.scale += (s - m.scale) * (1 - Math.exp(-dt * 10));
+    if (Math.abs(s - m.scale) > 0.001) moving = true;
+    m.monke.root.scale.setScalar(m.scale);
+  }
+  if (moving || dirty) {
+    renderer.render(scene, camera);
+    placeLabels();
+    dirty = false;
+  }
+});
+
+statusEl.textContent = "";
+</script>
+</body>
+</html>
