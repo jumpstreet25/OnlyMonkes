@@ -40,6 +40,8 @@ import { getCachedProfile } from '@/lib/userProfile';
 import { useAppStore } from '@/store/appStore';
 import { AnimatedAvatar } from '@/components/AnimatedAvatar';
 import { MonkeRoomStage, type MonkeRoomStageHandle } from '@/components/MonkeRoomStage';
+import { PhoneLinkModal } from '@/components/PhoneLinkModal';
+import { startPhoneLink, type PhoneLink } from '@/lib/phoneCompanion';
 import { stageMembers } from '@/lib/roomStage';
 import { monkeNumberFromImage, parseMonkeNumber } from '@/lib/monkeMeme/monkeNumbers';
 import { DEFAULT_MOUTH_TRAIT, type MouthTrait, parseMouthTrait } from '@/lib/mouthOverlays';
@@ -154,6 +156,12 @@ export default function AvatarRoomScreen() {
   const [faceTrackingEnabled, setFaceTrackingEnabled] = useState(true);
   const [show3d, setShow3d] = useState(true);
   const stageRef = useRef<MonkeRoomStageHandle>(null);
+  // Web: a phone as this computer's mic + camera (src/lib/phoneCompanion.web.ts).
+  const phoneLink = useRef<PhoneLink | null>(null);
+  const [phoneOpen, setPhoneOpen] = useState(false);
+  const [phoneUrl, setPhoneUrl] = useState<string | null>(null);
+  const [phoneError, setPhoneError] = useState<string | null>(null);
+  const [phoneConnected, setPhoneConnected] = useState(false);
 
   const isHost = params.isHost === 'true';
 
@@ -246,6 +254,37 @@ export default function AvatarRoomScreen() {
     sendBlendshapes(params);
     if (localIdentity) stageRef.current?.sendFace(localIdentity, params);
   }, [localIdentity]);
+  const blendshapesRef = useRef(handleBlendshapes);
+  blendshapesRef.current = handleBlendshapes;
+
+  const handleUsePhone = useCallback(async () => {
+    setPhoneOpen(true);
+    if (phoneLink.current) return;
+    const room = getAvatarRoom();
+    if (!room) return;
+    setPhoneError(null);
+    try {
+      phoneLink.current = await startPhoneLink({
+        roomName: room.name,
+        identity: room.localParticipant.identity,
+        name: username ?? 'Monke',
+        onFace: (params) => blendshapesRef.current(params),
+        onPhone: setPhoneConnected,
+      });
+      setPhoneUrl(phoneLink.current.url);
+    } catch (e) {
+      setPhoneError((e as Error)?.message ?? t('avatarRoom.phoneFailed'));
+    }
+  }, [username, t]);
+
+  const handleStopPhone = useCallback(() => {
+    phoneLink.current?.stop();
+    phoneLink.current = null;
+    setPhoneUrl(null);
+    setPhoneConnected(false);
+    setPhoneOpen(false);
+  }, []);
+  useEffect(() => () => phoneLink.current?.stop(), []);
 
   // ── Layout ─────────────────────────────────────────────────────────────────
 
@@ -319,6 +358,15 @@ export default function AvatarRoomScreen() {
       </GridWrapper>
       )}
 
+      <PhoneLinkModal
+        visible={phoneOpen}
+        url={phoneUrl}
+        error={phoneError}
+        connected={phoneConnected}
+        onClose={() => setPhoneOpen(false)}
+        onStop={handleStopPhone}
+      />
+
       {/* Reaction overlay */}
       <VideoReactionOverlay reactionSource={addReactionListener} />
 
@@ -349,6 +397,17 @@ export default function AvatarRoomScreen() {
           <Text style={styles.controlIcon}>👤</Text>
         </Pressable>
 
+        {/* Web: phone as mic + camera */}
+        {Platform.OS === 'web' && (
+          <Pressable
+            onPress={handleUsePhone}
+            style={[styles.controlBtn, phoneConnected && styles.controlBtnActive]}
+            accessibilityRole="button"
+            accessibilityLabel={t('avatarRoom.phoneTitle')}
+          >
+            <Text style={styles.controlIcon}>📱</Text>
+          </Pressable>
+        )}
         {/* 3D stage / 2D tiles */}
         <Pressable
           onPress={() => setShow3d(v => !v)}

@@ -688,7 +688,17 @@
     "micBlockedPhone": "OnlyMonkes no tiene permiso para usar el micrófono. Actívalo en Ajustes de Android → Aplicaciones → OnlyMonkes → Permisos y toca el botón del micrófono.",
     "micNone": "No se encontró ningún micrófono. Conecta uno y toca el botón del micrófono.",
     "micBusy": "Otra app está usando tu micrófono. Ciérrala y toca el botón del micrófono.",
-    "micError": "No se pudo activar el micrófono. Revisa que esta app (o tu navegador) tenga permiso para usarlo y toca el botón del micrófono."
+    "micError": "No se pudo activar el micrófono. Revisa que esta app (o tu navegador) tenga permiso para usarlo y toca el botón del micrófono.",
+    "phoneTitle": "Usa tu teléfono como micrófono y cámara",
+    "phoneStep1": "1. Escanea esto con la cámara del teléfono y abre el enlace en Chrome.",
+    "phoneStep2": "2. Toca Iniciar en el teléfono y permite la cámara y el micrófono.",
+    "phoneWaiting": "Esperando tu teléfono…",
+    "phoneNote": "Tu voz entra a la sala desde el teléfono, y la sala suena en el teléfono también, así no hay eco. A esta computadora solo llegan los movimientos de tu cara, cifrados. No compartas este QR: permite que un teléfono hable como tú.",
+    "phoneConnected": "Tu teléfono está conectado. Habla hacia él: tu monke se mueve y la sala te escucha. El sonido de la sala suena en el teléfono.",
+    "phoneDone": "Listo",
+    "phoneStop": "Dejar de usar el teléfono",
+    "phoneClose": "Cerrar",
+    "phoneFailed": "No se pudo crear el enlace del teléfono. Inténtalo de nuevo."
   },
   "useXmtp": {
     "joinRetrying": "No se pudo contactar al bot para unirte — reintentando automáticamente.",

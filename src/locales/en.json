@@ -688,7 +688,17 @@
     "micBlockedPhone": "OnlyMonkes isn't allowed to use the microphone. Turn it on in Android Settings → Apps → OnlyMonkes → Permissions, then tap the mic button.",
     "micNone": "No microphone found. Connect one, then tap the mic button.",
     "micBusy": "Another app is using your microphone. Close it, then tap the mic button.",
-    "micError": "Couldn't turn on your microphone. Check that this app (or your browser) is allowed to use it, then tap the mic button."
+    "micError": "Couldn't turn on your microphone. Check that this app (or your browser) is allowed to use it, then tap the mic button.",
+    "phoneTitle": "Use your phone as mic + camera",
+    "phoneStep1": "1. Scan this with your phone camera and open the link in Chrome.",
+    "phoneStep2": "2. Tap Start on your phone and allow the camera and microphone.",
+    "phoneWaiting": "Waiting for your phone…",
+    "phoneNote": "Your voice goes into the room from the phone, and the room plays on the phone too, so there's no echo. Only face movements reach this computer, encrypted. Keep this QR to yourself: it lets a phone speak as you.",
+    "phoneConnected": "Your phone is connected. Talk into it: your monke moves and the room hears you. The room's sound plays on the phone.",
+    "phoneDone": "Done",
+    "phoneStop": "Stop using the phone",
+    "phoneClose": "Close",
+    "phoneFailed": "Couldn't make the phone link. Try again."
   },
   "useXmtp": {
     "joinRetrying": "Couldn't reach the bot to join — retrying automatically.",

@@ -10,6 +10,9 @@
   (#r=<room>&k=<key>). Tracks the face here with MediaPipe and sends only the
   sealed face numbers to the computer (public/viewer/phonecam.js). The video
   stays on this phone.
+  From a web Avatar Room the link also carries &t=<LiveKit pass>&u=<LiveKit
+  URL> (src/lib/phoneCompanion.web.ts): the phone then joins the room as
+  `<you>~phone` with its mic and plays the room, so it's the mic too.
 -->
 <style>
   :root { --bg: #0A0A0F; --text: #EDEDF3; --muted: #9A9AB0; --accent: #e91671; --ok: #3ddc84; --line: rgba(255,255,255,0.12); }
@@ -35,8 +38,9 @@
   <div class="preview" id="preview"><video id="video"></video></div>
   <p id="state">Your phone becomes the camera for your monke on the computer.</p>
   <button id="start">Start camera</button>
+  <button id="mute" class="ghost" hidden>Mute mic</button>
   <button id="stop" class="ghost" hidden>Stop</button>
-  <p class="small">Only face movements are sent, encrypted. The video stays on this phone.</p>
+  <p class="small" id="note">Only face movements are sent, encrypted. The video stays on this phone.</p>
 </main>
 <script type="module">
 import { sessionFromHash, importKey, seal, connect, startFaceTracking, cameraError } from "/viewer/phonecam.js";
@@ -53,11 +57,67 @@ if (!session) {
   startBtn.hidden = true;
 }
 
+// Avatar Room link: also join the room as the mic (pass + URL from the #fragment only).
+const muteBtn = document.getElementById("mute");
+const frag = new URLSearchParams(location.hash.replace(/^#/, ""));
+const lkToken = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(frag.get("t") || "") ? frag.get("t") : null;
+const lkUrl = /^wss:\/\/[a-z0-9-]+\.livekit\.cloud\/?$/.test(frag.get("u") || "") ? frag.get("u") : null;
+const roomMode = !!(session && lkToken && lkUrl);
+// The pass sits in the address bar otherwise; keep it out of history and screenshots.
+if (roomMode) history.replaceState(null, "", `${location.pathname}#r=${session.room}&k=${session.key}`);
+if (roomMode) {
+  document.querySelector("h1").textContent = "Monke Cam + Mic";
+  setState("Your phone becomes the camera and microphone for your monke in the Avatar Room.");
+  document.getElementById("note").textContent = "Your voice goes into the room from this phone, and the room plays here. Only face movements reach the computer, encrypted. The video stays on this phone.";
+}
+let lkRoom = null, micOn = false;
+
+function loadLiveKit() {
+  if (window.LivekitClient) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = "https://cdn.jsdelivr.net/npm/livekit-client@2.21.0/dist/livekit-client.umd.js";
+    s.onload = resolve;
+    s.onerror = () => reject(new Error("room failed to load"));
+    document.head.appendChild(s);
+  });
+}
+
+async function joinRoom() {
+  await loadLiveKit();
+  const LK = window.LivekitClient;
+  lkRoom = new LK.Room();
+  lkRoom.on(LK.RoomEvent.TrackSubscribed, (track) => {
+    if (track.kind !== "audio") return;
+    const el = track.attach();
+    el.hidden = true;
+    document.body.appendChild(el);
+  });
+  lkRoom.on(LK.RoomEvent.TrackUnsubscribed, (track) => { if (track.kind === "audio") track.detach().forEach((el) => el.remove()); });
+  lkRoom.on(LK.RoomEvent.Disconnected, () => { if (sending) setState("The room ended or the link expired. Make a new QR on your computer."); });
+  await lkRoom.connect(lkUrl, lkToken);
+  await lkRoom.startAudio().catch(() => {});
+  await setMic(true);
+}
+
+async function setMic(on) {
+  if (!lkRoom) return;
+  try {
+    await lkRoom.localParticipant.setMicrophoneEnabled(on);
+    micOn = on;
+  } catch (e) {
+    micOn = false;
+    setState(e?.name === "NotAllowedError" ? "Microphone permission was denied. Allow it in Chrome's site settings, then tap Unmute." : "The microphone couldn't start. Tap Unmute to try again.");
+  }
+  muteBtn.textContent = micOn ? "Mute mic" : "Unmute mic";
+}
+
 let relay = null, stopTracking = null, wakeLock = null, viewerHere = false, sending = false;
 
 function showLinkState() {
   if (!sending) return;
-  setState(viewerHere ? "Connected. Your monke is following you." : "Waiting for the computer… keep the 3D Monke page open there.", viewerHere);
+  if (roomMode) setState(viewerHere ? (micOn ? "Connected. Talk: the room hears you and your monke follows you." : "Connected. Mic is muted.") : "Waiting for the computer… keep the Avatar Room open there.", viewerHere);
+  else setState(viewerHere ? "Connected. Your monke is following you." : "Waiting for the computer… keep the 3D Monke page open there.", viewerHere);
 }
 
 async function keepAwake() {
@@ -85,6 +145,11 @@ async function start() {
     stopTracking = await startFaceTracking(document.getElementById("video"), async (values, headRotation) => {
       relay?.send(await seal(key, values, headRotation));
     });
+    if (roomMode) {
+      setState("Joining the room…");
+      await joinRoom();
+      muteBtn.hidden = false;
+    }
     sending = true;
     preview.classList.add("live");
     startBtn.hidden = true;
@@ -92,10 +157,15 @@ async function start() {
     keepAwake();
     showLinkState();
   } catch (e) {
+    const joining = !!lkRoom || e?.message === "room failed to load";
     relay?.close();
     relay = null;
+    stopTracking?.();
+    stopTracking = null;
+    lkRoom?.disconnect();
+    lkRoom = null;
     startBtn.disabled = false;
-    setState(cameraError(e));
+    setState(joining ? "Couldn't join the room. Check your connection, or make a new QR on your computer." : cameraError(e));
   }
 }
 
@@ -105,6 +175,10 @@ function stop() {
   stopTracking = null;
   relay?.close();
   relay = null;
+  lkRoom?.disconnect();
+  lkRoom = null;
+  micOn = false;
+  muteBtn.hidden = true;
   try { wakeLock?.release(); } catch { /* ignore */ }
   preview.classList.remove("live");
   stopBtn.hidden = true;
@@ -113,6 +187,7 @@ function stop() {
 }
 
 startBtn.onclick = start;
+muteBtn.onclick = async () => { await setMic(!micOn); showLinkState(); };
 stopBtn.onclick = () => { stop(); setState("Stopped. Tap Start to send again."); };
 </script>
 </body>

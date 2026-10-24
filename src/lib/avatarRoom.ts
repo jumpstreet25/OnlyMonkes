@@ -155,6 +155,38 @@ function _findIdentityByHash(hash: number): string | undefined {
   return _identityHashMap.get(hash);
 }
 
+// ── Phone as mic + camera (web "Use my phone") ──────────────────────────────
+// A computer without a mic links a phone: the phone's browser joins as
+// `<identity>~phone` and publishes the mic; face numbers reach the computer
+// through the encrypted cam relay. Everyone folds the phone into its owner (one
+// monke, the phone's voice), and the owner's computer plays no room audio while
+// its phone is in, so the phone's echo cancellation works.
+export const PHONE_SUFFIX = '~phone';
+export const phoneIdentityFor = (identity: string) => `${identity}${PHONE_SUFFIX}`;
+const _isPhone = (identity: string) => identity.endsWith(PHONE_SUFFIX);
+const _webAudioEls = new Set<HTMLMediaElement>();
+
+function _ownPhoneInRoom(): boolean {
+  if (!_room) return false;
+  return _room.remoteParticipants.has(phoneIdentityFor(_room.localParticipant.identity));
+}
+
+function _applyWebAudioMute() {
+  const mute = _ownPhoneInRoom();
+  _webAudioEls.forEach(el => { el.muted = mute; });
+}
+
+function _withPhone(p: AvatarParticipant, phone: Participant | undefined): AvatarParticipant {
+  if (!phone) return p;
+  const ph = _mapParticipant(phone, false);
+  return {
+    ...p,
+    isSpeaking: p.isSpeaking || ph.isSpeaking,
+    isMuted: p.isMuted && ph.isMuted,
+    audioEnergy: Math.max(p.audioEnergy, ph.audioEnergy),
+  };
+}
+
 function _mapParticipant(p: Participant, isLocal: boolean): AvatarParticipant {
   const identity = p.identity;
   const audioTrack = [...p.trackPublications.values()].find(
@@ -177,9 +209,15 @@ function _notify() {
   if (!_room) return;
   const local = _room.localParticipant;
   const remotes = [..._room.remoteParticipants.values()];
+  const phones = new Map<string, Participant>();
+  for (const r of remotes) {
+    if (_isPhone(r.identity)) phones.set(r.identity.slice(0, -PHONE_SUFFIX.length), r as unknown as Participant);
+  }
   const all: AvatarParticipant[] = [
-    _mapParticipant(local as unknown as Participant, true),
-    ...remotes.map(r => _mapParticipant(r as unknown as Participant, false)),
+    _withPhone(_mapParticipant(local as unknown as Participant, true), phones.get(local.identity)),
+    ...remotes
+      .filter(r => !_isPhone(r.identity))
+      .map(r => _withPhone(_mapParticipant(r as unknown as Participant, false), phones.get(r.identity))),
   ];
   _maxParticipantCount = Math.max(_maxParticipantCount, all.length);
   const state: AvatarRoomState = {
@@ -349,16 +387,27 @@ export async function connectToAvatarRoom(
 
   // Web: browsers only play a remote track attached to a media element (the
   // phone's native WebRTC plays audio by itself).
+  // Never play your own phone's mic back to you (it would echo).
+  _room.on(RoomEvent.TrackSubscribed, (_track: any, pub: any, participant: RemoteParticipant) => {
+    if (_room && participant.identity === phoneIdentityFor(_room.localParticipant.identity)) pub?.setSubscribed?.(false);
+  });
+
   if (Platform.OS === 'web') {
-    _room.on(RoomEvent.TrackSubscribed, (track: any) => {
+    _room.on(RoomEvent.TrackSubscribed, (track: any, _pub: any, participant: RemoteParticipant) => {
       if (track?.kind !== 'audio') return;
-      const el = track.attach();
+      if (_room && participant.identity === phoneIdentityFor(_room.localParticipant.identity)) return;
+      const el = track.attach() as HTMLMediaElement;
       el.style.display = 'none';
       document.body.appendChild(el);
+      _webAudioEls.add(el);
+      _applyWebAudioMute();
     });
     _room.on(RoomEvent.TrackUnsubscribed, (track: any) => {
-      if (track?.kind === 'audio') track.detach().forEach((el: HTMLElement) => el.remove());
+      if (track?.kind === 'audio') track.detach().forEach((el: HTMLMediaElement) => { _webAudioEls.delete(el); el.remove(); });
     });
+    // The phone plays the room while it's in; the computer goes back to playing it when the phone leaves.
+    _room.on(RoomEvent.ParticipantConnected, () => _applyWebAudioMute());
+    _room.on(RoomEvent.ParticipantDisconnected, () => _applyWebAudioMute());
   }
 
   _room.on(RoomEvent.Reconnecting, () => console.log('[AvatarRoom] Reconnecting...'));
