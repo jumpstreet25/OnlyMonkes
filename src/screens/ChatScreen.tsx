@@ -18,7 +18,7 @@
  *  - UserProfileModal when username tapped
  */
 
-import { importPhoneProfile } from "@/lib/webLogin";
+import { importPhoneProfile, refreshPhoneBananas } from "@/lib/webLogin";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
@@ -616,8 +616,10 @@ export default function ChatScreen() {
           if (p.xAccount) setXAccount(p.xAccount);
           if (p.tipWallet) setTipWallet(p.tipWallet);
           if (p.location) useAppStore.getState().setLocation(p.location);
-        });
+        }).finally(() => { void refreshPhoneBananas(); });
       }
+      // Web shows the phone's banana balance (no-op on the phone).
+      if (saved) void refreshPhoneBananas();
       const { myInboxId: id, verifiedNft: nft } = useAppStore.getState();
       if (id) cacheProfile(id, { username: saved ?? undefined, nftImage: nft?.image ?? null, location: savedLoc ?? undefined });
     });

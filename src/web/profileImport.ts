@@ -13,6 +13,7 @@ import { applyProfileSnapshot } from "@/lib/reclaim";
 import { getXmtpClient } from "@/hooks/useXmtp";
 import { getXmtpCredential } from "./webAuth";
 import { markOnboardingStepsDone } from "@/components/OnboardingChecklist";
+import { setMirroredBananaBalance } from "@/lib/bananaRewards";
 
 const WORKER = "https://onlymonkes.app";
 const INBOX_WAIT_MS = 60_000;
@@ -38,6 +39,34 @@ function waitForInbox(): Promise<string | null> {
   });
 }
 
+/** The latest profile the phone broadcast, via the bot (null if none yet). */
+async function fetchPhoneProfile(inboxId: string): Promise<Record<string, unknown> | null> {
+  const { value } = await getXmtpCredential();
+  const res = await fetch(`${WORKER}/api/profile/me`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: value },
+    // Same derived identity key the phone app uses; the bot finds the phone
+    // inbox it belongs to, even when that inbox ID differs from this one.
+    body: JSON.stringify({ inboxId, identifier: (getXmtpClient() as any)?.publicIdentity?.identifier?.toLowerCase?.() }),
+  });
+  if (!res.ok) return null;
+  return ((await res.json()) as { profile?: Record<string, unknown> | null }).profile ?? null;
+}
+
+/**
+ * Every web chat load: show the phone's banana balance as the phone last
+ * broadcast it (spends included). The web app never earns or merges its own.
+ */
+export async function refreshPhoneBananas(): Promise<void> {
+  try {
+    const inboxId = await waitForInbox();
+    if (!inboxId) return;
+    const p = await fetchPhoneProfile(inboxId);
+    if (typeof p?.bb !== "number" || p.bb < 0) return;
+    useAppStore.getState().setBananaBalance(await setMirroredBananaBalance(Math.floor(p.bb)));
+  } catch { /* keep what's shown */ }
+}
+
 let _once: Promise<ImportedProfile | null> | null = null;
 
 export function importPhoneProfile(): Promise<ImportedProfile | null> {
@@ -46,16 +75,7 @@ export function importPhoneProfile(): Promise<ImportedProfile | null> {
     const inboxId = await waitForInbox();
     const wallet = useAppStore.getState().wallet?.address;
     if (!inboxId || !wallet) return null;
-    const { value } = await getXmtpCredential();
-    const res = await fetch(`${WORKER}/api/profile/me`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: value },
-      // Same derived identity key the phone app uses; the bot finds the phone
-      // inbox it belongs to, even when that inbox ID differs from this one.
-      body: JSON.stringify({ inboxId, identifier: (getXmtpClient() as any)?.publicIdentity?.identifier?.toLowerCase?.() }),
-    });
-    if (!res.ok) return null;
-    const p = ((await res.json()) as { profile?: Record<string, unknown> | null }).profile;
+    const p = await fetchPhoneProfile(inboxId);
     const username = str(p?.u, 20);
     if (!p || !username) return null;
     const imported: ImportedProfile = {

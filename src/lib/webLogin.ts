@@ -20,3 +20,6 @@ export type ImportedProfile = { username: string; bio: string; xAccount: string;
 export async function importPhoneProfile(): Promise<ImportedProfile | null> {
   return null;
 }
+
+/** Native: the phone's bananas are its own. */
+export async function refreshPhoneBananas(): Promise<void> {}

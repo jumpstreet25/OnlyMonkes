@@ -11,6 +11,7 @@
  */
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Platform } from "react-native";
 import { safeStorageSet } from "@/lib/storageRescue";
 
 const AK_BANANAS_BASE = "banana_rewards_v1";
@@ -91,8 +92,10 @@ export async function claimDailyBananas(): Promise<ClaimResult> {
   const state = await loadBananaState();
   const now = Date.now();
 
-  // Already claimed within the last 24 hours
-  if (state.lastClaimTs > 0 && (now - state.lastClaimTs) < TWENTY_FOUR_HOURS) {
+  // Already claimed within the last 24 hours. The web app never claims: its
+  // balance mirrors the phone's (setMirroredBananaBalance), so a web daily
+  // reward would only drift the two apart.
+  if (Platform.OS === "web" || (state.lastClaimTs > 0 && (now - state.lastClaimTs) < TWENTY_FOUR_HOURS)) {
     return {
       claimed: false,
       alreadyClaimed: true,
@@ -154,6 +157,18 @@ export async function spendBananas(amount: number): Promise<boolean> {
   state.balance -= amount;
   await saveBananaState(state);
   return true;
+}
+
+/**
+ * Web: show exactly the phone's latest broadcast balance, spends included.
+ * Only from the bot's record of the user's own inbox (refreshPhoneBananas):
+ * PROFILE_UPDATE's wallet field is spoofable, so stream merges stay MAX.
+ */
+export async function setMirroredBananaBalance(balance: number): Promise<number> {
+  const state = await loadBananaState();
+  state.balance = balance;
+  await saveBananaState(state);
+  return state.balance;
 }
 
 /** Merge balance from another device (same wallet). Takes MAX to prevent loss. */

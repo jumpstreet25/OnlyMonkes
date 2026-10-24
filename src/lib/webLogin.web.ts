@@ -37,4 +37,4 @@ export function startSingleSessionLogin(choiceKey: string): Promise<WalletAccoun
   return bundle.then((b) => loginWithBundle(b, "Seed Vault"));
 }
 
-export { importPhoneProfile } from "@/web/profileImport";
+export { importPhoneProfile, refreshPhoneBananas } from "@/web/profileImport";
