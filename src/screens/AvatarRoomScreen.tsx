@@ -23,6 +23,7 @@ import {
   ActivityIndicator,
   StatusBar,
   useWindowDimensions,
+  Platform,
 } from 'react-native';
 import { showGlassAlert } from "@/lib/glassAlert";
 import { useTranslation } from "react-i18next";
@@ -47,6 +48,7 @@ import {
   disconnectFromAvatarRoom,
   addAvatarStateListener,
   toggleMute,
+  getMicProblem,
   getAvatarRoom,
   getLastAvatarSessionStats,
   sendReaction,
@@ -62,6 +64,14 @@ import { type FaceParams, type BlendshapeParams } from '@/lib/faceTracking';
 
 import { VideoStickerTray } from '@/components/VideoStickerTray';
 import { VideoReactionOverlay } from '@/components/VideoReactionOverlay';
+
+/** A blocked / missing mic joins muted; say why and how to fix it. */
+function showMicProblem(onJoin: boolean): void {
+  const p = getMicProblem();
+  if (!p) return;
+  const key = p === 'blocked' ? (Platform.OS === 'web' ? 'micBlockedWeb' : 'micBlockedPhone') : p === 'none' ? 'micNone' : p === 'busy' ? 'micBusy' : 'micError';
+  showGlassAlert(i18n.t(onJoin ? 'avatarRoom.micJoinedMuted' : 'avatarRoom.micOffTitle'), i18n.t(`avatarRoom.${key}`));
+}
 
 function showRaidToast(raid: RaidResult | null): void {
   if (!raid?.granted) return;
@@ -178,7 +188,10 @@ export default function AvatarRoomScreen() {
       useAppStore.getState().setIsInAvatarRoom(false);
       router.back();
     })
-      .then(() => setConnecting(false))
+      .then(() => {
+        setConnecting(false);
+        showMicProblem(true);
+      })
       .catch(() => {
         setConnecting(false);
         showGlassAlert(t('avatarRoom.connectionFailed'), t('avatarRoom.couldNotJoinRoom'));
@@ -213,7 +226,8 @@ export default function AvatarRoomScreen() {
   }, []);
 
   const handleToggleMute = useCallback(async () => {
-    await toggleMute();
+    const muted = await toggleMute();
+    if (muted) showMicProblem(false);
   }, []);
 
   const handleSendReaction = useCallback((stickerUrl: string) => {

@@ -87,6 +87,34 @@ const TOPIC_BLENDSHAPES = 'blendshapes';
 
 let _room: Room | null = null;
 let _isMuted = false;
+/** Why the mic couldn't turn on (joined muted instead), or null. */
+export type MicProblem = 'blocked' | 'none' | 'busy' | 'error';
+let _micProblem: MicProblem | null = null;
+
+function _micProblemFrom(e: unknown): MicProblem {
+  const name = (e as { name?: string })?.name ?? '';
+  if (name === 'NotAllowedError' || name === 'SecurityError' || name === 'PermissionDeniedError') return 'blocked';
+  if (name === 'NotFoundError' || name === 'OverconstrainedError' || name === 'DevicesNotFoundError') return 'none';
+  if (name === 'NotReadableError' || name === 'AbortError' || name === 'TrackStartError') return 'busy';
+  return 'error';
+}
+
+/** Turns the mic on; on failure stays muted and records why (a blocked mic never fails the join). */
+async function _enableMic(): Promise<boolean> {
+  try {
+    await _room!.localParticipant.setMicrophoneEnabled(true);
+    _micProblem = null;
+    _isMuted = false;
+    return true;
+  } catch (e) {
+    console.warn('[AvatarRoom] microphone unavailable:', (e as Error)?.name, (e as Error)?.message);
+    _micProblem = _micProblemFrom(e);
+    _isMuted = true;
+    return false;
+  }
+}
+
+export function getMicProblem(): MicProblem | null { return _micProblem; }
 let _speakers = new Set<string>();
 let _energyPollTimer: ReturnType<typeof setInterval> | null = null;
 let _participantEnergy = new Map<string, number>();
@@ -284,6 +312,7 @@ export async function connectToAvatarRoom(
 
   _room = new Room();
   _isMuted = false;
+  _micProblem = null;
   _speakers = new Set();
   _participantEnergy = new Map();
   _participantMouthTraits = new Map();
@@ -401,7 +430,7 @@ export async function connectToAvatarRoom(
   await AudioSession.startAudioSession();
   await _room.connect(url, token);
   if (Platform.OS === 'web') await _room.startAudio().catch(() => {});
-  await _room.localParticipant.setMicrophoneEnabled(true);
+  await _enableMic();
 
   // Enable Krisp noise cancellation on the mic track (non-fatal if unsupported)
   try {
@@ -474,10 +503,12 @@ export function getLastAvatarSessionStats(): AvatarSessionStats | null {
 
 export async function toggleMute(): Promise<boolean> {
   if (!_room?.localParticipant) return _isMuted;
-  _isMuted = !_isMuted;
-  try {
-    await _room.localParticipant.setMicrophoneEnabled(!_isMuted);
-  } catch { /* ignore */ }
+  if (_isMuted) {
+    await _enableMic();
+  } else {
+    _isMuted = true;
+    try { await _room.localParticipant.setMicrophoneEnabled(false); } catch { /* ignore */ }
+  }
   _notify();
   return _isMuted;
 }

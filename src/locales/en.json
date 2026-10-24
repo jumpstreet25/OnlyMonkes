@@ -680,7 +680,14 @@
     "raidShowedUp": "🐒 Banana Raid! +{{amount}} 🍌 for showing up",
     "connectionFailed": "Connection Failed",
     "couldNotJoinRoom": "Could not join the room.",
-    "joiningRoom": "Joining room..."
+    "joiningRoom": "Joining room...",
+    "micJoinedMuted": "You joined muted",
+    "micOffTitle": "Microphone is off",
+    "micBlockedWeb": "Your browser blocked the microphone. Click the icon left of the address bar, choose Reset permission (or set Microphone to Ask), reload, then tap the mic button and click Allow.",
+    "micBlockedPhone": "OnlyMonkes isn't allowed to use the microphone. Turn it on in Android Settings → Apps → OnlyMonkes → Permissions, then tap the mic button.",
+    "micNone": "No microphone found. Connect one, then tap the mic button.",
+    "micBusy": "Another app is using your microphone. Close it, then tap the mic button.",
+    "micError": "Couldn't turn on your microphone. Check that this app (or your browser) is allowed to use it, then tap the mic button."
   },
   "useXmtp": {
     "joinRetrying": "Couldn't reach the bot to join — retrying automatically.",
