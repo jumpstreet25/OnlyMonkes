@@ -1,5 +1,5 @@
 name = "onlymonkes-actions"
-main = "src/index.ts"
+main = "src/worker.ts"
 compatibility_date = "2026-03-23"
 compatibility_flags = ["nodejs_compat"]
 # The published app calls the workers.dev address; custom domains turn it off by default.
@@ -121,3 +121,13 @@ simple = { limit = 6, period = 60 }
 name = "WEB_RPC_LIMITER"
 namespace_id = "1001"
 simple = { limit = 120, period = 60 }
+
+# Phone as the website's camera (phoneCam.ts): one relay room per QR, WebSocket
+# hibernation, sealed face numbers only. SQLite-backed so it runs on the free plan.
+[[durable_objects.bindings]]
+name = "PHONE_CAM"
+class_name = "PhoneCamRoom"
+
+[[migrations]]
+tag = "v1-phone-cam"
+new_sqlite_classes = ["PhoneCamRoom"]

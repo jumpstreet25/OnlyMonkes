@@ -95,6 +95,7 @@ import { handleWebMedia, isWebMediaPath } from "./webMedia";
 import { handleLivekitAuthorize, INTERNAL_HOST } from "./livekitAuth";
 import { handleApkDownload, isApkDownloadPath } from "./apkDownloads";
 import { handleWebPair } from "./webPair";
+import { handlePhoneCam } from "./phoneCam";
 import { verifyGenesisTokenOwnership } from "./genesisVerify";
 import { handleMonkeMemeGenerate } from "./monkeMeme";
 
@@ -170,6 +171,8 @@ export interface Env {
   // ([vars] in wrangler.toml) and an optional per-IP rate-limit binding.
   WEB_APP_ORIGINS?: string;
   WEB_RPC_LIMITER?: { limit: (opts: { key: string }) => Promise<{ success: boolean }> };
+  /** Phone-as-camera relay rooms (phoneCam.ts). */
+  PHONE_CAM: DurableObjectNamespace;
   // Web sign-in (webAuth.ts): Ed25519 PKCS8 (base64) signing the XMTP access
   // JWTs; the self-hosted XMTP backend holds the matching public key.
   XMTP_JWT_PRIVATE_KEY?: string;
@@ -3520,6 +3523,10 @@ export default {
 
     if (path.startsWith("/api/pair/")) {
       return handleWebPair(path, request, env);
+    }
+
+    if (path.startsWith("/api/cam/")) {
+      return handlePhoneCam(path, request, env);
     }
 
     if (path.startsWith("/api/auth/")) {
