@@ -14,6 +14,7 @@ function isSitePath(path: string): boolean {
   return (
     path === "/welcome" || path === "/get" || path === "/bot" || path === "/health" || path === "/actions.json" || path === "/claim" || path === "/escrow" ||
     path === "/robots.txt" || path === "/sitemap.xml" ||
+    path === "/referrals" || path === "/referrals/" || /^\/r\/[^/]+(\/card\.png)?\/?$/.test(path) ||
     /^\/(legal|terms|privacy|copyright)(\/|\.html)?$/.test(path) ||
     /^\/(open|monke|api|frames|download|site|\.well-known)\//.test(path) ||
     /^\/helius-(webhook|events)$/.test(path)
