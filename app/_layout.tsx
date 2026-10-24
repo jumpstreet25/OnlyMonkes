@@ -38,7 +38,7 @@ import { loadBadgeData, setOnBadgeEarned, getBadgeBananaReward, type BadgeDef } 
 import { addBananas } from '../src/lib/bananaRewards';
 import { Alert, Platform } from 'react-native';
 import { router } from 'expo-router';
-import { takeHeldLink } from '../src/lib/deepLinks';
+import { holdWebInvite, takeHeldLink } from '../src/lib/deepLinks';
 import { collectReferralBananas } from '../src/lib/referrals';
 import i18n from '../src/lib/i18n';
 import { useFreeRasp } from 'freerasp-react-native';
@@ -50,6 +50,8 @@ import { startPerfMeterIfAsked } from '../src/lib/perfMeter';
 
 // Web: ?perf=1 shows the speed meter (no-op on the phone).
 startPerfMeterIfAsked();
+// Web: onlymonkes.app/?ref=<code> opens the invite after sign-in (no-op on the phone).
+holdWebInvite();
 
 // Initialize Sentry crash reporting (no-op if SENTRY_DSN not set)
 initSentry();

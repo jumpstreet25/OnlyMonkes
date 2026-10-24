@@ -54,5 +54,43 @@ export function holdLink(route: string): void {
 export function takeHeldLink(): string | null {
   const r = pending;
   pending = null;
+  if (r?.startsWith('/invite?')) forgetWebInvite();
   return r;
+}
+
+/** The invite code in `?ref=<code>`, or null. */
+export function inviteCodeFromSearch(search: string): string | null {
+  const code = new URLSearchParams(search).get('ref')?.trim().toUpperCase();
+  return code && /^[2-9A-HJ-NP-Z]{6}$/.test(code) ? code : null;
+}
+
+// Web: the /r/<code> page's "Use the web app" opens onlymonkes.app/?ref=<code>.
+// Sign-in can reload the page (wallet pairing), so the code waits in
+// localStorage for a day and opens once the holder reaches chat.
+const WEB_INVITE_KEY = 'om:heldInvite';
+const WEB_INVITE_TTL_MS = 24 * 60 * 60_000;
+
+export function holdWebInvite(): void {
+  if (typeof document === 'undefined' || typeof window === 'undefined') return;
+  try {
+    const fromUrl = inviteCodeFromSearch(window.location.search);
+    if (fromUrl) {
+      localStorage.setItem(WEB_INVITE_KEY, JSON.stringify({ ref: fromUrl, t: Date.now() }));
+      const url = new URL(window.location.href);
+      url.searchParams.delete('ref');
+      window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash);
+    }
+    const held = JSON.parse(localStorage.getItem(WEB_INVITE_KEY) ?? 'null') as { ref?: string; t?: number } | null;
+    const code = inviteCodeFromSearch(`ref=${held?.ref ?? ''}`);
+    if (code && Date.now() - (held?.t ?? 0) < WEB_INVITE_TTL_MS) {
+      pending = pending ?? `/invite?code=${code}`;
+    } else if (held) {
+      forgetWebInvite();
+    }
+  } catch { /* storage blocked: the invite still works from the menu */ }
+}
+
+function forgetWebInvite(): void {
+  if (typeof document === 'undefined') return;
+  try { localStorage.removeItem(WEB_INVITE_KEY); } catch { /* ignore */ }
 }

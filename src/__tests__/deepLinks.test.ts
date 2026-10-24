@@ -1,4 +1,4 @@
-import { routeForLink, holdLink, takeHeldLink } from '../lib/deepLinks';
+import { routeForLink, holdLink, takeHeldLink, inviteCodeFromSearch } from '../lib/deepLinks';
 
 describe('routeForLink', () => {
   it('opens invites from the app scheme and the /r/ link', () => {
@@ -33,5 +33,12 @@ describe('routeForLink', () => {
     holdLink('/marketplace');
     expect(takeHeldLink()).toBe('/marketplace');
     expect(takeHeldLink()).toBeNull();
+  });
+  it('reads a web ?ref= invite code', () => {
+    expect(inviteCodeFromSearch('?ref=5nfg8a')).toBe('5NFG8A');
+    expect(inviteCodeFromSearch('?x=1&ref=ABCDEF')).toBe('ABCDEF');
+    expect(inviteCodeFromSearch('?ref=ABCDE1')).toBeNull();
+    expect(inviteCodeFromSearch('?ref=../chat')).toBeNull();
+    expect(inviteCodeFromSearch('')).toBeNull();
   });
 });

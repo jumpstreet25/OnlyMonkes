@@ -1,18 +1,19 @@
 /**
  * Referrals (2026-10-24) — app side of worker-actions/src/referrals.ts.
  *
- * Every call proves the wallet with the phone's hardware Keystore key (the one
- * Device Integrity verified for this holder wallet) signing the action + a
- * fresh server nonce — same as livekitProof.ts, no wallet prompt.
+ * Every call proves the wallet with no wallet prompt (referralProof.ts): the
+ * phone's hardware Keystore key (the one Device Integrity verified for this
+ * holder wallet) signing the action + a fresh server nonce, or on the web the
+ * holder sign-in token.
  *
  * Bananas live on the phone: a claim only records the invite, and
  * collectReferralBananas() pays everything owed (250 per new holder you
- * invited, 100 once for joining with an invite).
+ * invited, 100 once for joining with an invite). The web claims and shows your
+ * invite but never collects: its balance mirrors the phone's.
  */
-import { Buffer } from "buffer";
 import { Platform } from "react-native";
 import { useAppStore } from "@/store/appStore";
-import { getDevicePublicKeyBase64, isDeviceAttestAvailable, signWithDeviceKey } from "@/lib/deviceAttest";
+import { referralProof } from "@/lib/referralProof";
 import { addBananas } from "@/lib/bananaRewards";
 import { parseMonkeNumber } from "@/lib/monkeMeme/monkeNumbers";
 
@@ -34,27 +35,12 @@ export interface MyReferral {
 
 export type ReferralError = { error: string; reason?: string };
 
-async function proof(action: string): Promise<Record<string, string> | null> {
-  if (Platform.OS !== "android" || !isDeviceAttestAvailable()) return null;
-  const wallet = useAppStore.getState().wallet?.address;
-  if (!wallet) return null;
-  try {
-    const res = await fetch(`${BASE}/api/device-integrity/challenge`, { method: "POST" });
-    if (!res.ok) return null;
-    const { nonce } = (await res.json()) as { nonce?: string };
-    if (!nonce) return null;
-    const devicePubKey = await getDevicePublicKeyBase64();
-    const message = `OnlyMonkes Referral\naction:${action}\nnonce:${nonce}`;
-    const sig = await signWithDeviceKey(Buffer.from(message, "utf8").toString("base64"));
-    return { kind: "device", wallet, devicePubKey, nonce, sig };
-  } catch {
-    return null;
-  }
-}
-
 async function post<T>(path: string, action: string, body: Record<string, unknown> = {}): Promise<T | ReferralError> {
-  const p = await proof(action);
-  if (!p) return { error: "This phone isn't verified yet. Open the app's verify step, then try again.", reason: "no_proof" };
+  const p = await referralProof(action);
+  if (!p) {
+    const error = Platform.OS === "web" ? "Sign in again, then try again." : "This phone isn't verified yet. Open the app's verify step, then try again.";
+    return { error, reason: "no_proof" };
+  }
   try {
     const res = await fetch(`${BASE}${path}`, {
       method: "POST",
@@ -104,6 +90,7 @@ let lastCollect = 0;
  */
 export async function collectReferralBananas(force = false): Promise<{ bananas: number; referrals: number; welcome: boolean }> {
   const none = { bananas: 0, referrals: 0, welcome: false };
+  if (Platform.OS === "web") return none;
   if (!force && Date.now() - lastCollect < 10 * 60_000) return none;
   lastCollect = Date.now();
   const r = await post<{ bananas: number; referrals: number; welcome: boolean }>("/api/referral/collect", "collect");

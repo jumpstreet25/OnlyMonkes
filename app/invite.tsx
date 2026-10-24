@@ -5,7 +5,7 @@
  * collectReferralBananas() (src/lib/referrals.ts).
  */
 import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Pressable, Image, TextInput } from "react-native";
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Pressable, Image, TextInput, Platform } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner-native";
@@ -48,7 +48,8 @@ export default function InviteScreen() {
       setMessage(r.error);
     } else {
       setDone(true);
-      setMessage(r.already ? t("invite.alreadyAccepted") : t("invite.accepted"));
+      // The web never adds bananas (it mirrors the phone's balance); the phone app collects them.
+      setMessage(r.already ? t("invite.alreadyAccepted") : Platform.OS === "web" ? t("invite.acceptedWeb", { bananas: REWARDS.newHolder }) : t("invite.accepted"));
       const got = await collectReferralBananas(true);
       if (got.welcome) toast(t("invite.toastWelcome", { bananas: REWARDS.newHolder }));
     }

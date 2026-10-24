@@ -1025,6 +1025,7 @@
     "acceptIntro": "Accept to give {{name}} {{referrer}} bananas. You get {{newHolder}}.",
     "accept": "Accept invite",
     "accepted": "Invite accepted. Your bananas are on the way.",
+    "acceptedWeb": "Invite accepted. Your {{bananas}} bananas arrive the next time you open OnlyMonkes on your phone.",
     "alreadyAccepted": "You already accepted this invite.",
     "enterCode": "Enter an invite code",
     "codePlaceholder": "6 letters, e.g. 5NFG8A",
