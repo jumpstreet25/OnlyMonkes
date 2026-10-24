@@ -18,6 +18,8 @@
   "exclude": [
     "scripts/**",
     "android/**",
-    "ios/**"
+    "ios/**",
+    "worker/**",
+    "worker-actions/**"
   ]
 }
