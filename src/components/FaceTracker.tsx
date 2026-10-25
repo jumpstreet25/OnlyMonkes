@@ -17,14 +17,14 @@
  * real dependency post-SDK54) is gone entirely, not just swapped.
  */
 
-import React, { useCallback, useRef, useEffect, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import {
   Camera,
   useCameraDevice,
   useCameraPermission,
 } from 'react-native-vision-camera';
-import { useFaceDetectorOutput, type Face } from 'react-native-vision-camera-face-detector';
+import { createFaceDetectorOutput, type Face } from 'react-native-vision-camera-face-detector';
 import {
   type BlendshapeParams,
   BLENDSHAPE_IDLE,
@@ -35,7 +35,9 @@ interface FaceTrackerProps {
   onBlendshapes: (params: BlendshapeParams) => void;
 }
 
-export function FaceTracker({ enabled, onBlendshapes }: FaceTrackerProps) {
+// Memoized: the Avatar Room re-renders many times a second (voice levels, faces)
+// and this only needs to re-render when its props change.
+export const FaceTracker = React.memo(function FaceTracker({ enabled, onBlendshapes }: FaceTrackerProps) {
   const { hasPermission, requestPermission } = useCameraPermission();
   const device = useCameraDevice('front');
   const lastFrameRef = useRef(0);
@@ -163,16 +165,25 @@ export function FaceTracker({ enabled, onBlendshapes }: FaceTrackerProps) {
     onBlendshapes({ values, headRotation });
   }, [onBlendshapes]);
 
-  const faceDetectorOutput = useFaceDetectorOutput({
+  // One native face-detector output for the camera's lifetime. The library's
+  // useFaceDetectorOutput memoizes on a rest object it rebuilds every call, so
+  // it made a new native output (and a new camera session config) on every
+  // render — leaking JNI global refs until Android aborted the app (Sentry
+  // ONLYMONKES-12, SIGABRT in JHybridCameraSessionConfigSpec via AddGlobalRef).
+  const onFacesRef = useRef(handleFaceResults);
+  onFacesRef.current = handleFaceResults;
+  const faceDetectorOutput = useMemo(() => createFaceDetectorOutput({
     cameraFacing: 'front',
     performanceMode: 'fast',
     runClassifications: true,
     runContours: true,
     runLandmarks: true,
     minFaceSize: 0.15,
-    onFacesDetected: handleFaceResults,
+    outputResolution: 'preview',
+    onFacesDetected: (faces: Face[]) => onFacesRef.current(faces),
     onError: () => { /* silently ignore detection errors, same as the old frame-processor try/catch */ },
-  });
+  }), []);
+  const outputs = useMemo(() => [faceDetectorOutput], [faceDetectorOutput]);
 
   if (!enabled || !hasPermission || !device || !ready) return null;
 
@@ -182,11 +193,11 @@ export function FaceTracker({ enabled, onBlendshapes }: FaceTrackerProps) {
         style={styles.camera}
         device={device}
         isActive={true}
-        outputs={[faceDetectorOutput]}
+        outputs={outputs}
       />
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   hidden: {
