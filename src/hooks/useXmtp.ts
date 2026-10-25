@@ -692,29 +692,31 @@ export function useXmtp() {
         // Bot inbox ID from remote config (fallback to hardcoded for offline startup)
         const BOT_INBOX = config?.botInboxId ?? "998001a498174b8a194110ee792b10f97de4965665eaf0d088ed2c71bdf62363";
         const BOT_INBOXES = [BOT_INBOX];
-        // Add bots to main group
-        for (const botId of BOT_INBOXES) {
-          try {
-            await (group as any).addMembers([botId]);
-            if (__DEV__) console.log(`[XMTP] Added ${botId.slice(0, 8)}… to main group`);
-          } catch { /* already a member */ }
-        }
-        // Add bots to each bot channel
-        for (const ch of channelDefs) {
-          const chId = botChannels[ch.key];
-          if (!chId) continue;
-          try {
-            const chGroup = await client.conversations.findGroup(chId as any);
-            if (chGroup) {
-              for (const botId of BOT_INBOXES) {
-                try {
-                  await (chGroup as any).addMembers([botId]);
-                  if (__DEV__) console.log(`[XMTP] Added ${botId.slice(0, 8)}… to ${ch.name}`);
-                } catch { /* already a member */ }
-              }
-            }
-          } catch { /* find failed */ }
-        }
+        // Make sure the bot is in the main group and each bot channel. In the
+        // background, and only when it's actually missing: an addMembers round
+        // trip per group on every admin launch took ~9 s of Main Chat startup
+        // (Sentry "Main Chat slow start", 2026-10-25), with the bot already in.
+        const ensureBotIn = async (g: any, label: string) => {
+          const members: string[] = await g.memberInboxIds().catch(() => []);
+          for (const botId of BOT_INBOXES) {
+            if (members.includes(botId)) continue;
+            try {
+              await g.addMembers([botId]);
+              if (__DEV__) console.log(`[XMTP] Added ${botId.slice(0, 8)}… to ${label}`);
+            } catch { /* not allowed / already added */ }
+          }
+        };
+        void (async () => {
+          await ensureBotIn(group, "main group");
+          for (const ch of channelDefs) {
+            const chId = botChannels[ch.key];
+            if (!chId) continue;
+            try {
+              const chGroup = await client.conversations.findGroup(chId as any);
+              if (chGroup) await ensureBotIn(chGroup, ch.name);
+            } catch { /* find failed */ }
+          }
+        })();
       }
 
       // ── Auto-approve all pending join requests (admin) ───────────────────
@@ -891,13 +893,16 @@ export function useXmtp() {
       // First sync the group to pull its latest messages from the network.
       // Then syncAllConversations triggers the epoch update for fresh installs
       // (new installation key needs the group to propagate its latest epoch).
-      // Both finish (or time out) before the history read, as before, but at the
-      // same time instead of one after the other (each can take up to 15 s).
+      // The history read needs this group's sync; syncAll (every DM and group)
+      // took ~13 s on the owner's Seeker and isn't needed for Main Chat, so it
+      // gets 2 s more and then finishes in the background (the DM screen syncs
+      // its own list).
       mark("beforeSync");
       const groupSync = withTimeout((activeGroup as any).sync(), 15_000, "group.sync").then(() => mark("groupSync"));
       const allSync = withTimeout(client.conversations.syncAllConversations(["allowed", "unknown"] as any), 15_000, "syncAll")
         .then(() => mark("syncAll"), () => mark("syncAllFailed"));
-      await Promise.all([groupSync, allSync]);
+      await groupSync;
+      await Promise.race([allSync, new Promise((r) => setTimeout(r, 2_000))]);
       // Fetch only last 24 hours of messages — reduced from 48h to cut PRESENCE
       // heartbeat flood in half (~50% fewer messages to decode on startup).
       const ONE_DAY_NS = 24 * 60 * 60 * 1_000_000_000;

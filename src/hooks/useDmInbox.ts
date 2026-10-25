@@ -30,6 +30,8 @@ export function useDmInbox() {
       return;
     }
     if (!isRefresh && _cache?.inboxId === client.inboxId && Date.now() - _cache.at < FRESH_MS) {
+      // Show it: the screen may have opened before the client was ready, with nothing cached in state.
+      setThreads(_cache.threads);
       setLoading(false);
       return;
     }
