@@ -1887,18 +1887,46 @@ export interface DmThread {
  * List all DM conversations for the current user, sorted newest-first.
  * Skips group conversations and join-request DMs (JOIN_REQUEST: prefix).
  */
+/** Runs fn over items with at most `limit` in flight; results keep input order. */
+async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
+}
+
+// Each conversation needs its own sync + read (network round trips): doing them
+// one after another made the DM screen take seconds with a few dozen chats.
+const DM_LIST_CONCURRENCY = 6;
+
 export async function listDmThreads(client: XmtpClient): Promise<DmThread[]> {
   await client.conversations.sync();
   // listDms() returns only Dm objects; peerInboxId is an async method in SDK v5
   const allDms: any[] = await (client.conversations as any).listDms();
-  const threads: DmThread[] = [];
+  const results = await mapLimit(allDms, DM_LIST_CONCURRENCY, (convo) => readDmThread(client, convo));
+  const threads = results.filter((t): t is DmThread => t !== null);
 
-  for (const convo of allDms) {
+  return threads.sort((a, b) => {
+    if (!a.lastMessageAt && !b.lastMessageAt) return 0;
+    if (!a.lastMessageAt) return 1;
+    if (!b.lastMessageAt) return -1;
+    return b.lastMessageAt.getTime() - a.lastMessageAt.getTime();
+  });
+}
+
+async function readDmThread(client: XmtpClient, convo: any): Promise<DmThread | null> {
+  {
     let peerInboxId: string;
     try {
       peerInboxId = await (convo as any).peerInboxId();
-    } catch { continue; }
-    if (!peerInboxId) continue;
+    } catch { return null; }
+    if (!peerInboxId) return null;
 
     try {
       await (convo as any).sync();
@@ -1944,7 +1972,7 @@ export async function listDmThreads(client: XmtpClient): Promise<DmThread[]> {
           : null;
       }
 
-      if (isJoinRequest) continue;
+      if (isJoinRequest) return null;
 
       // Count unread messages from peer since last read
       const lastRead = await getLastReadTimestamp(`dm_${peerInboxId}`);
@@ -1968,18 +1996,11 @@ export async function listDmThreads(client: XmtpClient): Promise<DmThread[]> {
         }
       }
 
-      threads.push({ peerInboxId, lastMessage, lastMessageAt, unreadCount });
+      return { peerInboxId, lastMessage, lastMessageAt, unreadCount };
     } catch {
-      threads.push({ peerInboxId, lastMessage: null, lastMessageAt: null, unreadCount: 0 });
+      return { peerInboxId, lastMessage: null, lastMessageAt: null, unreadCount: 0 };
     }
   }
-
-  return threads.sort((a, b) => {
-    if (!a.lastMessageAt && !b.lastMessageAt) return 0;
-    if (!a.lastMessageAt) return 1;
-    if (!b.lastMessageAt) return -1;
-    return b.lastMessageAt.getTime() - a.lastMessageAt.getTime();
-  });
 }
 
 export async function openOrCreateDm(client: XmtpClient, peerInboxId: string): Promise<any> {
@@ -2029,15 +2050,15 @@ export async function listGroupDmThreads(client: XmtpClient): Promise<GroupDmThr
     'MonkeSales', 'MonkeAlerts', 'MonkeBets', 'MonkeAI',
   ];
 
-  for (const group of allGroups) {
+  const results = await mapLimit(allGroups, DM_LIST_CONCURRENCY, async (group): Promise<GroupDmThread | null> => {
     try {
       const name: string | null = (group as any).name ?? null;
-      if (name && APP_GROUP_NAMES.some(n => name.includes(n))) continue;
+      if (name && APP_GROUP_NAMES.some(n => name.includes(n))) return null;
 
       const members: string[] = await (group as any).memberInboxIds();
       // Skip large groups (app groups); group DMs are small
-      if (members.length > 10) continue;
-      if (members.length < 2) continue;
+      if (members.length > 10) return null;
+      if (members.length < 2) return null;
 
       await (group as any).sync();
       const msgs: any[] = await (group as any).messages({ limit: 5 });
@@ -2060,15 +2081,16 @@ export async function listGroupDmThreads(client: XmtpClient): Promise<GroupDmThr
         } catch { /* skip */ }
       }
 
-      threads.push({
+      return {
         groupId: (group as any).id,
         memberInboxIds: members,
         groupName: name,
         lastMessage,
         lastMessageAt,
-      });
-    } catch { continue; }
-  }
+      };
+    } catch { return null; }
+  });
+  for (const t of results) if (t) threads.push(t);
 
   return threads.sort((a, b) => {
     if (!a.lastMessageAt && !b.lastMessageAt) return 0;

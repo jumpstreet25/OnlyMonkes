@@ -3,9 +3,18 @@ import { getXmtpClient } from '@/hooks/useXmtp';
 import { listDmThreads, type DmThread } from '@/lib/xmtp';
 import { useAppStore } from '@/store/appStore';
 
+// The last list, per inbox: reopening DMs shows it at once and refreshes in the background.
+let _cache: { inboxId: string; threads: DmThread[]; at: number } | null = null;
+// Bouncing between DMs and Main Chat shouldn't queue another full reload behind
+// Main Chat's own XMTP work: a list this fresh is reused as is.
+const FRESH_MS = 30_000;
+const cachedFor = (inboxId: string | null | undefined) =>
+  inboxId && _cache?.inboxId === inboxId ? _cache.threads : null;
+
 export function useDmInbox() {
-  const [threads, setThreads]       = useState<DmThread[]>([]);
-  const [loading, setLoading]       = useState(true);
+  const initial = cachedFor(getXmtpClient()?.inboxId);
+  const [threads, setThreads]       = useState<DmThread[]>(initial ?? []);
+  const [loading, setLoading]       = useState(initial === null);
   const [refreshing, setRefreshing] = useState(false);
   const mountedRef = useRef(true);
 
@@ -20,9 +29,14 @@ export function useDmInbox() {
       }
       return;
     }
+    if (!isRefresh && _cache?.inboxId === client.inboxId && Date.now() - _cache.at < FRESH_MS) {
+      setLoading(false);
+      return;
+    }
     if (isRefresh) setRefreshing(true);
     try {
       const t = await listDmThreads(client);
+      _cache = { inboxId: client.inboxId, threads: t, at: Date.now() };
       if (mountedRef.current) {
         setThreads(t);
         // Seed per-DM unread counts from thread data
