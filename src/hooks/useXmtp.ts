@@ -592,6 +592,7 @@ export function useXmtp() {
     const t0 = Date.now();
     const marks: Record<string, number> = {};
     const mark = (step: string) => { marks[step] = Date.now() - t0; };
+    let afterReady: (() => Promise<void>) | null = null;
 
     try {
       // Load caches in background — don't block XMTP client boot
@@ -706,7 +707,9 @@ export function useXmtp() {
             } catch { /* not allowed / already added */ }
           }
         };
-        void (async () => {
+        // Runs after Main Chat has loaded (below): an addMembers commit at the
+        // same time as the group sync can make the sync fail.
+        afterReady = async () => {
           await ensureBotIn(group, "main group");
           for (const ch of channelDefs) {
             const chId = botChannels[ch.key];
@@ -716,7 +719,7 @@ export function useXmtp() {
               if (chGroup) await ensureBotIn(chGroup, ch.name);
             } catch { /* find failed */ }
           }
-        })();
+        };
       }
 
       // ── Auto-approve all pending join requests (admin) ───────────────────
@@ -898,7 +901,10 @@ export function useXmtp() {
       // gets 2 s more and then finishes in the background (the DM screen syncs
       // its own list).
       mark("beforeSync");
-      const groupSync = withTimeout((activeGroup as any).sync(), 15_000, "group.sync").then(() => mark("groupSync"));
+      // A failed or slow sync shows the messages already on the device instead
+      // of failing the whole start (the stream and later resyncs catch up).
+      const groupSync = withTimeout((activeGroup as any).sync(), 15_000, "group.sync")
+        .then(() => mark("groupSync"), (e) => { mark("groupSyncFailed"); console.warn("[XMTP] group.sync failed:", (e as Error)?.message); });
       const allSync = withTimeout(client.conversations.syncAllConversations(["allowed", "unknown"] as any), 15_000, "syncAll")
         .then(() => mark("syncAll"), () => mark("syncAllFailed"));
       await groupSync;
@@ -1228,6 +1234,7 @@ export function useXmtp() {
       // loaded at line 553 — don't overwrite with empty array.
       setLoadingHistory(false); // UI is ready
       mark("ready");
+      if (afterReady) void (afterReady as () => Promise<void>)().catch(() => {});
       if (marks.ready > 15_000) {
         Sentry.captureMessage(`Main Chat slow start: ${Math.round(marks.ready / 1000)}s`, { level: "warning", extra: { ...marks, history: rawHistory.length } });
       }
@@ -2381,6 +2388,7 @@ export function useXmtp() {
       const message =
         err instanceof Error ? err.message : "XMTP initialization failed";
       if (__DEV__) console.error("[XMTP] initialize() failed:", message, err);
+      Sentry.captureException(err instanceof Error ? err : new Error(message), { extra: { ...marks, area: "xmtpInit" } });
       setError(message);
       toast.error(t("useXmtp.connectionLost"));
     } finally {
