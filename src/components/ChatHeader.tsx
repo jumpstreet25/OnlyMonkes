@@ -38,6 +38,8 @@ const HEADER_BG_ALPHA = 0.12;
 // and pad the message list's scroll content to clear it — must match
 // styles.header.height below exactly.
 export const CHAT_HEADER_HEIGHT = 100;
+/** Website sidebar mode: just the logo on a solid bar (ChatSidebar has the rest). */
+export const CHAT_HEADER_BARE_HEIGHT = 64;
 
 export interface ChatHeaderProps {
   themeSurface: string;
@@ -60,6 +62,9 @@ export interface ChatHeaderProps {
   /** Genesis Chat: hides the bot-command ticker — those slash commands
    *  aren't usable there. Defaults true (every other screen unaffected). */
   showTicker?: boolean;
+  /** Website sidebar mode: logo only (no Globe / banana pills, no ticker),
+   *  shorter, on a solid background. */
+  bare?: boolean;
 }
 
 export function ChatHeader({
@@ -77,6 +82,7 @@ export function ChatHeader({
   // own logoScale={0.8} explicitly, so this default only affects Main.
   logoScale = 1.55,
   showTicker = true,
+  bare = false,
 }: ChatHeaderProps) {
   // World-aware transparency + per-world tint (v25 2026-05-08). When a
   // Chat World is equipped, header bg becomes a low-alpha tint matching
@@ -112,6 +118,18 @@ export function ChatHeader({
   // Keep profileVersion in the dependency path so React treats it as used
   // (getLocatedUserCount re-reads the cache after each notify).
   void profileVersion;
+  if (bare) {
+    return (
+      <View style={[styles.header, styles.headerBare, { backgroundColor: themeSurface, borderBottomColor: themeBorder, paddingTop: insets.top }]}>
+        <Banner
+          // eslint-disable-next-line @typescript-eslint/no-require-imports
+          source={logoSource ?? require("../../assets/header.png")}
+          style={[styles.headerCenter, styles.headerCenterBare, { transform: [{ scale: logoScale }] }]}
+          resizeMode="contain"
+        />
+      </View>
+    );
+  }
   return (
     <View style={[styles.header, { borderBottomColor: themeBorder, paddingTop: insets.top }]}>
       {/* 2026-07-24: always-on glass — softens the message list scrolling
@@ -182,6 +200,14 @@ const styles = StyleSheet.create({
     // 2026-07-24: no backgroundColor here — was HEADER_BG (opaque), which
     // sat behind the BlurView and blocked it. Actual visible tint is the
     // separate headerBg View rendered on top of the blur.
+  },
+  headerBare: {
+    height: CHAT_HEADER_BARE_HEIGHT,
+    borderBottomWidth: 1,
+  },
+  headerCenterBare: {
+    height: CHAT_HEADER_BARE_HEIGHT - 4,
+    marginHorizontal: 0,
   },
   tickerWrap: {
     position: "absolute",

@@ -115,7 +115,7 @@ import type { ChatMessage, ReactionEmoji } from "@/types";
 import type { TipAmount } from "@/lib/constants";
 
 // ── Extracted sub-components ────────────────────────────────────────────────
-import { ChatHeader, CHAT_HEADER_HEIGHT } from "@/components/ChatHeader";
+import { ChatHeader, CHAT_HEADER_HEIGHT, CHAT_HEADER_BARE_HEIGHT } from "@/components/ChatHeader";
 import { ChatModeTabs, SwipeToSwitchChat } from "@/components/ChatModeSwitch";
 import { ChatModals } from "@/components/ChatModals";
 import { MonkeGlass, MonkeGlassActionButton } from "@/components/MonkeGlass";
@@ -238,6 +238,7 @@ export default function ChatScreen() {
   const { width: windowWidth } = useWindowDimensions();
   const sidebarMode = Platform.OS === "web" && windowWidth >= SIDEBAR_MIN_WINDOW;
   const sidebarCompact = windowWidth < SIDEBAR_FULL_WINDOW;
+  const headerHeight = sidebarMode ? CHAT_HEADER_BARE_HEIGHT : CHAT_HEADER_HEIGHT;
   const [menuPanel, setMenuPanel] = useState<SidebarPanel | undefined>(undefined);
   // 2026-07-24: measured height of the absolute-positioned bottom toolbar
   // (ChatInput + support banner combined) — varies with keyboard state,
@@ -1517,6 +1518,7 @@ export default function ChatScreen() {
             totalDmUnread={totalDmUnread}
             communityBadges={communityBadges}
             isGroupMember={isGroupMember}
+            bare={sidebarMode}
             onOpenDrawer={() => { if (!sidebarMode) { setMenuPanel(undefined); setDrawerOpen(true); } }}
             onDmNavigation={() => {
               useAppStore.getState().clearCommunityBadge('dms');
@@ -1530,7 +1532,7 @@ export default function ChatScreen() {
             longer takes flex space (it's the absolute overlay above).
             box-none so empty space here (e.g. no banners active) doesn't
             block scroll/taps on the full-bleed message list underneath. */}
-        <View style={{ flex: 1, marginTop: CHAT_HEADER_HEIGHT, zIndex: 50 }} pointerEvents="box-none">
+        <View style={{ flex: 1, marginTop: headerHeight, zIndex: 50 }} pointerEvents="box-none">
         {/* Offline indicator */}
         {isOffline && (
           <View style={{ backgroundColor: '#EF4444', paddingVertical: 6, alignItems: 'center' }}>
@@ -1728,7 +1730,7 @@ export default function ChatScreen() {
               setShowScrollFab={setShowScrollFab}
               setUnreadWhileScrolled={setUnreadWhileScrolled}
               isNearBottomRef={isNearBottomRef}
-              topInset={CHAT_HEADER_HEIGHT}
+              topInset={headerHeight}
               bottomInset={bottomBarHeight + keyboardHeight}
             />
           </View>
