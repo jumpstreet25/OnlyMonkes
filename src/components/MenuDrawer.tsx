@@ -98,7 +98,13 @@ interface MenuDrawerProps {
   onDevTip?: (amount: number) => void;
   onEditProfile?: () => void;
   onSwitchPfp?: () => void;
+  /** Website, wide screens: a permanent column beside Main Chat (no overlay,
+   *  no open/close) instead of the Banana Menu popup. */
+  docked?: boolean;
 }
+
+/** Width of the docked menu column; Main Chat shifts right by this much. */
+export const MENU_DOCK_WIDTH = 340;
 
 interface SharedLink {
   url: string;
@@ -106,7 +112,8 @@ interface SharedLink {
   sentAt: Date;
 }
 
-export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onStartVideo, onSearch, onPressUser, broadcastProfile, onDevTip, onEditProfile, onSwitchPfp }: MenuDrawerProps) {
+export function MenuDrawer({ visible: visibleProp, onClose, onCreateEvent, onStartLive, onStartVideo, onSearch, onPressUser, broadcastProfile, onDevTip, onEditProfile, onSwitchPfp, docked = false }: MenuDrawerProps) {
+  const visible = docked || visibleProp;
   const { t } = useTranslation();
   const VIEW_TITLES: Record<ActiveView, string> = {
     list:        t("menuDrawer.community"),
@@ -450,18 +457,8 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
 
   if (!shouldRender) return null;
 
-  return (
-    <Animated.View
-      style={[StyleSheet.absoluteFill, { opacity: fadeAnim, zIndex: 1000, elevation: 1000 }]}
-      pointerEvents={visible ? "auto" : "none"}
-    >
-      <Pressable style={StyleSheet.absoluteFill} onPress={onClose}>
-        <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.55)' }]} />
-        <View style={styles.overlay} />
-      </Pressable>
-
-      <View style={[styles.popup, { paddingTop: insets.top + 12, borderColor: themeBorder }, worldId ? null : { backgroundColor: drawerBg }]}>
+  const panel = (
+      <View style={[styles.popup, docked && styles.docked, { paddingTop: insets.top + 12, borderColor: themeBorder }, worldId ? null : { backgroundColor: drawerBg }]}>
         {/* 2026-08-07: reverted the earlier attempt at blurring this whole
             card over WorldLayer — that smeared the entire equipped world's
             art into a flat wash, which reads as "the background changed"
@@ -507,7 +504,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
             ) : (
               <View style={styles.subViewTitleSpacer} />
             )}
-            <Pressable onPress={onClose} style={styles.closeBtn} hitSlop={10} accessibilityLabel={t("menuDrawer.closeMenu")} accessibilityRole="button">
+            <Pressable onPress={docked ? () => setActiveView("list") : onClose} style={styles.closeBtn} hitSlop={10} accessibilityLabel={t("menuDrawer.closeMenu")} accessibilityRole="button">
               <Text style={styles.closeIcon}>✕</Text>
             </Pressable>
           </View>
@@ -1266,7 +1263,9 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
 
         <Text style={styles.footerHint}>{t("menuDrawer.footerHint")}</Text>
       </View>
-
+  );
+  const menuModals = (
+    <>
       <BananaShopModal visible={shopOpen} onClose={() => setShopOpen(false)} />
       <ReclaimModal visible={reclaimOpen} onClose={() => setReclaimOpen(false)} />
       <ResetIdentityModal visible={resetIdentityOpen} onClose={() => setResetIdentityOpen(false)} />
@@ -1276,6 +1275,30 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
         title={webView?.title}
         onClose={() => setWebView(null)}
       />
+    </>
+  );
+
+  if (docked) {
+    return (
+      <>
+        {panel}
+        {menuModals}
+      </>
+    );
+  }
+
+  return (
+    <Animated.View
+      style={[StyleSheet.absoluteFill, { opacity: fadeAnim, zIndex: 1000, elevation: 1000 }]}
+      pointerEvents={visible ? "auto" : "none"}
+    >
+      <Pressable style={StyleSheet.absoluteFill} onPress={onClose}>
+        <BlurView {...getBlurProps()} style={StyleSheet.absoluteFill} />
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.55)' }]} />
+        <View style={styles.overlay} />
+      </Pressable>
+      {panel}
+      {menuModals}
     </Animated.View>
   );
 }
@@ -1431,6 +1454,13 @@ const styles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(0,0,0,0.35)",
+  },
+  docked: {
+    // Docked column (website): fixed on the left edge of Main Chat's screen.
+    right: "auto",
+    width: MENU_DOCK_WIDTH,
+    zIndex: 50,
+    borderRightWidth: 1,
   },
   popup: {
     position: "absolute",
