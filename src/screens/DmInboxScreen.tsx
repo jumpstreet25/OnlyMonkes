@@ -521,13 +521,19 @@ function ComposeModal({ visible, onClose, myInboxId }: {
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
+// Last group-DM list per inbox, shown at once on reopen (see useDmInbox).
+let _groupCache: { inboxId: string; threads: GroupDmThread[] } | null = null;
+
 export default function DmInboxScreen() {
   const insets = useSafeAreaInsets();
   const { myInboxId, dmUnreadCounts } = useAppStore();
   const { threads, loading, refreshing, refresh } = useDmInbox();
   const [composeOpen, setComposeOpen] = useState(false);
   const [newGroupOpen, setNewGroupOpen] = useState(false);
-  const [groupThreads, setGroupThreads] = useState<GroupDmThread[]>([]);
+  const [groupThreads, setGroupThreads] = useState<GroupDmThread[]>(() => {
+    const inboxId = getXmtpClient()?.inboxId;
+    return inboxId && _groupCache?.inboxId === inboxId ? _groupCache.threads : [];
+  });
   const [hiddenMap, setHiddenMap] = useState<Record<string, number>>({});
   const [actionSheetThread, setActionSheetThread] = useState<DmThread | null>(null);
   const [infoModalThread, setInfoModalThread] = useState<DmThread | null>(null);
@@ -562,18 +568,25 @@ export default function DmInboxScreen() {
     setInfoModalThread(thread);
   }, []);
 
-  // Load group DM threads
+  // Load group DM threads alongside the 1-on-1 list (not after it); the last
+  // list shows at once on reopen.
   useEffect(() => {
-    async function loadGroups() {
+    let live = true;
+    async function loadGroups(attempt = 0) {
       const client = getXmtpClient();
-      if (!client) return;
+      if (!client) {
+        if (attempt < 10 && live) setTimeout(() => loadGroups(attempt + 1), 600);
+        return;
+      }
       try {
         const groups = await listGroupDmThreads(client);
-        setGroupThreads(groups);
+        _groupCache = { inboxId: client.inboxId, threads: groups };
+        if (live) setGroupThreads(groups);
       } catch { /* non-critical */ }
     }
-    if (!loading) loadGroups();
-  }, [loading]);
+    loadGroups();
+    return () => { live = false; };
+  }, []);
 
   // Merge 1-on-1 DMs and group DMs into a single sorted list
   const mergedThreads = useMemo(() => {
