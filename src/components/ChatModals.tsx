@@ -89,8 +89,6 @@ export interface ChatModalsProps {
 
   // Drawer
   drawerOpen: boolean;
-  /** Website, wide screens: the Banana Menu is a permanent column beside Main Chat. */
-  menuDocked?: boolean;
   setDrawerOpen: (v: boolean) => void;
   handleStartAvatarRoom: () => void;
   handleStartVideoCall: () => void;
@@ -198,7 +196,7 @@ export function ChatModals(props: ChatModalsProps) {
     showScrollFab, unreadWhileScrolled, flatListRef, setShowScrollFab, setUnreadWhileScrolled,
     showUsernameModal, setShowUsernameModal, editingProfile, setEditingProfile,
     username, bio, xAccount, tipWallet, userLocation, broadcastProfile,
-    drawerOpen, setDrawerOpen, menuDocked, handleStartAvatarRoom, handleStartVideoCall,
+    drawerOpen, setDrawerOpen, handleStartAvatarRoom, handleStartVideoCall,
     handleConfirmDevTip, setSearchOpen, setCalendarOpen, setProfileTarget, setPfpPickerOpen,
     pfpImagePickerOpen, setPfpImagePickerOpen,
     searchOpen, calendarOpen, broadcastEvent,
@@ -280,7 +278,6 @@ export function ChatModals(props: ChatModalsProps) {
 
       <MenuDrawer
         visible={drawerOpen}
-        docked={menuDocked}
         onClose={() => setDrawerOpen(false)}
         onCreateEvent={() => setCalendarOpen(true)}
         onStartLive={handleStartAvatarRoom}

@@ -18,7 +18,6 @@
  *  - UserProfileModal when username tapped
  */
 
-import { MENU_DOCK_WIDTH } from "@/components/MenuDrawer";
 import { importPhoneProfile, loadWebHistory, refreshPhoneBananas } from "@/lib/webLogin";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -32,7 +31,6 @@ import {
   Platform,
   Linking,
   AppState,
-  useWindowDimensions,
   type AppStateStatus,
 } from "react-native";
 import { showGlassAlert } from "@/lib/glassAlert";
@@ -121,9 +119,6 @@ import { ChatModals } from "@/components/ChatModals";
 import { MonkeGlass, MonkeGlassActionButton } from "@/components/MonkeGlass";
 import { GoLivePicker } from "@/components/GoLivePicker";
 import { ChatMessageList } from "@/components/ChatMessageList";
-
-/** Narrowest browser window that gets the docked menu column. */
-const MENU_DOCK_MIN_WINDOW = 1000;
 
 export default function ChatScreen() {
   const { t } = useTranslation();
@@ -231,10 +226,6 @@ export default function ChatScreen() {
   const [pfpPickerOpen, setPfpPickerOpen] = useState(false);
   const [pfpImagePickerOpen, setPfpImagePickerOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  // Website on a wide screen: the Banana Menu becomes a permanent left column
-  // (Discord-style). Phone browsers and the app keep the popup menu.
-  const { width: windowWidth } = useWindowDimensions();
-  const menuDocked = Platform.OS === "web" && windowWidth >= MENU_DOCK_MIN_WINDOW;
   // 2026-07-24: measured height of the absolute-positioned bottom toolbar
   // (ChatInput + support banner combined) — varies with keyboard state,
   // reply banner, slash/mention suggestions. Fed to ChatMessageList as
@@ -1467,8 +1458,6 @@ export default function ChatScreen() {
 
   return (
     <ErrorBoundary fallbackMessage={t("chatScreen.errorBoundaryFallback")}>
-    {/* Website, wide screens: the Banana Menu sits docked on the left (ChatModals). */}
-    <View style={{ flex: 1, marginLeft: menuDocked ? MENU_DOCK_WIDTH : 0 }}>
     <SwipeToSwitchChat from="main" enabled={isGenesisHolder}>
       <KeyboardAvoidingView
         // 2026-08-06: when a Chat World is equipped the solid themeBg fill
@@ -1503,7 +1492,7 @@ export default function ChatScreen() {
             totalDmUnread={totalDmUnread}
             communityBadges={communityBadges}
             isGroupMember={isGroupMember}
-            onOpenDrawer={() => { if (!menuDocked) setDrawerOpen(true); }}
+            onOpenDrawer={() => setDrawerOpen(true)}
             onDmNavigation={() => {
               useAppStore.getState().clearCommunityBadge('dms');
               router.push("/dms" as any);
@@ -1830,7 +1819,7 @@ export default function ChatScreen() {
         )}
         <EdgePullDetector
           onTrigger={() => setDrawerOpen(true)}
-          disabled={drawerOpen || menuDocked}
+          disabled={drawerOpen}
         />
         {/* MonkeMower overlay — renders ABOVE chat content during a cleanup
             cycle (which is triggered from inside BananaGroveWorld but must
@@ -1839,7 +1828,6 @@ export default function ChatScreen() {
         <BananaMowerOverlay />
       </KeyboardAvoidingView>
     </SwipeToSwitchChat>
-    </View>
       <MonkeGlass
         visible={shareMediaSheetOpen}
         onClose={() => setShareMediaSheetOpen(false)}
@@ -1899,7 +1887,6 @@ export default function ChatScreen() {
         broadcastProfile={broadcastProfile}
         drawerOpen={drawerOpen}
         setDrawerOpen={setDrawerOpen}
-        menuDocked={menuDocked}
         handleStartAvatarRoom={handleStartAvatarRoom}
         handleStartVideoCall={handleStartVideoCall}
         handleConfirmDevTip={handleConfirmDevTip}
