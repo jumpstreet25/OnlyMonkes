@@ -1061,6 +1061,9 @@
     "trading": "Trading",
     "create": "Create",
     "more": "More",
-    "editProfile": "Edit profile"
+    "editProfile": "Edit profile",
+    "mainShort": "Main",
+    "leadersShort": "Leaders",
+    "toolsShort": "Tools"
   }
 }

@@ -1061,6 +1061,9 @@
     "trading": "Trading",
     "create": "Crear",
     "more": "Más",
-    "editProfile": "Editar perfil"
+    "editProfile": "Editar perfil",
+    "mainShort": "Principal",
+    "leadersShort": "Líderes",
+    "toolsShort": "Herram."
   }
 }

@@ -122,8 +122,10 @@ import { MonkeGlass, MonkeGlassActionButton } from "@/components/MonkeGlass";
 import { GoLivePicker } from "@/components/GoLivePicker";
 import { ChatMessageList } from "@/components/ChatMessageList";
 
-/** Narrowest browser window that gets the sidebar. */
-const SIDEBAR_MIN_WINDOW = 1000;
+/** Narrowest browser window that gets the sidebar (half a desktop screen is
+ *  ~950 px): below SIDEBAR_FULL_WINDOW it's the compact icon rail. */
+const SIDEBAR_MIN_WINDOW = 600;
+const SIDEBAR_FULL_WINDOW = 1000;
 
 export default function ChatScreen() {
   const { t } = useTranslation();
@@ -235,6 +237,7 @@ export default function ChatScreen() {
   // popup (ChatSidebar). Phone browsers and the app keep the popup.
   const { width: windowWidth } = useWindowDimensions();
   const sidebarMode = Platform.OS === "web" && windowWidth >= SIDEBAR_MIN_WINDOW;
+  const sidebarCompact = windowWidth < SIDEBAR_FULL_WINDOW;
   const [menuPanel, setMenuPanel] = useState<SidebarPanel | undefined>(undefined);
   // 2026-07-24: measured height of the absolute-positioned bottom toolbar
   // (ChatInput + support banner combined) — varies with keyboard state,
@@ -1472,6 +1475,7 @@ export default function ChatScreen() {
     {sidebarMode && (
       <ErrorBoundary silent>
         <ChatSidebar
+          compact={sidebarCompact}
           totalDmUnread={totalDmUnread}
           onOpenPanel={(panel) => { setMenuPanel(panel); setDrawerOpen(true); }}
           onEditProfile={() => { setEditingProfile(true); setShowUsernameModal(true); }}

@@ -16,6 +16,8 @@ import { BananaShopModal } from "@/components/BananaShopModal";
 import { getMonkeMemeConfig, monkeMemeVisible, type MonkeMemeConfig } from "@/lib/monkeMeme/config";
 
 export const SIDEBAR_WIDTH = 248;
+/** Half-screen windows: icon rail with the name under each icon. */
+export const SIDEBAR_COMPACT_WIDTH = 76;
 
 /** MenuDrawer's own panels the sidebar can open directly. */
 export type SidebarPanel = "leaderboard" | "events" | "images" | "links" | "tools";
@@ -23,16 +25,19 @@ export type SidebarPanel = "leaderboard" | "events" | "images" | "links" | "tool
 interface Item {
   key: string;
   label: string;
+  /** Shorter name for the compact rail. */
+  short?: string;
   icon: MenuIconName;
   onPress: () => void;
   badge?: number;
   active?: boolean;
 }
 
-export function ChatSidebar({ totalDmUnread, onOpenPanel, onEditProfile }: {
+export function ChatSidebar({ totalDmUnread, onOpenPanel, onEditProfile, compact = false }: {
   totalDmUnread: number;
   onOpenPanel: (panel: SidebarPanel) => void;
   onEditProfile: () => void;
+  compact?: boolean;
 }) {
   const { t } = useTranslation();
   const bg = useThemeColor("surface");
@@ -59,19 +64,19 @@ export function ChatSidebar({ totalDmUnread, onOpenPanel, onEditProfile }: {
     {
       title: t("sidebar.chats"),
       items: [
-        { key: "main", label: t("sidebar.mainChat"), icon: "speech", onPress: () => {}, active: true },
-        ...(isGenesisHolder ? [{ key: "genesis", label: t("sidebar.genesisChat"), icon: "gem" as MenuIconName, onPress: () => router.replace("/genesis-chat" as any) }] : []),
+        { key: "main", label: t("sidebar.mainChat"), short: t("sidebar.mainShort"), icon: "speech", onPress: () => {}, active: true },
+        ...(isGenesisHolder ? [{ key: "genesis", label: t("sidebar.genesisChat"), short: "Genesis", icon: "gem" as MenuIconName, onPress: () => router.replace("/genesis-chat" as any) }] : []),
         {
-          key: "dms", label: t("sidebar.dms"), icon: "messages", badge: totalDmUnread,
+          key: "dms", label: t("sidebar.dms"), short: "DMs", icon: "messages", badge: totalDmUnread,
           onPress: () => { useAppStore.getState().clearCommunityBadge("dms"); router.push("/dms" as any); },
         },
-        { key: "trades", label: "MonkeTrades", icon: "target", onPress: go("/bot-channel?channelId=trades") },
+        { key: "trades", label: "MonkeTrades", short: "Trades", icon: "target", onPress: go("/bot-channel?channelId=trades") },
       ],
     },
     {
       title: t("sidebar.community"),
       items: [
-        { key: "leaderboard", label: t("menuDrawer.leaderboard"), icon: "leaderboard", onPress: () => onOpenPanel("leaderboard") },
+        { key: "leaderboard", label: t("menuDrawer.leaderboard"), short: t("sidebar.leadersShort"), icon: "leaderboard", onPress: () => onOpenPanel("leaderboard") },
         {
           key: "events", label: t("menuDrawer.events"), icon: "events", badge: communityBadges?.events,
           onPress: () => { useAppStore.getState().clearCommunityBadge("events"); onOpenPanel("events"); },
@@ -88,9 +93,9 @@ export function ChatSidebar({ totalDmUnread, onOpenPanel, onEditProfile }: {
     {
       title: t("sidebar.trading"),
       items: [
-        { key: "markets", label: "MonkeMarkets", icon: "monkemarkets", onPress: go("/marketplace") },
+        { key: "markets", label: "MonkeMarkets", short: "Markets", icon: "monkemarkets", onPress: go("/marketplace") },
         { key: "portfolio", label: t("menuDrawer.portfolio"), icon: "portfolio", onPress: go("/portfolio") },
-        { key: "treasury", label: "OnlyTreasury", icon: "gem", onPress: go("/treasury") },
+        { key: "treasury", label: "OnlyTreasury", short: "Treasury", icon: "gem", onPress: go("/treasury") },
         { key: "watchlist", label: t("menuDrawer.watchlist"), icon: "watchlist", onPress: go("/watchlist") },
       ],
     },
@@ -104,12 +109,68 @@ export function ChatSidebar({ totalDmUnread, onOpenPanel, onEditProfile }: {
     {
       title: t("sidebar.more"),
       items: [
-        { key: "tools", label: t("menuDrawer.monkeTools"), icon: "monketools", onPress: () => onOpenPanel("tools") },
+        { key: "tools", label: t("menuDrawer.monkeTools"), short: t("sidebar.toolsShort"), icon: "monketools", onPress: () => onOpenPanel("tools") },
         { key: "settings", label: t("menuDrawer.settings"), icon: "settings", onPress: go("/settings") },
         { key: "memorial", label: t("menuDrawer.memorial"), icon: "star", onPress: go("/memorial") },
       ],
     },
   ];
+
+  if (compact) {
+    return (
+      <View style={[styles.rail, styles.railCompact, { backgroundColor: bg, borderRightColor: border }]}>
+        <Pressable
+          onPress={() => setShopOpen(true)}
+          style={({ hovered }: any) => [styles.cTop, { borderBottomColor: border }, hovered && { backgroundColor: hover }]}
+          accessibilityRole="button"
+          accessibilityLabel={`${bananaBalance} bananas, open the Banana Shop`}
+        >
+          <Text style={styles.cBanana}>🍌</Text>
+          <Text style={[styles.cBananaCount, { color: gold }]} numberOfLines={1}>{bananaBalance}</Text>
+        </Pressable>
+        <ScrollView style={styles.scroll} contentContainerStyle={styles.cScrollContent} showsVerticalScrollIndicator={false}>
+          {sections.filter((s) => s.items.length > 0).map((section, si) => (
+            <View key={section.title} style={[styles.cSection, si > 0 && { borderTopColor: border, borderTopWidth: 1 }]}>
+              {section.items.map((item) => (
+                <Pressable
+                  key={item.key}
+                  onPress={item.onPress}
+                  accessibilityRole="button"
+                  accessibilityLabel={item.label}
+                  accessibilityState={{ selected: !!item.active }}
+                  style={({ hovered, pressed }: any) => [
+                    styles.cItem,
+                    (hovered || pressed || item.active) && { backgroundColor: hover },
+                  ]}
+                >
+                  <View>
+                    <MenuIcon name={item.icon} size={22} color={item.active ? text : muted} />
+                    {item.badge ? (
+                      <View style={[styles.badge, styles.cBadge, { backgroundColor: accent }]}>
+                        <Text style={styles.badgeText}>{item.badge > 99 ? "99+" : item.badge}</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                  <Text style={[styles.cLabel, { color: item.active ? text : muted }]} numberOfLines={1}>
+                    {item.short ?? item.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          ))}
+        </ScrollView>
+        <Pressable
+          onPress={onEditProfile}
+          style={({ hovered }: any) => [styles.cMe, { borderTopColor: border }, hovered && { backgroundColor: hover }]}
+          accessibilityRole="button"
+          accessibilityLabel={t("sidebar.editProfile")}
+        >
+          {pfp ? <Image source={{ uri: pfp }} style={styles.pfp} /> : <View style={[styles.pfp, { backgroundColor: hover }]} />}
+        </Pressable>
+        <BananaShopModal visible={shopOpen} onClose={() => setShopOpen(false)} />
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.rail, { backgroundColor: bg, borderRightColor: border }]}>
@@ -191,6 +252,17 @@ const styles = StyleSheet.create({
   badgeText: { fontFamily: FONTS.bodySemi, fontSize: 11, color: "#fff" },
   me: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 12, paddingVertical: 10, borderTopWidth: 1 },
   pfp: { width: 32, height: 32, borderRadius: 8 },
+  // Compact rail (half-screen windows)
+  railCompact: { width: SIDEBAR_COMPACT_WIDTH },
+  cTop: { height: 52, alignItems: "center", justifyContent: "center", borderBottomWidth: 1 },
+  cBanana: { fontSize: 16, lineHeight: 18 },
+  cBananaCount: { fontFamily: FONTS.bodySemi, fontSize: 11, fontVariant: ["tabular-nums"], maxWidth: SIDEBAR_COMPACT_WIDTH - 8 },
+  cScrollContent: { paddingVertical: 6, paddingHorizontal: 6 },
+  cSection: { paddingVertical: 6, gap: 2 },
+  cItem: { alignItems: "center", gap: 3, paddingVertical: 6, borderRadius: 8 },
+  cLabel: { fontFamily: FONTS.bodyMed, fontSize: 10, maxWidth: SIDEBAR_COMPACT_WIDTH - 10, textAlign: "center" },
+  cBadge: { position: "absolute", top: -6, right: -10 },
+  cMe: { alignItems: "center", paddingVertical: 10, borderTopWidth: 1 },
   meText: { flex: 1, minWidth: 0 },
   meName: { fontFamily: FONTS.bodySemi, fontSize: 14 },
   meHint: { fontFamily: FONTS.body, fontSize: 12 },
