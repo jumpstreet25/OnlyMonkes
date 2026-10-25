@@ -120,13 +120,12 @@ export function ChatSidebar({ totalDmUnread, onOpenPanel, onEditProfile, compact
     return (
       <View style={[styles.rail, styles.railCompact, { backgroundColor: bg, borderRightColor: border }]}>
         <Pressable
-          onPress={() => setShopOpen(true)}
+          onPress={onEditProfile}
           style={({ hovered }: any) => [styles.cTop, { borderBottomColor: border }, hovered && { backgroundColor: hover }]}
           accessibilityRole="button"
-          accessibilityLabel={`${bananaBalance} bananas, open the Banana Shop`}
+          accessibilityLabel={t("sidebar.editProfile")}
         >
-          <Text style={styles.cBanana}>🍌</Text>
-          <Text style={[styles.cBananaCount, { color: gold }]} numberOfLines={1}>{bananaBalance}</Text>
+          {pfp ? <Image source={{ uri: pfp }} style={styles.pfp} /> : <View style={[styles.pfp, { backgroundColor: hover }]} />}
         </Pressable>
         <ScrollView style={styles.scroll} contentContainerStyle={styles.cScrollContent} showsVerticalScrollIndicator={false}>
           {sections.filter((s) => s.items.length > 0).map((section, si) => (
@@ -160,12 +159,13 @@ export function ChatSidebar({ totalDmUnread, onOpenPanel, onEditProfile, compact
           ))}
         </ScrollView>
         <Pressable
-          onPress={onEditProfile}
+          onPress={() => setShopOpen(true)}
           style={({ hovered }: any) => [styles.cMe, { borderTopColor: border }, hovered && { backgroundColor: hover }]}
           accessibilityRole="button"
-          accessibilityLabel={t("sidebar.editProfile")}
+          accessibilityLabel={`${bananaBalance} bananas, open the Banana Shop`}
         >
-          {pfp ? <Image source={{ uri: pfp }} style={styles.pfp} /> : <View style={[styles.pfp, { backgroundColor: hover }]} />}
+          <Text style={styles.cBanana}>🍌</Text>
+          <Text style={[styles.cBananaCount, { color: gold }]} numberOfLines={1}>{bananaBalance}</Text>
         </Pressable>
         <BananaShopModal visible={shopOpen} onClose={() => setShopOpen(false)} />
       </View>
@@ -175,7 +175,15 @@ export function ChatSidebar({ totalDmUnread, onOpenPanel, onEditProfile, compact
   return (
     <View style={[styles.rail, { backgroundColor: bg, borderRightColor: border }]}>
       <View style={[styles.top, { borderBottomColor: border }]}>
-        <Text style={[styles.brand, { color: text }]} numberOfLines={1}>OnlyMonkes</Text>
+        <Pressable
+          onPress={onEditProfile}
+          style={({ hovered }: any) => [styles.meTop, hovered && { backgroundColor: hover }]}
+          accessibilityRole="button"
+          accessibilityLabel={t("sidebar.editProfile")}
+        >
+          {pfp ? <Image source={{ uri: pfp }} style={styles.pfp} /> : <View style={[styles.pfp, { backgroundColor: hover }]} />}
+          <Text style={[styles.meName, { color: text }]} numberOfLines={1}>{username || "Monke"}</Text>
+        </Pressable>
         <Pressable
           onPress={() => setShopOpen(true)}
           style={({ hovered }: any) => [styles.bananaPill, { borderColor: border }, hovered && { backgroundColor: hover }]}
@@ -216,20 +224,6 @@ export function ChatSidebar({ totalDmUnread, onOpenPanel, onEditProfile, compact
           </View>
         ))}
       </ScrollView>
-
-      <Pressable
-        onPress={onEditProfile}
-        style={({ hovered }: any) => [styles.me, { borderTopColor: border }, hovered && { backgroundColor: hover }]}
-        accessibilityRole="button"
-        accessibilityLabel={t("sidebar.editProfile")}
-      >
-        {pfp ? <Image source={{ uri: pfp }} style={styles.pfp} /> : <View style={[styles.pfp, { backgroundColor: hover }]} />}
-        <View style={styles.meText}>
-          <Text style={[styles.meName, { color: text }]} numberOfLines={1}>{username || "Monke"}</Text>
-          <Text style={[styles.meHint, { color: muted }]} numberOfLines={1}>{t("sidebar.editProfile")}</Text>
-        </View>
-      </Pressable>
-
       <BananaShopModal visible={shopOpen} onClose={() => setShopOpen(false)} />
     </View>
   );
@@ -238,7 +232,7 @@ export function ChatSidebar({ totalDmUnread, onOpenPanel, onEditProfile, compact
 const styles = StyleSheet.create({
   rail: { width: SIDEBAR_WIDTH, height: "100%", borderRightWidth: 1, flexDirection: "column" },
   top: { height: 52, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 14, borderBottomWidth: 1, gap: 8 },
-  brand: { fontFamily: FONTS.display, fontSize: 16, flexShrink: 1 },
+  meTop: { flexDirection: "row", alignItems: "center", gap: 8, flexShrink: 1, minWidth: 0, paddingVertical: 4, paddingHorizontal: 4, borderRadius: 8 },
   bananaPill: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
   bananaText: { fontFamily: FONTS.bodySemi, fontSize: 13, fontVariant: ["tabular-nums"] },
   scroll: { flex: 1 },
@@ -250,7 +244,6 @@ const styles = StyleSheet.create({
   itemLabelActive: { fontFamily: FONTS.bodySemi },
   badge: { minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 5, alignItems: "center", justifyContent: "center" },
   badgeText: { fontFamily: FONTS.bodySemi, fontSize: 11, color: "#fff" },
-  me: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 12, paddingVertical: 10, borderTopWidth: 1 },
   pfp: { width: 32, height: 32, borderRadius: 8 },
   // Compact rail (half-screen windows)
   railCompact: { width: SIDEBAR_COMPACT_WIDTH },
@@ -263,7 +256,5 @@ const styles = StyleSheet.create({
   cLabel: { fontFamily: FONTS.bodyMed, fontSize: 10, maxWidth: SIDEBAR_COMPACT_WIDTH - 10, textAlign: "center" },
   cBadge: { position: "absolute", top: -6, right: -10 },
   cMe: { alignItems: "center", paddingVertical: 10, borderTopWidth: 1 },
-  meText: { flex: 1, minWidth: 0 },
-  meName: { fontFamily: FONTS.bodySemi, fontSize: 14 },
-  meHint: { fontFamily: FONTS.body, fontSize: 12 },
+  meName: { fontFamily: FONTS.bodySemi, fontSize: 14, flexShrink: 1 },
 });
