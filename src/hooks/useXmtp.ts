@@ -14,6 +14,7 @@
  *   4. User hits "Retry" → now a member → chat opens.
  */
 
+import { Sentry } from "@/lib/sentry";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useCallback } from "react";
 import { showGlassAlert } from "@/lib/glassAlert";
@@ -586,6 +587,11 @@ export function useXmtp() {
     if (__DEV__) console.log("[XMTP] initialize() called");
     setLoading(true);
     setError(null);
+    // Startup timing (owner: Main Chat took ~1 min to load): each step's ms,
+    // sent to Sentry once when the whole load is slow.
+    const t0 = Date.now();
+    const marks: Record<string, number> = {};
+    const mark = (step: string) => { marks[step] = Date.now() - t0; };
 
     try {
       // Load caches in background — don't block XMTP client boot
@@ -594,9 +600,11 @@ export function useXmtp() {
 
       // ── 1. Boot XMTP client (uses prefetched if available) ─────────────────
       const client = await getOrInitXmtpClient();
+      mark("client");
 
       // Ensure caches are loaded before we start processing messages
       await cacheReady;
+      mark("caches");
       if (__DEV__) console.log("[XMTP] client inboxId:", client.inboxId);
       _client = client;
       setXmtpClient(client as unknown as null);
@@ -625,6 +633,7 @@ export function useXmtp() {
 
       // ── 2. Fetch remote config (group ID + admin inboxId) ──────────────────
       const config = await fetchAppConfig();
+      mark("config");
       setRemoteGroupId(config.globalGroupId);
       if (config.adminInboxId) _adminInboxId = config.adminInboxId;
       if (config.botChannels) {
@@ -642,6 +651,7 @@ export function useXmtp() {
         client,
         config.globalGroupId
       );
+      mark("group");
       _group = group;
 
       // ── Restore admin flag across restarts ────────────────────────────────
@@ -881,13 +891,19 @@ export function useXmtp() {
       // First sync the group to pull its latest messages from the network.
       // Then syncAllConversations triggers the epoch update for fresh installs
       // (new installation key needs the group to propagate its latest epoch).
-      await withTimeout((activeGroup as any).sync(), 15_000, "group.sync");
-      try { await withTimeout(client.conversations.syncAllConversations(["allowed", "unknown"] as any), 15_000, "syncAll"); } catch { /* ignore */ }
+      // Both finish (or time out) before the history read, as before, but at the
+      // same time instead of one after the other (each can take up to 15 s).
+      mark("beforeSync");
+      const groupSync = withTimeout((activeGroup as any).sync(), 15_000, "group.sync").then(() => mark("groupSync"));
+      const allSync = withTimeout(client.conversations.syncAllConversations(["allowed", "unknown"] as any), 15_000, "syncAll")
+        .then(() => mark("syncAll"), () => mark("syncAllFailed"));
+      await Promise.all([groupSync, allSync]);
       // Fetch only last 24 hours of messages — reduced from 48h to cut PRESENCE
       // heartbeat flood in half (~50% fewer messages to decode on startup).
       const ONE_DAY_NS = 24 * 60 * 60 * 1_000_000_000;
       const afterNs = (Date.now() * 1_000_000) - ONE_DAY_NS;
       const rawHistory: any[] = await (activeGroup as any).messages({ afterNs });
+      mark("history");
 
       // ── Reconstruct deletions from history ───────────────────────────────
       // A device that was offline/fresh-installed when a DELETE: broadcast
@@ -1206,6 +1222,10 @@ export function useXmtp() {
       // If network returned 0 visible messages, keep the cached set already
       // loaded at line 553 — don't overwrite with empty array.
       setLoadingHistory(false); // UI is ready
+      mark("ready");
+      if (marks.ready > 15_000) {
+        Sentry.captureMessage(`Main Chat slow start: ${Math.round(marks.ready / 1000)}s`, { level: "warning", extra: { ...marks, history: rawHistory.length } });
+      }
 
       // ── Reconstruct pinned messages from history ──────────────────────────
       // PIN/UNPIN system messages in history must be replayed so all users see
