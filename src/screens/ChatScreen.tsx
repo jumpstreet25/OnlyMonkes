@@ -31,12 +31,14 @@ import {
   Platform,
   Linking,
   AppState,
+  useWindowDimensions,
   type AppStateStatus,
 } from "react-native";
 import { showGlassAlert } from "@/lib/glassAlert";
 import { useTranslation } from "react-i18next";
 import type { FlashListRef } from "@shopify/flash-list";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { ChatSidebar, type SidebarPanel } from "@/components/ChatSidebar";
 import { OnboardingChecklist, markOnboardingStep } from "@/components/OnboardingChecklist";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAppStore } from "@/store/appStore";
@@ -119,6 +121,9 @@ import { ChatModals } from "@/components/ChatModals";
 import { MonkeGlass, MonkeGlassActionButton } from "@/components/MonkeGlass";
 import { GoLivePicker } from "@/components/GoLivePicker";
 import { ChatMessageList } from "@/components/ChatMessageList";
+
+/** Narrowest browser window that gets the sidebar. */
+const SIDEBAR_MIN_WINDOW = 1000;
 
 export default function ChatScreen() {
   const { t } = useTranslation();
@@ -226,6 +231,11 @@ export default function ChatScreen() {
   const [pfpPickerOpen, setPfpPickerOpen] = useState(false);
   const [pfpImagePickerOpen, setPfpImagePickerOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  // Website on a wide screen: Discord-style sidebar instead of the Banana Menu
+  // popup (ChatSidebar). Phone browsers and the app keep the popup.
+  const { width: windowWidth } = useWindowDimensions();
+  const sidebarMode = Platform.OS === "web" && windowWidth >= SIDEBAR_MIN_WINDOW;
+  const [menuPanel, setMenuPanel] = useState<SidebarPanel | undefined>(undefined);
   // 2026-07-24: measured height of the absolute-positioned bottom toolbar
   // (ChatInput + support banner combined) — varies with keyboard state,
   // reply banner, slash/mention suggestions. Fed to ChatMessageList as
@@ -1458,6 +1468,17 @@ export default function ChatScreen() {
 
   return (
     <ErrorBoundary fallbackMessage={t("chatScreen.errorBoundaryFallback")}>
+    <View style={{ flex: 1, flexDirection: "row" }}>
+    {sidebarMode && (
+      <ErrorBoundary silent>
+        <ChatSidebar
+          totalDmUnread={totalDmUnread}
+          onOpenPanel={(panel) => { setMenuPanel(panel); setDrawerOpen(true); }}
+          onEditProfile={() => { setEditingProfile(true); setShowUsernameModal(true); }}
+        />
+      </ErrorBoundary>
+    )}
+    <View style={{ flex: 1 }}>
     <SwipeToSwitchChat from="main" enabled={isGenesisHolder}>
       <KeyboardAvoidingView
         // 2026-08-06: when a Chat World is equipped the solid themeBg fill
@@ -1492,7 +1513,7 @@ export default function ChatScreen() {
             totalDmUnread={totalDmUnread}
             communityBadges={communityBadges}
             isGroupMember={isGroupMember}
-            onOpenDrawer={() => setDrawerOpen(true)}
+            onOpenDrawer={() => { if (!sidebarMode) { setMenuPanel(undefined); setDrawerOpen(true); } }}
             onDmNavigation={() => {
               useAppStore.getState().clearCommunityBadge('dms');
               router.push("/dms" as any);
@@ -1818,8 +1839,8 @@ export default function ChatScreen() {
           <View pointerEvents="none" style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: insets.bottom }} />
         )}
         <EdgePullDetector
-          onTrigger={() => setDrawerOpen(true)}
-          disabled={drawerOpen}
+          onTrigger={() => { setMenuPanel(undefined); setDrawerOpen(true); }}
+          disabled={drawerOpen || sidebarMode}
         />
         {/* MonkeMower overlay — renders ABOVE chat content during a cleanup
             cycle (which is triggered from inside BananaGroveWorld but must
@@ -1828,6 +1849,8 @@ export default function ChatScreen() {
         <BananaMowerOverlay />
       </KeyboardAvoidingView>
     </SwipeToSwitchChat>
+    </View>
+    </View>
       <MonkeGlass
         visible={shareMediaSheetOpen}
         onClose={() => setShareMediaSheetOpen(false)}
@@ -1887,6 +1910,7 @@ export default function ChatScreen() {
         broadcastProfile={broadcastProfile}
         drawerOpen={drawerOpen}
         setDrawerOpen={setDrawerOpen}
+        menuOpenView={sidebarMode ? menuPanel : undefined}
         handleStartAvatarRoom={handleStartAvatarRoom}
         handleStartVideoCall={handleStartVideoCall}
         handleConfirmDevTip={handleConfirmDevTip}

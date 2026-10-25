@@ -1051,5 +1051,16 @@
     "lookUp": "Buscar",
     "notFound": "Ese código de invitación no es válido.",
     "done": "Listo"
+  },
+  "sidebar": {
+    "chats": "Chats",
+    "mainChat": "Chat principal",
+    "genesisChat": "Chat Genesis",
+    "dms": "Mensajes directos",
+    "community": "Comunidad",
+    "trading": "Trading",
+    "create": "Crear",
+    "more": "Más",
+    "editProfile": "Editar perfil"
   }
 }

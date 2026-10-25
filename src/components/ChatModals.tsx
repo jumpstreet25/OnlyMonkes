@@ -89,6 +89,8 @@ export interface ChatModalsProps {
 
   // Drawer
   drawerOpen: boolean;
+  /** Website sidebar: the menu panel to open the drawer on. */
+  menuOpenView?: "leaderboard" | "events" | "images" | "links" | "tools";
   setDrawerOpen: (v: boolean) => void;
   handleStartAvatarRoom: () => void;
   handleStartVideoCall: () => void;
@@ -196,7 +198,7 @@ export function ChatModals(props: ChatModalsProps) {
     showScrollFab, unreadWhileScrolled, flatListRef, setShowScrollFab, setUnreadWhileScrolled,
     showUsernameModal, setShowUsernameModal, editingProfile, setEditingProfile,
     username, bio, xAccount, tipWallet, userLocation, broadcastProfile,
-    drawerOpen, setDrawerOpen, handleStartAvatarRoom, handleStartVideoCall,
+    drawerOpen, setDrawerOpen, menuOpenView, handleStartAvatarRoom, handleStartVideoCall,
     handleConfirmDevTip, setSearchOpen, setCalendarOpen, setProfileTarget, setPfpPickerOpen,
     pfpImagePickerOpen, setPfpImagePickerOpen,
     searchOpen, calendarOpen, broadcastEvent,
@@ -278,6 +280,7 @@ export function ChatModals(props: ChatModalsProps) {
 
       <MenuDrawer
         visible={drawerOpen}
+        openView={menuOpenView}
         onClose={() => setDrawerOpen(false)}
         onCreateEvent={() => setCalendarOpen(true)}
         onStartLive={handleStartAvatarRoom}

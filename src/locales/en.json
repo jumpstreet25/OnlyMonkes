@@ -1051,5 +1051,16 @@
     "lookUp": "Look up",
     "notFound": "That invite code isn't valid.",
     "done": "Done"
+  },
+  "sidebar": {
+    "chats": "Chats",
+    "mainChat": "Main Chat",
+    "genesisChat": "Genesis Chat",
+    "dms": "Direct Messages",
+    "community": "Community",
+    "trading": "Trading",
+    "create": "Create",
+    "more": "More",
+    "editProfile": "Edit profile"
   }
 }

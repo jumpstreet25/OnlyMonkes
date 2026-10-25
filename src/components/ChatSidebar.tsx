@@ -1,0 +1,197 @@
+/**
+ * ChatSidebar — website, wide screens: Discord-style channel column beside
+ * Main Chat in place of the Banana Menu popup (ChatScreen). Same destinations
+ * as the menu's tiles (MenuDrawer.tsx); the menu's own panels (leaderboard,
+ * events, images, links, tools) open straight into that panel via onOpenView.
+ */
+import React, { useEffect, useState } from "react";
+import { View, Text, StyleSheet, Pressable, ScrollView, Image } from "react-native";
+import { router } from "expo-router";
+import { useTranslation } from "react-i18next";
+import { FONTS } from "@/lib/constants";
+import { useThemeColor } from "@/lib/shopTheme";
+import { useAppStore } from "@/store/appStore";
+import { MenuIcon, type MenuIconName } from "@/components/MenuIcon";
+import { BananaShopModal } from "@/components/BananaShopModal";
+import { getMonkeMemeConfig, monkeMemeVisible, type MonkeMemeConfig } from "@/lib/monkeMeme/config";
+
+export const SIDEBAR_WIDTH = 248;
+
+/** MenuDrawer's own panels the sidebar can open directly. */
+export type SidebarPanel = "leaderboard" | "events" | "images" | "links" | "tools";
+
+interface Item {
+  key: string;
+  label: string;
+  icon: MenuIconName;
+  onPress: () => void;
+  badge?: number;
+  active?: boolean;
+}
+
+export function ChatSidebar({ totalDmUnread, onOpenPanel, onEditProfile }: {
+  totalDmUnread: number;
+  onOpenPanel: (panel: SidebarPanel) => void;
+  onEditProfile: () => void;
+}) {
+  const { t } = useTranslation();
+  const bg = useThemeColor("surface");
+  const border = useThemeColor("border");
+  const text = useThemeColor("text");
+  const muted = useThemeColor("textMuted");
+  const hover = useThemeColor("surfaceHigh");
+  const accent = useThemeColor("accent");
+  const gold = useThemeColor("gold");
+
+  const username = useAppStore((s) => s.username);
+  const pfp = useAppStore((s) => s.verifiedNft?.image ?? null);
+  const bananaBalance = useAppStore((s) => s.bananaBalance);
+  const isGenesisHolder = useAppStore((s) => s.isGenesisHolder);
+  const communityBadges = useAppStore((s) => s.communityBadges);
+  const isGroupAdmin = useAppStore((s) => s.isGroupAdmin);
+  const wallet = useAppStore((s) => s.wallet?.address ?? null);
+  const [memeCfg, setMemeCfg] = useState<MonkeMemeConfig | null>(null);
+  useEffect(() => { getMonkeMemeConfig().then(setMemeCfg).catch(() => {}); }, []);
+  const [shopOpen, setShopOpen] = useState(false);
+
+  const go = (path: string) => () => router.push(path as any);
+  const sections: { title: string; items: Item[] }[] = [
+    {
+      title: t("sidebar.chats"),
+      items: [
+        { key: "main", label: t("sidebar.mainChat"), icon: "speech", onPress: () => {}, active: true },
+        ...(isGenesisHolder ? [{ key: "genesis", label: t("sidebar.genesisChat"), icon: "gem" as MenuIconName, onPress: () => router.replace("/genesis-chat" as any) }] : []),
+        {
+          key: "dms", label: t("sidebar.dms"), icon: "messages", badge: totalDmUnread,
+          onPress: () => { useAppStore.getState().clearCommunityBadge("dms"); router.push("/dms" as any); },
+        },
+        { key: "trades", label: "MonkeTrades", icon: "target", onPress: go("/bot-channel?channelId=trades") },
+      ],
+    },
+    {
+      title: t("sidebar.community"),
+      items: [
+        { key: "leaderboard", label: t("menuDrawer.leaderboard"), icon: "leaderboard", onPress: () => onOpenPanel("leaderboard") },
+        {
+          key: "events", label: t("menuDrawer.events"), icon: "events", badge: communityBadges?.events,
+          onPress: () => { useAppStore.getState().clearCommunityBadge("events"); onOpenPanel("events"); },
+        },
+        { key: "images", label: t("menuDrawer.images"), icon: "images", onPress: () => onOpenPanel("images") },
+        {
+          key: "links", label: t("menuDrawer.links"), icon: "links", badge: communityBadges?.links,
+          onPress: () => { useAppStore.getState().clearCommunityBadge("links"); onOpenPanel("links"); },
+        },
+        { key: "globe", label: t("menuDrawer.globe"), icon: "globe", onPress: go("/globe") },
+        { key: "invite", label: t("menuDrawer.invite"), icon: "confetti", onPress: go("/invite-friends") },
+      ],
+    },
+    {
+      title: t("sidebar.trading"),
+      items: [
+        { key: "markets", label: "MonkeMarkets", icon: "monkemarkets", onPress: go("/marketplace") },
+        { key: "portfolio", label: t("menuDrawer.portfolio"), icon: "portfolio", onPress: go("/portfolio") },
+        { key: "treasury", label: "OnlyTreasury", icon: "gem", onPress: go("/treasury") },
+        { key: "watchlist", label: t("menuDrawer.watchlist"), icon: "watchlist", onPress: go("/watchlist") },
+      ],
+    },
+    {
+      title: t("sidebar.create"),
+      items: [
+        ...(monkeMemeVisible(memeCfg, isGroupAdmin, wallet) ? [{ key: "meme", label: t("menuDrawer.monkeMeme"), icon: "monkeface" as MenuIconName, onPress: go("/monkememe") }] : []),
+        { key: "3d", label: "3D Monke", icon: "monkeface", onPress: go("/monke3d") },
+      ],
+    },
+    {
+      title: t("sidebar.more"),
+      items: [
+        { key: "tools", label: t("menuDrawer.monkeTools"), icon: "monketools", onPress: () => onOpenPanel("tools") },
+        { key: "settings", label: t("menuDrawer.settings"), icon: "settings", onPress: go("/settings") },
+        { key: "memorial", label: t("menuDrawer.memorial"), icon: "star", onPress: go("/memorial") },
+      ],
+    },
+  ];
+
+  return (
+    <View style={[styles.rail, { backgroundColor: bg, borderRightColor: border }]}>
+      <View style={[styles.top, { borderBottomColor: border }]}>
+        <Text style={[styles.brand, { color: text }]} numberOfLines={1}>OnlyMonkes</Text>
+        <Pressable
+          onPress={() => setShopOpen(true)}
+          style={({ hovered }: any) => [styles.bananaPill, { borderColor: border }, hovered && { backgroundColor: hover }]}
+          accessibilityRole="button"
+          accessibilityLabel={`${bananaBalance} bananas, open the Banana Shop`}
+        >
+          <Text style={[styles.bananaText, { color: gold }]}>{bananaBalance} 🍌</Text>
+        </Pressable>
+      </View>
+
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        {sections.filter((s) => s.items.length > 0).map((section) => (
+          <View key={section.title} style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: muted }]}>{section.title}</Text>
+            {section.items.map((item) => (
+              <Pressable
+                key={item.key}
+                onPress={item.onPress}
+                accessibilityRole="button"
+                accessibilityState={{ selected: !!item.active }}
+                style={({ hovered, pressed }: any) => [
+                  styles.item,
+                  (hovered || pressed) && { backgroundColor: hover },
+                  item.active && { backgroundColor: hover },
+                ]}
+              >
+                <MenuIcon name={item.icon} size={18} color={item.active ? text : muted} />
+                <Text style={[styles.itemLabel, { color: item.active ? text : muted }, item.active && styles.itemLabelActive]} numberOfLines={1}>
+                  {item.label}
+                </Text>
+                {item.badge ? (
+                  <View style={[styles.badge, { backgroundColor: accent }]}>
+                    <Text style={styles.badgeText}>{item.badge > 99 ? "99+" : item.badge}</Text>
+                  </View>
+                ) : null}
+              </Pressable>
+            ))}
+          </View>
+        ))}
+      </ScrollView>
+
+      <Pressable
+        onPress={onEditProfile}
+        style={({ hovered }: any) => [styles.me, { borderTopColor: border }, hovered && { backgroundColor: hover }]}
+        accessibilityRole="button"
+        accessibilityLabel={t("sidebar.editProfile")}
+      >
+        {pfp ? <Image source={{ uri: pfp }} style={styles.pfp} /> : <View style={[styles.pfp, { backgroundColor: hover }]} />}
+        <View style={styles.meText}>
+          <Text style={[styles.meName, { color: text }]} numberOfLines={1}>{username || "Monke"}</Text>
+          <Text style={[styles.meHint, { color: muted }]} numberOfLines={1}>{t("sidebar.editProfile")}</Text>
+        </View>
+      </Pressable>
+
+      <BananaShopModal visible={shopOpen} onClose={() => setShopOpen(false)} />
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  rail: { width: SIDEBAR_WIDTH, height: "100%", borderRightWidth: 1, flexDirection: "column" },
+  top: { height: 52, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 14, borderBottomWidth: 1, gap: 8 },
+  brand: { fontFamily: FONTS.display, fontSize: 16, flexShrink: 1 },
+  bananaPill: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
+  bananaText: { fontFamily: FONTS.bodySemi, fontSize: 13, fontVariant: ["tabular-nums"] },
+  scroll: { flex: 1 },
+  scrollContent: { paddingVertical: 10, paddingHorizontal: 8, gap: 14 },
+  section: { gap: 2 },
+  sectionTitle: { fontFamily: FONTS.bodySemi, fontSize: 11, letterSpacing: 0.8, textTransform: "uppercase", paddingHorizontal: 8, paddingBottom: 4 },
+  item: { flexDirection: "row", alignItems: "center", gap: 10, height: 34, paddingHorizontal: 8, borderRadius: 6 },
+  itemLabel: { flex: 1, fontFamily: FONTS.bodyMed, fontSize: 14 },
+  itemLabelActive: { fontFamily: FONTS.bodySemi },
+  badge: { minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 5, alignItems: "center", justifyContent: "center" },
+  badgeText: { fontFamily: FONTS.bodySemi, fontSize: 11, color: "#fff" },
+  me: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 12, paddingVertical: 10, borderTopWidth: 1 },
+  pfp: { width: 32, height: 32, borderRadius: 8 },
+  meText: { flex: 1, minWidth: 0 },
+  meName: { fontFamily: FONTS.bodySemi, fontSize: 14 },
+  meHint: { fontFamily: FONTS.body, fontSize: 12 },
+});

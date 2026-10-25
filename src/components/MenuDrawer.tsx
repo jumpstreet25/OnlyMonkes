@@ -98,6 +98,9 @@ interface MenuDrawerProps {
   onDevTip?: (amount: number) => void;
   onEditProfile?: () => void;
   onSwitchPfp?: () => void;
+  /** Open straight into one of the menu's panels (website sidebar); Back then
+   *  closes the menu instead of showing the tile grid. */
+  openView?: "leaderboard" | "events" | "images" | "links" | "tools";
 }
 
 interface SharedLink {
@@ -106,7 +109,7 @@ interface SharedLink {
   sentAt: Date;
 }
 
-export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onStartVideo, onSearch, onPressUser, broadcastProfile, onDevTip, onEditProfile, onSwitchPfp }: MenuDrawerProps) {
+export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onStartVideo, onSearch, onPressUser, broadcastProfile, onDevTip, onEditProfile, onSwitchPfp, openView }: MenuDrawerProps) {
   const { t } = useTranslation();
   const VIEW_TITLES: Record<ActiveView, string> = {
     list:        t("menuDrawer.community"),
@@ -184,6 +187,10 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
   }, [iconAccent]);
   const [activeView, setActiveView] = useState<ActiveView>("list");
+  // Website sidebar: each open starts on the panel it asked for.
+  useEffect(() => {
+    if (visible) setActiveView(openView ?? "list");
+  }, [visible, openView]);
 
   useProfileVersion();
 
@@ -442,7 +449,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
   useEffect(() => {
     if (!visible) return;
     const sub = BackHandler.addEventListener("hardwareBackPress", () => {
-      if (activeView !== "list") { setActiveView("list"); } else { onClose(); }
+      if (activeView !== "list" && !openView) { setActiveView("list"); } else { onClose(); }
       return true;
     });
     return () => sub.remove();
@@ -493,7 +500,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
         {!isList && (
           <View style={styles.drawerHeader}>
             <Pressable
-              onPress={() => setActiveView("list")}
+              onPress={() => (openView ? onClose() : setActiveView("list"))}
               style={styles.backBtn}
               hitSlop={10}
               accessibilityLabel={t("menuDrawer.goBack")}
