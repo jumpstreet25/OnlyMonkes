@@ -311,6 +311,19 @@ export async function getOrCreateGlobalChat(
     return { group: null, isNewAdmin: false };
   }
 
+  // Step 0: already on this device? findGroup reads the local database (no
+  // network). The full sync below took ~35 s on the owner's Seeker (Sentry
+  // "Main Chat slow start", 2026-10-25) on every launch, though the group was
+  // already known; initialize() syncs the group and all conversations right
+  // after this anyway.
+  try {
+    const local = await client.conversations.findGroup(groupId as any);
+    if (local) {
+      console.log("[XMTP] Found group locally");
+      return { group: local as unknown as XmtpGroup, isNewAdmin: false };
+    }
+  } catch { /* not in the local db yet: discover it below */ }
+
   // Step 1: discover conversations (fetches welcome messages / group invites)
   // Include "unknown" consent state — groups added by bot start as "unknown"
   console.log("[XMTP] Syncing conversations to discover group invites…");
