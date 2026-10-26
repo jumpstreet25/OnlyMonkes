@@ -14,6 +14,7 @@
 import { Platform } from "react-native";
 import { useAppStore } from "@/store/appStore";
 import { referralProof } from "@/lib/referralProof";
+import { grantSpecialBadge } from "@/lib/badges";
 import { addBananas } from "@/lib/bananaRewards";
 import { parseMonkeNumber } from "@/lib/monkeMeme/monkeNumbers";
 
@@ -56,11 +57,20 @@ async function post<T>(path: string, action: string, body: Record<string, unknow
 
 export const isReferralError = (r: unknown): r is ReferralError => !!r && typeof r === "object" && "error" in r;
 
+/** Recruiter badges (1 / 5 / 25) into the profile badge system; idempotent. */
+export function grantRecruiterBadges(earned: number[]): void {
+  for (const n of earned) {
+    if (n === 1 || n === 5 || n === 25) grantSpecialBadge(`recruiter_${n}`);
+  }
+}
+
 /** Your invite (created on first call); also updates the name + PFP shown on your card. */
-export function getMyReferral(): Promise<MyReferral | ReferralError> {
+export async function getMyReferral(): Promise<MyReferral | ReferralError> {
   const s = useAppStore.getState();
   const pfp = parseMonkeNumber(s.verifiedNft?.name);
-  return post<MyReferral>("/api/referral/me", "me", { name: s.username ?? "", ...(pfp ? { pfp } : {}) });
+  const r = await post<MyReferral>("/api/referral/me", "me", { name: s.username ?? "", ...(pfp ? { pfp } : {}) });
+  if (!isReferralError(r) && Array.isArray(r.badges)) grantRecruiterBadges(r.badges);
+  return r;
 }
 
 /** Records that you joined with `code`. Bananas arrive through collectReferralBananas(). */

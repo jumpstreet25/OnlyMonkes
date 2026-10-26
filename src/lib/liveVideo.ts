@@ -259,9 +259,12 @@ export async function connectToVideoRoom(
   await AudioSession.startAudioSession();
   await _room.connect(url, token);
 
-  // Publish audio + video
-  await _room.localParticipant.setCameraEnabled(true);
-  await _room.localParticipant.setMicrophoneEnabled(true);
+  // Publish audio + video. A refused permission or busy device joins with what
+  // works (Sentry ONLYMONKES-13: an uncaught NotAllowedError failed the join).
+  try { await _room.localParticipant.setCameraEnabled(true); }
+  catch (e) { _videoMuted = true; console.warn('[VideoRoom] camera unavailable:', (e as Error)?.name); }
+  try { await _room.localParticipant.setMicrophoneEnabled(true); }
+  catch (e) { _audioMuted = true; console.warn('[VideoRoom] microphone unavailable:', (e as Error)?.name); }
 
   _notify();
 }
@@ -336,16 +339,22 @@ export function getActiveSpeaker(): VideoParticipant | null {
 
 export async function toggleAudioMute(): Promise<boolean> {
   if (!_room?.localParticipant) return _audioMuted;
-  _audioMuted = !_audioMuted;
-  await _room.localParticipant.setMicrophoneEnabled(!_audioMuted);
+  const next = !_audioMuted;
+  try {
+    await _room.localParticipant.setMicrophoneEnabled(!next);
+    _audioMuted = next;
+  } catch (e) { console.warn('[VideoRoom] microphone toggle failed:', (e as Error)?.name); }
   _notify();
   return _audioMuted;
 }
 
 export async function toggleVideoMute(): Promise<boolean> {
   if (!_room?.localParticipant) return _videoMuted;
-  _videoMuted = !_videoMuted;
-  await _room.localParticipant.setCameraEnabled(!_videoMuted);
+  const next = !_videoMuted;
+  try {
+    await _room.localParticipant.setCameraEnabled(!next);
+    _videoMuted = next;
+  } catch (e) { console.warn('[VideoRoom] camera toggle failed:', (e as Error)?.name); }
   _notify();
   return _videoMuted;
 }
@@ -357,14 +366,18 @@ export async function toggleCamera(): Promise<void> {
     .find(t => t.source === Track.Source.Camera);
   if (camTrack?.track) {
     // @ts-ignore — switchDevice available on LocalVideoTrack in RN
-    await (camTrack.track as any).restartTrack?.({ facingMode: 'environment' });
+    try { await (camTrack.track as any).restartTrack?.({ facingMode: 'environment' }); }
+    catch (e) { console.warn('[VideoRoom] camera switch failed:', (e as Error)?.name); }
   }
 }
 
 export async function toggleScreenShare(): Promise<boolean> {
   if (!_room?.localParticipant) return _screenSharing;
-  _screenSharing = !_screenSharing;
-  await _room.localParticipant.setScreenShareEnabled(_screenSharing);
+  const next = !_screenSharing;
+  try {
+    await _room.localParticipant.setScreenShareEnabled(next);
+    _screenSharing = next;
+  } catch (e) { console.warn('[VideoRoom] screen share failed:', (e as Error)?.name); }
   _notify();
   return _screenSharing;
 }

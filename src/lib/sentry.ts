@@ -30,6 +30,11 @@ export function initSentry() {
     tracesSampleRate: 0,
     environment: __DEV__ ? 'development' : 'production',
     enabled: !__DEV__, // disabled in dev builds
+    // A raw WebSocket/DOM error Event rejected inside LiveKit's own reconnect
+    // (after the screen turns off) carries no message or stack — Sentry
+    // ONLYMONKES-10, "Object captured as exception with keys: _bubbles, …".
+    // The room recovers by itself; nothing to act on.
+    ignoreErrors: [/Object captured as exception with keys: _bubbles/],
     beforeSend(event) {
       // Strip any wallet private keys or auth tokens from breadcrumbs
       if (event.breadcrumbs) {

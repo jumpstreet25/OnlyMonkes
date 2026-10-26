@@ -12,6 +12,7 @@
 import { LIVEKIT_URL_ENV, LIVEKIT_TOKEN_URL_ENV } from '@/lib/constants';
 import { Platform } from 'react-native';
 import { livekitProof } from '@/lib/livekitProof';
+import { reverifyDeviceOnce } from '@/lib/deviceReverify';
 
 export const LK_URL       = LIVEKIT_URL_ENV;
 // Website: through onlymonkes.app (site-router.ts /svc/livekit-token), not *.workers.dev.
@@ -77,8 +78,12 @@ export async function createLivekitToken(
     throw new Error(`Token server error (${res.status}): ${body}`);
   }
 
-  const { token } = await res.json();
+  const { token, verified } = await res.json();
   if (!token) throw new Error('Token server returned empty token');
+  // Issued only because of the rollout mode (ALLOW_UNVERIFIED): get this phone a
+  // Device Integrity verdict in the background so the holders-only switch can't
+  // lock it out later.
+  if (verified === false) reverifyDeviceOnce('livekit');
   return token;
 }
 
