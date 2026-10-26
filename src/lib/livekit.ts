@@ -10,7 +10,8 @@
  */
 
 import { LIVEKIT_URL_ENV, LIVEKIT_TOKEN_URL_ENV } from '@/lib/constants';
-import { livekitProof } from '@/lib/livekitProof';
+import { Platform } from 'react-native';
+import { holderProof, livekitProof } from '@/lib/livekitProof';
 import { reverifyDeviceOnce } from '@/lib/deviceReverify';
 
 export const LK_URL       = LIVEKIT_URL_ENV;
@@ -52,24 +53,32 @@ export async function createLivekitToken(
   }
 
   // Holders only: the token server checks this before minting (livekitProof.ts).
-  const proof = await livekitProof(roomName, participantIdentity);
+  const request = async (proof: unknown) => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10_000);
+    try {
+      return await fetch(LK_TOKEN_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          roomName,
+          identity: participantIdentity,
+          name: participantName,
+          canPublish,
+          proof,
+        }),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  };
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 10_000);
-
-  const res = await fetch(LK_TOKEN_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      roomName,
-      identity: participantIdentity,
-      name: participantName,
-      canPublish,
-      proof,
-    }),
-    signal: controller.signal,
-  });
-  clearTimeout(timeoutId);
+  let res = await request(await livekitProof(roomName, participantIdentity));
+  // No Device Integrity verdict for this wallet: prove holder status with one wallet signature instead.
+  if ((res.status === 401 || res.status === 403) && Platform.OS === 'android') {
+    res = await request(await holderProof());
+  }
 
   if (!res.ok) {
     const body = await res.text().catch(() => '');
