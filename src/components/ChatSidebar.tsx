@@ -33,8 +33,7 @@ interface Item {
   active?: boolean;
 }
 
-export function ChatSidebar({ totalDmUnread, onOpenPanel, onEditProfile, compact = false }: {
-  totalDmUnread: number;
+export function ChatSidebar({ onOpenPanel, onEditProfile, compact = false }: {
   onOpenPanel: (panel: SidebarPanel) => void;
   onEditProfile: () => void;
   compact?: boolean;
@@ -66,11 +65,6 @@ export function ChatSidebar({ totalDmUnread, onOpenPanel, onEditProfile, compact
       items: [
         { key: "main", label: t("sidebar.mainChat"), short: t("sidebar.mainShort"), icon: "speech", onPress: () => {}, active: true },
         ...(isGenesisHolder ? [{ key: "genesis", label: t("sidebar.genesisChat"), short: "Genesis", icon: "gem" as MenuIconName, onPress: () => router.replace("/genesis-chat" as any) }] : []),
-        {
-          key: "dms", label: t("sidebar.dms"), short: "DMs", icon: "messages", badge: totalDmUnread,
-          onPress: () => { useAppStore.getState().clearCommunityBadge("dms"); router.push("/dms" as any); },
-        },
-        { key: "trades", label: "MonkeTrades", short: "Trades", icon: "target", onPress: go("/bot-channel?channelId=trades") },
       ],
     },
     {

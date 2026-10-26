@@ -1477,7 +1477,6 @@ export default function ChatScreen() {
       <ErrorBoundary silent>
         <ChatSidebar
           compact={sidebarCompact}
-          totalDmUnread={totalDmUnread}
           onOpenPanel={(panel) => { setMenuPanel(panel); setDrawerOpen(true); }}
           onEditProfile={() => { setEditingProfile(true); setShowUsernameModal(true); }}
         />
