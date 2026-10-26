@@ -903,12 +903,16 @@ export function useXmtp() {
       mark("beforeSync");
       // A failed or slow sync shows the messages already on the device instead
       // of failing the whole start (the stream and later resyncs catch up).
-      const groupSync = withTimeout((activeGroup as any).sync(), 15_000, "group.sync")
-        .then(() => mark("groupSync"), (e) => { mark("groupSyncFailed"); console.warn("[XMTP] group.sync failed:", (e as Error)?.message); });
+      // Sentry timings (2026-10-26): with a backlog the group sync ran past its
+      // 15 s limit on every start, so Main Chat waited 15 s for nothing. Now it
+      // waits at most 3 s, shows the device's messages, and the sync keeps going
+      // in the background; whatever it brings is merged in when it lands.
+      const rawGroupSync: Promise<unknown> = (activeGroup as any).sync();
+      const groupSync = rawGroupSync.then(() => mark("groupSync"), (e) => { mark("groupSyncFailed"); console.warn("[XMTP] group.sync failed:", (e as Error)?.message); });
       const allSync = withTimeout(client.conversations.syncAllConversations(["allowed", "unknown"] as any), 15_000, "syncAll")
         .then(() => mark("syncAll"), () => mark("syncAllFailed"));
-      await groupSync;
-      await Promise.race([allSync, new Promise((r) => setTimeout(r, 2_000))]);
+      await Promise.race([groupSync, new Promise((r) => setTimeout(r, 3_000))]);
+      const syncedBeforeHistory = marks.groupSync !== undefined;
       // Fetch only last 24 hours of messages — reduced from 48h to cut PRESENCE
       // heartbeat flood in half (~50% fewer messages to decode on startup).
       const ONE_DAY_NS = 24 * 60 * 60 * 1_000_000_000;
@@ -1235,6 +1239,26 @@ export function useXmtp() {
       setLoadingHistory(false); // UI is ready
       mark("ready");
       if (afterReady) void (afterReady as () => Promise<void>)().catch(() => {});
+      // The group sync was still running when the history was read: merge what it
+      // brings once it lands (same rules as syncMessages: own messages only
+      // upgrade their optimistic bubble).
+      if (!syncedBeforeHistory) {
+        void groupSync.then(async () => {
+          if (marks.groupSync === undefined) return; // the sync failed; the stream and resyncs catch up
+          try {
+            const late: any[] = await (activeGroup as any).messages({ afterNs });
+            const { _msgIdSet } = useChatStore.getState();
+            const lateMsgs = filterDeleted(resolveReplyTargets(
+              late.map((m) => decodeMessage(m, _myInboxId)).filter((m): m is ChatMessage => !!m && !_msgIdSet.has(m.id)),
+            )).reverse();
+            for (const m of lateMsgs) {
+              if (m.senderAddress === _myInboxId) upgradeOwnMessage(enrichWithNft(m));
+              else mergeMessage(enrichWithNft(m));
+            }
+            mark("lateMerge");
+          } catch { /* the stream and resyncs catch up */ }
+        });
+      }
       if (marks.ready > 15_000) {
         Sentry.captureMessage(`Main Chat slow start: ${Math.round(marks.ready / 1000)}s`, { level: "warning", extra: { ...marks, history: rawHistory.length } });
       }
