@@ -50,7 +50,6 @@ export function ChatSidebar({ onOpenPanel, onEditProfile, compact = false }: {
   const username = useAppStore((s) => s.username);
   const pfp = useAppStore((s) => s.verifiedNft?.image ?? null);
   const bananaBalance = useAppStore((s) => s.bananaBalance);
-  const isGenesisHolder = useAppStore((s) => s.isGenesisHolder);
   const communityBadges = useAppStore((s) => s.communityBadges);
   const isGroupAdmin = useAppStore((s) => s.isGroupAdmin);
   const wallet = useAppStore((s) => s.wallet?.address ?? null);
@@ -60,13 +59,6 @@ export function ChatSidebar({ onOpenPanel, onEditProfile, compact = false }: {
 
   const go = (path: string) => () => router.push(path as any);
   const sections: { title: string; items: Item[] }[] = [
-    {
-      title: t("sidebar.chats"),
-      items: [
-        { key: "main", label: t("sidebar.mainChat"), short: t("sidebar.mainShort"), icon: "speech", onPress: () => {}, active: true },
-        ...(isGenesisHolder ? [{ key: "genesis", label: t("sidebar.genesisChat"), short: "Genesis", icon: "gem" as MenuIconName, onPress: () => router.replace("/genesis-chat" as any) }] : []),
-      ],
-    },
     {
       title: t("sidebar.community"),
       items: [
