@@ -9,3 +9,9 @@ export async function livekitProof(_roomName: string, _identity: string): Promis
     return undefined;
   }
 }
+
+/** The phone's fallback when its device proof is refused; on web the sign-in token already is the holder proof. */
+export async function holderProof(): Promise<{ kind: "holder"; token: string }> {
+  const { value } = await getXmtpCredential();
+  return { kind: "holder", token: value.replace(/^Bearer /, "") };
+}
