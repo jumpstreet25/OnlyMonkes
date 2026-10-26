@@ -58,6 +58,8 @@ initSentry();
 
 SplashScreen.preventAutoHideAsync();
 
+const WEB_DM_LAYER = Platform.OS === 'web' ? { presentation: 'transparentModal' as const } : {};
+
 const queryClient = new QueryClient();
 
 export default function RootLayout() {
@@ -267,7 +269,15 @@ export default function RootLayout() {
               // and made going back to Main Chat feel slow (owner 2026-10-26).
               animation: Platform.OS === 'web' ? 'none' : 'slide_from_right',
             }}
-          />
+          >
+            {/* Web: DM screens open as a layer over Main Chat instead of hiding it
+                (display: none). Re-showing a hidden Main Chat made the browser lay out
+                and paint the whole chat again, so DMs → Main Chat was slow. All three
+                paint their own full background (or world). */}
+            {['dms', 'dm/[inboxId]', 'group-dm/[groupId]'].map((name) => (
+              <Stack.Screen key={name} name={name} options={WEB_DM_LAYER} />
+            ))}
+          </Stack>
           <Toaster
             position="top-center"
             toastOptions={{
