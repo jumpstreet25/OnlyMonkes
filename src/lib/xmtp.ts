@@ -1921,7 +1921,9 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promis
 const DM_LIST_CONCURRENCY = 6;
 
 export async function listDmThreads(client: XmtpClient): Promise<DmThread[]> {
-  await client.conversations.sync();
+  // At most 3 s: the XMTP client runs one sync at a time and Main Chat's start
+  // sync can hold the line; the list then shows what's on the device (pull to refresh).
+  await Promise.race([client.conversations.sync().catch(() => {}), new Promise((r) => setTimeout(r, 3_000))]);
   // listDms() returns only Dm objects; peerInboxId is an async method in SDK v5
   const allDms: any[] = await (client.conversations as any).listDms();
   const results = await mapLimit(allDms, DM_LIST_CONCURRENCY, (convo) => readDmThread(client, convo));
@@ -1944,7 +1946,7 @@ async function readDmThread(client: XmtpClient, convo: any): Promise<DmThread | 
     if (!peerInboxId) return null;
 
     try {
-      await (convo as any).sync();
+      await Promise.race([(convo as any).sync().catch(() => {}), new Promise((r) => setTimeout(r, 2_000))]);
       // Fetch up to 20 recent messages for unread counting
       const msgs: any[] = await (convo as any).messages({ limit: 20 });
       const last = msgs[0];
@@ -2129,9 +2131,11 @@ export async function openGroupDm(client: XmtpClient, groupId: string): Promise<
   throw new Error('Group DM not found');
 }
 
-export async function loadDmMessages(dm: any, myInboxId: string, opts?: { reconcile?: boolean }): Promise<ChatMessage[]> {
-  await dm.sync();
-  await dm.sync(); // second pass ensures bot replies committed before fetching
+export async function loadDmMessages(dm: any, myInboxId: string, opts?: { reconcile?: boolean; sync?: boolean }): Promise<ChatMessage[]> {
+  if (opts?.sync !== false) {
+    await dm.sync();
+    await dm.sync(); // second pass ensures bot replies committed before fetching
+  }
   const raw: any[] = await dm.messages({ limit: 200 });
   // Catch-up pass for TRADE_CLOSED/PORTFOLIO_RESPONSE/etc. — see
   // reconcileStructuredHistory's doc comment. Mount + foreground refresh only:

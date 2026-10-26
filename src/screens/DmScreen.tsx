@@ -42,7 +42,7 @@ export default function DmScreen({ peerInboxId }: { peerInboxId: string }) {
   const worldId = shopStyles?.worldId as string | undefined;
   const hasThemeOverride = !!themeOverrides;
   const [retryKey, setRetryKey] = useState(0);
-  const { messages, loading, error, sending, send, react, sendTyping, typingUsers } = useDm(peerInboxId);
+  const { messages, loading, error, sending, send, react, sendTyping, typingUsers } = useDm(peerInboxId, retryKey);
   const [inputText, setInputText] = useState('');
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
