@@ -115,13 +115,15 @@ export const useChatStore = create<ChatState & ChatActions>((set) => ({
     set((state) => {
       // Already in store with this real ID → skip (O(1))
       if (state._msgIdSet.has(message.id)) return state;
-      // Find the matching opt-* bubble (within 10s time window)
+      // Find the matching opt-* bubble. 60 s: the network timestamp can land
+      // seconds after the optimistic one when sending is slow (web: commit +
+      // sync), and a missed match left both bubbles on screen.
       const optIdx = state.messages.findIndex(
         (m) =>
           m.id.startsWith('opt-') &&
           m.senderAddress === message.senderAddress &&
           m.content === message.content &&
-          Math.abs(m.sentAt.getTime() - message.sentAt.getTime()) < 3_000
+          Math.abs(m.sentAt.getTime() - message.sentAt.getTime()) < 60_000
       );
       // No opt-* match → do NOT append own messages (they are only added via handleSend)
       if (optIdx === -1) return state;

@@ -63,7 +63,12 @@ export function loadWebHistory(): Promise<void> {
     const { messages, _msgIdSet, setMessages } = useChatStore.getState();
     const fresh = decoded.filter((d) => !_msgIdSet.has(d.id));
     if (fresh.length) {
-      const merged = [...messages, ...fresh].sort((a, b) => b.sentAt.getTime() - a.sentAt.getTime()).slice(0, 300);
+      // An own message sent before this loaded is still an opt-* bubble: drop it
+      // when its real copy is in the batch (same rule as the startup merge).
+      const kept = messages.filter((m) => !(m.id.startsWith("opt-") && fresh.some((f) =>
+        f.senderAddress === m.senderAddress && f.content === m.content &&
+        Math.abs(f.sentAt.getTime() - m.sentAt.getTime()) < 60_000)));
+      const merged = [...kept, ...fresh].sort((a, b) => b.sentAt.getTime() - a.sentAt.getTime()).slice(0, 300);
       setMessages(merged);
     }
     _loaded = true;

@@ -1782,8 +1782,14 @@ export function useXmtp() {
         trackUser(msg.senderAddress, msg.senderUsername);
         trackActivity(msg.senderAddress, 'sent');
 
-        // Skip own messages — already shown as optimistic bubbles
-        if (msg.senderAddress === _myInboxId) return;
+        // Own messages: swap the optimistic bubble for the real one right away
+        // (never appends — upgradeOwnMessage only replaces a matching opt-*).
+        // Skipping them left the opt-* until a resync matched it within the
+        // window; a slow send missed it and a later history load showed both.
+        if (msg.senderAddress === _myInboxId) {
+          upgradeOwnMessage(enrichWithNft(msg));
+          return;
+        }
 
         const enrichedMsg = enrichWithNft(msg);
         mergeMessage(enrichedMsg);

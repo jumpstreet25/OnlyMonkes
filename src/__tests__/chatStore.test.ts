@@ -76,6 +76,14 @@ describe('chatStore', () => {
     expect(useChatStore.getState().messages[0].id).toBe('real-abc');
   });
 
+  it('upgradeOwnMessage matches a slow send (real copy seconds after the optimistic one)', () => {
+    const opt = { ...makeMsg('opt-slow', 'gm monkes', 'me'), sentAt: new Date(1_000_000) };
+    useChatStore.getState().addMessage(opt);
+    const real = { ...makeMsg('real-slow', 'gm monkes', 'me'), sentAt: new Date(1_000_000 + 12_000) };
+    useChatStore.getState().upgradeOwnMessage(real);
+    expect(useChatStore.getState().messages.map((m) => m.id)).toEqual(['real-slow']);
+  });
+
   it('updateMessageStatus changes status', () => {
     useChatStore.getState().addMessage(makeMsg('s1'));
     useChatStore.getState().updateMessageStatus('s1', 'failed');

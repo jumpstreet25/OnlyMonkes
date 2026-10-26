@@ -58,7 +58,13 @@ initSentry();
 
 SplashScreen.preventAutoHideAsync();
 
-const WEB_DM_LAYER = Platform.OS === 'web' ? { presentation: 'transparentModal' as const } : {};
+// Web: every screen opened from a chat is a layer over it instead of hiding it
+// (display: none). Re-showing a hidden Main Chat made the browser lay out and
+// paint the whole chat again, so DMs / OnlyTreasury / … → Main Chat was slow.
+// The layer gets a solid background so the chat underneath never shows through.
+const WEB_BASE_SCREENS = new Set(['index', 'verify', 'pair', 'chat', 'genesis-chat']);
+const webLayered = (name: string) => Platform.OS === 'web' && !WEB_BASE_SCREENS.has(name);
+const WEB_LAYER = { presentation: 'transparentModal' as const, contentStyle: { backgroundColor: THEME.bg } };
 
 const queryClient = new QueryClient();
 
@@ -262,22 +268,15 @@ export default function RootLayout() {
               rebuild in between. */}
           <StatusBar style="light" hidden={IS_IMMERSIVE_SHELL} />
           <Stack
-            screenOptions={{
+            screenOptions={({ route }) => ({
               headerShown: false,
               contentStyle: { backgroundColor: 'transparent' },
               // Web: screens switch instantly; the slide is JS-driven in a browser
               // and made going back to Main Chat feel slow (owner 2026-10-26).
               animation: Platform.OS === 'web' ? 'none' : 'slide_from_right',
-            }}
-          >
-            {/* Web: DM screens open as a layer over Main Chat instead of hiding it
-                (display: none). Re-showing a hidden Main Chat made the browser lay out
-                and paint the whole chat again, so DMs → Main Chat was slow. All three
-                paint their own full background (or world). */}
-            {['dms', 'dm/[inboxId]', 'group-dm/[groupId]'].map((name) => (
-              <Stack.Screen key={name} name={name} options={WEB_DM_LAYER} />
-            ))}
-          </Stack>
+              ...(webLayered(route.name) ? WEB_LAYER : null),
+            })}
+          />
           <Toaster
             position="top-center"
             toastOptions={{
