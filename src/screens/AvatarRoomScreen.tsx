@@ -33,7 +33,9 @@ import { useLocalSearchParams } from 'expo-router';
 import { router } from 'expo-router';
 import { ConnectionState } from 'livekit-client';
 import { toast } from 'sonner-native';
-import { THEME, FONTS } from '@/lib/constants';
+import { BOT_INBOX_IDS, THEME, FONTS } from '@/lib/constants';
+import { getXmtpClient } from '@/hooks/useXmtp';
+import { callMonkeIntoRoom } from '@/lib/xmtp';
 import { IS_IMMERSIVE_SHELL } from '@/lib/immersiveStatusBar';
 import { LK_URL } from '@/lib/livekit';
 import { getCachedProfile } from '@/lib/userProfile';
@@ -67,6 +69,9 @@ import { type FaceParams, type BlendshapeParams } from '@/lib/faceTracking';
 
 import { VideoStickerTray } from '@/components/VideoStickerTray';
 import { VideoReactionOverlay } from '@/components/VideoReactionOverlay';
+
+// The bot is AI Agent #9385, so on the 3D stage it's MONKE #9385.
+const MONKE_BOT_NUMBER = 9385;
 
 /** A blocked / missing mic joins muted; say why and how to fix it. */
 function showMicProblem(onJoin: boolean): void {
@@ -288,6 +293,24 @@ export default function AvatarRoomScreen() {
     captureError(new Error(`Avatar Room 3D stage failed: ${reason}`), { area: 'avatarRoom3d', reason });
   }, [t]);
 
+  // Monke (the bot) joins by voice: Monke_Eliza agents/monke-voice. Anyone in the room can call him.
+  const [callingMonke, setCallingMonke] = useState(false);
+  const monkeHere = state.participants.some(p => BOT_INBOX_IDS.includes(p.identity));
+  const handleCallMonke = useCallback(async () => {
+    const roomName = activeRoom?.id;
+    const client = getXmtpClient();
+    if (!roomName || !client || callingMonke) return;
+    setCallingMonke(true);
+    try {
+      await callMonkeIntoRoom(client, roomName);
+      toast(t('avatarRoom.monkeCalling'));
+    } catch {
+      toast(t('avatarRoom.monkeCallFailed'));
+    } finally {
+      setTimeout(() => setCallingMonke(false), 20_000);
+    }
+  }, [activeRoom?.id, callingMonke, t]);
+
   const handleStopPhone = useCallback(() => {
     phoneLink.current?.stop();
     phoneLink.current = null;
@@ -307,7 +330,7 @@ export default function AvatarRoomScreen() {
     ?? monkeNumberFromImage(myInboxId ? getCachedProfile(myInboxId)?.nftImage : null);
   const localPfp = ownNfts.find(n => n.image)?.image ?? (myInboxId ? getCachedProfile(myInboxId)?.nftImage ?? null : null);
   const members = useMemo(
-    () => stageMembers(participants, (id, isLocal) => (isLocal ? myMonke : monkeNumberFromImage(getCachedProfile(id)?.nftImage))),
+    () => stageMembers(participants, (id, isLocal) => (isLocal ? myMonke : BOT_INBOX_IDS.includes(id) ? MONKE_BOT_NUMBER : monkeNumberFromImage(getCachedProfile(id)?.nftImage))),
     [participants, myMonke],
   );
   const gridH = SCREEN_H - insets.top - insets.bottom - 60 - 56; // header + controls
@@ -434,6 +457,18 @@ export default function AvatarRoomScreen() {
         >
           <Text style={styles.controlLabel}>{show3d ? '3D' : '2D'}</Text>
         </Pressable>
+        {/* Call Monke (the bot) in by voice */}
+        {!monkeHere && (
+          <Pressable
+            onPress={handleCallMonke}
+            disabled={callingMonke}
+            style={[styles.controlBtn, callingMonke && styles.controlBtnActive]}
+            accessibilityRole="button"
+            accessibilityLabel={t('avatarRoom.monkeCall')}
+          >
+            <Text style={styles.controlIcon}>🤖</Text>
+          </Pressable>
+        )}
         {/* Reactions */}
         <Pressable
           onPress={() => setStickerTrayOpen(o => !o)}

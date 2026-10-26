@@ -695,7 +695,10 @@
     "phoneStop": "Stop using the phone",
     "phoneClose": "Close",
     "phoneFailed": "Couldn't make the phone link. Try again.",
-    "stage3dFailed": "3D couldn't load, so the room switched to 2D."
+    "stage3dFailed": "3D couldn't load, so the room switched to 2D.",
+    "monkeCall": "Call Monke in",
+    "monkeCalling": "Calling Monke… he'll pop in and say hi.",
+    "monkeCallFailed": "Couldn't reach Monke. Try again."
   },
   "useXmtp": {
     "joinRetrying": "Couldn't reach the bot to join — retrying automatically.",

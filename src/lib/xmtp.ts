@@ -28,7 +28,7 @@ import { rememberLocalInboxId, loadLocalInboxIds } from "@/lib/localInboxes";
 
 const NATIVE_CODECS = [new ReactionCodec(), new ReactionV2Codec(), new ReplyCodec(), new RemoteAttachmentCodec()];
 import type { ChatMessage, MessageReaction, ReactionEmoji, StickerReaction } from "@/types";
-import { REACTIONS } from "./constants";
+import { BOT_INBOX_IDS, REACTIONS } from "./constants";
 import * as SecureStore from "expo-secure-store";
 import type { JoinRequest } from "@/store/appStore";
 import { getLastReadTimestamp } from "@/lib/messageCache";
@@ -394,6 +394,18 @@ export async function addMemberToGroup(
   await (group as any).addMembers([inboxId]);
 }
 
+// ─── Call Monke into an Avatar Room ───────────────────────────────────────────
+
+/**
+ * Asks the bot to join this Avatar Room by voice (Monke_Eliza agents/monke-voice).
+ * The bot binds the request to this DM's sender and leaves again unless that
+ * inbox is in the room. Format: MONKE_VOICE:<roomName>
+ */
+export async function callMonkeIntoRoom(client: XmtpClient, roomName: string): Promise<void> {
+  const botDm = await client.conversations.findOrCreateDm(BOT_INBOX_IDS[0] as any);
+  await (botDm as any).send(`MONKE_VOICE:${roomName}`);
+}
+
 // ─── Join Request DMs ─────────────────────────────────────────────────────────
 
 const JOIN_REQUEST_PREFIX = "JOIN_REQUEST:";
@@ -580,7 +592,7 @@ function decodeStringMessage(raw: any, rawContent: string, myInboxId: string): C
     "BANANA_GRANT:", "BANANA_BET_OPEN:", "BANANA_BET_SETTLED:", "HEALTH:", "DELETE:",
     "IMAGE_CAPTION_REQUEST:", "IMAGE_CAPTION_RESPONSE:", "POLL_OPEN:", "POLL_RESULT:",
     "STREAK_CAPTION_REQUEST:", "STREAK_CAPTION_RESPONSE:", "JOIN_REQUEST:",
-    "BADGE_GRANT:", "COPY_TRADE_STATUS:", "GENESIS_JOIN_REQUEST:", "TRANSLATION:",
+    "BADGE_GRANT:", "COPY_TRADE_STATUS:", "GENESIS_JOIN_REQUEST:", "TRANSLATION:", "MONKE_VOICE:",
   ];
   for (const p of STRUCTURED_PREFIXES) {
     // LOCATION_SYNC_REQUEST is a bare token (optionally with trailing :payload)

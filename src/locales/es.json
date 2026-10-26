@@ -695,7 +695,10 @@
     "phoneStop": "Dejar de usar el teléfono",
     "phoneClose": "Cerrar",
     "phoneFailed": "No se pudo crear el enlace del teléfono. Inténtalo de nuevo.",
-    "stage3dFailed": "No se pudo cargar el 3D, así que la sala cambió a 2D."
+    "stage3dFailed": "No se pudo cargar el 3D, así que la sala cambió a 2D.",
+    "monkeCall": "Llamar a Monke",
+    "monkeCalling": "Llamando a Monke… entrará y saludará.",
+    "monkeCallFailed": "No se pudo contactar a Monke. Inténtalo de nuevo."
   },
   "useXmtp": {
     "joinRetrying": "No se pudo contactar al bot para unirte — reintentando automáticamente.",
