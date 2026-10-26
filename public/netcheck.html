@@ -76,7 +76,8 @@ function probe(url) {
 function probeWs() {
   return new Promise((resolve) => {
     const t0 = performance.now();
-    const room = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"[b % 64]).join("").slice(0, 22);
+    // The relay takes exactly 22 characters [A-Za-z0-9_-] as a room id.
+    const room = Array.from(crypto.getRandomValues(new Uint8Array(22)), (b) => "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"[b % 64]).join("");
     let done = false;
     const finish = (ok, why) => { if (done) return; done = true; try { ws.close(); } catch {} resolve({ ok, ms: performance.now() - t0, why }); };
     const ws = new WebSocket(`wss://${location.host}/api/cam/${room}?role=viewer`);
