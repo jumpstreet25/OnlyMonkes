@@ -8,6 +8,36 @@
 interface Env {
   ASSETS: { fetch: (req: Request) => Promise<Response> };
   ACTIONS: { fetch: (req: Request) => Promise<Response> };
+  LEDGER: { fetch: (req: Request) => Promise<Response> };
+  LIVEKIT_TOKEN: { fetch: (req: Request) => Promise<Response> };
+}
+
+// /svc/* — services the web app would otherwise call on other hosts, answered
+// here so the site only needs onlymonkes.app (company filters often block
+// *.workers.dev and raw.githubusercontent.com). Workers on our account are
+// reached over service bindings (a fetch to another *.workers.dev of the same
+// account is refused); GitHub files are fetched and briefly cached.
+const CONFIG_FILES = new Set(["app-config.json", "bot-commands.json", "saga-monkes-index.json", "monkememe.json"]);
+
+async function serviceRoute(path: string, request: Request, env: Env): Promise<Response | null> {
+  const url = new URL(request.url);
+  if (path.startsWith("/svc/ledger/")) {
+    const target = `https://monkeledger.jumpstreet25.workers.dev${path.slice("/svc/ledger".length)}${url.search}`;
+    return env.LEDGER.fetch(new Request(target, request));
+  }
+  if (path === "/svc/livekit-token") {
+    return env.LIVEKIT_TOKEN.fetch(new Request("https://onlymonkes-livekit-token.jumpstreet25.workers.dev/", request));
+  }
+  if (path.startsWith("/svc/config/")) {
+    const file = path.slice("/svc/config/".length);
+    if (!CONFIG_FILES.has(file) || request.method !== "GET") return new Response("Not found", { status: 404 });
+    const res = await fetch(`https://raw.githubusercontent.com/jumpstreet25/OnlyMonkes/master/config/${file}`, {
+      cf: { cacheTtl: 60, cacheEverything: true },
+    } as RequestInit);
+    const out = new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-cache" } });
+    return out;
+  }
+  return null;
 }
 
 function isSitePath(path: string): boolean {
@@ -49,6 +79,10 @@ function withSecurityHeaders(res: Response, path: string): Response {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const path = new URL(request.url).pathname;
+    if (path.startsWith("/svc/")) {
+      const res = await serviceRoute(path, request, env);
+      if (res) return res;
+    }
     if (isSitePath(path)) return env.ACTIONS.fetch(request);
     return withSecurityHeaders(await env.ASSETS.fetch(request), path);
   },

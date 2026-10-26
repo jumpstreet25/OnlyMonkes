@@ -20,11 +20,12 @@
  */
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { configFileUrl } from "@/lib/configUrl";
 
 const REPO = "jumpstreet25/OnlyMonkes";
 const BRANCH = "master";
 const FILE = "config/saga-monkes-index.json";
-const RAW = `https://raw.githubusercontent.com/${REPO}/${BRANCH}/${FILE}`;
+const RAW = configFileUrl(FILE); // raw GitHub; same-origin on the website
 
 const AK_INDEX_CACHE = "saga_monkes_index_cache_v1";
 const AK_INDEX_CACHE_TS = "saga_monkes_index_cache_ts_v1";

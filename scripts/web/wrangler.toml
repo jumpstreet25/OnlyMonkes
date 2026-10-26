@@ -16,7 +16,12 @@ routes = [
   { pattern = "app.onlymonkes.app", custom_domain = true },
 ]
 
-services = [{ binding = "ACTIONS", service = "onlymonkes-actions" }]
+services = [
+  { binding = "ACTIONS", service = "onlymonkes-actions" },
+  # /svc/ledger/* and /svc/livekit-token (site-router.ts serviceRoute)
+  { binding = "LEDGER", service = "monkeledger" },
+  { binding = "LIVEKIT_TOKEN", service = "onlymonkes-livekit-token" },
+]
 
 [assets]
 directory = "../../dist-web"

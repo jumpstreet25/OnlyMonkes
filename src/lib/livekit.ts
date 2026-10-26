@@ -10,10 +10,12 @@
  */
 
 import { LIVEKIT_URL_ENV, LIVEKIT_TOKEN_URL_ENV } from '@/lib/constants';
+import { Platform } from 'react-native';
 import { livekitProof } from '@/lib/livekitProof';
 
 export const LK_URL       = LIVEKIT_URL_ENV;
-const LK_TOKEN_URL        = LIVEKIT_TOKEN_URL_ENV || 'https://onlymonkes-livekit-token.jumpstreet25.workers.dev';
+// Website: through onlymonkes.app (site-router.ts /svc/livekit-token), not *.workers.dev.
+const LK_TOKEN_URL        = LIVEKIT_TOKEN_URL_ENV || (Platform.OS === 'web' ? '/svc/livekit-token' : 'https://onlymonkes-livekit-token.jumpstreet25.workers.dev');
 
 let _globalsRegistered = false;
 

@@ -13,8 +13,9 @@
 
 import { sha256 } from "@noble/hashes/sha2";
 import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils";
+import { configFileUrl } from "@/lib/configUrl";
 
-const RAW = "https://raw.githubusercontent.com/jumpstreet25/OnlyMonkes/master/config/monkememe.json";
+const RAW = configFileUrl("config/monkememe.json"); // raw GitHub; same-origin on the website
 
 export interface MonkeMemeConfig {
   enabled: boolean;

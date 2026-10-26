@@ -10,6 +10,7 @@
  */
 import { useEffect, useState } from "react";
 import bundled from "../../config/bot-commands.json";
+import { configFileUrl } from "@/lib/configUrl";
 
 export type CommandScope = "chat" | "dm";
 
@@ -23,7 +24,7 @@ export interface BotCommand {
   desc: { en: string; es?: string };
 }
 
-const RAW = "https://raw.githubusercontent.com/jumpstreet25/OnlyMonkes/master/config/bot-commands.json";
+const RAW = configFileUrl("config/bot-commands.json"); // raw GitHub; same-origin on the website
 const TTL_MS = 30 * 60 * 1000;
 
 function isCommand(x: unknown): x is BotCommand {

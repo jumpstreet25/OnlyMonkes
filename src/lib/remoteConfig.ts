@@ -27,10 +27,12 @@ export interface AppRemoteConfig {
   genesisGroupId?: string;
 }
 
+import { configFileUrl } from "@/lib/configUrl";
+
 const REPO   = 'jumpstreet25/OnlyMonkes';
 const BRANCH = 'master';
 const FILE   = 'config/app-config.json';
-const RAW    = `https://raw.githubusercontent.com/${REPO}/${BRANCH}/${FILE}`;
+const RAW    = configFileUrl(FILE); // raw GitHub; same-origin on the website
 
 const EMPTY: AppRemoteConfig = { globalGroupId: '', adminInboxId: '' };
 

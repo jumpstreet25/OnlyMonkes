@@ -163,7 +163,9 @@ export const SOLANA_RPC_URL = IS_WEB ? WEB_RPC_PROXY_URL : 'https://api.mainnet-
 // exact URL this project already hands out for others to use. Fixes the underlying issue
 // properly (real HTTPS) rather than papering over it with a native manifest change, and ships
 // via OTA with no native rebuild needed.
-export const MONKE_LEDGER_URL = 'https://monkeledger.jumpstreet25.workers.dev';
+// Website: through onlymonkes.app (scripts/web/site-router.ts /svc/ledger) — company
+// filters often block *.workers.dev.
+export const MONKE_LEDGER_URL = Platform.OS === 'web' ? '/svc/ledger' : 'https://monkeledger.jumpstreet25.workers.dev';
 
 // XMTP v5 global group chat ID — set this after the first user creates the group.
 // Leave empty on first run; the app will create a new group and log its ID.
