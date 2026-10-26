@@ -10,8 +10,8 @@ compatibility_date = "2024-01-01"
 services = [{ binding = "ACTIONS", service = "onlymonkes-actions" }]
 
 [vars]
-# "1" while phones pick up the OTA that sends a proof; then "0" (holders only).
-ALLOW_UNVERIFIED = "1"
+# Holders only since 2026-10-26 ("0"). "1" lets proof-less clients in (rollout mode).
+ALLOW_UNVERIFIED = "0"
 
 # Keep logs so the rollout counts ([token] verified / unverified / rejected) can be read.
 [observability]
