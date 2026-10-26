@@ -200,7 +200,11 @@ export function useGroupChat(groupId: string, groupName: string) {
       if (__DEV__) console.log(`[useGroupChat] ${groupName}: found group ${(group as any)?.id}, requested ${groupId}`);
 
       setIsLoadingHistory(true);
-      await (group as any).sync();
+      // 2026-10-26: wait at most 3 s for the sync (the XMTP client runs one at a
+      // time; Main Chat's start sync can hold the line), then read what's on the
+      // device. When the sync lands, its messages are merged below.
+      const syncDone = (group as any).sync().then(() => true, () => false);
+      const syncedFirst = await Promise.race([syncDone, new Promise<false>((r) => setTimeout(() => r(false), 3_000))]);
       const rawHistory: any[] = await (group as any).messages({ limit: 500 });
       await reconcileStructuredHistory(rawHistory, client.inboxId);
       if (__DEV__) console.log(`[useGroupChat] ${groupName}: ${rawHistory.length} raw, decoding…`);
@@ -243,6 +247,25 @@ export function useGroupChat(groupId: string, groupName: string) {
       if (__DEV__) console.log(`[useGroupChat] ${groupName}: setting ${merged.length} messages, sample id=${merged[0]?.id}`);
       setMessages(merged);
       setIsLoadingHistory(false);
+
+      if (!syncedFirst) {
+        void syncDone.then(async (ok: boolean) => {
+          if (!ok) return;
+          try {
+            const late: any[] = await (group as any).messages({ limit: 50 });
+            const lateMsgs = resolveReplyTargets(late.map((m) => decodeMessage(m, client.inboxId)).filter(Boolean) as ChatMessage[]);
+            setMessages((prev) => {
+              const ids = new Set(prev.map((m) => m.id));
+              const additions = lateMsgs.filter((m) => !ids.has(m.id));
+              if (additions.length === 0) return prev;
+              const updated = [...prev, ...additions].sort((a, b) => a.sentAt.getTime() - b.sentAt.getTime());
+              const e = _warmCache.get(groupId);
+              if (e) e.messages = updated;
+              return updated;
+            });
+          } catch { /* the stream and the foreground resync catch up */ }
+        });
+      }
 
       // 3. Persist merged messages
       await saveCachedMessages(cacheKey, merged);

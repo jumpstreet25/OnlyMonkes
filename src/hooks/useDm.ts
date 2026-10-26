@@ -63,7 +63,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
   ]);
 }
 
-export function useDm(peerInboxId: string) {
+export function useDm(peerInboxId: string, retryKey = 0) {
   const [messages, setMessages]   = useState<ChatMessage[]>([]);
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState<string | null>(null);
@@ -89,21 +89,29 @@ export function useDm(peerInboxId: string) {
 
       try {
         setError(null);
+        setLoading(true);
 
-        await withTimeout(client.conversations.sync(), 10_000, 'conversations.sync');
-        if (cancelled) return;
-
-        const dm = await withTimeout(
-          openOrCreateDm(client, peerInboxId),
-          15_000,
-          'findOrCreateDm'
-        );
+        // 2026-10-26: open from the device first. The XMTP client runs one sync at
+        // a time, and Main Chat's start sync can still be running, so waiting on a
+        // sync here timed out and stranded the DM on Retry. The catch-up below
+        // syncs and merges once the line clears.
+        let dm: any = await client.conversations.findDmByInboxId(peerInboxId as any).catch(() => undefined);
+        if (!dm) {
+          // Not on this device yet: sync first so an existing DM is found, not duplicated.
+          await withTimeout(client.conversations.sync(), 20_000, 'conversations.sync').catch(() => {});
+          if (cancelled) return;
+          dm = await withTimeout(
+            openOrCreateDm(client, peerInboxId),
+            15_000,
+            'findOrCreateDm'
+          );
+        }
         if (cancelled) return;
         dmRef.current = dm;
 
-        // Load history once
+        // Load history once (local), then catch up from the network in the background
         const history = await withTimeout(
-          loadDmMessages(dm, myInboxId),
+          loadDmMessages(dm, myInboxId, { sync: false }),
           10_000,
           'loadDmMessages'
         );
@@ -113,6 +121,7 @@ export function useDm(peerInboxId: string) {
         seenIds.current = new Set(history.map(m => m.id));
         setMessages(history);
         setLoading(false);
+        catchUpRef.current?.();
 
         // Mark own messages as read based on peer's last READ: receipt in history
         getLastPeerReadReceipt(dm, myInboxId!).then(readUpToId => {
@@ -587,7 +596,7 @@ export function useDm(peerInboxId: string) {
       dmRef.current = null;
       seenIds.current.clear();
     };
-  }, [peerInboxId, myInboxId]);
+  }, [peerInboxId, myInboxId, retryKey]);
 
   const [sendError, setSendError] = useState<string | null>(null);
 
