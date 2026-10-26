@@ -7,6 +7,7 @@ import {
   getProgress,
   getEarnedBadges,
   setOnBadgeEarned,
+  grantSpecialBadge,
   BADGE_DEFS,
   type BadgeDef,
 } from '../lib/badges';
@@ -26,8 +27,9 @@ describe('badges', () => {
     resetBadgeState();
   });
 
-  it('defines 12 badge types', () => {
-    expect(BADGE_DEFS).toHaveLength(12);
+  it('defines 15 badge types', () => {
+    expect(BADGE_DEFS).toHaveLength(15);
+    expect(BADGE_DEFS.map(b => b.id)).toEqual(expect.arrayContaining(['recruiter_1', 'recruiter_5', 'recruiter_25']));
     expect(BADGE_DEFS.map(b => b.id)).toContain('first_message');
     expect(BADGE_DEFS.map(b => b.id)).toContain('streak_7');
     expect(BADGE_DEFS.map(b => b.id)).toContain('top_monke');
@@ -110,5 +112,16 @@ describe('badges', () => {
     const ids = earned.map(b => b.id);
     expect(ids).toContain('first_message');
     expect(ids).toContain('messages_100');
+  });
+
+  it('grants a Recruiter badge once', () => {
+    const seen: string[] = [];
+    setOnBadgeEarned((b) => seen.push(b.id));
+    expect(grantSpecialBadge('recruiter_1')?.name).toBe('Recruiter');
+    expect(grantSpecialBadge('recruiter_1')).toBeNull();
+    expect(grantSpecialBadge('recruiter_5')?.name).toBe('Head Recruiter');
+    expect(seen).toEqual(['recruiter_1', 'recruiter_5']);
+    expect(getEarnedBadges()).toEqual(expect.arrayContaining(['recruiter_1', 'recruiter_5']));
+    setOnBadgeEarned(null);
   });
 });

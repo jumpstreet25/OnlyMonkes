@@ -24,6 +24,9 @@ import { useAppStore } from "@/store/appStore";
 import { CopyTradeToggle } from "@/components/CopyTradeToggle";
 import { toast } from "sonner-native";
 
+/** -1 = fewer than 3 measured trades (the bot doesn't guess). */
+const winRateLabel = (pct: number) => (pct < 0 ? "—" : `${pct}%`);
+
 const TENSOR_SAGA_URL = "https://www.tensor.trade/trade/sagamonkes";
 
 /** Genesis-only holders (no Saga Monke → `verified` false) can view the
@@ -95,7 +98,7 @@ function BotBookCard({
           {botBookTitle(t)}
         </Text>
         <Text style={styles.stats} numberOfLines={1}>
-          {t.winRatePct}% all-time win rate
+          {winRateLabel(t.winRatePct)} all-time win rate
         </Text>
       </View>
       <View style={styles.scoreCol}>
@@ -155,7 +158,7 @@ function HolderRow({
         <Text style={styles.username} numberOfLines={1}>
           {t.monkeName?.trim() || `Trader #${t.rank}`}
         </Text>
-        <Text style={styles.stats}>{t.winRatePct}% win rate</Text>
+        <Text style={styles.stats}>{winRateLabel(t.winRatePct)} win rate</Text>
       </View>
       <View style={styles.scoreCol}>
         <Text style={[styles.score, t.weeklyGainPct < 0 && styles.scoreNegative]}>
@@ -227,7 +230,7 @@ function LifetimeTraderRow({
         <Text style={styles.username} numberOfLines={1}>
           {t.monkeName?.trim() || `Trader #${t.rank}`}
         </Text>
-        <Text style={styles.stats}>{t.winRatePct}% win rate</Text>
+        <Text style={styles.stats}>{winRateLabel(t.winRatePct)} win rate</Text>
       </View>
       <View style={styles.scoreCol}>
         <Text style={[styles.score, lifetime < 0 && styles.scoreNegative]}>

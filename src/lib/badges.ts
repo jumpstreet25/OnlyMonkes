@@ -47,6 +47,9 @@ const BADGE_BANANA_REWARDS: Record<string, number> = {
   og_monke: 50,
   top_trader: 40,
   top_trader_recruit: 50,
+  recruiter_1: 25,
+  recruiter_5: 75,
+  recruiter_25: 250,
 };
 
 export const BADGE_DEFS: BadgeDef[] = [
@@ -63,6 +66,10 @@ export const BADGE_DEFS: BadgeDef[] = [
   { id: 'top_trader',      name: 'Top Trader',       description: '20+ trades, 60% win rate',   emoji: '📈', threshold: 1,    metric: 'special' },
   /** Awarded when a tracked smart-money wallet joins OnlyMonkes (bot BADGE_GRANT). */
   { id: 'top_trader_recruit', name: 'Smart Money', description: 'Joined as a tracked top trader', emoji: '🎯', threshold: 1, metric: 'special' },
+  /** Referrals (src/lib/referrals.ts grantRecruiterBadges): new Saga Monke holders who joined with your invite. */
+  { id: 'recruiter_1', name: 'Recruiter', description: 'A new holder joined with your invite', emoji: '📣', threshold: 1, metric: 'special' },
+  { id: 'recruiter_5', name: 'Head Recruiter', description: '5 new holders joined with your invite', emoji: '🎖️', threshold: 1, metric: 'special' },
+  { id: 'recruiter_25', name: 'Monke Magnet', description: '25 new holders joined with your invite', emoji: '🧲', threshold: 1, metric: 'special' },
 ];
 
 /** Get banana reward amount for a badge. */

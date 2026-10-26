@@ -15,6 +15,8 @@ import { useAppStore } from "@/store/appStore";
 import { getDevicePublicKeyBase64, isDeviceAttestAvailable, signWithDeviceKey } from "@/lib/deviceAttest";
 import { addBananas } from "@/lib/bananaRewards";
 import { parseMonkeNumber } from "@/lib/monkeMeme/monkeNumbers";
+import { reverifyDevice } from "@/lib/deviceReverify";
+import { grantSpecialBadge } from "@/lib/badges";
 
 const BASE = "https://onlymonkes.app";
 export const INVITE_CODE = /^[2-9A-HJ-NP-Z]{6}$/;
@@ -52,7 +54,7 @@ async function proof(action: string): Promise<Record<string, string> | null> {
   }
 }
 
-async function post<T>(path: string, action: string, body: Record<string, unknown> = {}): Promise<T | ReferralError> {
+async function post<T>(path: string, action: string, body: Record<string, unknown> = {}, retried = false): Promise<T | ReferralError> {
   const p = await proof(action);
   if (!p) return { error: "This phone isn't verified yet. Open the app's verify step, then try again.", reason: "no_proof" };
   try {
@@ -62,6 +64,13 @@ async function post<T>(path: string, action: string, body: Record<string, unknow
       body: JSON.stringify({ ...body, proof: p }),
     });
     const json = (await res.json().catch(() => ({}))) as T & ReferralError;
+    if (res.status === 403 && !retried && /device not verified/i.test(json.error ?? "")) {
+      // No (fresh) Device Integrity verdict for this wallet: verify now (one wallet
+      // signature), then try once more.
+      const r = await reverifyDevice(`referral:${action.split(":")[0]}`);
+      if (r.status === "clean") return post<T>(path, action, body, true);
+      return { error: "Couldn't verify this phone. Approve the signature in your wallet, then try again.", reason: "not_verified" };
+    }
     return res.ok ? json : { error: json.error || "Something went wrong", reason: json.reason };
   } catch {
     return { error: "No connection. Try again.", reason: "network" };
@@ -70,11 +79,20 @@ async function post<T>(path: string, action: string, body: Record<string, unknow
 
 export const isReferralError = (r: unknown): r is ReferralError => !!r && typeof r === "object" && "error" in r;
 
+/** Recruiter badges (1 / 5 / 25) into the profile badge system; idempotent. */
+export function grantRecruiterBadges(earned: number[]): void {
+  for (const n of earned) {
+    if (n === 1 || n === 5 || n === 25) grantSpecialBadge(`recruiter_${n}`);
+  }
+}
+
 /** Your invite (created on first call); also updates the name + PFP shown on your card. */
-export function getMyReferral(): Promise<MyReferral | ReferralError> {
+export async function getMyReferral(): Promise<MyReferral | ReferralError> {
   const s = useAppStore.getState();
   const pfp = parseMonkeNumber(s.verifiedNft?.name);
-  return post<MyReferral>("/api/referral/me", "me", { name: s.username ?? "", ...(pfp ? { pfp } : {}) });
+  const r = await post<MyReferral>("/api/referral/me", "me", { name: s.username ?? "", ...(pfp ? { pfp } : {}) });
+  if (!isReferralError(r) && Array.isArray(r.badges)) grantRecruiterBadges(r.badges);
+  return r;
 }
 
 /** Records that you joined with `code`. Bananas arrive through collectReferralBananas(). */
@@ -110,5 +128,7 @@ export async function collectReferralBananas(force = false): Promise<{ bananas: 
   if (isReferralError(r) || !(r.bananas > 0)) return none;
   const total = await addBananas(r.bananas);
   useAppStore.getState().setBananaBalance(total);
+  // New invitee(s): refresh the badge count so a Recruiter badge lands now.
+  if (r.referrals > 0) void getMyReferral().catch(() => {});
   return r;
 }
