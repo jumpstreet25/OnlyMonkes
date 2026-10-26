@@ -263,7 +263,9 @@ export default function RootLayout() {
             screenOptions={{
               headerShown: false,
               contentStyle: { backgroundColor: 'transparent' },
-              animation: 'slide_from_right',
+              // Web: screens switch instantly; the slide is JS-driven in a browser
+              // and made going back to Main Chat feel slow (owner 2026-10-26).
+              animation: Platform.OS === 'web' ? 'none' : 'slide_from_right',
             }}
           />
           <Toaster

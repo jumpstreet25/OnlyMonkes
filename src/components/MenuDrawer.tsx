@@ -103,6 +103,9 @@ interface MenuDrawerProps {
   openView?: "leaderboard" | "events" | "images" | "links" | "tools";
 }
 
+/** Web: the menu opens and closes instantly (the fade felt like lag in a browser). */
+const FADE_MS = Platform.OS === "web" ? 0 : 200;
+
 interface SharedLink {
   url: string;
   senderUsername?: string;
@@ -436,10 +439,10 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
   useEffect(() => {
     if (visible) {
       setIsClosing(false);
-      Animated.timing(fadeAnim, { toValue: 1, duration: 200, useNativeDriver: true }).start();
+      Animated.timing(fadeAnim, { toValue: 1, duration: FADE_MS, useNativeDriver: true }).start();
     } else {
       setIsClosing(true);
-      Animated.timing(fadeAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
+      Animated.timing(fadeAnim, { toValue: 0, duration: FADE_MS, useNativeDriver: true }).start(() => {
         setIsClosing(false);
       });
     }

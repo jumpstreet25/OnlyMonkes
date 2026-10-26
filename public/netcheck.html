@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>OnlyMonkes Network Check</title>
+<!--
+  Which of the services the website needs can this network reach? For
+  company / school networks whose filters block some of them. Each check is
+  a plain request (no-cors: we only learn reachable or not) or, for
+  WebSockets, our own cam relay. Nothing is sent but the request itself.
+-->
+<style>
+  :root { --bg: #0A0A0F; --card: #14141f; --text: #EDEDF3; --muted: #9A9AB0; --line: rgba(255,255,255,0.12); --ok: #3ddc84; --bad: #ef5350; --wait: #f5d34a; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 640px; margin: 0 auto; padding: 24px max(16px, env(safe-area-inset-right)) 40px max(16px, env(safe-area-inset-left)); display: grid; gap: 14px; }
+  h1 { margin: 0; font-size: 22px; }
+  p { margin: 0; color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  td { padding: 9px 12px; border-top: 1px solid var(--line); vertical-align: top; }
+  tr:first-child td { border-top: 0; }
+  td.s { width: 28px; font-size: 16px; }
+  .host { font: 12px ui-monospace, monospace; color: var(--muted); overflow-wrap: anywhere; }
+  .ms { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right; }
+  #summary { font-weight: 600; color: var(--text); }
+  button { font: inherit; font-weight: 600; color: #fff; background: #e91671; border: 0; border-radius: 10px; padding: 10px 16px; cursor: pointer; justify-self: start; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Network check</h1>
+  <p>Tests each service the OnlyMonkes website needs from this network. Screenshot the result and send it to the team.</p>
+  <p id="summary">Checking…</p>
+  <table id="t"></table>
+  <button id="again" type="button">Run again</button>
+</main>
+<script>
+const CHECKS = [
+  { name: "OnlyMonkes site and API", what: "everything", url: "/api/top-traders" },
+  { name: "Chat network (XMTP)", what: "Main Chat, DMs", url: "https://api.production.xmtp.network/" },
+  { name: "Chat history sync (XMTP)", what: "older messages on a new browser", url: "https://message-history.production.ephemera.network/" },
+  { name: "App config (GitHub)", what: "group IDs, settings", url: "https://raw.githubusercontent.com/jumpstreet25/OnlyMonkes/master/config/app-config.json" },
+  { name: "WebSockets", what: "live updates, phone camera link", ws: true },
+  { name: "Room passes (workers.dev)", what: "Avatar Rooms", url: "https://onlymonkes-livekit-token.jumpstreet25.workers.dev/" },
+  { name: "Holder check (workers.dev)", what: "sign-in, MonkeLedger", url: "https://monkeledger.jumpstreet25.workers.dev/" },
+  { name: "Avatar Rooms (LiveKit)", what: "voice rooms", url: "https://onlymonkes-emw5bbmh.livekit.cloud/" },
+  { name: "Monke images (Arweave)", what: "PFPs, 3D monkes", url: "https://arweave.net/" },
+  { name: "Libraries (jsDelivr)", what: "3D, face tracking", url: "https://cdn.jsdelivr.net/npm/three@0.185.1/package.json" },
+  { name: "Prices (DexScreener)", what: "charts, $TICKERS", url: "https://api.dexscreener.com/latest/dex/search?q=SOL" },
+];
+
+const table = document.getElementById("t");
+const summary = document.getElementById("summary");
+
+function row(c) {
+  const tr = document.createElement("tr");
+  tr.innerHTML = `<td class="s">⏳</td><td><div></div><div class="host"></div></td><td class="ms"></td>`;
+  tr.children[1].children[0].textContent = `${c.name} · ${c.what}`;
+  tr.children[1].children[1].textContent = c.ws ? "wss://" + location.host + "/api/cam/…" : c.url.replace(/^https:\/\//, "");
+  table.append(tr);
+  return tr;
+}
+
+function probe(url) {
+  return new Promise((resolve) => {
+    const t0 = performance.now();
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 10000);
+    fetch(url, { mode: "no-cors", cache: "no-store", signal: ctl.signal })
+      .then(() => resolve({ ok: true, ms: performance.now() - t0 }))
+      .catch((e) => resolve({ ok: false, ms: performance.now() - t0, why: e.name === "AbortError" ? "timed out" : "blocked or unreachable" }))
+      .finally(() => clearTimeout(timer));
+  });
+}
+
+function probeWs() {
+  return new Promise((resolve) => {
+    const t0 = performance.now();
+    const room = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"[b % 64]).join("").slice(0, 22);
+    let done = false;
+    const finish = (ok, why) => { if (done) return; done = true; try { ws.close(); } catch {} resolve({ ok, ms: performance.now() - t0, why }); };
+    const ws = new WebSocket(`wss://${location.host}/api/cam/${room}?role=viewer`);
+    ws.onopen = () => finish(true);
+    ws.onerror = () => finish(false, "blocked");
+    setTimeout(() => finish(false, "timed out"), 10000);
+  });
+}
+
+async function run() {
+  table.textContent = "";
+  summary.textContent = "Checking…";
+  const rows = CHECKS.map(row);
+  const results = await Promise.all(CHECKS.map(async (c, i) => {
+    const r = c.ws ? await probeWs() : await probe(c.url);
+    const tr = rows[i];
+    tr.children[0].textContent = r.ok ? "✅" : "❌";
+    tr.children[2].textContent = r.ok ? `${Math.round(r.ms)} ms` : r.why;
+    tr.children[2].style.color = r.ok ? "" : "var(--bad)";
+    return r.ok;
+  }));
+  const blocked = results.filter((ok) => !ok).length;
+  summary.textContent = blocked === 0
+    ? "Everything is reachable from this network."
+    : `${blocked} of ${CHECKS.length} blocked on this network. The ❌ rows are what this network's filter stops.`;
+  summary.style.color = blocked === 0 ? "var(--ok)" : "var(--bad)";
+}
+
+document.getElementById("again").onclick = run;
+run();
+</script>
+</body>
+</html>
