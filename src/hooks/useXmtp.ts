@@ -2695,8 +2695,13 @@ export function useXmtp() {
   }, []);
 
   // ── Sync recent messages (call when app returns to foreground) ────────────
-  const syncMessages = useCallback(async () => {
+  // `quick` (2026-10-27): the in-foreground poll for networks that let normal
+  // requests through but cut the live stream (a work wifi: chat loaded, nothing
+  // new arrived until wifi was off). Main group only, last 15 min, no stale
+  // check and no bot-channel refresh.
+  const syncMessages = useCallback(async (opts?: { quick?: boolean }) => {
     if (!_group) return;
+    const quick = opts?.quick === true;
 
     // Stream liveness check: if no stream event in 10min, treat the stream as
     // dead and force a full re-initialize. The `_streamAlive` flag is not a
@@ -2707,7 +2712,7 @@ export function useXmtp() {
     // we've already torn the stream down ourselves. See checkStreamLiveness
     // above for why this was bumped from 90s (false positives in quiet rooms).
     const STREAM_STALE_MS = 10 * 60_000;
-    if (_lastStreamEvent > 0 && Date.now() - _lastStreamEvent > STREAM_STALE_MS) {
+    if (!quick && _lastStreamEvent > 0 && Date.now() - _lastStreamEvent > STREAM_STALE_MS) {
       if (__DEV__) console.warn("[XMTP] Stream appears dead (no events in 10min) — forcing reconnect");
       _streamAlive = false;
       _streamHealth.staleReconnects++;
@@ -2716,12 +2721,13 @@ export function useXmtp() {
     }
 
     try {
-      await (_group as any).sync();
+      if (quick) await withTimeout((_group as any).sync(), 8_000, "quickSync");
+      else await (_group as any).sync();
       // Use time-based window instead of count limit — PRESENCE heartbeats
       // flood the history (one per user per 3 min), so { limit: 50 } can miss
       // all real chat messages if the group has active presence.
-      const TWO_HOURS_NS = 2 * 60 * 60 * 1_000_000_000;
-      const afterNs = (Date.now() * 1_000_000) - TWO_HOURS_NS;
+      const WINDOW_NS = (quick ? 15 * 60 : 2 * 60 * 60) * 1_000_000_000;
+      const afterNs = (Date.now() * 1_000_000) - WINDOW_NS;
       const rawHistory: any[] = await (_group as any).messages({ afterNs });
 
       // Replay any DELETE: requests this device missed while offline/backgrounded
@@ -2770,6 +2776,7 @@ export function useXmtp() {
     } catch (err) {
       if (__DEV__) console.warn("[XMTP] syncMessages failed:", err);
     }
+    if (quick) return;
 
     // ── Refresh bot channel + DM unread counts on every sync ─────────────
     // Authoritative recalculation from last-read timestamps — replaces

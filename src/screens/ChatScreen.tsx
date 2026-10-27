@@ -41,7 +41,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAppStore } from "@/store/appStore";
 import { useChatStore } from "@/store/chatStore";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useXmtp, triggerProfileRebroadcast, _streamHealth } from "@/hooks/useXmtp";
+import { useXmtp, triggerProfileRebroadcast, _streamHealth, _getLastStreamEvent } from "@/hooks/useXmtp";
 import { prepareWalletBoundXmtp, XMTP_SIGNATURE_REQUIRED_ERROR } from "@/lib/xmtp";
 import { signBytesWithMwa } from "@/hooks/useMobileWallet";
 import { useAbortableFetch } from "@/hooks/useAbortableFetch";
@@ -524,6 +524,7 @@ export default function ChatScreen() {
   useEffect(() => {
     if (!isGroupMember) return;
     let timer: ReturnType<typeof setInterval> | null = null;
+    let polling = false;
     const tick = () => {
       if (AppState.currentState !== 'active') return;
       try {
@@ -531,11 +532,18 @@ export default function ChatScreen() {
       } catch {
         _streamHealth.foregroundReconnects++;
         initialize().catch(() => {});
+        return;
       }
+      // Some networks (company wifi) pass normal requests but cut the live
+      // stream, so the chat loads and then nothing new arrives. A quiet stream
+      // gets a small main-group catch-up each minute; a healthy one costs nothing.
+      if (polling || Date.now() - _getLastStreamEvent() < 45_000) return;
+      polling = true;
+      syncMessages({ quick: true }).catch(() => {}).finally(() => { polling = false; });
     };
     timer = setInterval(tick, 60_000);
     return () => { if (timer) clearInterval(timer); };
-  }, [isGroupMember, checkStreamLiveness, initialize]);
+  }, [isGroupMember, checkStreamLiveness, initialize, syncMessages]);
 
 
   // ─── Auto-retry until approved ───────────────────────────────────────────────
