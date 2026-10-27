@@ -32,6 +32,14 @@
       "android": {
         "gradleCommand": ":app:assembleCanaryRelease"
       }
+    },
+    "next-3.1": {
+      "distribution": "internal",
+      "channel": "native-3.1",
+      "android": {
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleNextRelease"
+      }
     }
   },
   "submit": {

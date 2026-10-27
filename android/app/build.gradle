@@ -9,7 +9,13 @@ apply plugin: "com.facebook.react"
 // push notifications, so we just skip applying the plugin when a canary
 // variant is being built rather than registering a second Firebase app.
 def isCanaryBuild = gradle.startParameter.taskNames.any { it.toLowerCase().contains("canary") }
-if (!isCanaryBuild) {
+// 3.1 "next" flavor (com.onlymonkes.app.next): XMTP push needs an FCM token, so it gets
+// the plugin once that package is registered in the same Firebase project and present in
+// google-services.json; until then it builds without (push untestable, everything else works).
+def isNextBuild = gradle.startParameter.taskNames.any { it.toLowerCase().contains("next") }
+def gsFile = file("google-services.json")
+def nextHasFirebase = gsFile.exists() && gsFile.text.contains("com.onlymonkes.app.next")
+if (!isCanaryBuild && (!isNextBuild || nextHasFirebase)) {
     apply plugin: "com.google.gms.google-services"
 }
 
@@ -144,6 +150,14 @@ android {
             // there). Bumped past it so canary always reads as "ahead of
             // production," ready for whatever's tested here next.
             versionName "3.1.0-test"
+        }
+        // 2026-10-27: the 3.1 build (Expo 58 / RN 0.88 / XMTP 8) under its own app ID, so it
+        // installs beside the store app AND the old canary ("Test 3.0 Monke") without touching
+        // either. Runtime 3.5, EAS channel native-3.1 (eas.json profile "next-3.1").
+        next {
+            dimension "env"
+            applicationId "com.onlymonkes.app.next"
+            versionName "3.1.0-next"
         }
     }
     // ABI splits → arm64-v8a only. Every Solana Mobile wallet device (Seeker,

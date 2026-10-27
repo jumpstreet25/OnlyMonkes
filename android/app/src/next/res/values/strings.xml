@@ -1,0 +1,4 @@
+<resources>
+  <!-- 3.1 test build (next flavor) — distinct label beside the store app and "Test 3.0 Monke". -->
+  <string name="app_name">Monke 3.1</string>
+</resources>
