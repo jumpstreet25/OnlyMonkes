@@ -30,7 +30,8 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
-import { useMobileWallet, signBytesWithMwa } from "@/hooks/useMobileWallet";
+import { useMobileWallet, signBytesWithMwa, seekerWalletAvailable, authorizeViaSeekerConnect } from "@/hooks/useMobileWallet";
+import { SeekerConnectButton } from "@solana-mobile/seeker-connect-react-native";
 import { useAppStore, loadMwaAuthToken } from "@/store/appStore";
 import {
   loadSession,
@@ -138,6 +139,20 @@ export default function ConnectScreen() {
     }
   }, [connect]);
 
+  // 3.1: on a certified Seeker, Solana Mobile's own "Connect with Seeker" button leads.
+  const [seekerReady, setSeekerReady] = useState(false);
+  useEffect(() => {
+    seekerWalletAvailable().then(setSeekerReady).catch(() => {});
+  }, []);
+  const handleConnectSeeker = useCallback(async () => {
+    setError(null);
+    const account = await connect(undefined, authorizeViaSeekerConnect);
+    if (account) {
+      await saveSession(account);
+      router.replace("/verify");
+    }
+  }, [connect]);
+
   // Connect with a specific wallet app (by URI scheme) before calling transact
   const handleConnectWith = useCallback(async (walletScheme?: string) => {
     setError(null);
@@ -194,6 +209,15 @@ export default function ConnectScreen() {
               <Text style={styles.autoLoginText}>{t("connect.signingIn")}</Text>
             </View>
           ) : (
+            <>
+            {seekerReady && (
+              <SeekerConnectButton
+                onPress={() => { if (!busy) handleConnectSeeker(); }}
+                enabled={!busy}
+                theme="dark"
+                style={styles.seekerBtn}
+              />
+            )}
             <Pressable
               style={({ pressed }) => [
                 styles.primaryBtn,
@@ -213,10 +237,11 @@ export default function ConnectScreen() {
                 {busy ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
-                  <Text style={styles.primaryBtnText}>{t("connect.login")}</Text>
+                  <Text style={styles.primaryBtnText}>{seekerReady ? t("connect.otherWallets") : t("connect.login")}</Text>
                 )}
               </LinearGradient>
             </Pressable>
+            </>
           )}
         </View>
 
@@ -331,6 +356,11 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.98 }],
   },
 
+  seekerBtn: {
+    height: 56,
+    alignSelf: "stretch",
+    marginBottom: 12,
+  },
   primaryBtn: {
     borderRadius: 14,
     overflow: "hidden",

@@ -22,6 +22,7 @@
         "@shopify/react-native-skia": "2.14.0",
         "@solana-mobile/mobile-wallet-adapter-protocol": "3.0.1",
         "@solana-mobile/mobile-wallet-adapter-protocol-web3js": "3.0.1",
+        "@solana-mobile/seeker-connect-react-native": "0.2.0",
         "@solana/spl-account-compression": "0.1.10",
         "@solana/spl-token": "^0.4.14",
         "@solana/web3.js": "^1.92.3",
@@ -69,6 +70,8 @@
         "react-native-marked": "^8.0.1",
         "react-native-nitro-image": "0.15.2",
         "react-native-nitro-modules": "0.37.1",
+        "react-native-quick-base64": "^3.0.1",
+        "react-native-quick-crypto": "1.1.9",
         "react-native-reanimated": "4.7.1",
         "react-native-safe-area-context": "~5.10.1",
         "react-native-screens": "~4.30.0",
@@ -318,6 +321,8 @@
     "@bufbuild/protobuf": ["@bufbuild/protobuf@1.10.1", "", {}, "sha512-wJ8ReQbHxsAfXhrf9ixl0aYbZorRuOWpBNzm8pL8ftmSxQx/wnJD5Eg861NwJU/czy2VXFIebCeZnZrI9rktIQ=="],
 
     "@colors/colors": ["@colors/colors@1.6.0", "", {}, "sha512-Ir+AOibqzrIsL6ajt3Rz3LskB7OiMVHqltZmspbW/TJuTVuyOMirVqAkjfY6JISiLHgyNqicAC8AyHHGzNd/dA=="],
+
+    "@craftzdog/react-native-buffer": ["@craftzdog/react-native-buffer@6.1.2", "", { "dependencies": { "ieee754": "^1.2.1", "react-native-quick-base64": "^3.0.0" } }, "sha512-KV1HitN05FHLLDG7Zb/yftDsa+mKBYBzFMQ0PMldvUicq6vWOtAvz9mDavt7Fzozh+WNqORE+yFDkkdWysZ/SA=="],
 
     "@csstools/color-helpers": ["@csstools/color-helpers@5.1.0", "", {}, "sha512-S11EXWJyy0Mz5SYvRmY8nJYTFFd1LCNV+7cXyAgQtOOuzb4EsgfqDufL+9esx72/eLhsRdGZwaldu/h+E4t4BA=="],
 
@@ -908,6 +913,8 @@
     "@solana-mobile/mobile-wallet-adapter-protocol": ["@solana-mobile/mobile-wallet-adapter-protocol@3.0.1", "", { "dependencies": { "@noble/curves": "^2.4.0", "@noble/hashes": "^2.2.0", "@solana/kit": "^8.4.0", "@solana/wallet-standard-features": "^1.5.0", "@solana/wallet-standard-util": "^1.1.4", "@wallet-standard/core": "^1.1.2" }, "peerDependencies": { "react-native": ">0.74" }, "optionalPeers": ["react-native"] }, "sha512-qqIzi2xqs7rE0JBVtA3u2aq10ka/Vb4wNULUc5C589jHHg/YqW/ak8Y3V5MetOYOTMO1byJRLA554xHrLRKtEg=="],
 
     "@solana-mobile/mobile-wallet-adapter-protocol-web3js": ["@solana-mobile/mobile-wallet-adapter-protocol-web3js@3.0.1", "", { "dependencies": { "@solana-mobile/mobile-wallet-adapter-protocol": "^3.0.1" }, "peerDependencies": { "@solana/web3.js": "^1.99.0" } }, "sha512-jJkmEBf1BuH7qeABvtbFOgqm9KsqDY9X1m22WdrXBwrE1MmuIScgb3gggWIRFu+/9TOAgBCQqfs60/7H5g+o+Q=="],
+
+    "@solana-mobile/seeker-connect-react-native": ["@solana-mobile/seeker-connect-react-native@0.2.0", "", { "peerDependencies": { "react": "*", "react-native": ">=0.81" } }, "sha512-zbrW+Mexrvc8Tng6EGyFqa/q5MWyNKX7nAS2co3WONHSOBJsok4HrQ2Qv3xMGCH+N/aT+u+EhKFEKaKvUetddQ=="],
 
     "@solana/accounts": ["@solana/accounts@8.5.0", "", { "dependencies": { "@solana/addresses": "8.5.0", "@solana/codecs-core": "8.5.0", "@solana/codecs-strings": "8.5.0", "@solana/errors": "8.5.0", "@solana/rpc-spec": "8.5.0", "@solana/rpc-types": "8.5.0" }, "peerDependencies": { "typescript": ">=5.4.0" }, "optionalPeers": ["typescript"] }, "sha512-vwwXYCobg1oG4kFeUEsGiNORjPujI2ff3yKLp6lCa7QBIlKaD7kZ2QRI3PZFYcNrMJ6HYNwNeZXR7ixg02pWdA=="],
 
@@ -2605,6 +2612,10 @@
 
     "react-native-nitro-modules": ["react-native-nitro-modules@0.37.1", "", { "peerDependencies": { "react": "*", "react-native": "*" } }, "sha512-KpW6EQVQ/bfegpCGxN9Be+ndvsfj56t4IESEvCASu9gWpJa/NDfHpIeIwCOvZQ3eXmLEj6YD4wCLqcC1FJPr2w=="],
 
+    "react-native-quick-base64": ["react-native-quick-base64@3.0.1", "", { "peerDependencies": { "react": "*", "react-native": "*" } }, "sha512-EjUP2U7WqKmlMmoY7XGyHomy8bM0q4+yCDCRg4ZezQ6zedYRwc7yVk4V2O/iSftKaLEzhuW98lpyPMdk1iPHXQ=="],
+
+    "react-native-quick-crypto": ["react-native-quick-crypto@1.1.9", "", { "dependencies": { "@craftzdog/react-native-buffer": "^6.1.2", "events": "3.3.0", "readable-stream": "4.7.0", "safe-buffer": "^5.2.1", "string_decoder": "^1.3.0", "util": "0.12.5" }, "peerDependencies": { "expo": ">=48.0.0", "react": "*", "react-native": "*", "react-native-nitro-modules": ">=0.31.2", "react-native-quick-base64": ">=3.0.0" }, "optionalPeers": ["expo"] }, "sha512-u60Kr4EdAYI1ksGq7uwJfOXNJR/iWkCQ1AxfoVbjM/pEpiydddzsFXFYqwyv7EeB7eTDgg5/LiCGwNxA7W7NKA=="],
+
     "react-native-reanimated": ["react-native-reanimated@4.7.1", "", { "dependencies": { "react-native-is-edge-to-edge": "^1.3.1", "semver": "^7.7.3" }, "peerDependencies": { "react": "*", "react-native": "0.86 - 0.88", "react-native-worklets": "0.13.x" } }, "sha512-HviDFSZ6V4KTRsrLS6hRbBJ4j63l/L8a5az0EoWdJwaMLYnBNyYISTDxwXpEYkMbAbLzCMCviIdiOxXHYQWcNA=="],
 
     "react-native-reanimated-table": ["react-native-reanimated-table@0.0.2", "", { "peerDependencies": { "react": ">=16.8.0", "react-native": ">=0.6.0" } }, "sha512-OeuqfU1AFEmHNTJlEOLWrV78JgAXnM0/ZrCm0Ab+9e5nwYJ+xab/UFXkNKz3Gyf08ZfLSNzwMQRjt3eZWPWoGA=="],
@@ -3008,6 +3019,8 @@
     "utf8-byte-length": ["utf8-byte-length@1.0.5", "", {}, "sha512-Xn0w3MtiQ6zoz2vFyUVruaCL53O/DwUvkEeOvj+uulMm0BkUGYWmBYVyElqZaSLhY6ZD0ulfU3aBra2aVT4xfA=="],
 
     "utif2": ["utif2@4.1.0", "", { "dependencies": { "pako": "^1.0.11" } }, "sha512-+oknB9FHrJ7oW7A2WZYajOcv4FcDR4CfoGB0dPNfxbi4GO05RRnFmt5oa23+9w32EanrYcSJWspUiJkLMs+37w=="],
+
+    "util": ["util@0.12.5", "", { "dependencies": { "inherits": "^2.0.3", "is-arguments": "^1.0.4", "is-generator-function": "^1.0.7", "is-typed-array": "^1.1.3", "which-typed-array": "^1.1.2" } }, "sha512-kZf/K6hEIrWHI6XqOFUiiMa+79wE/D8Q+NCNAWclkyg3b4d2k7s0QGepNjiABc+aR3N1PAyHL7p6UcLY6LmrnA=="],
 
     "util-deprecate": ["util-deprecate@1.0.2", "", {}, "sha512-EPD5q1uXyFxJpCrLnCc1nHnq3gOa6DZBocAIiI2TaSCA7VCJ1UJDMagCzIkXNsUYfD1daK//LTEQ8xiIbrHtcw=="],
 

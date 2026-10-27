@@ -85,6 +85,7 @@
     "sagaLink": "What are Saga Monkes?",
     "signingIn": "Signing you in…",
     "login": "Login",
+    "otherWallets": "Other wallets",
     "walletHint": "Requires a Solana wallet app (Phantom, Solflare, etc.)",
     "chooseWallet": "Choose Wallet",
     "cancel": "Cancel"

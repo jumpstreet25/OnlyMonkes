@@ -17,7 +17,7 @@ import {
   Web3MobileWallet,
 } from "@solana-mobile/mobile-wallet-adapter-protocol-web3js";
 import { PublicKey } from "@solana/web3.js";
-import { Linking } from "react-native";
+import { Linking, Platform } from "react-native";
 import bs58 from "bs58";
 import { useAppStore } from "@/store/appStore";
 import { bindXmtpToWallet, prepareWalletBoundXmtp } from "@/lib/xmtp";
@@ -104,6 +104,46 @@ export async function signBytesWithMwa(
   });
 }
 
+/** What a wallet connection yields: an MWA auth token + the account's base64 public key. */
+export type WalletAuth = { authToken: string; rawAddress: string; label?: string };
+
+async function authorizeViaMwa(): Promise<WalletAuth> {
+  return transact(async (mobileWallet: Web3MobileWallet) => {
+    const authResult = await mobileWallet.authorize({ cluster: "mainnet-beta", identity: APP_IDENTITY });
+    // MWA v2 returns accounts[0].address as a base64-encoded public key.
+    const addrRaw = authResult.accounts[0].address;
+    const rawAddress = typeof addrRaw === "string" ? addrRaw : Buffer.from(addrRaw as Uint8Array).toString("base64");
+    return { authToken: authResult.auth_token, rawAddress, label: authResult.accounts[0].label };
+  });
+}
+
+let _seekerConfigured = false;
+
+/**
+ * 3.1: Seeker Connect — the Seeker's own wallet, connected directly (Solana Mobile's branded
+ * flow, no wallet chooser). Same identity as every MWA call here, so its auth token is an
+ * ordinary MWA token that signMessageWithAuth / signBytesWithMwa reauthorize with.
+ */
+export async function seekerWalletAvailable(): Promise<boolean> {
+  if (Platform.OS !== "android") return false;
+  try {
+    const { SeekerConnect } = await import("@solana-mobile/seeker-connect-react-native");
+    if (!_seekerConfigured) { await SeekerConnect.configure({ identity: APP_IDENTITY }); _seekerConfigured = true; }
+    return (await SeekerConnect.walletAvailability()) === "certified";
+  } catch {
+    return false;
+  }
+}
+
+export async function authorizeViaSeekerConnect(): Promise<WalletAuth> {
+  const { SeekerConnect } = await import("@solana-mobile/seeker-connect-react-native");
+  if (!_seekerConfigured) { await SeekerConnect.configure({ identity: APP_IDENTITY }); _seekerConfigured = true; }
+  const auth = await SeekerConnect.connect();
+  const acct = auth.accounts[0];
+  if (!acct) throw new Error("Seeker wallet returned no account");
+  return { authToken: auth.authToken, rawAddress: Buffer.from(acct.publicKey).toString("base64"), label: acct.label };
+}
+
 export function useMobileWallet() {
   const { setWallet, setLoading, setError, setMwaAuthToken, wallet, reset } = useAppStore();
   const [authToken, setAuthToken] = useState<string | null>(null);
@@ -116,7 +156,7 @@ export function useMobileWallet() {
    * foreground before transact() fires (e.g. "phantom://", "solflare://").
    * Android will then prefer the foregrounded app when routing the MWA intent.
    */
-  const connect = useCallback(async (walletScheme?: string): Promise<WalletAccount | null> => {
+  const connect = useCallback(async (walletScheme?: string, authorizeWith?: () => Promise<WalletAuth>): Promise<WalletAccount | null> => {
     setLoading(true);
     setError(null);
 
@@ -136,37 +176,17 @@ export function useMobileWallet() {
       // Captured directly from this connect()'s own auth result — avoids
       // relying on the hook's `authToken`/`rawAddress` state, which only
       // updates on the component's NEXT render, not within this call.
-      let freshAuth: { authToken: string; rawAddress: string } | null = null;
-
-      const account = await transact(async (mobileWallet: Web3MobileWallet) => {
-        const authResult = await mobileWallet.authorize({
-          cluster: "mainnet-beta",
-          identity: APP_IDENTITY,
-        });
-
-        setAuthToken(authResult.auth_token);
-        setMwaAuthToken(authResult.auth_token);
-
-        // MWA v2 returns accounts[0].address as a base64-encoded public key.
-        // We must decode it to bytes before passing to PublicKey constructor.
-        const addrRaw = authResult.accounts[0].address;
-        setRawAddress(addrRaw as string);
-        freshAuth = { authToken: authResult.auth_token, rawAddress: addrRaw as string };
-        const pubkeyBytes =
-          typeof addrRaw === "string"
-            ? Buffer.from(addrRaw, "base64")
-            : addrRaw;
-        const pubkey = new PublicKey(pubkeyBytes);
-
-        const walletAccount: WalletAccount = {
-          address: pubkey.toBase58(),
-          label: authResult.accounts[0].label,
-          chains: ["solana:mainnet"],
-          features: ["solana:signMessage", "solana:signTransaction"],
-        };
-
-        return walletAccount;
-      });
+      const auth = await (authorizeWith ?? authorizeViaMwa)();
+      const freshAuth: { authToken: string; rawAddress: string } | null = { authToken: auth.authToken, rawAddress: auth.rawAddress };
+      setAuthToken(auth.authToken);
+      setMwaAuthToken(auth.authToken);
+      setRawAddress(auth.rawAddress);
+      const account: WalletAccount = {
+        address: new PublicKey(Buffer.from(auth.rawAddress, "base64")).toBase58(),
+        label: auth.label,
+        chains: ["solana:mainnet"],
+        features: ["solana:signMessage", "solana:signTransaction"],
+      };
 
       setWallet(account);
       await rehydrateForWallet(account.address);
