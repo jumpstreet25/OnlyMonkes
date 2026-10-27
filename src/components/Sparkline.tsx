@@ -30,10 +30,8 @@ export function Sparkline({ closes, width = 96, height = 36, colorOverride }: Sp
 
     // Empty / single point — flat line at vertical center
     if (pts.length < 2) {
-      const stroke = Skia.Path.Make();
-      stroke.moveTo(0, h / 2);
-      stroke.lineTo(w, h / 2);
-      const area = Skia.Path.Make();
+      const stroke = Skia.PathBuilder.Make().moveTo(0, h / 2).lineTo(w, h / 2).build();
+      const area = Skia.PathBuilder.Make().build();
       return { strokePath: stroke, areaPath: area, color: THEME.textMuted };
     }
 
@@ -53,17 +51,14 @@ export function Sparkline({ closes, width = 96, height = 36, colorOverride }: Sp
 
     // Stroke path: simple linear segments. Skipping cubic smoothing keeps
     // the chart honest — sparklines distort easily with smoothing.
-    const stroke = Skia.Path.Make();
-    stroke.moveTo(xy[0].x, xy[0].y);
-    for (let i = 1; i < xy.length; i++) stroke.lineTo(xy[i].x, xy[i].y);
+    const sb = Skia.PathBuilder.Make().moveTo(xy[0].x, xy[0].y);
+    for (let i = 1; i < xy.length; i++) sb.lineTo(xy[i].x, xy[i].y);
+    const stroke = sb.build();
 
     // Area path: same line, then close back along the bottom for the fill.
-    const area = Skia.Path.Make();
-    area.moveTo(xy[0].x, h);
-    area.lineTo(xy[0].x, xy[0].y);
-    for (let i = 1; i < xy.length; i++) area.lineTo(xy[i].x, xy[i].y);
-    area.lineTo(xy[xy.length - 1].x, h);
-    area.close();
+    const ab = Skia.PathBuilder.Make().moveTo(xy[0].x, h).lineTo(xy[0].x, xy[0].y);
+    for (let i = 1; i < xy.length; i++) ab.lineTo(xy[i].x, xy[i].y);
+    const area = ab.lineTo(xy[xy.length - 1].x, h).close().build();
 
     const isUp = pts[pts.length - 1] >= pts[0];
     const c = colorOverride ?? (isUp ? THEME.gold : THEME.error);

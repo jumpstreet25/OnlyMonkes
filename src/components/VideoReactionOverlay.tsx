@@ -109,7 +109,7 @@ export function VideoReactionOverlay({ reactionSource }: VideoReactionOverlayPro
 
 const styles = StyleSheet.create({
   container: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 20,
   },
   reaction: {

@@ -131,9 +131,9 @@ export default function MonkeMemeScreen() {
   const [styleReady, setStyleReady] = useState(false);
   const [sharing, setSharing] = useState(false);
 
-  const pfpRef = useRef<View>(null);
-  const styleRef = useRef<View>(null);
-  const memeRef = useRef<View>(null);
+  const pfpRef = useRef<React.ComponentRef<typeof View>>(null);
+  const styleRef = useRef<React.ComponentRef<typeof View>>(null);
+  const memeRef = useRef<React.ComponentRef<typeof View>>(null);
   const loadedImageRef = useRef<string | null>(null);
 
   const allowed = verified && integrity !== "hardware_failed";
@@ -189,7 +189,7 @@ export default function MonkeMemeScreen() {
     return () => clearInterval(timer);
   }, [busy]);
 
-  const capture = useCallback(async (ref: React.RefObject<View | null>, size: number) => {
+  const capture = useCallback(async (ref: React.RefObject<React.ComponentRef<typeof View> | null>, size: number) => {
     const { captureRef } = await getViewShot();
     return captureRef(ref as never, { format: "png", quality: 1, result: "tmpfile", width: size, height: size });
   }, []);

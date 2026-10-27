@@ -42,7 +42,7 @@ function groupByTier(monkes: BurntMonke[]): { tier: RarityTier | 'Unknown'; item
     .map((tier) => ({ tier, items: groups.get(tier)! }));
 }
 
-export const MemorialShareCard = forwardRef<View, MemorialShareCardProps>(
+export const MemorialShareCard = forwardRef<React.ComponentRef<typeof View>, MemorialShareCardProps>(
   ({ monkes, width = 400 }: MemorialShareCardProps, ref) => {
     const groups = groupByTier(monkes);
     const cols = 4;
@@ -52,17 +52,17 @@ export const MemorialShareCard = forwardRef<View, MemorialShareCardProps>(
 
     return (
       <View ref={ref} collapsable={false} style={[styles.outer, { width }]}>
-        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(6,6,14,0.98)', borderRadius: 24 }]} />
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(6,6,14,0.98)', borderRadius: 24 }]} />
         <LinearGradient
           colors={['rgba(124,58,237,0.10)', 'rgba(8,8,18,0.97)', 'rgba(124,58,237,0.08)']}
           locations={[0, 0.5, 1]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={[StyleSheet.absoluteFillObject, { borderRadius: 24 }]}
+          style={[StyleSheet.absoluteFill, { borderRadius: 24 }]}
         />
         <View
           pointerEvents="none"
-          style={[StyleSheet.absoluteFillObject, { borderRadius: 24, borderWidth: 1, borderColor: 'rgba(124,58,237,0.35)' }]}
+          style={[StyleSheet.absoluteFill, { borderRadius: 24, borderWidth: 1, borderColor: 'rgba(124,58,237,0.35)' }]}
         />
 
         <View style={{ padding: pad }}>

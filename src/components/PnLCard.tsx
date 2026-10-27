@@ -65,7 +65,7 @@ function GlassBg({ width, height, glowColor }: { width: number; height: number; 
     <View
       pointerEvents="none"
       style={[
-        StyleSheet.absoluteFillObject,
+        StyleSheet.absoluteFill,
         { borderRadius: r, overflow: 'hidden', backgroundColor: 'rgba(6,6,14,0.96)' },
       ]}
     >
@@ -75,7 +75,7 @@ function GlassBg({ width, height, glowColor }: { width: number; height: number; 
         locations={[0, 0.4, 1]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        style={StyleSheet.absoluteFillObject}
+        style={StyleSheet.absoluteFill}
       />
 
       {/* 3 + 4. Top-right glow blob with inner highlight */}
@@ -133,7 +133,7 @@ function GlassBg({ width, height, glowColor }: { width: number; height: number; 
   );
 }
 
-export const PnLCard = forwardRef<View, PnLCardProps>(({ trade, width = 320, showConfetti, isLive }: PnLCardProps, ref) => {
+export const PnLCard = forwardRef<React.ComponentRef<typeof View>, PnLCardProps>(({ trade, width = 320, showConfetti, isLive }: PnLCardProps, ref) => {
   const verifiedNft = useAppStore(s => s.verifiedNft);
   const username = useAppStore(s => s.username);
   const [confettiKey, setConfettiKey] = useState(0);

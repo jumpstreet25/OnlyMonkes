@@ -12,8 +12,8 @@
  * Local dbEncryptionKey stays per-device (installation), not per-inbox.
  */
 
-import { Client, Group, PublicIdentity, ReactionCodec, ReactionV2Codec, ReplyCodec, RemoteAttachmentCodec } from "@xmtp/react-native-sdk";
-import type { ReactionContent, ReplyContent, RemoteAttachmentContent, Signer } from "@xmtp/react-native-sdk";
+import { Client, Group, PublicIdentity, ReactionCodec, ReactionV2Codec, ReplyCodec, RemoteAttachmentCodec } from "@/lib/xmtpSdk";
+import type { ReactionContent, ReplyContent, RemoteAttachmentContent, Signer } from "@/lib/xmtpSdk";
 import {
   deriveXmtpEoa,
   hasDerivedXmtpEoa,

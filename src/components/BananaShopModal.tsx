@@ -627,7 +627,7 @@ export function BananaShopModal({ visible, onClose, onLeaderboardPress, onSuppor
       onRequestClose={onClose}
       statusBarTranslucent
     >
-      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent hidden={IS_IMMERSIVE_SHELL} />
+      <StatusBar barStyle="light-content" hidden={IS_IMMERSIVE_SHELL} />
       {/* 2026-08-06: fullRoot's solid #0A0A0F must also drop when a world is
           equipped — WorldLayer mounts as a sibling under it, but an opaque
           root fill still paints the "void" around any transparent cards and

@@ -22,7 +22,7 @@ import {
   FlatList,
   useWindowDimensions,
   Animated,
-  type ViewToken,
+  type ListViewToken,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { LinearGradient } from "expo-linear-gradient";
@@ -102,7 +102,7 @@ export function OnboardingCarousel({ onDone, onLoginNow, slides: slidesProp, fin
   }, []);
 
   const onViewableItemsChanged = useCallback(
-    ({ viewableItems }: { viewableItems: ViewToken[] }) => {
+    ({ viewableItems }: { viewableItems: ListViewToken[] }) => {
       if (viewableItems.length > 0 && viewableItems[0].index != null) {
         setIndex(viewableItems[0].index);
       }
@@ -243,7 +243,7 @@ export function OnboardingCarousel({ onDone, onLoginNow, slides: slidesProp, fin
 
 const styles = StyleSheet.create({
   container: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 100,
     backgroundColor: THEME.bg,
   },

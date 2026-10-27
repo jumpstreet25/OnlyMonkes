@@ -14,11 +14,6 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   orientation: 'portrait',
   icon: './assets/icon.png',
   userInterfaceStyle: 'dark',
-  splash: {
-    image: './assets/splash.png',
-    resizeMode: 'contain',
-    backgroundColor: '#0A0A0F',
-  },
   android: {
     package: 'com.onlymonkes.app',
     adaptiveIcon: {
@@ -46,6 +41,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   runtimeVersion: '3.5',
   plugins: [
     'expo-router',
+    // Expo 58 dropped the top-level `splash` field; same image and colour here.
+    ['expo-splash-screen', { image: './assets/splash.png', resizeMode: 'contain', backgroundColor: '#0A0A0F' }],
     'expo-secure-store',
     [
       'expo-build-properties',

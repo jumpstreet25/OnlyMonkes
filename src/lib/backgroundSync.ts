@@ -65,7 +65,7 @@ export function registerNetworkSync(
   });
 
   // ── AppState listener (foreground return) ─────────────────────────────────
-  let lastAppState: AppStateStatus = AppState.currentState;
+  let lastAppState: AppStateStatus = AppState.currentState as AppStateStatus;
   _appStateSub = AppState.addEventListener("change", (next: AppStateStatus) => {
     if (lastAppState !== "active" && next === "active" && _isOnline) {
       _syncFn?.().catch(() => {});

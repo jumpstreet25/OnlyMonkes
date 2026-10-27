@@ -330,8 +330,8 @@ function formatTokenAmount(amount: number, currency: ShopCurrency): string {
 }
 
 const styles = StyleSheet.create({
-  backdrop: { ...StyleSheet.absoluteFillObject },
-  dimLayer: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.38)" },
+  backdrop: { ...StyleSheet.absoluteFill },
+  dimLayer: { ...StyleSheet.absoluteFill, backgroundColor: "rgba(0,0,0,0.38)" },
   sheet: {
     position: "absolute",
     left: 0,

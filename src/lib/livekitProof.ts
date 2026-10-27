@@ -39,9 +39,15 @@ export async function livekitProof(roomName: string, identity: string): Promise<
 let _holder: { wallet: string; token: string; expiresAt: number } | null = null;
 
 export async function holderProof(): Promise<{ kind: "holder"; token: string }> {
+  const { token } = await holderSession();
+  return { kind: "holder", token };
+}
+
+/** The holder sign-in itself (one MWA signature, ~24 h). Also the XMTP backend credential (xmtpCredential.ts). */
+export async function holderSession(): Promise<{ wallet: string; token: string; expiresAt: number }> {
   const wallet = useAppStore.getState().wallet?.address;
   if (!wallet) throw new Error("Connect your wallet first");
-  if (_holder?.wallet === wallet && _holder.expiresAt * 1000 > Date.now() + 60_000) return { kind: "holder", token: _holder.token };
+  if (_holder?.wallet === wallet && _holder.expiresAt * 1000 > Date.now() + 60_000) return _holder;
   // The sign-in endpoints only answer our own origins.
   const headers = { "Content-Type": "application/json", Origin: WORKER_BASE };
   const ch = await fetch(`${WORKER_BASE}/api/auth/challenge`, { method: "POST", headers, body: JSON.stringify({ address: wallet }) });
@@ -56,5 +62,5 @@ export async function holderProof(): Promise<{ kind: "holder"; token: string }> 
   const out = (await login.json().catch(() => ({}))) as { token?: string; expiresAt?: number; error?: string };
   if (!login.ok || !out.token || !out.expiresAt) throw new Error(out.error ?? `Holder check failed (${login.status})`);
   _holder = { wallet, token: out.token, expiresAt: out.expiresAt };
-  return { kind: "holder", token: out.token };
+  return _holder;
 }

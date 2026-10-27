@@ -48,7 +48,7 @@ function pickCaption(profile: CloutProfile): string {
 }
 
 export function MonkeCloutCardModal({ profile, visible, onClose }: MonkeCloutCardModalProps) {
-  const cardRef = useRef<View>(null);
+  const cardRef = useRef<React.ComponentRef<typeof View>>(null);
   const [busy, setBusy] = useState<null | 'save' | 'copy' | 'x' | 'chat' | 'both'>(null);
   const { send } = useXmtp();
 

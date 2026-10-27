@@ -199,7 +199,7 @@ export const ChatInput = memo(function ChatInput({
   disabledMessage,
 }: ChatInputProps) {
   const { t, i18n } = useTranslation();
-  const inputRef = useRef<TextInput>(null);
+  const inputRef = useRef<React.ComponentRef<typeof TextInput>>(null);
   const bounceAnim = useRef(new Animated.Value(0)).current;
   const hasTypers = !!(typingUsers && typingUsers.length > 0);
   const myInboxId = useAppStore(s => s.myInboxId);

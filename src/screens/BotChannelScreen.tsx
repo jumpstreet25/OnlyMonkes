@@ -589,7 +589,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   bannerTintOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     borderRadius: 4,
   },
   backBtn: {

@@ -517,5 +517,5 @@ export function SolanaCyberpunkWorld({ active = true }: SolanaCyberpunkWorldProp
 }
 
 const styles = StyleSheet.create({
-  root: { ...StyleSheet.absoluteFillObject },
+  root: { ...StyleSheet.absoluteFill },
 });

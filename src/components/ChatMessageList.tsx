@@ -8,7 +8,7 @@ import {
   type NativeSyntheticEvent,
 } from "react-native";
 import { FlashList, type FlashListRef } from "@shopify/flash-list";
-import { Swipeable } from "react-native-gesture-handler";
+import Swipeable, { type SwipeableMethods } from "react-native-gesture-handler/ReanimatedSwipeable";
 import * as Haptics from "expo-haptics";
 import { THEME, FONTS } from "@/lib/constants";
 import { MessageBubble } from "@/components/MessageBubble";
@@ -160,7 +160,7 @@ const ChatMessageListInner = React.forwardRef<FlashListRef<ChatMessage>, ChatMes
     bottomInset = 0,
   } = props;
 
-  const swipeableRefs = useRef<Map<string, Swipeable>>(new Map());
+  const swipeableRefs = useRef<Map<string, SwipeableMethods>>(new Map());
 
   const renderMessage = useCallback(
     ({ item, index }: { item: ChatMessage; index: number }) => {
@@ -182,11 +182,11 @@ const ChatMessageListInner = React.forwardRef<FlashListRef<ChatMessage>, ChatMes
             else swipeableRefs.current.delete(item.id);
           }}
           renderLeftActions={() => <SwipeReplyAction />}
-          onSwipeableOpen={(direction) => {
-            if (direction === "left") {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              setReplyingTo(item);
-            }
+          // Only left (reply) actions exist, so any open is a reply. ReanimatedSwipeable
+          // (gesture-handler 3) reports the swipe direction, not the side opened.
+          onSwipeableOpen={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            setReplyingTo(item);
             const ref = swipeableRefs.current.get(item.id);
             ref?.close();
           }}

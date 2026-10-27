@@ -2,7 +2,7 @@ jest.mock("expo-secure-store", () => ({
   getItemAsync: jest.fn(),
   setItemAsync: jest.fn(),
 }));
-jest.mock("@xmtp/react-native-sdk", () => {
+jest.mock("@/lib/xmtpSdk", () => {
   class PublicIdentity {
     identifier: string;
     kind: string;
@@ -79,7 +79,7 @@ describe("xmtpIdentity", () => {
     const id = await signer.getIdentifier();
     expect(id.kind).toBe("ETHEREUM");
     expect(id.identifier).toBe(eoa.address);
-    expect(signer.signerType()).toBe("EOA");
+    expect(signer.signerType?.()).toBe("EOA");
     const signed = await signer.signMessage("xmtp auth");
     expect(signed.signature).toMatch(/^0x[0-9a-f]{130}$/);
   });

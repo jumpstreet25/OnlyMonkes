@@ -1,6 +1,7 @@
 /** @type {import('jest').Config} */
 module.exports = {
-  preset: 'react-native',
+  // RN 0.88 moved its Jest preset into @react-native/jest-preset.
+  preset: '@react-native/jest-preset',
   setupFiles: ['./jest.setup.js'],
   transform: {
     '^.+\\.(ts|tsx)$': ['babel-jest', { presets: ['module:@react-native/babel-preset'] }],

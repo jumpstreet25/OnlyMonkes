@@ -108,7 +108,7 @@ interface WebViewModalProps {
 }
 
 export function WebViewModal({ visible, url, title, onClose }: WebViewModalProps) {
-  const webRef = useRef<WebView>(null);
+  const webRef = useRef<WebView<{}>>(null);
   const [loading, setLoading] = useState(true);
   const [currentUrl, setCurrentUrl] = useState<string | null>(url);
   const walletAddress = useAppStore((s) => s.wallet?.address);
@@ -212,7 +212,7 @@ export function WebViewModal({ visible, url, title, onClose }: WebViewModalProps
       onRequestClose={onClose}
       statusBarTranslucent
     >
-      <StatusBar barStyle="light-content" backgroundColor="#0A0A0F" translucent hidden={IS_IMMERSIVE_SHELL} />
+      <StatusBar barStyle="light-content" hidden={IS_IMMERSIVE_SHELL} />
       <WebViewErrorBoundary onClose={onClose}>
       <View style={styles.root}>
         {/* Top bar */}
@@ -279,7 +279,8 @@ export function WebViewModal({ visible, url, title, onClose }: WebViewModalProps
           </View>
         )}
 
-        <WebView
+        {/* react-native-webview 14 types default P to undefined (props & undefined = never) */}
+        <WebView<{}>
           ref={webRef}
           source={{ uri: url }}
           style={{ flex: 1, backgroundColor: "#0A0A0F" }}

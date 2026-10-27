@@ -22,7 +22,7 @@ interface MonkeCloutCardProps {
 
 const ACCENT = THEME.gold;
 
-export const MonkeCloutCard = forwardRef<View, MonkeCloutCardProps>(
+export const MonkeCloutCard = forwardRef<React.ComponentRef<typeof View>, MonkeCloutCardProps>(
   ({ profile, width = 360 }: MonkeCloutCardProps, ref) => {
     const wallet = useAppStore(s => s.wallet);
     const verifiedNft = useAppStore(s => s.verifiedNft);
@@ -53,14 +53,14 @@ export const MonkeCloutCard = forwardRef<View, MonkeCloutCardProps>(
 
     return (
       <View ref={ref} collapsable={false} style={[styles.outer, { width, height }]}>
-        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(6,6,14,0.98)', borderRadius: 24 }]} />
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(6,6,14,0.98)', borderRadius: 24 }]} />
 
         <LinearGradient
           colors={gradColors}
           locations={[0, 0.5, 1]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={[StyleSheet.absoluteFillObject, { borderRadius: 24 }]}
+          style={[StyleSheet.absoluteFill, { borderRadius: 24 }]}
         />
 
         <View
@@ -78,7 +78,7 @@ export const MonkeCloutCard = forwardRef<View, MonkeCloutCardProps>(
         <View
           pointerEvents="none"
           style={[
-            StyleSheet.absoluteFillObject,
+            StyleSheet.absoluteFill,
             { borderRadius: 24, borderWidth: 1, borderColor: ACCENT + '50' },
           ]}
         />

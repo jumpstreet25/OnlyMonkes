@@ -440,7 +440,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   tileSpeakingBorder: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     borderWidth: 3,
     borderColor: '#22c55e',
     borderRadius: 0,

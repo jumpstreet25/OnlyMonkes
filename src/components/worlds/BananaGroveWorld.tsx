@@ -683,5 +683,5 @@ export function BananaGroveWorld({ active = true }: BananaGroveWorldProps) {
 }
 
 const styles = StyleSheet.create({
-  root: { ...StyleSheet.absoluteFillObject },
+  root: { ...StyleSheet.absoluteFill },
 });

@@ -3,7 +3,7 @@
  * Does not change XMTP_IDENTITY_DOMAIN. Does not removeMembers.
  */
 
-import { Client } from "@xmtp/react-native-sdk";
+import { Client } from "@/lib/xmtpSdk";
 import { signBytesWithMwa } from "@/hooks/useMobileWallet";
 import { getXmtpClient } from "@/hooks/useXmtp";
 import { useAppStore } from "@/store/appStore";

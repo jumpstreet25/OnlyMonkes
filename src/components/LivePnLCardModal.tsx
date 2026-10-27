@@ -74,7 +74,7 @@ function liveCardAsClosedTrade(card: PortfolioCard): ClosedTrade {
 
 export function LivePnLCardModal({ card, visible, onClose }: LivePnLCardModalProps) {
   const { t } = useTranslation();
-  const cardRef = useRef<View>(null);
+  const cardRef = useRef<React.ComponentRef<typeof View>>(null);
   const [busy, setBusy] = useState<null | 'save' | 'copy' | 'x' | 'chat' | 'both' | 'close'>(null);
   const { send } = useXmtp();
 

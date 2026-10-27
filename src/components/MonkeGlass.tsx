@@ -185,7 +185,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   dimOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(0, 0, 0, 0.38)",
   },
   card: {

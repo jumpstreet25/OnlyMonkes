@@ -24,7 +24,7 @@ interface MemorialShareModalProps {
 }
 
 export function MemorialShareModal({ monkes, visible, onClose }: MemorialShareModalProps) {
-  const cardRef = useRef<View>(null);
+  const cardRef = useRef<React.ComponentRef<typeof View>>(null);
   const [busy, setBusy] = useState(false);
 
   const screenW = Dimensions.get('window').width;

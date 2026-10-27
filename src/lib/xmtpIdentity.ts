@@ -19,8 +19,8 @@ import { hkdf } from "@noble/hashes/hkdf";
 import { sha256 } from "@noble/hashes/sha2";
 import { keccak_256 } from "@noble/hashes/sha3";
 import { bytesToHex } from "@noble/hashes/utils";
-import { PublicIdentity } from "@xmtp/react-native-sdk";
-import type { Signer } from "@xmtp/react-native-sdk";
+import { PublicIdentity } from "@/lib/xmtpSdk";
+import type { Signer } from "@/lib/xmtpSdk";
 import * as SecureStore from "expo-secure-store";
 
 /** Frozen. Changing this string creates a new inbox for every wallet. */

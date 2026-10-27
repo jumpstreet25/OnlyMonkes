@@ -48,7 +48,7 @@ function formatSol(amount: number, digits = 4): string {
   return amount.toFixed(digits);
 }
 
-export const ShareablePnLCard = forwardRef<View, ShareablePnLCardProps>(
+export const ShareablePnLCard = forwardRef<React.ComponentRef<typeof View>, ShareablePnLCardProps>(
   ({ trade, width = 360, isLive }: ShareablePnLCardProps, ref) => {
     const username = useAppStore(s => s.username);
     const wallet = useAppStore(s => s.wallet);
@@ -97,7 +97,7 @@ export const ShareablePnLCard = forwardRef<View, ShareablePnLCardProps>(
         style={[styles.outer, { width, height }]}
       >
         {/* Layer 1: dark base */}
-        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(6,6,14,0.98)', borderRadius: 24 }]} />
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(6,6,14,0.98)', borderRadius: 24 }]} />
 
         {/* Layer 2: world+accent gradient overlay */}
         <LinearGradient
@@ -105,7 +105,7 @@ export const ShareablePnLCard = forwardRef<View, ShareablePnLCardProps>(
           locations={[0, 0.5, 1]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={[StyleSheet.absoluteFillObject, { borderRadius: 24 }]}
+          style={[StyleSheet.absoluteFill, { borderRadius: 24 }]}
         />
 
         {/* Layer 3: top-right glow blob (matches accent — win=gold, loss=red) */}
@@ -125,7 +125,7 @@ export const ShareablePnLCard = forwardRef<View, ShareablePnLCardProps>(
         <View
           pointerEvents="none"
           style={[
-            StyleSheet.absoluteFillObject,
+            StyleSheet.absoluteFill,
             { borderRadius: 24, borderWidth: 1, borderColor: accent + '50' },
           ]}
         />

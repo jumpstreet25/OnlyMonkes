@@ -245,7 +245,7 @@ export function DeepSpaceWorld({ active = true }: DeepSpaceWorldProps) {
 
 const styles = StyleSheet.create({
   root: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "#010108",
   },
 });

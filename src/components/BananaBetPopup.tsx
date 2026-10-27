@@ -19,7 +19,7 @@ const getViewShot = () => import("react-native-view-shot");
 const getImageManipulator = () => import("expo-image-manipulator");
 
 export function BananaBetPopup() {
-  const cardRef = useRef<View>(null);
+  const cardRef = useRef<React.ComponentRef<typeof View>>(null);
   const activeBananaBet = useAppStore((s) => s.activeBananaBet);
   const setActiveBananaBet = useAppStore((s) => s.setActiveBananaBet);
   const bananaBalance = useAppStore((s) => s.bananaBalance);

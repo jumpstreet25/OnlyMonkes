@@ -179,7 +179,7 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
   const [selectedEvent, setSelectedEvent] = useState<LumaEvent | CalendarEvent | null>(null);
   const [clusterUsers, setClusterUsers] = useState<GlobeMarker[]>([]);
   const [onlineEvents, setOnlineEvents] = useState<LumaEvent[]>([]); // Events without location
-  const webViewRef = useRef<WebView>(null);
+  const webViewRef = useRef<WebView<{}>>(null);
 
   // ── Load markers (users + events) ─────────────────────────────────────────
   useEffect(() => {
@@ -631,7 +631,8 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
 
       {/* 3D Globe (WebView) — loads once, markers injected via postMessage */}
       <View style={styles.globeContainer}>
-          <WebView
+          {/* react-native-webview 14 types default P to undefined (props & undefined = never) */}
+          <WebView<{}>
             key={webViewKey}
             ref={webViewRef}
             source={{ html: globeHtml }}

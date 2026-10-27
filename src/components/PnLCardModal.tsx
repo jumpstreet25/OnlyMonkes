@@ -42,7 +42,7 @@ function formatTradeSummary(trade: ClosedTrade): string {
 
 export function PnLCardModal({ trade, visible, onClose }: PnLCardModalProps) {
   const { t } = useTranslation();
-  const cardRef = useRef<View>(null);
+  const cardRef = useRef<React.ComponentRef<typeof View>>(null);
   const [busy, setBusy] = useState<null | 'save' | 'copy' | 'x' | 'chat' | 'both'>(null);
   const { send } = useXmtp();
 

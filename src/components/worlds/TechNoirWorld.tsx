@@ -196,7 +196,7 @@ export function TechNoirWorld({ active = true }: TechNoirWorldProps) {
 
 const styles = StyleSheet.create({
   root: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "#010206",
     overflow: "hidden",
   },
