@@ -14,6 +14,7 @@ import {
   ALCHEMY_API_KEY as ENV_ALCHEMY,
   GROQ_API_KEY as ENV_GROQ,
 } from '@env';
+import { XMTP_ON_STAGING } from './xmtpBackend';
 import Constants from 'expo-constants';
 
 export const APP_NAME = 'OnlyMonkes';
@@ -179,7 +180,11 @@ export const DAPPS = [
 export const MAX_MESSAGE_LENGTH = 1000;
 
 // Bot XMTP inbox IDs — used to detect DM conversations with the bot
+// 3.1 on the staging XMTP backend: the chat-only staging bot (Monke_Eliza BOT_CHAT_ONLY,
+// systemd monke-staging-bot) comes first, so every BOT_INBOX_IDS[0] DM/check goes to it.
+export const STAGING_BOT_INBOX_ID = '78bc63eec36df3c0a20de22dc5892904bb39dc4e91aa3aff343aab7bd88c0ada';
 export const BOT_INBOX_IDS = [
+  ...(XMTP_ON_STAGING ? [STAGING_BOT_INBOX_ID] : []),
   '998001a498174b8a194110ee792b10f97de4965665eaf0d088ed2c71bdf62363', // AI Agent #9385
 ];
 
