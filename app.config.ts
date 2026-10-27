@@ -50,10 +50,10 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         android: {
           minSdkVersion: 26,
           // SDK 54 target (bumped from 35 on the sdk54-upgrade branch).
-          compileSdkVersion: 36,
+          compileSdkVersion: 37,
           targetSdkVersion: 36,
-          buildToolsVersion: '36.0.0',
-          kotlinVersion: '2.1.20',
+          buildToolsVersion: '37.0.0',
+          kotlinVersion: '2.2.0',
           // 2026-07-09: bumped from 26.1.10909125 — Nitro Modules (vision-camera
           // 5 / nitro-modules / nitro-image) requires NDK 27+. NOTE: this field
           // is a no-op for Android (expo-build-properties has no Android writer

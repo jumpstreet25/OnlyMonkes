@@ -5,118 +5,53 @@ import android.content.res.Configuration
 
 import com.facebook.react.PackageList
 import com.facebook.react.ReactApplication
-import com.facebook.react.ReactNativeHost
-import com.facebook.react.ReactPackage
+import com.facebook.react.ReactNativeApplicationEntryPoint.loadReactNative
 import com.facebook.react.ReactHost
+import com.facebook.react.common.ReleaseLevel
 import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint
-import com.facebook.react.defaults.DefaultReactNativeHost
-import com.facebook.react.internal.featureflags.ReactNativeFeatureFlags
-import com.facebook.react.soloader.OpenSourceMergedSoMapping
-import com.facebook.soloader.SoLoader
 
 import expo.modules.ApplicationLifecycleDispatcher
-import expo.modules.ReactNativeHostWrapper
+import expo.modules.ExpoReactHostFactory
 
 import io.sentry.react.RNSentrySDK
 
 import com.livekit.reactnative.LiveKitReactNative
 import com.livekit.reactnative.audio.AudioType
 
+// 3.1 (Expo 58 / RN 0.88): the Expo template's ReactHost + loadReactNative replace the
+// old ReactNativeHost, SoLoader.init(OpenSourceMergedSoMapping) and the reflection-based
+// new-architecture bring-up. AppFeatureFlags is gone: RN 0.88 removed useRawPropsJsiValue /
+// useShadowNodeStateOnClone (always on now — vision-camera's PreviewView needed them).
 class MainApplication : Application(), ReactApplication {
 
-  override val reactNativeHost: ReactNativeHost = ReactNativeHostWrapper(
-        this,
-        object : DefaultReactNativeHost(this) {
-          override fun getPackages(): List<ReactPackage> {
-            val packages = PackageList(this).packages
-            packages.add(DirectNotifPackage())
-            packages.add(DeviceAttestPackage())
-            packages.add(SentimentWorkPackage())
-            return packages
-          }
-
-          override fun getJSMainModuleName(): String = ".expo/.virtual-metro-entry"
-
-          override fun getUseDeveloperSupport(): Boolean = BuildConfig.DEBUG
-
-          override val isNewArchEnabled: Boolean = BuildConfig.IS_NEW_ARCHITECTURE_ENABLED
-          override val isHermesEnabled: Boolean = BuildConfig.IS_HERMES_ENABLED
-      }
-  )
-
-  override val reactHost: ReactHost
-    get() = ReactNativeHostWrapper.createReactHost(applicationContext, reactNativeHost)
+  override val reactHost: ReactHost by lazy {
+    ExpoReactHostFactory.getDefaultReactHost(
+      context = applicationContext,
+      packageList =
+        PackageList(this).packages.apply {
+          add(DirectNotifPackage())
+          add(DeviceAttestPackage())
+          add(SentimentWorkPackage())
+        }
+    )
+  }
 
   override fun onCreate() {
     super.onCreate()
-    // 2026-08-25: was never called anywhere in this file — LiveKit's own
-    // teardown path (LiveKitReactNative.invalidate(), fired on every
-    // ReactInstance.destroy(), including an expo-updates Updates.reloadAsync()
-    // reload — see useUpdatePrompt.ts) unconditionally reads
-    // audioRecordSamplesDispatcher and throws IllegalStateException if
-    // setup() was never called, crashing the ENTIRE app on any JS reload
-    // regardless of whether LiveKit/Avatar Room was ever actually used this
-    // session. Per LiveKit's own docs, must run "above any other RN related
-    // initialization" — hence directly after super.onCreate(), before
-    // Sentry/SoLoader below. CommunicationAudioType (not MediaAudioType) —
-    // Avatar Room both publishes (mic) and consumes (speaker) audio.
+    // 2026-08-25: LiveKit's teardown (fired on every ReactInstance.destroy(), including an
+    // OTA reload) throws if setup() never ran. LiveKit's docs: above any other RN init.
     LiveKitReactNative.setup(this, AudioType.CommunicationAudioType())
-    // 2026-08-22: must run before anything else in this method. initSentry() in JS
-    // (app/_layout.tsx) only starts once the JS bundle has loaded and executed — which
-    // is *after* SoLoader.init/new-arch bring-up below — so it can never see a crash in
-    // this method. This native init (reads android/app/src/main/assets/sentry.options.json,
-    // same DSN as the JS init) closes that blind spot: it was the reason the actual
-    // v3.0.1/v3.0.2 splash crash (a "react"/"react-native-renderer" version mismatch —
-    // see package.json) had to be root-caused via a physically connected device's logcat
-    // instead of a Sentry report.
+    // 2026-08-22: native Sentry init sees crashes before the JS bundle loads.
     try {
       RNSentrySDK.init(this)
     } catch (_: Throwable) { /* sentry.options.json missing/invalid — don't block startup */ }
-    SoLoader.init(this, OpenSourceMergedSoMapping)
-    if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
-      initNewArchitecture()
+    DefaultNewArchitectureEntryPoint.releaseLevel = try {
+      ReleaseLevel.valueOf(BuildConfig.REACT_NATIVE_RELEASE_LEVEL.uppercase())
+    } catch (e: IllegalArgumentException) {
+      ReleaseLevel.STABLE
     }
+    loadReactNative(this)
     ApplicationLifecycleDispatcher.onApplicationCreate(this)
-  }
-
-  // 2026-08-22: replaces a two-deep reflection/retry chain that reflected into RN's
-  // internal, Kotlin-name-mangled loadWithFeatureFlags() and, on failure, fell back to
-  // DefaultNewArchitectureEntryPoint.load() — which calls override() again and can throw
-  // the exact same "Feature flags cannot be overridden more than once" error a second
-  // time, landing in a last-resort branch that could silently skip loading the new-arch
-  // SO entirely (still no crash, but a half-initialized Fabric/TurboModules runtime —
-  // indistinguishable from "still crashes at launch" to a user). That prior version was
-  // itself already a fix for the 3.0.0 vc39 store/EAS binary dying on this exact line.
-  // This version calls override() exactly once via RN's stable PUBLIC API (no reflection
-  // into an internal, mangled method name), and always sets the Fabric/TurboModules
-  // fields + loads the SO regardless of whether override() itself succeeded, so a lost
-  // race against anything else touching feature flags degrades to "wrong flags" rather
-  // than "native library never loaded."
-  private fun initNewArchitecture() {
-    try {
-      ReactNativeFeatureFlags.dangerouslyReset()
-    } catch (_: Throwable) { /* already at defaults */ }
-
-    try {
-      ReactNativeFeatureFlags.override(AppFeatureFlags())
-    } catch (_: Throwable) {
-      // Something else in-process already overrode (or read) the flags first —
-      // leave its values in place rather than risk throwing a second time.
-    }
-
-    try {
-      val ep = DefaultNewArchitectureEntryPoint::class.java
-      for (name in arrayOf("privateFabricEnabled", "privateTurboModulesEnabled", "privateConcurrentReactEnabled", "privateBridgelessEnabled")) {
-        val f = ep.getDeclaredField(name)
-        f.isAccessible = true
-        f.setBoolean(DefaultNewArchitectureEntryPoint, true)
-      }
-    } catch (_: Throwable) { /* MainActivity reads these; harmless if unset */ }
-
-    try {
-      val so = Class.forName("com.facebook.react.defaults.DefaultSoLoader")
-      so.getDeclaredMethod("maybeLoadSoLibrary").apply { isAccessible = true }.invoke(null)
-    } catch (_: Throwable) { /* appmodules SO may already be loaded */ }
   }
 
   override fun onConfigurationChanged(newConfig: Configuration) {

@@ -22,7 +22,8 @@ def projectRoot = rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()
 react {
     entryFile = file(["node", "-e", "require('expo/scripts/resolveAppEntry')", projectRoot, "android", "absolute"].execute(null, rootDir).text.trim())
     reactNativeDir = new File(["node", "--print", "require.resolve('react-native/package.json')"].execute(null, rootDir).text.trim()).getParentFile().getAbsoluteFile()
-    hermesCommand = new File(["node", "--print", "require.resolve('react-native/package.json')"].execute(null, rootDir).text.trim()).getParentFile().getAbsolutePath() + "/sdks/hermesc/%OS-BIN%/hermesc"
+    // RN 0.88: hermesc ships in the hermes-compiler package, no longer under react-native/sdks.
+    hermesCommand = new File(["node", "--print", "require.resolve('hermes-compiler/package.json', { paths: [require.resolve('react-native/package.json')] })"].execute(null, rootDir).text.trim()).getParentFile().getAbsolutePath() + "/hermesc/%OS-BIN%/hermesc"
     codegenDir = new File(["node", "--print", "require.resolve('@react-native/codegen/package.json', { paths: [require.resolve('react-native/package.json')] })"].execute(null, rootDir).text.trim()).getParentFile().getAbsoluteFile()
 
     enableBundleCompression = (findProperty('android.enableBundleCompression') ?: false).toBoolean()
@@ -111,6 +112,9 @@ android {
         // English-only — strips non-English resources from native libs (livekit,
         // xmtp, skia, vision-camera). ~2-5 MB savings depending on dep verbosity.
         resConfigs "en"
+
+        // Read by MainApplication (RN 0.88 template).
+        buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
     }
     // 2026-07-09: "canary" flavor — a genuinely separate Android app (distinct
     // applicationId) for testing risky native changes (Reanimated 4, vision-
@@ -175,7 +179,7 @@ android {
         }
         release {
             signingConfig signingConfigs.release
-            // R8/ProGuard disabled — R8 strips JNI loaders needed by RN 0.79 new arch
+            // R8/ProGuard disabled — R8 stripped JNI loaders on RN 0.79's new arch; re-test before enabling
             shrinkResources false
             minifyEnabled false
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
@@ -214,6 +218,14 @@ android {
 
 configurations.all {
     exclude group: 'org.bouncycastle', module: 'bcprov-jdk15on'
+    // 3.1: one media3 for everything. The 3.0 APK mixed 1.8.0 and 1.9.0, and expo-video's
+    // load control threw AbstractMethodError getAllocator(PlayerId) (Sentry 7698677171).
+    // Keep in step with expo-video / expo-audio's androidxMedia3Version.
+    resolutionStrategy.eachDependency { details ->
+        if (details.requested.group == 'androidx.media3') {
+            details.useVersion '1.9.1'
+        }
+    }
 }
 
 dependencies {
