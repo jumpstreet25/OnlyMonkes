@@ -10,7 +10,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   name: 'OnlyMonkes',
   slug: 'monkesonly',
   owner: process.env.EXPO_OWNER ?? undefined,
-  version: '3.0',
+  version: '3.1',
   orientation: 'portrait',
   icon: './assets/icon.png',
   userInterfaceStyle: 'dark',
@@ -41,7 +41,9 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   // moment to give it its own distinct runtime tag so that class of mistake
   // becomes structurally impossible (expo-updates will simply refuse to
   // apply a mismatched update rather than silently crashing).
-  runtimeVersion: '3.4',
+  // 3.1 native build (Expo 58 / RN 0.88 / XMTP 8): its own runtime so no 3.4 OTA can ever
+  // reach it and nothing published from here can reach the live 3.0 (runtime 3.4) app.
+  runtimeVersion: '3.5',
   plugins: [
     'expo-router',
     'expo-secure-store',

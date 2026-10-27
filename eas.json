@@ -6,21 +6,21 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "channel": "preview",
+      "channel": "native-3.1",
       "android": {
         "gradleCommand": ":app:assembleProductionDebug"
       }
     },
     "preview": {
       "distribution": "internal",
-      "channel": "preview",
+      "channel": "native-3.1",
       "android": {
         "buildType": "apk",
         "gradleCommand": ":app:assembleProductionRelease"
       }
     },
     "production": {
-      "channel": "production",
+      "channel": "native-3.1",
       "android": {
         "buildType": "apk",
         "gradleCommand": ":app:assembleProductionRelease"
@@ -28,7 +28,7 @@
     },
     "canary": {
       "distribution": "internal",
-      "channel": "preview",
+      "channel": "native-3.1",
       "android": {
         "gradleCommand": ":app:assembleCanaryRelease"
       }
