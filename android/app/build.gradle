@@ -196,7 +196,7 @@ android {
             // R8/ProGuard disabled — R8 stripped JNI loaders on RN 0.79's new arch; re-test before enabling
             shrinkResources false
             minifyEnabled false
-            proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
             crunchPngs (findProperty('android.enablePngCrunchInReleaseBuilds')?.toBoolean() ?: true)
         }
     }
