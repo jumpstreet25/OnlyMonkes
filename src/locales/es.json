@@ -49,7 +49,9 @@
       "devMode": "Modo de desarrollador habilitado"
     },
     "couldntEnableOracle": "No se pudo activar el Oráculo de Datos",
-    "tryAgainInAMoment": "Inténtalo de nuevo en un momento."
+    "tryAgainInAMoment": "Inténtalo de nuevo en un momento.",
+    "appLock": "Bloqueo con huella",
+    "appLockUnavailable": "Primero configura una huella o un bloqueo de pantalla en este teléfono."
   },
   "resetIdentity": {
     "title": "🔄  Restablecer identidad de chat",
@@ -1050,5 +1052,10 @@
     "lookUp": "Buscar",
     "notFound": "Ese código de invitación no es válido.",
     "done": "Listo"
+  },
+  "appLock": {
+    "prompt": "Desbloquear OnlyMonkes",
+    "locked": "OnlyMonkes está bloqueado",
+    "unlock": "Desbloquear"
   }
 }

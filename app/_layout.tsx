@@ -5,6 +5,7 @@ import '../src/lib/headlessReaction'; // registers the Headless JS reaction task
 import '../src/lib/sentimentUploadTask'; // registers the Data Oracle Phase 1 Headless JS upload task — same reasoning as headlessReaction above
 import '../src/lib/xmtpPush'; // 3.1: XMTP push-hint + periodic background sync tasks — defined at module load for headless runtimes
 import { useEffect } from 'react';
+import { AppLockGate } from '../src/components/AppLockGate';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Stack, usePathname } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
@@ -271,6 +272,7 @@ export default function RootLayout() {
           <OtaUpdateIndicator />
           <GlassAlertRoot />
           <UpdateAvailableModal visible={updatePromptVisible} onUpdate={applyUpdate} onDismiss={dismissUpdatePrompt} />
+          <AppLockGate />
         </GestureHandlerRootView>
       </SafeAreaProvider>
     </QueryClientProvider>

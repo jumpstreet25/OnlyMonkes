@@ -1,8 +1,9 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet, Pressable, Switch, ScrollView } from "react-native";
 import { router } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTranslation } from "react-i18next";
+import { loadAppLock, setAppLockEnabled, useAppLock } from "@/lib/appLock";
 import { THEME, FONTS } from "@/lib/constants";
 import { useAppStore } from "@/store/appStore";
 import type { SupportedLanguage } from "@/lib/i18n";
@@ -13,6 +14,8 @@ import { useSentimentOptIn } from "@/hooks/useSentimentOptIn";
 
 export default function SettingsScreen() {
   const { t } = useTranslation();
+  const appLockOn = useAppLock((st) => st.enabled);
+  useEffect(() => { loadAppLock().catch(() => {}); }, []);
   const {
     language, setLanguage,
     notificationsEnabled, setNotificationsEnabled,
@@ -147,6 +150,15 @@ export default function SettingsScreen() {
 
         {/* Device Security */}
         <Text style={[styles.sectionTitle, { marginTop: 24 }]}>{t("settings.deviceSecurity")}</Text>
+        <ToggleRow
+          label={t("settings.appLock")}
+          value={appLockOn}
+          onToggle={async (v) => {
+            const ok = await setAppLockEnabled(v, t("appLock.prompt"));
+            if (!ok && v) showGlassAlert(t("settings.appLock"), t("settings.appLockUnavailable"));
+          }}
+          cardStyle={cardStyle}
+        />
         <SecurityPanel cardStyle={cardStyle} />
 
         {/* Links */}

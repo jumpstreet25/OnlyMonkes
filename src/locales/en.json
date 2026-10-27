@@ -49,7 +49,9 @@
       "devMode": "Developer mode enabled"
     },
     "couldntEnableOracle": "Couldn't enable Data Oracle",
-    "tryAgainInAMoment": "Try again in a moment."
+    "tryAgainInAMoment": "Try again in a moment.",
+    "appLock": "Fingerprint lock",
+    "appLockUnavailable": "Set up a fingerprint or screen lock on this phone first."
   },
   "resetIdentity": {
     "title": "🔄  Reset chat identity",
@@ -1050,5 +1052,10 @@
     "lookUp": "Look up",
     "notFound": "That invite code isn't valid.",
     "done": "Done"
+  },
+  "appLock": {
+    "prompt": "Unlock OnlyMonkes",
+    "locked": "OnlyMonkes is locked",
+    "unlock": "Unlock"
   }
 }
