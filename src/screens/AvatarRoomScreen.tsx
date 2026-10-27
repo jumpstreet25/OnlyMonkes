@@ -25,6 +25,7 @@ import {
   useWindowDimensions,
   Platform,
 } from 'react-native';
+import { usePictureInPicture } from "@/lib/pip";
 import { showGlassAlert } from "@/lib/glassAlert";
 import { useTranslation } from "react-i18next";
 import i18n from "@/lib/i18n";
@@ -161,6 +162,8 @@ export default function AvatarRoomScreen() {
     localMuted: false,
   });
   const [connecting, setConnecting] = useState(true);
+  // 3.1: leaving the app mid-room floats it (picture-in-picture) instead of dropping the call.
+  const inPip = usePictureInPicture(!connecting);
   const [stickerTrayOpen, setStickerTrayOpen] = useState(false);
   const [faceTrackingEnabled, setFaceTrackingEnabled] = useState(true);
   const [show3d, setShow3d] = useState(true);
@@ -420,7 +423,7 @@ export default function AvatarRoomScreen() {
       )}
 
       {/* Controls bar */}
-      <View style={[styles.controls, { paddingBottom: insets.bottom + 8 }]}>
+      <View style={[styles.controls, { paddingBottom: insets.bottom + 8 }, inPip && { display: "none" }]}>
         {/* Mute */}
         <Pressable
           onPress={handleToggleMute}

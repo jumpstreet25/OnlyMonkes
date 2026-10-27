@@ -56,6 +56,20 @@ class MainActivity : ReactActivity() {
     }
   }
 
+  // 3.1 picture-in-picture (PipModule): Android 12+ auto-enters from the params a room sets;
+  // older versions need this hint when the user leaves the app mid-room.
+  override fun onUserLeaveHint() {
+    super.onUserLeaveHint()
+    if (PipModule.roomActive && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+      try { enterPictureInPictureMode(android.app.PictureInPictureParams.Builder().setAspectRatio(android.util.Rational(9, 16)).build()) } catch (_: Throwable) {}
+    }
+  }
+
+  override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: android.content.res.Configuration) {
+    super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+    PipModule.emitModeChanged(isInPictureInPictureMode)
+  }
+
   override fun onWindowFocusChanged(hasFocus: Boolean) {
     super.onWindowFocusChanged(hasFocus)
     // Re-hide after focus regain (e.g. a dialog or the keyboard closing) —

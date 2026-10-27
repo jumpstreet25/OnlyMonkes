@@ -32,6 +32,7 @@ class MainApplication : Application(), ReactApplication {
           add(DirectNotifPackage())
           add(DeviceAttestPackage())
           add(SentimentWorkPackage())
+          add(PipPackage())
         }
     )
   }

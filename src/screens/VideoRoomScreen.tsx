@@ -29,6 +29,7 @@ import {
   Alert,
   useWindowDimensions,
 } from 'react-native';
+import { usePictureInPicture } from "@/lib/pip";
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -125,6 +126,8 @@ export default function VideoRoomScreen() {
     isScreenSharing: false,
   });
   const [connecting, setConnecting] = useState(true);
+  // 3.1: leaving the app mid-room floats it (picture-in-picture) instead of dropping the call.
+  const inPip = usePictureInPicture(!connecting);
   const [error, setError] = useState<string | null>(null);
   const [stickerTrayOpen, setStickerTrayOpen] = useState(false);
 
@@ -273,7 +276,7 @@ export default function VideoRoomScreen() {
       )}
 
       {/* Controls bar */}
-      <View style={[styles.controls, { paddingBottom: insets.bottom + 8 }]}>
+      <View style={[styles.controls, { paddingBottom: insets.bottom + 8 }, inPip && { display: "none" }]}>
         <Pressable
           style={[styles.controlBtn, state.localAudioMuted && styles.controlBtnMuted]}
           onPress={handleToggleMic}
