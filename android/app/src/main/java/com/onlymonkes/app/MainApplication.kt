@@ -33,6 +33,7 @@ class MainApplication : Application(), ReactApplication {
           add(DeviceAttestPackage())
           add(SentimentWorkPackage())
           add(PipPackage())
+          add(LiveUpdatePackage())
         }
     )
   }

@@ -11,8 +11,9 @@
  * group pushes are switched off per conversation and bot senders are skipped here. While the
  * app is in the foreground the live stream notifies (useXmtp), so this stays silent.
  *
- * Tasks are defined at module load (imported from app/_layout.tsx) so a headless runtime has
- * them before anything mounts.
+ * The same task routes the bot's data-only `om_live_trade` pushes to the pinned progress
+ * notification (liveTrade.ts). Tasks are defined at module load (imported from
+ * app/_layout.tsx) so a headless runtime has them before anything mounts.
  */
 
 import * as Notifications from "expo-notifications";
@@ -26,6 +27,7 @@ import { lastXmtpWallet } from "@/lib/xmtpCredential";
 import { BOT_INBOX_IDS } from "@/lib/constants";
 import { CH_ALL, notificationPreviewText, showLocalNotification } from "@/lib/notifications";
 import { isXmtpHint } from "@/lib/xmtpPushHint";
+import { handleLiveTradePush } from "@/lib/liveTrade";
 
 export const XMTP_PUSH_TASK = "om-xmtp-push";
 export const XMTP_SYNC_TASK = "om-xmtp-sync";
@@ -126,8 +128,15 @@ async function runCatchUp(): Promise<void> {
 // ─── Task definitions (module scope) ─────────────────────────────────────────
 
 TaskManager.defineTask(XMTP_PUSH_TASK, async ({ data, error }) => {
-  if (error || !isXmtpHint(data)) return;
+  if (error) return;
+  if (handleLiveTradePush(data)) return;
+  if (!isXmtpHint(data)) return;
   await catchUpAndNotify().catch(() => {});
+});
+
+// Foreground: the bot's live-trade pushes also arrive while the app is open.
+Notifications.addNotificationReceivedListener((n) => {
+  handleLiveTradePush(n.request.content.data);
 });
 
 TaskManager.defineTask(XMTP_SYNC_TASK, async () => {
