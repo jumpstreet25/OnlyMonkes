@@ -65,6 +65,7 @@ import {
   type AvatarParticipant,
 } from '@/lib/avatarRoom';
 import { settleAvatarRoomSession, type RaidResult } from '@/lib/bananaRaids';
+import { MediaPipeFaceTracker } from '@/components/MediaPipeFaceTracker';
 import { FaceTracker } from '@/components/FaceTracker';
 import { type FaceParams, type BlendshapeParams } from '@/lib/faceTracking';
 
@@ -166,6 +167,11 @@ export default function AvatarRoomScreen() {
   const inPip = usePictureInPicture(!connecting);
   const [stickerTrayOpen, setStickerTrayOpen] = useState(false);
   const [faceTrackingEnabled, setFaceTrackingEnabled] = useState(true);
+  const [tracker, setTracker] = useState<"mediapipe" | "mlkit">("mediapipe");
+  const onMediaPipeFail = useCallback((why: string) => {
+    if (__DEV__) console.warn("[AvatarRoom] MediaPipe → ML Kit:", why);
+    setTracker("mlkit");
+  }, []);
   const [show3d, setShow3d] = useState(true);
   const stageRef = useRef<MonkeRoomStageHandle>(null);
   // Web: a phone as this computer's mic + camera (src/lib/phoneCompanion.web.ts).
@@ -360,11 +366,20 @@ export default function AvatarRoomScreen() {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <StatusBar barStyle="light-content" hidden={IS_IMMERSIVE_SHELL} />
 
-      {/* Hidden face tracker (camera input for local user) */}
-      <FaceTracker
-        enabled={faceTrackingEnabled && !state.localMuted}
-        onBlendshapes={handleBlendshapes}
-      />
+      {/* Hidden face tracker (camera input for local user). 3.1: MediaPipe first (real
+          blendshapes, same model as the web viewer); ML Kit if it can't start. */}
+      {tracker === "mediapipe" ? (
+        <MediaPipeFaceTracker
+          enabled={faceTrackingEnabled && !state.localMuted}
+          onBlendshapes={handleBlendshapes}
+          onFail={onMediaPipeFail}
+        />
+      ) : (
+        <FaceTracker
+          enabled={faceTrackingEnabled && !state.localMuted}
+          onBlendshapes={handleBlendshapes}
+        />
+      )}
 
       {/* Header */}
       <View style={styles.header}>
