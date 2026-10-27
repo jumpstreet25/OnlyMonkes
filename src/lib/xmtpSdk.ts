@@ -429,6 +429,13 @@ export class Conversation {
   async consentState(): Promise<RnConsent> { return (await this.commonState()).consentState; }
   async updateConsent(state: RnConsent): Promise<void> { await this.inner.updateConsentState(state); }
 
+  /** Push override for this conversation ("default" follows the client's NotificationConfig). */
+  async setNotifications(value: "enabled" | "disabled" | "default"): Promise<void> {
+    await this.inner.setNotifications(value);
+  }
+
+  get isGroup(): boolean { return this.inner.kind === "group"; }
+
   private async commonState(): Promise<{ isActive: boolean; consentState: RnConsent }> {
     const s = await this.inner.state();
     return s.common ?? s;
@@ -554,6 +561,13 @@ function clientOptions(opts?: V5ClientOpts) {
 }
 
 const _clients = new Map<string, OmClient>();
+let _current: OmClient | null = null;
+
+/** The client this JS runtime already has open (one database owner per process — push and
+ *  background handlers reuse it instead of opening the database a second time). */
+export function currentClient(): OmClient | null {
+  return _current;
+}
 
 class ClientStatics {
   static async create(signer: Signer, opts?: V5ClientOpts): Promise<OmClient> {
@@ -574,6 +588,7 @@ class ClientStatics {
   static async dropClient(installationId: string): Promise<void> {
     const c = _clients.get(installationId);
     _clients.delete(installationId);
+    if (_current === c) _current = null;
     await c?.close();
   }
 
@@ -598,6 +613,7 @@ export class OmClient {
   static register(inner: any, identity: PublicIdentity): OmClient {
     const c = new OmClient(inner, new PublicIdentity(identity.identifier, identity.kind ?? "ETHEREUM"));
     _clients.set(c.installationId, c);
+    _current = c;
     return c;
   }
 
@@ -607,6 +623,24 @@ export class OmClient {
   /** Adds `signer`'s identity to this inbox (v5 addAccount). */
   async addAccount(signer: Signer, allowReassign = false): Promise<void> {
     await this.inner.unsafeAddAccount(toV8Signer(signer), allowReassign);
+  }
+
+  /**
+   * Registers this installation's FCM token with the backend's [push.fcm] channel. The backend
+   * then sends data-only hints ({ topic, sequence_id }) — no content; the app syncs and decrypts.
+   * Call again whenever the token changes.
+   */
+  async enableNotifications(fcmToken: string, consentStates: RnConsent[] = ["allowed", "unknown"]): Promise<{ kind: string; error?: string }> {
+    return this.inner.enableNotifications({ channel: { kind: "fcm", token: fcmToken }, consentStates, includeWelcomes: true });
+  }
+
+  notificationState(): { kind: string; error?: string } {
+    return this.inner.notificationState();
+  }
+
+  /** Bounded sync of welcomes + subscribed conversations (the push-hint handler's fetch step). */
+  async catchUpToLive(timeoutMs: number): Promise<{ messages: bigint; conversations: bigint; failed: bigint; completed: boolean }> {
+    return this.inner.catchUpToLive(BigInt(timeoutMs));
   }
 
   /** v8 has no history-sync request; device sync runs on its own. */

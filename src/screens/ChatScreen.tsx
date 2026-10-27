@@ -42,6 +42,8 @@ import { useAppStore } from "@/store/appStore";
 import { useChatStore } from "@/store/chatStore";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useXmtp, triggerProfileRebroadcast, _streamHealth, _getLastStreamEvent } from "@/hooks/useXmtp";
+import { currentClient } from "@/lib/xmtpSdk";
+import { registerXmtpBackgroundTasks, registerXmtpPush } from "@/lib/xmtpPush";
 import { prepareWalletBoundXmtp, XMTP_SIGNATURE_REQUIRED_ERROR } from "@/lib/xmtp";
 import { signBytesWithMwa } from "@/hooks/useMobileWallet";
 import { useAbortableFetch } from "@/hooks/useAbortableFetch";
@@ -577,6 +579,10 @@ export default function ChatScreen() {
     if (!isGroupMember) return;
     registerForPushNotifications().then(token => {
       if (token) useAppStore.getState().setExpoPushToken(token);
+      // 3.1: the XMTP backend pushes DM hints to the same FCM token; periodic sync covers the rest.
+      const client = currentClient();
+      if (client) registerXmtpPush(client).catch(() => {});
+      registerXmtpBackgroundTasks().catch(() => {});
     }).catch(() => {});
   }, [isGroupMember]);
 

@@ -19,15 +19,21 @@ type Stored = { wallet: string; token: string; expiresAt: number };
 
 let _mem: Stored | null = null;
 
-async function load(wallet: string): Promise<Stored | null> {
-  if (_mem?.wallet === wallet) return _mem;
+/** `wallet` undefined (a push/background runtime with no app store yet) = whatever is stored. */
+async function load(wallet?: string): Promise<Stored | null> {
+  if (_mem && (!wallet || _mem.wallet === wallet)) return _mem;
   try {
     const raw = await SecureStore.getItemAsync(SK_TOKEN);
     const s = raw ? (JSON.parse(raw) as Stored) : null;
-    return s?.wallet === wallet ? (_mem = s) : null;
+    return s && (!wallet || s.wallet === wallet) ? (_mem = s) : null;
   } catch {
     return null;
   }
+}
+
+/** Wallet of the last holder sign-in on this phone (background handlers bind to it). */
+export async function lastXmtpWallet(): Promise<string | null> {
+  return (await load())?.wallet ?? null;
 }
 
 async function save(s: Stored): Promise<void> {
@@ -58,9 +64,10 @@ async function refresh(s: Stored): Promise<Stored | null> {
 /** SDK 8 CredentialSource shape: `{ value: "Bearer …", expiresAtSeconds }`. */
 export async function getXmtpCredential(): Promise<{ value: string; expiresAtSeconds: bigint }> {
   const wallet = useAppStore.getState().wallet?.address;
-  if (!wallet) throw new Error("Connect your wallet first");
   const now = Math.floor(Date.now() / 1000);
   let s = await load(wallet);
+  // No wallet in a background runtime: a stored token works, but a new sign-in needs the UI.
+  if (!wallet && (!s || s.expiresAt <= now + 60)) throw new Error("Connect your wallet first");
   if (s && s.expiresAt > now + 60 && s.expiresAt - now < REFRESH_WITHIN_S) {
     s = await refresh(s);
     if (s) await save(s);

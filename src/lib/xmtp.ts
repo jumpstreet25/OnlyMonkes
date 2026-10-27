@@ -39,15 +39,15 @@ export type XmtpGroup = Group;
 // ─── SecureStore keys ────────────────────────────────────────────────────────
 // Keys are wallet-scoped: same wallet = same XMTP identity across installs.
 
-const SK_ENC_KEY_PREFIX = "xmtp_v5_enc_key_";
-const SK_INBOX_ID_PREFIX = "xmtp_v5_inbox_id_";
-const SK_IDENTITY_ID_PREFIX = "xmtp_v5_identity_id_";
-const SK_IDENTITY_KIND_PREFIX = "xmtp_v5_identity_kind_";
+const SK_ENC_KEY_PREFIX = "xmtp_v8_enc_key_";
+const SK_INBOX_ID_PREFIX = "xmtp_v8_inbox_id_";
+const SK_IDENTITY_ID_PREFIX = "xmtp_v8_identity_id_";
+const SK_IDENTITY_KIND_PREFIX = "xmtp_v8_identity_kind_";
 // Legacy keys (pre-wallet-binding) — checked as fallback
-const SK_ENC_KEY_LEGACY = "xmtp_v5_enc_key";
-const SK_INBOX_ID_LEGACY = "xmtp_v5_inbox_id";
-const SK_IDENTITY_ID_LEGACY = "xmtp_v5_identity_id";
-const SK_IDENTITY_KIND_LEGACY = "xmtp_v5_identity_kind";
+const SK_ENC_KEY_LEGACY = "xmtp_v8_enc_key";
+const SK_INBOX_ID_LEGACY = "xmtp_v8_inbox_id";
+const SK_IDENTITY_ID_LEGACY = "xmtp_v8_identity_id";
+const SK_IDENTITY_KIND_LEGACY = "xmtp_v8_identity_kind";
 
 let _boundWalletAddress: string | null = null;
 let _eoaSigner: Signer | null = null;
@@ -199,6 +199,16 @@ async function initWithWalletSigner(signer: Signer, opts: ClientOpts): Promise<C
   await persistIdentity(client, derived.identifier, "ETHEREUM");
   kickHistorySync(client);
   return client;
+}
+
+/**
+ * Reopens the last persisted installation without a signer (push / background handlers in a
+ * fresh JS runtime). Never creates or registers anything — null if nothing is stored.
+ */
+export async function openStoredXmtpClient(walletAddress?: string | null): Promise<Client | null> {
+  if (walletAddress && !_boundWalletAddress) _boundWalletAddress = walletAddress;
+  const dbEncryptionKey = await getOrCreateEncryptionKey();
+  return tryBuildStored({ env: "production", dbEncryptionKey, codecs: NATIVE_CODECS });
 }
 
 /**
