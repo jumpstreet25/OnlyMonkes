@@ -158,6 +158,9 @@ android {
             dimension "env"
             applicationId "com.onlymonkes.app.next"
             versionName "3.1.0-next"
+            // Test app: signed with the project debug key so local builds on the GMKtec never
+            // need the store key (which stays with EAS). Separate app ID, so no clash.
+            signingConfig signingConfigs.debug
         }
     }
     // ABI splits → arm64-v8a only. Every Solana Mobile wallet device (Seeker,
@@ -192,7 +195,8 @@ android {
             signingConfig signingConfigs.debug
         }
         release {
-            signingConfig signingConfigs.release
+            // The next flavor (3.1 test app) signs with the debug key; the store app needs the real one.
+            signingConfig isNextBuild ? signingConfigs.debug : signingConfigs.release
             // R8/ProGuard disabled — R8 stripped JNI loaders on RN 0.79's new arch; re-test before enabling
             shrinkResources false
             minifyEnabled false
