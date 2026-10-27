@@ -27,6 +27,19 @@ Rules are added over time as issues arise.
 
 ---
 
+## 3.1 native build (branch `native-3.1`, worktree `OnlyMonkes-3.1` — local only, never push to master/OTA)
+
+Runtime **3.5**, versionCode 50, EAS channel `native-3.1`; test flavor `next` (`com.onlymonkes.app.next`, "Monke 3.1", EAS profile `next-3.1`) installs beside the store app and the old canary. Nothing here can reach the published 3.0 (runtime 3.4).
+- **Stack:** Expo 58 / RN 0.88 / React 19.3, XMTP RN SDK 8.0.0-rc4 behind `src/lib/xmtpSdk.ts` (v5-shaped adapter; staging backend `src/lib/xmtpBackend.ts`, holder-token auth `xmtpCredential.ts`), LiveKit 3.1, MWA 3, Skia 2.14, Firebase 27 (modular), media3 pinned 1.9.1, AdMob gone. Android template moved to ReactHost + `loadReactNative` (no AppFeatureFlags/SoLoader mapping).
+- **Push + background sync** (`xmtpPush.ts`): backend FCM hints → bounded catch-up → local DM notification (people's DMs only; groups/bot keep the bot relay); 15-min `expo-background-task`.
+- **Seeker Connect** on certified Seekers (same MWA identity/token as `useMobileWallet`). quick-crypto linked, not global.
+- **Fingerprint lock** (`appLock.ts`, `AppLockGate`), opt-in.
+- **Picture-in-picture** for rooms (`OmPip`, `PipModule.kt`).
+- **Live Updates** (`OmLiveUpdate`, `LiveUpdateModule.kt`, `liveTrade.ts`): the bot's `om_live_trade` data push → Android 16 promoted ProgressStyle (stop→entry→T1→T2). Bot side: Monke_Eliza `lib/push/liveTrade.ts`, `/live on|off`.
+- **Home-screen widget** (`ChatWidgetProvider.kt`, `OmWidget`, `homeWidget.ts`): Main Chat / DMs / MonkeTrades latest line + unread; RemoteViews, redraws only on app updates; lines hidden under the fingerprint lock.
+- **MediaPipe face tracking** (`MediaPipeFaceTracker.tsx`): FaceLandmarker in a hidden https-origin WebView, ML Kit fallback.
+- **Untested until the first build:** every Kotlin file above (written without a local Android SDK — Android 16 ProgressStyle calls from docs), Krisp with LiveKit 3, PiP auto-enter, the widget on the Seeker launcher, WebView camera grant. Push needs `com.onlymonkes.app.next` registered in Firebase project `onlymonkes-9f97f`.
+
 ## Security & Privacy
 
 - **NEVER store keys or sensitive data from any users.** No private keys, seed phrases, wallet secrets, or authentication tokens are persisted in code, logs, or state.
