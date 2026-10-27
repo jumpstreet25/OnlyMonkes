@@ -27,6 +27,9 @@ export interface AppRemoteConfig {
   genesisGroupId?: string;
 }
 
+import { XMTP_ON_STAGING } from '@/lib/xmtpBackend';
+import STAGING_CONFIG from '../../config/app-config.staging.json';
+
 const REPO   = 'jumpstreet25/OnlyMonkes';
 const BRANCH = 'master';
 const FILE   = 'config/app-config.json';
@@ -37,6 +40,9 @@ const EMPTY: AppRemoteConfig = { globalGroupId: '', adminInboxId: '' };
 // ─── Read ─────────────────────────────────────────────────────────────────────
 
 export async function fetchAppConfig(): Promise<AppRemoteConfig> {
+  // 3.1 on the staging XMTP backend: its groups only exist there (staging helper's IDs,
+  // bundled — master's config points at the old network's groups).
+  if (XMTP_ON_STAGING) return STAGING_CONFIG as AppRemoteConfig;
   try {
     // Cache-bust so testers always get the latest group ID.
     const controller = new AbortController();

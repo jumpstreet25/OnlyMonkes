@@ -15,10 +15,9 @@
 import * as Sdk from "@xmtp/react-native-sdk";
 import { getXmtpCredential } from "@/lib/xmtpCredential";
 
-// Staging deployment on the VPS (Monke_Eliza agents/monke-trader/VPS.md, identifier
-// onlymonkes-staging). Production is https://xmtp.onlymonkes.app (identifier onlymonkes);
-// switch only when app, bot and web cut over together.
-export const XMTP_BACKEND_URL = "https://157-173-192-39.sslip.io";
+import { XMTP_BACKEND_URL } from "@/lib/xmtpBackend";
+
+export { XMTP_BACKEND_URL };
 const APP_VERSION = "onlymonkes-android/3.1";
 
 // The old network registered inboxes with nonce 1; v8 defaults to 0. Keeping

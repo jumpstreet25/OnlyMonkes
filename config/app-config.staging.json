@@ -1,0 +1,9 @@
+{
+  "globalGroupId": "00edb121acd7fa716fcc085db85e356c",
+  "adminInboxId": "b61f9f92e1b770b95d636e58fdc2fb6adf9d7a5644294ef832f303404ddaa276",
+  "botInboxId": "b61f9f92e1b770b95d636e58fdc2fb6adf9d7a5644294ef832f303404ddaa276",
+  "botChannels": {
+    "trades": "6a514b9c1eb2ce6a8aacee08d3510046"
+  },
+  "genesisGroupId": "094dbbc2b915fa407ae43e87f929ac81"
+}
