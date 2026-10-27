@@ -18,6 +18,10 @@ import { join } from "node:path";
 const DATA = process.env.DATA_DIR || "/data";
 const BACKEND = process.env.XMTP_BACKEND_URL || "http://backend:5050";
 const API_KEY = process.env.XMTP_HELPER_API_KEY || "";
+// The chat-only staging bot (Monke_Eliza BOT_CHAT_ONLY, systemd monke-staging-bot): made a member
+// + admin of every staging group at startup, and named as botInboxId in app-config.json so 3.1
+// phones DM it. The helper stays the admin that admits holders.
+const STAGING_BOT = (process.env.STAGING_BOT_INBOX_ID || "").toLowerCase();
 const ISSUER = "https://onlymonkes-actions.jumpstreet25.workers.dev";
 const NAME = "Staging Helper";
 const JWT_PUB = createPublicKey(readFileSync(process.env.JWT_PUBLIC_KEY_FILE || "/app/jwt-public.pem"));
@@ -79,7 +83,7 @@ async function ensureGroups(client) {
     // The app only sends join requests when an admin inbox is configured; on
     // staging the helper is both the "bot" and the admin.
     adminInboxId: client.inboxId,
-    botInboxId: client.inboxId,
+    botInboxId: STAGING_BOT || client.inboxId,
     botChannels: { trades: ids.trades },
     genesisGroupId: ids.genesis,
   }, null, 2));
@@ -150,6 +154,19 @@ async function handle(client, ids, message) {
 const client = await openClient();
 log(`staging helper inbox ${client.inboxId}`);
 const ids = await ensureGroups(client);
+if (/^[0-9a-f]{64}$/.test(STAGING_BOT)) {
+  for (const [key, id] of Object.entries(ids)) {
+    try {
+      const g = await client.conversations.getById(id);
+      if (!g) continue;
+      if (!(await g.members()).some((m) => m.inboxId === STAGING_BOT)) await g.addMembers([STAGING_BOT]);
+      if (!(await g.isAdmin(STAGING_BOT))) await g.addAdmin(STAGING_BOT);
+      log(`staging bot ${STAGING_BOT.slice(0, 8)} is a member + admin of ${key}`);
+    } catch (e) {
+      log(`staging bot add to ${key} failed: ${e?.message ?? e}`);
+    }
+  }
+}
 log("groups", JSON.stringify(ids));
 
 // An independent reader with a saved position, not the default consumer: the
