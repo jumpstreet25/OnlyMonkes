@@ -38,6 +38,7 @@ Runtime **3.5**, versionCode 50, EAS channel `native-3.1`; test flavor `next` (`
 - **Live Updates** (`OmLiveUpdate`, `LiveUpdateModule.kt`, `liveTrade.ts`): the bot's `om_live_trade` data push → Android 16 promoted ProgressStyle (stop→entry→T1→T2). Bot side: Monke_Eliza `lib/push/liveTrade.ts`, `/live on|off`.
 - **Home-screen widget** (`ChatWidgetProvider.kt`, `OmWidget`, `homeWidget.ts`): Main Chat / DMs / MonkeTrades latest line + unread; RemoteViews, redraws only on app updates; lines hidden under the fingerprint lock.
 - **MediaPipe face tracking** (`MediaPipeFaceTracker.tsx`): FaceLandmarker in a hidden https-origin WebView, ML Kit fallback.
+- **3D room stage bundled** (`roomStageHtml.ts`, `assets/viewer/`): room.html + monkeModel.js + three.js 0.185.1 (module + core) ship in the app; the CDN import map becomes blob: modules at load. No onlymonkes.app / jsDelivr needed (domain-blocking networks, offline); hosted page is the fallback. **Keep `assets/viewer/room.html` + `monkeModel.js.txt` in step with web-app `public/viewer/`.** Verified booting in headless Edge (Chromium).
 - **Untested until the first build:** every Kotlin file above (written without a local Android SDK — Android 16 ProgressStyle calls from docs), Krisp with LiveKit 3, PiP auto-enter, the widget on the Seeker launcher, WebView camera grant. Push needs `com.onlymonkes.app.next` registered in Firebase project `onlymonkes-9f97f`.
 
 ## Security & Privacy
