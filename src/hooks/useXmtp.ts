@@ -14,6 +14,7 @@
  *   4. User hits "Retry" → now a member → chat opens.
  */
 
+import { noteWidgetDm, noteWidgetTrades } from "@/lib/homeWidget";
 import { Sentry } from "@/lib/sentry";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useCallback } from "react";
@@ -2011,6 +2012,7 @@ export function useXmtp() {
                 const senderInboxId = raw.senderInboxId ?? '';
                 if (senderInboxId === client.inboxId) return;
                 useAppStore.getState().incrementBotChannelCount(key);
+                noteWidgetTrades(content);
                 // Bot channel notifications handled by FCM push from the bot server.
                 // Local notification removed — was causing duplicate pushes.
               });
@@ -2374,6 +2376,7 @@ export function useXmtp() {
               useAppStore.getState().incrementCommunityBadge('dms');
               // Per-DM unread — sender IS the peer in a 1:1 DM
               useAppStore.getState().incrementDmUnread(senderInboxId);
+              noteWidgetDm(getCachedProfile(senderInboxId)?.username ?? senderInboxId.slice(0, 8), content);
 
               // Local notification for the incoming DM. Was previously silent —
               // user only saw the badge, no system-level alert. Strip the MSG:

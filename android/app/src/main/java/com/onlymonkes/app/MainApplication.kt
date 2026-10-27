@@ -34,6 +34,7 @@ class MainApplication : Application(), ReactApplication {
           add(SentimentWorkPackage())
           add(PipPackage())
           add(LiveUpdatePackage())
+          add(WidgetPackage())
         }
     )
   }

@@ -6,6 +6,7 @@ import '../src/lib/sentimentUploadTask'; // registers the Data Oracle Phase 1 He
 import '../src/lib/xmtpPush'; // 3.1: XMTP push-hint + periodic background sync tasks — defined at module load for headless runtimes
 import { useEffect } from 'react';
 import { AppLockGate } from '../src/components/AppLockGate';
+import { startHomeWidget } from '../src/lib/homeWidget';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Stack, usePathname } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
@@ -98,6 +99,7 @@ export default function RootLayout() {
     });
 
     logAppOpen().catch(() => {});
+    startHomeWidget().catch(() => {});
     const streak = useAppStore.getState().loginStreak;
     logDailySession(streak).catch(() => {});
     clearStaleOtaCacheIfNeeded();

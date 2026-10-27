@@ -44,6 +44,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useXmtp, triggerProfileRebroadcast, _streamHealth, _getLastStreamEvent } from "@/hooks/useXmtp";
 import { currentClient } from "@/lib/xmtpSdk";
 import { registerXmtpBackgroundTasks, registerXmtpPush } from "@/lib/xmtpPush";
+import { markWidgetMainSeen } from "@/lib/homeWidget";
 import { prepareWalletBoundXmtp, XMTP_SIGNATURE_REQUIRED_ERROR } from "@/lib/xmtp";
 import { signBytesWithMwa } from "@/hooks/useMobileWallet";
 import { useAbortableFetch } from "@/hooks/useAbortableFetch";
@@ -52,7 +53,7 @@ import { useNetInfo } from "@react-native-community/netinfo";
 import { ChatInput } from "@/components/ChatInput";
 import { ChatSkeleton } from "@/components/SkeletonLoader";
 import type { ProfileTarget } from "@/components/UserProfileModal";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { useIsFocused } from "@react-navigation/native";
 import { LiquidGlass as BlurView } from "@/components/LiquidGlass";
 import { getBlurProps } from "@/lib/glassTheme";
@@ -510,6 +511,12 @@ export default function ChatScreen() {
     const sub = AppState.addEventListener('change', handleAppState);
     return () => sub.remove();
   }, []);
+
+  // ─── Home-screen widget: Main Chat counts as read while it's on screen ──────
+  useFocusEffect(useCallback(() => {
+    markWidgetMainSeen();
+    return () => markWidgetMainSeen();
+  }, []));
 
   // ─── In-foreground stream liveness heartbeat ────────────────────────────────
   // The AppState handler above only fires on background/foreground transitions.

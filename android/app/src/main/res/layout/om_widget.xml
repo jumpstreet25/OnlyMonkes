@@ -1,0 +1,221 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- OnlyMonkes home-screen widget (3.1): Main Chat, DMs, MonkeTrades — latest line + unread. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/om_widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/om_widget_bg"
+    android:orientation="vertical"
+    android:padding="12dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <ImageView
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:contentDescription="@string/app_name"
+            android:src="@mipmap/ic_launcher_round" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:layout_weight="1"
+            android:text="OnlyMonkes"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/om_widget_updated"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="#80FFFFFF"
+            android:textSize="11sp" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/main_row"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginTop="6dp"
+        android:background="@drawable/om_widget_row"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="10dp"
+        android:paddingEnd="10dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🐒"
+            android:textSize="18sp" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Main Chat"
+                android:textColor="#FFFFFF"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/main_line"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:text="@string/om_widget_empty"
+                android:textColor="#B3FFFFFF"
+                android:textSize="12sp" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/main_badge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/om_widget_badge"
+            android:minWidth="22dp"
+            android:gravity="center"
+            android:paddingStart="6dp"
+            android:paddingEnd="6dp"
+            android:textColor="#FFFFFF"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/dms_row"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginTop="6dp"
+        android:background="@drawable/om_widget_row"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="10dp"
+        android:paddingEnd="10dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="✉️"
+            android:textSize="18sp" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="DMs"
+                android:textColor="#FFFFFF"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/dms_line"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:text="@string/om_widget_empty"
+                android:textColor="#B3FFFFFF"
+                android:textSize="12sp" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/dms_badge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/om_widget_badge"
+            android:minWidth="22dp"
+            android:gravity="center"
+            android:paddingStart="6dp"
+            android:paddingEnd="6dp"
+            android:textColor="#FFFFFF"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/trades_row"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginTop="6dp"
+        android:background="@drawable/om_widget_row"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="10dp"
+        android:paddingEnd="10dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="📈"
+            android:textSize="18sp" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="MonkeTrades"
+                android:textColor="#FFFFFF"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/trades_line"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:text="@string/om_widget_empty"
+                android:textColor="#B3FFFFFF"
+                android:textSize="12sp" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/trades_badge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/om_widget_badge"
+            android:minWidth="22dp"
+            android:gravity="center"
+            android:paddingStart="6dp"
+            android:paddingEnd="6dp"
+            android:textColor="#FFFFFF"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+    </LinearLayout>
+
+</LinearLayout>
