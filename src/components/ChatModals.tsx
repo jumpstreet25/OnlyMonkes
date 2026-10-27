@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import type { FlashListRef } from "@shopify/flash-list";
 import { router } from "expo-router";
-import WebVideo from "./WebVideo";
+import VideoClip from "./VideoClip";
 import { THEME, FONTS } from "@/lib/constants";
 import { ConfettiView } from "@/components/ConfettiView";
 import { BananaClaimModal } from "@/components/BananaClaimModal";
@@ -45,10 +45,9 @@ import type { SwapQuote } from "@/lib/jupiterSwap";
 import type { Badge } from "@/lib/activityBadges";
 import type { TipAmount } from "@/lib/constants";
 
-// 2026-10-24: WebView playback — expo-video crashes the published 3.4 binary
-// (mixed media3 versions, see WebVideo.tsx).
+// 3.1: native playback again (media3 pinned; see VideoClip.tsx).
 function LazyVideo({ uri }: { uri: string }) {
-  return <WebVideo uri={uri} style={{ flex: 1 }} controls fit="contain" />;
+  return <VideoClip uri={uri} style={{ flex: 1 }} controls fit="contain" />;
 }
 
 export interface ChatModalsProps {

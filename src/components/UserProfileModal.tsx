@@ -7,6 +7,7 @@
  * Others' profiles: shows bio + X account from PROFILE_UPDATE cache.
  */
 
+import { useSkrName } from "@/lib/skrName";
 import React, { useState } from "react";
 import {
   View,
@@ -143,13 +144,7 @@ export function UserProfileModal({ visible, target, onClose, onEditProfile, onCh
           ) : null}
 
           {/* Tipping wallet */}
-          {tipWallet ? (
-            <View style={styles.tipRow}>
-              <Text style={styles.tipAddress} numberOfLines={1}>
-                {tipWallet.slice(0, 6)}…{tipWallet.slice(-4)}
-              </Text>
-            </View>
-          ) : null}
+          {tipWallet ? <TipWalletRow wallet={tipWallet} /> : null}
 
           {/* Tip button (other profiles with a valid wallet only) */}
           {!isOwnProfile && tipWallet && isValidSolanaAddress(tipWallet) && (
@@ -363,6 +358,18 @@ function StatPill({ label, value, suffix }: { label: string; value: number; suff
     <View style={styles.statPill}>
       <Text style={styles.statValue}>{value}{suffix ?? ""}</Text>
       <Text style={styles.statLabel}>{label}</Text>
+    </View>
+  );
+}
+
+/** The holder's published tip wallet, led by its primary .skr name when it has one (3.1). */
+function TipWalletRow({ wallet }: { wallet: string }) {
+  const skr = useSkrName(isValidSolanaAddress(wallet) ? wallet : null);
+  return (
+    <View style={styles.tipRow}>
+      <Text style={styles.tipAddress} numberOfLines={1}>
+        {skr ? `${skr} · ` : ""}{wallet.slice(0, 6)}…{wallet.slice(-4)}
+      </Text>
     </View>
   );
 }

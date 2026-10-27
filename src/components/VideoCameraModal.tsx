@@ -12,7 +12,7 @@ import { showGlassAlert } from "@/lib/glassAlert";
 import { useTranslation } from "react-i18next";
 import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import WebVideo from './WebVideo';
+import VideoClip from './VideoClip';
 import { uploadVideo } from '@/lib/videoUpload';
 import { THEME, FONTS } from '@/lib/constants';
 
@@ -139,8 +139,7 @@ export function VideoCameraModal({ visible, onClose, onSend }: Props) {
         ) : videoUri ? (
           // ── Preview mode ──
           <View style={styles.container}>
-            {/* WebView playback: expo-video crashes the published 3.4 binary (see WebVideo.tsx). */}
-            <WebVideo uri={videoUri} style={styles.preview} controls={false} loop fit="contain" />
+            <VideoClip uri={videoUri} style={styles.preview} controls={false} loop fit="contain" />
             {/* Close button */}
             <Pressable style={[styles.closeBtn, { top: insets.top + 12 }]} onPress={onClose} hitSlop={10}>
               <Text style={styles.closeBtnText}>✕</Text>
