@@ -61,8 +61,9 @@ function withSecurityHeaders(res: Response, path: string): Response {
   out.headers.set("Permissions-Policy", "camera=(self), microphone=(self), geolocation=(self), payment=()");
   // Export file names carry a content hash, so a browser can keep them for
   // good; the default (max-age=0, must-revalidate) re-checked ~10 MB of app
-  // code on every visit. canvaskit.wasm has a fixed name: an hour.
-  if (path.startsWith("/_expo/static/") || path.startsWith("/assets/")) {
+  // code on every visit. canvaskit-<version>.wasm (what the app loads) is
+  // versioned too; the legacy fixed name canvaskit.wasm keeps an hour.
+  if (path.startsWith("/_expo/static/") || path.startsWith("/assets/") || /^\/canvaskit-[0-9][\w.-]*\.wasm$/.test(path)) {
     out.headers.set("Cache-Control", "public, max-age=31536000, immutable");
   } else if (path === "/canvaskit.wasm") {
     out.headers.set("Cache-Control", "public, max-age=3600");

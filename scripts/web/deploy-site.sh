@@ -22,6 +22,10 @@ case "$LIVEKIT_URL" in wss://*) export LIVEKIT_URL ;; *) echo "deploy-site: no L
 node scripts/web/build-xmtp.mjs
 # Skia on the web runs on CanvasKit; useSkiaReady.web.ts loads /canvaskit.wasm.
 cp node_modules/canvaskit-wasm/bin/full/canvaskit.wasm public/canvaskit.wasm
+# The app loads a versioned copy (cached immutable by site-router.ts); the
+# plain name above stays for clients still on an older build.
+CK_VER=$(node -p "require('canvaskit-wasm/package.json').version")
+cp node_modules/canvaskit-wasm/bin/full/canvaskit.wasm "public/canvaskit-${CK_VER}.wasm"
 # bun can leave a copy of @expo/cli without its ws dependency; call the complete one.
 node node_modules/@expo/cli/build/bin/cli export -p web --output-dir dist-web --clear
 npx wrangler deploy --config scripts/web/wrangler.toml
