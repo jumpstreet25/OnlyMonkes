@@ -18,7 +18,7 @@ const SENTRY_DSN: string = SENTRY_DSN_ENV;
 
 let _sentry: SentryModule | null = null;
 let _loading: Promise<SentryModule | null> | null = null;
-const _queue: Array<(s: SentryModule) => void> = [];
+const _queue: ((s: SentryModule) => void)[] = [];
 
 function run(fn: (s: SentryModule) => void) {
   if (!SENTRY_DSN) return;
