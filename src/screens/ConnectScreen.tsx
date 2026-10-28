@@ -16,6 +16,7 @@
  *   └─────────────────────────┘
  */
 
+import { HEADER_IMAGE } from "../lib/headerImage";
 import React, { useCallback, useEffect, useState } from "react";
 import {
   View,
@@ -184,7 +185,7 @@ export default function ConnectScreen() {
       {/* ── Header image — bleeds behind status bar ── */}
       <Image
         // eslint-disable-next-line @typescript-eslint/no-require-imports
-        source={require("../../assets/header.png")}
+        source={HEADER_IMAGE}
         style={{ width: SCREEN_W, height: HEADER_HEIGHT }}
         resizeMode="cover"
       />

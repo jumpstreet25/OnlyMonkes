@@ -1,3 +1,4 @@
+import { HEADER_IMAGE } from "../lib/headerImage";
 import React from "react";
 import {
   View,
@@ -123,7 +124,7 @@ export function ChatHeader({
       <View style={[styles.header, styles.headerBare, { backgroundColor: themeSurface, borderBottomColor: themeBorder, paddingTop: insets.top }]}>
         <Banner
           // eslint-disable-next-line @typescript-eslint/no-require-imports
-          source={logoSource ?? require("../../assets/header.png")}
+          source={logoSource ?? HEADER_IMAGE}
           style={[styles.headerCenter, styles.headerCenterBare, { transform: [{ scale: logoScale }] }]}
           resizeMode="contain"
         />
@@ -152,7 +153,7 @@ export function ChatHeader({
       {/* Center: decorative banner image */}
       <Banner
         // eslint-disable-next-line @typescript-eslint/no-require-imports
-        source={logoSource ?? require("../../assets/header.png")}
+        source={logoSource ?? HEADER_IMAGE}
         style={[styles.headerCenter, { transform: [{ scale: logoScale }] }]}
         resizeMode="contain"
       />
