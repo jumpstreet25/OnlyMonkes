@@ -6,7 +6,13 @@ import { LoadSkiaWeb } from "@shopify/react-native-skia/lib/module/web";
 // crashed to a blank page without it (owner on a Seeker, 2026-10-21).
 // canvaskit.wasm is copied into the site by scripts/web/deploy-site.sh.
 let _ready = false;
-const _load = LoadSkiaWeb({ locateFile: (file: string) => `/${file}` })
+// The wasm is served under a versioned name (canvaskit-<version>.wasm, copied
+// by deploy-site.sh) so the site router can let browsers cache it for good.
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const CANVASKIT_VERSION: string = require("canvaskit-wasm/package.json").version;
+const _load = LoadSkiaWeb({
+  locateFile: (file: string) => (file === "canvaskit.wasm" ? `/canvaskit-${CANVASKIT_VERSION}.wasm` : `/${file}`),
+})
   .then(() => { _ready = true; })
   .catch((e) => { console.error("[Skia] CanvasKit failed to load:", (e as Error)?.message); });
 

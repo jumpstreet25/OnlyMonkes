@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { AppState } from 'react-native';
+import { AppState, Platform } from 'react-native';
+import { useFocusEffect } from 'expo-router';
 import { useAppStore } from '@/store/appStore';
 import { getXmtpClient } from '@/hooks/useXmtp';
 import { openOrCreateDm, loadDmMessages, sendDmMessage, sendReaction, applyReaction, applyWithRetry, sendTypingIndicator, sendReadReceipt, getLastPeerReadReceipt, decodeMessage } from '@/lib/xmtp';
@@ -64,6 +65,14 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
 }
 
 export function useDm(peerInboxId: string, retryKey = 0) {
+  // Web: screens stay mounted under the one on top (layered stack), so a DM
+  // left open kept polling every 20s in the background. Pause the poll while
+  // the DM screen isn't focused. Native: always true (unchanged).
+  const focusedRef = useRef(true);
+  useFocusEffect(useCallback(() => {
+    focusedRef.current = true;
+    return () => { if (Platform.OS === 'web') focusedRef.current = false; };
+  }, []));
   const [messages, setMessages]   = useState<ChatMessage[]>([]);
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState<string | null>(null);
@@ -578,7 +587,7 @@ export function useDm(peerInboxId: string, retryKey = 0) {
     };
     catchUpRef.current = () => { void catchUp(); };
     const poll = setInterval(() => {
-      if (AppState.currentState === 'active') void catchUp();
+      if (AppState.currentState === 'active' && focusedRef.current) void catchUp();
     }, 20_000);
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') void catchUp(true);

@@ -37,6 +37,14 @@ import { useTranslation } from "react-i18next";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Slider from "@react-native-community/slider";
 import { router } from "expo-router";
+
+// Web: navigate (re-uses a screen already in the stack instead of stacking a
+// second copy) and open straight away — the 300ms wait for the drawer's close
+// animation made every menu tap feel slow. Native: unchanged (push after 300ms).
+function openFromMenu(path: string): void {
+  if (Platform.OS === "web") { router.navigate(path as any); return; }
+  setTimeout(() => router.push(path as any), 300);
+}
 import * as Haptics from "expo-haptics";
 import * as Clipboard from "expo-clipboard";
 import { toast } from "sonner-native";
@@ -651,46 +659,46 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                 <GridButton
                   iconName="monkemarkets"
                   label="MonkeMarkets"
-                  onPress={() => { onClose(); setTimeout(() => router.push('/marketplace'), 300); }}
+                  onPress={() => { onClose(); openFromMenu('/marketplace'); }}
                 />
                 <GridButton
                   iconName="portfolio"
                   label={t("menuDrawer.portfolio")}
-                  onPress={() => { onClose(); setTimeout(() => router.push('/portfolio' as any), 300); }}
+                  onPress={() => { onClose(); openFromMenu('/portfolio' as any); }}
                 />
                 <GridButton
                   iconName="portfolio"
                   label="OnlyTreasury"
-                  onPress={() => { onClose(); setTimeout(() => router.push('/treasury' as any), 300); }}
+                  onPress={() => { onClose(); openFromMenu('/treasury' as any); }}
                 />
                 <GridButton
                   iconName="watchlist"
                   label={t("menuDrawer.watchlist")}
-                  onPress={() => { onClose(); setTimeout(() => router.push('/watchlist' as any), 300); }}
+                  onPress={() => { onClose(); openFromMenu('/watchlist' as any); }}
                 />
                 {showMonkeMeme && (
                   <GridButton
                     iconName="monkeface"
                     label={t("menuDrawer.monkeMeme")}
-                    onPress={() => { onClose(); setTimeout(() => router.push('/monkememe' as any), 300); }}
+                    onPress={() => { onClose(); openFromMenu('/monkememe' as any); }}
                   />
                 )}
                 {Platform.OS === "web" && (
                   <GridButton
                     iconName="monkeface"
                     label="3D Monke"
-                    onPress={() => { onClose(); setTimeout(() => router.push('/monke3d' as any), 300); }}
+                    onPress={() => { onClose(); openFromMenu('/monke3d' as any); }}
                   />
                 )}
                 <GridButton
                   iconName="gift"
                   label={t("menuDrawer.invite")}
-                  onPress={() => { onClose(); setTimeout(() => router.push('/invite-friends' as any), 300); }}
+                  onPress={() => { onClose(); openFromMenu('/invite-friends' as any); }}
                 />
                 <GridButton
                   iconName="globe"
                   label={t("menuDrawer.globe")}
-                  onPress={() => { onClose(); setTimeout(() => router.push('/globe' as any), 300); }}
+                  onPress={() => { onClose(); openFromMenu('/globe' as any); }}
                 />
                 <GridButton
                   iconName="monketools"
@@ -700,12 +708,12 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                 <GridButton
                   iconName="settings"
                   label={t("menuDrawer.settings")}
-                  onPress={() => { onClose(); setTimeout(() => router.push('/settings' as any), 300); }}
+                  onPress={() => { onClose(); openFromMenu('/settings' as any); }}
                 />
                 <GridButton
                   iconName="tombstone"
                   label={t("menuDrawer.memorial")}
-                  onPress={() => { onClose(); setTimeout(() => router.push('/memorial' as any), 300); }}
+                  onPress={() => { onClose(); openFromMenu('/memorial' as any); }}
                 />
                 {isSuperAdmin && (
                   <GridButton
