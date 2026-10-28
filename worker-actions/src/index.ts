@@ -24,6 +24,8 @@
  *   JUP_API_KEY        — Jupiter Swap API v2 key (get from portal.jup.ag)
  *   BOT_HTTP_SECRET    — Bearer token for authenticated bot endpoints
  *   BOT_PROFILE_URL    — bot base URL (tunnel, wrangler.toml) for profile import, /api/bot-command, /api/inbox-reset, sales stats
+ *   GROK_RELAY_URL / GROK_RELAY_KEY — optional: outbound events for the Grok agents (agentBridge.ts)
+ *   SENTRY_RELAY_SECRET — optional: ?secret= on the Sentry webhook into POST /api/agent-relay/sentry
  *   ESCROW_ENCRYPT_KEY — 256-bit hex key for AES-GCM encryption of ephemeral secrets in KV
  *   ADMIN_WALLET_PUBKEY — admin's Solana wallet base58 address (see adminConfig.ts)
  *   ADMIN_GITHUB_PAT     — fine-grained GitHub PAT, scoped to this repo's Contents only
@@ -32,6 +34,8 @@
  *   TIP_ESCROW — stores encrypted ephemeral keypairs for tip links (72h TTL)
  */
 
+import { bearerOk } from "./botAuth";
+import { botHealthEvent, holdersChangeEvent, probeBot, relayEvent, salesDailyEvent, sentryEvent } from "./agentBridge";
 import { renderLanding, renderGet, renderOpen, renderBot, LEGAL_PATHS, SITE_BASE, type BotCommand } from "./site";
 import botCommands from "../../config/bot-commands.json";
 import {
@@ -128,6 +132,11 @@ export interface Env {
   /** Bot base URL — the Cloudflare Tunnel at bot.onlymonkes.app (wrangler.toml). Workers
    *  can't reach the bot's :3001 directly; the tunnel passes only the routes the worker uses. */
   BOT_PROFILE_URL?: string;
+  // Grok agents (agentBridge.ts): read-only outbound events; unset = off.
+  GROK_RELAY_URL?: string;
+  GROK_RELAY_KEY?: string;
+  SENTRY_RELAY_SECRET?: string;
+  AGENT_RELAY_LIMITER?: { limit(opts: { key: string }): Promise<{ success: boolean }> };
   ESCROW_ENCRYPT_KEY: string;
   // Optional in dev — DFlow's dev quote endpoint requires no key. Set in
   // production via `wrangler secret put DFLOW_API_KEY` once we cut over.
@@ -1291,8 +1300,7 @@ async function decryptData(encoded: string, hexKey: string): Promise<string> {
 // ─── Auth helper ─────────────────────────────────────────────────────────────
 
 export function checkBotAuth(request: Request, env: Env): boolean {
-  const auth = request.headers.get("Authorization") || "";
-  return auth === `Bearer ${env.BOT_HTTP_SECRET}`;
+  return bearerOk(request.headers.get("Authorization"), env.BOT_HTTP_SECRET);
 }
 
 // ─── Escrow: POST /escrow ────────────────────────────────────────────────────
@@ -3459,6 +3467,20 @@ function handleCopyright(): Response {
 
 // ─── Router ───────────────────────────────────────────────────────────────────
 
+/** Hourly: tell the Grok agents when the bot goes down or comes back (state change only). */
+const BOT_HEALTH_KV_KEY = "agent:bot_health";
+async function checkBotHealthForAgents(env: Env): Promise<void> {
+  if (!env.GROK_RELAY_URL || !env.BOT_PROFILE_URL) return;
+  const { up, detail } = await probeBot(env.BOT_PROFILE_URL);
+  let prev: { up: boolean; since: string } | null = null;
+  try { prev = JSON.parse((await env.FRAME_ALERTS.get(BOT_HEALTH_KV_KEY)) ?? "null"); } catch { prev = null; }
+  if (prev && prev.up === up) return;
+  const since = up ? new Date().toISOString() : (prev && !prev.up ? prev.since : new Date().toISOString());
+  await env.FRAME_ALERTS.put(BOT_HEALTH_KV_KEY, JSON.stringify({ up, since }));
+  if (!prev && up) return; // first look, healthy: nothing to report
+  await relayEvent(env, botHealthEvent(up, detail, up ? prev?.since ?? null : since));
+}
+
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     // CORS preflight
@@ -3551,6 +3573,15 @@ export default {
       if (request.method === "GET") return handleVerifyApi(url, env);
       return errorResponse("Method not allowed", 405);
     }
+    // Sentry webhook → Grok agents (agentBridge.ts). Inbound only; nothing here acts.
+    if (path === "/api/agent-relay/sentry") {
+      if (request.method !== "POST") return errorResponse("Method not allowed", 405);
+      if (!bearerOk(`Bearer ${url.searchParams.get("secret") ?? ""}`, env.SENTRY_RELAY_SECRET)) return errorResponse("unauthorized", 401);
+      const ev = sentryEvent(await request.json().catch(() => null));
+      if (ev) ctx.waitUntil(relayEvent(env, ev));
+      return jsonResponse({ ok: true }, 202);
+    }
+
     if (path === "/api/holders/index") {
       if (request.method === "GET") return handleHoldersIndexGet(env);
       if (request.method === "POST") return handleHoldersIndexPost(request, env);
@@ -3924,11 +3955,17 @@ export default {
           .catch(err => console.error("[scheduled] sentiment epoch close failed:", err)),
       );
       ctx.waitUntil(refreshTreasurySnapshotCache(env));
+      ctx.waitUntil(checkBotHealthForAgents(env).catch(() => {}));
       return;
     }
     ctx.waitUntil(
       computeStatsSnapshot(env)
-        .then(snapshot => env.FRAME_ALERTS.put(STATS_KV_KEY, JSON.stringify(snapshot)))
+        .then(async snapshot => {
+          await env.FRAME_ALERTS.put(STATS_KV_KEY, JSON.stringify(snapshot));
+          const holders = holdersChangeEvent(snapshot);
+          if (holders) await relayEvent(env, holders);
+          if (new Date(event.scheduledTime).getUTCHours() === 0) await relayEvent(env, salesDailyEvent(snapshot));
+        })
         .catch(err => console.error("[scheduled] stats refresh failed:", err)),
     );
   },
