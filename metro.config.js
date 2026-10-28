@@ -30,10 +30,15 @@ const WEB_ALIASES = {
   'react-native-webview': 'src/web/shims/webview.tsx',
   'expo-file-system/legacy': 'src/web/shims/fileSystemLegacy.ts',
   '@shopify/react-native-skia': 'src/web/shims/skia.tsx',
+  // Loaded on demand when a Video/Avatar Room opens (see the shim).
+  'livekit-client': 'src/web/shims/livekitClient.ts',
 };
 const defaultResolve = config.resolver.resolveRequest;
 config.resolver.resolveRequest = (context, moduleName, platform) => {
   if (platform === 'web' && WEB_ALIASES[moduleName]) {
+    const target = path.join(__dirname, WEB_ALIASES[moduleName]);
+    // A shim that loads the real package (livekitClient.ts) gets the real one.
+    if (context.originModulePath === target) return (defaultResolve ?? context.resolveRequest)(context, moduleName, platform);
     return { type: 'sourceFile', filePath: path.join(__dirname, WEB_ALIASES[moduleName]) };
   }
   return (defaultResolve ?? context.resolveRequest)(context, moduleName, platform);

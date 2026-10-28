@@ -36,6 +36,7 @@ import { toast } from 'sonner-native';
 import { THEME, FONTS } from '@/lib/constants';
 import { IS_IMMERSIVE_SHELL } from '@/lib/immersiveStatusBar';
 import { LK_URL } from '@/lib/livekit';
+import { preloadLivekit } from '@/lib/livekitPreload';
 import { getCachedProfile } from '@/lib/userProfile';
 import { useAppStore } from '@/store/appStore';
 import { AnimatedAvatar } from '@/components/AnimatedAvatar';
@@ -191,15 +192,19 @@ export default function AvatarRoomScreen() {
       return;
     }
 
-    connectToAvatarRoom(LK_URL, token, localMouthTrait, isHost, () => {
-      // Involuntary disconnect (network drop) — connectToAvatarRoom() never
-      // got an explicit disconnectFromAvatarRoom() call, so settle from the
-      // RoomEvent.Disconnected listener's snapshot instead.
-      const stats = getLastAvatarSessionStats();
-      if (stats) settleAvatarRoomSession(stats).then(showRaidToast).catch(() => {});
-      useAppStore.getState().setIsInAvatarRoom(false);
-      router.back();
-    })
+    // Web: livekit-client is downloaded on demand first (preloadLivekit is
+    // null on the phone, so the phone connects exactly as before).
+    const connect = () => connectToAvatarRoom(LK_URL, token, localMouthTrait, isHost, () => {
+        // Involuntary disconnect (network drop) — connectToAvatarRoom() never
+        // got an explicit disconnectFromAvatarRoom() call, so settle from the
+        // RoomEvent.Disconnected listener's snapshot instead.
+        const stats = getLastAvatarSessionStats();
+        if (stats) settleAvatarRoomSession(stats).then(showRaidToast).catch(() => {});
+        useAppStore.getState().setIsInAvatarRoom(false);
+        router.back();
+      });
+    const livekitLoading = preloadLivekit();
+    (livekitLoading ? livekitLoading.then(connect) : connect())
       .then(() => {
         setConnecting(false);
         showMicProblem(true);
