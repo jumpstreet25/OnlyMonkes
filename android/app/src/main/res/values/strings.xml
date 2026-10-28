@@ -5,4 +5,12 @@
   <string name="expo_runtime_version">3.5</string>
   <string name="om_widget_empty">Nothing new</string>
   <string name="om_widget_description">Main Chat, DMs and MonkeTrades at a glance</string>
+  <string name="shortcut_main_chat">Main Chat</string>
+  <string name="shortcut_main_chat_long">Open Main Chat</string>
+  <string name="shortcut_dms">DMs</string>
+  <string name="shortcut_dms_long">Open your DMs</string>
+  <string name="shortcut_trades">MonkeTrades</string>
+  <string name="shortcut_trades_long">Open MonkeTrades</string>
+  <string name="shortcut_portfolio">Portfolio</string>
+  <string name="shortcut_portfolio_long">Open your portfolio</string>
 </resources>

@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Launcher shortcuts (3.1): long-press the app icon. Each opens a screen through the app's own deep links. -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="main_chat"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher_round"
+        android:shortcutShortLabel="@string/shortcut_main_chat"
+        android:shortcutLongLabel="@string/shortcut_main_chat_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="onlymonkes://chat"
+            android:targetPackage="com.onlymonkes.app.canary"
+            android:targetClass="com.onlymonkes.app.MainActivity" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="dms"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher_round"
+        android:shortcutShortLabel="@string/shortcut_dms"
+        android:shortcutLongLabel="@string/shortcut_dms_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="onlymonkes://dms"
+            android:targetPackage="com.onlymonkes.app.canary"
+            android:targetClass="com.onlymonkes.app.MainActivity" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="trades"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher_round"
+        android:shortcutShortLabel="@string/shortcut_trades"
+        android:shortcutLongLabel="@string/shortcut_trades_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="onlymonkes://trades"
+            android:targetPackage="com.onlymonkes.app.canary"
+            android:targetClass="com.onlymonkes.app.MainActivity" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="portfolio"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher_round"
+        android:shortcutShortLabel="@string/shortcut_portfolio"
+        android:shortcutLongLabel="@string/shortcut_portfolio_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="onlymonkes://portfolio"
+            android:targetPackage="com.onlymonkes.app.canary"
+            android:targetClass="com.onlymonkes.app.MainActivity" />
+    </shortcut>
+</shortcuts>

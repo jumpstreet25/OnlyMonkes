@@ -39,6 +39,7 @@
         <data android:scheme="onlymonkes"/>
         <data android:scheme="exp+monkesonly"/>
       </intent-filter>
+          <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts"/>
     </activity>
     <receiver android:name=".ReactionActionReceiver" android:exported="false"/>
     <receiver android:name=".ChatWidgetProvider" android:exported="false" android:label="OnlyMonkes">
