@@ -40,6 +40,7 @@ class MainActivity : ReactActivity() {
     // itself and leaving those consumers thinking edge-to-edge is off.
     setEdgeToEdgeFeatureFlagOn()
     super.onCreate(null)
+    ShareModule.handleIntent(intent)  // 3.1: "Share to OnlyMonkes"
     // 2026-07-23: explicit, version-independent edge-to-edge enforcement.
     // android:windowOptOutEdgeToEdgeEnforcement=false (styles.xml) only gets
     // Android to STOP blocking edge-to-edge on API 35+ — below that (down to
@@ -58,6 +59,11 @@ class MainActivity : ReactActivity() {
 
   // 3.1 picture-in-picture (PipModule): Android 12+ auto-enters from the params a room sets;
   // older versions need this hint when the user leaves the app mid-room.
+  override fun onNewIntent(intent: android.content.Intent) {
+    super.onNewIntent(intent)
+    ShareModule.handleIntent(intent)
+  }
+
   override fun onUserLeaveHint() {
     super.onUserLeaveHint()
     if (PipModule.roomActive && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {

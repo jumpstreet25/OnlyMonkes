@@ -7,6 +7,8 @@ import '../src/lib/xmtpPush'; // 3.1: XMTP push-hint + periodic background sync 
 import { useEffect } from 'react';
 import { AppLockGate } from '../src/components/AppLockGate';
 import { startHomeWidget } from '../src/lib/homeWidget';
+import { startShareIntent } from '../src/lib/shareIntent';
+import { holdLink } from '../src/lib/deepLinks';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Stack, usePathname } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
@@ -100,6 +102,12 @@ export default function RootLayout() {
 
     logAppOpen().catch(() => {});
     startHomeWidget().catch(() => {});
+    // 3.1: shared text/images open Main Chat (held until login, like deep links).
+    const stopShare = startShareIntent(() => {
+      const { wallet, myInboxId } = useAppStore.getState();
+      if (wallet && myInboxId) router.push('/chat');
+      else holdLink('/chat');
+    });
     const streak = useAppStore.getState().loginStreak;
     logDailySession(streak).catch(() => {});
     clearStaleOtaCacheIfNeeded();
@@ -209,6 +217,7 @@ export default function RootLayout() {
     }, 2000);
 
     // Deep links are routed by app/+native-intent.tsx (src/lib/deepLinks.ts).
+    return stopShare;
   }, []);
 
   // Referral bananas owed to this wallet (as inviter, or for joining with an

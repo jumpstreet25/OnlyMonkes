@@ -45,6 +45,7 @@ import { useXmtp, triggerProfileRebroadcast, _streamHealth, _getLastStreamEvent 
 import { currentClient } from "@/lib/xmtpSdk";
 import { registerXmtpBackgroundTasks, registerXmtpPush } from "@/lib/xmtpPush";
 import { markWidgetMainSeen } from "@/lib/homeWidget";
+import { usePendingShare } from "@/lib/shareIntent";
 import { prepareWalletBoundXmtp, XMTP_SIGNATURE_REQUIRED_ERROR } from "@/lib/xmtp";
 import { signBytesWithMwa } from "@/hooks/useMobileWallet";
 import { useAbortableFetch } from "@/hooks/useAbortableFetch";
@@ -987,9 +988,16 @@ export default function ChatScreen() {
         base64: false,
       });
       if (result.canceled || !result.assets?.[0]) return;
-      const asset = result.assets[0];
+      await reviewPhoto(result.assets[0].uri);
+    } catch (err: any) {
+      showGlassAlert(t("chatScreen.cameraError"), err?.message ?? t("chatScreen.couldNotOpenCamera"));
+    }
+  }, [t]);
+
+  /** Compress a photo and open PhotoReviewModal (camera capture and "Share to OnlyMonkes"). */
+  const reviewPhoto = useCallback(async (uri: string) => {
       const { compressImage } = await getVideoUpload();
-      const compressedUri = await compressImage(asset.uri);
+      const compressedUri = await compressImage(uri);
       const FS = await getFileSystem();
       const b64 = await FS.readAsStringAsync(compressedUri, { encoding: FS.EncodingType.Base64 });
       const dataUri = `data:image/jpeg;base64,${b64}`;
@@ -1009,10 +1017,31 @@ export default function ChatScreen() {
       import("@/lib/imageCaption").then(({ requestImageCaption }) => {
         requestImageCaption(requestId, b64, compressedUri).catch(() => {});
       });
-    } catch (err: any) {
-      showGlassAlert(t("chatScreen.cameraError"), err?.message ?? t("chatScreen.couldNotOpenCamera"));
+  }, []);
+
+  // ─── "Share to OnlyMonkes" (3.1): a shared link/text lands in the composer, an image in review ──
+  const pendingShare = usePendingShare((st) => st.item);
+  useEffect(() => {
+    if (!pendingShare) return;
+    usePendingShare.getState().set(null);
+    if (pendingShare.type === "text") {
+      setInputText(inputText ? `${inputText} ${pendingShare.text}` : pendingShare.text);
+      return;
     }
-  }, [t]);
+    (async () => {
+      try {
+        // content:// from the sharing app → our cache, so the image tools can read it.
+        const FS = await getFileSystem();
+        const local = `${FS.cacheDirectory}shared-${Date.now()}.jpg`;
+        await FS.copyAsync({ from: pendingShare.uri, to: local });
+        if (pendingShare.text) setInputText(inputText ? `${inputText} ${pendingShare.text}` : pendingShare.text);
+        await reviewPhoto(local);
+      } catch (err: any) {
+        showGlassAlert(t("chatScreen.cameraError"), err?.message ?? "");
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingShare]);
 
   // ─── Photo send (after review modal resolves) ──────────────────────────────
   const sendPhotoWithCaption = useCallback(async (dataUri: string, b64: string, caption: string) => {

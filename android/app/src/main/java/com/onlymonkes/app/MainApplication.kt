@@ -35,6 +35,7 @@ class MainApplication : Application(), ReactApplication {
           add(PipPackage())
           add(LiveUpdatePackage())
           add(WidgetPackage())
+          add(SharePackage())
         }
     )
   }

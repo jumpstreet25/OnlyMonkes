@@ -39,7 +39,18 @@
         <data android:scheme="onlymonkes"/>
         <data android:scheme="exp+monkesonly"/>
       </intent-filter>
-          <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts"/>
+          <!-- 3.1: "Share to OnlyMonkes" — text/links and images from other apps (ShareModule). -->
+      <intent-filter>
+        <action android:name="android.intent.action.SEND"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+        <data android:mimeType="text/plain"/>
+      </intent-filter>
+      <intent-filter>
+        <action android:name="android.intent.action.SEND"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+        <data android:mimeType="image/*"/>
+      </intent-filter>
+      <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts"/>
     </activity>
     <receiver android:name=".ReactionActionReceiver" android:exported="false"/>
     <receiver android:name=".ChatWidgetProvider" android:exported="false" android:label="OnlyMonkes">
