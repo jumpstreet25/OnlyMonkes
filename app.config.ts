@@ -43,7 +43,9 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   // apply a mismatched update rather than silently crashing).
   runtimeVersion: '3.4',
   plugins: [
-    'expo-router',
+    // Web only: each route is its own JS chunk, loaded when it is opened.
+    // Android/iOS keep one bundle (asyncRoutes.default stays off).
+    ['expo-router', { asyncRoutes: { web: true, default: false } }],
     'expo-secure-store',
     [
       'expo-build-properties',

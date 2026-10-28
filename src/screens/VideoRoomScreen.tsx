@@ -37,6 +37,7 @@ import { IS_IMMERSIVE_SHELL } from '@/lib/immersiveStatusBar';
 import { useAppStore } from '@/store/appStore';
 import { getCachedProfile } from '@/lib/userProfile';
 import { LK_URL } from '@/lib/livekit';
+import { preloadLivekit } from '@/lib/livekitPreload';
 import {
   connectToVideoRoom,
   disconnectFromVideoRoom,
@@ -146,11 +147,15 @@ export default function VideoRoomScreen() {
       return () => { unsub(); };
     }
 
-    connectToVideoRoom(LK_URL, token, () => {
-      // Disconnected callback (e.g. server kicked, network loss)
-      useAppStore.getState().setIsInVideoCall(false);
-      router.back();
-    })
+    // Web: livekit-client is downloaded on demand first (preloadLivekit is
+    // null on the phone, so the phone connects exactly as before).
+    const connect = () => connectToVideoRoom(LK_URL, token, () => {
+        // Disconnected callback (e.g. server kicked, network loss)
+        useAppStore.getState().setIsInVideoCall(false);
+        router.back();
+      });
+    const livekitLoading = preloadLivekit();
+    (livekitLoading ? livekitLoading.then(connect) : connect())
       .then(() => {
         setConnecting(false);
         useAppStore.getState().setIsInVideoCall(true);
