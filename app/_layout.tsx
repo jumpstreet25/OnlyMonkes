@@ -66,7 +66,14 @@ const WEB_BASE_SCREENS = new Set(['index', 'verify', 'pair', 'chat', 'genesis-ch
 const webLayered = (name: string) => Platform.OS === 'web' && !WEB_BASE_SCREENS.has(name);
 const WEB_LAYER = { presentation: 'transparentModal' as const, contentStyle: { backgroundColor: THEME.bg } };
 
-const queryClient = new QueryClient();
+// Web: tab switches and window focus re-ran every query (staleTime 0,
+// refetchOnWindowFocus true). On the web, data stays fresh for 45s and focus
+// alone doesn't refetch. Native keeps React Query's defaults.
+const queryClient = new QueryClient(
+  Platform.OS === 'web'
+    ? { defaultOptions: { queries: { staleTime: 45_000, refetchOnWindowFocus: false } } }
+    : undefined,
+);
 
 export default function RootLayout() {
   useFreeRasp(RASP_CONFIG, THREAT_ACTIONS);
