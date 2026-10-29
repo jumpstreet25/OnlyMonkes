@@ -44,3 +44,17 @@ test("desktop width: rail and bags panel", () => {
   expect(r.getByText("$BOME")).toBeTruthy();
   expect(r.getByText("-6.9%")).toBeTruthy();
 });
+
+test("old or partial trade records never break the page", () => {
+  at(1400);
+  const keep = { ...mockTrades };
+  Object.assign(mockTrades, {
+    portfolioResponse: { ts: undefined, walletBalanceSOL: null, winRate: undefined, positions: [{ token: "OLD" }] },
+    closedTrades: [{ token: "NOPNL" }],
+  });
+  const r = render(<WideShell><Text>SCREEN</Text></WideShell>);
+  expect(r.getByText("SCREEN")).toBeTruthy();
+  expect(r.getByText("$OLD")).toBeTruthy();
+  expect(r.getByText("$NOPNL")).toBeTruthy();
+  Object.assign(mockTrades, keep);
+});
