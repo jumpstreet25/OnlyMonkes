@@ -524,7 +524,8 @@ function ComposeModal({ visible, onClose, myInboxId }: {
 // Last group-DM list per inbox, shown at once on reopen (see useDmInbox).
 let _groupCache: { inboxId: string; threads: GroupDmThread[] } | null = null;
 
-export default function DmInboxScreen() {
+/** headerAccessory: web columns show the column switcher in place of the back button. */
+export default function DmInboxScreen({ headerAccessory }: { headerAccessory?: React.ReactNode } = {}) {
   const insets = useSafeAreaInsets();
   const { myInboxId, dmUnreadCounts } = useAppStore();
   const { threads, loading, refreshing, refresh } = useDmInbox();
@@ -611,9 +612,11 @@ export default function DmInboxScreen() {
     <View style={[styles.container, { paddingTop: insets.top, backgroundColor: themeBg }]}>
       {/* Header */}
       <View style={[styles.header, { borderBottomColor: themeBorder }]}>
+        {headerAccessory ?? (
         <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={8}>
           <Text style={styles.backArrow}>←</Text>
         </Pressable>
+        )}
         <Text style={styles.headerTitle}>Messages</Text>
         <View style={{ flexDirection: 'row', gap: 8 }}>
           <Pressable

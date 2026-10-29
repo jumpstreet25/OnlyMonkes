@@ -30,3 +30,30 @@ describe("wide web layout rail", () => {
     expect(isRailActive(byPath("/chat"), "/portfolio")).toBe(false);
   });
 });
+
+describe("wide web layout columns", () => {
+  const { parseColumnPrefs, visibleColumns, paneOpenInCenter, DEFAULT_COLUMNS } = require("../components/WideShell.web");
+
+  test("default is Trader: Messages left, MonkeTrades right", () => {
+    expect(DEFAULT_COLUMNS).toEqual({ left: "messages", right: "trades" });
+    expect(parseColumnPrefs(null)).toEqual(DEFAULT_COLUMNS);
+    expect(parseColumnPrefs("not json")).toEqual(DEFAULT_COLUMNS);
+    expect(parseColumnPrefs(JSON.stringify({ left: "bags", right: "nonsense" }))).toEqual({ left: "bags", right: "trades" });
+  });
+
+  test("how many columns fit", () => {
+    const prefs = { left: "messages", right: "trades" };
+    expect(visibleColumns(700, prefs)).toEqual({ left: null, right: null });
+    expect(visibleColumns(920, prefs)).toEqual({ left: null, right: "trades" });
+    expect(visibleColumns(920, { left: "messages", right: "off" })).toEqual({ left: null, right: "messages" });
+    expect(visibleColumns(1400, prefs)).toEqual({ left: "messages", right: "trades" });
+    expect(visibleColumns(1400, { left: "off", right: "off" })).toEqual({ left: null, right: null });
+  });
+
+  test("a column the middle already shows", () => {
+    expect(paneOpenInCenter("trades", "/bot-channel")).toBe(true);
+    expect(paneOpenInCenter("messages", "/dms")).toBe(true);
+    expect(paneOpenInCenter("messages", "/dm/abc")).toBe(false);
+    expect(paneOpenInCenter("bags", "/portfolio")).toBe(false);
+  });
+});

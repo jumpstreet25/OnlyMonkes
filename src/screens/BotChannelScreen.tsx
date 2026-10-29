@@ -72,9 +72,11 @@ const CHANNEL_CONFIG = {
 
 interface BotChannelScreenProps {
   channelId: "trades";
+  /** Web columns: shown in place of the back button (the column switcher). */
+  headerAccessory?: React.ReactNode;
 }
 
-export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
+export default function BotChannelScreen({ channelId, headerAccessory }: BotChannelScreenProps) {
   const insets = useSafeAreaInsets();
   const { myInboxId, botChannelIds, mutedBotChannels, toggleBotChannelMute, username } = useAppStore();
   const groupId = botChannelIds[channelId];
@@ -305,9 +307,13 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
       >
         <BotChannelIcon channel={channelId} size={80} color={getWorldAccent(worldId)} />
         <Text style={styles.centerText}>{config.name} channel not configured yet.</Text>
+        {headerAccessory ? (
+          <View style={{ position: "absolute", top: 8, left: 8 }}>{headerAccessory}</View>
+        ) : (
         <Pressable onPress={() => router.back()} style={styles.retryBtn}>
           <Text style={styles.retryText}>Go Back</Text>
         </Pressable>
+        )}
       </View>
     );
   }
@@ -328,9 +334,11 @@ export default function BotChannelScreen({ channelId }: BotChannelScreenProps) {
         )}
         <View style={[StyleSheet.absoluteFill, { backgroundColor: chromeBg }]} pointerEvents="none" />
         <View style={styles.headerRow1}>
+        {headerAccessory ?? (
         <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={8}>
           <Text style={styles.backIcon}>{"\u2039"}</Text>
         </Pressable>
+        )}
 
         <ImageBackground
           source={config.banner}
