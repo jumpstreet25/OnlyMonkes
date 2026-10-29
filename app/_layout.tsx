@@ -5,7 +5,7 @@ import '../src/lib/headlessReaction'; // registers the Headless JS reaction task
 import '../src/lib/sentimentUploadTask'; // registers the Data Oracle Phase 1 Headless JS upload task — same reasoning as headlessReaction above
 import { useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Stack, usePathname } from 'expo-router';
+import { Stack, usePathname, type ErrorBoundaryProps } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { IS_IMMERSIVE_SHELL } from '../src/lib/immersiveStatusBar';
@@ -36,7 +36,7 @@ import { GlassAlertRoot } from '../src/lib/glassAlert';
 import { logAppOpen, logDailySession } from '../src/lib/analytics';
 import { loadBadgeData, setOnBadgeEarned, getBadgeBananaReward, type BadgeDef } from '../src/lib/badges';
 import { addBananas } from '../src/lib/bananaRewards';
-import { Alert, Platform } from 'react-native';
+import { Alert, Platform, Pressable, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { holdWebInvite, takeHeldLink } from '../src/lib/deepLinks';
 import { collectReferralBananas } from '../src/lib/referrals';
@@ -75,6 +75,31 @@ const queryClient = new QueryClient(
     ? { defaultOptions: { queries: { staleTime: 45_000, refetchOnWindowFocus: false } } }
     : undefined,
 );
+
+// Any render crash shows this instead of a blank (black) page — on the web three wide-layout
+// crashes in one day (2026-10-29) left holders on a black screen with no clue. Shows the
+// error text so it can be reported; "Reset layout" clears the web column choice too.
+export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
+  const resetAndReload = () => {
+    try { globalThis.localStorage?.removeItem('om_web_columns_v1'); } catch { /* private window */ }
+    if (Platform.OS === 'web') (globalThis as any).location?.reload();
+    else retry();
+  };
+  return (
+    <View style={{ flex: 1, backgroundColor: THEME.bg, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 14 }}>
+      <Text style={{ color: THEME.text, fontSize: 20, fontWeight: '600' }}>Something went wrong</Text>
+      <Text selectable style={{ color: THEME.textMuted, fontSize: 13, textAlign: 'center', maxWidth: 560 }}>{String(error?.message ?? error)}</Text>
+      <View style={{ flexDirection: 'row', gap: 10, marginTop: 6 }}>
+        <Pressable onPress={retry} style={{ backgroundColor: THEME.accent, paddingHorizontal: 18, paddingVertical: 12, borderRadius: 12 }}>
+          <Text style={{ color: '#fff', fontWeight: '600' }}>Try again</Text>
+        </Pressable>
+        <Pressable onPress={resetAndReload} style={{ backgroundColor: 'rgba(255,255,255,0.08)', paddingHorizontal: 18, paddingVertical: 12, borderRadius: 12 }}>
+          <Text style={{ color: THEME.text, fontWeight: '600' }}>Reset layout</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
 
 export default function RootLayout() {
   useFreeRasp(RASP_CONFIG, THREAT_ACTIONS);

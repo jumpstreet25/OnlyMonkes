@@ -59,11 +59,16 @@ function withSecurityHeaders(res: Response, path: string): Response {
   out.headers.set("X-Content-Type-Options", "nosniff");
   out.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   out.headers.set("Permissions-Policy", "camera=(self), microphone=(self), geolocation=(self), payment=()");
-  // Export file names carry a content hash, so a browser can keep them for
-  // good; the default (max-age=0, must-revalidate) re-checked ~10 MB of app
-  // code on every visit. canvaskit-<version>.wasm (what the app loads) is
-  // versioned too; the legacy fixed name canvaskit.wasm keeps an hour.
-  if (path.startsWith("/_expo/static/") || path.startsWith("/assets/") || /^\/canvaskit-[0-9][\w.-]*\.wasm$/.test(path)) {
+  // App code is re-checked on every visit (ETag → 304, cheap). It was cached
+  // immutable for a year, but the export's entry-<hash>.js keeps its name
+  // across builds while its contents (the chunk names it loads) change: a
+  // returning browser ran last build's entry against this build's chunks →
+  // "Requiring unknown module" and a black page (three times, 2026-10-29).
+  // Images/fonts under /assets/ and canvaskit-<version>.wasm really are
+  // versioned by name and stay immutable; the legacy canvaskit.wasm keeps an hour.
+  if (path.startsWith("/_expo/static/")) {
+    out.headers.set("Cache-Control", "no-cache");
+  } else if (path.startsWith("/assets/") || /^\/canvaskit-[0-9][\w.-]*\.wasm$/.test(path)) {
     out.headers.set("Cache-Control", "public, max-age=31536000, immutable");
   } else if (path === "/canvaskit.wasm") {
     out.headers.set("Cache-Control", "public, max-age=3600");
