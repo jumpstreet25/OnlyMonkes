@@ -5,7 +5,6 @@ import { render } from "@testing-library/react-native";
 jest.mock("@/lib/constants", () => ({ THEME: { bg: "#000", text: "#fff", textMuted: "#888", accent: "#70f", accentSoft: "#70f3", success: "#0f0", error: "#f00" }, FONTS: {} }));
 let mockWidth = 400;
 jest.mock("react-native/Libraries/Utilities/useWindowDimensions", () => ({ __esModule: true, default: () => ({ width: mockWidth, height: 800, scale: 1, fontScale: 1 }) }));
-jest.mock("@/components/MenuIcon", () => ({ MenuIcon: () => null }));
 jest.mock("expo-router", () => ({ router: { navigate: jest.fn() }, usePathname: () => "/chat" }));
 jest.mock("react-i18next", () => ({ useTranslation: () => ({ t: (k: string) => k }) }));
 const mockApp = { wallet: { address: "w" }, verified: true, isGenesisHolder: false };
