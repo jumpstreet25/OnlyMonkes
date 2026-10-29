@@ -28,9 +28,16 @@ CK_VER=$(node -p "require('canvaskit-wasm/package.json').version")
 cp node_modules/canvaskit-wasm/bin/full/canvaskit.wasm "public/canvaskit-${CK_VER}.wasm"
 # bun can leave a copy of @expo/cli without its ws dependency; call the complete one.
 node node_modules/@expo/cli/build/bin/cli export -p web --output-dir dist-web --clear
-# Version-stamp the script links: browsers that cached entry-<hash>.js for a year (same name,
-# new contents every build) must fetch this build's copy, not run last build's.
+# Every deploy serves its JS from its own folder (_expo/static/js/<build>/). Expo keeps chunk
+# file names (entry-, chat-, dms-…) across builds while their contents and module ids change, and
+# browsers held them for a year (old immutable header): a returning browser mixed two builds →
+# "Requiring unknown module". A ?v= tag on the page's own <script> links wasn't enough — route
+# chunks load later by plain path. A new folder per deploy means no URL is ever reused.
 BUILD_ID="$(git rev-parse --short HEAD)-$(date +%s)"
-find dist-web -name '*.html' -print0 | xargs -0 sed -i -E "s#(/_expo/static/js/web/[A-Za-z0-9_.-]+\.js)\"#\1?v=${BUILD_ID}\"#g"
-grep -q "?v=${BUILD_ID}" dist-web/index.html || { echo "deploy-site: script links were not version-stamped" >&2; exit 1; }
+mv dist-web/_expo/static/js/web "dist-web/_expo/static/js/${BUILD_ID}"
+find dist-web -type f \( -name '*.html' -o -name '*.js' \) -print0 | xargs -0 sed -i "s#_expo/static/js/web/#_expo/static/js/${BUILD_ID}/#g"
+if grep -rlq "_expo/static/js/web/" dist-web --include='*.html' --include='*.js'; then
+  echo "deploy-site: some JS paths still point at _expo/static/js/web/" >&2; exit 1
+fi
+grep -q "_expo/static/js/${BUILD_ID}/" dist-web/index.html || { echo "deploy-site: index.html not moved to the build folder" >&2; exit 1; }
 npx wrangler deploy --config scripts/web/wrangler.toml
