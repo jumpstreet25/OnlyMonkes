@@ -5,6 +5,8 @@
  * panel with the holder's own AutonoMonke bags and recent closes (read from tradesStore —
  * whatever the bot last sent this inbox; nothing is fetched or signed here).
  * Below WIDE_MIN_PX, and before sign-in, it renders the phone layout unchanged.
+ * Icons are emoji, not MenuIcon: Skia's CanvasKit isn't loaded when the shell first draws on the
+ * web, and a Skia canvas there threw (PictureRecorder of undefined) and blanked the page.
  */
 import React, { type ReactNode } from "react";
 import { View, Text, Pressable, ScrollView, StyleSheet, useWindowDimensions } from "react-native";
@@ -13,30 +15,29 @@ import { useTranslation } from "react-i18next";
 import { THEME, FONTS } from "@/lib/constants";
 import { useAppStore } from "@/store/appStore";
 import { useTradesStore } from "@/store/tradesStore";
-import { MenuIcon, type MenuIconName } from "./MenuIcon";
 
 export const WIDE_MIN_PX = 760;
 export const PANEL_MIN_PX = 1180;
 const NO_SHELL = new Set(["/", "/verify", "/pair"]);
 
-interface RailItem { path: string; icon: MenuIconName; label: string; match?: (p: string) => boolean }
+interface RailItem { path: string; icon: string; label: string; match?: (p: string) => boolean }
 
 /** Pure: which rail entries a holder sees (Genesis-only holders reach Genesis Chat only). */
 export function railItems(t: (k: string) => string, monke: boolean, genesis: boolean): RailItem[] {
-  if (!monke) return genesis ? [{ path: "/genesis-chat", icon: "speech", label: t("wide.genesis") }] : [];
+  if (!monke) return genesis ? [{ path: "/genesis-chat", icon: "✨", label: t("wide.genesis") }] : [];
   const items: RailItem[] = [
-    { path: "/chat", icon: "speech", label: t("wide.mainChat") },
-    { path: "/bot-channel?channelId=trades", icon: "chart_up", label: "MonkeTrades", match: (p) => p.startsWith("/bot-channel") },
-    { path: "/dms", icon: "messages", label: t("wide.messages"), match: (p) => p === "/dms" || p.startsWith("/dm/") || p.startsWith("/group-dm") },
+    { path: "/chat", icon: "💬", label: t("wide.mainChat") },
+    { path: "/bot-channel?channelId=trades", icon: "📈", label: "MonkeTrades", match: (p) => p.startsWith("/bot-channel") },
+    { path: "/dms", icon: "✉️", label: t("wide.messages"), match: (p) => p === "/dms" || p.startsWith("/dm/") || p.startsWith("/group-dm") },
   ];
-  if (genesis) items.splice(1, 0, { path: "/genesis-chat", icon: "speech", label: t("wide.genesis") });
+  if (genesis) items.splice(1, 0, { path: "/genesis-chat", icon: "✨", label: t("wide.genesis") });
   items.push(
-    { path: "/portfolio", icon: "portfolio", label: t("menuDrawer.portfolio") },
-    { path: "/watchlist", icon: "watchlist", label: t("menuDrawer.watchlist") },
-    { path: "/marketplace", icon: "monkemarkets", label: "MonkeMarkets" },
-    { path: "/treasury", icon: "banana", label: "OnlyTreasury" },
-    { path: "/globe", icon: "globe", label: t("menuDrawer.globe") },
-    { path: "/settings", icon: "settings", label: t("menuDrawer.settings") },
+    { path: "/portfolio", icon: "💼", label: t("menuDrawer.portfolio") },
+    { path: "/watchlist", icon: "👀", label: t("menuDrawer.watchlist") },
+    { path: "/marketplace", icon: "🛒", label: "MonkeMarkets" },
+    { path: "/treasury", icon: "🍌", label: "OnlyTreasury" },
+    { path: "/globe", icon: "🌍", label: t("menuDrawer.globe") },
+    { path: "/settings", icon: "⚙️", label: t("menuDrawer.settings") },
   );
   return items;
 }
@@ -68,7 +69,7 @@ function Rail({ items, pathname }: { items: RailItem[]; pathname: string }) {
             onPress={() => router.navigate(it.path as any)}
             style={({ hovered }: any) => [styles.railItem, active && styles.railItemActive, hovered && !active && styles.railItemHover]}
           >
-            <MenuIcon name={it.icon} size={22} color={active ? THEME.accent : THEME.textMuted} />
+            <Text style={[styles.railIcon, !active && styles.railIconIdle]}>{it.icon}</Text>
             <Text style={[styles.railLabel, active && styles.railLabelActive]} numberOfLines={1}>{it.label}</Text>
           </Pressable>
         );
@@ -150,17 +151,19 @@ export function WideShell({ children }: { children: ReactNode }) {
 
 const styles = StyleSheet.create({
   shell: { flex: 1, flexDirection: "row", backgroundColor: THEME.bg },
-  center: { flex: 1, minWidth: 0 },
+  center: { flex: 1, minWidth: 0, overflow: "hidden" },
   centerWide: { borderLeftWidth: 1, borderRightWidth: 1, borderColor: "rgba(255,255,255,0.06)" },
-  rail: { width: 210, flexGrow: 0, flexShrink: 0 },
+  rail: { width: 210, flexGrow: 0, flexShrink: 0, backgroundColor: THEME.bg },
   railInner: { paddingVertical: 14, paddingHorizontal: 10, gap: 4 },
   brand: { fontFamily: FONTS.displayMed, fontSize: 18, color: THEME.text, paddingHorizontal: 12, paddingBottom: 10 },
   railItem: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 48, paddingHorizontal: 12, borderRadius: 12 },
   railItemActive: { backgroundColor: THEME.accentSoft },
   railItemHover: { backgroundColor: "rgba(255,255,255,0.05)" },
+  railIcon: { fontSize: 20, width: 26, textAlign: "center" },
+  railIconIdle: { opacity: 0.7 },
   railLabel: { fontFamily: FONTS.bodyMed, fontSize: 16, color: THEME.textMuted, flexShrink: 1 },
   railLabelActive: { color: THEME.text },
-  panel: { width: 320, flexGrow: 0, flexShrink: 0 },
+  panel: { width: 320, flexGrow: 0, flexShrink: 0, backgroundColor: THEME.bg },
   panelInner: { padding: 16, gap: 8 },
   panelTitle: { fontFamily: FONTS.displayMed, fontSize: 16, color: THEME.text },
   panelGap: { marginTop: 16 },

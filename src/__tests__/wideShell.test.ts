@@ -1,7 +1,6 @@
 jest.mock("@/lib/constants", () => ({ THEME: {}, FONTS: {} }));
 jest.mock("@/store/appStore", () => ({ useAppStore: jest.fn() }));
 jest.mock("@/store/tradesStore", () => ({ useTradesStore: jest.fn() }));
-jest.mock("@/components/MenuIcon", () => ({ MenuIcon: () => null }));
 jest.mock("expo-router", () => ({ router: { navigate: jest.fn() }, usePathname: jest.fn() }));
 jest.mock("react-i18next", () => ({ useTranslation: () => ({ t: (k: string) => k }) }));
 
