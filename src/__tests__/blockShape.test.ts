@@ -1,5 +1,6 @@
 import bare from "./fixtures/bareMonkes.json";
-import { solidFromPx, blockFaces, halfDepths, BLOCK_LIMITS, NECK_GAP, FRONT, neckPivot, clampTilt } from "../../public/viewer/blockShape.js";
+import { solidFromPx, blockFaces, BLOCK_LIMITS, BLOCK_SHAPE, FRONT, BACK, RES, V, NECK_ROW, neckPivot, clampTilt, toWorld } from "../../public/viewer/blockShape.js";
+import type { Px } from "../../public/viewer/blockShape.js";
 
 type V3 = [number, number, number];
 const DEG = Math.PI / 180;
@@ -13,7 +14,10 @@ function rotate([x, y, z]: V3, rx: number, ry: number, rz: number): V3 {
 const dot = (a: V3, b: V3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const cross = (a: V3, b: V3): V3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
 
-/** Unit cube rotated (axes u) at c1 vs axis-aligned unit cube at c2: overlapping by more than 0.001? */
+// One block's half-size in scene units (x is stretched by the width).
+const HE: V3 = [(V / 2) * BLOCK_SHAPE.width, V / 2, V / 2];
+
+/** Block rotated (axes u) at c1 vs axis-aligned block at c2: overlapping by more than 0.001? */
 function overlaps(c1: V3, u: V3[], c2: V3): boolean {
   const e: V3[] = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
   const axes: V3[] = [...e, ...u];
@@ -21,77 +25,96 @@ function overlaps(c1: V3, u: V3[], c2: V3): boolean {
   const d: V3 = [c2[0] - c1[0], c2[1] - c1[1], c2[2] - c1[2]];
   for (const L of axes) {
     const len = Math.sqrt(dot(L, L));
-    const r1 = 0.5 * u.reduce((s, ui) => s + Math.abs(dot(ui, L)), 0) / len;
-    const r2 = 0.5 * (Math.abs(L[0]) + Math.abs(L[1]) + Math.abs(L[2])) / len;
+    const r1 = u.reduce((s, ui, i) => s + HE[i] * Math.abs(dot(ui, L)), 0) / len;
+    const r2 = (HE[0] * Math.abs(L[0]) + HE[1] * Math.abs(L[1]) + HE[2] * Math.abs(L[2])) / len;
     if (Math.abs(dot(d, L)) / len >= r1 + r2 - 0.001) return false;
   }
   return true;
 }
 
-/** Does the head, turned to (pitch, yaw, roll) about its neck pivot, touch the body? */
-export function headHitsBody(px: number[][][], pitch: number, yaw: number, roll: number): boolean {
-  const solid = solidFromPx(px);
-  const { cubes } = blockFaces(px, solid);
-  const pivot = neckPivot(solid) as V3;
-  const u = ([[1, 0, 0], [0, 1, 0], [0, 0, 1]] as V3[]).map((v) => rotate(v, pitch * DEG, yaw * DEG, roll * DEG));
-  const body = cubes.body.map(([x, r, z]) => [x - 7.5, 8 - r - 0.5, z] as V3);
-  for (const [x, r, z] of cubes.head) {
-    const local: V3 = [x - 7.5 - pivot[0], 8 - r - 0.5 + NECK_GAP - pivot[1], z - pivot[2]];
-    const w = rotate(local, pitch * DEG, yaw * DEG, roll * DEG);
-    const c: V3 = [w[0] + pivot[0], w[1] + pivot[1], w[2] + pivot[2]];
-    for (const b of body) {
-      const dd = (b[0] - c[0]) ** 2 + (b[1] - c[1]) ** 2 + (b[2] - c[2]) ** 2;
-      if (dd < 3.01 && overlaps(c, u, b)) return true;
+const centre = ([i, j, k]: number[], yOff: number): V3 => { const w = toWorld(i + 0.5, j + 0.5, k + 0.5); return [w[0], w[1] + yOff, w[2]]; };
+
+// Per monke: the head's bottom blocks (relative to the pivot) and the body's top blocks.
+const parts = new WeakMap<Px, { head: V3[]; body: Map<string, V3[]>; pivot: V3 }>();
+const cellOf = (p: V3) => p.map((v) => Math.floor(v * 2)) as V3;
+function partsOf(px: Px) {
+  let p = parts.get(px);
+  if (!p) {
+    const solid = solidFromPx(px);
+    const { cubes } = blockFaces(px, solid);
+    const pivot = neckPivot(solid);
+    // Only the bottom of the head can reach the top of the body.
+    const head = cubes.head.filter(([, j]) => j >= (NECK_ROW - 4) * 2).map((c) => { const q = centre(c, BLOCK_SHAPE.gap); return [q[0] - pivot[0], q[1] - pivot[1], q[2] - pivot[2]] as V3; });
+    const body = new Map<string, V3[]>();
+    for (const c of cubes.body) {
+      if (c[1] >= (NECK_ROW + 3) * 2) continue;
+      const b = centre(c, 0), k = cellOf(b).join(",");
+      body.set(k, [...(body.get(k) || []), b]);
     }
+    p = { head, body, pivot };
+    parts.set(px, p);
+  }
+  return p;
+}
+
+/** Does the head, turned to (pitch, yaw, roll) about its neck pivot, touch the body? */
+function headHitsBody(px: Px, pitch: number, yaw: number, roll: number): boolean {
+  const { head, body, pivot } = partsOf(px);
+  const u = ([[1, 0, 0], [0, 1, 0], [0, 0, 1]] as V3[]).map((v) => rotate(v, pitch * DEG, yaw * DEG, roll * DEG));
+  for (const h of head) {
+    const w = rotate(h, pitch * DEG, yaw * DEG, roll * DEG);
+    const c: V3 = [w[0] + pivot[0], w[1] + pivot[1], w[2] + pivot[2]];
+    const [x, y, z] = cellOf(c);
+    for (let dx = -2; dx <= 2; dx++) for (let dy = -2; dy <= 2; dy++) for (let dz = -2; dz <= 2; dz++)
+      for (const b of body.get(`${x + dx},${y + dy},${z + dz}`) || []) if (overlaps(c, u, b)) return true;
   }
   return false;
 }
 
-const steps = (lim: number) => [-lim, -lim / 2, 0, lim / 2, lim];
+const fixtures = bare as { fur: string; n: number; px: Px }[];
 
-describe.each(bare as { fur: string; n: number; px: number[][][] }[])("$fur (#$n) block monke", ({ px }) => {
+describe.each(fixtures)("$fur (#$n) block monke", ({ px }) => {
   const solid = solidFromPx(px);
-  const { H, cubes, faces } = blockFaces(px, solid);
+  const { cubes, faces, zFront, fur } = blockFaces(px, solid);
+  const key = (p: number[]) => (p[0] << 16) | (p[1] << 8) | p[2];
 
-  test("solid: every art pixel has a column, symmetric front/back, no gaps", () => {
-    for (let r = 0; r < 16; r++) for (let x = 0; x < 16; x++) {
-      if (!solid[r][x]) continue;
-      expect(H[r][x]).toBeGreaterThanOrEqual(1);
-      const zs = [...cubes.head, ...cubes.body].filter((c) => c[0] === x && c[1] === r).map((c) => c[2]).sort((a, b) => a - b);
-      expect(zs).toEqual(Array.from({ length: 2 * H[r][x] + 1 }, (_, i) => i - H[r][x]));
+  test("32×32: every art pixel is 2×2 blocks, each the full part depth", () => {
+    for (const part of ["head", "body"] as const) {
+      const depth = Math.round((part === "head" ? BLOCK_SHAPE.headD : BLOCK_SHAPE.bodyD) / V);
+      const cols = new Map<string, number>();
+      for (const [i, j] of cubes[part]) cols.set(i + "," + j, (cols.get(i + "," + j) || 0) + 1);
+      for (const n of cols.values()) expect(n).toBe(depth);
+      for (let j = 0; j < RES; j++) for (let i = 0; i < RES; i++) {
+        const inPart = (j >> 1 < NECK_ROW) === (part === "head");
+        if (inPart) expect(cols.has(i + "," + j)).toBe(solid[j >> 1][i >> 1]);
+      }
     }
   });
 
-  test("no dents: every row and column climbs to one peak", () => {
-    const D = halfDepths(solid);
-    const runs = (vals: number[]) => {
-      let down = false;
-      for (let i = 1; i < vals.length; i++) {
-        if (vals[i] < vals[i - 1]) down = true;
-        else if (vals[i] > vals[i - 1] && down) return false;
-      }
-      return true;
-    };
-    for (let r = 0; r < 16; r++) expect(runs(D[r].filter((_, x) => solid[r][x]))).toBe(true);
+  test("the front is the NFT, pixel for pixel", () => {
+    const front = [...faces.head, ...faces.body].filter((f) => f.dir === FRONT);
+    for (const f of front) expect(f.c).toBe(key(px[f.j >> 1][f.i >> 1]));
+    expect(zFront.head).toBeCloseTo(BLOCK_SHAPE.headD / 2, 5);
   });
 
-  test("eyes and dark details only on the front, the back of the head is not a face", () => {
-    const front = new Set(faces.head.filter((f) => f.dir === FRONT).map((f) => f.c));
-    const eye = (px[9][7][0] << 16) | (px[9][7][1] << 8) | px[9][7][2];
-    if (!front.has(eye)) return;
-    const elsewhere = faces.head.filter((f) => f.dir !== FRONT && f.c === eye && !(f.x === 7 && f.r === 9 && f.dir === FRONT));
-    expect(elsewhere).toEqual([]);
+  test("eyes only on the front; the back of the head is fur", () => {
+    const eye = key(px[9][7]);
+    if (eye === key(px[9][8])) return;
+    expect(faces.head.filter((f) => f.dir !== FRONT && f.c === eye)).toEqual([]);
+    for (const f of faces.head.filter((g) => g.dir === BACK)) if (f.c !== key(px[f.j >> 1][f.i >> 1])) expect(f.c).toBe(fur);
   });
 
-  test("head never touches the body anywhere inside the turn limits", () => {
+  test("head turns ±45° and tilts inside the limits without touching the body", () => {
     const { yaw, pitch, roll } = BLOCK_LIMITS;
     const tilts: [number, number][] = [[0, 0]];
-    for (let i = 0; i < 16; i++) {
-      const a = (i / 16) * 2 * Math.PI;
-      tilts.push(clampTilt(Math.cos(a) * pitch * 1.5, Math.sin(a) * roll * 1.5) as [number, number]);
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * 2 * Math.PI;
+      tilts.push(clampTilt(Math.cos(a) * pitch * 1.5, Math.sin(a) * roll * 1.5));
     }
-    for (const y of [-yaw, -yaw * 2 / 3, -yaw / 3, 0, yaw / 3, yaw * 2 / 3, yaw])
+    for (const y of [-yaw, -yaw / 2, 0, yaw / 2, yaw])
       for (const [p, ro] of tilts)
         expect([y, p, ro, headHitsBody(px, p, y, ro)]).toEqual([y, p, ro, false]);
   });
 });
+
+

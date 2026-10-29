@@ -1,17 +1,25 @@
 /**
  * Block monke geometry from the 16×16 art, with no three.js so it can be tested
- * in node (src/__tests__/blockShape.test.ts). One cube per art pixel column,
- * solid front to back; the head (rows 0–11) and body (rows 12–15) are separate
- * rigid parts with a gap between them so the head can turn without touching
- * the body. monkeModel.js turns these faces into meshes.
+ * in node (src/__tests__/blockShape.test.ts). Built at 32×32: every art pixel is
+ * 2×2 blocks, so eyelids, the mouth and (later) traits move in half-pixel steps.
+ * The front is the NFT exactly; every block goes back the same depth (head and
+ * body each their own), so the sides are flat walls that follow the art's
+ * outline. Head (rows 0–11) and body (rows 12–15) are separate rigid parts with
+ * a gap between them so the head can turn without touching the body.
+ * monkeModel.js turns these faces into meshes. Shape tuned by the owner in the
+ * Monke 3D tuner (2026-10-29).
  */
 export const NECK_ROW = 12;
-export const NECK_GAP = 0.4;
+export const RES = 32;
+export const V = 16 / RES; // block size, in art pixels
+// Depths and gap in art pixels; width stretches x; wrap = how far the face's
+// colours run back onto the cheeks; ear = the ear patch's size front to back.
+export const BLOCK_SHAPE = { headD: 7, bodyD: 5, width: 1.1, wrap: 1, ear: 2, gap: 0.5 };
 // Head turn limits (degrees). Yaw is the owner's ±45°. Pitch and roll share an
-// oval budget (clampTilt) that every fur clears the body with at any yaw, with
-// this gap and pivot: 15°/10° alone is safe but not both together, so 10°/7°
-// (searched 2026-10-29; checked by blockShape.test.ts).
-export const BLOCK_LIMITS = { yaw: 45, pitch: 10, roll: 7 };
+// oval budget (clampTilt) that every fur clears the body with at any yaw
+// (alone the head clears 11°/9°, together only 5°; searched 2026-10-29,
+// checked by blockShape.test.ts).
+export const BLOCK_LIMITS = { yaw: 45, pitch: 8, roll: 7 };
 
 /**
  * Pitch and roll share one budget (an oval): full pitch or full roll alone is
@@ -47,62 +55,19 @@ export function solidFromPx(px) {
   return solid;
 }
 
-const isHead = (r) => r < NECK_ROW;
+/** Block lattice corner (i, j, k) → scene units (art centred, y up, x stretched by width). */
+export const toWorld = (i, j, k, shape = BLOCK_SHAPE) => [(i * V - 8) * shape.width, 8 - j * V, k * V];
 
 /**
- * Where the head turns, in scene units (art centred, y up): over the middle of
- * the neck, half a block below the bottom of the head (inside the neck top). The art's neck is off-centre, so turning
+ * Where the head turns, in scene units: over the middle of the neck, half a
+ * pixel below the bottom of the head. The art's neck is off-centre, so turning
  * about the picture's middle swung the chin into it.
  */
-export function neckPivot(solid) {
+export function neckPivot(solid, shape = BLOCK_SHAPE) {
   const xs = [];
   for (let x = 0; x < 16; x++) if (solid[NECK_ROW]?.[x]) xs.push(x);
   const cx = xs.length ? (xs[0] + xs[xs.length - 1] + 1) / 2 - 8 : 0;
-  return [cx, 8 - NECK_ROW + NECK_GAP - 0.5, 0];
-}
-
-/**
- * Half-depth per pixel (the column runs z = -h … +h): thicker toward the middle
- * of each part (head up to 4, body up to 3), then raised so every row and
- * column climbs to one peak and back down — no dents, holes or pits.
- */
-export function halfDepths(solid) {
-  const d = solid.map((row) => row.map((s) => (s ? 99 : 0)));
-  for (let it = 0; it < 16; it++)
-    for (let r = 0; r < 16; r++) for (let x = 0; x < 16; x++) {
-      if (!d[r][x]) continue;
-      let m = 99;
-      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-        const nx = x + dx, ny = r + dy;
-        const v = nx < 0 || ny < 0 || nx > 15 || ny > 15 || isHead(ny) !== isHead(r) ? 0 : d[ny][nx];
-        m = Math.min(m, v);
-      }
-      d[r][x] = Math.min(d[r][x], m + 1);
-    }
-  const H = d.map((row, r) => row.map((v) => (!v ? 0 : isHead(r) ? Math.min(1 + Math.floor(v * 0.9), 4) : Math.min(1 + Math.floor(v * 0.6), 3))));
-  const unimodal = (get, set, len, splitAt) => {
-    let changed = false;
-    let j = 0;
-    while (j < len) {
-      if (!get(j)) { j++; continue; }
-      let e = j;
-      while (e < len && get(e) && (splitAt == null || isHead(e) === isHead(j))) e++;
-      const seg = []; for (let i = j; i < e; i++) seg.push(get(i));
-      const pre = [], suf = [];
-      seg.forEach((v, i) => (pre[i] = Math.max(v, i ? pre[i - 1] : 0)));
-      for (let i = seg.length - 1; i >= 0; i--) suf[i] = Math.max(seg[i], i < seg.length - 1 ? suf[i + 1] : 0);
-      seg.forEach((v, i) => { const t = Math.min(pre[i], suf[i]); if (t > v) { set(j + i, t); changed = true; } });
-      j = e;
-    }
-    return changed;
-  };
-  for (let pass = 0; pass < 20; pass++) {
-    let ch = false;
-    for (let r = 0; r < 16; r++) ch = unimodal((i) => H[r][i], (i, v) => (H[r][i] = v), 16, null) || ch;
-    for (let x = 0; x < 16; x++) ch = unimodal((i) => H[i][x], (i, v) => (H[i][x] = v), 16, true) || ch;
-    if (!ch) break;
-  }
-  return H;
+  return [cx * shape.width, 8 - NECK_ROW + shape.gap - 0.5, 0];
 }
 
 const key = (p) => (p[0] << 16) | (p[1] << 8) | p[2];
@@ -115,44 +80,51 @@ function mostCommon(keys, skip) {
   return best;
 }
 
-// Face directions: +x, -x, up, down, front (+z, toward the viewer), back.
+// Face directions in the lattice: +i, -i, up (j-1), down (j+1), front (+k, toward the viewer), back.
 export const DIRS = [[1, 0, 0], [-1, 0, 0], [0, -1, 0], [0, 1, 0], [0, 0, 1], [0, 0, -1]];
 export const FRONT = 4, BACK = 5;
 
 /**
- * Every exposed cube face of each part, with its colour (0xRRGGBB). The art is
- * on the front faces. Sides take the pixel's own colour, except that eyes and
- * other dark face details stay on the front only (side walls show skin), and
- * the face's colours stop at the middle: behind it the head is fur, so the
- * back of the head is never a second face.
+ * Every block and exposed block face of each part, in lattice cells
+ * (i, j: 0–31, k: depth), with its colour (0xRRGGBB). The art is on the front.
+ * Fur keeps its colour all round; the face's colours wrap `wrap` pixels onto
+ * the cheeks and stop (eyes and dark details stay on the front); behind that
+ * the head is fur. The ear (a skin pixel on the head's left edge, seen side-on
+ * in the art) is a patch in the middle of the side, not a stripe.
  */
-export function blockFaces(px, solid) {
-  const H = halfDepths(solid);
+export function blockFaces(px, solid, shape = BLOCK_SHAPE) {
   const bodyKeys = [], headKeys = [];
-  for (let r = 0; r < 16; r++) for (let x = 0; x < 16; x++) if (solid[r][x]) (isHead(r) ? headKeys : bodyKeys).push(key(px[r][x]));
+  for (let r = 0; r < 16; r++) for (let x = 0; x < 16; x++) if (solid[r][x]) (r < NECK_ROW ? headKeys : bodyKeys).push(key(px[r][x]));
   const furSet = new Set(bodyKeys);
   const fur = mostCommon(bodyKeys) ?? mostCommon(headKeys) ?? 0x808080;
   const skin = mostCommon(headKeys, furSet) ?? fur;
-  const colour = (x, r, z, dir) => {
-    const k = key(px[r][x]);
-    if (dir === FRONT || furSet.has(k)) return k;
-    if (dir === BACK || z < 0) return fur;
-    return diff(k, skin) > 30 ? skin : k;
-  };
-  const cubes = { head: [], body: [] };
-  const has = (x, r, z) => x >= 0 && r >= 0 && x < 16 && r < 16 && solid[r][x] && Math.abs(z) <= H[r][x];
-  const faces = { head: [], body: [] };
-  for (let r = 0; r < 16; r++) for (let x = 0; x < 16; x++) {
-    if (!solid[r][x]) continue;
-    const part = isHead(r) ? "head" : "body";
-    for (let z = -H[r][x]; z <= H[r][x]; z++) {
-      cubes[part].push([x, r, z]);
-      DIRS.forEach(([dx, dy, dz], dir) => {
-        const nr = r + dy;
-        if (has(x + dx, nr, z + dz) && isHead(nr) === isHead(r)) return;
-        faces[part].push({ x, r, z, dir, c: colour(x, r, z, dir) });
-      });
+  const leftX = (r) => solid[r].findIndex(Boolean);
+  const isEar = (x, r) => r < NECK_ROW && x === leftX(r) && !furSet.has(key(px[r][x])) && diff(key(px[r][x]), skin) <= 30;
+
+  const cubes = { head: [], body: [] }, faces = { head: [], body: [] }, zFront = {};
+  for (const [part, r0, r1, depth] of [["head", 0, NECK_ROW, shape.headD], ["body", NECK_ROW, 16, shape.bodyD]]) {
+    const n = Math.round(depth / V), k0 = -Math.floor(n / 2), k1 = k0 + n - 1;
+    zFront[part] = (k1 + 1) * V;
+    const has = (i, j, k) => {
+      const x = i >> 1, r = j >> 1;
+      return i >= 0 && j >= 0 && i < RES && j < RES && r >= r0 && r < r1 && solid[r][x] && k >= k0 && k <= k1;
+    };
+    const colour = (i, j, k, dir) => {
+      const x = i >> 1, r = j >> 1, c = key(px[r][x]);
+      if (dir === FRONT) return c;
+      const z = (k + 0.5) * V;
+      if (isEar(x, r)) return dir === 1 && Math.abs(z) <= shape.ear / 2 ? c : fur;
+      if (furSet.has(c)) return c;
+      if (dir === BACK || zFront[part] - z > shape.wrap) return fur;
+      return diff(c, skin) > 30 ? skin : c;
+    };
+    for (let j = r0 * 2; j < r1 * 2; j++) for (let i = 0; i < RES; i++) {
+      if (!solid[j >> 1][i >> 1]) continue;
+      for (let k = k0; k <= k1; k++) {
+        cubes[part].push([i, j, k]);
+        DIRS.forEach(([di, dj, dk], dir) => { if (!has(i + di, j + dj, k + dk)) faces[part].push({ i, j, k, dir, c: colour(i, j, k, dir) }); });
+      }
     }
   }
-  return { H, cubes, faces, skin, fur };
+  return { cubes, faces, zFront, skin, fur };
 }
