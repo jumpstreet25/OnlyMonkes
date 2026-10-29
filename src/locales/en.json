@@ -1065,5 +1065,20 @@
     "mainShort": "Main",
     "leadersShort": "Leaders",
     "toolsShort": "Tools"
+  },
+  "wide": {
+    "mainChat": "Main Chat",
+    "genesis": "Genesis Chat",
+    "messages": "Messages",
+    "bags": "Your AutonoMonke bags",
+    "snapshot": "From your last /portfolio, {{when}}",
+    "wallet": "Hot wallet",
+    "winRate": "Win rate",
+    "noBags": "No open bags.",
+    "askPortfolio": "DM the bot /portfolio and your bags show here.",
+    "recent": "Recent closes",
+    "noRecent": "No closed trades yet.",
+    "minAgo": "{{n}}m ago",
+    "hourAgo": "{{n}}h ago"
   }
 }

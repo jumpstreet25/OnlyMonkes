@@ -45,6 +45,7 @@ import { useFreeRasp } from 'freerasp-react-native';
 import { useFonts } from 'expo-font';
 import { useSkiaReady } from '../src/hooks/useSkiaReady';
 import '../src/lib/webChrome';
+import { WideShell } from '../src/components/WideShell';
 import { RASP_CONFIG, THREAT_ACTIONS } from '../src/lib/security';
 import { startPerfMeterIfAsked } from '../src/lib/perfMeter';
 
@@ -274,6 +275,7 @@ export default function RootLayout() {
               shell and any future non-edge-to-edge shell without a native
               rebuild in between. */}
           <StatusBar style="light" hidden={IS_IMMERSIVE_SHELL} />
+          <WideShell>
           <Stack
             screenOptions={({ route }) => ({
               headerShown: false,
@@ -284,6 +286,7 @@ export default function RootLayout() {
               ...(webLayered(route.name) ? WEB_LAYER : null),
             })}
           />
+          </WideShell>
           <Toaster
             position="top-center"
             toastOptions={{

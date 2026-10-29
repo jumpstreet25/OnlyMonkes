@@ -1065,5 +1065,20 @@
     "mainShort": "Principal",
     "leadersShort": "Líderes",
     "toolsShort": "Herram."
+  },
+  "wide": {
+    "mainChat": "Chat principal",
+    "genesis": "Chat Genesis",
+    "messages": "Mensajes",
+    "bags": "Tus bolsas de AutonoMonke",
+    "snapshot": "De tu último /portfolio, {{when}}",
+    "wallet": "Hot wallet",
+    "winRate": "Tasa de acierto",
+    "noBags": "Sin bolsas abiertas.",
+    "askPortfolio": "Envía /portfolio al bot por DM y tus bolsas aparecen aquí.",
+    "recent": "Cierres recientes",
+    "noRecent": "Aún no hay operaciones cerradas.",
+    "minAgo": "hace {{n}} min",
+    "hourAgo": "hace {{n}} h"
   }
 }
