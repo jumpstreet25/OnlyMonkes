@@ -46,12 +46,15 @@ export function isRailActive(item: RailItem, pathname: string): boolean {
   return item.match ? item.match(pathname) : pathname === item.path;
 }
 
-const sol = (n: number | null | undefined) => (n == null || !Number.isFinite(n) ? "—" : `${n.toFixed(3)} SOL`);
-const pct = (n: number) => `${n >= 0 ? "+" : ""}${n.toFixed(1)}%`;
-const pnlColor = (n: number) => (n > 0 ? THEME.success : n < 0 ? THEME.error : THEME.textMuted);
+const sol = (v: unknown) => { const n = num(v); return n == null ? "—" : `${n.toFixed(3)} SOL`; };
+const num = (n: unknown) => (typeof n === "number" && Number.isFinite(n) ? n : null);
+const pct = (v: unknown) => { const n = num(v); return n == null ? "—" : `${n >= 0 ? "+" : ""}${n.toFixed(1)}%`; };
+const pnlColor = (v: unknown) => { const n = num(v) ?? 0; return n > 0 ? THEME.success : n < 0 ? THEME.error : THEME.textMuted; };
 
-function ago(ts: number, t: (k: string, o?: Record<string, unknown>) => string): string {
-  const m = Math.max(0, Math.round((Date.now() - ts) / 60_000));
+function ago(ts: unknown, t: (k: string, o?: Record<string, unknown>) => string): string {
+  const at = num(ts);
+  if (at == null) return "—";
+  const m = Math.max(0, Math.round((Date.now() - at) / 60_000));
   return m < 60 ? t("wide.minAgo", { n: m }) : t("wide.hourAgo", { n: Math.round(m / 60) });
 }
 
@@ -83,8 +86,9 @@ function BagsPanel() {
   const portfolio = useTradesStore((s) => s.portfolioResponse);
   const openTrades = useTradesStore((s) => s.openTrades);
   const closed = useTradesStore((s) => s.closedTrades);
-  const positions = portfolio?.positions ?? [];
-  const recent = closed.slice(0, 6);
+  const positions = Array.isArray(portfolio?.positions) ? portfolio.positions : [];
+  const recent = (Array.isArray(closed) ? closed : []).slice(0, 6);
+  const open = Array.isArray(openTrades) ? openTrades : [];
 
   return (
     <ScrollView style={styles.panel} contentContainerStyle={styles.panelInner}>
@@ -94,19 +98,19 @@ function BagsPanel() {
           <Text style={styles.muted}>{t("wide.snapshot", { when: ago(portfolio.ts, t) })}</Text>
           <View style={styles.statRow}>
             <View style={styles.stat}><Text style={styles.statLabel}>{t("wide.wallet")}</Text><Text style={styles.statValue}>{sol(portfolio.walletBalanceSOL)}</Text></View>
-            <View style={styles.stat}><Text style={styles.statLabel}>{t("wide.winRate")}</Text><Text style={styles.statValue}>{Math.round(portfolio.winRate)}%</Text></View>
+            <View style={styles.stat}><Text style={styles.statLabel}>{t("wide.winRate")}</Text><Text style={styles.statValue}>{num(portfolio.winRate) == null ? "—" : `${Math.round(portfolio.winRate)}%`}</Text></View>
           </View>
           {positions.length === 0 && <Text style={styles.muted}>{t("wide.noBags")}</Text>}
-          {positions.map((p) => (
-            <View key={p.positionId} style={styles.row}>
+          {positions.map((p, i) => (
+            <View key={p.positionId ?? i} style={styles.row}>
               <Text style={styles.rowToken} numberOfLines={1}>${p.token}</Text>
               <Text style={styles.rowValue}>{sol(p.currentSolValue)}</Text>
               <Text style={[styles.rowPnl, { color: pnlColor(p.pnlPct) }]}>{pct(p.pnlPct)}</Text>
             </View>
           ))}
         </>
-      ) : openTrades.length > 0 ? (
-        openTrades.map((o) => (
+      ) : open.length > 0 ? (
+        open.map((o) => (
           <View key={o.id} style={styles.row}>
             <Text style={styles.rowToken} numberOfLines={1}>${o.token}</Text>
             <Text style={styles.rowValue}>{sol(o.entrySolAmount)}</Text>
@@ -118,8 +122,8 @@ function BagsPanel() {
 
       <Text style={[styles.panelTitle, styles.panelGap]}>{t("wide.recent")}</Text>
       {recent.length === 0 && <Text style={styles.muted}>{t("wide.noRecent")}</Text>}
-      {recent.map((c) => (
-        <View key={c.id} style={styles.row}>
+      {recent.map((c, i) => (
+        <View key={c.id ?? i} style={styles.row}>
           <Text style={styles.rowToken} numberOfLines={1}>${c.token}</Text>
           <Text style={styles.rowValue}>{ago(c.closedAt, t)}</Text>
           <Text style={[styles.rowPnl, { color: pnlColor(c.pnlPct) }]}>{pct(c.pnlPct)}</Text>
@@ -127,6 +131,14 @@ function BagsPanel() {
       ))}
     </ScrollView>
   );
+}
+
+/** The rail and panel are extras: if either throws, it disappears and the app keeps running. */
+class Optional extends React.Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  componentDidCatch(err: unknown) { console.warn("[WideShell] side column hidden after an error:", err); }
+  render() { return this.state.failed ? null : this.props.children; }
 }
 
 export function WideShell({ children }: { children: ReactNode }) {
@@ -142,9 +154,9 @@ export function WideShell({ children }: { children: ReactNode }) {
   const wide = width >= WIDE_MIN_PX && !!wallet && (monke || genesis) && !NO_SHELL.has(pathname);
   return (
     <View style={styles.shell}>
-      {wide && <Rail items={railItems(t, monke, genesis)} pathname={pathname} />}
+      {wide && <Optional><Rail items={railItems(t, monke, genesis)} pathname={pathname} /></Optional>}
       <View style={[styles.center, wide && styles.centerWide]}>{children}</View>
-      {wide && width >= PANEL_MIN_PX && monke && <BagsPanel />}
+      {wide && width >= PANEL_MIN_PX && monke && <Optional><BagsPanel /></Optional>}
     </View>
   );
 }
