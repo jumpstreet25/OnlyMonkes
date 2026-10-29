@@ -6,7 +6,8 @@
 <title>Monke 3D</title>
 <!--
   OnlyMonkes 3D avatar viewer. Every Saga Monke is 16×16 pixel art, so the
-  page builds a smooth 3D monke from the monke's own Arweave image at load time.
+  page builds a 3D block monke (one cube per pixel) from the monke's own Arweave
+  image at load time; ?style=smooth shows the older smooth monke.
   Runs on its own so the web app (iframe) and the phone app (WebView, OTA)
   can both show it.
   - ?n=<monke number>: which monke (the app passes the holder's own).
@@ -116,7 +117,7 @@ scene.add(rim);
 function resetView() {
   const halfFov = Math.atan(Math.tan((camera.fov * DEG) / 2) * Math.min(1, camera.aspect));
   const dist = Math.max(26, 7 / Math.tan(halfFov));
-  camera.position.set(0.12 * dist, 0.06 * dist, dist);
+  camera.position.set(0, 0.06 * dist, dist); // straight on: the monke faces you
   controls.target.set(0, -0.5, 0);
   controls.maxDistance = Math.max(60, dist * 1.6);
   controls.update();

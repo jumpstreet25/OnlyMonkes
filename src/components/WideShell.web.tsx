@@ -84,6 +84,7 @@ export function railItems(t: (k: string) => string, monke: boolean, genesis: boo
     { path: "/watchlist", icon: "👀", label: t("menuDrawer.watchlist") },
     { path: "/marketplace", icon: "🛒", label: "MonkeMarkets" },
     { path: "/treasury", icon: "🍌", label: "OnlyTreasury" },
+    { path: "/monke3d", icon: "🧊", label: "3D Monke" },
     { path: "/globe", icon: "🌍", label: t("menuDrawer.globe") },
     { path: "/settings", icon: "⚙️", label: t("menuDrawer.settings") },
   );
