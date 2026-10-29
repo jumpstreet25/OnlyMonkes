@@ -1,9 +1,14 @@
 /**
- * Saga Monke pixel art → a smooth 3D monke (three.js), shared by the viewer
+ * Saga Monke pixel art → a 3D monke (three.js), shared by the viewer
  * (monke3d.html) and the Avatar Room stage (room.html). Every Saga Monke is
  * 16×16 pixel art, so the model is built from the monke's own Arweave image.
+ * Default is the block monke (32×32 blocks, blockShape.js); the older
+ * smooth "inflated" monke is kept behind ?style=smooth.
  */
 import * as THREE from "three";
+import { solidFromPx, blockFaces, DIRS, FRONT, BLOCK_SHAPE, BLOCK_LIMITS, neckPivot, clampTilt, toWorld } from "/viewer/blockShape.js";
+
+const STYLE = typeof location !== "undefined" && new URLSearchParams(location.search).get("style") === "smooth" ? "smooth" : "block";
 
 const DEG = Math.PI / 180;
 const clamp01 = (x) => Math.max(0, Math.min(1, Number(x) || 0));
@@ -24,14 +29,6 @@ export function imageFor(n) {
 const EYES = [[7, 9], [10, 9]];
 const MOUTH_ROW = 11, MOUTH_X = [7, 8, 9, 10];
 const NECK_ROW = 12;
-// The backdrop is slightly tinted noise around #22–#2c. Dark clothing is flat
-// neutral black under #22 (e.g. #1234's hoodie #1c1e1e), so it stays solid.
-const isBg = (r, g, b, a) => {
-  if (a < 128) return true;
-  const hi = Math.max(r, g, b), lo = Math.min(r, g, b);
-  return hi >= 0x21 && hi <= 0x30 && lo >= 0x1b && hi - lo >= 3;
-};
-
 export function loadImage(url) {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -57,19 +54,7 @@ export function readGrid(img) {
     }
     px.push(row);
   }
-  // Background is whatever bg-coloured pixels touch the border.
-  const solid = px.map((r) => r.map(() => true));
-  const q = [];
-  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++)
-    if ((x === 0 || y === 0 || x === 15 || y === 15) && isBg(...px[y][x])) { solid[y][x] = false; q.push([x, y]); }
-  while (q.length) {
-    const [x, y] = q.pop();
-    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-      const nx = x + dx, ny = y + dy;
-      if (nx < 0 || ny < 0 || nx > 15 || ny > 15 || !solid[ny][nx]) continue;
-      if (isBg(...px[ny][nx])) { solid[ny][nx] = false; q.push([nx, ny]); }
-    }
-  }
+  const solid = solidFromPx(px);
   return { px, solid };
 }
 
@@ -273,7 +258,107 @@ export function disposeMonke(monke) {
 }
 
 /** A monke as a THREE.Group (`root`) plus its moving parts; add `root` to a scene. */
-export function buildMonke({ px, solid }) {
+export function buildMonke(grid) {
+  return STYLE === "smooth" ? buildSmoothMonke(grid) : buildBlockMonke(grid);
+}
+
+// ── Block monke ──
+// Faces of one plane and colour are merged into one rectangle, so a run of the
+// same colour reads as one seamless surface; a change of colour or shade is a
+// new block. Nothing scales: blink and mouth are flat frames shown or hidden.
+function faceRects(faces) {
+  const groups = new Map();
+  for (const f of faces) {
+    const ax = f.dir < 2 ? 0 : f.dir < 4 ? 1 : 2, u = (ax + 1) % 3, v = (ax + 2) % 3, p = [f.i, f.j, f.k];
+    const plane = p[ax] + (DIRS[f.dir][ax] > 0 ? 1 : 0);
+    const k = f.dir + "|" + plane;
+    if (!groups.has(k)) groups.set(k, { dir: f.dir, ax, u, v, plane, cells: new Map() });
+    groups.get(k).cells.set(p[u] + "," + p[v], f.c);
+  }
+  const rects = [];
+  for (const { dir, ax, u, v, plane, cells } of groups.values()) {
+    const done = new Set();
+    const keys = [...cells.keys()].map((k) => k.split(",").map(Number)).sort((p, q) => p[0] - q[0] || p[1] - q[1]);
+    for (const [a0, b0] of keys) {
+      if (done.has(a0 + "," + b0)) continue;
+      const c = cells.get(a0 + "," + b0);
+      const free = (a, b) => cells.get(a + "," + b) === c && !done.has(a + "," + b);
+      let b1 = b0 + 1; while (free(a0, b1)) b1++;
+      let a1 = a0 + 1;
+      for (;;) { let ok = true; for (let b = b0; b < b1; b++) if (!free(a1, b)) { ok = false; break; } if (!ok) break; a1++; }
+      for (let a = a0; a < a1; a++) for (let b = b0; b < b1; b++) done.add(a + "," + b);
+      rects.push({ dir, ax, u, v, plane, a0, a1, b0, b1, c });
+    }
+  }
+  return rects;
+}
+
+// Lattice rectangle → its four corners in scene units, grown a hair so the
+// joins between neighbouring rectangles never show as cracks.
+const SEAL = 0.004;
+function rectCorners({ ax, u, v, plane, a0, a1, b0, b1 }) {
+  const corner = (a, b) => { const q = [0, 0, 0]; q[ax] = plane; q[u] = a; q[v] = b; return toWorld(q[0], q[1], q[2]); };
+  return [corner(a0 - SEAL, b0 - SEAL), corner(a1 + SEAL, b0 - SEAL), corner(a1 + SEAL, b1 + SEAL), corner(a0 - SEAL, b1 + SEAL)];
+}
+
+function quadsGeometry(quads) {
+  const pos = [], nor = [], col = [];
+  const tmp = new THREE.Color();
+  for (const { corners, normal, c } of quads) {
+    let q = corners;
+    const e1 = q[1].map((v, i) => v - q[0][i]), e2 = q[3].map((v, i) => v - q[0][i]);
+    const n = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]];
+    if (n[0] * normal[0] + n[1] * normal[1] + n[2] * normal[2] < 0) q = [q[0], q[3], q[2], q[1]];
+    tmp.setRGB((c >> 16) / 255, ((c >> 8) & 255) / 255, (c & 255) / 255, THREE.SRGBColorSpace);
+    for (const i of [0, 1, 2, 0, 2, 3]) { pos.push(...q[i]); nor.push(...normal); col.push(tmp.r, tmp.g, tmp.b); }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute("normal", new THREE.Float32BufferAttribute(nor, 3));
+  g.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+  return g;
+}
+
+const worldNormal = (dir) => [DIRS[dir][0], -DIRS[dir][1], DIRS[dir][2]];
+const partGeometry = (faces) => quadsGeometry(faceRects(faces).map((r) => ({ corners: rectCorners(r), normal: worldNormal(r.dir), c: r.c })));
+
+/** Flat squares on the face front, one per 32-grid cell [i, j] — eyelids, open mouth. */
+function frontSquares(cells, zFront, c) {
+  return quadsGeometry(cells.map(([i, j]) => {
+    const a = toWorld(i, j, 0), b = toWorld(i + 1, j + 1, 0), z = zFront + 0.01;
+    return { corners: [[a[0], b[1], z], [b[0], b[1], z], [b[0], a[1], z], [a[0], a[1], z]], normal: [0, 0, 1], c };
+  }));
+}
+
+// Each eye pixel is 2×2 cells: a half blink covers its top row, a full blink all four.
+const eyeCells = ([x, y], rows) => rows.flatMap((j) => [[2 * x, j], [2 * x + 1, j]]);
+// The open mouth: half = the middle of the lower mouth row; open = a wider hole over both rows.
+const MOUTH_HALF = [16, 17, 18, 19].map((i) => [i, 2 * MOUTH_ROW + 1]);
+const MOUTH_OPEN = [...[15, 16, 17, 18, 19, 20].map((i) => [i, 2 * MOUTH_ROW]), ...[14, 15, 16, 17, 18, 19, 20, 21].map((i) => [i, 2 * MOUTH_ROW + 1])];
+
+function buildBlockMonke({ px, solid }) {
+  const { faces, zFront, skin } = blockFaces(px, solid);
+  const eyesOk = EYES.every(([x, y]) => solid[y][x]) && same(px[9][7], px[9][10]) && !same(px[9][7], px[9][8]) && same(px[9][8], px[9][9]);
+  const jawOk = MOUTH_X.every((x) => solid[MOUTH_ROW][x]) && same(px[10][8], px[10][9]);
+  const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
+  const over = new THREE.MeshLambertMaterial({ vertexColors: true, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+
+  const pivot = neckPivot(solid);
+  const root = new THREE.Group();
+  const headGroup = new THREE.Group();
+  headGroup.position.set(pivot[0], pivot[1], pivot[2]);
+  const inHead = (m) => { m.position.set(-pivot[0], BLOCK_SHAPE.gap - pivot[1], -pivot[2]); headGroup.add(m); return m; };
+  const hidden = (cells, c) => { const m = inHead(new THREE.Mesh(frontSquares(cells, zFront.head, c), over)); m.visible = false; return m; };
+  inHead(new THREE.Mesh(partGeometry(faces.head), mat));
+  root.add(new THREE.Mesh(partGeometry(faces.body), mat), headGroup);
+
+  const lids = eyesOk ? EYES.map((e) => ({ side: e[0] + 0.5 - 8, half: hidden(eyeCells(e, [2 * e[1]]), skin), full: hidden(eyeCells(e, [2 * e[1], 2 * e[1] + 1]), skin) })) : [];
+  const cav = (CAVITY[0] << 16) | (CAVITY[1] << 8) | CAVITY[2];
+  const mouth = jawOk ? [hidden(MOUTH_HALF, cav), hidden(MOUTH_OPEN, cav)] : null;
+  return { root, headGroup, block: true, lids, mouth, mouthFrame: 0, limits: BLOCK_LIMITS, jaw: 0, blinkL: 0, blinkR: 0 };
+}
+
+function buildSmoothMonke({ px, solid }) {
   const skin = css(px[8][8]);
   // Template check: the moving parts only switch on where they'll look right
   // (sunglasses, masks and odd 1/1s keep their faces still).
@@ -350,9 +435,13 @@ export function driveMonke(monke, face, dt, idle, rate = 14) {
     br = clamp01(v.eyeBlinkRight * 1.3);
     // Mirror yaw/roll so the monke moves like a mirror image of you.
     // Built to be seen from the front: at most 45° left or right.
-    rx = Math.max(-20, Math.min(20, Number(r.x) || 0)) * DEG;
-    ry = -Math.max(-45, Math.min(45, Number(r.y) || 0)) * DEG;
-    rz = -Math.max(-20, Math.min(20, Number(r.z) || 0)) * DEG;
+    const L = monke.limits || { pitch: 20, yaw: 45, roll: 20 };
+    let p = Math.max(-L.pitch, Math.min(L.pitch, Number(r.x) || 0));
+    let ro = Math.max(-L.roll, Math.min(L.roll, Number(r.z) || 0));
+    if (monke.block) [p, ro] = clampTilt(p, ro, L);
+    rx = p * DEG;
+    ry = -Math.max(-L.yaw, Math.min(L.yaw, Number(r.y) || 0)) * DEG;
+    rz = -ro * DEG;
   } else if (idle) {
     // Idle: slow blink and a little sway when nothing is driving it.
     bl = br = (t % 4) < 0.14 ? 1 : 0;
@@ -362,9 +451,23 @@ export function driveMonke(monke, face, dt, idle, rate = 14) {
   monke.jaw += (jaw - monke.jaw) * k;
   monke.blinkL += (bl - monke.blinkL) * Math.min(1, k * 2);
   monke.blinkR += (br - monke.blinkR) * Math.min(1, k * 2);
-  if (monke.jawMesh) monke.jawMesh.scale.y = Math.max(0.08, 1 - monke.jaw * 0.85);
+  if (monke.block) {
+    // Frames, not scaling: lids half / closed; mouth closed / half / open,
+    // with a little hysteresis so a jittery jawOpen doesn't flicker.
+    monke.lids.forEach((lid) => {
+      const b = lid.side > 0 ? monke.blinkL : monke.blinkR;
+      lid.full.visible = b > 0.7;
+      lid.half.visible = b > 0.3 && b <= 0.7;
+    });
+    if (monke.mouth) {
+      const j = monke.jaw, f = monke.mouthFrame;
+      monke.mouthFrame = j > (f === 2 ? 0.4 : 0.5) ? 2 : j > (f >= 1 ? 0.12 : 0.18) ? 1 : 0;
+      monke.mouth[0].visible = monke.mouthFrame === 1;
+      monke.mouth[1].visible = monke.mouthFrame === 2;
+    }
+  } else if (monke.jawMesh) monke.jawMesh.scale.y = Math.max(0.08, 1 - monke.jaw * 0.85);
   // The monke faces you, so its left eye is on screen right (higher x).
-  monke.lids.forEach((lid) => {
+  if (!monke.block) monke.lids.forEach((lid) => {
     const b = lid.userData.side > 0 ? monke.blinkL : monke.blinkR;
     lid.scale.y = Math.max(0.001, b); // patches hang from their top edge
   });
