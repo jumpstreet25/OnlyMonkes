@@ -1079,6 +1079,14 @@
     "recent": "Cierres recientes",
     "noRecent": "Aún no hay operaciones cerradas.",
     "minAgo": "hace {{n}} min",
-    "hourAgo": "hace {{n}} h"
+    "hourAgo": "hace {{n}} h",
+    "changeColumn": "Cambiar esta columna",
+    "showInColumn": "Mostrar en esta columna",
+    "openInMiddle": "{{name}} está abierto en el centro.",
+    "pane": {
+      "messages": "Mensajes",
+      "bags": "Tus bolsas",
+      "off": "Ocultar columna"
+    }
   }
 }

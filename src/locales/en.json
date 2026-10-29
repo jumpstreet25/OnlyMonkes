@@ -1079,6 +1079,14 @@
     "recent": "Recent closes",
     "noRecent": "No closed trades yet.",
     "minAgo": "{{n}}m ago",
-    "hourAgo": "{{n}}h ago"
+    "hourAgo": "{{n}}h ago",
+    "changeColumn": "Change this column",
+    "showInColumn": "Show in this column",
+    "openInMiddle": "{{name}} is open in the middle.",
+    "pane": {
+      "messages": "Messages",
+      "bags": "Your bags",
+      "off": "Hide column"
+    }
   }
 }
