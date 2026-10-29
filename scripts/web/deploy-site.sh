@@ -28,4 +28,9 @@ CK_VER=$(node -p "require('canvaskit-wasm/package.json').version")
 cp node_modules/canvaskit-wasm/bin/full/canvaskit.wasm "public/canvaskit-${CK_VER}.wasm"
 # bun can leave a copy of @expo/cli without its ws dependency; call the complete one.
 node node_modules/@expo/cli/build/bin/cli export -p web --output-dir dist-web --clear
+# Version-stamp the script links: browsers that cached entry-<hash>.js for a year (same name,
+# new contents every build) must fetch this build's copy, not run last build's.
+BUILD_ID="$(git rev-parse --short HEAD)-$(date +%s)"
+find dist-web -name '*.html' -print0 | xargs -0 sed -i -E "s#(/_expo/static/js/web/[A-Za-z0-9_.-]+\.js)\"#\1?v=${BUILD_ID}\"#g"
+grep -q "?v=${BUILD_ID}" dist-web/index.html || { echo "deploy-site: script links were not version-stamped" >&2; exit 1; }
 npx wrangler deploy --config scripts/web/wrangler.toml
