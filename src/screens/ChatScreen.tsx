@@ -342,9 +342,16 @@ export default function ChatScreen() {
   // ─── Pull-to-refresh handler ──────────────────────────────────────────────────
   const handleRefreshChat = useCallback(async () => {
     setRefreshingChat(true);
-    await syncMessages();
-    setRefreshingChat(false);
-  }, [syncMessages]);
+    try {
+      await syncMessages();
+    } catch {
+      // Stale stream ("Stream stale — reconnect needed") — reconnect like the foreground path.
+      _streamHealth.foregroundReconnects++;
+      await initialize().catch(() => {});
+    } finally {
+      setRefreshingChat(false);
+    }
+  }, [syncMessages, initialize]);
 
   // ─── XMTP connect + network-aware sync ───────────────────────────────────────
   useEffect(() => {
