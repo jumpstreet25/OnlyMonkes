@@ -5,7 +5,7 @@ import {
   selectionFromTraits,
   traitLabel,
 } from "../lib/monkeMeme/traitCatalog";
-import { buildMemePrompt, checkCaption, checkScene, SCENE_MAX_CHARS } from "../lib/monkeMeme/prompt";
+import { buildMemePrompt, checkCaption, checkScene, MONKEMEME_STYLE as MONKEMEME_STYLE_FOR_TEST, SCENE_MAX_CHARS } from "../lib/monkeMeme/prompt";
 import { parseSseResult, SpaceError } from "../lib/monkeMeme/spaceClient";
 import { DEFAULT_MONKEMEME_CONFIG, monkeMemeVisible, parseMonkeMemeConfig, walletHash } from "../lib/monkeMeme/config";
 
@@ -23,7 +23,9 @@ describe("traitCatalog", () => {
   it("maps on-chain traits and skips empty slots in the description", () => {
     const sel = selectionFromTraits(M1760);
     expect(sel).toEqual({ Fur: "Dark", Clothing: "Gold Chain", Mouth: "None", Head: "Horns", Eyes: "Open" });
-    expect(describeSelection(sel)).toBe("dark slate-gray fur, red devil horns, a thick gold chain necklace");
+    expect(describeSelection(sel)).toBe(
+      "dark slate-gray fur, red devil horns, big white oval eyes with small black pupils under heavy droopy half-closed eyelids, a lazy smug look, a thick gold chain necklace",
+    );
   });
 
   it("ignores unknown trait types and values", () => {
@@ -34,7 +36,7 @@ describe("traitCatalog", () => {
     expect(TRAIT_CATEGORIES).toHaveLength(5);
     for (const cat of TRAIT_CATEGORIES) {
       for (const [value, desc] of Object.entries(TRAIT_CATALOG[cat])) {
-        if (value === "None" || value === "Open") expect(desc).toBe("");
+        if (value === "None") expect(desc).toBe("");
         else expect(desc.length).toBeGreaterThan(5);
       }
     }
@@ -207,5 +209,16 @@ describe("tester wallet hashes", () => {
     expect(monkeMemeVisible(cfg, false, wallet)).toBe(true);
     expect(monkeMemeVisible(cfg, false, "SomeoneElse11111111111111111111111111111111")).toBe(false);
     expect(monkeMemeVisible(cfg, false, null)).toBe(false);
+  });
+});
+
+describe("trait-driven eyes", () => {
+  it("never forces droopy lids in the house style; eyes come from the Eyes trait", () => {
+    expect(MONKEMEME_STYLE_FOR_TEST).not.toMatch(/eyelid/i);
+    const glare = buildMemePrompt({ traits: { Fur: "Dark", Eyes: "Glare" }, scene: "x", hasStyleRef: false });
+    expect(glare).toContain("angry glaring eyelids");
+    const shades = buildMemePrompt({ traits: { Fur: "Dark", Eyes: "Wayfarers" }, scene: "x", hasStyleRef: false });
+    expect(shades).toContain("wayfarer sunglasses covering the eyes");
+    expect(shades).not.toContain("droopy");
   });
 });

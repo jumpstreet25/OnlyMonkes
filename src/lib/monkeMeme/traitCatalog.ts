@@ -12,7 +12,8 @@ export type TraitCategory = "Fur" | "Head" | "Eyes" | "Mouth" | "Clothing";
 
 export const TRAIT_CATEGORIES: TraitCategory[] = ["Fur", "Head", "Eyes", "Mouth", "Clothing"];
 
-/** "None" maps to "" — nothing worn in that slot. Fur has no "None". */
+/** "None" maps to "" — nothing worn in that slot. Fur has no "None"; Eyes has no empty value
+ *  (every monke's eyes are described, since they set the eyelids/expression). */
 export const TRAIT_CATALOG: Record<TraitCategory, Record<string, string>> = {
   Fur: {
     Mocha: "warm mocha-brown fur",
@@ -38,17 +39,20 @@ export const TRAIT_CATALOG: Record<TraitCategory, Record<string, string>> = {
     Crown: "a small gold crown",
     ToxiHawk: "a tall hot-pink mohawk",
   },
+  // Eyes drive the eyelids too (owner, 2026-10-02: "the eyes and eyelids should change based on
+  // the user's Saga Monke traits") — the house style no longer forces droopy lids on everyone.
+  // "Open" is krtvdept's signature lazy, smug eye.
   Eyes: {
-    Open: "",
-    Wayfarers: "black wayfarer sunglasses",
-    "Drywall Missiles": "a rainbow gradient visor across the eyes",
-    Glare: "narrow squinting glaring eyes",
-    SolShades: "purple and teal Solana shutter shades",
-    Demon: "glowing red demon eyes",
-    "Saylor Lasers": "glowing orange laser eyes",
-    Overclocked: "glowing lime-green overclocked eyes",
-    Terminal: "a glowing holographic lavender and mint visor",
-    "Daemon Trader": "a single solid glowing red visor bar across the eyes",
+    Open: "big white oval eyes with small black pupils under heavy droopy half-closed eyelids, a lazy smug look",
+    Wayfarers: "black wayfarer sunglasses covering the eyes",
+    "Drywall Missiles": "a rainbow gradient visor covering the eyes",
+    Glare: "narrow squinting eyes under lowered, angry glaring eyelids",
+    SolShades: "purple and teal Solana shutter shades covering the eyes",
+    Demon: "glowing red demon eyes under heavy half-closed eyelids",
+    "Saylor Lasers": "glowing orange laser eyes beaming out",
+    Overclocked: "wide glowing lime-green overclocked eyes",
+    Terminal: "a glowing holographic lavender and mint visor covering the eyes",
+    "Daemon Trader": "a single solid glowing red visor bar covering the eyes",
   },
   Mouth: {
     None: "",

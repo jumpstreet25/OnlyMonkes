@@ -13,9 +13,14 @@ export const CAPTION_MAX_CHARS = 60;
  *  look holds even when the style reference can't be attached. Deliberately
  *  colour-neutral ("glossy lips", not "pink lips"): forcing pink lips and a
  *  peach face painted over monkes like the #8982 cyborg's metal face plate. */
+// 2026-10-02 (owner): must read as @krtvdept's hand-drawn Monke memes — flat Pepe-like face,
+// no nose/wrinkle detail, no white sticker border. Eyes/eyelids deliberately NOT here: they
+// come from the monke's Eyes trait (traitCatalog) or its Wave 2 description.
 export const MONKEMEME_STYLE =
-  "hand-drawn cartoon in a bold sticker style: very thick black outlines, flat cel shading with one soft highlight, " +
-  "oversized rounded head, droopy half-closed eyelids, huge glossy lips in a smug grin, spiral-shaped ear";
+  "hand-drawn Saga Monke meme cartoon: bold thick black outlines, smooth flat colors with soft pastel gradient shading, " +
+  "a big rounded head, a simple flat Pepe-like face with a large flat beige muzzle, no nose detail and no wrinkles, " +
+  "a very wide mouth with thick glossy lips in a smug grin, a spiral-shaped ear, clean simple shapes, " +
+  "smooth rounded organic shapes rather than the blocky pixel outline of image 1, no white sticker border, plain flat background";
 
 export interface PromptInput {
   traits: TraitSelection;
