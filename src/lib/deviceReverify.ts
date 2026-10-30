@@ -17,8 +17,9 @@ let _triedThisSession = false;
 /** Records a verification result; only a success counts as "fresh" (a failure retries next time). */
 export function recordDeviceIntegrity(result: DeviceIntegrityResult, where: string): void {
   useAppStore.getState().setDeviceIntegrityStatus(result.status, result.status === "unverified" ? null : Date.now());
-  // A dismissed or unanswered wallet prompt (MWA "Timed out waiting for response") is not a failure.
-  if (result.status !== "clean" && !/Cancellation|cancel|TimeoutException|Timed out waiting/i.test(result.error ?? "")) {
+  // A dismissed or unanswered wallet prompt (MWA "Timed out waiting for response"), or no wallet app
+  // answering at all (ConnectionFailedException, Sentry ONLYMONKES-15), is not a failure.
+  if (result.status !== "clean" && !/Cancellation|cancel|TimeoutException|Timed out waiting|ConnectionFailedException|Unable to connect to websocket/i.test(result.error ?? "")) {
     captureError(new Error(`Device integrity not issued: ${result.status}`), { area: "deviceIntegrity", where, reason: result.error ?? "" });
   }
 }
