@@ -1,18 +1,13 @@
 /**
  * remoteConfig
  *
- * Stores the XMTP global group ID and admin inboxId in the public GitHub repo
- * (config/app-config.json) so every tester's app automatically finds the same
- * group without rebuilding the APK.
+ * Stores the XMTP group IDs and admin inboxId in the public GitHub repo so every app
+ * finds the same groups without a rebuild.
  *
  * Reads:  raw.githubusercontent.com — no auth, always fast.
- * Writes: routed through the Cloudflare Worker (POST /api/admin/publish-app-config).
- *         The admin's wallet signs a domain-separated message proving identity;
- *         the worker verifies it against ADMIN_WALLET_PUBKEY and holds the
- *         actual GitHub credential — no GitHub token ever touches the phone.
+ * SDK 8 (self-hosted backend) reads config/app-config.v8.json; config/app-config.json
+ * stays 3.4's old-network groups. Staging uses the bundled staging file. No app-side writes.
  */
-
-const WORKER_BASE = 'https://onlymonkes.app';
 
 export interface AppRemoteConfig {
   globalGroupId: string;
@@ -30,13 +25,16 @@ export interface AppRemoteConfig {
 import { configFileUrl } from "@/lib/configUrl";
 import { XMTP_ON_STAGING } from '@/lib/xmtpBackend';
 import STAGING_CONFIG from '../../config/app-config.staging.json';
+import V8_CONFIG from '../../config/app-config.v8.json';
 
 const REPO   = 'jumpstreet25/OnlyMonkes';
 const BRANCH = 'master';
-const FILE   = 'config/app-config.json';
+// SDK 8 on the production self-hosted backend: config/app-config.json is 3.4's (old network).
+const FILE   = 'config/app-config.v8.json';
 const RAW    = configFileUrl(FILE); // raw GitHub; same-origin on the website
 
-const EMPTY: AppRemoteConfig = { globalGroupId: '', adminInboxId: '' };
+// Bundled copy of the v8 file, used when the fetch fails.
+const BUNDLED = V8_CONFIG as AppRemoteConfig;
 
 // ─── Read ─────────────────────────────────────────────────────────────────────
 
@@ -50,8 +48,9 @@ export async function fetchAppConfig(): Promise<AppRemoteConfig> {
     const timer = setTimeout(() => controller.abort(), 5_000);
     const res = await fetch(`${RAW}?t=${Date.now()}`, { signal: controller.signal });
     clearTimeout(timer);
-    if (!res.ok) return EMPTY;
+    if (!res.ok) return BUNDLED;
     const json = await res.json();
+    if (!json.globalGroupId) return BUNDLED;
     return {
       globalGroupId:  json.globalGroupId  ?? '',
       adminInboxId:   json.adminInboxId   ?? '',
@@ -60,41 +59,20 @@ export async function fetchAppConfig(): Promise<AppRemoteConfig> {
       genesisGroupId: json.genesisGroupId ?? undefined,
     };
   } catch {
-    return EMPTY;
+    return BUNDLED;
   }
 }
 
 // ─── Write ────────────────────────────────────────────────────────────────────
 
-/**
- * Publish config via the worker. By default, the worker refuses to overwrite
- * an existing valid config (one with a non-empty globalGroupId AND the trades
- * bot channel populated). Pass `force: true` to bypass — manual recovery only.
- *
- * `signMessage` is the admin's wallet signer (e.g. from useMobileWallet) — it
- * signs the exact same domain-separated message the worker reconstructs and
- * verifies, so the config payload itself is bound into the signature.
- */
+/** Old admin publish path (worker → config/app-config.json); refused on SDK 8. */
 export async function publishAppConfig(
-  config: AppRemoteConfig,
-  wallet: string,
-  signMessage: (bytes: Uint8Array) => Promise<Uint8Array>,
-  opts?: { force?: boolean },
+  _config: AppRemoteConfig,
+  _wallet: string,
+  _signMessage: (bytes: Uint8Array) => Promise<Uint8Array>,
+  _opts?: { force?: boolean },
 ): Promise<void> {
-  const ts = Date.now();
-  const configJson = JSON.stringify(config, null, 2);
-  const message = `OnlyMonkes Admin Publish\n${wallet}\n${ts}\n${configJson}`;
-  const sigBytes = await signMessage(new TextEncoder().encode(message));
-  const signature = btoa(String.fromCharCode(...sigBytes));
-
-  const res = await fetch(`${WORKER_BASE}/api/admin/publish-app-config`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ config, wallet, ts, signature, force: opts?.force ?? false }),
-  });
-
-  const body = await res.json().catch(() => ({})) as { ok?: boolean; error?: string };
-  if (!res.ok || !body.ok) {
-    throw new Error(body.error ?? `Publish failed: ${res.status}`);
-  }
+  // The worker writes config/app-config.json (3.4's old-network groups). SDK 8 groups are
+  // created by the bot (`--create-v8-groups`) and go into config/app-config.v8.json by commit.
+  throw new Error('SDK 8 group IDs live in config/app-config.v8.json — set them from the bot, not the app');
 }

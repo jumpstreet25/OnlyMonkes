@@ -17,7 +17,7 @@ interface Env {
 // *.workers.dev and raw.githubusercontent.com). Workers on our account are
 // reached over service bindings (a fetch to another *.workers.dev of the same
 // account is refused); GitHub files are fetched and briefly cached.
-const CONFIG_FILES = new Set(["app-config.json", "bot-commands.json", "saga-monkes-index.json", "monkememe.json"]);
+const CONFIG_FILES = new Set(["app-config.json", "app-config.v8.json", "bot-commands.json", "saga-monkes-index.json", "monkememe.json"]);
 
 async function serviceRoute(path: string, request: Request, env: Env): Promise<Response | null> {
   const url = new URL(request.url);
