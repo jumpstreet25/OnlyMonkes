@@ -437,7 +437,8 @@
     "sendingEllipsis": "Enviando…",
     "sendSkr": "Enviar {{amount}} $SKR  🐒",
     "monkeMeme": "MonkeMeme",
-    "invite": "Invitar"
+    "invite": "Invitar",
+    "oldHistory": "Antes de la mudanza"
   },
   "watchlist": {
     "title": "Lista de Seguimiento",
@@ -1057,5 +1058,12 @@
     "prompt": "Desbloquear OnlyMonkes",
     "locked": "OnlyMonkes está bloqueado",
     "unlock": "Desbloquear"
+  },
+  "oldHistory": {
+    "title": "Antes de la mudanza",
+    "note": "Tus chats de antes de que OnlyMonkes se mudara a su propio servidor de chat. Solo lectura.",
+    "readOnly": "Solo lectura — de antes de la mudanza.",
+    "empty": "No hay chats antiguos en este teléfono.",
+    "noMessages": "Sin mensajes."
   }
 }

@@ -437,7 +437,8 @@
     "sendingEllipsis": "Sending…",
     "sendSkr": "Send {{amount}} $SKR  🐒",
     "monkeMeme": "MonkeMeme",
-    "invite": "Invite"
+    "invite": "Invite",
+    "oldHistory": "Before the move"
   },
   "watchlist": {
     "title": "Watchlist",
@@ -1057,5 +1058,12 @@
     "prompt": "Unlock OnlyMonkes",
     "locked": "OnlyMonkes is locked",
     "unlock": "Unlock"
+  },
+  "oldHistory": {
+    "title": "Before the move",
+    "note": "Your chats from before OnlyMonkes moved to its own chat server. Read-only.",
+    "readOnly": "Read-only — from before the move.",
+    "empty": "No old chats on this phone.",
+    "noMessages": "No messages."
   }
 }

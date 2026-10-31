@@ -68,6 +68,7 @@ import { getAttendeeCount } from "@/lib/eventRsvp";
 import { CHAT_THEMES, saveThemeId } from "@/lib/theme";
 import { WebViewModal } from "@/components/WebViewModal";
 import { pruneStaleDuplicateMembers, amISuperAdmin } from "@/hooks/useXmtp";
+import { hasImportedHistory } from "@/lib/xmtpHistoryImport";
 
 const DRAWER_WIDTH_RATIO = 0.82;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
@@ -340,6 +341,11 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
   // this is the admin during the tester-only dark launch).
   const isGroupAdminForMeme = useAppStore((s) => s.isGroupAdmin);
   const walletForMeme = useAppStore((s) => s.wallet?.address ?? null);
+  const [showOldHistory, setShowOldHistory] = useState(false);
+  useEffect(() => {
+    if (!visible) return;
+    hasImportedHistory(walletForMeme).then(setShowOldHistory).catch(() => {});
+  }, [visible, walletForMeme]);
   const [memeCfg, setMemeCfg] = useState<MonkeMemeConfig | null>(null);
   useEffect(() => {
     getMonkeMemeConfig().then(setMemeCfg).catch(() => {});
@@ -690,6 +696,13 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                   label={t("menuDrawer.memorial")}
                   onPress={() => { onClose(); setTimeout(() => router.push('/memorial' as any), 300); }}
                 />
+                {showOldHistory && (
+                  <GridButton
+                    iconName="messages"
+                    label={t("menuDrawer.oldHistory")}
+                    onPress={() => { onClose(); setTimeout(() => router.push('/old-history' as any), 300); }}
+                  />
+                )}
                 {isSuperAdmin && (
                   <GridButton
                     iconName="monketools"

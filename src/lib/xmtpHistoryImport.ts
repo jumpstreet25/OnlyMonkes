@@ -88,3 +88,9 @@ export function importOldHistoryOnce(client: OmClient, wallet: string | null | u
   _running ??= run(client, wallet).finally(() => { _running = null; });
   return _running;
 }
+
+/** True once this wallet's old history was imported — the menu shows "Before the move" only then. */
+export async function hasImportedHistory(wallet: string | null | undefined): Promise<boolean> {
+  if (!wallet) return false;
+  return (await SecureStore.getItemAsync(DONE_PREFIX + wallet.slice(0, 16)).catch(() => null)) === "done";
+}
