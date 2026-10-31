@@ -223,16 +223,31 @@ export async function verifyKeyAttestationChain(
   // 2026-10-29: a throw (key import / unsupported algorithm) used to count as an invalid
   // signature, and two Seeker holders were hard-blocked with "chain signature invalid at
   // position 1". Only a signature that was checked and failed is a hardware failure now.
+  // 2026-10-31: x509's verify() returns false (not a throw) when the key import fails, and
+  // without signatureOnly it also returns false for a cert outside its validity dates — both
+  // were reported as "chain signature invalid at position 1" and hard-blocked Seeker holders
+  // (ONLYMONKES-15). Import the key here and check dates separately.
+  const now = Date.now();
+  let outOfDate: string | null = null;
   for (let i = 0; i < certs.length - 1; i++) {
     let sigOk: boolean;
     try {
-      sigOk = await certs[i].verify({ publicKey: certs[i + 1] });
+      const issuerKey = await certs[i + 1].publicKey.export(
+        { ...certs[i + 1].publicKey.algorithm, ...certs[i].signatureAlgorithm },
+        ["verify"],
+        crypto as unknown as Crypto,
+      );
+      sigOk = await certs[i].verify({ publicKey: issuerKey, signatureOnly: true });
     } catch (e) {
       const why = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
       return { ok: false, unchecked: true, securityLevel: "none", reason: `could not check signature at position ${i} (${sigAlgLabel(certs[i], certs[i + 1])}; ${why.slice(0, 120)})` };
     }
     if (!sigOk) {
       return { ok: false, securityLevel: "none", reason: `chain signature invalid at position ${i} (${sigAlgLabel(certs[i], certs[i + 1])})` };
+    }
+    // The leaf's dates come from the device's KeyMint and are often placeholders; only issued certs count.
+    if (i > 0 && !outOfDate && (now < certs[i].notBefore.getTime() || now > certs[i].notAfter.getTime())) {
+      outOfDate = `cert at position ${i} valid ${certs[i].notBefore.toISOString().slice(0, 10)}..${certs[i].notAfter.toISOString().slice(0, 10)}`;
     }
   }
 
@@ -275,6 +290,12 @@ export async function verifyKeyAttestationChain(
     challengeBytes.every((b, i) => b === EXPECTED_PACKAGE_BYTES[i]);
   if (!challengeOk) {
     return { ok: false, securityLevel: "none", reason: "attestation challenge does not match expected app package" };
+  }
+
+  // Signatures and root check out but an issued cert is out of date (a stale attestation key on
+  // the phone): not proof of tampering, so soft-fail rather than block chat.
+  if (outOfDate) {
+    return { ok: false, unchecked: true, securityLevel: "none", reason: `attestation certificate out of date (${outOfDate})` };
   }
 
   // Lower of the two levels — a StrongBox attestation statement backed by a merely-TEE keymaster
