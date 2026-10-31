@@ -16,7 +16,8 @@
     { "cmd": "/watchlist", "group": "watchlist", "where": ["chat", "dm"], "desc": { "en": "Group watchlist", "es": "Watchlist del grupo" } },
     { "cmd": "/watch", "args": "$TOKEN", "group": "watchlist", "where": ["chat", "dm"], "desc": { "en": "Add to your watchlist", "es": "Añadir a tu watchlist" } },
     { "cmd": "/unwatch", "args": "$TOKEN", "group": "watchlist", "where": ["chat", "dm"], "desc": { "en": "Remove from your watchlist", "es": "Quitar de tu watchlist" } },
-    { "cmd": "/mywatchlist", "group": "watchlist", "where": ["chat", "dm"], "desc": { "en": "Your watchlist", "es": "Tu watchlist" } },
+    { "cmd": "/mywatchlist", "group": "watchlist", "where": ["chat", "dm"], "desc": { "en": "Your picks, bags of 0.2+ SOL, setups being watched", "es": "Tus elegidos, bolsas de 0.2+ SOL y setups vigilados" } },
+    { "cmd": "/live", "args": "[on|off]", "group": "watchlist", "where": ["dm"], "desc": { "en": "Live trade progress on your lock screen (app 3.1)", "es": "Progreso de trades en tu pantalla de bloqueo (app 3.1)" } },
 
     { "cmd": "/buy", "args": "$TOKEN [SOL]", "group": "trading", "where": ["chat"], "desc": { "en": "Buy via Jupiter", "es": "Comprar vía Jupiter" } },
     { "cmd": "/sell", "args": "$TOKEN [%]", "group": "trading", "where": ["chat"], "desc": { "en": "Sell via Jupiter", "es": "Vender vía Jupiter" } },

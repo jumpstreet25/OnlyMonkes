@@ -18,6 +18,7 @@ import { noteWidgetDm, noteWidgetTrades } from "@/lib/homeWidget";
 import { Sentry } from "@/lib/sentry";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useCallback } from "react";
+import { AppState } from "react-native";
 import { showGlassAlert } from "@/lib/glassAlert";
 import { clearSession, clearMatricaSession, clearVerifiedNft, clearGenesisFlag, saveWalletBinding } from "@/lib/session";
 import type { WalletBinding } from "@/lib/session";
@@ -173,6 +174,9 @@ export function _getLastStreamEvent(): number { return _lastStreamEvent; }
 export function _getStreamAliveFlag(): boolean { return _streamAlive; }
 let _profileBroadcastDone = false;
 let _initRunning = false;
+// Last time the app left the foreground: a load that spans background time is not slow.
+let _lastBackgroundAt = 0;
+AppState.addEventListener("change", (s) => { if (s !== "active") _lastBackgroundAt = Date.now(); });
 // streamAllMessages() has no unsubscribe. Start it once per inbox, and
 // drop duplicate deliveries so one DM cannot fire N "DM'd you" banners.
 let _dmAllStreamInbox: string | null = null;
@@ -1260,7 +1264,7 @@ export function useXmtp() {
           } catch { /* the stream and resyncs catch up */ }
         });
       }
-      if (marks.ready > 15_000) {
+      if (marks.ready > 15_000 && _lastBackgroundAt < t0 && AppState.currentState === "active") {
         Sentry.captureMessage(`Main Chat slow start: ${Math.round(marks.ready / 1000)}s`, { level: "warning", extra: { ...marks, history: rawHistory.length } });
       }
 

@@ -1,0 +1,5 @@
+# Static site images (served before the worker runs). Names are fixed, so a
+# day in the browser + a week at the edge, refreshed in the background —
+# not immutable, so a replaced image still shows up within a day.
+/site/*
+  Cache-Control: public, max-age=86400, s-maxage=604800, stale-while-revalidate=604800

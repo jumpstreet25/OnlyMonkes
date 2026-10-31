@@ -8,7 +8,7 @@
     "react-dom": "$react",
     "react-test-renderer": "$react",
     "protobufjs": "^7.6.6",
-    "undici": "^6.28.1",
+    "undici": "^6.29.1",
     "@expo/server": {
       "undici": "^7.28.1"
     },
@@ -22,7 +22,7 @@
     "websocket-driver": "^0.7.5",
     "fast-uri": "^3.1.7",
     "body-parser": "^1.20.8",
-    "qs": "^6.16.0",
+    "qs": "^6.17.0",
     "shell-quote": "^1.10.0",
     "morgan": "^1.12.1",
     "js-yaml": "^4.3.2",
