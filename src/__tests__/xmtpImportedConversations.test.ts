@@ -1,3 +1,4 @@
+jest.mock("expo-application", () => ({ applicationId: "com.onlymonkes.app.next" }));
 jest.mock("@xmtp/react-native-sdk", () => ({ encodeText: (t: string) => t }));
 jest.mock("@/lib/xmtpCredential", () => ({ getXmtpCredential: async () => ({ value: "", expiresAtSeconds: 0n }) }));
 
