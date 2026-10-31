@@ -28,6 +28,8 @@ export interface AppRemoteConfig {
 }
 
 import { configFileUrl } from "@/lib/configUrl";
+import { XMTP_ON_STAGING } from '@/lib/xmtpBackend';
+import STAGING_CONFIG from '../../config/app-config.staging.json';
 
 const REPO   = 'jumpstreet25/OnlyMonkes';
 const BRANCH = 'master';
@@ -39,6 +41,9 @@ const EMPTY: AppRemoteConfig = { globalGroupId: '', adminInboxId: '' };
 // ─── Read ─────────────────────────────────────────────────────────────────────
 
 export async function fetchAppConfig(): Promise<AppRemoteConfig> {
+  // On the staging XMTP backend (SDK 8 build, same switch as the 3.1 phone build) the groups
+  // only exist there — bundled staging IDs; master's config points at the old network's groups.
+  if (XMTP_ON_STAGING) return STAGING_CONFIG as AppRemoteConfig;
   try {
     // Cache-bust so testers always get the latest group ID.
     const controller = new AbortController();

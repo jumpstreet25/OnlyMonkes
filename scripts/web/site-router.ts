@@ -115,6 +115,32 @@ function withSecurityHeaders(res: Response, path: string): Response {
 }
 
 // Every subdomain we serve is HTTPS behind Cloudflare; includeSubDomains/preload can follow later.
+/**
+ * XMTP SDK 8's client wasm is ~39 MiB, over Cloudflare's 25 MiB asset limit, so the site
+ * ships only the brotli copy (scripts/web/build-xmtp.mjs) and serves it here under the
+ * plain name with Content-Encoding: br. encodeBody "manual" passes the bytes through as
+ * they are (the runtime would otherwise compress them again). Every browser the web app
+ * supports accepts br over https.
+ */
+async function xmtpClientWasm(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  url.pathname = "/xmtp/worker/xmtp_sdk.wasm.br";
+  const asset = await env.ASSETS.fetch(new Request(url.toString(), { method: "GET", headers: { "Accept-Encoding": "identity" } }));
+  if (!asset.ok) return withHsts(new Response("not found", { status: 404 }));
+  return new Response(request.method === "HEAD" ? null : asset.body, {
+    status: 200,
+    headers: {
+      "Content-Type": "application/wasm",
+      "Content-Encoding": "br",
+      "Cache-Control": "public, max-age=3600",
+      "X-Content-Type-Options": "nosniff",
+      "Strict-Transport-Security": "max-age=15552000",
+      "Vary": "Accept-Encoding",
+    },
+    encodeBody: "manual",
+  } as ResponseInit);
+}
+
 function withHsts(res: Response): Response {
   const out = new Response(res.body, res);
   out.headers.set("Strict-Transport-Security", "max-age=15552000");
@@ -125,6 +151,7 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const path = new URL(request.url).pathname;
     if (path === "/svc/csp-report") return cspReport(request);
+    if (path === "/xmtp/worker/xmtp_sdk.wasm") return xmtpClientWasm(request, env);
     if (path.startsWith("/svc/")) {
       const res = await serviceRoute(path, request, env);
       if (res) return withHsts(res);

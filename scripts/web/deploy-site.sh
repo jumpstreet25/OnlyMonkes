@@ -1,6 +1,7 @@
 #!/bin/bash
 # Builds and deploys the OnlyMonkes web app to Cloudflare (onlymonkes-web).
-#  1. XMTP browser SDK bundle (7.1, production network) into public/xmtp/.
+#  1. XMTP browser SDK 8 bundle (self-hosted backend, src/lib/xmtpBackend.ts) into
+#     public/xmtp/ — the client wasm ships brotli-only (site-router.ts serves it).
 #  2. Expo web export into dist-web/.
 #  3. wrangler deploy (scripts/web/wrangler.toml).
 set -euo pipefail
@@ -40,4 +41,8 @@ if grep -rlq "_expo/static/js/web/" dist-web --include='*.html' --include='*.js'
   echo "deploy-site: some JS paths still point at _expo/static/js/web/" >&2; exit 1
 fi
 grep -q "_expo/static/js/${BUILD_ID}/" dist-web/index.html || { echo "deploy-site: index.html not moved to the build folder" >&2; exit 1; }
+# The raw client wasm is over Cloudflare's 25 MiB asset limit; only the .br copy ships.
+rm -f dist-web/xmtp/worker/xmtp_sdk.wasm
+[ -f dist-web/xmtp/worker/xmtp_sdk.wasm.br ] || { echo "deploy-site: dist-web/xmtp/worker/xmtp_sdk.wasm.br missing" >&2; exit 1; }
+if find dist-web -type f -size +25M | grep -q .; then echo "deploy-site: a file over 25 MiB would be rejected:" >&2; find dist-web -type f -size +25M >&2; exit 1; fi
 npx wrangler deploy --config scripts/web/wrangler.toml
