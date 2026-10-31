@@ -27,7 +27,7 @@ Rules are added over time as issues arise.
 
 ---
 
-## 3.1 native build (branch `native-3.1`, worktree `OnlyMonkes-3.1` — local only, never push to master/OTA)
+## 3.1 native build (branch `native-3.1`, worktree `OnlyMonkes-3.1`, backed up on origin since 2026-10-31 — never merge into master or OTA it)
 
 Runtime **3.5**, versionCode 50, EAS channel `native-3.1`; test flavor `next` (`com.onlymonkes.app.next`, "Monke 3.1", EAS profile `next-3.1`) installs beside the store app and the old canary. Nothing here can reach the published 3.0 (runtime 3.4).
 - **Stack:** Expo 58 / RN 0.88 / React 19.3, XMTP RN SDK 8.0.0-rc4 behind `src/lib/xmtpSdk.ts` (v5-shaped adapter; staging backend `src/lib/xmtpBackend.ts`, holder-token auth `xmtpCredential.ts`), LiveKit 3.1, MWA 3, Skia 2.14, Firebase 27 (modular), media3 pinned 1.9.1, AdMob gone. Android template moved to ReactHost + `loadReactNative` (no AppFeatureFlags/SoLoader mapping).
@@ -39,6 +39,8 @@ Runtime **3.5**, versionCode 50, EAS channel `native-3.1`; test flavor `next` (`
 - **Home-screen widget** (`ChatWidgetProvider.kt`, `OmWidget`, `homeWidget.ts`): Main Chat / DMs / MonkeTrades latest line + unread; RemoteViews, redraws only on app updates; lines hidden under the fingerprint lock.
 - **MediaPipe face tracking** (`MediaPipeFaceTracker.tsx`): FaceLandmarker in a hidden https-origin WebView, ML Kit fallback.
 - **3D room stage bundled** (`roomStageHtml.ts`, `assets/viewer/`): room.html + monkeModel.js + three.js 0.185.1 (module + core) ship in the app; the CDN import map becomes blob: modules at load. No onlymonkes.app / jsDelivr needed (domain-blocking networks, offline); hosted page is the fallback. **Keep `assets/viewer/room.html` + `monkeModel.js.txt` in step with web-app `public/viewer/`.** Verified booting in headless Edge (Chromium).
+- **Verified App Links** (2026-10-31): `onlymonkes.app/open/*` and `/r/*` open the app directly (`autoVerify` filter in the manifest + `app.config.ts`; only those paths — the rest of the domain is the web app). Apex `assetlinks.json` lists the store key `2E:2F:EE:B8…` (checked against the published 3.0 APK). Production flavor only: the `next` flavor (debug key, `.next` package) isn't listed, so on test builds the links still go through the `/open` bounce page. `www.` 301s to the apex and isn't claimed.
+- **Master is merged in regularly** (last 2026-10-31, 7332a56); keep the lockfile on Expo 58 — take 3.1's `package-lock.json` on conflict, then `npm install --package-lock-only` for master's override bumps.
 - **Untested until the first build:** every Kotlin file above (written without a local Android SDK — Android 16 ProgressStyle calls from docs), Krisp with LiveKit 3, PiP auto-enter, the widget on the Seeker launcher, WebView camera grant. Push needs `com.onlymonkes.app.next` registered in Firebase project `onlymonkes-9f97f`.
 
 ## Security & Privacy

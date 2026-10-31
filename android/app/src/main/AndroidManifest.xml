@@ -39,6 +39,16 @@
         <data android:scheme="onlymonkes"/>
         <data android:scheme="exp+monkesonly"/>
       </intent-filter>
+      <!-- Verified App Links (3.1): onlymonkes.app/open/<target> and /r/<code> open the app
+           directly (assetlinks.json on the apex lists the release key). Only these paths —
+           the rest of onlymonkes.app is the web app and must stay in the browser. -->
+      <intent-filter android:autoVerify="true">
+        <action android:name="android.intent.action.VIEW"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+        <category android:name="android.intent.category.BROWSABLE"/>
+        <data android:scheme="https" android:host="onlymonkes.app" android:pathPrefix="/open/"/>
+        <data android:scheme="https" android:host="onlymonkes.app" android:pathPrefix="/r/"/>
+      </intent-filter>
           <!-- 3.1: "Share to OnlyMonkes" — text/links and images from other apps (ShareModule). -->
       <intent-filter>
         <action android:name="android.intent.action.SEND"/>

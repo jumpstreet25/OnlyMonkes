@@ -16,6 +16,18 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   userInterfaceStyle: 'dark',
   android: {
     package: 'com.onlymonkes.app',
+    // Verified App Links — keep in step with android/app/src/main/AndroidManifest.xml.
+    intentFilters: [
+      {
+        action: 'VIEW',
+        autoVerify: true,
+        data: [
+          { scheme: 'https', host: 'onlymonkes.app', pathPrefix: '/open/' },
+          { scheme: 'https', host: 'onlymonkes.app', pathPrefix: '/r/' },
+        ],
+        category: ['BROWSABLE', 'DEFAULT'],
+      },
+    ],
     adaptiveIcon: {
       foregroundImage: './assets/icon.png',
       backgroundColor: '#0A0A0F',
