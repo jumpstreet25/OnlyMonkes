@@ -40,6 +40,37 @@ async function serviceRoute(path: string, request: Request, env: Env): Promise<R
   return null;
 }
 
+// Report-only first (2026-10-31): violations go to /svc/csp-report and the
+// Workers logs; enforce once those are clean. No inline scripts in the export;
+// Expo web injects inline styles; XMTP + Skia need WebAssembly.
+const APP_CSP = [
+  "default-src 'self'",
+  "script-src 'self' 'wasm-unsafe-eval'",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' data: https://fonts.gstatic.com",
+  "img-src 'self' data: blob: https:",
+  "media-src 'self' data: blob: https:",
+  "connect-src 'self' https: wss:",
+  "worker-src 'self' blob:",
+  "frame-src 'self'",
+  "frame-ancestors 'none'",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "report-uri /svc/csp-report",
+].join("; ");
+
+async function cspReport(request: Request): Promise<Response> {
+  if (request.method !== "POST") return new Response("Not found", { status: 404 });
+  try {
+    const body = (await request.text()).slice(0, 8192);
+    const r = (JSON.parse(body)["csp-report"] ?? {}) as Record<string, string>;
+    const host = (u?: string) => { try { return u ? new URL(u).host || u : ""; } catch { return (u ?? "").slice(0, 40); } };
+    console.log(`[csp] ${r["effective-directive"] ?? r["violated-directive"] ?? "?"} blocked=${host(r["blocked-uri"])} page=${host(r["document-uri"])}${new URL(r["document-uri"] ?? "https://x/").pathname}`);
+  } catch { /* malformed report */ }
+  return new Response(null, { status: 204 });
+}
+
 function isSitePath(path: string): boolean {
   return (
     path === "/welcome" || path === "/get" || path === "/bot" || path === "/health" || path === "/actions.json" || path === "/claim" || path === "/escrow" ||
@@ -78,18 +109,31 @@ function withSecurityHeaders(res: Response, path: string): Response {
     out.headers.set("Content-Security-Policy", "frame-ancestors 'self'");
   } else {
     out.headers.set("X-Frame-Options", "DENY");
+    out.headers.set("Content-Security-Policy-Report-Only", APP_CSP);
   }
+  return out;
+}
+
+// Every subdomain we serve is HTTPS behind Cloudflare; includeSubDomains/preload can follow later.
+function withHsts(res: Response): Response {
+  const out = new Response(res.body, res);
+  out.headers.set("Strict-Transport-Security", "max-age=15552000");
   return out;
 }
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const path = new URL(request.url).pathname;
+    if (path === "/svc/csp-report") return cspReport(request);
     if (path.startsWith("/svc/")) {
       const res = await serviceRoute(path, request, env);
-      if (res) return res;
+      if (res) return withHsts(res);
     }
-    if (isSitePath(path)) return env.ACTIONS.fetch(request);
-    return withSecurityHeaders(await env.ASSETS.fetch(request), path);
+    if (isSitePath(path)) {
+      const res = withHsts(await env.ACTIONS.fetch(request));
+      if (!path.startsWith("/api/") && !res.headers.has("X-Frame-Options")) res.headers.set("X-Frame-Options", "DENY");
+      return res;
+    }
+    return withHsts(withSecurityHeaders(await env.ASSETS.fetch(request), path));
   },
 };
