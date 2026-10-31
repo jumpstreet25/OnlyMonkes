@@ -446,6 +446,20 @@ export class Conversation {
   }
 }
 
+async function isActiveRaw(c: any): Promise<boolean> {
+  try {
+    const s = await c.state();
+    return (s.common ?? s).isActive !== false;
+  } catch {
+    return true; // unknown → treat as usable; a failed send surfaces the real error
+  }
+}
+
+async function onlyActive(cs: any[]): Promise<any[]> {
+  const flags = await Promise.all(cs.map(isActiveRaw));
+  return cs.filter((_, i) => flags[i]);
+}
+
 /** v5 exported Group/Dm classes; here both are the one wrapper. */
 export { Conversation as Group, Conversation as Dm };
 
@@ -470,13 +484,27 @@ class Conversations {
     return this.wrap(await this.inner.getById(id));
   }
 
+  /** The peer's active DM. After the history import the same peer can also have a read-only
+   *  imported DM (xmtpHistoryImport.ts), which must never be the one we send in. */
+  private async activeDmWith(peerInboxId: string): Promise<any | undefined> {
+    const d = await this.inner.getDmByInboxId(peerInboxId);
+    if (!d || (await isActiveRaw(d))) return d ?? undefined;
+    const all: any[] = await this.inner.listDms({ includeDuplicateDms: true });
+    for (const c of all) {
+      if ((await c.peerInboxId().catch(() => null)) === peerInboxId && (await isActiveRaw(c))) return c;
+    }
+    return undefined;
+  }
+
   async findDmByInboxId(inboxId: string): Promise<Conversation | undefined> {
-    return this.wrap(await this.inner.getDmByInboxId(inboxId));
+    return this.wrap(await this.activeDmWith(inboxId));
   }
 
   async findOrCreateDm(peerInboxId: string): Promise<Conversation> {
-    const existing = await this.inner.getDmByInboxId(peerInboxId);
-    return (await this.wrap(existing ?? (await this.inner.createDm(peerInboxId))))!;
+    const existing = await this.activeDmWith(peerInboxId);
+    const dm = existing ?? (await this.inner.createDm(peerInboxId));
+    if (!(await isActiveRaw(dm))) throw new Error("xmtp: only a read-only (imported) DM exists for this peer");
+    return (await this.wrap(dm))!;
   }
 
   async newGroup(inboxIds: string[], opts?: { permissionLevel?: "all_members" | "admin_only"; name?: string; imageUrl?: string; description?: string }): Promise<Conversation> {
@@ -496,19 +524,28 @@ class Conversations {
     return o;
   }
 
+  // Lists show only conversations you can post in; read-only ones (imported history, groups
+  // you were removed from) come from listImported().
   async listGroups(_opts?: unknown, limit?: number, states?: RnConsent[]): Promise<Conversation[]> {
     const gs: any[] = await this.inner.listGroups(this.listOpts(limit, states));
-    return Promise.all(gs.map((g) => this.wrap(g) as Promise<Conversation>));
+    return Promise.all((await onlyActive(gs)).map((g) => this.wrap(g) as Promise<Conversation>));
   }
 
   async listDms(_opts?: unknown, limit?: number, states?: RnConsent[]): Promise<Conversation[]> {
     const ds: any[] = await this.inner.listDms(this.listOpts(limit, states));
-    return Promise.all(ds.map((d) => this.wrap(d) as Promise<Conversation>));
+    return Promise.all((await onlyActive(ds)).map((d) => this.wrap(d) as Promise<Conversation>));
   }
 
   async list(): Promise<Conversation[]> {
     const cs: any[] = await this.inner.list();
-    return Promise.all(cs.map((c) => this.wrap(c) as Promise<Conversation>));
+    return Promise.all((await onlyActive(cs)).map((c) => this.wrap(c) as Promise<Conversation>));
+  }
+
+  /** Read-only conversations — the old network's history after the import. */
+  async listImported(): Promise<Conversation[]> {
+    const cs: any[] = await this.inner.list({ includeDuplicateDms: true });
+    const flags = await Promise.all(cs.map(isActiveRaw));
+    return Promise.all(cs.filter((_, i) => !flags[i]).map((c) => this.wrap(c) as Promise<Conversation>));
   }
 
   /** v5 signature: (callback, type?, consentStates?). No unsubscribe in the v5 API. */
@@ -568,6 +605,16 @@ export function currentClient(): OmClient | null {
   return _current;
 }
 
+/** The old network's database (v5 file + key) → archive → this client (offline conversion). */
+export async function prepareOldHistoryArchive(
+  client: OmClient,
+  args: { databasePath: string; databaseKey: Uint8Array; archiveKey: Uint8Array; outputPath: string },
+): Promise<{ groupCount: bigint; messageCount: bigint; consentCount: bigint }> {
+  const report = await (Sdk as any).prepareMigrationArchive(args);
+  await client.importArchive(args.outputPath, args.archiveKey);
+  return report;
+}
+
 class ClientStatics {
   static async create(signer: Signer, opts?: V5ClientOpts): Promise<OmClient> {
     const identity = await signer.getIdentifier();
@@ -618,6 +665,11 @@ export class OmClient {
 
   get inboxId(): string { return this.inner.inboxId; }
   get installationId(): string { return this.inner.installationId; }
+
+  /** Loads an encrypted history archive (xmtpHistoryImport.ts) into this database. */
+  async importArchive(path: string, key: Uint8Array): Promise<void> {
+    await this.inner.archives.importFromFile(path, key);
+  }
 
   /** Adds `signer`'s identity to this inbox (v5 addAccount). */
   async addAccount(signer: Signer, allowReassign = false): Promise<void> {

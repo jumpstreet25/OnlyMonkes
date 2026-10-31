@@ -129,6 +129,10 @@ async function persistIdentity(client: Client, identifier?: string, kind?: strin
 
 function kickHistorySync(client: Client): void {
   (client as any).sendSyncRequest?.().catch(() => { /* no other device, network, etc. */ });
+  // The old network's history, once per wallet (3.0 → 3.1 update), in the background.
+  void import("@/lib/xmtpHistoryImport")
+    .then(({ importOldHistoryOnce }) => importOldHistoryOnce(client as any, _boundWalletAddress))
+    .catch(() => { /* logged inside */ });
 }
 
 async function tryBuildStored(opts: ClientOpts): Promise<Client | null> {
