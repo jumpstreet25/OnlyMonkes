@@ -15,6 +15,8 @@
  *    the hardware Keystore key that Device Integrity already verified and
  *    bound to this holder wallet (verdict in KV, 7 days) signs this exact
  *    room + identity + a fresh single-use nonce. No wallet prompt needed.
+ *  - { kind: "bot", secret } — Monke's voice (agents/monke-voice on the VPS)
+ *    joining a room it was called into; BOT_HTTP_SECRET, bot identity only.
  */
 
 import type { Env } from "./index";
@@ -24,6 +26,8 @@ import type { DeviceIntegrityVerdict } from "./deviceIntegrity";
 
 export const INTERNAL_HOST = "internal.onlymonkes";
 const ROOM = /^omv?-\d{10,14}-[A-Za-z0-9]{1,8}$/;
+// AI Agent #9385 (src/lib/constants.ts BOT_INBOX_IDS); "~probe" is the voice self-test listener.
+const BOT_INBOX_ID = "998001a498174b8a194110ee792b10f97de4965665eaf0d088ed2c71bdf62363";
 
 export function livekitProofMessage(roomName: string, identity: string, nonce: string): string {
   return `OnlyMonkes LiveKit\nroom:${roomName}\nidentity:${identity}\nnonce:${nonce}`;
@@ -45,6 +49,13 @@ export async function handleLivekitAuthorize(request: Request, env: Env): Promis
   if (proof?.kind === "holder") {
     const wallet = await holderWalletFromToken(env as any, typeof proof.token === "string" ? proof.token : "");
     return wallet ? json({ ok: true, wallet, via: "holder" }) : json({ error: "sign in again" }, 401);
+  }
+
+  if (proof?.kind === "bot") {
+    const secret = typeof proof.secret === "string" ? proof.secret : "";
+    const okId = identity === BOT_INBOX_ID || identity === `${BOT_INBOX_ID}~probe`;
+    if (!okId || !env.BOT_HTTP_SECRET || !(await sameSecret(secret, env.BOT_HTTP_SECRET))) return json({ error: "not authorized" }, 403);
+    return json({ ok: true, wallet: "bot", via: "bot" });
   }
 
   if (proof?.kind === "device") {
@@ -86,4 +97,11 @@ export async function walletFromDeviceProof(
   if ((await sha256Hex(keyBytes)) !== verdict.deviceHash) return { error: "device not verified for this wallet", status: 403 };
   if (!(await verifyEcdsaP256(keyBytes, new TextEncoder().encode(message(nonce)), sigBytes))) return { error: "bad device signature", status: 401 };
   return { wallet, tier: verdict.holderTier };
+}
+
+async function sameSecret(a: string, b: string): Promise<boolean> {
+  const [x, y] = await Promise.all([sha256Hex(new TextEncoder().encode(a)), sha256Hex(new TextEncoder().encode(b))]);
+  let diff = 0;
+  for (let i = 0; i < x.length; i++) diff |= x.charCodeAt(i) ^ y.charCodeAt(i);
+  return diff === 0;
 }

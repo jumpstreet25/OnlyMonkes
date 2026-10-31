@@ -121,6 +121,12 @@ name = "APK_LIMITER"
 namespace_id = "1002"
 simple = { limit = 6, period = 60 }
 
+# Grok agent relay (agentBridge.ts): outbound events per type per minute.
+[[ratelimits]]
+name = "AGENT_RELAY_LIMITER"
+namespace_id = "1003"
+simple = { limit = 10, period = 60 }
+
 # Per-IP limit shared by /api/rpc and /api/auth/* (key prefixes differ).
 [[ratelimits]]
 name = "WEB_RPC_LIMITER"
