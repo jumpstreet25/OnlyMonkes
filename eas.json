@@ -20,7 +20,7 @@
       }
     },
     "production": {
-      "channel": "native-3.1",
+      "channel": "production",
       "android": {
         "buildType": "apk",
         "gradleCommand": ":app:assembleProductionRelease"
