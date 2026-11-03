@@ -43,5 +43,5 @@ export async function removeLinkedDevices(ids: string[]): Promise<void> {
   if (!targets.length) return;
   const signer = await getWalletBoundSigner();
   if (!signer) throw new Error("Reconnect your wallet, then try again.");
-  await client.revokeInstallations(signer, targets);
+  await client.revokeInstallations(signer, targets as Parameters<typeof client.revokeInstallations>[1]);
 }
