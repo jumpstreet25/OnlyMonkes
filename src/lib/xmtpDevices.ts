@@ -65,8 +65,12 @@ export async function removeLinkedDevices(ids: string[]): Promise<void> {
   const signer = await getWalletBoundSigner();
   if (!signer) throw new DeviceError("NEEDS_WALLET");
   // Only the inbox's recovery identity may revoke; say so instead of a raw SDK error.
-  const state = await client.inboxState(true);
+  const state = (await client.inboxState(true)) as {
+    recoveryIdentifier?: string;
+    recoveryIdentity?: { identifier?: string };
+  };
+  const recovery = (state.recoveryIdentifier ?? state.recoveryIdentity?.identifier)?.toLowerCase();
   const mine = (await signer.getIdentifier()).identifier.toLowerCase();
-  if (state.recoveryIdentifier && state.recoveryIdentifier !== mine) throw new DeviceError("NOT_RECOVERY_KEY");
+  if (recovery && recovery !== mine) throw new DeviceError("NOT_RECOVERY_KEY");
   await client.revokeInstallations(signer, targets as Parameters<typeof client.revokeInstallations>[1]);
 }
