@@ -1049,5 +1049,12 @@
     "lookUp": "Look up",
     "notFound": "That invite code isn't valid.",
     "done": "Done"
+  },
+  "appUpdate": {
+    "title": "New OnlyMonkes on the dApp Store",
+    "body": "Chat is moving to OnlyMonkes' own server. Update to keep chatting with everyone.",
+    "bodyRequired": "This version can no longer reach the chat. Update from the dApp Store to keep chatting.",
+    "update": "Update",
+    "later": "Later"
   }
 }

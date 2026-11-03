@@ -79,6 +79,7 @@ import { EdgePullDetector } from "@/components/drawer/EdgePullDetector";
 import { WorldLayer } from "@/components/worlds/WorldLayer";
 import { BananaMowerOverlay } from "@/components/worlds/BananaMowerOverlay";
 import { VideoRoomBanner } from "@/components/VideoRoomBanner";
+import { AppUpdateBanner } from "@/components/AppUpdateBanner";
 import { VideoCallPip } from "@/components/VideoCallPip";
 import { AvatarRoomPill } from "@/components/AvatarRoomPill";
 import { VideoReactionOverlay } from "@/components/VideoReactionOverlay";
@@ -1576,6 +1577,9 @@ export default function ChatScreen() {
             )}
           </View>
         )}
+
+        {/* dApp Store update notice — off until config/app-update.json enables it */}
+        <AppUpdateBanner />
 
         {/* Video room banner — pinned at top of chat */}
         {isGroupMember && activeVideoRoom && (

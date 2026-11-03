@@ -1049,5 +1049,12 @@
     "lookUp": "Buscar",
     "notFound": "Ese código de invitación no es válido.",
     "done": "Listo"
+  },
+  "appUpdate": {
+    "title": "Nuevo OnlyMonkes en la dApp Store",
+    "body": "El chat se muda al servidor propio de OnlyMonkes. Actualiza para seguir chateando con todos.",
+    "bodyRequired": "Esta versión ya no puede conectarse al chat. Actualiza desde la dApp Store para seguir chateando.",
+    "update": "Actualizar",
+    "later": "Luego"
   }
 }
