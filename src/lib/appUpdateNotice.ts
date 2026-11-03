@@ -47,7 +47,8 @@ export function shouldShowUpdateBanner(
 ): boolean {
   if (!cfg.enabled || !runtime || !cfg.runtimes.includes(runtime)) return false;
   if (cfg.required) return true;
-  return !dismissedAt || now - dismissedAt >= DISMISS_MS;
+  // A dismiss "in the future" (clock changed) counts as expired, not as hidden for weeks.
+  return !dismissedAt || dismissedAt > now || now - dismissedAt >= DISMISS_MS;
 }
 
 export function currentRuntime(): string | null {
@@ -57,11 +58,16 @@ export function currentRuntime(): string | null {
 
 export async function fetchAppUpdateConfig(): Promise<AppUpdateConfig> {
   try {
+    // No cache-buster: GitHub's ~5 min CDN cache is fine for a switch, and on switch day every
+    // open would otherwise hit GitHub's origin (rate limit → OFF exactly when it's needed).
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 5_000);
-    const res = await fetch(`${RAW}?t=${Date.now()}`, { signal: controller.signal });
-    clearTimeout(timer);
-    return res.ok ? parseAppUpdateConfig(await res.json()) : OFF;
+    try {
+      const res = await fetch(RAW, { signal: controller.signal });
+      return res.ok ? parseAppUpdateConfig(await res.json()) : OFF;
+    } finally {
+      clearTimeout(timer);
+    }
   } catch {
     return OFF;
   }

@@ -28,4 +28,8 @@ describe("app update banner", () => {
     const req = parseAppUpdateConfig({ enabled: true, required: true, runtimes: ["3.4"] });
     expect(shouldShowUpdateBanner(req, "3.4", now - 1000, now)).toBe(true);
   });
+
+  it("a dismiss stamped in the future (clock changed) doesn't hide it for weeks", () => {
+    expect(shouldShowUpdateBanner(on, "3.4", now + 7 * DISMISS_MS, now)).toBe(true);
+  });
 });

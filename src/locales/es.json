@@ -1052,9 +1052,9 @@
   },
   "appUpdate": {
     "title": "Nuevo OnlyMonkes en la dApp Store",
-    "body": "El chat se muda al servidor propio de OnlyMonkes. Actualiza para seguir chateando con todos.",
+    "body": "El chat se muda a su propio servidor de OnlyMonkes. Actualiza para seguir chateando con todos.",
     "bodyRequired": "Esta versión ya no puede conectarse al chat. Actualiza desde la dApp Store para seguir chateando.",
     "update": "Actualizar",
-    "later": "Luego"
+    "later": "Más tarde"
   }
 }
