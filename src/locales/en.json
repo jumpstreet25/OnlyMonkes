@@ -438,7 +438,9 @@
     "sendingEllipsis": "Sending…",
     "sendSkr": "Send {{amount}} $SKR  🐒",
     "monkeMeme": "MonkeMeme",
-    "invite": "Invite"
+    "invite": "Invite",
+    "linkedDevices": "Linked devices",
+    "linkedDevicesDesc": "Phones and browsers signed in to your chat. Remove old ones."
   },
   "watchlist": {
     "title": "Watchlist",
@@ -1088,5 +1090,22 @@
       "bags": "Your bags",
       "off": "Hide column"
     }
+  },
+  "linkedDevices": {
+    "title": "📱  Linked devices",
+    "intro": "Every phone and browser that opens your chat counts toward a limit of {{cap}}. Remove the ones you no longer use so you can always sign in.",
+    "count": "{{n}} of {{cap}} in use",
+    "thisDevice": "This phone",
+    "thisBrowser": "This browser",
+    "otherDevice": "Another phone or browser",
+    "linked": "Linked {{date}}",
+    "dateUnknown": "date unknown",
+    "remove": "Remove",
+    "confirm": "Confirm",
+    "removeAll": "Remove all other devices",
+    "confirmAll": "Confirm: remove {{n}} devices",
+    "removeFailed": "Couldn't remove it. Try again.",
+    "footnote": "A removed device is signed out of chat. Opening OnlyMonkes there again links it as new.",
+    "close": "Close"
   }
 }
