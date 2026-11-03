@@ -1073,6 +1073,7 @@
     "intro": "Cada teléfono y navegador que abre tu chat cuenta para un límite de {{cap}}. Quita los que ya no usas para poder entrar siempre.",
     "count": "{{n}} de {{cap}} en uso",
     "thisDevice": "Este teléfono",
+    "thisBrowser": "Este navegador",
     "otherDevice": "Otro teléfono o navegador",
     "linked": "Vinculado {{date}}",
     "dateUnknown": "fecha desconocida",

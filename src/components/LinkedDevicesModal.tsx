@@ -5,7 +5,7 @@
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, Pressable, StyleSheet, ActivityIndicator, ScrollView } from 'react-native';
+import { View, Text, Pressable, StyleSheet, ActivityIndicator, ScrollView, Platform } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { GlassModal } from '@/components/GlassModal';
 import { THEME, FONTS } from '@/lib/constants';
@@ -71,7 +71,7 @@ export function LinkedDevicesModal({ visible, onClose }: LinkedDevicesModalProps
               <View key={d.id} style={styles.row}>
                 <View style={styles.rowInfo}>
                   <Text style={styles.rowTitle}>
-                    {d.isThisDevice ? t('linkedDevices.thisDevice') : t('linkedDevices.otherDevice')}
+                    {d.isThisDevice ? t(Platform.OS === 'web' ? 'linkedDevices.thisBrowser' : 'linkedDevices.thisDevice') : t('linkedDevices.otherDevice')}
                   </Text>
                   <Text style={styles.rowMeta}>{t('linkedDevices.linked', { date: fmtDate(d.createdAt) })}</Text>
                 </View>

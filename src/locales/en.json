@@ -1073,6 +1073,7 @@
     "intro": "Every phone and browser that opens your chat counts toward a limit of {{cap}}. Remove the ones you no longer use so you can always sign in.",
     "count": "{{n}} of {{cap}} in use",
     "thisDevice": "This phone",
+    "thisBrowser": "This browser",
     "otherDevice": "Another phone or browser",
     "linked": "Linked {{date}}",
     "dateUnknown": "date unknown",
