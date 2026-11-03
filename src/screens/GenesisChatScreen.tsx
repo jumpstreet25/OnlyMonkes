@@ -44,6 +44,7 @@ import { GENESIS_CAROUSEL_KEY, useGenesisCarouselSlides } from "@/lib/genesisCar
 import { useTranslation } from "react-i18next";
 import { ChatModeTabs, SwipeToSwitchChat } from "@/components/ChatModeSwitch";
 import { ChatHeader, CHAT_HEADER_HEIGHT } from "@/components/ChatHeader";
+import { AppUpdateBanner } from "@/components/AppUpdateBanner";
 import { ChatInput } from "@/components/ChatInput";
 import { WorldLayer } from "@/components/worlds/WorldLayer";
 import { THEME, FONTS, SKR_MINT, DEV_WALLET } from "@/lib/constants";
@@ -276,6 +277,8 @@ export default function GenesisChatScreen() {
       </View>
 
       <View style={{ flex: 1, marginTop: CHAT_HEADER_HEIGHT, zIndex: 50 }} pointerEvents="box-none">
+      {/* dApp Store update notice — off until config/app-update.json enables it */}
+      <AppUpdateBanner />
       {!groupId ? (
         // pointerEvents="none" on every center-state below: these are plain
         // non-interactive Views but without this they still absorb taps
