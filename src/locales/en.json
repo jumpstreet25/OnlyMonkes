@@ -1090,7 +1090,7 @@
       "NOT_CONNECTED": "Chat isn't connected yet. Wait a moment and try again.",
       "THIS_DEVICE_UNKNOWN": "This device doesn't show up in the list yet, so nothing can be removed. Try again in a minute.",
       "NEEDS_WALLET": "Reconnect your wallet, then try again.",
-      "NOT_RECOVERY_KEY": "Devices on this chat identity can only be removed from the phone that first set it up."
+      "NOT_RECOVERY_KEY": "Devices on this chat identity can only be removed with the wallet key that first set it up. Reconnect the wallet you first used OnlyMonkes with."
     }
   }
 }

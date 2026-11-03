@@ -53,7 +53,10 @@ export async function listLinkedDevices(): Promise<LinkedDevice[]> {
   if (!client) throw new DeviceError("NOT_CONNECTED");
   const state = await client.inboxState(true);
   const devices = orderDevices(state.installations, client.installationId);
-  if (!devices.some((d) => d.isThisDevice)) throw new DeviceError("THIS_DEVICE_UNKNOWN");
+  if (!devices.some((d) => d.isThisDevice)) {
+    console.warn("[linkedDevices] this installation not in inbox state", client.installationId, state.installations.map((i) => i.id));
+    throw new DeviceError("THIS_DEVICE_UNKNOWN");
+  }
   return devices;
 }
 

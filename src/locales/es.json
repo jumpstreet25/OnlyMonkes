@@ -1090,7 +1090,7 @@
       "NOT_CONNECTED": "El chat aún no está conectado. Espera un momento e inténtalo de nuevo.",
       "THIS_DEVICE_UNKNOWN": "Este dispositivo todavía no aparece en la lista, así que no se puede quitar nada. Inténtalo en un minuto.",
       "NEEDS_WALLET": "Vuelve a conectar tu billetera e inténtalo de nuevo.",
-      "NOT_RECOVERY_KEY": "Los dispositivos de esta identidad de chat solo se pueden quitar desde el teléfono que la configuró primero."
+      "NOT_RECOVERY_KEY": "Los dispositivos de esta identidad de chat solo se pueden quitar con la clave de la billetera que la configuró primero. Vuelve a conectar la billetera con la que usaste OnlyMonkes por primera vez."
     }
   }
 }
