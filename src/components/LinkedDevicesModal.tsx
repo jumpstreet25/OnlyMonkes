@@ -1,15 +1,17 @@
 /**
  * LinkedDevicesModal — the phones and browsers signed in to this wallet's chat,
  * with Remove for the old ones (see src/lib/xmtpDevices.ts). Two taps per
- * removal: Remove, then Confirm.
+ * removal: Remove, then Confirm; an armed Confirm disarms itself after 5 s.
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, ActivityIndicator, ScrollView, Platform } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { GlassModal } from '@/components/GlassModal';
 import { THEME, FONTS } from '@/lib/constants';
-import { INSTALLATION_CAP, listLinkedDevices, removeLinkedDevices, type LinkedDevice } from '@/lib/xmtpDevices';
+import { DeviceError, INSTALLATION_CAP, listLinkedDevices, removeLinkedDevices, type LinkedDevice } from '@/lib/xmtpDevices';
+
+const CONFIRM_MS = 5_000;
 
 interface LinkedDevicesModalProps {
   visible: boolean;
@@ -22,19 +24,35 @@ export function LinkedDevicesModal({ visible, onClose }: LinkedDevicesModalProps
   const [error, setError] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const loadSeq = useRef(0);
+
+  const errorText = useCallback((err: unknown, fallbackKey: string) => {
+    if (err instanceof DeviceError) return t(`linkedDevices.error.${err.code}`);
+    console.warn('[linkedDevices]', err instanceof Error ? err.message : err);
+    return t(fallbackKey);
+  }, [t]);
 
   const load = useCallback(async () => {
+    const seq = ++loadSeq.current;
     setError(null);
+    setDevices(null);
     try {
-      setDevices(await listLinkedDevices());
+      const list = await listLinkedDevices();
+      if (seq === loadSeq.current) setDevices(list);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      if (seq === loadSeq.current) setError(errorText(err, 'linkedDevices.loadFailed'));
     }
-  }, []);
+  }, [errorText]);
 
   useEffect(() => {
-    if (visible) { setDevices(null); setConfirmId(null); load(); }
+    if (visible) { setConfirmId(null); load(); }
   }, [visible, load]);
+
+  useEffect(() => {
+    if (!confirmId || busy) return;
+    const timer = setTimeout(() => setConfirmId(null), CONFIRM_MS);
+    return () => clearTimeout(timer);
+  }, [confirmId, busy]);
 
   const remove = async (ids: string[]) => {
     setBusy(ids.length > 1 ? 'all' : ids[0]);
@@ -44,14 +62,16 @@ export function LinkedDevicesModal({ visible, onClose }: LinkedDevicesModalProps
       setConfirmId(null);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('linkedDevices.removeFailed'));
+      setError(errorText(err, 'linkedDevices.removeFailed'));
     } finally {
       setBusy(null);
     }
   };
 
   const fmtDate = (ms?: number) =>
-    ms ? new Date(ms).toLocaleDateString(i18n.language, { day: 'numeric', month: 'short', year: 'numeric' }) : t('linkedDevices.dateUnknown');
+    ms
+      ? t('linkedDevices.linked', { date: new Date(ms).toLocaleDateString(i18n.language, { day: 'numeric', month: 'short', year: 'numeric' }) })
+      : t('linkedDevices.linkedUnknown');
 
   const others = devices?.filter((d) => !d.isThisDevice) ?? [];
 
@@ -62,6 +82,11 @@ export function LinkedDevicesModal({ visible, onClose }: LinkedDevicesModalProps
 
       {!devices && !error && <ActivityIndicator color={THEME.gold} style={{ marginVertical: 20 }} />}
       {error && <Text style={styles.errorText}>{error}</Text>}
+      {error && !devices && (
+        <Pressable style={styles.allBtnOutline} onPress={load}>
+          <Text style={styles.allTextOutline}>{t('linkedDevices.retry')}</Text>
+        </Pressable>
+      )}
 
       {devices && (
         <>
@@ -73,7 +98,7 @@ export function LinkedDevicesModal({ visible, onClose }: LinkedDevicesModalProps
                   <Text style={styles.rowTitle}>
                     {d.isThisDevice ? t(Platform.OS === 'web' ? 'linkedDevices.thisBrowser' : 'linkedDevices.thisDevice') : t('linkedDevices.otherDevice')}
                   </Text>
-                  <Text style={styles.rowMeta}>{t('linkedDevices.linked', { date: fmtDate(d.createdAt) })}</Text>
+                  <Text style={styles.rowMeta}>{fmtDate(d.createdAt)} · {d.id.replace(/^0x/i, '').slice(0, 6)}</Text>
                 </View>
                 {!d.isThisDevice && (busy === d.id ? (
                   <ActivityIndicator color={THEME.gold} />

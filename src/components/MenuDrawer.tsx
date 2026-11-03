@@ -1204,7 +1204,8 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                     </Text>
                   </View>
                   <Text style={styles.chevron}>›</Text>
-                </Pressable>                <View style={styles.settingDivider} />
+                </Pressable>
+                <View style={styles.settingDivider} />
                 <Pressable
                   style={styles.settingRow}
                   onPress={() => setResetIdentityOpen(true)}

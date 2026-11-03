@@ -707,10 +707,11 @@ export class WebClient {
   /** v8 has no history-sync request; device sync runs on its own. */
   async sendSyncRequest(): Promise<void> {}
 
-  async inboxState(refresh = false): Promise<{ inboxId: string; installations: { id: string; createdAt?: number }[] }> {
+  async inboxState(refresh = false): Promise<{ inboxId: string; installations: { id: string; createdAt?: number }[]; recoveryIdentifier?: string }> {
     const s = await this.inner.inboxState(refresh);
     return {
       inboxId: s.inboxId,
+      recoveryIdentifier: s.recoveryIdentity?.identifier?.toLowerCase?.(),
       installations: (s.installations ?? []).map((i: any) => ({
         id: i.id,
         createdAt: i.createdAt?.date?.getTime?.(),

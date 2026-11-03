@@ -87,13 +87,13 @@ export async function prepareWalletBoundXmtp(
 export { hasDerivedXmtpEoa };
 
 /** The wallet-bound signer for inbox changes (removing linked devices). Restored from
- *  SecureStore, so no wallet prompt; null if this device never derived it. */
+ *  SecureStore, so no wallet prompt; null if this device never derived it for this wallet. */
 export async function getWalletBoundSigner(): Promise<Signer | null> {
-  if (!_eoaSigner && _boundWalletAddress) {
-    const stored = await loadDerivedXmtpEoa(_boundWalletAddress);
-    if (stored) _eoaSigner = makeXmtpEoaSigner(stored);
-  }
-  return _eoaSigner;
+  // Read for the wallet bound right now, never the cached signer: after a wallet switch the
+  // cache can still hold the previous wallet's key.
+  if (!_boundWalletAddress) return null;
+  const stored = await loadDerivedXmtpEoa(_boundWalletAddress);
+  return stored ? makeXmtpEoaSigner(stored) : null;
 }
 
 function skKey(prefix: string): string {

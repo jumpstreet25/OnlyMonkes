@@ -1093,19 +1093,27 @@
   },
   "linkedDevices": {
     "title": "📱  Linked devices",
-    "intro": "Every phone and browser that opens your chat counts toward a limit of {{cap}}. Remove the ones you no longer use so you can always sign in.",
+    "intro": "Every phone and browser signed in to your chat counts toward a limit of {{cap}}. Remove the ones you no longer use.",
     "count": "{{n}} of {{cap}} in use",
     "thisDevice": "This phone",
     "thisBrowser": "This browser",
     "otherDevice": "Another phone or browser",
     "linked": "Linked {{date}}",
-    "dateUnknown": "date unknown",
+    "linkedUnknown": "Link date unknown",
     "remove": "Remove",
     "confirm": "Confirm",
     "removeAll": "Remove all other devices",
     "confirmAll": "Confirm: remove {{n}} devices",
+    "retry": "Try again",
+    "loadFailed": "Couldn't load your devices. Check your connection and try again.",
     "removeFailed": "Couldn't remove it. Try again.",
-    "footnote": "A removed device is signed out of chat. Opening OnlyMonkes there again links it as new.",
-    "close": "Close"
+    "footnote": "A removed device loses access to your chat. Opening OnlyMonkes there again links it as new.",
+    "close": "Close",
+    "error": {
+      "NOT_CONNECTED": "Chat isn't connected yet. Wait a moment and try again.",
+      "THIS_DEVICE_UNKNOWN": "This device doesn't show up in the list yet, so nothing can be removed. Try again in a minute.",
+      "NEEDS_WALLET": "Reconnect your wallet, then try again.",
+      "NOT_RECOVERY_KEY": "Devices on this chat identity can only be removed from the phone that first set it up."
+    }
   }
 }

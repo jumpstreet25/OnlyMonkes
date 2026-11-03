@@ -440,7 +440,7 @@
     "monkeMeme": "MonkeMeme",
     "invite": "Invitar",
     "linkedDevices": "Dispositivos vinculados",
-    "linkedDevicesDesc": "Teléfonos y navegadores con tu chat abierto. Quita los viejos."
+    "linkedDevicesDesc": "Teléfonos y navegadores con sesión iniciada en tu chat. Quita los viejos."
   },
   "watchlist": {
     "title": "Lista de Seguimiento",
@@ -1093,19 +1093,27 @@
   },
   "linkedDevices": {
     "title": "📱  Dispositivos vinculados",
-    "intro": "Cada teléfono y navegador que abre tu chat cuenta para un límite de {{cap}}. Quita los que ya no usas para poder entrar siempre.",
+    "intro": "Cada teléfono y navegador con sesión iniciada en tu chat cuenta dentro del límite de {{cap}}. Quita los que ya no usas.",
     "count": "{{n}} de {{cap}} en uso",
     "thisDevice": "Este teléfono",
     "thisBrowser": "Este navegador",
     "otherDevice": "Otro teléfono o navegador",
-    "linked": "Vinculado {{date}}",
-    "dateUnknown": "fecha desconocida",
+    "linked": "Vinculado el {{date}}",
+    "linkedUnknown": "Fecha de vinculación desconocida",
     "remove": "Quitar",
     "confirm": "Confirmar",
-    "removeAll": "Quitar todos los demás",
+    "removeAll": "Quitar los demás dispositivos",
     "confirmAll": "Confirmar: quitar {{n}} dispositivos",
+    "retry": "Reintentar",
+    "loadFailed": "No se pudieron cargar tus dispositivos. Revisa tu conexión e inténtalo de nuevo.",
     "removeFailed": "No se pudo quitar. Inténtalo de nuevo.",
-    "footnote": "Un dispositivo quitado sale del chat. Si abres OnlyMonkes ahí otra vez, se vincula como nuevo.",
-    "close": "Cerrar"
+    "footnote": "Un dispositivo quitado pierde el acceso a tu chat. Si abres OnlyMonkes ahí otra vez, se vincula como nuevo.",
+    "close": "Cerrar",
+    "error": {
+      "NOT_CONNECTED": "El chat aún no está conectado. Espera un momento e inténtalo de nuevo.",
+      "THIS_DEVICE_UNKNOWN": "Este dispositivo todavía no aparece en la lista, así que no se puede quitar nada. Inténtalo en un minuto.",
+      "NEEDS_WALLET": "Vuelve a conectar tu billetera e inténtalo de nuevo.",
+      "NOT_RECOVERY_KEY": "Los dispositivos de esta identidad de chat solo se pueden quitar desde el teléfono que la configuró primero."
+    }
   }
 }
