@@ -7,7 +7,8 @@ jest.mock("@/lib/referrals", () => ({
 }));
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { FALLBACK_SHARE_LINK, addShareLink, getShareLink, rememberShareLink, withShareLink } from "@/lib/shareLink";
+import { Platform } from "react-native";
+import { FALLBACK_SHARE_LINK, addShareLink, getShareLink, prepareShareLink, rememberShareLink, withShareLink } from "@/lib/shareLink";
 
 describe("share links", () => {
   beforeEach(async () => {
@@ -41,5 +42,20 @@ describe("share links", () => {
     await rememberShareLink("Wallet111", "https://evil.example/r/ABCDEF");
     mockGetMyReferral.mockResolvedValueOnce({ url: "https://evil.example/x" });
     expect(await getShareLink()).toBe(FALLBACK_SHARE_LINK);
+  });
+
+  it("after sign-in fetches the invite once (wallet prompt allowed), then waits a week after a miss", async () => {
+    Object.defineProperty(Platform, "OS", { get: () => "android", configurable: true });
+    mockGetMyReferral.mockResolvedValue({ error: "declined" });
+    await prepareShareLink();
+    expect(mockGetMyReferral).toHaveBeenCalledWith();
+    await prepareShareLink();
+    expect(mockGetMyReferral).toHaveBeenCalledTimes(1);
+  });
+
+  it("skips the after-sign-in fetch when the invite is already cached", async () => {
+    await rememberShareLink("Wallet111", "https://onlymonkes.app/r/ABCDEF");
+    await prepareShareLink();
+    expect(mockGetMyReferral).not.toHaveBeenCalled();
   });
 });
