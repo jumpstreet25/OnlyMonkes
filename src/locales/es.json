@@ -438,7 +438,9 @@
     "sendSkr": "Enviar {{amount}} $SKR  🐒",
     "monkeMeme": "MonkeMeme",
     "invite": "Invitar",
-    "oldHistory": "Antes de la mudanza"
+    "oldHistory": "Antes de la mudanza",
+    "linkedDevices": "Dispositivos vinculados",
+    "linkedDevicesDesc": "Teléfonos y navegadores con tu chat abierto. Quita los viejos."
   },
   "watchlist": {
     "title": "Lista de Seguimiento",
@@ -1065,5 +1067,21 @@
     "readOnly": "Solo lectura — de antes de la mudanza.",
     "empty": "No hay chats antiguos en este teléfono.",
     "noMessages": "Sin mensajes."
+  },
+  "linkedDevices": {
+    "title": "📱  Dispositivos vinculados",
+    "intro": "Cada teléfono y navegador que abre tu chat cuenta para un límite de {{cap}}. Quita los que ya no usas para poder entrar siempre.",
+    "count": "{{n}} de {{cap}} en uso",
+    "thisDevice": "Este teléfono",
+    "otherDevice": "Otro teléfono o navegador",
+    "linked": "Vinculado {{date}}",
+    "dateUnknown": "fecha desconocida",
+    "remove": "Quitar",
+    "confirm": "Confirmar",
+    "removeAll": "Quitar todos los demás",
+    "confirmAll": "Confirmar: quitar {{n}} dispositivos",
+    "removeFailed": "No se pudo quitar. Inténtalo de nuevo.",
+    "footnote": "Un dispositivo quitado sale del chat. Si abres OnlyMonkes ahí otra vez, se vincula como nuevo.",
+    "close": "Cerrar"
   }
 }
