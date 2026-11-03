@@ -17,6 +17,7 @@ import { addBananas } from "@/lib/bananaRewards";
 import { parseMonkeNumber } from "@/lib/monkeMeme/monkeNumbers";
 import { reverifyDevice } from "@/lib/deviceReverify";
 import { grantSpecialBadge } from "@/lib/badges";
+import { rememberShareLink } from "@/lib/shareLink";
 
 const BASE = "https://onlymonkes.app";
 export const INVITE_CODE = /^[2-9A-HJ-NP-Z]{6}$/;
@@ -87,12 +88,16 @@ export function grantRecruiterBadges(earned: number[]): void {
   }
 }
 
-/** Your invite (created on first call); also updates the name + PFP shown on your card. */
-export async function getMyReferral(): Promise<MyReferral | ReferralError> {
+/** Your invite (created on first call); also updates the name + PFP shown on your card.
+ *  canPrompt false: never asks the wallet to verify the phone (background share-link lookup). */
+export async function getMyReferral(opts: { canPrompt?: boolean } = {}): Promise<MyReferral | ReferralError> {
   const s = useAppStore.getState();
   const pfp = parseMonkeNumber(s.verifiedNft?.name);
-  const r = await post<MyReferral>("/api/referral/me", "me", { name: s.username ?? "", ...(pfp ? { pfp } : {}) });
-  if (!isReferralError(r) && Array.isArray(r.badges)) grantRecruiterBadges(r.badges);
+  const r = await post<MyReferral>("/api/referral/me", "me", { name: s.username ?? "", ...(pfp ? { pfp } : {}) }, opts.canPrompt ?? true);
+  if (!isReferralError(r)) {
+    if (Array.isArray(r.badges)) grantRecruiterBadges(r.badges);
+    if (s.wallet?.address && r.url) void rememberShareLink(s.wallet.address, r.url);
+  }
   return r;
 }
 

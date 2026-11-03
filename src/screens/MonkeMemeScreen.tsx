@@ -32,6 +32,7 @@ import { useAppStore } from "@/store/appStore";
 import { WorldScreenShell, useWorldGlassCardStyle } from "@/components/worlds/WorldScreenShell";
 import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
 import { shareImageToX } from "@/lib/shareToX";
+import { addShareLink } from "@/lib/shareLink";
 import type { OwnedNFT } from "@/types";
 import {
   TRAIT_CATALOG,
@@ -266,7 +267,7 @@ export default function MonkeMemeScreen() {
     try {
       const uri = await capture(memeRef, 1080);
       const { default: Share } = await import("react-native-share");
-      await Share.open({ url: uri, message: shareText, type: "image/png", failOnCancel: false });
+      await Share.open({ url: uri, message: await addShareLink(shareText), type: "image/png", failOnCancel: false });
     } catch {
       setError(t("monkeMeme.err.captureFailed"));
     } finally {
