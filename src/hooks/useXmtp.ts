@@ -1487,14 +1487,14 @@ export function useXmtp() {
             const payload = JSON.parse(content.slice("GIFT_ITEM:".length));
             const { recipientInboxId, itemId, from } = payload as { recipientInboxId: string; itemId: string; from?: string };
             if (recipientInboxId === _myInboxId) {
-              const { addOwnedItem, equipItem: equipShopItem, getEquippedStyles: getStyles, getAvailableItems } = await import("@/lib/bananaShop");
+              const { addOwnedItem, equipItem: equipShopItem, getEquippedStyles: getStyles, findShopItem } = await import("@/lib/bananaShop");
               const { applyThemeFromShop } = await import("@/lib/shopTheme");
               await addOwnedItem(itemId);
               await equipShopItem(itemId);
               const styles = await getStyles();
               useAppStore.getState().setShopStyles(styles);
               applyThemeFromShop(styles);
-              const catalogItem = getAvailableItems().find((i) => i.id === itemId);
+              const catalogItem = findShopItem(itemId);
               const fallbackName = itemId.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
               const itemName = catalogItem
                 ? t(`shopItems.${catalogItem.id}.name`, { defaultValue: catalogItem.name })
