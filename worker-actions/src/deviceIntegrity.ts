@@ -160,6 +160,8 @@ interface ChainVerifyResult {
   /** The worker couldn't check a signature (e.g. an algorithm Workers' WebCrypto lacks) —
    *  not evidence of a forged chain, so the caller must not hard-fail the device on it. */
   unchecked?: boolean;
+  /** Set when the chain verified but an issued cert is past its dates (accepted). */
+  staleCert?: string;
 }
 
 /** "ECDSA/SHA-384 by ECDSA P-521" — for failure reasons; certificates hold no user data. */
@@ -292,11 +294,9 @@ export async function verifyKeyAttestationChain(
     return { ok: false, securityLevel: "none", reason: "attestation challenge does not match expected app package" };
   }
 
-  // Signatures and root check out but an issued cert is out of date (a stale attestation key on
-  // the phone): not proof of tampering, so soft-fail rather than block chat.
-  if (outOfDate) {
-    return { ok: false, unchecked: true, securityLevel: "none", reason: `attestation certificate out of date (${outOfDate})` };
-  }
+  // Signatures and the pinned Google root check out but an issued cert has expired: the phone's
+  // attestation key is older than its short-lived intermediate, and the 3.0 app can't make a new
+  // key, so these phones could never verify (2026-11-04). Expired is not revoked — accept it, logged.
 
   // Lower of the two levels — a StrongBox attestation statement backed by a merely-TEE keymaster
   // (or vice versa) is only as strong as its weaker link.
@@ -306,7 +306,7 @@ export async function verifyKeyAttestationChain(
       : "strongbox";
   const bothStrongBox = attestationLevel === KeySecurityLevel.strongBox && keymasterLevel === KeySecurityLevel.strongBox;
 
-  return { ok: true, securityLevel: bothStrongBox ? "strongbox" : (effective as SecurityLevelLabel) };
+  return { ok: true, securityLevel: bothStrongBox ? "strongbox" : (effective as SecurityLevelLabel), staleCert: outOfDate ?? undefined };
 }
 
 // ─── Verdict shape (mirrors what a SAS schema for this would hold — see module doc comment) ──
@@ -415,6 +415,7 @@ export async function handleDeviceIntegrityIssue(request: Request, env: Env): Pr
     if (chainResult.unchecked) return errorResponse(`Could not verify the hardware attestation right now: ${chainResult.reason}`, 503);
     return errorResponse(`Hardware attestation failed: ${chainResult.reason}`, 403);
   }
+  if (chainResult.staleCert) console.log(`[deviceIntegrity] accepted out-of-date cert: ${chainResult.staleCert}`);
 
   // Ownership — reuse the existing tiered chains, don't reimplement.
   const [monkeResult, genesisResult] = await Promise.all([
