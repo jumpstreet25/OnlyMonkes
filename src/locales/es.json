@@ -583,7 +583,14 @@
       "light": "Claro",
       "normal": "Normal",
       "vivid": "Vívido"
-    }
+    },
+    "buyOnPhoneTitle": "Compra en tu teléfono",
+    "buyOnPhoneBody": "Las compras de la tienda necesitan la wallet de tu teléfono. Abre OnlyMonkes en tu Seeker para comprar — lo que ya tienes funciona aquí.",
+    "catKits": "Kits",
+    "kitName": "Kit {{world}}",
+    "kitWear": "Usar",
+    "kitNote": "Un kit es el Mundo más su burbuja y color de nombre a juego, con 20% de descuento en lo que aún no tienes. Toca un kit que ya tengas para usar todo el look.",
+    "chestOnly": "COFRE"
   },
   "messageBubble": {
     "liveVideoChat": "Videochat en Vivo",
@@ -968,6 +975,62 @@
     "bubble_breakpoint_2026": {
       "name": "Breakpoint 2026",
       "description": "Estilo de burbuja exclusivo — solo durante Solana Breakpoint"
+    },
+    "kit_banana_grove_bubble": {
+      "name": "Burbuja Bosque Banana",
+      "description": "Burbujas a juego con el mundo Bosque Banana"
+    },
+    "kit_banana_grove_name": {
+      "name": "Nombre Bosque Banana",
+      "description": "Tu nombre con el color de Bosque Banana"
+    },
+    "kit_solana_cyberpunk_bubble": {
+      "name": "Burbuja Solana Cyberpunk",
+      "description": "Burbujas a juego con el mundo Solana Cyberpunk"
+    },
+    "kit_solana_cyberpunk_name": {
+      "name": "Nombre Solana Cyberpunk",
+      "description": "Tu nombre con el color de Solana Cyberpunk"
+    },
+    "kit_trading_floor_bubble": {
+      "name": "Burbuja Sala de Trading",
+      "description": "Burbujas a juego con el mundo Sala de Trading"
+    },
+    "kit_trading_floor_name": {
+      "name": "Nombre Sala de Trading",
+      "description": "Tu nombre con el color de Sala de Trading"
+    },
+    "kit_tech_noir_bubble": {
+      "name": "Burbuja Tech Noir",
+      "description": "Burbujas a juego con el mundo Tech Noir"
+    },
+    "kit_tech_noir_name": {
+      "name": "Nombre Tech Noir",
+      "description": "Tu nombre con el color de Tech Noir"
+    },
+    "kit_deep_space_bubble": {
+      "name": "Burbuja Espacio Profundo",
+      "description": "Burbujas a juego con el mundo Espacio Profundo"
+    },
+    "kit_deep_space_name": {
+      "name": "Nombre Espacio Profundo",
+      "description": "Tu nombre con el color de Espacio Profundo"
+    },
+    "kit_frost_grove_bubble": {
+      "name": "Burbuja Bosque Helado",
+      "description": "Burbujas a juego con el mundo Bosque Helado"
+    },
+    "kit_frost_grove_name": {
+      "name": "Nombre Bosque Helado",
+      "description": "Tu nombre con el color de Bosque Helado"
+    },
+    "bubble_holographic_loot": {
+      "name": "Burbuja Holográfica",
+      "description": "Brillo ultra raro. Solo del Cofre Banana."
+    },
+    "seasonal_monke_winter_2026": {
+      "name": "Invierno Monke",
+      "description": "Burbujas escarchadas con brillo helado. Solo hasta el 5 de enero."
     }
   },
   "monkeMeme": {

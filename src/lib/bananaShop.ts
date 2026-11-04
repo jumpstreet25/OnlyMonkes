@@ -8,6 +8,7 @@
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { safeStorageSet } from "@/lib/storageRescue";
+import { remoteSeasonalItems } from "@/lib/shopSeasonal";
 
 const AK_SHOP_BASE = "banana_shop_v1";
 
@@ -34,6 +35,8 @@ export interface ShopItem {
   preview: string;         // Emoji or short visual hint shown in shop
   // Style overrides applied when equipped
   style: Record<string, string | number | boolean>;
+  /** World kit this piece belongs to (the World's item id). */
+  kit?: string;
   // Limited/seasonal availability
   seasonal?: {
     name: string;          // e.g. "Breakpoint 2026"
@@ -358,6 +361,104 @@ export const SHOP_ITEMS: ShopItem[] = [
     preview: "❄️",
     style: { worldId: "world_frost_grove" },
   },
+
+  // ── World kits: a bubble + name color matching each World (2026-11-04) ──
+  {
+    id: "kit_banana_grove_bubble",
+    name: "Banana Grove Bubble",
+    description: "Bubbles that match the Banana Grove world",
+    category: "bubble", tier: 1, bananaCost: 40, usdCost: 1, kit: "world_banana_grove",
+    preview: "🍯",
+    style: { bgColor: "rgba(230,184,112,0.10)", borderColor: "#E6B870", glowColor: "#E6B870", glowOpacity: 0.85, glowRadius: 20 },
+  },
+  {
+    id: "kit_banana_grove_name",
+    name: "Banana Grove Name",
+    description: "Your name in the Banana Grove color",
+    category: "text", tier: 2, bananaCost: 50, usdCost: 2, kit: "world_banana_grove",
+    preview: "🍯",
+    style: { nameColor: "#E6B870" },
+  },
+  {
+    id: "kit_solana_cyberpunk_bubble",
+    name: "Solana Cyberpunk Bubble",
+    description: "Bubbles that match the Solana Cyberpunk world",
+    category: "bubble", tier: 1, bananaCost: 40, usdCost: 1, kit: "world_solana_cyberpunk",
+    preview: "🌆",
+    style: { bgColor: "rgba(20,241,149,0.10)", borderColor: "#14F195", glowColor: "#14F195", glowOpacity: 0.85, glowRadius: 20 },
+  },
+  {
+    id: "kit_solana_cyberpunk_name",
+    name: "Solana Cyberpunk Name",
+    description: "Your name in the Solana Cyberpunk color",
+    category: "text", tier: 2, bananaCost: 50, usdCost: 2, kit: "world_solana_cyberpunk",
+    preview: "🌆",
+    style: { nameColor: "#14F195" },
+  },
+  {
+    id: "kit_trading_floor_bubble",
+    name: "Trading Floor Bubble",
+    description: "Bubbles that match the Trading Floor world",
+    category: "bubble", tier: 1, bananaCost: 40, usdCost: 1, kit: "world_trading_floor",
+    preview: "📈",
+    style: { bgColor: "rgba(47,143,106,0.10)", borderColor: "#2F8F6A", glowColor: "#2F8F6A", glowOpacity: 0.85, glowRadius: 20 },
+  },
+  {
+    id: "kit_trading_floor_name",
+    name: "Trading Floor Name",
+    description: "Your name in the Trading Floor color",
+    category: "text", tier: 2, bananaCost: 50, usdCost: 2, kit: "world_trading_floor",
+    preview: "📈",
+    style: { nameColor: "#2F8F6A" },
+  },
+  {
+    id: "kit_tech_noir_bubble",
+    name: "Tech Noir Bubble",
+    description: "Bubbles that match the Tech Noir world",
+    category: "bubble", tier: 1, bananaCost: 40, usdCost: 1, kit: "world_tech_noir",
+    preview: "🌃",
+    style: { bgColor: "rgba(79,216,255,0.10)", borderColor: "#4FD8FF", glowColor: "#4FD8FF", glowOpacity: 0.85, glowRadius: 20 },
+  },
+  {
+    id: "kit_tech_noir_name",
+    name: "Tech Noir Name",
+    description: "Your name in the Tech Noir color",
+    category: "text", tier: 2, bananaCost: 50, usdCost: 2, kit: "world_tech_noir",
+    preview: "🌃",
+    style: { nameColor: "#4FD8FF" },
+  },
+  {
+    id: "kit_deep_space_bubble",
+    name: "Deep Space Bubble",
+    description: "Bubbles that match the Deep Space world",
+    category: "bubble", tier: 1, bananaCost: 40, usdCost: 1, kit: "world_deep_space",
+    preview: "🌌",
+    style: { bgColor: "rgba(155,112,255,0.10)", borderColor: "#9B70FF", glowColor: "#9B70FF", glowOpacity: 0.85, glowRadius: 20 },
+  },
+  {
+    id: "kit_deep_space_name",
+    name: "Deep Space Name",
+    description: "Your name in the Deep Space color",
+    category: "text", tier: 2, bananaCost: 50, usdCost: 2, kit: "world_deep_space",
+    preview: "🌌",
+    style: { nameColor: "#9B70FF" },
+  },
+  {
+    id: "kit_frost_grove_bubble",
+    name: "Frost Grove Bubble",
+    description: "Bubbles that match the Frost Grove world",
+    category: "bubble", tier: 1, bananaCost: 40, usdCost: 1, kit: "world_frost_grove",
+    preview: "❄️",
+    style: { bgColor: "rgba(143,216,255,0.10)", borderColor: "#8FD8FF", glowColor: "#8FD8FF", glowOpacity: 0.85, glowRadius: 20 },
+  },
+  {
+    id: "kit_frost_grove_name",
+    name: "Frost Grove Name",
+    description: "Your name in the Frost Grove color",
+    category: "text", tier: 2, bananaCost: 50, usdCost: 2, kit: "world_frost_grove",
+    preview: "❄️",
+    style: { nameColor: "#8FD8FF" },
+  },
 ];
 
 // ─── Seasonal / Limited Items ────────────────────────────────────────────────
@@ -400,13 +501,54 @@ export function getItemDisplayDescription(item: ShopItem, t: (key: string, opts?
   return t(`shopItems.${item.id}.description`, { defaultValue: item.description });
 }
 
+/** Won only from the Banana Chest — never for sale. */
+export const LOOT_ITEMS: ShopItem[] = [
+  {
+    id: "bubble_holographic_loot",
+    name: "Holographic Bubble",
+    description: "Ultra-rare shimmer. Only from the Banana Chest.",
+    category: "bubble", tier: 2, bananaCost: 0, usdCost: 0,
+    preview: "🌈",
+    style: { bgColor: "rgba(190,150,255,0.16)", borderColor: "#9EF0FF", glowColor: "#FF9EF5", glowOpacity: 0.9, glowRadius: 24 },
+  },
+];
+
+/** Every item an owner might have equipped: shop, seasonal (in season or not), loot. */
+export function allKnownItems(): ShopItem[] {
+  return [...SHOP_ITEMS, ...SEASONAL_ITEMS, ...remoteSeasonalItems(), ...LOOT_ITEMS];
+}
+
+export function findShopItem(id: string): ShopItem | undefined {
+  return allKnownItems().find((i) => i.id === id);
+}
+
 /** Get items available right now (including in-season limited items). */
 export function getAvailableItems(): ShopItem[] {
   const now = Date.now();
-  const seasonal = SEASONAL_ITEMS.filter(i =>
+  const seasonal = [...SEASONAL_ITEMS, ...remoteSeasonalItems()].filter(i =>
     i.seasonal && now >= i.seasonal.availableFrom && now <= i.seasonal.availableUntil
   );
   return [...SHOP_ITEMS, ...seasonal];
+}
+
+/** A kit costs this much less than its pieces bought one by one (on what's still unowned). */
+export const KIT_DISCOUNT = 0.2;
+
+/** Each World with its matching bubble + name color. */
+export function getWorldKits(): { world: ShopItem; pieces: ShopItem[] }[] {
+  return SHOP_ITEMS.filter((i) => i.category === "world").map((world) => ({
+    world,
+    pieces: [world, ...SHOP_ITEMS.filter((i) => i.kit === world.id)],
+  }));
+}
+
+/** Price of the pieces still to buy, with the kit discount when two or more are left. */
+export function kitPrice(pieces: ShopItem[], owned: string[]): { toBuy: ShopItem[]; bananas: number; usd: number } {
+  const toBuy = pieces.filter((p) => !owned.includes(p.id));
+  const off = toBuy.length >= 2 ? 1 - KIT_DISCOUNT : 1;
+  const bananas = Math.round(toBuy.reduce((n, p) => n + p.bananaCost, 0) * off);
+  const usd = Math.round(toBuy.reduce((n, p) => n + p.usdCost, 0) * off * 100) / 100;
+  return { toBuy, bananas, usd };
 }
 
 // ─── Ownership & Equipped State ──────────────────────────────────────────────
@@ -470,7 +612,7 @@ const STACKABLE_CATEGORIES: ShopCategory[] = ["text"];
 export async function equipItem(itemId: string): Promise<ShopState> {
   const state = await loadShopState();
   if (!state.owned.includes(itemId)) return state; // must own it
-  const item = [...SHOP_ITEMS, ...SEASONAL_ITEMS].find(i => i.id === itemId);
+  const item = findShopItem(itemId);
   if (!item) return state;
 
   if (STACKABLE_CATEGORIES.includes(item.category)) {
@@ -499,7 +641,7 @@ export async function unequipCategory(category: ShopCategory): Promise<ShopState
 /** Unequip a single item from a stackable category (removes from array). */
 export async function unequipItem(itemId: string): Promise<ShopState> {
   const state = await loadShopState();
-  const item = [...SHOP_ITEMS, ...SEASONAL_ITEMS].find(i => i.id === itemId);
+  const item = findShopItem(itemId);
   if (!item) return state;
   const current = state.equipped[item.category];
   if (Array.isArray(current)) {
@@ -564,7 +706,7 @@ export async function syncPfpBindings(currentNftMint: string | null): Promise<Sh
 /** Get the style overrides for currently equipped items. */
 export async function getEquippedStyles(): Promise<Record<string, any>> {
   const state = await loadShopState();
-  const allItems = [...SHOP_ITEMS, ...SEASONAL_ITEMS];
+  const allItems = allKnownItems();
   const styles: Record<string, any> = {};
 
   // Anyone who has purchased any item gets the banana badge next to their name
