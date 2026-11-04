@@ -3518,7 +3518,10 @@ export default {
     // Link-preview bots (X, Discord…) often send HEAD first; answer it like GET.
     const isPageRead = request.method === "GET" || request.method === "HEAD";
     if (path === "/" || path === "/welcome") {
-      if (isPageRead) return renderLanding(await getCachedStats(env));
+      if (isPageRead) {
+        const pins = await env.COMMUNITY_DATA.get("locations:latest").then((r) => (r ? (JSON.parse(r) as unknown[]).length : null)).catch(() => null);
+        return renderLanding(await getCachedStats(env), pins);
+      }
       return errorResponse("Method not allowed", 405);
     }
     if (path === "/get") {
