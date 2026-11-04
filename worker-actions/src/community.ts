@@ -125,7 +125,10 @@ async function verifyCommunityAuth(
 // ─── GET /api/community/locations — public ──────────────────────────────────
 export async function handleGetLocations(env: Env): Promise<Response> {
   const raw = await env.COMMUNITY_DATA.get("locations:latest");
-  return jsonResponse({ locations: raw ? JSON.parse(raw) : [] });
+  const locations: CommunityLocation[] = raw ? JSON.parse(raw) : [];
+  // Public read: no wallet addresses (owner 2026-11-04) — a list of every holder's wallet next
+  // to their city is too easy to scrape. Wallets stay in KV so each holder updates their own pin.
+  return jsonResponse({ locations: locations.map(({ wallet: _wallet, ...pin }) => pin) });
 }
 
 // ─── POST /api/community/location — signed + holder-verified upsert ────────
