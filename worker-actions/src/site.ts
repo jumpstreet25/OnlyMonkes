@@ -30,6 +30,10 @@ export const OPEN_TARGETS: Record<string, { label: string; app: string; web: str
   treasury: { label: "Treasury", app: "treasury", web: "/treasury", tier: "monke" },
 };
 
+/** Public community tools, each on its own friendly address. */
+const GLOBE_URL = "https://globe.onlymonkes.app";
+const LEDGER_URL = "https://monkeledger.onlymonkes.app";
+
 export interface SiteStats {
   holders: number;
   floorSol: number | null;
@@ -114,6 +118,7 @@ function head(title: string, description: string, path: string, extraCss = ""): 
   <nav>
     <a class="hide-sm" href="/welcome#access">Access</a>
     <a class="hide-sm" href="/welcome#features">Features</a>
+    <a class="hide-sm" href="/welcome#explore">Explore</a>
     <a class="hide-sm" href="/welcome#faq">FAQ</a>
     <a class="btn sm ghost" href="${WEB_APP_BASE}">Web app</a>
     <a class="btn sm primary" href="/get">Get the app</a>
@@ -125,6 +130,7 @@ function foot(): string {
   return `<footer><div class="wrap">
   <span>© ${new Date().getUTCFullYear()} OnlyMonkes · a community app for Saga Monkes holders</span>
   <nav>
+    <a href="${GLOBE_URL}">MonkeGlobe</a><a href="${LEDGER_URL}">MonkeLedger</a>
     <a href="/legal">Legal</a><a href="/terms">Terms</a><a href="/privacy">Privacy</a><a href="/copyright">Copyright</a>
     <a href="mailto:${CONTACT_EMAIL}">Contact</a>
   </nav>
@@ -187,14 +193,22 @@ section p.sub{color:var(--mut);max-width:640px;margin-bottom:28px}
 .chips{display:flex;flex-wrap:wrap;gap:10px}
 .chip{background:var(--card);border:1px solid var(--line);border-radius:999px;padding:10px 16px;color:var(--fg);font-weight:600}
 .chip:hover{border-color:var(--blue);text-decoration:none}
+.explore{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+a.tool{display:flex;flex-direction:column;gap:8px;background:var(--card);border:1px solid var(--line);border-radius:20px;padding:24px;color:var(--fg)}
+a.tool:hover{border-color:var(--blue);text-decoration:none;background:linear-gradient(180deg,#123063 0%,var(--card) 70%)}
+a.tool .ic{font-size:30px}
+a.tool h3{font-size:22px}
+a.tool p{color:var(--mut);font-size:15px}
+a.tool .num{font-family:"Fredoka",sans-serif;font-size:18px;color:var(--ok)}
+a.tool .go{margin-top:auto;color:var(--sky);font-weight:700}
 details{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 20px;margin-bottom:10px}
 summary{cursor:pointer;font-weight:700;font-size:17px}
 details p{color:var(--mut);margin-top:10px}
-@media (max-width:860px){.hero .wrap{grid-template-columns:1fr}.hero img.mascot{max-width:220px;order:-1}.tiers{grid-template-columns:1fr}.grid,.steps{grid-template-columns:1fr 1fr}}
+@media (max-width:860px){.hero .wrap{grid-template-columns:1fr}.hero img.mascot{max-width:220px;order:-1}.tiers,.explore{grid-template-columns:1fr}.grid,.steps{grid-template-columns:1fr 1fr}}
 @media (max-width:560px){.grid,.steps{grid-template-columns:1fr}.hero{padding-top:40px}}
 `;
 
-export function renderLanding(stats: SiteStats | null): Response {
+export function renderLanding(stats: SiteStats | null, globePins: number | null = null): Response {
   const statChips = stats
     ? [
         `<div class="stat"><b>${stats.holders.toLocaleString("en-US")}</b><span>Saga Monkes holders</span></div>`,
@@ -273,6 +287,27 @@ export function renderLanding(stats: SiteStats | null): Response {
     <div class="card"><div class="ic">🎙️</div><h3>Avatar Rooms</h3><p>Voice rooms where your monke PFP talks when you do.</p></div>
   </div>
   <p class="risk">MonkeTrades alerts and AutonoMonke are not financial advice. Crypto trading is risky and can lose money; past results don't predict future ones. See the <a href="/terms">terms</a>.</p>
+</div></section>
+
+<section id="explore"><div class="wrap">
+  <h2>Explore the community</h2>
+  <p class="sub">Open to everyone, no wallet needed. Share them anywhere.</p>
+  <div class="explore">
+    <a class="tool" href="${GLOBE_URL}">
+      <div class="ic">🌍</div>
+      <h3>MonkeGlobe</h3>
+      <p>Where Saga Monkes holders are around the world, and the community's upcoming events. Holders add themselves at city level.</p>
+      ${globePins ? `<span class="num">${globePins.toLocaleString("en-US")} holders pinned</span>` : ""}
+      <span class="go">globe.onlymonkes.app →</span>
+    </a>
+    <a class="tool" href="${LEDGER_URL}">
+      <div class="ic">📒</div>
+      <h3>MonkeLedger</h3>
+      <p>Free Saga Monkes lookups: who holds which monke, ownership checks and proofs, checked against the chain. For holders and builders.</p>
+      <span class="num">9,999 Monkes indexed${stats ? ` · ${stats.holders.toLocaleString("en-US")} holders` : ""}</span>
+      <span class="go">monkeledger.onlymonkes.app →</span>
+    </a>
+  </div>
 </div></section>
 
 <section id="start"><div class="wrap">
