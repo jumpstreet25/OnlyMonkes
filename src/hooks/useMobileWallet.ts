@@ -24,6 +24,7 @@ import { bindXmtpToWallet, prepareWalletBoundXmtp } from "@/lib/xmtp";
 import { rehydrateForWallet } from "@/lib/walletIdentity";
 import { assertDeviceTrusted } from "@/lib/security";
 import { refreshInboxLinks } from "@/lib/inboxLinking";
+import { fetchSignInPayload, rememberSignIn } from "@/lib/signInProof";
 import { toast } from "sonner-native";
 import type { WalletAccount } from "@/types";
 
@@ -137,12 +138,28 @@ export function useMobileWallet() {
       // relying on the hook's `authToken`/`rawAddress` state, which only
       // updates on the component's NEXT render, not within this call.
       let freshAuth: { authToken: string; rawAddress: string } | null = null;
+      // Sign in (not just connect) so Device Integrity has its wallet proof without a later prompt.
+      const signIn = await fetchSignInPayload();
 
       const account = await transact(async (mobileWallet: Web3MobileWallet) => {
-        const authResult = await mobileWallet.authorize({
-          cluster: "mainnet-beta",
-          identity: APP_IDENTITY,
-        });
+        const authorizePlain = () => mobileWallet.authorize({ cluster: "mainnet-beta", identity: APP_IDENTITY });
+        let authResult: Awaited<ReturnType<typeof authorizePlain>>;
+        if (signIn) {
+          try {
+            authResult = await mobileWallet.authorize({
+              cluster: "mainnet-beta",
+              identity: APP_IDENTITY,
+              sign_in_payload: signIn.payload,
+            } as Parameters<typeof mobileWallet.authorize>[0]);
+          } catch (e) {
+            // A declined connect stays declined; a declined or unsupported sign-in still connects.
+            if ((e as { code?: number })?.code === -1) throw e;
+            console.warn("[MWA] sign-in skipped:", (e as Error)?.message);
+            authResult = await authorizePlain();
+          }
+        } else {
+          authResult = await authorizePlain();
+        }
 
         setAuthToken(authResult.auth_token);
         setMwaAuthToken(authResult.auth_token);
@@ -157,6 +174,8 @@ export function useMobileWallet() {
             ? Buffer.from(addrRaw, "base64")
             : addrRaw;
         const pubkey = new PublicKey(pubkeyBytes);
+
+        if (signIn && authResult.sign_in_result) rememberSignIn(pubkey.toBase58(), signIn.nonce, authResult.sign_in_result);
 
         const walletAccount: WalletAccount = {
           address: pubkey.toBase58(),

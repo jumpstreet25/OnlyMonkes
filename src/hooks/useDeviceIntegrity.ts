@@ -11,24 +11,23 @@
 
 import { useCallback } from "react";
 import { useAppStore } from "@/store/appStore";
-import { useMobileWallet } from "./useMobileWallet";
 import { issueDeviceIntegrityAttestation, type DeviceIntegrityResult } from "@/lib/deviceIntegrity";
 import { recordDeviceIntegrity } from "@/lib/deviceReverify";
 
 export function useDeviceIntegrity() {
   const wallet = useAppStore((s) => s.wallet);
-  const { signMessage } = useMobileWallet();
 
   const checkDeviceIntegrity = useCallback(async (): Promise<DeviceIntegrityResult> => {
     if (!wallet?.address) {
       return { status: "unverified", error: "No wallet connected" };
     }
-    const result = await issueDeviceIntegrityAttestation(wallet.address, signMessage);
+    // Never a wallet prompt: the connect screen's sign-in, or a refresh of an earlier binding.
+    const result = await issueDeviceIntegrityAttestation(wallet.address, null);
     // Only a success counts as fresh: a failure (dismissed prompt, transient error)
     // used to wait the full 7-day TTL before the background refresh tried again.
     recordDeviceIntegrity(result, "checkDeviceIntegrity");
     return result;
-  }, [wallet?.address, signMessage]);
+  }, [wallet?.address]);
 
   return { checkDeviceIntegrity };
 }

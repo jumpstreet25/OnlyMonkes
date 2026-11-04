@@ -48,7 +48,7 @@ describe("share links", () => {
     Object.defineProperty(Platform, "OS", { get: () => "android", configurable: true });
     mockGetMyReferral.mockResolvedValue({ error: "declined" });
     await prepareShareLink();
-    expect(mockGetMyReferral).toHaveBeenCalledWith();
+    expect(mockGetMyReferral).toHaveBeenCalledWith({ canPrompt: false });
     await prepareShareLink();
     expect(mockGetMyReferral).toHaveBeenCalledTimes(1);
   });

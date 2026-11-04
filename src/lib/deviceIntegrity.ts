@@ -12,6 +12,7 @@
 
 import { Buffer } from "buffer";
 import { getDevicePublicKeyBase64, getDeviceAttestationCertChain, signWithDeviceKey } from "./deviceAttest";
+import { takeSignIn } from "@/lib/signInProof";
 import { getActiveThreats } from "./security";
 
 const WORKER_BASE = "https://onlymonkes.app";
@@ -30,19 +31,24 @@ export interface DeviceIntegrityResult {
 }
 
 /**
- * `signMessage` is `useMobileWallet().signMessage` (wallet sig, ed25519) — passed in rather
- * than imported, same convention as deviceRegistration.ts. The device-key signature (freshness
- * proof over the server nonce) always goes through deviceAttest.ts's signWithDeviceKey — that's
- * the hardware key, not the wallet.
+ * Wallet proof, first that applies: the connect screen's sign-in (signInProof.ts), else
+ * `signMessage` (`useMobileWallet().signMessage`, a wallet prompt), else none — a refresh the
+ * worker accepts only for a device key this wallet bound before. The device-key signature
+ * (freshness proof over the server nonce) always goes through deviceAttest.ts's
+ * signWithDeviceKey — that's the hardware key, not the wallet.
  */
 export async function issueDeviceIntegrityAttestation(
   walletAddress: string,
-  signMessage: (bytes: Uint8Array) => Promise<Uint8Array>,
+  signMessage: ((bytes: Uint8Array) => Promise<Uint8Array>) | null,
 ): Promise<DeviceIntegrityResult> {
   try {
-    const challengeRes = await fetch(`${WORKER_BASE}/api/device-integrity/challenge`, { method: "POST" });
-    if (!challengeRes.ok) return { status: "unverified", error: `challenge HTTP ${challengeRes.status}` };
-    const { nonce } = await challengeRes.json() as { nonce: string };
+    const signIn = takeSignIn(walletAddress);
+    let nonce = signIn?.nonce;
+    if (!nonce) {
+      const challengeRes = await fetch(`${WORKER_BASE}/api/device-integrity/challenge`, { method: "POST" });
+      if (!challengeRes.ok) return { status: "unverified", error: `challenge HTTP ${challengeRes.status}` };
+      nonce = (await challengeRes.json() as { nonce: string }).nonce;
+    }
 
     const devicePubKeyBase64 = await getDevicePublicKeyBase64();
     const certChainBase64 = await getDeviceAttestationCertChain();
@@ -56,8 +62,11 @@ export async function issueDeviceIntegrityAttestation(
     const bindingBytes = new TextEncoder().encode(bindingMessage);
 
     const deviceSigBase64 = await signWithDeviceKey(Buffer.from(bindingBytes).toString("base64"));
-    const walletSigBytes = await signMessage(bindingBytes);
-    const walletSigBase64 = Buffer.from(walletSigBytes).toString("base64");
+    const walletProof = signIn
+      ? { signInMessageBase64: signIn.messageBase64, signInSignatureBase64: signIn.signatureBase64 }
+      : signMessage
+        ? { walletSigBase64: Buffer.from(await signMessage(bindingBytes)).toString("base64") }
+        : { refresh: true };
 
     const raspThreats = getActiveThreats();
 
@@ -70,7 +79,7 @@ export async function issueDeviceIntegrityAttestation(
         certChainBase64,
         nonce,
         deviceSigBase64,
-        walletSigBase64,
+        ...walletProof,
         raspThreats,
       }),
     });

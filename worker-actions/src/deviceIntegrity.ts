@@ -28,10 +28,19 @@
  *     wallet:<address>        — { securityLevel, hardwareVerified, raspClean, holderTier,
  *                                  deviceHash, issuedAt, expiresAt }, TTL matches expiresAt
  *
- * Known, explicit gap: revocation-list checking (android.googleapis.com/attestation/status)
- * is NOT implemented — a chain that verifies structurally but was later revoked by Google would
- * still pass here. Left for a follow-up rather than blocking this on building that fetch/cache
- * layer too. Root rotation IS accounted for: both currently-published Google hardware
+ * Revocation: every cert serial is checked against Google's status list
+ * (android.googleapis.com/attestation/status, cached 1h; an unreachable list is logged, not fatal).
+ *
+ * 2026-11-04 — no wallet prompts after sign-in, and "not rooted" from Google rather than the phone:
+ *  - Wallet proof is the Sign In With Solana result from the connect screen (one screen the user
+ *    already sees), or the old signMessage. A successful issue remembers device key → wallet for
+ *    180 days, so later refreshes need only the device key (no wallet prompt).
+ *  - The attestation's RootOfTrust (verified boot + locked bootloader, hardware-enforced) and
+ *    attestationApplicationId (our package + release signing cert) are read and logged on every
+ *    issue. With DI_HARDWARE_ENFORCE="1" a phone failing either gets no verdict (unverified —
+ *    never a chat block). Read `[deviceIntegrity] hardware` in the logs before turning it on.
+ *
+ * Root rotation IS accounted for: both currently-published Google hardware
  * attestation roots (legacy RSA, valid to 2042; the newer "Key Attestation CA 1" ECDSA root
  * effective Feb 2026, valid to 2035) are pinned below.
  */
@@ -39,7 +48,12 @@
 import "reflect-metadata";
 import * as x509 from "@peculiar/x509";
 import { AsnConvert } from "@peculiar/asn1-schema";
-import { NonStandardKeyDescription, SecurityLevel as KeySecurityLevel } from "@peculiar/asn1-android";
+import {
+  AttestationApplicationId,
+  NonStandardKeyDescription,
+  SecurityLevel as KeySecurityLevel,
+  VerifiedBootState,
+} from "@peculiar/asn1-android";
 import type { Env } from "./index";
 import { fetchOwnedMonke } from "./index";
 import {
@@ -77,6 +91,16 @@ function errorResponse(message: string, status = 400): Response {
 
 const MAX_BODY_BYTES = 65_536; // cert chains run a few KB each; generous but bounded
 const NONCE_TTL_SECONDS = 120;
+// A sign-in nonce is signed on the connect screen; issuance follows after the holder check.
+const SIGNIN_NONCE_TTL_SECONDS = 600;
+const BINDING_TTL_SECONDS = 180 * 24 * 3600;
+/** The SIWS domain the app puts in its sign-in request (host of its MWA identity URI). */
+export const SIGNIN_DOMAIN = "onlymonkes-actions.jumpstreet25.workers.dev";
+const APP_PACKAGE = "com.onlymonkes.app";
+// SHA-256 of the release signing cert (CN=OnlyMonkes) — same as the apex assetlinks.json.
+const RELEASE_CERT_SHA256 = "2e2feeb81ccf0de5d191f6e174113ba9839181b1cb7540ab6d5c94a9cff487d8";
+const CRL_URL = "https://android.googleapis.com/attestation/status";
+const CRL_CACHE_MS = 3600_000;
 const VERDICT_TTL_SECONDS = 7 * 24 * 3600; // matches checkNftGate's existing TTL precedent
 const MAX_CHAIN_CERTS = 10; // sanity bound — real chains are 3-4 deep
 const EXPECTED_PACKAGE_BYTES = new TextEncoder().encode("com.onlymonkes.app");
@@ -162,6 +186,70 @@ interface ChainVerifyResult {
   unchecked?: boolean;
   /** Set when the chain verified but an issued cert is past its dates (accepted). */
   staleCert?: string;
+  hardware?: HardwareFacts;
+}
+
+/** What Google's attestation says about the phone and the app, beyond "the key is in hardware". */
+export interface HardwareFacts {
+  /** RootOfTrust.verifiedBootState (hardware-enforced): "verified" = stock, signed system. */
+  bootState: string;
+  deviceLocked: boolean;
+  /** attestationApplicationId: our package, signed with our release cert. */
+  genuineApp: boolean;
+  packages: string[];
+}
+
+const toHex = (buf: ArrayBuffer) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+
+export function readHardwareFacts(kd: NonStandardKeyDescription): HardwareFacts {
+  const rot = kd.teeEnforced.findProperty("rootOfTrust");
+  const bootState = rot ? (VerifiedBootState[rot.verifiedBootState] ?? String(rot.verifiedBootState)) : "missing";
+  let packages: string[] = [];
+  let digests: string[] = [];
+  const appIdRaw = kd.softwareEnforced.findProperty("attestationApplicationId") ?? kd.teeEnforced.findProperty("attestationApplicationId");
+  if (appIdRaw) {
+    try {
+      const appId = AsnConvert.parse(appIdRaw.buffer, AttestationApplicationId);
+      packages = appId.packageInfos.map((p) => new TextDecoder().decode(p.packageName.buffer));
+      digests = appId.signatureDigests.map((d) => toHex(d.buffer));
+    } catch { /* unreadable → not genuine */ }
+  }
+  return {
+    bootState,
+    deviceLocked: rot?.deviceLocked === true,
+    genuineApp: packages.includes(APP_PACKAGE) && digests.includes(RELEASE_CERT_SHA256),
+    packages,
+  };
+}
+
+export function hardwareTrusted(h: HardwareFacts): boolean {
+  return h.bootState === "verified" && h.deviceLocked && h.genuineApp;
+}
+
+let crlCache: { at: number; entries: Record<string, { status?: string }> } | null = null;
+
+/** Google's revoked/suspended attestation cert serials (lowercase hex), or null when unreachable. */
+async function revokedSerials(): Promise<Record<string, { status?: string }> | null> {
+  if (crlCache && Date.now() - crlCache.at < CRL_CACHE_MS) return crlCache.entries;
+  try {
+    const res = await fetch(CRL_URL, { cf: { cacheTtl: 3600, cacheEverything: true } } as RequestInit);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = (await res.json()) as { entries?: Record<string, { status?: string }> };
+    crlCache = { at: Date.now(), entries: json.entries ?? {} };
+    return crlCache.entries;
+  } catch (e) {
+    console.warn(`[deviceIntegrity] revocation list unavailable: ${e instanceof Error ? e.message : e}`);
+    return null;
+  }
+}
+
+/** Sign In With Solana message fields we rely on (CAIP-122 / SIWS text format). */
+export function parseSignInMessage(text: string): { domain: string; address: string; nonce?: string; expirationTime?: string } | null {
+  const lines = text.split("\n");
+  const m = /^(\S+) wants you to sign in with your Solana account:$/.exec(lines[0] ?? "");
+  if (!m || !lines[1]) return null;
+  const field = (name: string) => lines.find((l) => l.startsWith(`${name}: `))?.slice(name.length + 2).trim();
+  return { domain: m[1], address: lines[1].trim(), nonce: field("Nonce"), expirationTime: field("Expiration Time") };
 }
 
 /** "ECDSA/SHA-384 by ECDSA P-521" — for failure reasons; certificates hold no user data. */
@@ -294,6 +382,16 @@ export async function verifyKeyAttestationChain(
     return { ok: false, securityLevel: "none", reason: "attestation challenge does not match expected app package" };
   }
 
+  const revoked = await revokedSerials();
+  if (revoked) {
+    for (const c of certs) {
+      const serial = c.serialNumber.toLowerCase().replace(/^0+/, "");
+      if (revoked[serial]) {
+        return { ok: false, unchecked: true, securityLevel: "none", reason: `attestation cert ${revoked[serial].status ?? "revoked"} by Google` };
+      }
+    }
+  }
+
   // Signatures and the pinned Google root check out but an issued cert has expired: the phone's
   // attestation key is older than its short-lived intermediate, and the 3.0 app can't make a new
   // key, so these phones could never verify (2026-11-04). Expired is not revoked — accept it, logged.
@@ -306,7 +404,7 @@ export async function verifyKeyAttestationChain(
       : "strongbox";
   const bothStrongBox = attestationLevel === KeySecurityLevel.strongBox && keymasterLevel === KeySecurityLevel.strongBox;
 
-  return { ok: true, securityLevel: bothStrongBox ? "strongbox" : (effective as SecurityLevelLabel), staleCert: outOfDate ?? undefined };
+  return { ok: true, securityLevel: bothStrongBox ? "strongbox" : (effective as SecurityLevelLabel), staleCert: outOfDate ?? undefined, hardware: readHardwareFacts(keyDescription) };
 }
 
 // ─── Verdict shape (mirrors what a SAS schema for this would hold — see module doc comment) ──
@@ -327,11 +425,12 @@ function walletKey(wallet: string): string {
 
 // ─── Challenge (nonce issuance) ────────────────────────────────────────────────
 
-export async function handleDeviceIntegrityChallenge(env: Env): Promise<Response> {
+export async function handleDeviceIntegrityChallenge(env: Env, url?: URL): Promise<Response> {
   const nonceBytes = crypto.getRandomValues(new Uint8Array(24));
   const nonce = [...nonceBytes].map((b) => b.toString(16).padStart(2, "0")).join("");
-  await env.DEVICE_INTEGRITY.put(`nonce:${nonce}`, "1", { expirationTtl: NONCE_TTL_SECONDS });
-  return jsonResponse({ nonce, expiresInSeconds: NONCE_TTL_SECONDS });
+  const ttl = url?.searchParams.get("for") === "signin" ? SIGNIN_NONCE_TTL_SECONDS : NONCE_TTL_SECONDS;
+  await env.DEVICE_INTEGRITY.put(`nonce:${nonce}`, "1", { expirationTtl: ttl });
+  return jsonResponse({ nonce, expiresInSeconds: ttl, domain: SIGNIN_DOMAIN });
 }
 
 // ─── Issue ──────────────────────────────────────────────────────────────────
@@ -343,8 +442,15 @@ interface IssueBody {
   nonce?: string;
   deviceSigBase64?: string;
   walletSigBase64?: string;
+  /** Sign In With Solana from the connect screen, in place of walletSigBase64. */
+  signInMessageBase64?: string;
+  signInSignatureBase64?: string;
+  /** No wallet proof: allowed when this device key was bound to the wallet before. */
+  refresh?: boolean;
   raspThreats?: string[];
 }
+
+const bindingKey = (deviceHash: string) => `bind:${deviceHash}`;
 
 function buildDeviceIntegrityBindingMessage(devicePubKeyBase64: string, nonce: string): string {
   return `OnlyMonkes Device Integrity Attestation\ndevice:${devicePubKeyBase64}\nnonce:${nonce}`;
@@ -361,7 +467,8 @@ export async function handleDeviceIntegrityIssue(request: Request, env: Env): Pr
   }
 
   const { walletAddress, devicePubKeyBase64, certChainBase64, nonce, deviceSigBase64, walletSigBase64 } = body;
-  if (!walletAddress || !devicePubKeyBase64 || !certChainBase64 || !nonce || !deviceSigBase64 || !walletSigBase64) {
+  const proofKind = walletSigBase64 ? "signature" : body.signInMessageBase64 && body.signInSignatureBase64 ? "signin" : body.refresh ? "refresh" : null;
+  if (!walletAddress || !devicePubKeyBase64 || !certChainBase64 || !nonce || !deviceSigBase64 || !proofKind) {
     return errorResponse("Missing required field(s)");
   }
 
@@ -380,14 +487,13 @@ export async function handleDeviceIntegrityIssue(request: Request, env: Env): Pr
 
   let deviceKeyBytes: Uint8Array;
   let deviceSigBytes: Uint8Array;
-  let walletSigBytes: Uint8Array;
   try {
     deviceKeyBytes = base64ToBytes(devicePubKeyBase64);
     deviceSigBytes = base64ToBytes(deviceSigBase64);
-    walletSigBytes = base64ToBytes(walletSigBase64);
   } catch {
     return errorResponse("Invalid base64 encoding", 400);
   }
+  const deviceHash = await sha256Hex(deviceKeyBytes);
 
   // Freshness proof — a live signature over THIS request's nonce, from the device's hardware key.
   const bindingMessage = new TextEncoder().encode(buildDeviceIntegrityBindingMessage(devicePubKeyBase64, nonce));
@@ -396,10 +502,36 @@ export async function handleDeviceIntegrityIssue(request: Request, env: Env): Pr
     return errorResponse("Device signature verification failed", 401);
   }
 
-  // Wallet binding — proves this device key is being claimed by the wallet that controls it.
-  const walletSigOk = await verifyEd25519(walletBytes, bindingMessage, walletSigBytes);
-  if (!walletSigOk) {
-    return errorResponse("Wallet signature does not match binding message", 401);
+  // Wallet binding — proves this device key is being claimed by the wallet that controls it:
+  // a signature over the binding message, a sign-in signed on the connect screen for this same
+  // nonce, or (refresh) a device key this wallet already bound.
+  if (proofKind === "signature") {
+    let walletSigBytes: Uint8Array;
+    try { walletSigBytes = base64ToBytes(walletSigBase64!); } catch { return errorResponse("Invalid base64 encoding", 400); }
+    if (!(await verifyEd25519(walletBytes, bindingMessage, walletSigBytes))) {
+      return errorResponse("Wallet signature does not match binding message", 401);
+    }
+  } else if (proofKind === "signin") {
+    let msgBytes: Uint8Array;
+    let sigBytes: Uint8Array;
+    try {
+      msgBytes = base64ToBytes(body.signInMessageBase64!);
+      sigBytes = base64ToBytes(body.signInSignatureBase64!);
+    } catch {
+      return errorResponse("Invalid base64 encoding", 400);
+    }
+    const signIn = parseSignInMessage(new TextDecoder().decode(msgBytes));
+    if (!signIn || signIn.domain !== SIGNIN_DOMAIN || signIn.address !== walletAddress || signIn.nonce !== nonce) {
+      return errorResponse("Sign-in message does not match this request", 401);
+    }
+    if (signIn.expirationTime && Date.parse(signIn.expirationTime) < Date.now()) {
+      return errorResponse("Sign-in expired — sign in again", 401);
+    }
+    if (!(await verifyEd25519(walletBytes, msgBytes, sigBytes))) {
+      return errorResponse("Sign-in signature invalid", 401);
+    }
+  } else if ((await env.DEVICE_INTEGRITY.get(bindingKey(deviceHash))) !== walletAddress) {
+    return errorResponse("Device not bound to this wallet yet", 401);
   }
 
   // RASP: any hard threat is disqualifying, full stop, before spending time on the chain check.
@@ -416,6 +548,11 @@ export async function handleDeviceIntegrityIssue(request: Request, env: Env): Pr
     return errorResponse(`Hardware attestation failed: ${chainResult.reason}`, 403);
   }
   if (chainResult.staleCert) console.log(`[deviceIntegrity] accepted out-of-date cert: ${chainResult.staleCert}`);
+  const hw = chainResult.hardware;
+  console.log(`[deviceIntegrity] hardware boot=${hw?.bootState} locked=${hw?.deviceLocked} genuineApp=${hw?.genuineApp} packages=${hw?.packages.join(",")} proof=${proofKind}`);
+  if (env.DI_HARDWARE_ENFORCE === "1" && !(hw && hardwareTrusted(hw))) {
+    return errorResponse("This phone or app build could not be confirmed as unmodified — verification not issued", 403);
+  }
 
   // Ownership — reuse the existing tiered chains, don't reimplement.
   const [monkeResult, genesisResult] = await Promise.all([
@@ -439,7 +576,6 @@ export async function handleDeviceIntegrityIssue(request: Request, env: Env): Pr
     return errorResponse("Device reports a hard security threat — attestation not issued", 403);
   }
 
-  const deviceHash = await sha256Hex(deviceKeyBytes);
   const now = Date.now();
   const verdict: DeviceIntegrityVerdict = {
     securityLevel: chainResult.securityLevel,
@@ -453,6 +589,7 @@ export async function handleDeviceIntegrityIssue(request: Request, env: Env): Pr
   await env.DEVICE_INTEGRITY.put(walletKey(walletAddress), JSON.stringify(verdict), {
     expirationTtl: VERDICT_TTL_SECONDS,
   });
+  await env.DEVICE_INTEGRITY.put(bindingKey(deviceHash), walletAddress, { expirationTtl: BINDING_TTL_SECONDS });
 
   return jsonResponse({ status: "clean", ...verdict });
 }
