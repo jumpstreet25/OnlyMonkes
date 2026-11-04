@@ -164,6 +164,8 @@ export interface Env {
   // Device Integrity Attestation — see deviceIntegrity.ts. Backend-verified
   // (Key Attestation chain + RASP + Saga/Genesis ownership), no on-chain write.
   DEVICE_INTEGRITY: KVNamespace;
+  /** "1": no Device Integrity verdict for a phone failing verified boot / locked bootloader / genuine app. */
+  DI_HARDWARE_ENFORCE?: string;
   /** Referral ledger (referrals.ts). */
   REFERRALS?: KVNamespace;
   // MonkeGlobe/MonkeEvents public web repo backend — see community.ts.
@@ -3720,7 +3722,7 @@ export default {
     }
 
     if (path === "/api/device-integrity/challenge") {
-      if (request.method === "POST") return handleDeviceIntegrityChallenge(env);
+      if (request.method === "POST") return handleDeviceIntegrityChallenge(env, url);
       return errorResponse("Method not allowed", 405);
     }
     if (path === "/api/device-integrity/issue") {

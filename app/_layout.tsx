@@ -211,7 +211,7 @@ export default function RootLayout() {
   // Referral bananas owed to this wallet (as inviter, or for joining with an
   // invite) are paid once the user is in; src/lib/referrals.ts throttles it.
   // First, once per wallet, fetch this holder's invite so shares carry it
-  // (src/lib/shareLink.ts; may verify the phone with one wallet signature).
+  // (src/lib/shareLink.ts; never prompts the wallet).
   const _verified = useAppStore(s => s.verified);
   useEffect(() => {
     if (!_verified || Platform.OS === 'web') return;

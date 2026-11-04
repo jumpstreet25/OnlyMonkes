@@ -7,8 +7,8 @@
  * cached per wallet once known (getMyReferral also stores it).
  *
  * prepareShareLink() runs once after sign-in (app/_layout.tsx): if this wallet
- * has no invite cached it fetches one, which verifies the phone first when
- * needed (one wallet signature). A declined or failed attempt waits 7 days.
+ * has no invite cached it fetches one, verifying the phone first when needed —
+ * never with a wallet prompt (sign-in proof or the phone's key). A miss waits 7 days.
  */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Platform } from "react-native";
@@ -58,7 +58,7 @@ async function cachedInvite(wallet: string): Promise<string | null> {
   }
 }
 
-/** After sign-in: make sure shares carry this holder's invite (may ask for one wallet signature). */
+/** After sign-in: make sure shares carry this holder's invite (no wallet prompt). */
 export async function prepareShareLink(): Promise<void> {
   if (Platform.OS !== "android") return;
   const wallet = useAppStore.getState().wallet?.address;
@@ -70,7 +70,7 @@ export async function prepareShareLink(): Promise<void> {
   } catch {
     return;
   }
-  await getMyReferral().catch(() => null);
+  await getMyReferral({ canPrompt: false }).catch(() => null);
 }
 
 /** The message with the sharer's link appended. */
