@@ -1119,5 +1119,25 @@
     "bodyRequired": "Esta versión ya no puede conectarse al chat. Actualiza desde la dApp Store para seguir chateando.",
     "update": "Actualizar",
     "later": "Más tarde"
+  },
+  "myDevices": {
+    "title": "Tus dispositivos",
+    "menuDesc": "Teléfonos verificados con esta wallet. Quita uno que ya no uses.",
+    "intro": "Cada teléfono que entra con esta wallet se verifica por separado. Hasta {{max}} teléfonos por wallet.",
+    "count": "{{n}} de {{max}} teléfonos",
+    "phone": "Teléfono",
+    "thisPhone": "este teléfono",
+    "verifiedOn": "Verificado el {{date}}",
+    "remove": "Quitar",
+    "confirm": "Confirmar",
+    "footnote": "Un teléfono quitado pierde las Avatar Rooms y las invitaciones hasta que vuelva a entrar con tu wallet. Los teléfonos sin usar 7 días salen solos.",
+    "notVerified": "Este teléfono aún no está verificado con esta wallet.",
+    "verify": "Verificar este teléfono",
+    "verifyFailed": "No se pudo verificar este teléfono.",
+    "unsupported": "Solo disponible en la app de Android.",
+    "loadFailed": "No se pudieron cargar tus dispositivos. Inténtalo de nuevo.",
+    "removeFailed": "No se pudo quitar ese teléfono. Inténtalo de nuevo.",
+    "retry": "Reintentar",
+    "close": "Cerrar"
   }
 }

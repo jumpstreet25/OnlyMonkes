@@ -10,6 +10,7 @@
  * caveat on the cert chain vs. the live nonce signature).
  */
 
+import { thisDeviceLabel } from "@/lib/myDevices";
 import { Buffer } from "buffer";
 import { getDevicePublicKeyBase64, getDeviceAttestationCertChain, signWithDeviceKey } from "./deviceAttest";
 import { takeSignIn } from "@/lib/signInProof";
@@ -81,6 +82,7 @@ export async function issueDeviceIntegrityAttestation(
         deviceSigBase64,
         ...walletProof,
         raspThreats,
+        deviceLabel: thisDeviceLabel(),
       }),
     });
 

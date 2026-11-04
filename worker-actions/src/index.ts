@@ -67,6 +67,7 @@ import {
   handleDeviceIntegrityChallenge,
   handleDeviceIntegrityIssue,
   handleDeviceIntegrityStatus,
+  handleDeviceIntegrityDevices,
 } from "./deviceIntegrity";
 import {
   handleTreasuryStatus,
@@ -3730,6 +3731,10 @@ export default {
     }
     if (path === "/api/device-integrity/issue") {
       if (request.method === "POST") return handleDeviceIntegrityIssue(request, env);
+      return errorResponse("Method not allowed", 405);
+    }
+    if (path === "/api/device-integrity/devices") {
+      if (request.method === "POST") return handleDeviceIntegrityDevices(request, env);
       return errorResponse("Method not allowed", 405);
     }
     if (path === "/api/device-integrity/status") {
