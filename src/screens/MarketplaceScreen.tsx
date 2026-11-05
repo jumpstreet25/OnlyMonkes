@@ -60,6 +60,7 @@ import {
   buildSaleAnnouncement,
   recordHistoryEntry,
   getHistory,
+  swapMatchesMyBid,
   type NftListing,
   type NftBid,
   type NftSwapMessage,
@@ -532,6 +533,11 @@ export default function MarketplaceScreen() {
 
   const handleCompleteSwap = useCallback(async (swap: NftSwapMessage) => {
     if (!wallet || !myInboxId) return;
+    if (!swapMatchesMyBid(swap, swap.sellerInboxId, myInboxId, wallet.address)) {
+      setPendingSwap(null);
+      Alert.alert('Security Error', "This swap doesn't match a bid you placed, so it can't be paid.");
+      return;
+    }
     setIsProcessing(true);
     setProcessingText('Validating transaction...');
     try {

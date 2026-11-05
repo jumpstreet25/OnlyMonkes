@@ -67,6 +67,7 @@ Rules are added over time as issues arise.
 - Bot message format is **always** `MSG:AI Agent #9385:<content>` — any deviation breaks display in the app.
 - PRESENCE heartbeats are sent every 3 min via XMTP group `send()` — the bot must ignore them (they are not user messages).
 - After any XMTP DB wipe + group recreation, the group ID changes — update `app-config.json` and bot `.env`.
+- **NFT_SWAP (marketplace buy) is seller-built and buyer-signed — trust nothing in it (2026-11-04 audit).** The buyer shows a swap only when `swapMatchesMyBid` passes (listing is the sender's, same mint + seller wallet, pays to my wallet, I sent a `bid` history entry at exactly that price inside `BID_EXPIRY_MS`), and checks it again on Pay. `checkSwapInstructions` (`nftSwap.ts`) allowlists every instruction: one Bubblegum transfer seller→buyer, three idempotent SKR ATA creates paid by the buyer for buyer/seller/vault, one SKR payment to the seller and one to the vault. The old check validated 3 of 6 and let a seller slip in a SOL drain or a transfer of the buyer's own monke. Any change to `buildSwapTransaction` must update the allowlist and `nftSwapValidation.test.ts`.
 
 ## Architecture
 
