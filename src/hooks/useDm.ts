@@ -17,32 +17,10 @@ import { getCachedProfile } from '@/lib/userProfile';
 import { markChannelRead } from '@/lib/messageCache';
 import type { ChatMessage, ReactionEmoji } from '@/types';
 import { isBotSender } from '@/lib/trustedSenders';
+import { requestDmPush } from '@/lib/pushRegistration';
 
 // Throttle own typing broadcasts in DMs (one signal per 2.5 s max)
 let _lastDmTypingSent = 0;
-
-async function relayDmPush(
-  recipientToken: string,
-  senderUsername: string,
-  preview: string,
-  senderAvatarUrl?: string | null,
-): Promise<void> {
-  try {
-    const body: Record<string, unknown> = {
-      to: recipientToken,
-      title: `💬 ${senderUsername}`,
-      body: preview.slice(0, 80),
-      sound: 'default',
-      channelId: 'om_all_v8',
-      data: { type: 'dm', sender: senderUsername, avatarUrl: senderAvatarUrl ?? null },
-    };
-    await fetch('https://exp.host/--/api/v2/push/send', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify(body),
-    });
-  } catch { /* non-critical */ }
-}
 
 // Reactions (native ReactionCodec/V2 or legacy REACT: string) never decode
 // to a displayable ChatMessage — decodeMessage() returns null for them by
@@ -667,18 +645,8 @@ export function useDm(peerInboxId: string, retryKey = 0) {
         prev.map(m => m.id === optimisticId ? { ...m, status: 'sent' } : m)
       );
 
-      if (dmNotificationsEnabled) {
-        const peer = getCachedProfile(peerInboxId);
-        const peerExpoToken = peer?.expoPushToken;
-        if (peerExpoToken && peerExpoToken.startsWith('ExponentPushToken')) {
-          void relayDmPush(
-            peerExpoToken,
-            username ?? 'Monke',
-            text,
-            verifiedNft?.image ?? null,
-          );
-        }
-      }
+      // The bot notifies the recipient (their tokens never leave the bot; no text is sent).
+      if (dmNotificationsEnabled) requestDmPush(peerInboxId);
 
       // 2026-09-13: dm.send() into an MLS-inactive 1:1 resolves normally
       // (confirmed live — the client shows "delivered" even though the
