@@ -50,12 +50,14 @@
 import {
   Connection,
   PublicKey,
+  SystemProgram,
   Transaction,
   type AccountMeta,
 } from "@solana/web3.js";
 import {
   createTransferInstruction as createCompressedNftTransferInstruction,
   transferStruct,
+  transferInstructionDiscriminator,
   PROGRAM_ID as BUBBLEGUM_PROGRAM_ID,
 } from "@metaplex-foundation/mpl-bubblegum";
 import { SPL_NOOP_PROGRAM_ID, SPL_ACCOUNT_COMPRESSION_PROGRAM_ID } from "@solana/spl-account-compression";
@@ -462,21 +464,100 @@ export async function sellerSignSwap(params: SwapParams): Promise<string> {
 
 // ─── Transaction validation (buyer safety check) ────────────────────────────
 
+export interface SwapParties {
+  buyer: PublicKey;
+  seller: PublicKey;
+  dev: PublicKey;
+  skrMint: PublicKey;
+  /** Total SKR the buyer agreed to pay, in base units. */
+  expectedBaseUnits: number;
+}
+
 /**
- * Validate that a serialized swap transaction matches expected terms.
- * The buyer calls this before counter-signing to prevent malicious txs.
- *
- * Checks:
- *   - Contains exactly 6 instructions (Bubblegum transfer + 3 idempotent SKR
- *     ATA creates [buyer, seller, dev] + SKR transfer to seller + SKR fee
- *     transfer to dev)
- *   - NFT transfer is a Bubblegum transfer from seller to buyer, and its
- *     embedded dataHash matches a fresh DAS lookup for expectedMint — this
- *     is what actually pins the transfer to the SPECIFIC listed asset (a
- *     malicious seller could otherwise embed a valid transfer for a
- *     different, less valuable cNFT they also own while claiming this one)
- *   - SKR transfer is for the correct mint, amount, and destination ATAs
- *   - No unexpected instructions
+ * Structural check of a seller-built swap transaction. Every instruction must
+ * be one of the six buildSwapTransaction writes, in any order:
+ *   - 1 Bubblegum transfer, seller → buyer, seller signing
+ *   - 3 idempotent SKR ATA creates paid by the buyer, for buyer, seller, dev
+ *   - 2 SKR TransferChecked from the buyer: one to the seller, one to dev
+ * Anything else (a SOL transfer, an approve, a second Bubblegum transfer that
+ * moves the buyer's own cNFT) is rejected — the buyer signs the whole tx.
+ * Returns the reason it fails, or null. The listed asset itself is checked
+ * separately (validateSwapTransaction compares the dataHash against DAS).
+ */
+export function checkSwapInstructions(tx: Transaction, p: SwapParties): string | null {
+  if (tx.instructions.length !== 6) return `Unexpected instruction count: ${tx.instructions.length}`;
+  if (!tx.feePayer?.equals(p.buyer)) return "Fee payer is not the buyer";
+
+  const ata = (owner: PublicKey) => getAssociatedTokenAddressSync(p.skrMint, owner);
+  const buyerAta = ata(p.buyer);
+  const sellerAta = ata(p.seller);
+  const devAta = ata(p.dev);
+  const pendingAtas = [
+    { ata: buyerAta, owner: p.buyer },
+    { ata: sellerAta, owner: p.seller },
+    { ata: devAta, owner: p.dev },
+  ];
+  let bubblegum = 0;
+  let toSeller = 0;
+  let toDev = 0;
+  let total = 0;
+
+  for (const ix of tx.instructions) {
+    const k = ix.keys.map((m) => m.pubkey);
+
+    if (ix.programId.equals(ASSOCIATED_TOKEN_PROGRAM_ID)) {
+      // CreateIdempotent: data [1]; keys [payer, ata, owner, mint, system, token]
+      if (ix.data.length !== 1 || ix.data[0] !== 1 || k.length !== 6) return "Unexpected token-account instruction";
+      if (!k[0].equals(p.buyer) || !k[3].equals(p.skrMint)) return "Token account is not the buyer's SKR account setup";
+      if (!k[4].equals(SystemProgram.programId) || !k[5].equals(TOKEN_PROGRAM_ID)) return "Unexpected token-account programs";
+      const i = pendingAtas.findIndex((a) => a.ata.equals(k[1]) && a.owner.equals(k[2]));
+      if (i < 0) return "Token account is not for the buyer, seller or OnlyMonkes vault";
+      pendingAtas.splice(i, 1);
+      continue;
+    }
+
+    if (ix.programId.equals(TOKEN_PROGRAM_ID)) {
+      // TransferChecked: data [12, u64 amount, u8 decimals]; keys [source, mint, destination, authority]
+      if (ix.data.length !== 10 || ix.data[0] !== 12 || k.length !== 4) return "Unexpected token instruction";
+      if (!k[1].equals(p.skrMint)) return "SKR transfer is not for the SKR mint";
+      if (!k[0].equals(buyerAta) || !k[3].equals(p.buyer)) return "SKR transfer source/authority is not the buyer";
+      if (k[2].equals(sellerAta)) toSeller++;
+      else if (k[2].equals(devAta)) toDev++;
+      else return "SKR transfer destination is not the seller or OnlyMonkes vault";
+      total += Number(ix.data.readBigUInt64LE(1));
+      continue;
+    }
+
+    if (ix.programId.equals(BUBBLEGUM_PROGRAM_ID)) {
+      if (!transferInstructionDiscriminator.every((b, i) => ix.data[i] === b)) return "Unexpected NFT instruction";
+      // [treeAuthority, leafOwner, leafDelegate, newLeafOwner, merkleTree, ...]
+      if (k.length < 8) return "Bubblegum transfer instruction has wrong key count";
+      if (!k[1].equals(p.seller)) return "NFT transfer leafOwner is not the seller";
+      if (!k[3].equals(p.buyer)) return "NFT transfer newLeafOwner is not the buyer";
+      if (!ix.keys[1].isSigner) return "Seller is not a required signer on the transfer instruction";
+      bubblegum++;
+      continue;
+    }
+
+    return `Unexpected instruction from program ${ix.programId.toBase58().slice(0, 8)}…`;
+  }
+
+  if (bubblegum !== 1) return `Expected one NFT transfer, found ${bubblegum}`;
+  if (toSeller !== 1 || toDev !== 1) return "Expected one SKR payment to the seller and one to the vault";
+  if (pendingAtas.length) return "Missing SKR token-account setup";
+  // 1% tolerance for rounding of the 98/2 split
+  if (Math.abs(total - p.expectedBaseUnits) > p.expectedBaseUnits * 0.01) {
+    return `SKR amount mismatch: expected ${p.expectedBaseUnits}, got ${total}`;
+  }
+  return null;
+}
+
+/**
+ * Validate a serialized swap transaction before the buyer counter-signs:
+ * checkSwapInstructions, then the Bubblegum transfer's embedded dataHash must
+ * match a fresh DAS lookup for expectedMint — that pins the transfer to the
+ * SPECIFIC listed asset (a cNFT has no mint key to compare, and a seller could
+ * otherwise send a cheaper cNFT they also own).
  */
 export async function validateSwapTransaction(
   serializedTx: string,
@@ -486,113 +567,20 @@ export async function validateSwapTransaction(
   buyerWallet: string,
 ): Promise<{ valid: boolean; reason?: string }> {
   try {
-    const buf = Buffer.from(serializedTx, "base64");
-    const tx = Transaction.from(buf);
-
-    // Always exactly 6: Bubblegum transfer + 3 idempotent ATA creates
-    // (buyer, seller, dev) + SKR-to-seller + SKR-fee-to-dev.
-    if (tx.instructions.length !== 6) {
-      return { valid: false, reason: `Unexpected instruction count: ${tx.instructions.length}` };
-    }
-
-    const buyerPk = new PublicKey(buyerWallet);
-    const sellerPk = new PublicKey(sellerWallet);
-    const skrMintPk = new PublicKey(SKR_MINT);
-    const devPk = new PublicKey(DEV_WALLET);
-
+    const tx = Transaction.from(Buffer.from(serializedTx, "base64"));
     const connection = new Connection(HELIUS_RPC_URL, "confirmed");
     const decimals = await getSkrDecimals(connection);
-    const expectedBaseUnits = Math.round(expectedSkrPrice * 10 ** decimals);
 
-    const buyerSkrATA = getAssociatedTokenAddressSync(skrMintPk, buyerPk);
-    const sellerSkrATA = getAssociatedTokenAddressSync(skrMintPk, sellerPk);
-    const devSkrATA = getAssociatedTokenAddressSync(skrMintPk, devPk);
+    const reason = checkSwapInstructions(tx, {
+      buyer: new PublicKey(buyerWallet),
+      seller: new PublicKey(sellerWallet),
+      dev: new PublicKey(DEV_WALLET),
+      skrMint: new PublicKey(SKR_MINT),
+      expectedBaseUnits: Math.round(expectedSkrPrice * 10 ** decimals),
+    });
+    if (reason) return { valid: false, reason };
 
-    // Check fee payer is buyer
-    if (!tx.feePayer || !tx.feePayer.equals(buyerPk)) {
-      return { valid: false, reason: "Fee payer is not the buyer" };
-    }
-
-    // Find all SPL TransferChecked instructions (SKR to seller + fee to dev)
-    const tokenIxs = tx.instructions.filter(
-      ix => ix.programId.equals(TOKEN_PROGRAM_ID) && ix.data[0] === 12,
-    );
-    if (tokenIxs.length !== 2) {
-      return { valid: false, reason: `Unexpected SKR transfer count: ${tokenIxs.length}` };
-    }
-
-    // Sum all SKR transfers from buyer and verify destinations
-    let totalBaseUnitsSent = 0;
-    let sellerPaid = false;
-
-    for (const tokenIx of tokenIxs) {
-      // TransferChecked keys: [source, mint, destination, authority]
-      if (tokenIx.keys.length < 4) {
-        return { valid: false, reason: "SKR transfer instruction has wrong key count" };
-      }
-      const source = tokenIx.keys[0]?.pubkey;
-      const mint = tokenIx.keys[1]?.pubkey;
-      const destination = tokenIx.keys[2]?.pubkey;
-      const authority = tokenIx.keys[3]?.pubkey;
-
-      if (!mint?.equals(skrMintPk)) {
-        return { valid: false, reason: "SKR transfer is not for the SKR mint" };
-      }
-      if (!authority?.equals(buyerPk) || !source?.equals(buyerSkrATA)) {
-        return { valid: false, reason: "SKR transfer source/authority is not the buyer" };
-      }
-      // TransferChecked data: [1-byte discriminator][8-byte amount LE][1-byte decimals]
-      if (tokenIx.data.length < 10) {
-        return { valid: false, reason: "Invalid SKR transfer data" };
-      }
-      const amount = Number(tokenIx.data.readBigUInt64LE(1));
-
-      if (destination?.equals(sellerSkrATA)) {
-        sellerPaid = true;
-      } else if (!destination?.equals(devSkrATA)) {
-        return { valid: false, reason: "SKR transfer destination is not the seller or dev wallet" };
-      }
-      totalBaseUnitsSent += amount;
-    }
-
-    if (!sellerPaid) {
-      return { valid: false, reason: "No SKR transfer to seller found" };
-    }
-
-    // Allow 1% tolerance for rounding on total amount
-    if (Math.abs(totalBaseUnitsSent - expectedBaseUnits) > expectedBaseUnits * 0.01) {
-      return { valid: false, reason: `SKR amount mismatch: expected ${expectedBaseUnits}, got ${totalBaseUnitsSent}` };
-    }
-
-    // Find the Bubblegum transfer instruction
-    const transferIx = tx.instructions.find((ix) => ix.programId.equals(BUBBLEGUM_PROGRAM_ID));
-    if (!transferIx) {
-      return { valid: false, reason: "Missing NFT transfer instruction" };
-    }
-
-    // Account order per generated/instructions/transfer.d.ts (verified
-    // against a real on-chain tx — see module-doc note at the top of this
-    // file): [treeAuthority, leafOwner, leafDelegate, newLeafOwner, merkleTree, ...]
-    if (transferIx.keys.length < 8) {
-      return { valid: false, reason: "Bubblegum transfer instruction has wrong key count" };
-    }
-    const leafOwner = transferIx.keys[1]?.pubkey;
-    const newLeafOwner = transferIx.keys[3]?.pubkey;
-    if (!leafOwner?.equals(sellerPk)) {
-      return { valid: false, reason: "NFT transfer leafOwner is not the seller" };
-    }
-    if (!newLeafOwner?.equals(buyerPk)) {
-      return { valid: false, reason: "NFT transfer newLeafOwner is not the buyer" };
-    }
-    if (!transferIx.keys[1]?.isSigner) {
-      return { valid: false, reason: "Seller is not a required signer on the transfer instruction" };
-    }
-
-    // Decode the instruction's own args (not hand-parsed byte offsets — the
-    // package's own Borsh struct) and cross-check dataHash against a fresh
-    // DAS lookup for expectedMint. This is what actually ties the tx to the
-    // SPECIFIC asset that was listed, since a cNFT has no mint pubkey to
-    // compare the way an SPL NFT would.
+    const transferIx = tx.instructions.find((ix) => ix.programId.equals(BUBBLEGUM_PROGRAM_ID))!;
     const [decoded] = transferStruct.deserialize(transferIx.data);
     const freshDataHash = (await fetchCompressionData(expectedMint)).dataHash;
     const embeddedDataHash: number[] = Array.from(decoded.dataHash as Uint8Array | number[]);

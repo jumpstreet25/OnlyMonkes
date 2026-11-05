@@ -279,7 +279,7 @@ export function useDm(peerInboxId: string, retryKey = 0) {
                 const sender = raw.senderInboxId ?? '';
                 const {
                   parseMarketplaceMessage, addBid, addSwapOffer, cancelBid, markPendingSwap, markSold,
-                  getListingById, getBidsForListing, recordHistoryEntry,
+                  getListingById, getBidsForListing, recordHistoryEntry, swapMatchesMyBid,
                 } = await import('@/lib/marketplace');
                 const market = parseMarketplaceMessage(innerContent);
                 if (!market) return;
@@ -327,7 +327,7 @@ export function useDm(peerInboxId: string, retryKey = 0) {
                   }
                   case 'swap': {
                     const swap = market.data;
-                    if (sender !== swap.sellerInboxId || swap.buyerInboxId !== myInboxId) return;
+                    if (!swapMatchesMyBid(swap, sender, myInboxId, useAppStore.getState().wallet?.address)) return;
                     useAppStore.getState().setPendingNftSwap(swap);
                     const swapListing = getListingById(swap.listingId);
                     const { showLocalNotification, CH_MARKET } = await import('@/lib/notifications');

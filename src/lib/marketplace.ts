@@ -171,6 +171,31 @@ export function recordHistoryEntry(entry: MarketplaceHistoryEntry): void {
   _persistHistory();
 }
 
+/**
+ * Whether a signed swap a seller sent is one this buyer asked for: the listing
+ * is this seller's, for this mint and seller wallet, it pays to my wallet, and
+ * I sent a bid of exactly this price on this mint inside the bid window. Every
+ * field of an NFT_SWAP comes from its sender, so nothing in it counts on its own.
+ */
+export function swapMatchesMyBid(
+  swap: NftSwapMessage,
+  senderInboxId: string,
+  myInboxId: string | null | undefined,
+  myWallet: string | null | undefined,
+  now = Date.now(),
+): boolean {
+  if (!myInboxId || !myWallet) return false;
+  if (senderInboxId !== swap.sellerInboxId || swap.buyerInboxId !== myInboxId || swap.buyerWallet !== myWallet) return false;
+  const listing = getListingById(swap.listingId);
+  if (!listing || listing.sellerInboxId !== senderInboxId || listing.mint !== swap.mint || listing.sellerWallet !== swap.sellerWallet) {
+    return false;
+  }
+  if (!Number.isFinite(swap.skrPrice) || swap.skrPrice <= 0) return false;
+  return _history.some(
+    (h) => h.type === 'bid' && h.mint === swap.mint && h.price === swap.skrPrice && now - h.timestamp <= BID_EXPIRY_MS,
+  );
+}
+
 export function getHistory(): MarketplaceHistoryEntry[] {
   return _history;
 }

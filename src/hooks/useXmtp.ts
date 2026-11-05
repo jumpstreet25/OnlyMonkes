@@ -55,7 +55,7 @@ import { parsePinMessage, pinMessage, unpinMessage, getPinnedMessages } from "@/
 import { parseDeleteMessage, buildDeleteMessage, markMessageDeleted, isMessageDeleted, filterDeleted, loadDeletedMessageIds } from "@/lib/deletedMessages";
 import { parsePresenceMessage, updatePresence, buildPresenceMessage } from "@/lib/presence";
 import { parseThreadMessage, trackThreadReply } from "@/lib/threads";
-import { parseMarketplaceMessage, addListing, addBid, addSwapOffer, cancelBid, markPendingSwap, markSold, delistNft, getListingById, getBidsForListing, recordHistoryEntry, getHistory as getMarketplaceHistory, type NftSwapMessage } from "@/lib/marketplace";
+import { parseMarketplaceMessage, addListing, addBid, addSwapOffer, cancelBid, markPendingSwap, markSold, delistNft, getListingById, getBidsForListing, recordHistoryEntry, getHistory as getMarketplaceHistory, swapMatchesMyBid, type NftSwapMessage } from "@/lib/marketplace";
 import { parseVideoRoomMessage, type VideoRoomData } from "@/lib/liveVideo";
 import { parseAvatarRoomMessage, type AvatarRoomData } from "@/lib/avatarRoom";
 import { verifyNFTOwnership, verifyNftMintInCollection, checkMonkeLedgerWalletOwnership } from "@/lib/nftVerification";
@@ -2310,7 +2310,7 @@ export function useXmtp() {
                     }
                     case 'swap': {
                       const swap = market.data as NftSwapMessage;
-                      if (senderInboxId !== swap.sellerInboxId || swap.buyerInboxId !== client.inboxId) return;
+                      if (!swapMatchesMyBid(swap, senderInboxId, client.inboxId, useAppStore.getState().wallet?.address)) return;
                       useAppStore.getState().setPendingNftSwap(swap);
                       const swapListing = getListingById(swap.listingId);
                       showLocalNotification(
