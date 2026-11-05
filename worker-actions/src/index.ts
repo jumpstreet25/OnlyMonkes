@@ -97,6 +97,7 @@ import { handleGetLumaEvents } from "./lumaEvents";
 import { handlePublishAppConfig } from "./adminConfig";
 import { handleBotCommand, handleInboxReset } from "./botCommand";
 import { handleWebRpc } from "./webRpc";
+import { publicRateLimited } from "./publicLimits";
 import { handleWebAuth, handleWebHistory, handleWebProfile } from "./webAuth";
 import { handleWebMedia, isWebMediaPath } from "./webMedia";
 import { handleShareCard, isShareCardPath } from "./shareCard";
@@ -192,6 +193,12 @@ export interface Env {
   // ([vars] in wrangler.toml) and an optional per-IP rate-limit binding.
   WEB_APP_ORIGINS?: string;
   WEB_RPC_LIMITER?: { limit: (opts: { key: string }) => Promise<{ success: boolean }> };
+  /** /api/rpc: global per-minute ceiling, and "1" = holder sign-in token required (webRpc.ts). */
+  RPC_GLOBAL_LIMITER?: { limit: (opts: { key: string }) => Promise<{ success: boolean }> };
+  WEB_RPC_REQUIRE_AUTH?: string;
+  /** Public routes that spend Helius / KV without sign-in (publicLimits.ts). */
+  PUBLIC_IP_LIMITER?: { limit: (opts: { key: string }) => Promise<{ success: boolean }> };
+  PUBLIC_GLOBAL_LIMITER?: { limit: (opts: { key: string }) => Promise<{ success: boolean }> };
   /** Phone-as-camera relay rooms (phoneCam.ts). */
   PHONE_CAM: DurableObjectNamespace;
   // Web sign-in (webAuth.ts): Ed25519 PKCS8 (base64) signing the XMTP access
@@ -3498,6 +3505,8 @@ export default {
 
     const url = new URL(request.url);
     const path = url.pathname;
+
+    if (await publicRateLimited(request, path, env)) return errorResponse("Too many requests — try again in a minute", 429);
 
     // 2026-10-22: onlymonkes.app belongs to the web app (onlymonkes-web), whose
     // front door forwards the public-site paths here with the host unchanged.

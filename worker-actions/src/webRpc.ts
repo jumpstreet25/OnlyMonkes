@@ -8,16 +8,26 @@
  *  - browser origin must be in WEB_APP_ORIGINS (or localhost while developing)
  *  - only the methods the app actually calls; nothing like getProgramAccounts
  *  - ≤10 calls per batch, ≤64 KB body
- *  - optional per-IP limit via the WEB_RPC_LIMITER rate-limit binding
+ *  - per-IP (or per signed-in wallet) limit via WEB_RPC_LIMITER, plus a global
+ *    ceiling via RPC_GLOBAL_LIMITER
+ *
+ * The Origin header proves nothing outside a browser (audit 2026-11-04: a
+ * forged Origin reached Helius), so the proxy takes the holder sign-in token
+ * (Authorization: Bearer, webAuth.ts) and WEB_RPC_REQUIRE_AUTH="1" makes it
+ * required. Turn that on once the deployed web app sends the token.
  */
+
+import { holderWalletFromRequest, type WebAuthEnv } from "./webAuth";
 
 type RateLimiter = { limit: (opts: { key: string }) => Promise<{ success: boolean }> };
 
-export interface WebRpcEnv {
+export interface WebRpcEnv extends WebAuthEnv {
   HELIUS_API_KEY: string;
   HELIUS_NFT_API_KEY?: string;
   WEB_APP_ORIGINS?: string;
   WEB_RPC_LIMITER?: RateLimiter;
+  RPC_GLOBAL_LIMITER?: RateLimiter;
+  WEB_RPC_REQUIRE_AUTH?: string;
 }
 
 const RPC_METHODS = new Set([
@@ -69,10 +79,17 @@ export async function handleWebRpc(request: Request, env: WebRpcEnv): Promise<Re
   if (request.method !== "POST") return reply({ error: "POST only" }, 405, origin);
   if (!env.HELIUS_API_KEY) return reply({ error: "rpc not configured" }, 503, origin);
 
+  const wallet = await holderWalletFromRequest(request, env);
+  if (!wallet && env.WEB_RPC_REQUIRE_AUTH === "1") return reply({ error: "sign in again" }, 401, origin);
+
   if (env.WEB_RPC_LIMITER) {
-    const ip = request.headers.get("CF-Connecting-IP") ?? "unknown";
-    const { success } = await env.WEB_RPC_LIMITER.limit({ key: ip });
+    const who = wallet ? `w:${wallet}` : request.headers.get("CF-Connecting-IP") ?? "unknown";
+    const { success } = await env.WEB_RPC_LIMITER.limit({ key: `rpc:${who}` });
     if (!success) return reply({ error: "rate limited" }, 429, origin);
+  }
+  if (env.RPC_GLOBAL_LIMITER && !(await env.RPC_GLOBAL_LIMITER.limit({ key: "global" })).success) {
+    console.warn("[rpc] global ceiling hit");
+    return reply({ error: "busy — try again in a minute" }, 429, origin);
   }
 
   const raw = await request.text();
