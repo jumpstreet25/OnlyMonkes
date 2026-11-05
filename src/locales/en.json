@@ -590,7 +590,12 @@
     "kitName": "{{world}} kit",
     "kitWear": "Wear",
     "kitNote": "A kit is the World plus its matching bubble and name color, 20% off what you don't own yet. Tap a kit you own to wear the whole look.",
-    "chestOnly": "CHEST"
+    "chestOnly": "CHEST",
+    "bananasOnly": "Bananas only",
+    "buyForBananas": "Buy — {{cost}} 🍌",
+    "priceBananasOnly": "{{cost}} 🍌 — bananas only, no wallet needed",
+    "bananasOnlyConfirm": "{{cost}} 🍌 from your {{balance}} 🍌. No wallet needed.",
+    "anyColour": "Any colour"
   },
   "messageBubble": {
     "liveVideoChat": "Live Video Chat",

@@ -1,5 +1,5 @@
 {
-  "_note": "Banana Shop seasonal drops. Read raw from master by the app (src/lib/shopSeasonal.ts), so a new drop needs no OTA. Never delete a past item: owners keep wearing it after its season and the app needs its style to draw it. Only bubble/text items, and only the style keys allowed in shopSeasonal.ts.",
+  "_note": "Banana Shop seasonal drops. Read raw from master by the app (src/lib/shopSeasonal.ts), so a new drop needs no OTA. Never delete a past item: owners keep wearing it after its season and the app needs its style to draw it. Only bubble/text items, and only the style keys allowed in shopSeasonal.ts. Seasonal items are bananas-only (usdCost 0).",
   "items": [
     {
       "id": "seasonal_monke_winter_2026",
@@ -8,10 +8,20 @@
       "category": "bubble",
       "tier": 2,
       "bananaCost": 50,
-      "usdCost": 2,
+      "usdCost": 0,
       "preview": "❄️",
-      "style": { "bgColor": "rgba(200,235,255,0.10)", "borderColor": "#CFEFFF", "glowColor": "#E8F7FF", "glowOpacity": 0.9, "glowRadius": 22 },
-      "seasonal": { "name": "Monke Winter 2026", "from": "2026-12-01", "until": "2027-01-05" }
+      "style": {
+        "bgColor": "rgba(200,235,255,0.10)",
+        "borderColor": "#CFEFFF",
+        "glowColor": "#E8F7FF",
+        "glowOpacity": 0.9,
+        "glowRadius": 22
+      },
+      "seasonal": {
+        "name": "Monke Winter 2026",
+        "from": "2026-12-01",
+        "until": "2027-01-05"
+      }
     }
   ]
 }

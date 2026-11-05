@@ -590,7 +590,12 @@
     "kitName": "Kit {{world}}",
     "kitWear": "Usar",
     "kitNote": "Un kit es el Mundo más su burbuja y color de nombre a juego, con 20% de descuento en lo que aún no tienes. Toca un kit que ya tengas para usar todo el look.",
-    "chestOnly": "COFRE"
+    "chestOnly": "COFRE",
+    "bananasOnly": "Solo bananas",
+    "buyForBananas": "Comprar — {{cost}} 🍌",
+    "priceBananasOnly": "{{cost}} 🍌 — solo bananas, sin wallet",
+    "bananasOnlyConfirm": "{{cost}} 🍌 de tus {{balance}} 🍌. No hace falta la wallet.",
+    "anyColour": "Cualquier color"
   },
   "messageBubble": {
     "liveVideoChat": "Videochat en Vivo",
