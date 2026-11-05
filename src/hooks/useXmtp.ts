@@ -67,6 +67,7 @@ import { loadBananaState, mergeBananaBalance } from "@/lib/bananaRewards";
 import { loadShopState, mergeOwnedItems, getEquippedStyles, addOwnedItem, equipItem, findShopItem } from "@/lib/bananaShop";
 import { isAdminSender, isBotSender, displayNameFor } from "@/lib/trustedSenders";
 import { isMineInbox } from "@/lib/inboxLinking";
+import { registerPushTokensWithBot } from "@/lib/pushRegistration";
 import { applyThemeFromShop } from "@/lib/shopTheme";
 import { processRsvpMessage } from "@/lib/eventRsvp";
 import { parseEventMessage, saveEvent } from "@/lib/calendar";
@@ -264,6 +265,7 @@ async function _doProfileRebroadcast(pushToken: string): Promise<void> {
       shopState.owned.length > 0 ? shopState.owned : null,
       shopState.pfpBindings ?? null,
     );
+    void registerPushTokensWithBot(pushToken, expoPushToken);
     if (__DEV__) console.log('[XMTP] Re-broadcast profile with push token:', pushToken.slice(0, 30) + '…');
   } catch { /* non-critical */ }
 }
@@ -1964,6 +1966,7 @@ export function useXmtp() {
               shopState.pfpBindings ?? null,
               getMarketplaceHistory(),
             );
+            void registerPushTokensWithBot(pushToken, expoPushToken);
             cacheProfile(client.inboxId, {
               username: username ?? undefined,
               nftImage: verifiedNft?.image ?? null,

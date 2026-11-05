@@ -64,7 +64,7 @@ function ThreadRow({ thread, myInboxId, unread, onLongPress }: { thread: DmThrea
   if (typeof rawMsg === 'string' && rawMsg.length > 0) {
     try {
       // Filter out protocol messages that shouldn't be shown as previews
-      if (rawMsg.startsWith('READ:') || rawMsg.startsWith('TYPING:') || rawMsg.startsWith('PROFILE_UPDATE:') || rawMsg.startsWith('GIFT_ITEM:')) {
+      if (rawMsg.startsWith('READ:') || rawMsg.startsWith('TYPING:') || rawMsg.startsWith('PROFILE_UPDATE:') || rawMsg.startsWith('GIFT_ITEM:') || rawMsg.startsWith('PUSH_') || rawMsg.startsWith('LOCATION_SYNC')) {
         preview = 'No messages yet';
       } else {
         preview = rawMsg
