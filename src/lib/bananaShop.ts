@@ -778,7 +778,10 @@ export async function mergeOwnedItems(
 ): Promise<boolean> {
   const state = await loadShopState();
   let changed = false;
-  for (const itemId of remoteOwned) {
+  // Catalog items only — a merge never adds an id the shop doesn't sell.
+  const known = (id: unknown): id is string => typeof id === 'string' && !!findShopItem(id);
+  for (const itemId of Array.isArray(remoteOwned) ? remoteOwned : []) {
+    if (!known(itemId)) continue;
     if (!state.owned.includes(itemId)) {
       state.owned.push(itemId);
       changed = true;
@@ -787,8 +790,10 @@ export async function mergeOwnedItems(
   if (remotePfpBindings) {
     if (!state.pfpBindings) state.pfpBindings = {};
     for (const [mint, items] of Object.entries(remotePfpBindings)) {
+      if (!Array.isArray(items)) continue;
       if (!state.pfpBindings[mint]) state.pfpBindings[mint] = [];
       for (const itemId of items) {
+        if (!known(itemId)) continue;
         if (!state.pfpBindings[mint].includes(itemId)) {
           state.pfpBindings[mint].push(itemId);
           changed = true;

@@ -16,6 +16,7 @@ import {
 import { getCachedProfile } from '@/lib/userProfile';
 import { markChannelRead } from '@/lib/messageCache';
 import type { ChatMessage, ReactionEmoji } from '@/types';
+import { isBotSender } from '@/lib/trustedSenders';
 
 // Throttle own typing broadcasts in DMs (one signal per 2.5 s max)
 let _lastDmTypingSent = 0;
@@ -212,7 +213,8 @@ export function useDm(peerInboxId: string, retryKey = 0) {
             if (
               rawContent &&
               (rawContent.startsWith('LOCATION_SYNC:') ||
-                innerContent.startsWith('LOCATION_SYNC:'))
+                innerContent.startsWith('LOCATION_SYNC:')) &&
+              isBotSender(raw.senderInboxId)
             ) {
               try {
                 const { BOT_INBOX_IDS } = await import('@/lib/constants');
@@ -341,6 +343,7 @@ export function useDm(peerInboxId: string, retryKey = 0) {
                   case 'complete': {
                     if (sender !== market.data.buyerInboxId) return;
                     const soldListing = getListingById(market.data.listingId);
+                    if (soldListing?.acceptedBid?.bidderInboxId !== sender) return;
                     markSold(market.data.listingId);
                     if (soldListing && soldListing.sellerInboxId === myInboxId) {
                       recordHistoryEntry({

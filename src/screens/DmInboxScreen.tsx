@@ -39,6 +39,7 @@ import { GlassModal } from '@/components/GlassModal';
 import * as Clipboard from 'expo-clipboard';
 import { toast } from 'sonner-native';
 import { getHiddenDmMap, hideDmThread, isDmStillHidden } from '@/lib/dmHidden';
+import { isBotSender } from '@/lib/trustedSenders';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -56,7 +57,7 @@ function ThreadRow({ thread, myInboxId, unread, onLongPress }: { thread: DmThrea
   try { profile = getCachedProfile(thread.peerInboxId); } catch { /* ignore */ }
   const name: string = profile?.username ?? 'Monke';
   const avatarUri: string | null = profile?.nftImage ?? null;
-  const isBot = name === 'AI Agent #9385';
+  const isBot = isBotSender(thread.peerInboxId);
 
   const rawMsg = thread.lastMessage;
   let preview = 'No messages yet';

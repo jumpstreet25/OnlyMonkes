@@ -113,6 +113,7 @@ import { hasThread, getThreadMeta } from "@/lib/threads";
 import { router } from "expo-router";
 import { LiquidGlass as BlurView } from "@/components/LiquidGlass";
 import { getBlurProps } from "@/lib/glassTheme";
+import { displayNameFor, isBotSender, isTrustedTipLink, safeAttachmentUrl } from "@/lib/trustedSenders";
 
 // ─── Glassmorphism constants ─────────────────────────────────────────────────
 const GLASS_BLUE = "#6CB4EE";                    // OnlyMonkes blue
@@ -712,8 +713,9 @@ export const MessageBubble = memo(function MessageBubble({
   // Re-read from cache on every render — use primary inbox ID to merge multi-device users
   const primarySenderInbox = isOwn ? message.senderAddress : getPrimaryInboxId(message.senderAddress);
   const cachedSender = getCachedProfile(primarySenderInbox);
-  const displayName  = cachedSender?.username ?? message.senderUsername ?? t("chatInput.monke");
-  const isBot = message.senderUsername === "AI Agent #9385";
+  // Bot styling comes from the real sender inbox, never the typed name (audit 2026-11-04).
+  const isBot = isBotSender(message.senderAddress);
+  const displayName  = displayNameFor(message.senderAddress, cachedSender?.username ?? message.senderUsername ?? t("chatInput.monke"));
   // Bot PFP theme — teal from the bot's pixel art visor/eyes
   const BOT_THEME_COLOR = "#00C9A7";
   // Glitch bubble accent — sender's PFP dominant color so each user wears
@@ -1073,10 +1075,14 @@ export const MessageBubble = memo(function MessageBubble({
                   const parts = message.content.slice(8).split("|");
                   const url = parts[0];
                   const amount = parts[1] || "?";
-                  const sender = parts[2] || "Monke";
+                  // Only the worker's own claim link opens, and the name is the real sender's.
+                  if (!isTrustedTipLink(url)) {
+                    return <Text style={styles.tipLinkHint}>{t("messageBubble.untrustedLink")}</Text>;
+                  }
+                  const sender = displayName;
                   return (
                     <Pressable
-                      onPress={() => url && Linking.openURL(url).catch(() => {})}
+                      onPress={() => Linking.openURL(url).catch(() => {})}
                       onLongPress={handleLongPress}
                       delayLongPress={350}
                       style={styles.tipLinkBubble}
@@ -1092,11 +1098,22 @@ export const MessageBubble = memo(function MessageBubble({
               ) : message.content.startsWith("ATTACHMENT:") ? (
                 (() => {
                   const parts = message.content.slice(11).split("|");
-                  const url = parts[0];
+                  const safe = safeAttachmentUrl(parts[0]);
                   const filename = parts[1] || "file";
+                  if (!safe) {
+                    return <Text style={styles.attachmentHint}>{t("messageBubble.untrustedLink")}</Text>;
+                  }
+                  const open = () => Linking.openURL(safe.href).catch(() => {});
                   return (
                     <Pressable
-                      onPress={() => url && Linking.openURL(url).catch(() => {})}
+                      onPress={() =>
+                        /(^|\.)onlymonkes\.app$/.test(safe.hostname)
+                          ? open()
+                          : showGlassAlert(t("messageBubble.openOutsideTitle"), t("messageBubble.openOutsideBody", { host: safe.hostname }), [
+                              { text: t("messageBubble.cancel"), style: "cancel" },
+                              { text: t("messageBubble.openOutsideConfirm"), onPress: open },
+                            ])
+                      }
                       onLongPress={handleLongPress}
                       delayLongPress={350}
                       style={styles.attachmentBubble}
@@ -1104,7 +1121,7 @@ export const MessageBubble = memo(function MessageBubble({
                       <Text style={styles.attachmentIcon}>📎</Text>
                       <View style={{ flex: 1 }}>
                         <Text style={styles.attachmentFilename} numberOfLines={1}>{filename}</Text>
-                        <Text style={styles.attachmentHint}>{t("messageBubble.tapToOpen")}</Text>
+                        <Text style={styles.attachmentHint}>{safe.hostname} · {t("messageBubble.tapToOpen")}</Text>
                       </View>
                     </Pressable>
                   );

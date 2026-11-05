@@ -611,7 +611,12 @@
     "editedLabel": "(edited)",
     "translatedFromSpanish": "🌐 Translated from Spanish — tap to see original",
     "translatedFromEnglish": "🌐 Translated from English — tap to see original",
-    "showTranslation": "🌐 Show translation"
+    "showTranslation": "🌐 Show translation",
+    "untrustedLink": "Link hidden — not from OnlyMonkes",
+    "openOutsideTitle": "Leave OnlyMonkes?",
+    "openOutsideBody": "This opens {{host}}. Only continue if you trust the sender.",
+    "openOutsideConfirm": "Open",
+    "cancel": "Cancel"
   },
   "glassAlert": {
     "ok": "OK"

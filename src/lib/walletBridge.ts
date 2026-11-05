@@ -22,6 +22,7 @@
  */
 
 import type { WebView } from "react-native-webview";
+import { isOnlyMonkesSigningText } from "@/lib/trustedSenders";
 import { Transaction, VersionedTransaction } from "@solana/web3.js";
 import {
   transact,
@@ -347,6 +348,11 @@ export async function handleBridgeMessage(
       }
       case "signMessage": {
         if (!payload?.msgB64) throw new Error("missing msg");
+        // A page must never get a signature over OnlyMonkes' own texts (XMTP identity,
+        // admin publish, bot commands): that would hand it the user's chat identity.
+        if (isOnlyMonkesSigningText(Buffer.from(payload.msgB64, "base64").toString("utf8"))) {
+          throw new Error("This message can only be signed inside OnlyMonkes");
+        }
         const sig = await mwaSignMessage(payload.msgB64);
         response = { ok: true, value: sig };
         break;
