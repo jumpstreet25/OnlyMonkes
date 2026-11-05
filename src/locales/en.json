@@ -1119,5 +1119,25 @@
     "bodyRequired": "This version can no longer reach the chat. Update from the dApp Store to keep chatting.",
     "update": "Update",
     "later": "Later"
+  },
+  "myDevices": {
+    "title": "Your devices",
+    "menuDesc": "Phones verified on this wallet. Remove one you no longer use.",
+    "intro": "Each phone that signs in with this wallet is verified on its own. Up to {{max}} phones per wallet.",
+    "count": "{{n}} of {{max}} phones",
+    "phone": "Phone",
+    "thisPhone": "this phone",
+    "verifiedOn": "Verified {{date}}",
+    "remove": "Remove",
+    "confirm": "Confirm",
+    "footnote": "A removed phone loses Avatar Rooms and invites until it signs in with your wallet again. Phones not used for 7 days drop off by themselves.",
+    "notVerified": "This phone isn't verified on this wallet yet.",
+    "verify": "Verify this phone",
+    "verifyFailed": "Couldn't verify this phone.",
+    "unsupported": "Only available in the Android app.",
+    "loadFailed": "Couldn't load your devices. Try again.",
+    "removeFailed": "Couldn't remove that phone. Try again.",
+    "retry": "Try again",
+    "close": "Close"
   }
 }

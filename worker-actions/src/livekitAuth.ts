@@ -22,7 +22,7 @@
 import type { Env } from "./index";
 import { base58ToBytes, base64ToBytes, sha256Hex, verifyEcdsaP256 } from "./cryptoVerify";
 import { holderWalletFromToken } from "./webAuth";
-import type { DeviceIntegrityVerdict } from "./deviceIntegrity";
+import { deviceVerdict } from "./deviceIntegrity";
 
 export const INTERNAL_HOST = "internal.onlymonkes";
 const ROOM = /^omv?-\d{10,14}-[A-Za-z0-9]{1,8}$/;
@@ -87,14 +87,12 @@ export async function walletFromDeviceProof(
   if (!(await env.DEVICE_INTEGRITY.get(nonceKey))) return { error: "nonce expired", status: 401 };
   await env.DEVICE_INTEGRITY.delete(nonceKey);
 
-  const raw = await env.DEVICE_INTEGRITY.get(`wallet:${wallet}`);
-  const verdict = raw ? (JSON.parse(raw) as DeviceIntegrityVerdict) : null;
-  if (!verdict || verdict.expiresAt < Date.now() || !verdict.hardwareVerified || !verdict.raspClean || verdict.holderTier === "none") {
-    return { error: "device not verified for this wallet", status: 403 };
-  }
   let keyBytes: Uint8Array, sigBytes: Uint8Array;
   try { keyBytes = base64ToBytes(devicePubKey); sigBytes = base64ToBytes(sig); } catch { return { error: "invalid proof", status: 400 }; }
-  if ((await sha256Hex(keyBytes)) !== verdict.deviceHash) return { error: "device not verified for this wallet", status: 403 };
+  const verdict = await deviceVerdict(env, wallet, await sha256Hex(keyBytes));
+  if (!verdict || !verdict.hardwareVerified || !verdict.raspClean || verdict.holderTier === "none") {
+    return { error: "device not verified for this wallet", status: 403 };
+  }
   if (!(await verifyEcdsaP256(keyBytes, new TextEncoder().encode(message(nonce)), sigBytes))) return { error: "bad device signature", status: 401 };
   return { wallet, tier: verdict.holderTier };
 }

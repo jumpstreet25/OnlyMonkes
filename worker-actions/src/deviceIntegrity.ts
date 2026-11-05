@@ -26,7 +26,16 @@
  *   DEVICE_INTEGRITY
  *     nonce:<nonce>          — presence-only marker, 2min TTL, single-use challenge
  *     wallet:<address>        — { securityLevel, hardwareVerified, raspClean, holderTier,
- *                                  deviceHash, issuedAt, expiresAt }, TTL matches expiresAt
+ *                                  deviceHash, issuedAt, expiresAt }, TTL matches expiresAt —
+ *                                  the most recent phone's verdict (status endpoint)
+ *     devices:<address>       — verdicts of every verified phone on the wallet (max 5)
+ *     bind:<deviceHash>       — wallet a device key was bound to (key-only refreshes)
+ *
+ * 2026-11-04 — one account per wallet, up to MAX_DEVICES phones: each phone's verdict is kept
+ * in devices:<address>, so verifying one phone no longer pushes another off (LiveKit and
+ * referrals used to accept only the last phone to verify). A verified phone can list the
+ * wallet's phones and remove one (POST /api/device-integrity/devices, signed by its own key);
+ * removal also drops that phone's binding, so it needs a wallet sign-in to come back.
  *
  * Revocation: every cert serial is checked against Google's status list
  * (android.googleapis.com/attestation/status, cached 1h; an unreachable list is logged, not fatal).
@@ -101,6 +110,7 @@ const APP_PACKAGE = "com.onlymonkes.app";
 const RELEASE_CERT_SHA256 = "2e2feeb81ccf0de5d191f6e174113ba9839181b1cb7540ab6d5c94a9cff487d8";
 const CRL_URL = "https://android.googleapis.com/attestation/status";
 const CRL_CACHE_MS = 3600_000;
+export const MAX_DEVICES = 5;
 const VERDICT_TTL_SECONDS = 7 * 24 * 3600; // matches checkNftGate's existing TTL precedent
 const MAX_CHAIN_CERTS = 10; // sanity bound — real chains are 3-4 deep
 const EXPECTED_PACKAGE_BYTES = new TextEncoder().encode("com.onlymonkes.app");
@@ -417,10 +427,61 @@ export interface DeviceIntegrityVerdict {
   deviceHash: string;
   issuedAt: number;
   expiresAt: number;
+  /** Phone model the app reported (e.g. "Seeker"), shown only to the wallet's own phones. */
+  label?: string;
 }
 
 function walletKey(wallet: string): string {
   return `wallet:${wallet}`;
+}
+
+const devicesKey = (wallet: string) => `devices:${wallet}`;
+
+/** The wallet's verified phones, expired ones dropped. Verdicts from before the per-wallet
+ *  list existed are only in wallet:<address>, so that one counts too. */
+async function loadDevices(env: Env, wallet: string): Promise<DeviceIntegrityVerdict[]> {
+  const now = Date.now();
+  const [rawList, rawLatest] = await Promise.all([
+    env.DEVICE_INTEGRITY.get(devicesKey(wallet)),
+    env.DEVICE_INTEGRITY.get(walletKey(wallet)),
+  ]);
+  let list: DeviceIntegrityVerdict[] = [];
+  try { list = rawList ? (JSON.parse(rawList) as DeviceIntegrityVerdict[]) : []; } catch { list = []; }
+  if (!Array.isArray(list)) list = [];
+  if (rawLatest && !rawList) {
+    try {
+      const latest = JSON.parse(rawLatest) as DeviceIntegrityVerdict;
+      if (latest?.deviceHash) list.push(latest);
+    } catch { /* ignore */ }
+  }
+  return list.filter((d) => d && typeof d.deviceHash === "string" && d.expiresAt > now);
+}
+
+async function saveDevices(env: Env, wallet: string, list: DeviceIntegrityVerdict[]): Promise<void> {
+  if (list.length === 0) {
+    await Promise.all([env.DEVICE_INTEGRITY.delete(devicesKey(wallet)), env.DEVICE_INTEGRITY.delete(walletKey(wallet))]);
+    return;
+  }
+  const latest = list.reduce((a, b) => (b.issuedAt > a.issuedAt ? b : a));
+  const ttl = Math.max(60, Math.ceil((Math.max(...list.map((d) => d.expiresAt)) - Date.now()) / 1000));
+  await Promise.all([
+    env.DEVICE_INTEGRITY.put(devicesKey(wallet), JSON.stringify(list), { expirationTtl: ttl }),
+    env.DEVICE_INTEGRITY.put(walletKey(wallet), JSON.stringify(latest), {
+      expirationTtl: Math.max(60, Math.ceil((latest.expiresAt - Date.now()) / 1000)),
+    }),
+  ]);
+}
+
+/** This phone's current verdict for the wallet, or null (LiveKit tokens, referrals). */
+export async function deviceVerdict(env: Env, wallet: string, deviceHash: string): Promise<DeviceIntegrityVerdict | null> {
+  return (await loadDevices(env, wallet)).find((d) => d.deviceHash === deviceHash) ?? null;
+}
+
+/** Keeps a model name readable and harmless: letters, digits, spaces, - _ . ( ), 40 chars. */
+export function cleanDeviceLabel(raw: unknown): string | undefined {
+  if (typeof raw !== "string") return undefined;
+  const label = raw.replace(/[^\p{L}\p{N} ._()-]/gu, "").replace(/\s+/g, " ").trim().slice(0, 40);
+  return label || undefined;
 }
 
 // ─── Challenge (nonce issuance) ────────────────────────────────────────────────
@@ -447,6 +508,7 @@ interface IssueBody {
   signInSignatureBase64?: string;
   /** No wallet proof: allowed when this device key was bound to the wallet before. */
   refresh?: boolean;
+  deviceLabel?: string;
   raspThreats?: string[];
 }
 
@@ -576,6 +638,12 @@ export async function handleDeviceIntegrityIssue(request: Request, env: Env): Pr
     return errorResponse("Device reports a hard security threat — attestation not issued", 403);
   }
 
+  const devices = await loadDevices(env, walletAddress);
+  const others = devices.filter((d) => d.deviceHash !== deviceHash);
+  if (others.length >= MAX_DEVICES) {
+    return errorResponse(`This wallet already has ${MAX_DEVICES} verified phones. Remove one under Your devices on another phone, then try again.`, 409);
+  }
+
   const now = Date.now();
   const verdict: DeviceIntegrityVerdict = {
     securityLevel: chainResult.securityLevel,
@@ -585,13 +653,106 @@ export async function handleDeviceIntegrityIssue(request: Request, env: Env): Pr
     deviceHash,
     issuedAt: now,
     expiresAt: now + VERDICT_TTL_SECONDS * 1000,
+    label: cleanDeviceLabel(body.deviceLabel) ?? devices.find((d) => d.deviceHash === deviceHash)?.label,
   };
-  await env.DEVICE_INTEGRITY.put(walletKey(walletAddress), JSON.stringify(verdict), {
-    expirationTtl: VERDICT_TTL_SECONDS,
-  });
+  await saveDevices(env, walletAddress, [...others, verdict]);
   await env.DEVICE_INTEGRITY.put(bindingKey(deviceHash), walletAddress, { expirationTtl: BINDING_TTL_SECONDS });
 
   return jsonResponse({ status: "clean", ...verdict });
+}
+
+// ─── Your devices (list / remove) ──────────────────────────────────────────────
+
+export function buildDevicesMessage(action: string, wallet: string, target: string, nonce: string): string {
+  return `OnlyMonkes Devices\naction:${action}\nwallet:${wallet}\ntarget:${target}\nnonce:${nonce}`;
+}
+
+/** Short id shown to the app; 16 hex of the device hash is unique among ≤5 phones. */
+const deviceId = (hash: string) => hash.slice(0, 16);
+
+interface DevicesBody {
+  action?: string;
+  walletAddress?: string;
+  devicePubKeyBase64?: string;
+  nonce?: string;
+  deviceSigBase64?: string;
+  target?: string;
+}
+
+/**
+ * A verified phone lists the wallet's phones or removes one. Signed by the calling phone's
+ * hardware key over a single-use nonce; the caller must itself be verified on this wallet.
+ * Removing a phone drops its verdict, its binding (so it needs a wallet sign-in to return)
+ * and its sentiment-oracle registration.
+ */
+export async function handleDeviceIntegrityDevices(request: Request, env: Env): Promise<Response> {
+  let body: DevicesBody;
+  try {
+    const text = await request.text();
+    if (text.length > MAX_BODY_BYTES) return errorResponse("Body too large", 413);
+    body = JSON.parse(text);
+  } catch {
+    return errorResponse("Invalid JSON body");
+  }
+  const { action, walletAddress, devicePubKeyBase64, nonce, deviceSigBase64 } = body;
+  const target = typeof body.target === "string" ? body.target : "-";
+  if ((action !== "list" && action !== "remove") || !walletAddress || !devicePubKeyBase64 || !nonce || !deviceSigBase64) {
+    return errorResponse("Missing required field(s)");
+  }
+  if (action === "remove" && !/^[0-9a-f]{16}$/.test(target)) return errorResponse("Invalid device id");
+  if (base58ToBytes(walletAddress)?.length !== 32) return errorResponse("Invalid wallet address", 400);
+
+  const nonceKey = `nonce:${nonce}`;
+  if (!(await env.DEVICE_INTEGRITY.get(nonceKey))) {
+    return errorResponse("Nonce missing, expired, or already used — request a fresh challenge", 401);
+  }
+  await env.DEVICE_INTEGRITY.delete(nonceKey);
+
+  let keyBytes: Uint8Array;
+  let sigBytes: Uint8Array;
+  try {
+    keyBytes = base64ToBytes(devicePubKeyBase64);
+    sigBytes = base64ToBytes(deviceSigBase64);
+  } catch {
+    return errorResponse("Invalid base64 encoding", 400);
+  }
+  const message = new TextEncoder().encode(buildDevicesMessage(action, walletAddress, target, nonce));
+  if (!(await verifyEcdsaP256(keyBytes, message, sigBytes))) return errorResponse("Device signature verification failed", 401);
+
+  const callerHash = await sha256Hex(keyBytes);
+  const devices = await loadDevices(env, walletAddress);
+  if (!devices.some((d) => d.deviceHash === callerHash)) {
+    return errorResponse("This phone isn't verified on this wallet", 403);
+  }
+
+  if (action === "remove") {
+    const gone = devices.find((d) => deviceId(d.deviceHash) === target);
+    if (gone) {
+      await saveDevices(env, walletAddress, devices.filter((d) => d !== gone));
+      if ((await env.DEVICE_INTEGRITY.get(bindingKey(gone.deviceHash))) === walletAddress) {
+        await env.DEVICE_INTEGRITY.delete(bindingKey(gone.deviceHash));
+      }
+      const reg = await env.SENTIMENT_ORACLE.get(`device:${gone.deviceHash}`);
+      if (reg && (JSON.parse(reg) as { walletAddress?: string }).walletAddress === walletAddress) {
+        await env.SENTIMENT_ORACLE.delete(`device:${gone.deviceHash}`);
+      }
+      console.log(`[deviceIntegrity] device removed (${devices.length - 1} left)`);
+    }
+  }
+
+  const remaining = action === "remove" ? await loadDevices(env, walletAddress) : devices;
+  return jsonResponse({
+    max: MAX_DEVICES,
+    devices: remaining
+      .sort((a, b) => b.issuedAt - a.issuedAt)
+      .map((d) => ({
+        id: deviceId(d.deviceHash),
+        label: d.label ?? null,
+        isThisDevice: d.deviceHash === callerHash,
+        verifiedAt: d.issuedAt,
+        expiresAt: d.expiresAt,
+      })),
+  });
 }
 
 // ─── Status (cached read) ──────────────────────────────────────────────────────
