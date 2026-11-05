@@ -2642,10 +2642,35 @@ async function handleVerifyApi(url: URL, env: Env): Promise<Response> {
     return errorResponse("Invalid wallet address", 400);
   }
 
+  const cacheKey = new Request(`${WORKER_BASE}/api/verify?wallet=${encodeURIComponent(wallet)}`);
+  const remembered = VERIFY_MEMO.get(wallet);
+  if (remembered && remembered.until > Date.now()) return verifyReply(remembered.body, "hit-mem");
+  const edge = await caches.default.match(cacheKey).catch(() => undefined);
+  if (edge) return verifyReply(await edge.text(), "hit-edge");
+
   const { monke, uncertain, reasons } = await fetchOwnedMonke(wallet, env);
   if (uncertain) return jsonResponse({ owned: false, uncertain: true, reasons }, 200);
-  if (!monke) return jsonResponse({ owned: false });
-  return jsonResponse({ owned: true, mint: monke.mint, name: monke.name, image: monke.image, traits: monke.traits });
+  const body = JSON.stringify(
+    monke ? { owned: true, mint: monke.mint, name: monke.name, image: monke.image, traits: monke.traits } : { owned: false },
+  );
+  const ttl = monke ? VERIFY_OWNED_TTL_S : VERIFY_NOT_OWNED_TTL_S;
+  if (VERIFY_MEMO.size >= 500) VERIFY_MEMO.clear();
+  VERIFY_MEMO.set(wallet, { body, until: Date.now() + ttl * 1000 });
+  await caches.default
+    .put(cacheKey, new Response(body, { headers: { "Content-Type": "application/json", "Cache-Control": `max-age=${ttl}` } }))
+    .catch(() => {});
+  return verifyReply(body, "miss");
+}
+
+// /api/verify answers are cached per wallet (audit 2026-11-04): a holder for an hour, a
+// non-holder for 2 min so a new buyer isn't locked out of login, uncertain never. Edge
+// cache (Cache API, custom domains only) plus a small per-isolate memo for workers.dev.
+const VERIFY_OWNED_TTL_S = 3600;
+const VERIFY_NOT_OWNED_TTL_S = 120;
+const VERIFY_MEMO = new Map<string, { body: string; until: number }>();
+
+function verifyReply(body: string, cache: "hit-mem" | "hit-edge" | "miss"): Response {
+  return new Response(body, { headers: { "Content-Type": "application/json", "X-Verify-Cache": cache, ...CORS_HEADERS } });
 }
 
 /** GET /monke/:mint — shareable, OG-preview-rich page for a specific Saga
