@@ -24,6 +24,7 @@ import { bindXmtpToWallet, prepareWalletBoundXmtp } from "@/lib/xmtp";
 import { rehydrateForWallet } from "@/lib/walletIdentity";
 import { assertDeviceTrusted } from "@/lib/security";
 import { refreshInboxLinks } from "@/lib/inboxLinking";
+import { fetchSignInPayload, rememberSignIn } from "@/lib/signInProof";
 import { toast } from "sonner-native";
 import type { WalletAccount } from "@/types";
 
@@ -108,11 +109,33 @@ export async function signBytesWithMwa(
 export type WalletAuth = { authToken: string; rawAddress: string; label?: string };
 
 async function authorizeViaMwa(): Promise<WalletAuth> {
+  // Sign in (not just connect) so Device Integrity has its wallet proof without a later prompt.
+  const signIn = await fetchSignInPayload();
   return transact(async (mobileWallet: Web3MobileWallet) => {
-    const authResult = await mobileWallet.authorize({ cluster: "mainnet-beta", identity: APP_IDENTITY });
+    const authorizePlain = () => mobileWallet.authorize({ cluster: "mainnet-beta", identity: APP_IDENTITY });
+    let authResult: Awaited<ReturnType<typeof authorizePlain>>;
+    if (signIn) {
+      try {
+        authResult = await mobileWallet.authorize({
+          cluster: "mainnet-beta",
+          identity: APP_IDENTITY,
+          sign_in_payload: signIn.payload,
+        } as Parameters<typeof mobileWallet.authorize>[0]);
+      } catch (e) {
+        // A declined connect stays declined; a declined or unsupported sign-in still connects.
+        if ((e as { code?: number })?.code === -1) throw e;
+        console.warn("[MWA] sign-in skipped:", (e as Error)?.message);
+        authResult = await authorizePlain();
+      }
+    } else {
+      authResult = await authorizePlain();
+    }
     // MWA v2 returns accounts[0].address as a base64-encoded public key.
     const addrRaw = authResult.accounts[0].address;
     const rawAddress = typeof addrRaw === "string" ? addrRaw : Buffer.from(addrRaw as Uint8Array).toString("base64");
+    if (signIn && authResult.sign_in_result) {
+      rememberSignIn(new PublicKey(Buffer.from(rawAddress, "base64")).toBase58(), signIn.nonce, authResult.sign_in_result);
+    }
     return { authToken: authResult.auth_token, rawAddress, label: authResult.accounts[0].label };
   });
 }

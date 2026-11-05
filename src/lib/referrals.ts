@@ -17,6 +17,7 @@ import { addBananas } from "@/lib/bananaRewards";
 import { parseMonkeNumber } from "@/lib/monkeMeme/monkeNumbers";
 import { reverifyDevice } from "@/lib/deviceReverify";
 import { grantSpecialBadge } from "@/lib/badges";
+import { rememberShareLink } from "@/lib/shareLink";
 
 const BASE = "https://onlymonkes.app";
 export const INVITE_CODE = /^[2-9A-HJ-NP-Z]{6}$/;
@@ -54,8 +55,8 @@ async function proof(action: string): Promise<Record<string, string> | null> {
   }
 }
 
-/** canPrompt: may ask the wallet for a signature to verify this phone (only for something the user just tapped). */
-async function post<T>(path: string, action: string, body: Record<string, unknown> = {}, canPrompt = true): Promise<T | ReferralError> {
+/** canPrompt: may ask the wallet for a signature to verify this phone (only for something the user just tapped); without it the phone's own key is still tried. */
+async function post<T>(path: string, action: string, body: Record<string, unknown> = {}, canPrompt = true, retried = false): Promise<T | ReferralError> {
   const p = await proof(action);
   if (!p) return { error: "This phone isn't verified yet. Open the app's verify step, then try again.", reason: "no_proof" };
   try {
@@ -65,12 +66,11 @@ async function post<T>(path: string, action: string, body: Record<string, unknow
       body: JSON.stringify({ ...body, proof: p }),
     });
     const json = (await res.json().catch(() => ({}))) as T & ReferralError;
-    if (res.status === 403 && canPrompt && /device not verified/i.test(json.error ?? "")) {
-      // No (fresh) Device Integrity verdict for this wallet: verify now (one wallet
-      // signature), then try once more.
-      const r = await reverifyDevice(`referral:${action.split(":")[0]}`);
-      if (r.status === "clean") return post<T>(path, action, body, false);
-      return { error: "Couldn't verify this phone. Approve the signature in your wallet, then try again.", reason: "not_verified" };
+    if (res.status === 403 && !retried && /device not verified/i.test(json.error ?? "")) {
+      // No (fresh) Device Integrity verdict for this wallet: verify now, then try once more.
+      const r = await reverifyDevice(`referral:${action.split(":")[0]}`, { walletPrompt: canPrompt });
+      if (r.status === "clean") return post<T>(path, action, body, false, true);
+      return { error: canPrompt ? "Couldn't verify this phone. Approve the signature in your wallet, then try again." : "This phone isn't verified yet.", reason: "not_verified" };
     }
     return res.ok ? json : { error: json.error || "Something went wrong", reason: json.reason };
   } catch {
@@ -87,12 +87,16 @@ export function grantRecruiterBadges(earned: number[]): void {
   }
 }
 
-/** Your invite (created on first call); also updates the name + PFP shown on your card. */
-export async function getMyReferral(): Promise<MyReferral | ReferralError> {
+/** Your invite (created on first call); also updates the name + PFP shown on your card.
+ *  canPrompt false: never asks the wallet to verify the phone (background share-link lookup). */
+export async function getMyReferral(opts: { canPrompt?: boolean } = {}): Promise<MyReferral | ReferralError> {
   const s = useAppStore.getState();
   const pfp = parseMonkeNumber(s.verifiedNft?.name);
-  const r = await post<MyReferral>("/api/referral/me", "me", { name: s.username ?? "", ...(pfp ? { pfp } : {}) });
-  if (!isReferralError(r) && Array.isArray(r.badges)) grantRecruiterBadges(r.badges);
+  const r = await post<MyReferral>("/api/referral/me", "me", { name: s.username ?? "", ...(pfp ? { pfp } : {}) }, opts.canPrompt ?? true);
+  if (!isReferralError(r)) {
+    if (Array.isArray(r.badges)) grantRecruiterBadges(r.badges);
+    if (s.wallet?.address && r.url) void rememberShareLink(s.wallet.address, r.url);
+  }
   return r;
 }
 

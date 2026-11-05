@@ -67,6 +67,7 @@ import {
   handleDeviceIntegrityChallenge,
   handleDeviceIntegrityIssue,
   handleDeviceIntegrityStatus,
+  handleDeviceIntegrityDevices,
 } from "./deviceIntegrity";
 import {
   handleTreasuryStatus,
@@ -164,6 +165,8 @@ export interface Env {
   // Device Integrity Attestation — see deviceIntegrity.ts. Backend-verified
   // (Key Attestation chain + RASP + Saga/Genesis ownership), no on-chain write.
   DEVICE_INTEGRITY: KVNamespace;
+  /** "1": no Device Integrity verdict for a phone failing verified boot / locked bootloader / genuine app. */
+  DI_HARDWARE_ENFORCE?: string;
   /** Referral ledger (referrals.ts). */
   REFERRALS?: KVNamespace;
   // MonkeGlobe/MonkeEvents public web repo backend — see community.ts.
@@ -3516,7 +3519,10 @@ export default {
     // Link-preview bots (X, Discord…) often send HEAD first; answer it like GET.
     const isPageRead = request.method === "GET" || request.method === "HEAD";
     if (path === "/" || path === "/welcome") {
-      if (isPageRead) return renderLanding(await getCachedStats(env));
+      if (isPageRead) {
+        const pins = await env.COMMUNITY_DATA.get("locations:latest").then((r) => (r ? (JSON.parse(r) as unknown[]).length : null)).catch(() => null);
+        return renderLanding(await getCachedStats(env), pins);
+      }
       return errorResponse("Method not allowed", 405);
     }
     if (path === "/get") {
@@ -3720,11 +3726,15 @@ export default {
     }
 
     if (path === "/api/device-integrity/challenge") {
-      if (request.method === "POST") return handleDeviceIntegrityChallenge(env);
+      if (request.method === "POST") return handleDeviceIntegrityChallenge(env, url);
       return errorResponse("Method not allowed", 405);
     }
     if (path === "/api/device-integrity/issue") {
       if (request.method === "POST") return handleDeviceIntegrityIssue(request, env);
+      return errorResponse("Method not allowed", 405);
+    }
+    if (path === "/api/device-integrity/devices") {
+      if (request.method === "POST") return handleDeviceIntegrityDevices(request, env);
       return errorResponse("Method not allowed", 405);
     }
     if (path === "/api/device-integrity/status") {

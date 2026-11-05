@@ -56,6 +56,7 @@ import { markChannelRead } from "@/lib/messageCache";
 import { loadBananaState, type BananaState } from "@/lib/bananaRewards";
 import { BananaShopModal } from "@/components/BananaShopModal";
 import { ReclaimModal } from "@/components/ReclaimModal";
+import { MyDevicesModal } from "@/components/MyDevicesModal";
 import { ResetIdentityModal } from "@/components/ResetIdentityModal";
 import { LinkedDevicesModal } from "@/components/LinkedDevicesModal";
 import type { ProfileTarget } from "@/components/UserProfileModal";
@@ -401,6 +402,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
   const [searchText, setSearchText] = useState("");
   const [shopOpen, setShopOpen] = useState(false);
   const [reclaimOpen, setReclaimOpen] = useState(false);
+  const [myDevicesOpen, setMyDevicesOpen] = useState(false);
   const [resetIdentityOpen, setResetIdentityOpen] = useState(false);
   const [linkedDevicesOpen, setLinkedDevicesOpen] = useState(false);
   const [webView, setWebView] = useState<{ url: string; title: string } | null>(null);
@@ -1181,6 +1183,18 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                   <Text style={styles.chevron}>›</Text>
                 </Pressable>
                 <View style={styles.settingDivider} />
+                {Platform.OS === "android" && (
+                  <>
+                    <Pressable style={styles.settingRow} onPress={() => setMyDevicesOpen(true)}>
+                      <View style={styles.settingInfo}>
+                        <Text style={styles.settingTitle}>{t("myDevices.title")}</Text>
+                        <Text style={styles.settingDesc}>{t("myDevices.menuDesc")}</Text>
+                      </View>
+                      <Text style={styles.chevron}>›</Text>
+                    </Pressable>
+                    <View style={styles.settingDivider} />
+                  </>
+                )}
                 <Pressable
                   style={styles.settingRow}
                   onPress={() => setLinkedDevicesOpen(true)}
@@ -1289,6 +1303,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
       </View>
 
       <BananaShopModal visible={shopOpen} onClose={() => setShopOpen(false)} />
+      <MyDevicesModal visible={myDevicesOpen} onClose={() => setMyDevicesOpen(false)} />
       <ReclaimModal visible={reclaimOpen} onClose={() => setReclaimOpen(false)} />
       <ResetIdentityModal visible={resetIdentityOpen} onClose={() => setResetIdentityOpen(false)} />
       <LinkedDevicesModal visible={linkedDevicesOpen} onClose={() => setLinkedDevicesOpen(false)} />

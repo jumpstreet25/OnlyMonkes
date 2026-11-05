@@ -10,13 +10,16 @@
  */
 
 import { Linking } from "react-native";
+import { addShareLink } from "@/lib/shareLink";
 
 const HANDLE = "@xOnlyMonkes";
 const HASHTAGS = "#OnlyMonkes #SagaMonkes #SolanaMobile";
 
+/** Every tweet carries the sharer's invite link (lib/shareLink.ts). */
 function openTweet(text: string): void {
-  const encoded = encodeURIComponent(text);
-  Linking.openURL(`https://x.com/intent/tweet?text=${encoded}`).catch(() => {});
+  void addShareLink(text).then((withLink) => {
+    Linking.openURL(`https://x.com/intent/tweet?text=${encodeURIComponent(withLink)}`).catch(() => {});
+  });
 }
 
 /**
@@ -40,8 +43,9 @@ function openTweet(text: string): void {
  */
 export async function shareImageToX(
   imageUri: string,
-  message: string,
+  caption: string,
 ): Promise<{ saved: boolean }> {
+  const message = await addShareLink(caption);
   let saved = false;
   try {
     const MediaLibrary = await import("expo-media-library");

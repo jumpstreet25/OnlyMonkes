@@ -589,7 +589,14 @@
       "light": "Light",
       "normal": "Normal",
       "vivid": "Vivid"
-    }
+    },
+    "buyOnPhoneTitle": "Buy on your phone",
+    "buyOnPhoneBody": "Shop purchases need your phone's wallet. Open OnlyMonkes on your Seeker to buy — anything you own already works here.",
+    "catKits": "Kits",
+    "kitName": "{{world}} kit",
+    "kitWear": "Wear",
+    "kitNote": "A kit is the World plus its matching bubble and name color, 20% off what you don't own yet. Tap a kit you own to wear the whole look.",
+    "chestOnly": "CHEST"
   },
   "messageBubble": {
     "liveVideoChat": "Live Video Chat",
@@ -974,6 +981,62 @@
     "bubble_breakpoint_2026": {
       "name": "Breakpoint 2026",
       "description": "Exclusive bubble style — only during Solana Breakpoint"
+    },
+    "kit_banana_grove_bubble": {
+      "name": "Banana Grove Bubble",
+      "description": "Bubbles that match the Banana Grove world"
+    },
+    "kit_banana_grove_name": {
+      "name": "Banana Grove Name",
+      "description": "Your name in the Banana Grove color"
+    },
+    "kit_solana_cyberpunk_bubble": {
+      "name": "Solana Cyberpunk Bubble",
+      "description": "Bubbles that match the Solana Cyberpunk world"
+    },
+    "kit_solana_cyberpunk_name": {
+      "name": "Solana Cyberpunk Name",
+      "description": "Your name in the Solana Cyberpunk color"
+    },
+    "kit_trading_floor_bubble": {
+      "name": "Trading Floor Bubble",
+      "description": "Bubbles that match the Trading Floor world"
+    },
+    "kit_trading_floor_name": {
+      "name": "Trading Floor Name",
+      "description": "Your name in the Trading Floor color"
+    },
+    "kit_tech_noir_bubble": {
+      "name": "Tech Noir Bubble",
+      "description": "Bubbles that match the Tech Noir world"
+    },
+    "kit_tech_noir_name": {
+      "name": "Tech Noir Name",
+      "description": "Your name in the Tech Noir color"
+    },
+    "kit_deep_space_bubble": {
+      "name": "Deep Space Bubble",
+      "description": "Bubbles that match the Deep Space world"
+    },
+    "kit_deep_space_name": {
+      "name": "Deep Space Name",
+      "description": "Your name in the Deep Space color"
+    },
+    "kit_frost_grove_bubble": {
+      "name": "Frost Grove Bubble",
+      "description": "Bubbles that match the Frost Grove world"
+    },
+    "kit_frost_grove_name": {
+      "name": "Frost Grove Name",
+      "description": "Your name in the Frost Grove color"
+    },
+    "bubble_holographic_loot": {
+      "name": "Holographic Bubble",
+      "description": "Ultra-rare shimmer. Only from the Banana Chest."
+    },
+    "seasonal_monke_winter_2026": {
+      "name": "Monke Winter",
+      "description": "Frosted bubbles with an icy glow. Only until January 5."
     }
   },
   "monkeMeme": {
@@ -1092,5 +1155,32 @@
       "NEEDS_WALLET": "Reconnect your wallet, then try again.",
       "NOT_RECOVERY_KEY": "Devices on this chat identity can only be removed with the wallet key that first set it up. Reconnect the wallet you first used OnlyMonkes with."
     }
+  },
+  "appUpdate": {
+    "title": "New OnlyMonkes on the dApp Store",
+    "body": "Chat is moving to OnlyMonkes' own server. Update to keep chatting with everyone.",
+    "bodyRequired": "This version can no longer reach the chat. Update from the dApp Store to keep chatting.",
+    "update": "Update",
+    "later": "Later"
+  },
+  "myDevices": {
+    "title": "Your devices",
+    "menuDesc": "Phones verified on this wallet. Remove one you no longer use.",
+    "intro": "Each phone that signs in with this wallet is verified on its own. Up to {{max}} phones per wallet.",
+    "count": "{{n}} of {{max}} phones",
+    "phone": "Phone",
+    "thisPhone": "this phone",
+    "verifiedOn": "Verified {{date}}",
+    "remove": "Remove",
+    "confirm": "Confirm",
+    "footnote": "A removed phone loses Avatar Rooms and invites until it signs in with your wallet again. Phones not used for 7 days drop off by themselves.",
+    "notVerified": "This phone isn't verified on this wallet yet.",
+    "verify": "Verify this phone",
+    "verifyFailed": "Couldn't verify this phone.",
+    "unsupported": "Only available in the Android app.",
+    "loadFailed": "Couldn't load your devices. Try again.",
+    "removeFailed": "Couldn't remove that phone. Try again.",
+    "retry": "Try again",
+    "close": "Close"
   }
 }

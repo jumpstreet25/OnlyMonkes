@@ -41,10 +41,11 @@ import { GlassAlertRoot } from '../src/lib/glassAlert';
 import { logAppOpen, logDailySession } from '../src/lib/analytics';
 import { loadBadgeData, setOnBadgeEarned, getBadgeBananaReward, type BadgeDef } from '../src/lib/badges';
 import { addBananas } from '../src/lib/bananaRewards';
-import { Alert, Platform } from 'react-native';
+import { Alert, AppState, Platform } from 'react-native';
 import { router } from 'expo-router';
 import { takeHeldLink } from '../src/lib/deepLinks';
 import { collectReferralBananas } from '../src/lib/referrals';
+import { prepareShareLink } from '../src/lib/shareLink';
 import i18n from '../src/lib/i18n';
 import { useFreeRasp } from 'freerasp-react-native';
 import { useFonts } from 'expo-font';
@@ -222,14 +223,20 @@ export default function RootLayout() {
 
   // Referral bananas owed to this wallet (as inviter, or for joining with an
   // invite) are paid once the user is in; src/lib/referrals.ts throttles it.
+  // First, once per wallet, fetch this holder's invite so shares carry it
+  // (src/lib/shareLink.ts; never prompts the wallet).
   const _verified = useAppStore(s => s.verified);
   useEffect(() => {
     if (!_verified || Platform.OS === 'web') return;
     if (_pathname !== '/chat' && _pathname !== '/genesis-chat') return;
+    const timer = setTimeout(() => {
+      if (AppState.currentState === 'active') void prepareShareLink();
+    }, 10_000);
     collectReferralBananas().then((got) => {
       if (got.referrals > 0) toast(i18n.t('invite.toastReferrer', { bananas: got.referrals * 250, count: got.referrals }));
       if (got.welcome) toast(i18n.t('invite.toastWelcome', { bananas: 100 }));
     }).catch(() => {});
+    return () => clearTimeout(timer);
   }, [_verified, _pathname]);
 
   // A deep link that arrived before login waits until the wallet + inbox are

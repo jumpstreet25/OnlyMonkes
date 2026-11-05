@@ -82,6 +82,7 @@ import { EdgePullDetector } from "@/components/drawer/EdgePullDetector";
 import { WorldLayer } from "@/components/worlds/WorldLayer";
 import { BananaMowerOverlay } from "@/components/worlds/BananaMowerOverlay";
 import { VideoRoomBanner } from "@/components/VideoRoomBanner";
+import { AppUpdateBanner } from "@/components/AppUpdateBanner";
 import { VideoCallPip } from "@/components/VideoCallPip";
 import { AvatarRoomPill } from "@/components/AvatarRoomPill";
 import { VideoReactionOverlay } from "@/components/VideoReactionOverlay";
@@ -1549,6 +1550,9 @@ export default function ChatScreen() {
             <Text style={{ color: '#fff', fontFamily: FONTS.mono, fontSize: 11 }}>{t("chatScreen.noInternetConnection")}</Text>
           </View>
         )}
+
+        {/* dApp Store update notice, top of chat in every state — off until config/app-update.json enables it */}
+        <AppUpdateBanner />
 
         {/* Onboarding checklist (first-time users) */}
         {isGroupMember && <OnboardingChecklist />}

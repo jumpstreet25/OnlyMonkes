@@ -17,6 +17,7 @@ import {
   Dimensions,
   Modal,
   StatusBar,
+  Platform,
 } from "react-native";
 import * as Haptics from "expo-haptics";
 import { toast } from "sonner-native";
@@ -33,12 +34,13 @@ import { sendShopPaymentMulti, type ShopCurrency } from "@/lib/solana";
 import { CurrencyPickerSheet } from "@/components/CurrencyPickerSheet";
 import { WorldMiniPreview, WorldLayer } from "@/components/worlds/WorldLayer";
 import {
-  getAvailableItems, loadShopState, saveShopState, addOwnedItem, equipItem, unequipCategory, unequipItem,
+  getAvailableItems, allKnownItems, getWorldKits, kitPrice, loadShopState, saveShopState, addOwnedItem, equipItem, unequipCategory, unequipItem,
   getTierInfo, getCategoryName, getEquippedStyles, getPurchaseDisclaimer, bindPfpItemToNft,
   getItemDisplayName, getItemDisplayDescription,
   type ShopItem, type ShopCategory, type ShopState,
 } from "@/lib/bananaShop";
 import { applyThemeFromShop } from "@/lib/shopTheme";
+import { refreshSeasonalItems } from "@/lib/shopSeasonal";
 import { GlassModal } from "@/components/GlassModal";
 import { openCrate, getCrateCost, getRarityColor, type LootResult } from "@/lib/lootCrate";
 import { triggerProfileRebroadcast } from "@/hooks/useXmtp";
@@ -502,21 +504,34 @@ export function BananaShopModal({ visible, onClose, onLeaderboardPress, onSuppor
   const worldId = useAppStore(s => s.shopStyles?.worldId) as string | undefined;
   const [shopState, setShopState] = useState<ShopState | null>(null);
   const [purchasing, setPurchasing] = useState<string | null>(null);
-  const [activeCategory, setActiveCategory] = useState<ShopCategory | "all">("all");
+  const [activeCategory, setActiveCategory] = useState<ShopCategory | "all" | "kits">("all");
   const [customColor, setCustomColor] = useState(shopState?.customTextColor ?? "#FFD700");
   const [spinningCrate, setSpinningCrate] = useState(false);
   const [crateResult, setCrateResult] = useState<LootResult | null>(null);
   const [previewItem, setPreviewItem] = useState<ShopItem | null>(null);
   const [purchaseItem, setPurchaseItem] = useState<ShopItem | null>(null);
+  // A World kit being bought: the pieces still unowned and the discounted price.
+  const [purchaseKit, setPurchaseKit] = useState<{ name: string; pieces: ShopItem[]; bananas: number; usd: number } | null>(null);
+  const [seasonVersion, setSeasonVersion] = useState(0);
 
   useEffect(() => {
-    if (visible) loadShopState().then(setShopState);
+    if (!visible) return;
+    loadShopState().then(setShopState);
+    refreshSeasonalItems().then(() => setSeasonVersion((v) => v + 1)).catch(() => {});
   }, [visible]);
 
-  const items = useMemo(() => getAvailableItems(), []);
+  // For sale now, plus anything owned that isn't (Banana Chest prizes, past seasons) so it can still be worn.
+  const items = useMemo(() => {
+    const forSale = getAvailableItems();
+    const ids = new Set(forSale.map((i) => i.id));
+    const ownedOther = allKnownItems().filter((i) => shopState?.owned.includes(i.id) && !ids.has(i.id));
+    return [...forSale, ...ownedOther];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seasonVersion, shopState?.owned.length]);
 
   const filteredItems = useMemo(() => {
     if (activeCategory === "all") return items;
+    if (activeCategory === "kits") return [];
     return items.filter(i => i.category === activeCategory);
   }, [items, activeCategory]);
 
@@ -572,6 +587,12 @@ export function BananaShopModal({ visible, onClose, onLeaderboardPress, onSuppor
       return;
     }
 
+    // The website has no phone wallet to pay with; owned items still equip there.
+    if (Platform.OS === "web") {
+      showGlassAlert(t("bananaShop.buyOnPhoneTitle"), t("bananaShop.buyOnPhoneBody"));
+      return;
+    }
+
     // Dev wallet bypasses both banana check and crypto payment — for testing.
     // Production users still hit the full balance check below.
     const myWalletForCheck = useAppStore.getState().wallet?.address;
@@ -599,8 +620,39 @@ export function BananaShopModal({ visible, onClose, onLeaderboardPress, onSuppor
     }
   }, [shopState, bananaBalance, t]);
 
-  const categories: Array<{ key: ShopCategory | "all"; label: string }> = [
+  // Kit card: wear the whole look if owned, otherwise buy what's missing at the kit price.
+  const handleKit = useCallback(async (kit: { world: ShopItem; pieces: ShopItem[] }) => {
+    if (!shopState) return;
+    const { toBuy, bananas, usd } = kitPrice(kit.pieces, shopState.owned);
+    if (toBuy.length === 0) {
+      let updated = shopState;
+      for (const p of kit.pieces) updated = await equipItem(p.id);
+      updated = await unequipCategory("theme");
+      setShopState(updated);
+      getEquippedStyles().then(s => {
+        if (s.pfpAuraEnabled) s.pfpAuraColor = (s.glowColor as string) ?? useAppStore.getState().nftDominantColor ?? undefined;
+        useAppStore.getState().setShopStyles(s);
+        applyThemeFromShop(s);
+        triggerProfileRebroadcast("").catch(() => {});
+      }).catch(() => {});
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      return;
+    }
+    if (Platform.OS === "web") {
+      showGlassAlert(t("bananaShop.buyOnPhoneTitle"), t("bananaShop.buyOnPhoneBody"));
+      return;
+    }
+    const isDev = useAppStore.getState().wallet?.address === DEV_ADMIN_WALLET;
+    if (!isDev && bananaBalance < bananas) {
+      showGlassAlert(t("bananaShop.notEnoughBananas"), t("bananaShop.notEnoughBananasBody", { cost: bananas, balance: bananaBalance }));
+      return;
+    }
+    setPurchaseKit({ name: t("bananaShop.kitName", { world: getItemDisplayName(kit.world, t) }), pieces: toBuy, bananas, usd });
+  }, [shopState, bananaBalance, t]);
+
+  const categories: Array<{ key: ShopCategory | "all" | "kits"; label: string }> = [
     { key: "all", label: t("bananaShop.catAll") },
+    { key: "kits", label: t("bananaShop.catKits") },
     { key: "bubble", label: t("bananaShop.catBubbles") },
     { key: "text", label: t("bananaShop.catTextShort") },
     { key: "pfp", label: "PFP" },
@@ -835,6 +887,43 @@ export function BananaShopModal({ visible, onClose, onLeaderboardPress, onSuppor
             />
           )}
 
+          {/* World kits */}
+          {activeCategory === "kits" && getWorldKits().map((kit) => {
+            const owned = shopState?.owned ?? [];
+            const { toBuy, bananas, usd } = kitPrice(kit.pieces, owned);
+            const accent = getWorldAccent(kit.world.id);
+            return (
+              <Pressable
+                key={kit.world.id}
+                style={[styles.crateCard, { borderColor: accent + "40" }]}
+                onPress={() => handleKit(kit)}
+                disabled={!!purchasing}
+              >
+                <LinearGradient
+                  colors={[accent + "1F", accent + "05"]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={[StyleSheet.absoluteFill, { borderRadius: 16 }]}
+                />
+                <View style={styles.crateInner}>
+                  <Text style={{ fontSize: 28 }}>{kit.world.preview}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.crateName, { color: accent }]}>{t("bananaShop.kitName", { world: getItemDisplayName(kit.world, t) })}</Text>
+                    <Text style={styles.crateDesc}>
+                      {kit.pieces.map((p) => (owned.includes(p.id) ? "✓ " : "") + getCategoryName(p.category, t)).join(" · ")}
+                    </Text>
+                  </View>
+                  <View style={styles.costPill}>
+                    <Text style={styles.costText}>
+                      {purchasing === kit.world.id ? "…" : toBuy.length === 0 ? t("bananaShop.kitWear") : `${bananas} 🍌 + $${usd}`}
+                    </Text>
+                  </View>
+                </View>
+              </Pressable>
+            );
+          })}
+          {activeCategory === "kits" && <Text style={styles.crateDesc}>{t("bananaShop.kitNote")}</Text>}
+
           {/* Item grid grouped by tier */}
           {([1, 2, 3, 4, 5] as number[]).map(tier => {
             const tierItems = groupedByTier[tier];
@@ -914,6 +1003,11 @@ export function BananaShopModal({ visible, onClose, onLeaderboardPress, onSuppor
                         />
 
                         {/* Seasonal badge */}
+                        {item.bananaCost === 0 && item.usdCost === 0 && !item.seasonal && (
+                          <View style={styles.seasonalBadge}>
+                            <Text style={styles.seasonalText}>{t("bananaShop.chestOnly")}</Text>
+                          </View>
+                        )}
                         {item.seasonal && (
                           <View style={styles.seasonalBadge}>
                             <Text style={styles.seasonalText}>{t("bananaShop.limited")}</Text>
@@ -984,6 +1078,62 @@ export function BananaShopModal({ visible, onClose, onLeaderboardPress, onSuppor
           // Defer handleAction by one frame so the preview's close animation
           // unmounts cleanly before the next modal opens.
           setTimeout(() => handleAction(item), 120);
+        }}
+      />
+
+      {/* World kit purchase: one payment, every missing piece owned and worn */}
+      <CurrencyPickerSheet
+        visible={!!purchaseKit}
+        usdCost={purchaseKit?.usd ?? 0}
+        itemName={purchaseKit?.name ?? ""}
+        onClose={() => setPurchaseKit(null)}
+        onChoose={async (currency: ShopCurrency) => {
+          const kit = purchaseKit;
+          if (!kit || !shopState) return;
+          setPurchaseKit(null);
+          const worldPiece = kit.pieces.find((p) => p.category === "world");
+          setPurchasing(worldPiece?.id ?? kit.pieces[0].kit ?? kit.pieces[0].id);
+          try {
+            const isDevWallet = useAppStore.getState().wallet?.address === DEV_ADMIN_WALLET;
+            if (!isDevWallet) {
+              const spent = await spendBananas(kit.bananas);
+              if (!spent) { showGlassAlert(t("bananaShop.error"), t("bananaShop.failedToDeductBananas")); return; }
+              useAppStore.getState().setBananaBalance(bananaBalance - kit.bananas);
+              try {
+                await sendShopPaymentMulti(kit.usd, currency);
+              } catch (payErr: any) {
+                await addBananas(kit.bananas);
+                useAppStore.getState().setBananaBalance(bananaBalance);
+                throw new Error(`Payment failed: ${payErr?.message ?? "wallet rejected"}`);
+              }
+            }
+            let updated = shopState;
+            for (const p of kit.pieces) await addOwnedItem(p.id);
+            const kitId = kit.pieces[0].kit ?? kit.pieces[0].id;
+            for (const p of getWorldKits().find((k) => k.world.id === kitId)?.pieces ?? kit.pieces) updated = await equipItem(p.id);
+            updated = await unequipCategory("theme");
+            setShopState(updated);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            getEquippedStyles().then(s => {
+              const ndc = useAppStore.getState().nftDominantColor;
+              if (s.pfpAuraEnabled && ndc) s.pfpAuraColor = ndc;
+              useAppStore.getState().setShopStyles(s);
+              applyThemeFromShop(s);
+              triggerProfileRebroadcast("").catch(() => {});
+            }).catch(() => {});
+            playSound("purchase");
+            showGlassAlert(t("bananaShop.purchased"), t("bananaShop.nowEquipped", { name: kit.name }));
+            const walletAddr = useAppStore.getState().wallet?.address;
+            if (isReceiptMintingAvailable() && walletAddr) {
+              (async () => {
+                for (const p of kit.pieces) await mintPurchaseReceipt(p, walletAddr).catch(() => null);
+              })();
+            }
+          } catch (err: any) {
+            showGlassAlert(t("bananaShop.purchaseFailed"), err?.message ?? t("bananaShop.pleaseTryAgain"));
+          } finally {
+            setPurchasing(null);
+          }
         }}
       />
 
