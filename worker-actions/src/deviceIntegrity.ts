@@ -286,12 +286,16 @@ function sigAlgLabel(cert: x509.X509Certificate, issuer: x509.X509Certificate): 
  */
 export async function verifyKeyAttestationChain(
   certChainBase64: string[],
-  devicePubKeyBase64: string,
+  /** The key the leaf must certify; null for a one-time check key (only its challenge matters). */
+  devicePubKeyBase64: string | null,
   // Test-only override — real request handling never passes this, always verifying against
   // the real pinned Google roots. Exists so a synthetic chain (built with a test root, since
   // no test can construct a chain that terminates at Google's actual private root key) can
   // exercise this function's full logic end to end.
   trustedRootPems: string[] = GOOGLE_ROOT_PEMS,
+  /** attestationChallenge the leaf must carry: the package name for the device key, the
+   *  request's nonce for a one-time check key. */
+  expectedChallenge: Uint8Array = EXPECTED_PACKAGE_BYTES,
 ): Promise<ChainVerifyResult> {
   if (!Array.isArray(certChainBase64) || certChainBase64.length === 0) {
     return { ok: false, securityLevel: "none", reason: "empty cert chain" };
@@ -309,7 +313,7 @@ export async function verifyKeyAttestationChain(
 
   // Leaf's public key must match the device pubkey the client is presenting, so a valid but
   // unrelated chain can't be substituted in for a different key.
-  try {
+  if (devicePubKeyBase64 !== null) try {
     const leafSpki = new Uint8Array(certs[0].publicKey.rawData);
     const presentedSpki = base64ToBytes(devicePubKeyBase64);
     if (leafSpki.length !== presentedSpki.length || !leafSpki.every((b, i) => b === presentedSpki[i])) {
@@ -386,10 +390,10 @@ export async function verifyKeyAttestationChain(
 
   const challengeBytes = new Uint8Array(keyDescription.attestationChallenge.buffer);
   const challengeOk =
-    challengeBytes.length === EXPECTED_PACKAGE_BYTES.length &&
-    challengeBytes.every((b, i) => b === EXPECTED_PACKAGE_BYTES[i]);
+    challengeBytes.length === expectedChallenge.length &&
+    challengeBytes.every((b, i) => b === expectedChallenge[i]);
   if (!challengeOk) {
-    return { ok: false, securityLevel: "none", reason: "attestation challenge does not match expected app package" };
+    return { ok: false, securityLevel: "none", reason: expectedChallenge === EXPECTED_PACKAGE_BYTES ? "attestation challenge does not match expected app package" : "check key was not made for this request" };
   }
 
   const revoked = await revokedSerials();
@@ -508,6 +512,9 @@ interface IssueBody {
   signInSignatureBase64?: string;
   /** No wallet proof: allowed when this device key was bound to the wallet before. */
   refresh?: boolean;
+  /** 3.1+: chain of a one-time key the app made for this request with the nonce as its
+   *  attestation challenge — a cert Google issued just now, and the phone's state right now. */
+  freshChainBase64?: string[];
   deviceLabel?: string;
   raspThreats?: string[];
 }
@@ -609,9 +616,29 @@ export async function handleDeviceIntegrityIssue(request: Request, env: Env): Pr
     if (chainResult.unchecked) return errorResponse(`Could not verify the hardware attestation right now: ${chainResult.reason}`, 503);
     return errorResponse(`Hardware attestation failed: ${chainResult.reason}`, 403);
   }
-  if (chainResult.staleCert) console.log(`[deviceIntegrity] accepted out-of-date cert: ${chainResult.staleCert}`);
-  const hw = chainResult.hardware;
-  console.log(`[deviceIntegrity] hardware boot=${hw?.bootState} locked=${hw?.deviceLocked} genuineApp=${hw?.genuineApp} packages=${hw?.packages.join(",")} proof=${proofKind}`);
+
+  // 3.1+: a one-time check key made for this nonce. Its cert is brand new, so it must be in
+  // date, and its boot / app facts describe the phone now (the device key's describe the day
+  // that key was made). With it, the device key's own out-of-date cert no longer matters.
+  const fresh = Array.isArray(body.freshChainBase64) && body.freshChainBase64.length > 0
+    ? await verifyKeyAttestationChain(body.freshChainBase64, null, GOOGLE_ROOT_PEMS, new TextEncoder().encode(nonce))
+    : null;
+  if (fresh && !fresh.ok) {
+    console.warn(`[deviceIntegrity] check key not verified: ${fresh.reason}`);
+    if (fresh.unchecked) return errorResponse(`Could not verify the hardware attestation right now: ${fresh.reason}`, 503);
+    return errorResponse(`Hardware attestation failed: ${fresh.reason}`, 403);
+  }
+  if (fresh?.staleCert) {
+    console.warn(`[deviceIntegrity] check key cert out of date: ${fresh.staleCert}`);
+    return errorResponse("Could not verify the hardware attestation right now: check key certificate out of date", 503);
+  }
+  if (!fresh && chainResult.staleCert) {
+    // Apps before 3.1 can't make a new key; #52 accepts their out-of-date certs until DI_ALLOW_STALE="0".
+    if (env.DI_ALLOW_STALE === "0") return errorResponse("Update OnlyMonkes to verify this phone", 403);
+    console.log(`[deviceIntegrity] accepted out-of-date cert: ${chainResult.staleCert}`);
+  }
+  const hw = (fresh ?? chainResult).hardware;
+  console.log(`[deviceIntegrity] hardware boot=${hw?.bootState} locked=${hw?.deviceLocked} genuineApp=${hw?.genuineApp} packages=${hw?.packages.join(",")} proof=${proofKind} fresh=${fresh ? "yes" : "no"}`);
   if (env.DI_HARDWARE_ENFORCE === "1" && !(hw && hardwareTrusted(hw))) {
     return errorResponse("This phone or app build could not be confirmed as unmodified — verification not issued", 403);
   }

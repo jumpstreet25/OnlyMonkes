@@ -167,6 +167,8 @@ export interface Env {
   DEVICE_INTEGRITY: KVNamespace;
   /** "1": no Device Integrity verdict for a phone failing verified boot / locked bootloader / genuine app. */
   DI_HARDWARE_ENFORCE?: string;
+  /** "0" refuses out-of-date attestation certs from apps that send no one-time check key (pre-3.1). */
+  DI_ALLOW_STALE?: string;
   /** Referral ledger (referrals.ts). */
   REFERRALS?: KVNamespace;
   // MonkeGlobe/MonkeEvents public web repo backend — see community.ts.

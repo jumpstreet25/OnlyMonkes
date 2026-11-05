@@ -2,7 +2,9 @@ jest.mock("@/lib/deviceAttest", () => ({
   getDevicePublicKeyBase64: async () => "REVWS0VZ",
   getDeviceAttestationCertChain: async () => ["Q0VSVA=="],
   signWithDeviceKey: async () => "REVWU0lH",
+  getFreshAttestationChain: async (challenge: string) => (mockFreshSupported ? [`FRESH:${challenge}`] : null),
 }));
+let mockFreshSupported = false;
 jest.mock("@/lib/security", () => ({ getActiveThreats: () => [] }));
 
 import { issueDeviceIntegrityAttestation } from "@/lib/deviceIntegrity";
@@ -48,6 +50,18 @@ describe("Device Integrity wallet proof", () => {
     await issueDeviceIntegrityAttestation("Wallet111", signMessage);
     expect(signMessage).toHaveBeenCalledTimes(1);
     expect(calls[1].body!.walletSigBase64).toBe("AQID");
+  });
+
+  it("sends a one-time key made for this request's nonce when the build supports it (3.1)", async () => {
+    mockFreshSupported = true;
+    await issueDeviceIntegrityAttestation("Wallet111", null);
+    mockFreshSupported = false;
+    expect(calls[1].body!.freshChainBase64).toEqual(["FRESH:server-nonce"]);
+  });
+
+  it("sends no one-time key on builds without it (3.4)", async () => {
+    await issueDeviceIntegrityAttestation("Wallet111", null);
+    expect(calls[1].body!.freshChainBase64).toBeUndefined();
   });
 
   it("ignores a sign-in from another wallet", async () => {

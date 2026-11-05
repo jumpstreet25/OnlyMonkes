@@ -9,6 +9,7 @@
  * reasoning.
  */
 
+import { Buffer } from "buffer";
 import { NativeModules, Platform } from "react-native";
 
 interface DeviceAttestNativeModule {
@@ -16,6 +17,8 @@ interface DeviceAttestNativeModule {
   getAttestationCertChain(): Promise<string[]>;
   getKeyInfo(): Promise<{ insideSecureHardware: boolean; strongBoxBacked: boolean }>;
   sign(payloadBase64: string): Promise<string>;
+  /** 3.1+ native only. */
+  attestFresh?(challengeBase64: string): Promise<string[]>;
 }
 
 const DeviceAttest: DeviceAttestNativeModule | undefined =
@@ -34,6 +37,21 @@ export async function getDevicePublicKeyBase64(): Promise<string> {
 export async function getDeviceAttestationCertChain(): Promise<string[]> {
   if (!DeviceAttest) return [];
   return DeviceAttest.getAttestationCertChain();
+}
+
+/**
+ * 3.1+: makes a one-time key with `challenge` baked into its attestation, returns its cert chain
+ * and deletes the key. The device key's own cert is from the day that key was made, and Google's
+ * intermediates now last about two weeks; this one is always new. null on builds without it (3.4).
+ */
+export async function getFreshAttestationChain(challenge: string): Promise<string[] | null> {
+  if (typeof DeviceAttest?.attestFresh !== "function") return null;
+  try {
+    const chain = await DeviceAttest.attestFresh(Buffer.from(challenge, "utf8").toString("base64"));
+    return chain.length > 0 ? chain : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Informational only — never a gate. Lets consent copy say "StrongBox-backed" honestly
