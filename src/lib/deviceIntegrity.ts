@@ -12,7 +12,7 @@
 
 import { thisDeviceLabel } from "@/lib/myDevices";
 import { Buffer } from "buffer";
-import { getDevicePublicKeyBase64, getDeviceAttestationCertChain, signWithDeviceKey } from "./deviceAttest";
+import { getDevicePublicKeyBase64, getDeviceAttestationCertChain, getFreshAttestationChain, signWithDeviceKey } from "./deviceAttest";
 import { takeSignIn } from "@/lib/signInProof";
 import { getActiveThreats } from "./security";
 
@@ -70,6 +70,7 @@ export async function issueDeviceIntegrityAttestation(
         : { refresh: true };
 
     const raspThreats = getActiveThreats();
+    const freshChainBase64 = await getFreshAttestationChain(nonce);
 
     const issueRes = await fetch(`${WORKER_BASE}/api/device-integrity/issue`, {
       method: "POST",
@@ -83,6 +84,7 @@ export async function issueDeviceIntegrityAttestation(
         ...walletProof,
         raspThreats,
         deviceLabel: thisDeviceLabel(),
+        ...(freshChainBase64 ? { freshChainBase64 } : {}),
       }),
     });
 
