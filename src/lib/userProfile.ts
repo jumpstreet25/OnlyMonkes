@@ -246,10 +246,12 @@ export function applyLocationSync(
   let n = 0;
   for (const [inboxId, data] of Object.entries(locs)) {
     if (!inboxId || !data?.loc?.trim()) continue;
+    // Name and picture only fill gaps: an inbox's own PROFILE_UPDATE always wins.
+    const existing = getCachedProfile(inboxId);
     cacheProfile(inboxId, {
-      username: data.u || undefined,
+      username: existing?.username ? undefined : data.u || undefined,
       location: data.loc.trim(),
-      nftImage: data.ni || undefined,
+      nftImage: existing?.nftImage ? undefined : data.ni || undefined,
     });
     trackUser(inboxId, data.u || undefined);
     n++;

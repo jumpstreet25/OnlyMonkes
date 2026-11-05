@@ -69,11 +69,11 @@ import { getAttendeeCount } from "@/lib/eventRsvp";
 import { CHAT_THEMES, saveThemeId } from "@/lib/theme";
 import { WebViewModal } from "@/components/WebViewModal";
 import { pruneStaleDuplicateMembers, amISuperAdmin } from "@/hooks/useXmtp";
+import { isBotSender } from "@/lib/trustedSenders";
 
 const DRAWER_WIDTH_RATIO = 0.82;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const URL_REGEX = /https?:\/\/[^\s"'<>)]+/g;
-const BOT_USERNAME = "AI Agent #9385";
 
 type ActiveView = "list" | "alerts" | "events" | "images" | "links" | "settings" | "tools" | "leaderboard";
 
@@ -222,7 +222,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
     ), [messages]);
 
   const agentAlerts = useMemo(() =>
-    messages.filter((m) => m.senderUsername === BOT_USERNAME),
+    messages.filter((m) => isBotSender(m.senderAddress)),
     [messages]);
 
   // Lu.ma-sourced Solana ecosystem events. Fetched lazily when the user

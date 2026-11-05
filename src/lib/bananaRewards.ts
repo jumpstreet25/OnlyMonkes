@@ -157,8 +157,12 @@ export async function spendBananas(amount: number): Promise<boolean> {
 }
 
 /** Merge balance from another device (same wallet). Takes MAX to prevent loss. */
+// Highest balance a cross-device merge accepts; anything above is a forged number.
+const MAX_MERGED_BALANCE = 10_000_000;
+
 export async function mergeBananaBalance(remoteBalance: number): Promise<number> {
   const state = await loadBananaState();
+  if (!Number.isFinite(remoteBalance) || remoteBalance < 0 || remoteBalance > MAX_MERGED_BALANCE) return state.balance;
   if (remoteBalance > state.balance) {
     const delta = remoteBalance - state.balance;
     state.balance = remoteBalance;

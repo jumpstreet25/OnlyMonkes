@@ -611,7 +611,12 @@
     "editedLabel": "(editado)",
     "translatedFromSpanish": "🌐 Traducido del español — toca para ver el original",
     "translatedFromEnglish": "🌐 Traducido del inglés — toca para ver el original",
-    "showTranslation": "🌐 Mostrar traducción"
+    "showTranslation": "🌐 Mostrar traducción",
+    "untrustedLink": "Enlace oculto — no es de OnlyMonkes",
+    "openOutsideTitle": "¿Salir de OnlyMonkes?",
+    "openOutsideBody": "Esto abre {{host}}. Continúa solo si confías en quien lo envió.",
+    "openOutsideConfirm": "Abrir",
+    "cancel": "Cancelar"
   },
   "glassAlert": {
     "ok": "OK"

@@ -458,6 +458,14 @@ export function revertPendingSwap(listingId: string): void {
   _persist();
 }
 
+/** NFT_DELIST from the group: only the listing's own seller may take it down. */
+export function delistFrom(listingId: string, senderInboxId: string): boolean {
+  const listing = _listings.find(l => l.id === listingId);
+  if (!listing || listing.sellerInboxId !== senderInboxId) return false;
+  delistNft(listingId);
+  return true;
+}
+
 export function delistNft(listingId: string): void {
   const listing = _listings.find(l => l.id === listingId);
   if (listing) listing.status = 'delisted';
