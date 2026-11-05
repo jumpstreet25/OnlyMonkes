@@ -44,6 +44,9 @@ class DeviceAttestModule(private val reactContext: ReactApplicationContext) :
 
     companion object {
         private const val ALIAS = "onlymonkes_sentiment_device_key_v1"
+        // One-time key for attestFresh(); made and deleted inside one call.
+        private const val CHECK_ALIAS = "onlymonkes_check_key"
+        private const val MAX_CHALLENGE_BYTES = 128
         private const val KEYSTORE_PROVIDER = "AndroidKeyStore"
     }
 
@@ -153,6 +156,48 @@ class DeviceAttestModule(private val reactContext: ReactApplicationContext) :
             promise.resolve(result)
         } catch (e: Exception) {
             promise.reject("DEVICE_ATTEST_INFO_ERROR", e)
+        }
+    }
+
+    /**
+     * 3.1: a throwaway key whose attestation carries `challengeBase64` (the server's nonce for
+     * this request), its cert chain, then the key is deleted. Google's attestation intermediates
+     * last about two weeks and the device key above is made once, so its own chain goes out of
+     * date; this chain is always new and shows the phone's boot/app state right now. The device
+     * key is never replaced — LiveKit, referrals and the sentiment oracle identify the phone by it.
+     * TEE-backed only: StrongBox key generation is slow, and the security level comes from the
+     * device key's chain.
+     */
+    @ReactMethod
+    fun attestFresh(challengeBase64: String, promise: Promise) {
+        try {
+            val challenge = Base64.decode(challengeBase64, Base64.NO_WRAP)
+            if (challenge.isEmpty() || challenge.size > MAX_CHALLENGE_BYTES) {
+                promise.reject("DEVICE_ATTEST_FRESH_ERROR", "challenge must be 1-$MAX_CHALLENGE_BYTES bytes")
+                return
+            }
+            synchronized(this) {
+                try {
+                    val kpg = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_EC, KEYSTORE_PROVIDER)
+                    kpg.initialize(
+                        KeyGenParameterSpec.Builder(CHECK_ALIAS, KeyProperties.PURPOSE_SIGN)
+                            .setDigests(KeyProperties.DIGEST_SHA256)
+                            .setAttestationChallenge(challenge)
+                            .build()
+                    )
+                    kpg.generateKeyPair()
+                    val chain = keyStore().getCertificateChain(CHECK_ALIAS) ?: arrayOf()
+                    val encoded = Arguments.createArray()
+                    for (c in chain) {
+                        encoded.pushString(Base64.encodeToString(c.encoded, Base64.NO_WRAP))
+                    }
+                    promise.resolve(encoded)
+                } finally {
+                    try { keyStore().deleteEntry(CHECK_ALIAS) } catch (e: Exception) { }
+                }
+            }
+        } catch (e: Exception) {
+            promise.reject("DEVICE_ATTEST_FRESH_ERROR", e)
         }
     }
 

@@ -33,5 +33,23 @@ allprojects {
 // as a floor — this must not silently drift on an autolinking bump.
 rootProject.ext.ndkVersion = "27.1.12297006"
 
+// 3.1 (AGP 9 + JDK 21): libraries that set no Java version (e.g. react-native-image-colors on
+// AGP 8+) compile Java for 17 but Kotlin for the JDK's 21, and Kotlin's target check fails the
+// build. Match each library's Kotlin target to its own Java target — per project, never one
+// forced version, so libraries pinned to 11 stay on 11.
+subprojects { p ->
+  def matchKotlinToJava = {
+    def android = p.extensions.findByName("android")
+    if (android == null || !p.plugins.hasPlugin("org.jetbrains.kotlin.android")) return
+    // Lazy: targetCompatibility isn't final until the Android plugin finishes configuring.
+    p.tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+      compilerOptions.jvmTarget.set(p.provider {
+        org.jetbrains.kotlin.gradle.dsl.JvmTarget.fromTarget(android.compileOptions.targetCompatibility.toString())
+      })
+    }
+  }
+  if (p.state.executed) matchKotlinToJava() else p.afterEvaluate { matchKotlinToJava() }
+}
+
 apply plugin: "expo-root-project"
 apply plugin: "com.facebook.react.rootproject"
