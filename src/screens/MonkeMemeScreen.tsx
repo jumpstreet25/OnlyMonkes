@@ -3,7 +3,8 @@
  *
  * Holder-gated like the chats (verified Saga Monke, no confirmed
  * hardware-integrity failure). Flow: pick a monke → trait board (prefilled
- * from its on-chain traits, editable) → short scene (≤140 chars) →
+ * from its on-chain traits, editable) → short scene (≤140 chars) → the monke
+ * rendered in Monke3D (Monke3DSnap, image 1 every time) →
  * FLUX.2 [klein] on a Hugging Face ZeroGPU Space, called from this phone so
  * the user's own free GPU runs pay for it, with our Workers AI route as the
  * free, capped fallback (lib/monkeMeme/generate.ts) → caption + watermark
@@ -23,6 +24,7 @@ import {
   ScrollView,
   Image,
   ActivityIndicator,
+  Platform,
   useWindowDimensions,
 } from "react-native";
 import { router } from "expo-router";
@@ -32,6 +34,7 @@ import { useAppStore } from "@/store/appStore";
 import { WorldScreenShell, useWorldGlassCardStyle } from "@/components/worlds/WorldScreenShell";
 import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
 import { shareImageToX } from "@/lib/shareToX";
+import { Monke3DSnap } from "@/components/Monke3DSnap";
 import { addShareLink } from "@/lib/shareLink";
 import type { OwnedNFT } from "@/types";
 import {
@@ -128,14 +131,15 @@ export default function MonkeMemeScreen() {
   const [resultUrl, setResultUrl] = useState<string | null>(null);
   const [resultLoaded, setResultLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The monke rendered in Monke3D (data: PNG). Phone: drawn off-screen and
+  // captured to a 512px file (pfpReady once that image loaded); web: uploaded as is.
+  const [snap, setSnap] = useState<{ n: number; png: string } | null>(null);
+  const [snapFailed, setSnapFailed] = useState(false);
   const [pfpReady, setPfpReady] = useState(false);
-  const [styleReady, setStyleReady] = useState(false);
   const [sharing, setSharing] = useState(false);
 
   const pfpRef = useRef<View>(null);
-  const styleRef = useRef<View>(null);
   const memeRef = useRef<View>(null);
-  const loadedImageRef = useRef<string | null>(null);
 
   const allowed = verified && integrity !== "hardware_failed";
   const memeSize = Math.min(width - 32, 480);
@@ -154,12 +158,6 @@ export default function MonkeMemeScreen() {
   useEffect(() => {
     if (!selected) return;
     let cancelled = false;
-    // Only a different image remounts the capture view (keyed by image URL);
-    // a refreshed object for the same monke keeps the already-loaded image.
-    if (loadedImageRef.current !== selected.image) {
-      loadedImageRef.current = selected.image;
-      setPfpReady(false);
-    }
     const apply = (list: OwnedNFT["traits"]) => {
       if (cancelled) return;
       const sel = selectionFromTraits(list);
@@ -182,6 +180,9 @@ export default function MonkeMemeScreen() {
       cancelled = true;
     };
   }, [selected]);
+
+  // A new monke gets a fresh 3D render attempt.
+  useEffect(() => setSnapFailed(false), [selected?.number]);
 
   useEffect(() => {
     if (!busy) return;
@@ -212,27 +213,19 @@ export default function MonkeMemeScreen() {
     if (!s.ok) return setError(t(`monkeMeme.err.${s.reason}`));
     const c = checkCaption(caption);
     if (!c.ok) return setError(t("monkeMeme.err.blocked"));
-    if (!pfpReady) return setError(t("monkeMeme.err.pfpLoading"));
+    if (selected.number === null) return setError(t("monkeMeme.err.no3d"));
+    if (snapFailed) return setError(t("monkeMeme.err.snapFailed"));
+    if (!snap || snap.n !== selected.number || (Platform.OS !== "web" && !pfpReady)) return setError(t("monkeMeme.err.pfpLoading"));
 
     setBusy(true);
     setResultUrl(null);
     setResultLoaded(false);
     try {
-      const images: SpaceImage[] = [{ uri: await capture(pfpRef, CAPTURE_SIZE), name: "monke.png" }];
-      // The style reference is a plain trait-less monke. With trait words in
-      // the prompt it only steers the drawing style, but for art-only monkes
-      // (Wave 2 1/1s, monkes picked by number) the model copies its character
-      // instead of image 1 — tested on #8930 — so those get the style in words.
-      const description = selected.number !== null ? wave2Description(selected.number) : null;
-      const artOnly = !!description || Object.keys(traits).length === 0;
-      if (styleReady && !artOnly) {
-        try {
-          images.push({ uri: await capture(styleRef, CAPTURE_SIZE), name: "style.png" });
-        } catch {
-          // style reference is a nice-to-have; the prompt carries the style in words too
-        }
-      }
-      const prompt = buildMemePrompt({ traits, scene: s.scene, hasStyleRef: images.length > 1, description });
+      // Image 1 is always the monke in Monke3D; no style reference — the 3D
+      // render is the style (a 2D reference pulled results back to flat art).
+      const source = Platform.OS === "web" ? snap.png : await capture(pfpRef, CAPTURE_SIZE);
+      const images: SpaceImage[] = [{ uri: source, name: "monke3d.png" }];
+      const prompt = buildMemePrompt({ traits, scene: s.scene, description: wave2Description(selected.number) });
       const { uri } = await generateMeme(cfg, { prompt, images, wallet: walletAddress });
       setResultUrl(uri);
       setUsed(await recordGeneration());
@@ -242,7 +235,7 @@ export default function MonkeMemeScreen() {
     } finally {
       setBusy(false);
     }
-  }, [cfg, selected, busy, left, scene, caption, pfpReady, styleReady, traits, capture, walletAddress, t]);
+  }, [cfg, selected, busy, left, scene, caption, snap, snapFailed, pfpReady, traits, capture, walletAddress, t]);
 
   const shareText = useMemo(() => {
     const line = caption.trim() || scene.trim();
@@ -251,6 +244,12 @@ export default function MonkeMemeScreen() {
 
   const onShareX = useCallback(async () => {
     if (!resultLoaded || sharing) return;
+    if (Platform.OS === "web") {
+      // view-shot can't capture on the web: open X with the text, the image opens beside it to save/attach.
+      window.open(resultUrl!, "_blank", "noopener");
+      window.open(`https://x.com/intent/post?text=${encodeURIComponent(shareText)}`, "_blank", "noopener");
+      return;
+    }
     setSharing(true);
     try {
       await shareImageToX(await capture(memeRef, 1080), shareText);
@@ -259,10 +258,14 @@ export default function MonkeMemeScreen() {
     } finally {
       setSharing(false);
     }
-  }, [resultLoaded, sharing, capture, shareText, t]);
+  }, [resultLoaded, resultUrl, sharing, capture, shareText, t]);
 
   const onShareMore = useCallback(async () => {
     if (!resultLoaded || sharing) return;
+    if (Platform.OS === "web") {
+      window.open(resultUrl!, "_blank", "noopener");
+      return;
+    }
     setSharing(true);
     try {
       const uri = await capture(memeRef, 1080);
@@ -273,7 +276,7 @@ export default function MonkeMemeScreen() {
     } finally {
       setSharing(false);
     }
-  }, [resultLoaded, sharing, capture, shareText, t]);
+  }, [resultLoaded, resultUrl, sharing, capture, shareText, t]);
 
   if (!allowed || (cfg && !monkeMemeVisible(cfg, isAdmin, walletAddress))) {
     const disabled = allowed && cfg && !monkeMemeVisible(cfg, isAdmin, walletAddress);
@@ -334,7 +337,7 @@ export default function MonkeMemeScreen() {
         </View>
         {selected ? (
           <View style={styles.activeRow}>
-            <Image source={{ uri: selected.image }} style={styles.activeImg} />
+            <Image source={{ uri: snap && snap.n === selected.number ? snap.png : selected.image }} style={styles.activeImg} />
             <Text style={styles.activeName}>
               {selected.number ? `MONKE #${selected.number}` : selected.nft?.name ?? ""}
               {selected.number !== null && isWave2(selected.number) ? `  ·  ${t("monkeMeme.wave2")}` : ""}
@@ -463,21 +466,26 @@ export default function MonkeMemeScreen() {
         <Text style={styles.footnote}>{t("monkeMeme.footnote")}</Text>
       </ScrollView>
 
-      {/* Off-screen 512px sources for the generator: the PFP and our house
-          style reference, captured to local PNGs right before upload. */}
-      {selected?.image ? (
-        <View key={selected.image} ref={pfpRef} collapsable={false} style={styles.offscreen}>
+      {/* The monke in Monke3D, rendered once per monke; on the phone it's drawn
+          off-screen at 512px and captured to a file right before upload. */}
+      {selected?.number != null && !(snap && snap.n === selected.number) && !snapFailed ? (
+        <Monke3DSnap
+          number={selected.number}
+          onSnap={(png) => { setPfpReady(false); setSnap({ n: selected.number!, png }); }}
+          onFail={(reason) => {
+            if (__DEV__) console.warn("[MonkeMeme] 3D snapshot failed:", reason);
+            setSnapFailed(true);
+          }}
+        />
+      ) : null}
+      {Platform.OS !== "web" && snap && snap.n === selected?.number ? (
+        <View key={snap.n} ref={pfpRef} collapsable={false} style={styles.offscreen}>
           <Image
-            source={{ uri: selected.image }}
+            source={{ uri: snap.png }}
             style={styles.offscreenImg}
             onLoad={() => setPfpReady(true)}
             onError={() => setError(t("monkeMeme.err.pfpFailed"))}
           />
-        </View>
-      ) : null}
-      {cfg?.styleRefUrl ? (
-        <View ref={styleRef} collapsable={false} style={[styles.offscreen, { top: CAPTURE_SIZE + 10 }]}>
-          <Image source={{ uri: cfg.styleRefUrl }} style={styles.offscreenImg} onLoad={() => setStyleReady(true)} />
         </View>
       ) : null}
     </WorldScreenShell>
