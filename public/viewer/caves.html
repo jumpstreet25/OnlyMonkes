@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+<title>Rug Caves</title>
+<!--
+  Rug Caves (prototype): an original retro first-person shooter for Saga Monke
+  holders. Our own raycaster (caves.js) draws a 320×200 picture that is scaled
+  up with crisp pixels. ?n=<monke number> puts that monke's PFP in the status
+  bar. The app loads it in a WebView (phone) or an iframe (web); a cleared level
+  posts {type:"caves", event:"clear", …} to the host for rewards later.
+-->
+<style>
+  :root { --bg: #07070b; --text: #EDEDF3; --muted: #9a9ab0; --accent: #E91671; --banana: #FFD23F; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 13px/1.3 ui-monospace, Menlo, Consolas, monospace; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; }
+  #wrap { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  #view { image-rendering: pixelated; image-rendering: crisp-edges; display: block; background: #000; }
+  #hud { display: flex; align-items: center; gap: 14px; padding: 6px 10px; background: #15121c; border-top: 2px solid #2a2436; box-sizing: border-box; }
+  #face { width: 48px; height: 48px; image-rendering: pixelated; background: #2a2436; border: 2px solid #3a3150; }
+  .stat { display: grid; justify-items: center; min-width: 52px; }
+  .stat b { font-size: 20px; letter-spacing: 1px; }
+  .stat span { font-size: 10px; color: var(--muted); text-transform: uppercase; }
+  #hp b { color: #ff5d6c; } #ammo b { color: var(--banana); } #kills b { color: #7dffa0; }
+  #msg { position: fixed; left: 50%; top: 32%; transform: translate(-50%, -50%); text-align: center; pointer-events: none; text-shadow: 0 2px 0 #000; }
+  #msg h1 { margin: 0 0 6px; font-size: 28px; color: var(--banana); letter-spacing: 2px; }
+  #msg p { margin: 0; color: var(--text); }
+  #pad, #turn, #fire { position: fixed; touch-action: none; }
+  #pad { left: max(18px, env(safe-area-inset-left)); bottom: max(18px, env(safe-area-inset-bottom)); width: 132px; height: 132px; border-radius: 50%; background: rgba(255,255,255,0.06); border: 2px solid rgba(255,255,255,0.12); }
+  #knob { position: absolute; left: 41px; top: 41px; width: 50px; height: 50px; border-radius: 50%; background: rgba(255,255,255,0.22); }
+  #turn { right: 0; top: 0; width: 50%; height: 100%; }
+  #fire { right: max(22px, env(safe-area-inset-right)); bottom: max(34px, env(safe-area-inset-bottom)); width: 86px; height: 86px; border-radius: 50%; background: rgba(233,22,113,0.55); border: 2px solid rgba(255,255,255,0.25); color: #fff; font-weight: 700; display: grid; place-items: center; }
+  .desktop #pad, .desktop #fire, .desktop #turn { display: none; }
+  #help { position: fixed; top: 8px; left: 50%; transform: translateX(-50%); color: var(--muted); font-size: 11px; pointer-events: none; white-space: nowrap; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="view" width="320" height="200"></canvas>
+  <div id="hud">
+    <canvas id="face" width="16" height="16"></canvas>
+    <div class="stat" id="hp"><b>100</b><span>health</span></div>
+    <div class="stat" id="ammo"><b>20</b><span>bananas</span></div>
+    <div class="stat" id="kills"><b>0</b><span>jeets</span></div>
+    <div class="stat" id="clock"><b>0:00</b><span>time</span></div>
+  </div>
+</div>
+<div id="msg"></div>
+<div id="help"></div>
+<div id="turn"></div>
+<div id="pad"><div id="knob"></div></div>
+<div id="fire">FIRE</div>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.min.js" } }
+</script>
+<script type="module" src="/viewer/caves.js"></script>
+</body>
+</html>
