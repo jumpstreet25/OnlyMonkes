@@ -1001,7 +1001,7 @@
     "shareX": "Compartir en X",
     "shareMore": "Más…",
     "shareText": "Hice mi MonkeMeme en @xOnlyMonkes 🐒 #SagaMonkes #OnlyMonkes",
-    "footnote": "Dibujado por FLUX.2 [klein] en GPU gratuitas — Hugging Face primero, Cloudflare de respaldo.",
+    "footnote": "Tu monke en Monke3D, dibujado en la escena por FLUX.2 [klein] en GPUs gratis — primero Hugging Face, Cloudflare de respaldo.",
     "err": {
       "empty": "Primero cuéntanos qué hace tu monke.",
       "too_long": "Máximo 140 caracteres.",
@@ -1012,7 +1012,9 @@
       "failed": "No se pudo dibujar. Intenta de nuevo.",
       "captureFailed": "No se pudo guardar la imagen del meme. Intenta de nuevo.",
       "badNumber": "Ese no es un número de Saga Monke (1–10014, sin los quemados).",
-      "pfpFailed": "No se pudo cargar el arte de ese monke. Intenta de nuevo."
+      "pfpFailed": "No se pudo cargar el arte de ese monke. Intenta de nuevo.",
+      "no3d": "Este monke aún no se puede mostrar en 3D. Elígelo por número arriba.",
+      "snapFailed": "No se pudo crear tu monke 3D. Revisa tu conexión y vuelve a abrir MonkeMeme."
     },
     "numberPlaceholder": "Cualquier Monke # (ej. 8930)",
     "loadNumber": "Cargar",
