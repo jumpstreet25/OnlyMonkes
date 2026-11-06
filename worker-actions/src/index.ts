@@ -1957,7 +1957,7 @@ async function fetchMonkeHolderCount(env: Env): Promise<number> {
 
 // Bot's own sales-book, exposed for exactly this purpose (see sagaMonkesSales.ts +
 // xmtpOnlyMonkes.ts's /api/sales-stats), reached through the bot tunnel (BOT_PROFILE_URL).
-async function fetchSalesStatsFromBot(env: Env): Promise<{ floorSol: number; volume24hSol: number; recentSales: StatsSnapshot["recentSales"] } | null> {
+async function fetchSalesStatsFromBot(env: Env): Promise<{ floorSol: number | null; volume24hSol: number; recentSales: StatsSnapshot["recentSales"] } | null> {
   try {
     const base = (env.BOT_PROFILE_URL ?? "").replace(/\/$/, "");
     if (!base) return null;
@@ -1968,7 +1968,8 @@ async function fetchSalesStatsFromBot(env: Env): Promise<{ floorSol: number; vol
     const recentSales: StatsSnapshot["recentSales"] = Array.isArray(d.recentSales)
       ? d.recentSales.map((s: any) => ({ signature: s.signature, priceSol: s.priceSol, ts: s.ts }))
       : [];
-    return { floorSol: d.floorSol ?? 0, volume24hSol: d.volume24hSol, recentSales };
+    // No sales in 24h → the bot has no floor; keep null so CoinGecko fills it (was 0 on the site).
+    return { floorSol: typeof d.floorSol === "number" && d.floorSol > 0 ? d.floorSol : null, volume24hSol: d.volume24hSol, recentSales };
   } catch {
     return null;
   }
@@ -1990,8 +1991,9 @@ async function fetchFloorAndMarket(env: Env): Promise<{ floorSol: number | null;
     volume24hSol = fromBot.volume24hSol;
     // floorChg24h isn't computable from our own sales book (would need a historical floor
     // snapshot we don't keep) — left null when the bot answers. CoinGecko's own copy is only
-    // still fetched below when the bot is unreachable.
-  } else {
+    // still fetched below when the bot is unreachable or has no sale-based floor.
+  }
+  if (floorSol == null) {
     try {
       const res = await fetchWithTimeout("https://api.coingecko.com/api/v3/nfts/saga-monkes", {
         headers: { "User-Agent": "OnlyMonkes-Web/1.0" },
@@ -2000,7 +2002,7 @@ async function fetchFloorAndMarket(env: Env): Promise<{ floorSol: number | null;
         const d = await res.json() as any;
         floorSol = d?.floor_price?.native_currency ?? null;
         floorChg24h = d?.floor_price_24h_percentage_change?.native_currency ?? null;
-        volume24hSol = d?.volume_24h?.native_currency ?? null;
+        if (!fromBot) volume24hSol = d?.volume_24h?.native_currency ?? null;
       }
     } catch { /* best-effort, page still works without market data */ }
   }
