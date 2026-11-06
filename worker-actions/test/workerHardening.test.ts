@@ -179,4 +179,21 @@ describe("web RPC proxy takes the sign-in token (audit H2)", () => {
     expect((await call({ Origin: "https://evil.example" })).status).toBe(403);
     expect((await call({}, "getProgramAccounts")).status).toBe(400);
   });
+
+  it("alternates between two Helius accounts and retries a refused call on the other", async () => {
+    const used: string[] = [];
+    global.fetch = jest.fn(async (url: string) => {
+      const key = new URL(url).searchParams.get("api-key") ?? "";
+      used.push(key);
+      return new Response("{}", { status: used.length === 3 ? 429 : 200 });
+    }) as unknown as typeof fetch;
+    const e = rpcEnv({ HELIUS_NFT_API_KEY: "one", HELIUS_API_KEY_2: "two" });
+    const go = () => handleWebRpc(new Request("https://onlymonkes.app/api/rpc", {
+      method: "POST", body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getSlot" }),
+    }), e);
+    for (let i = 0; i < 3; i++) expect((await go()).status).toBe(200);
+    expect(new Set(used.slice(0, 2))).toEqual(new Set(["one", "two"]));
+    expect(used.length).toBe(4);
+    expect(used[3]).not.toBe(used[2]);
+  });
 });

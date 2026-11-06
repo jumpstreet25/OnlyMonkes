@@ -97,6 +97,7 @@ import { handleGetLumaEvents } from "./lumaEvents";
 import { handlePublishAppConfig } from "./adminConfig";
 import { handleBotCommand, handleInboxReset } from "./botCommand";
 import { handleWebRpc } from "./webRpc";
+import { heliusKey } from "./heliusKeys";
 import { publicRateLimited } from "./publicLimits";
 import { handleWebAuth, handleWebHistory, handleWebProfile } from "./webAuth";
 import { handleWebMedia, isWebMediaPath } from "./webMedia";
@@ -130,6 +131,8 @@ export interface KVNamespace {
 export interface Env {
   HELIUS_API_KEY: string;
   HELIUS_NFT_API_KEY?: string;
+  /** Second Helius account's key (heliusKeys.ts). */
+  HELIUS_API_KEY_2?: string;
   JUP_API_KEY: string;
   BOT_HTTP_SECRET: string;
   // Bot Express on the VPS (`AGENT_HTTP_PORT`, default 3001, BIND_HOST 0.0.0.0).
@@ -277,12 +280,6 @@ function jsonResponse(data: unknown, status = 200, actionHeaders = false): Respo
 
 function errorResponse(message: string, status = 400): Response {
   return jsonResponse({ error: message }, status);
-}
-
-// HELIUS_NFT_API_KEY first: same Helius account, and unlike the old
-// HELIUS_API_KEY it was never shipped in an app build (audit H6).
-function heliusKey(env: Env): string {
-  return env.HELIUS_NFT_API_KEY || env.HELIUS_API_KEY;
 }
 
 export function rpcUrl(env: Env): string {
