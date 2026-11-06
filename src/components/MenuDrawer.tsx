@@ -668,6 +668,11 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                   />
                 )}
                 <GridButton
+                  iconName="monkeface"
+                  label={t("menuDrawer.monke3d")}
+                  onPress={() => { onClose(); setTimeout(() => router.push('/monke3d' as any), 300); }}
+                />
+                <GridButton
                   iconName="gift"
                   label={t("menuDrawer.invite")}
                   onPress={() => { onClose(); setTimeout(() => router.push('/invite-friends' as any), 300); }}
