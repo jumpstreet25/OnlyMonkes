@@ -72,7 +72,7 @@ const EASE_RATE = 28; // snappier than the single viewer (14): speech is fast
 const MAX_MEMBERS = 16;
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5)); // phones draw faster; small monkes don't need 2×
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5)); // phones draw faster; layout() sharpens small rooms
 renderer.setSize(innerWidth, innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 document.body.prepend(renderer.domElement);
@@ -100,7 +100,14 @@ function layout() {
   const n = order.length;
   if (!n) { dirty = true; return; }
   const aspect = innerWidth / innerHeight;
-  const cols = Math.max(1, Math.min(n, Math.round(Math.sqrt(n * aspect * (CELL_H / CELL_W)))));
+  const vFov = camera.fov * Math.PI / 180;
+  const distFor = (c) => {
+    const r = Math.ceil(n / c);
+    return Math.max((r * CELL_H / 2) / Math.tan(vFov / 2), (c * CELL_W / 2) / (Math.tan(vFov / 2) * aspect));
+  };
+  // The column count that shows the monkes biggest (closest camera).
+  let cols = 1;
+  for (let c = 2; c <= n; c++) if (distFor(c) < distFor(cols) - 1e-6) cols = c;
   const rows = Math.ceil(n / cols);
   order.forEach((id, i) => {
     const m = members.get(id);
@@ -111,12 +118,13 @@ function layout() {
     const obj = m.monke?.root ?? m.placeholder;
     if (obj) obj.position.copy(m.slot);
   });
-  const w = cols * CELL_W, h = rows * CELL_H;
-  const vFov = camera.fov * Math.PI / 180;
-  const distH = (h / 2) / Math.tan(vFov / 2);
-  const distW = (w / 2) / (Math.tan(vFov / 2) * aspect);
-  camera.position.set(0, 0, Math.max(distH, distW) * 1.08 + 4);
-  camera.lookAt(0, 0, 0);
+  // Same view as Monke 3D (monke3d.html): a little above eye level, looking
+  // slightly down, so the blocks read as 3D instead of a flat sprite.
+  const dist = distFor(cols) * 1.08 + 4;
+  camera.position.set(0, 0.06 * dist, dist);
+  camera.lookAt(0, -0.5, 0);
+  // Up to 4 monkes are big on screen: draw them as sharp as Monke 3D does.
+  renderer.setPixelRatio(Math.min(devicePixelRatio, n <= 4 ? 2 : 1.5));
   camera.updateProjectionMatrix();
   dirty = true;
 }
