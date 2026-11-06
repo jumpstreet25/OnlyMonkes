@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Monke 3D snapshot</title>
+<!--
+  One still picture of a monke in Monke3D, for MonkeMeme: the app loads this
+  page hidden (WebView on the phone, iframe on the web) with ?n=<monke number>,
+  and the page posts back {type:"snap", n, png:"data:image/png;base64,…"} or
+  {type:"error", message}. Same model as monke3d.html / room.html
+  (monkeModel.js), so the meme always starts from the holder's own 3D monke.
+  ?size= (256–1024, default 512 — the klein Space rejects larger references).
+  Open it directly to see the picture.
+-->
+<style>
+  html, body { margin: 0; height: 100%; background: #fff; color: #333; font: 13px system-ui, sans-serif; }
+  body { display: grid; place-items: center; }
+  img { max-width: 100%; height: auto; box-shadow: 0 2px 12px rgba(0,0,0,0.15); }
+</style>
+<script>
+  (function () {
+    function post(m) {
+      try {
+        var s = JSON.stringify({ type: "error", message: String(m || "error").slice(0, 300) });
+        if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage(s);
+        else if (parent !== window) parent.postMessage(s, location.origin);
+      } catch (e) { /* nothing to report to */ }
+    }
+    window.__snapError = post;
+    addEventListener("error", function (e) {
+      var t = e.target;
+      post(e.message || (t && (t.src || t.href) ? "failed to load " + (t.src || t.href) : "load error"));
+    }, true);
+    addEventListener("unhandledrejection", function (e) { post(e.reason && e.reason.message || e.reason); });
+  })();
+</script>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.min.js" } }
+</script>
+</head>
+<body>
+<div id="status">Building monke…</div>
+<script type="module">
+import * as THREE from "three";
+import { imageFor, loadImage, readGrid, buildMonke } from "/viewer/monkeModel.js";
+
+const DEG = Math.PI / 180;
+const params = new URLSearchParams(location.search);
+const n = parseInt(params.get("n") || "", 10);
+const size = Math.max(256, Math.min(1024, parseInt(params.get("size") || "512", 10) || 512));
+
+function send(msg) {
+  const s = JSON.stringify(msg);
+  if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage(s);
+  else if (parent !== window) parent.postMessage(s, location.origin);
+}
+
+async function snap() {
+  const url = imageFor(n);
+  if (!url) throw new Error(`#${params.get("n")} isn't a live Saga Monke`);
+  const monke = buildMonke(readGrid(await loadImage(url)));
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+  renderer.setPixelRatio(1);
+  renderer.setSize(size, size, false);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0xffffff);
+  scene.add(monke.root);
+  // Soft studio light: bright ambient so the NFT's own colours read true,
+  // one key from upper front-right to show the blocks' depth.
+  scene.add(new THREE.AmbientLight(0xffffff, 2.0));
+  const keyLight = new THREE.DirectionalLight(0xffffff, 1.8);
+  keyLight.position.set(8, 12, 14);
+  scene.add(keyLight);
+  const fill = new THREE.DirectionalLight(0xffffff, 0.6);
+  fill.position.set(-10, 2, 6);
+  scene.add(fill);
+
+  // Frame the whole monke, turned 20° so it reads as 3D (the model is built
+  // for ±45°), camera a little above eye level.
+  const box = new THREE.Box3().setFromObject(monke.root);
+  const centre = box.getCenter(new THREE.Vector3());
+  const dims = box.getSize(new THREE.Vector3());
+  const camera = new THREE.PerspectiveCamera(28, 1, 0.1, 400);
+  const fit = (Math.max(dims.x, dims.y) * 0.62) / Math.tan((camera.fov * DEG) / 2);
+  const yaw = 20 * DEG;
+  camera.position.set(centre.x + Math.sin(yaw) * fit, centre.y + 0.08 * fit, centre.z + Math.cos(yaw) * fit);
+  camera.lookAt(centre);
+
+  renderer.render(scene, camera);
+  const png = renderer.domElement.toDataURL("image/png");
+  renderer.dispose();
+  return png;
+}
+
+snap().then((png) => {
+  send({ type: "snap", n, png });
+  const status = document.getElementById("status");
+  if (window.ReactNativeWebView || parent !== window) { status.textContent = "Done"; return; }
+  const img = new Image();
+  img.src = png;
+  img.alt = `Monke #${n} in 3D`;
+  status.replaceWith(img);
+}).catch((e) => window.__snapError(e && e.message || e));
+</script>
+</body>
+</html>
