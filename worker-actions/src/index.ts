@@ -279,14 +279,19 @@ function errorResponse(message: string, status = 400): Response {
   return jsonResponse({ error: message }, status);
 }
 
+// HELIUS_NFT_API_KEY first: same Helius account, and unlike the old
+// HELIUS_API_KEY it was never shipped in an app build (audit H6).
+function heliusKey(env: Env): string {
+  return env.HELIUS_NFT_API_KEY || env.HELIUS_API_KEY;
+}
+
 export function rpcUrl(env: Env): string {
-  return `https://mainnet.helius-rpc.com/?api-key=${env.HELIUS_API_KEY}`;
+  return `https://mainnet.helius-rpc.com/?api-key=${heliusKey(env)}`;
 }
 
 /** Wallet-ownership DAS only — isolated quota from swaps/sales/stats. */
 export function verifyRpcUrl(env: Env): string {
-  const key = env.HELIUS_NFT_API_KEY || env.HELIUS_API_KEY;
-  return `https://mainnet.helius-rpc.com/?api-key=${key}`;
+  return `https://mainnet.helius-rpc.com/?api-key=${heliusKey(env)}`;
 }
 
 /** Fetch with timeout — prevents worker from hanging on slow upstream APIs. */
@@ -2030,7 +2035,7 @@ async function fetchRecentSales(env: Env): Promise<StatsSnapshot["recentSales"]>
   if (fromBot && fromBot.recentSales.length > 0) return fromBot.recentSales;
 
   try {
-    const url = `https://api.helius.xyz/v0/addresses/${SAGA_CREATOR_WALLET}/transactions?api-key=${env.HELIUS_API_KEY}&type=NFT_SALE&limit=10`;
+    const url = `https://api.helius.xyz/v0/addresses/${SAGA_CREATOR_WALLET}/transactions?api-key=${heliusKey(env)}&type=NFT_SALE&limit=10`;
     const res = await fetchWithTimeout(url, { headers: { "User-Agent": "OnlyMonkes-Web/1.0" } }, 10_000);
     if (!res.ok) return [];
     const body = await res.json();
