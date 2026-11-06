@@ -161,4 +161,22 @@ describe("web RPC proxy takes the sign-in token (audit H2)", () => {
   it("a forged Origin alone no longer reaches Helius once the flag is on", async () => {
     expect((await rpc(rpcEnv({ WEB_RPC_REQUIRE_AUTH: "1" }))).status).toBe(401);
   });
+  const call = (headers: Record<string, string>, method = "getBalance") =>
+    handleWebRpc(
+      new Request("https://onlymonkes.app/api/rpc", {
+        method: "POST",
+        headers: { "CF-Connecting-IP": "5.6.7.8", ...headers },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params: [HOLDER] }),
+      }),
+      rpcEnv({ HELIUS_NFT_API_KEY: "nft" }),
+    );
+
+  it("phones (no Origin) get RPC on the NFT key; foreign sites and unlisted methods don't (audit H6)", async () => {
+    const res = await call({});
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Access-Control-Allow-Origin")).toBeNull();
+    expect((global.fetch as jest.Mock).mock.calls[0][0]).toContain("api-key=nft");
+    expect((await call({ Origin: "https://evil.example" })).status).toBe(403);
+    expect((await call({}, "getProgramAccounts")).status).toBe(400);
+  });
 });

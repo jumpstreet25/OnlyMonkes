@@ -114,10 +114,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   ],
   scheme: 'onlymonkes',
   extra: {
-    heliusApiKey: process.env.HELIUS_API_KEY ?? '',
-    heliusNftApiKey: process.env.HELIUS_NFT_API_KEY ?? '',
-    quickNodeDasUrl: process.env.QUICKNODE_DAS_URL ?? '',
-    alchemyApiKey: process.env.ALCHEMY_API_KEY ?? '',
+    // No RPC keys here: extra is public (APK + OTA manifest). RPC goes via the worker (H6).
     groqApiKey: process.env.GROQ_API_KEY ?? '',
     giphyApiKey: process.env.GIPHY_API_KEY ?? '',
     nftCollectionAddress:
