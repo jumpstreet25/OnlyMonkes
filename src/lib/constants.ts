@@ -1,6 +1,4 @@
 import {
-  HELIUS_API_KEY as ENV_HELIUS,
-  HELIUS_NFT_API_KEY as ENV_HELIUS_NFT,
   GIPHY_API_KEY as ENV_GIPHY,
   CLOUDINARY_CLOUD_NAME as ENV_CLOUD_NAME,
   CLOUDINARY_UPLOAD_PRESET as ENV_CLOUD_PRESET,
@@ -10,8 +8,6 @@ import {
   SKR_MINT as ENV_SKR,
   DEV_WALLET as ENV_DEV,
   SENTRY_DSN as ENV_SENTRY,
-  QUICKNODE_DAS_URL as ENV_QUICKNODE_DAS,
-  ALCHEMY_API_KEY as ENV_ALCHEMY,
   GROQ_API_KEY as ENV_GROQ,
 } from '@env';
 import Constants from 'expo-constants';
@@ -86,12 +82,16 @@ export const NFT_COLLECTION_ADDRESS = 'GokAiStXz2Kqbxwz2oqzfEXuUhE7aXySmBGEP7uej
 const _extra = (Constants.expoConfig?.extra ?? {}) as Record<string, unknown>;
 const _str = (v: unknown): string => (typeof v === 'string' ? v : '');
 
-export const HELIUS_API_KEY: string = ENV_HELIUS || _str(_extra.heliusApiKey);
-// Dedicated key for wallet / Saga Monke ownership checks only.
-// Isolated from HELIUS_API_KEY (scanner, swaps, sales, general RPC).
-const _HELIUS_NFT_API_KEY_RAW: string = ENV_HELIUS_NFT || _str(_extra.heliusNftApiKey);
-export const HELIUS_NFT_API_KEY: string = _HELIUS_NFT_API_KEY_RAW || HELIUS_API_KEY;
-export const HELIUS_NFT_RPC_URL = `https://mainnet.helius-rpc.com/?api-key=${HELIUS_NFT_API_KEY}`;
+// No RPC key ships in the app any more (audit 2026-11-06, H6: the bot's Helius
+// and Alchemy keys were readable in the APK and in every OTA manifest). All
+// Helius RPC/DAS goes through the actions worker (worker-actions/src/webRpc.ts),
+// which adds the key server-side, on phones and web alike. The key constants are
+// a non-secret marker so the existing "is Helius configured" gates still pass.
+const RPC_KEY_MARKER = 'proxy';
+export const RPC_PROXY_URL = 'https://onlymonkes.app/api/rpc';
+export const HELIUS_API_KEY: string = RPC_KEY_MARKER;
+export const HELIUS_NFT_API_KEY: string = RPC_KEY_MARKER;
+export const HELIUS_NFT_RPC_URL = RPC_PROXY_URL;
 export const GIPHY_API_KEY: string = ENV_GIPHY || _str(_extra.giphyApiKey);
 export const CLOUDINARY_CLOUD_NAME: string = ENV_CLOUD_NAME || _str(_extra.cloudinaryCloudName);
 export const CLOUDINARY_UPLOAD_PRESET: string = ENV_CLOUD_PRESET || _str(_extra.cloudinaryUploadPreset);
@@ -122,7 +122,8 @@ export const GROQ_API_KEY: string = ENV_GROQ || _str(_extra.groqApiKey);
 // with Helius quota-exhausted (429) and QuickNode dark, verification fell
 // through to the on-chain check — unreliable for compressed NFTs — and
 // falsely reported him as a non-holder.
-export const QUICKNODE_DAS_URL: string = ENV_QUICKNODE_DAS || _str(_extra.quickNodeDasUrl);
+// 2026-11-06: off — a URL with its token can't ship in the app (H6).
+export const QUICKNODE_DAS_URL: string = '';
 // Alchemy DAS — added 2026-08-10 as a second, vendor-independent fallback
 // tier ahead of QuickNode's 30-day trial expiring (~2026-08-12). Free tier:
 // 30M CU/month, confirmed to support getAssetsByOwner for compressed NFTs.
@@ -130,11 +131,9 @@ export const QUICKNODE_DAS_URL: string = ENV_QUICKNODE_DAS || _str(_extra.quickN
 // params, not a named object — see fetchAssetsViaAlchemy in
 // nftVerification.ts. Same dual-fallback (`@env` + `extra`) pattern as
 // above, to avoid repeating the QUICKNODE_DAS_URL silent-empty-string bug.
-const _ALCHEMY_API_KEY: string = ENV_ALCHEMY || _str(_extra.alchemyApiKey);
-export const ALCHEMY_DAS_URL: string = _ALCHEMY_API_KEY
-  ? `https://solana-mainnet.g.alchemy.com/v2/${_ALCHEMY_API_KEY}`
-  : '';
-export const HELIUS_RPC_URL = `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`;
+// 2026-11-06: off — the key was the bot's and readable in the app (H6).
+export const ALCHEMY_DAS_URL: string = '';
+export const HELIUS_RPC_URL = RPC_PROXY_URL;
 export const SOLANA_RPC_URL = 'https://api.mainnet-beta.solana.com';
 
 // MonkeLedger — self-hosted Saga Monkes cNFT Merkle-proof indexer (own VPS process, own
