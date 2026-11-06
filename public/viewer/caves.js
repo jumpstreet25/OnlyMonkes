@@ -1,4 +1,4 @@
-// Rug Caves — our own raycaster (prototype). One 320×200 frame per tick into an
+// MonkeCaves — our own raycaster (prototype). One 320×200 frame per tick into an
 // ImageData, walls by DDA, textured floor/ceiling rows, billboard sprites
 // against a per-column depth buffer. Textures and enemies are drawn here as
 // pixel maps; the player's face is their Saga Monke PFP (monkeModel.js).
@@ -580,7 +580,7 @@ let n = parseInt(params.get("n") || "", 10);
 if (!imageFor(n)) { do n = 1 + Math.floor(Math.random() * 8888); while (!imageFor(n)); }
 loadImage(imageFor(n)).then(readGrid).then((g) => { facePx = g.px; }).catch(() => { /* face stays blank */ });
 loadLevel();
-say("RUG CAVES", `Cave 1: ${LEVELS[0].name}. Hunt the jeets, find the pink exit.`);
+say("MONKECAVES", `Cave 1: ${LEVELS[0].name}. Hunt the jeets, find the pink exit.`);
 setTimeout(() => { if (state === "play") say(""); }, 2200);
 
 let last = performance.now();
