@@ -49,6 +49,7 @@ import {
   parseProfileUpdate,
   openOrCreateDm,
   sendDmMessage,
+  XMTP_SIGNATURE_REQUIRED_ERROR,
 } from "@/lib/xmtp";
 import { parseLiveRoomMessage, buildLiveRoomMessage, type LiveRoomData } from "@/lib/livekit";
 import { parsePinMessage, pinMessage, unpinMessage, getPinnedMessages } from "@/lib/pinnedMessages";
@@ -2441,7 +2442,10 @@ export function useXmtp() {
       const message =
         err instanceof Error ? err.message : "XMTP initialization failed";
       if (__DEV__) console.error("[XMTP] initialize() failed:", message, err);
-      Sentry.captureException(err instanceof Error ? err : new Error(message), { extra: { ...marks, area: "xmtpInit" } });
+      // Needing a fresh wallet signature is expected (the chat shows "Sign and retry"), not a bug.
+      if (message !== XMTP_SIGNATURE_REQUIRED_ERROR) {
+        Sentry.captureException(err instanceof Error ? err : new Error(message), { extra: { ...marks, area: "xmtpInit" } });
+      }
       setError(message);
       toast.error(t("useXmtp.connectionLost"));
     } finally {
