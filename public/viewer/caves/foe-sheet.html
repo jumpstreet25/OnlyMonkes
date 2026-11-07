@@ -1,0 +1,17 @@
+<!doctype html><meta charset="utf-8"><title>MonkeCaves enemies</title>
+<style>body{margin:0;background:#0d0b12;color:#ededf3;font:14px ui-monospace,monospace}#s{display:grid;grid-template-columns:repeat(5,200px);gap:14px;padding:18px}
+.c{background:#17131f;border:2px solid #2a2436;padding:10px;text-align:center}.c canvas{image-rendering:pixelated;width:160px;height:160px}.c b{display:block;color:#ffd23f;margin:6px 0 2px}.c span{color:#9a9ab0;font-size:12px}h1{margin:16px 18px 0;color:#ffd23f;font-size:22px}</style>
+<h1>MONKECAVES · BIG TECH ENEMIES</h1><div id="s"></div>
+<script type="module">
+import { FOE_ROWS, FOE_PAL, AD_PAL2, FOES } from "/viewer/caves-foes.js";
+const info = { cookie: ["Tracking Cookie", "swarms · 1 hit"], bat: ["Notification Bat", "pings · zigzags · 2 hits"], ad: ["Pop-up Ad", "fires X's · covers screen · 3 hits"], keeper: ["Gatekeeper", "front shield · flank it · 6 hits"], eye: ["Algorithm Eye", "turret · slow beams · 5 hits"] };
+const draw = (rows, pal) => { const c = document.createElement("canvas"); c.width = c.height = 16; const x = c.getContext("2d"); rows.forEach((r, j) => [...r].forEach((ch, i) => { if (pal[ch]) { x.fillStyle = `rgb(${pal[ch]})`; x.fillRect(i, j, 1, 1); } })); return c; };
+for (const k of Object.keys(info)) {
+  const d = document.createElement("div"); d.className = "c";
+  d.append(draw(FOE_ROWS[k][0], FOE_PAL));
+  d.insertAdjacentHTML("beforeend", `<b>${info[k][0]}</b><span>${info[k][1]}</span>`);
+  document.getElementById("s").append(d);
+}
+const extra = [["keeperBack", "Gatekeeper from behind", "no shield: hit it here"], ["ad", "Pop-up Ad (flash)", "banner flashes orange"]];
+for (const [k, t, s] of extra) { const d = document.createElement("div"); d.className = "c"; d.append(draw(FOE_ROWS[k][k === "ad" ? 1 : 0], k === "ad" ? AD_PAL2 : FOE_PAL)); d.insertAdjacentHTML("beforeend", `<b>${t}</b><span>${s}</span>`); document.getElementById("s").append(d); }
+</script>
