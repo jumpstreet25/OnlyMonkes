@@ -55,6 +55,7 @@ import { useThemeColor } from "@/lib/shopTheme";
 import { useChatStore } from "@/store/chatStore";
 import { useAppStore, type CalendarEvent } from "@/store/appStore";
 import { getMonkeMemeConfig, monkeMemeVisible, type MonkeMemeConfig } from "@/lib/monkeMeme/config";
+import { getMonkeCavesConfig, monkeCavesVisible, type MonkeCavesConfig } from "@/lib/monkeCaves/config";
 import { getCachedProfile, useProfileVersion } from "@/lib/userProfile";
 import { fetchSolanaEvents, type LumaEvent } from "@/lib/lumaEvents";
 import { ProfileScorecard } from "@/components/ProfileScorecard";
@@ -363,6 +364,12 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
     getMonkeMemeConfig().then(setMemeCfg).catch(() => {});
   }, []);
   const showMonkeMeme = monkeMemeVisible(memeCfg, isGroupAdminForMeme, walletForMeme);
+  // MonkeCaves tile: same dark launch, config/monkecaves.json.
+  const [cavesCfg, setCavesCfg] = useState<MonkeCavesConfig | null>(null);
+  useEffect(() => {
+    getMonkeCavesConfig().then(setCavesCfg).catch(() => {});
+  }, []);
+  const showMonkeCaves = monkeCavesVisible(cavesCfg, isGroupAdminForMeme, walletForMeme);
 
   function GridButton({
     iconName, label, badge, onPress,
@@ -688,6 +695,13 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                     iconName="monkeface"
                     label="3D Monke"
                     onPress={() => { onClose(); openFromMenu('/monke3d' as any); }}
+                  />
+                )}
+                {showMonkeCaves && (
+                  <GridButton
+                    iconName="target"
+                    label={t("menuDrawer.monkeCaves")}
+                    onPress={() => { onClose(); openFromMenu('/monkecaves' as any); }}
                   />
                 )}
                 <GridButton
