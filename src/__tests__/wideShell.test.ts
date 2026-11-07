@@ -21,6 +21,11 @@ describe("wide web layout rail", () => {
     expect(railItems(t, true, true).map((i) => i.path)[1]).toBe("/genesis-chat");
   });
 
+  test("MonkeCaves only while the preview lets this holder in", () => {
+    expect(railItems(t, true, false).map((i) => i.path)).not.toContain("/monkecaves");
+    expect(railItems(t, true, false, true).map((i) => i.path)).toContain("/monkecaves");
+  });
+
   test("active entry follows the current route", () => {
     const items = railItems(t, true, false);
     const byPath = (p: string) => items.find((i) => i.path === p)!;
