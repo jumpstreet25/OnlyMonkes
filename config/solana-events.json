@@ -1,0 +1,25 @@
+{
+  "_readme": "Solana events shown on the Globe (app + website). Lu.ma and solana.com started refusing automated requests (HTTP 429) in Nov 2026, so this hand-kept list is the main source. Add upcoming events here (ISO dates in UTC, lat/lng of the venue city); past events drop off by themselves 7 days after they end. Editing this on master reaches phones and the website without an app update. Checked in the weekly research.",
+  "events": [
+    {
+      "id": "breakpoint-2026-london",
+      "name": "Solana Breakpoint 2026",
+      "startAt": "2026-11-15T09:00:00.000Z",
+      "endAt": "2026-11-17T18:00:00.000Z",
+      "location": "Olympia London, United Kingdom",
+      "lat": 51.4963,
+      "lng": -0.2097,
+      "url": "https://solana.com/breakpoint"
+    },
+    {
+      "id": "hacker-house-london-2026",
+      "name": "Solana Hacker House London (Breakpoint edition)",
+      "startAt": "2026-11-01T10:00:00.000Z",
+      "endAt": "2026-11-12T18:00:00.000Z",
+      "location": "London, United Kingdom",
+      "lat": 51.5074,
+      "lng": -0.1278,
+      "url": "https://x.com/hackerhouses"
+    }
+  ]
+}
