@@ -1,6 +1,6 @@
 /**
- * Website workspace on wide screens: Main Chat on the left, a middle pane with
- * tabs (MonkeCaves, 3D Monke, MonkeMeme), the menu column on the right. Column
+ * Website workspace on wide screens: the menu column on the left, Main Chat
+ * next to it, then a pane with tabs (MonkeCaves, 3D Monke, MonkeMeme). Column
  * widths and open tabs are this browser's preference only (localStorage).
  */
 import { create } from "zustand";

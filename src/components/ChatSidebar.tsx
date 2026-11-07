@@ -64,8 +64,8 @@ export function ChatSidebar({ onOpenPanel, onEditProfile, compact = false, width
   const [cavesCfg, setCavesCfg] = useState<MonkeCavesConfig | null>(null);
   useEffect(() => { getMonkeCavesConfig().then(setCavesCfg).catch(() => {}); }, []);
   const [shopOpen, setShopOpen] = useState(false);
-  // The column sits on the right of the window, so its border faces chat on the left.
-  const edge = { backgroundColor: bg, borderRightWidth: 0, borderLeftWidth: 1, borderLeftColor: border };
+  // The column sits on the left of the window, so its border faces chat on the right.
+  const edge = { backgroundColor: bg, borderRightColor: border };
 
   const go = (path: string) => () => router.push(path as any);
   const tabOr = (tab: WorkspaceTab, path: string) => (onOpenTab ? () => onOpenTab(tab) : go(path));

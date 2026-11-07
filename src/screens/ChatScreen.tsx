@@ -1497,6 +1497,25 @@ export default function ChatScreen() {
   return (
     <ErrorBoundary fallbackMessage={t("chatScreen.errorBoundaryFallback")}>
     <View style={{ flex: 1, flexDirection: "row" }}>
+    {sidebarMode && (
+      <>
+        <ErrorBoundary silent>
+          <ChatSidebar
+            compact={sidebarCompact}
+            width={sidebarW}
+            onOpenTab={workspaceMode ? ws.open : undefined}
+            onOpenPanel={(panel) => { setMenuPanel(panel); setDrawerOpen(true); }}
+            onEditProfile={() => { setEditingProfile(true); setShowUsernameModal(true); }}
+          />
+        </ErrorBoundary>
+        <ResizeHandle
+          label={t("workspace.resizeMenu")}
+          onDragStart={() => { dragStart.current.side = sidebarW; }}
+          onDrag={(dx) => ws.setSidebarW(dragStart.current.side + dx)}
+          onReset={() => ws.setSidebarW(248)}
+        />
+      </>
+    )}
     <View style={middleOpen ? { width: chatW } : { flex: 1, minWidth: 0 }}>
     <SwipeToSwitchChat from="main" enabled={isGenesisHolder}>
       <KeyboardAvoidingView
@@ -1879,25 +1898,6 @@ export default function ChatScreen() {
           onReset={() => ws.setChatW(420)}
         />
         <WorkspacePane cavesAllowed={cavesAllowed} />
-      </>
-    )}
-    {sidebarMode && (
-      <>
-        <ResizeHandle
-          label={t("workspace.resizeMenu")}
-          onDragStart={() => { dragStart.current.side = sidebarW; }}
-          onDrag={(dx) => ws.setSidebarW(dragStart.current.side - dx)}
-          onReset={() => ws.setSidebarW(248)}
-        />
-        <ErrorBoundary silent>
-          <ChatSidebar
-            compact={sidebarCompact}
-            width={sidebarW}
-            onOpenTab={workspaceMode ? ws.open : undefined}
-            onOpenPanel={(panel) => { setMenuPanel(panel); setDrawerOpen(true); }}
-            onEditProfile={() => { setEditingProfile(true); setShowUsernameModal(true); }}
-          />
-        </ErrorBoundary>
       </>
     )}
     </View>
