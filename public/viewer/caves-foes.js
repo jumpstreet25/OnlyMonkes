@@ -78,7 +78,7 @@ export const AD_PAL2 = { ...FOE_PAL, y: [255, 140, 40] };
 // One difficulty for everyone. hp = hits (every weapon does 1), speed in tiles/s,
 // hit = damage per bite/shot before the cave multiplier (caves.js), r = hit radius.
 export const FOES = {
-  cookie: { hp: 1, speed: 2.9, hit: 4, cool: 0.55, r: 0.32, scale: 0.34 },
+  cookie: { hp: 1, speed: 2.9, hit: 5, cool: 0.55, r: 0.32, scale: 0.34 },
   bat: { hp: 2, speed: 2.2, hit: 7, cool: 0.8, r: 0.4, scale: 0.42, lift: 0.32 },
   ad: { hp: 3, speed: 1.3, hit: 7, cool: 1.6, r: 0.45, scale: 0.46, lift: 0.22, range: 9 },
   keeper: { hp: 6, speed: 1.1, hit: 15, cool: 1.1, r: 0.5, scale: 0.7, turn: 1.5 },

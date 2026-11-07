@@ -44,6 +44,7 @@
   #msg .cta { margin-top: 4px; color: var(--banana); animation: blink 1.1s steps(2) infinite; }
   @keyframes blink { 50% { opacity: 0.35; } }
   #pause { position: fixed; top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); width: 40px; height: 40px; border: 2px solid rgba(255,255,255,0.2); background: rgba(12,10,18,0.6); color: #fff; font: 700 14px/1 ui-monospace, monospace; z-index: 3; touch-action: none; }
+  #mapbtn { position: fixed; top: max(8px, env(safe-area-inset-top)); right: calc(max(8px, env(safe-area-inset-right)) + 48px); height: 40px; padding: 0 8px; border: 2px solid rgba(255,255,255,0.2); background: rgba(12,10,18,0.6); color: #fff; font: 700 12px/1 ui-monospace, monospace; z-index: 3; touch-action: none; }
   #menu { position: fixed; inset: 0; background: rgba(5,4,9,0.78); display: grid; place-items: center; z-index: 4; }
   #menu[hidden] { display: none; }
   #menu div { display: grid; gap: 10px; min-width: 220px; text-align: center; }
@@ -69,6 +70,7 @@
 <div id="pad"><div id="knob"></div></div>
 <div id="fire">FIRE</div>
 <button id="pause" aria-label="Pause">II</button>
+<button id="mapbtn" aria-label="Map">MAP</button>
 <div id="menu" hidden><div>
   <h1>PAUSED</h1>
   <button id="m-resume">Resume</button>
