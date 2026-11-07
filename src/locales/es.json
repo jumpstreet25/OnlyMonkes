@@ -1099,5 +1099,14 @@
     "closeTab": "Cerrar {{name}}",
     "resizeChat": "Arrastra para cambiar el ancho del chat",
     "resizeMenu": "Arrastra para cambiar el ancho del menú"
+  },
+  "miniChat": {
+    "title": "Chat principal",
+    "open": "Abrir el chat principal, {{count}} nuevos",
+    "close": "Minimizar chat",
+    "move": "Mover el chat a otra esquina",
+    "placeholder": "Di algo…",
+    "send": "Enviar",
+    "commandsInMain": "Los comandos funcionan en el chat principal completo"
   }
 }
