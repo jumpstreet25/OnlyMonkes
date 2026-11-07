@@ -1019,6 +1019,17 @@ export function useXmtp() {
                 const n = applyLocationSync(locs as Record<string, { u?: string; loc?: string; ni?: string }>);
                 if (__DEV__) console.log(`[XMTP] Location sync: updated ${n} users`);
               } catch { /* ignore */ }
+            } else if (typeof content === "string" && content.startsWith("POLL_OPEN:")) {
+              // A poll that opened while the app was closed: show it once on open, as long as
+              // it's still running and this phone hasn't voted (the live stream does the rest).
+              if (isBotSender(raw.senderInboxId as string)) (async () => {
+                try {
+                  const { parsePollOpen, markPollSeenIfFirstTime, getMyVote } = await import("@/lib/poll");
+                  const data = parsePollOpen(content);
+                  if (!data || data.resolvesAt <= Date.now() || await getMyVote(data.id)) return;
+                  if (await markPollSeenIfFirstTime(`open-${data.id}`)) useAppStore.getState().setActivePoll(data);
+                } catch { /* ignore */ }
+              })();
             } else if (typeof content === "string" && content.startsWith("RSVP:")) {
               processRsvpMessage(content).catch(() => {});
             } else if (typeof content === "string" && (
@@ -1055,8 +1066,9 @@ export function useXmtp() {
             // Falling through here without a match is intentional: these
             // message types are already in the system-prefix filter list, so
             // simply not handling them means they're silently dropped, same
-            // as any other filtered system message. POLL_OPEN:/POLL_RESULT:
-            // (2026-07-20) follow the exact same pattern — live-stream only.
+            // as any other filtered system message. POLL_RESULT: (2026-07-20)
+            // follows the same pattern — live-stream only. POLL_OPEN: is handled
+            // above for polls still running when the app opens (2026-11-07).
           } catch { /* skip */ }
         }
       };
