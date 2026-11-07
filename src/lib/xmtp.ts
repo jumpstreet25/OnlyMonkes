@@ -574,7 +574,7 @@ function decodeStringMessage(raw: any, rawContent: string, myInboxId: string): C
     : rawContent;
   const STRUCTURED_PREFIXES = [
     "REACT:", "STICKER_REACT:", "TYPING:", "PROFILE_UPDATE:", "PROFILE_SNAPSHOT:", "MY_INBOXES:",
-    "LOCATION_SYNC:", "LOCATION_SYNC_REQUEST", "EVENT:", "EDIT:", "PRESENCE:", "LIVE_ROOM:", "VIDEO_ROOM:",
+    "LOCATION_SYNC:", "LOCATION_SYNC_REQUEST", "PUSH_REGISTER:", "PUSH_DM:", "EVENT:", "EDIT:", "PRESENCE:", "LIVE_ROOM:", "VIDEO_ROOM:",
     "AVATAR_ROOM:", "SHOP_PURCHASE:", "GIFT_ITEM:", "THREAD:", "PIN:", "UNPIN:",
     "NFT_LIST:", "NFT_BID:", "NFT_BID_CANCEL:", "NFT_ACCEPT:", "NFT_DELIST:", "NFT_OFFER:",
     "NFT_SWAP:", "NFT_COMPLETE:", "AUTOMONKE_STATUS:", "TRADE_CLOSED:",
@@ -582,7 +582,7 @@ function decodeStringMessage(raw: any, rawContent: string, myInboxId: string): C
     "BANANA_GRANT:", "BANANA_BET_OPEN:", "BANANA_BET_SETTLED:", "HEALTH:", "DELETE:",
     "IMAGE_CAPTION_REQUEST:", "IMAGE_CAPTION_RESPONSE:", "POLL_OPEN:", "POLL_RESULT:",
     "STREAK_CAPTION_REQUEST:", "STREAK_CAPTION_RESPONSE:", "JOIN_REQUEST:",
-    "BADGE_GRANT:", "COPY_TRADE_STATUS:", "GENESIS_JOIN_REQUEST:", "TRANSLATION:",
+    "BADGE_GRANT:", "COPY_TRADE_STATUS:", "GENESIS_JOIN_REQUEST:", "TRANSLATION:", "MONKE_VOICE:",
   ];
   for (const p of STRUCTURED_PREFIXES) {
     // LOCATION_SYNC_REQUEST is a bare token (optionally with trailing :payload)
@@ -1963,13 +1963,13 @@ async function readDmThread(client: XmtpClient, convo: any): Promise<DmThread | 
               lastMessage = parts.slice(2).join(':');
             } else if (raw.startsWith('JOIN_REQUEST:')) {
               isJoinRequest = true;
-            } else if (raw.startsWith('READ:') || raw.startsWith('TYPING:') || raw.startsWith('PROFILE_UPDATE:') || raw.startsWith('GIFT_ITEM:')) {
+            } else if (isHiddenDmPreview(raw)) {
               // System/protocol messages — skip as preview, look for the previous real message
               for (let i = 1; i < Math.min(msgs.length, 10); i++) {
                 try {
                   const prev: unknown = msgs[i].content();
                   if (typeof prev !== 'string') continue;
-                  if (prev.startsWith('READ:') || prev.startsWith('TYPING:') || prev.startsWith('PROFILE_UPDATE:') || prev.startsWith('GIFT_ITEM:')) continue;
+                  if (isHiddenDmPreview(prev)) continue;
                   if (prev.startsWith('MSG:')) {
                     const p = prev.split(':');
                     lastMessage = p.slice(2).join(':');
@@ -2018,6 +2018,11 @@ async function readDmThread(client: XmtpClient, convo: any): Promise<DmThread | 
       return { peerInboxId, lastMessage: null, lastMessageAt: null, unreadCount: 0 };
     }
   }
+}
+
+const HIDDEN_DM_PREVIEW = ['READ:', 'TYPING:', 'PROFILE_UPDATE:', 'GIFT_ITEM:', 'PUSH_REGISTER:', 'PUSH_DM:', 'LOCATION_SYNC'];
+function isHiddenDmPreview(text: string): boolean {
+  return HIDDEN_DM_PREVIEW.some((p) => text.startsWith(p));
 }
 
 export async function openOrCreateDm(client: XmtpClient, peerInboxId: string): Promise<any> {
