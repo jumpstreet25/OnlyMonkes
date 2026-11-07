@@ -5,6 +5,8 @@
 import { imageFor, loadImage, readGrid } from "/viewer/monkeModel.js";
 import { weaponFor, heldSprite, shotMask, shotColour } from "/viewer/caves-weapons.js";
 import { LEVELS } from "/viewer/caves-levels.js";
+import { paintFace } from "/viewer/caves-face.js";
+import { WALL_PAINT, FLOOR_PAINT, SKY_PAINT, DECOR_PAL, DECOR_ROWS, DECOR_LETTERS, DECOR_BLOCKS } from "/viewer/caves-world.js";
 import { FOE_ROWS, FOE_PAL, AD_PAL2, XSHOT, BEAM, FOES, FOE_LETTERS } from "/viewer/caves-foes.js";
 
 const TEX = 32;
@@ -87,6 +89,17 @@ const TEXTURES = {
 };
 const FLOOR = makeTex((x, y) => { const n = 0.7 + rnd() * 0.3; return ((x >> 3) + (y >> 3)) % 2 ? rgb(46 * n, 40 * n, 52 * n) : rgb(38 * n, 33 * n, 44 * n); });
 const CEIL = makeTex(() => { const n = 0.6 + rnd() * 0.4; return rgb(20 * n, 16 * n, 28 * n); });
+// Jungle temple (caves-world.js): walls, floors, sky. A level with theme "jungle" swaps
+// its rock for temple stone; floor/ceil rows pick a texture per cell.
+const fromPaint = (paint) => makeTex((x, y) => { const [r, g, b] = paint(x, y, rnd); return rgb(Math.round(r), Math.round(g), Math.round(b)); });
+const JUNGLE = Object.fromEntries(Object.entries(WALL_PAINT).map(([k, f]) => [k, fromPaint(f)]));
+const ROCK = { "#": TEXTURES["#"], S: TEXTURES["#"] };
+const FLOORS = Object.fromEntries(Object.entries(FLOOR_PAINT).map(([k, f]) => [k, fromPaint(f)]));
+const SKY = fromPaint(SKY_PAINT);
+const ROOTS = makeTex((x, y) => { const n = 0.6 + rnd() * 0.4, root = Math.abs(((x + Math.round(Math.sin(y / 3) * 3)) % 11) - 5) < 1; return root ? rgb(52 * n, 36 * n, 22 * n) : rgb(22 * n, 26 * n, 18 * n); });
+for (const k of ["V", "T", "Z", "W", "d"]) TEXTURES[k] = JUNGLE[k];
+let floorAt = new Array(1), ceilAt = new Array(1), light = new Float32Array(1), blockers = new Set();
+let baseFloor = FLOOR, baseCeil = CEIL;
 
 // ── Sprites from character maps ──
 function makeSprite(rows, pal) {
@@ -156,6 +169,23 @@ const SPR = {
   keeperBack: FOE_ROWS.keeperBack.map((r) => makeSprite(r, FOE_PAL)),
   eye: FOE_ROWS.eye.map((r) => makeSprite(r, FOE_PAL)),
   xshot: makeSprite(XSHOT, FOE_PAL),
+  ...Object.fromEntries(Object.entries(DECOR_ROWS).map(([k, rows]) => [k, makeSprite(rows, DECOR_PAL)])),
+  // Ammo: a Seeker battery (small) and a Seeker phone (big pack). Health: small kit, big kit.
+  ammo: makeSprite([
+    "................", "................", "................", "................", "................", "......kkkk......",
+    ".....kggggk.....", ".....kgwwgk.....", ".....kggggk.....", ".....kgGGgk.....", ".....kgGGgk.....", ".....kgGGgk.....",
+    ".....kkkkkk.....", "................", "................", "................",
+  ], { ...PAL, g: [60, 220, 170], G: [30, 140, 110] }),
+  ammoBig: makeSprite([
+    "................", "................", "................", ".....kkkkkk.....", "....kSSSSSSk....", "....kSccccSk....",
+    "....kScwwcSk....", "....kSccccSk....", "....kScwwcSk....", "....kSccccSk....", "....kSccccSk....", "....kSccccSk....",
+    "....kSSkkSSk....", ".....kkkkkk.....", "................", "................",
+  ], { ...PAL, S: [40, 44, 56], c: [60, 220, 170] }),
+  healthBig: makeSprite([
+    "................", "................", "................", "....kkkkkkkk....", "...kwwwwwwwwk...", "...kwwwrrwwwk...",
+    "...kwwwrrwwwk...", "...kwrrrrrrwk...", "...kwrrrrrrwk...", "...kwwwrrwwwk...", "...kwwwrrwwwk...", "...kwwwwwwwwk...",
+    "....kkkkkkkk....", "................", "................", "................",
+  ], PAL),
   // A lanyard ID badge in its colour.
   badge: Object.fromEntries(Object.entries(BADGES).map(([k, v]) => [k, makeSprite([
     "................", "......kkkk......", ".....k....k.....", "....k......k....", "....k......k....", "...kkkkkkkkkk...",
@@ -186,22 +216,29 @@ function equip(n) {
 // ── Levels ── map letters are listed in scripts/caves/build-levels.py.
 // Speed-run board (worker caves.ts) only takes runs from this level set. Change a
 // level → bump this and CAVES_VERSION/MIN_MS in worker-actions/src/caves.ts together.
-const CAVES_VERSION = 1;
+const CAVES_VERSION = 2;
 // Levels: caves-levels.js (built by scripts/caves/build-levels.py).
 let levelIx = 0;
 let MW = 0, MH = 0, secrets = 0, secretsFound = 0, boss = null;
 const map = [];
-const player = { x: 1.5, y: 1.5, dx: 1, dy: 0, px: 0, py: 0.66, hp: 100, bananas: 0, heat: 0, hot: 0, kills: 0, hurt: 0, slime: 0, cool: 0, kick: 0, flash: 0, popup: 0, popupX: 0 };
+// Ammo: one shared type for every weapon (Seeker batteries +10, Seeker phones +40).
+const AMMO_START = 50, AMMO_MAX = 150;
+const player = { x: 1.5, y: 1.5, dx: 1, dy: 0, px: 0, py: 0.66, hp: 100, bananas: 0, ammo: AMMO_START, kills: 0, hurt: 0, slime: 0, cool: 0, kick: 0, flash: 0, popup: 0, popupX: 0 };
 const things = []; // enemies + pickups
 const shots = [], spits = [];
 let door = null;
 let seen = new Uint8Array(1); // map cells the player has seen (automap)
+let totals = { foes: 0, items: 0 };
 
 function loadLevel(keepStats = false) {
   const LEVEL = LEVELS[levelIx].rows;
   MW = Math.max(...LEVEL.map((r) => r.length)); MH = LEVEL.length;
+  const lv = LEVELS[levelIx], jungle = lv.theme === "jungle";
+  Object.assign(TEXTURES, jungle ? { "#": JUNGLE["#"], S: JUNGLE.S } : ROCK);
+  baseFloor = jungle ? FLOORS.m : FLOOR; baseCeil = jungle ? ROOTS : CEIL;
+  blockers = new Set();
   map.length = 0; things.length = 0; shots.length = 0; spits.length = 0; door = null; boss = null; secrets = 0; secretsFound = 0;
-  const carry = keepStats ? { hp: player.hp, bananas: player.bananas, kills: player.kills } : null;
+  const carry = keepStats ? { hp: player.hp, bananas: player.bananas, ammo: player.ammo, kills: player.kills } : null;
   for (let y = 0; y < MH; y++) {
     const row = [];
     for (let x = 0; x < MW; x++) {
@@ -219,18 +256,67 @@ function loadLevel(keepStats = false) {
         things.push(boss); c = ".";
       }
       else if (c === "S") secrets++;
+      else if (c === "I") { things.push({ kind: "idol", x: cx, y: cy }); c = "."; }
+      else if (DECOR_LETTERS[c]) { const d = DECOR_LETTERS[c]; things.push({ kind: "decor", d, x: cx, y: cy }); if (DECOR_BLOCKS.has(d)) blockers.add(y * MW + x); c = "."; }
       else if (c === "b") { things.push({ kind: "banana", x: cx, y: cy }); c = "."; }
-      else if (c === "h") { things.push({ kind: "health", x: cx, y: cy }); c = "."; }
+      else if (c === "h" || c === "H") { things.push({ kind: "health", x: cx, y: cy, big: c === "H" }); c = "."; }
+      else if (c === "q" || c === "Q") { things.push({ kind: "ammo", x: cx, y: cy, big: c === "Q" }); c = "."; }
       else if (BADGES[c]) { things.push({ kind: "badge", x: cx, y: cy, b: +c }); c = "."; }
       else if (c === "D") door = { x: cx, y: cy };
       row.push(c);
     }
     map.push(row);
   }
-  Object.assign(player, { dx: 1, dy: 0, px: 0, py: 0.66, hp: 100, bananas: 0, heat: 0, hot: 0, kills: 0, hurt: 0, slime: 0, cool: 0, kick: 0, flash: 0, badges: new Set(), lockedAt: 0 }, carry || {});
+  Object.assign(player, { dx: 1, dy: 0, px: 0, py: 0.66, hp: 100, bananas: 0, ammo: AMMO_START, kills: 0, hurt: 0, slime: 0, cool: 0, kick: 0, flash: 0, badges: new Set(), lockedAt: 0, look: 0, lookUntil: 0, ouch: 0, grin: 0 }, carry || {});
   seen = new Uint8Array(MW * MH);
+  if (lv.face != null) {
+    const a = lv.face * Math.PI / 180;
+    Object.assign(player, { dx: Math.cos(a), dy: Math.sin(a), px: -Math.sin(a) * 0.66, py: Math.cos(a) * 0.66 });
+  }
+  // Per-cell floor/ceiling and light: sunlit clearings (sky) are bright, tunnels are
+  // dim, and torches warm everything within a few tiles.
+  floorAt = new Array(MW * MH); ceilAt = new Array(MW * MH); light = new Float32Array(MW * MH);
+  const torches = things.filter((t) => t.kind === "decor" && t.d === "torch");
+  for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
+    const i = y * MW + x, fc = lv.floor?.[y]?.[x], cc = lv.ceil?.[y]?.[x];
+    floorAt[i] = FLOORS[fc] || baseFloor; ceilAt[i] = cc === "o" ? SKY : baseCeil;
+    let l = !jungle ? 1 : cc === "o" ? 1.15 : 0.78;
+    for (const t of torches) { const d = Math.hypot(t.x - x - 0.5, t.y - y - 0.5); if (d < 4.5) l += 0.38 * (1 - d / 4.5); }
+    light[i] = Math.min(1.35, l);
+  }
+  doors = new Map();
+  for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) if (DOOR_CHARS.has(map[y][x])) {
+    // A door between walls left and right runs along x (its slab sits at y + 0.5).
+    const solid = (c) => c && c !== "." && !DOOR_CHARS.has(c);
+    doors.set(y * MW + x, { x, y, alongX: solid(map[y][x - 1]) && solid(map[y][x + 1]), open: 0, want: 0, wait: 0, stay: false });
+  }
+  totals = { foes: things.filter(isFoe).length, items: things.filter((t) => t.kind === "banana" || t.kind === "idol").length };
+  player.items = 0;
 }
-const wallAt = (x, y) => { const r = map[Math.floor(y)]; const c = r ? r[Math.floor(x)] : "#"; return c !== "." && c !== undefined ? c : null; };
+// Doors (d, and badge doors 7 8 9) slide sideways along the middle of their cell.
+// open: 0 shut … 1 open; a plain door shuts again 4 s after it's left clear.
+const DOOR_CHARS = new Set(["d", "7", "8", "9"]);
+let doors = new Map();
+const doorAt = (x, y) => doors.get(Math.floor(y) * MW + Math.floor(x));
+const wallAt = (x, y) => {
+  const r = map[Math.floor(y)]; const c = r ? r[Math.floor(x)] : "#";
+  if (c === "." || c === undefined) return null;
+  if (DOOR_CHARS.has(c)) { const d = doorAt(x, y); if (d && d.open > 0.85) return null; }
+  return c;
+};
+// Walls plus the decorations you can't walk through (trees, torches).
+const solidAt = (x, y) => wallAt(x, y) || (blockers.has(Math.floor(y) * MW + Math.floor(x)) ? "Y" : null);
+function openDoor(d) { if (d.want !== 1) { d.want = 1; sfx.door(); } d.wait = 4; }
+function tickDoors(dt) {
+  for (const d of doors.values()) {
+    d.open = Math.max(0, Math.min(1, d.open + (d.want ? 2 : -2) * dt));
+    if (d.want && !d.stay && d.open >= 1) {
+      // Don't shut on anyone standing in the doorway.
+      const busy = Math.floor(player.x) === d.x && Math.floor(player.y) === d.y || things.some((t) => isFoe(t) && t.hp > 0 && Math.floor(t.x) === d.x && Math.floor(t.y) === d.y);
+      if (busy) d.wait = 1; else if ((d.wait -= dt) <= 0) { d.want = 0; sfx.door(); }
+    }
+  }
+}
 const isFoe = (t) => t.kind === "jeet" || t.kind === "goblin" || t.kind === "bear" || t.kind === "phone" || !!FOES[t.kind];
 // Every cave hits a little harder than the one before (one difficulty for everyone).
 const dmg = (n) => Math.round(n * (1 + 0.15 * levelIx));
@@ -238,13 +324,14 @@ const dmg = (n) => Math.round(n * (1 + 0.15 * levelIx));
 function bump(x, y) {
   const w = wallAt(x, y), need = DOOR_BADGE[w];
   if (need) {
-    if (player.badges.has(need)) { map[Math.floor(y)][Math.floor(x)] = "."; sfx.door(); }
+    if (player.badges.has(need)) { const d = doorAt(x, y); if (d) { d.stay = true; openDoor(d); } }
     else if (performance.now() - player.lockedAt > 1800) {
       player.lockedAt = performance.now(); sfx.hurt();
       say(`${BADGES[need].name} BADGE NEEDED`, "Find it somewhere in this cave."); setTimeout(() => { if (state === "play") say(""); }, 1500);
     }
     return;
   }
+  if (w === "d") { const d = doorAt(x, y); if (d) openDoor(d); return; }
   if (w !== "S") return;
   map[Math.floor(y)][Math.floor(x)] = "."; secretsFound++; sfx.secret();
   say("SECRET!", `${secretsFound}/${secrets} found`); setTimeout(() => { if (state === "play") say(""); }, 1200);
@@ -284,7 +371,13 @@ function movePad(e) {
 const turnEl = document.getElementById("turn");
 let turnId = null, turnX = 0;
 turnEl.addEventListener("pointerdown", (e) => { turnId = e.pointerId; turnX = e.clientX; turnEl.setPointerCapture(e.pointerId); });
-turnEl.addEventListener("pointermove", (e) => { if (e.pointerId !== turnId) return; turn((e.clientX - turnX) * 0.008); turnX = e.clientX; });
+// Drag to turn, scaled by the turn-speed setting; slower while the crosshair is on an
+// enemy (aim assist) so a swipe doesn't skate past it.
+turnEl.addEventListener("pointermove", (e) => {
+  if (e.pointerId !== turnId) return;
+  const sticky = settings.assist && assistTarget(0.07, 14) ? 0.55 : 1;
+  turn((e.clientX - turnX) * 0.008 * settings.sens * sticky); turnX = e.clientX;
+});
 const endTurn = () => { turnId = null; };
 turnEl.addEventListener("pointerup", endTurn); turnEl.addEventListener("pointercancel", endTurn);
 const fireEl = document.getElementById("fire");
@@ -304,6 +397,12 @@ let audio = null;
 // Per-device conveniences (sound, best times). Storage can be blocked; the game works without it.
 const store = { get(k) { try { return localStorage.getItem(`caves:${k}`); } catch { return null; } }, set(k, v) { try { localStorage.setItem(`caves:${k}`, v); } catch { /* blocked */ } } };
 let muted = store.get("muted") === "1";
+// Phone aiming settings (pause menu), kept on this device.
+const settings = {
+  sens: Math.max(0.4, Math.min(2.2, parseFloat(store.get("sens") || "1") || 1)),
+  assist: store.get("assist") !== "0",
+  tilt: store.get("tilt") !== "0",
+};
 function unlockAudio() { if (!audio) try { audio = new AudioContext(); } catch { /* no audio */ } }
 function blip(freq, dur, type = "square", vol = 0.08, slide = 0) {
   if (!audio || muted) return;
@@ -325,7 +424,7 @@ const sfx = {
   spit: () => blip(240, 0.15, "triangle", 0.07, 200),
   crack: () => { blip(1400, 0.08, "square", 0.07, -900); setTimeout(() => blip(700, 0.2, "sawtooth", 0.07, -500), 60); },
   tax: () => [880, 660, 440].forEach((f, i) => setTimeout(() => blip(f, 0.1, "square", 0.06), i * 70)),
-  hot: () => blip(160, 0.3, "sawtooth", 0.06, -60),
+  empty: () => blip(90, 0.05, "square", 0.05),
   clear: () => [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => blip(f, 0.18, "triangle", 0.09), i * 120)),
   ping: () => { blip(1320, 0.07, "sine", 0.08); setTimeout(() => blip(1760, 0.1, "sine", 0.08), 90); },
   pop: () => blip(700, 0.06, "square", 0.06, 500),
@@ -341,8 +440,9 @@ const $ = (id) => document.querySelector(`#${id} b`);
 const faceEl = document.getElementById("face"), face = faceEl.getContext("2d");
 let facePx = null, crop = { x: 0, y: 0, n: 16 };
 // Crop the PFP to the monke itself (its pixels, not the background) so it fills the frame.
+let faceSolid = null;
 function setFace(g) {
-  facePx = g.px;
+  facePx = g.px; faceSolid = g.solid;
   let x0 = 16, y0 = 16, x1 = -1, y1 = -1;
   for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) if (g.solid[y][x]) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
   if (x1 < 0) return;
@@ -351,13 +451,22 @@ function setFace(g) {
   faceEl.width = faceEl.height = n;
 }
 function drawFace() {
-  const { x: cx, y: cy, n } = crop;
+  const { n } = crop;
   face.clearRect(0, 0, n, n);
-  if (facePx) for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
-    const [r, g, b] = facePx[cy + y][cx + x];
-    const hurt = player.hurt > 0 ? 0.5 : 0;
-    face.fillStyle = `rgb(${Math.round(r + (255 - r) * hurt)},${Math.round(g * (1 - hurt))},${Math.round(b * (1 - hurt))})`;
-    face.fillRect(x, y, 1, 1);
+  if (!facePx) return;
+  const now = performance.now(), p = player;
+  const img = paintFace(facePx, faceSolid, crop, { hp: p.hp, look: now < p.lookUntil ? p.look : 0, ouch: p.ouch, grin: p.grin, hurt: p.hurt, t: now });
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) { const c = img[y][x]; if (!c) continue; face.fillStyle = `rgb(${c[0]},${c[1]},${c[2]})`; face.fillRect(x, y, 1, 1); }
+}
+// Every hit on the player goes through here: the face glances toward the attacker
+// (DOOM's status face does the same) and pulls an "ouch" on a big hit.
+function hurtPlayer(amount, from, flash = 0.3) {
+  const p = player;
+  p.hp -= amount; p.hurt = flash; sfx.hurt();
+  if (amount >= 20) p.ouch = 0.6;
+  if (from) {
+    const a = Math.atan2(from.y - p.y, from.x - p.x) - Math.atan2(p.dy, p.dx), d = Math.atan2(Math.sin(a), Math.cos(a));
+    p.look = Math.abs(d) < 0.35 ? 0 : d > 0 ? 1 : -1; p.lookUntil = performance.now() + 900;
   }
 }
 const msg = document.getElementById("msg");
@@ -389,6 +498,7 @@ function update(dt) {
     }
     return;
   }
+  tickDoors(dt);
   // move
   let fwd = (keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0) - (keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0) - touch.my;
   let side = (keys.has("KeyD") ? 1 : 0) - (keys.has("KeyA") ? 1 : 0) + touch.mx;
@@ -398,25 +508,32 @@ function update(dt) {
   const len = Math.hypot(fwd, side); if (len > 1) { fwd /= len; side /= len; }
   const speed = 3.2 * dt, R = 0.22;
   const mx = (p.dx * fwd - p.dy * side) * speed, my = (p.dy * fwd + p.dx * side) * speed;
-  if (!wallAt(p.x + mx + Math.sign(mx) * R, p.y)) p.x += mx; else if (mx) bump(p.x + mx + Math.sign(mx) * R, p.y);
-  if (!wallAt(p.x, p.y + my + Math.sign(my) * R)) p.y += my; else if (my) bump(p.x, p.y + my + Math.sign(my) * R);
+  if (!solidAt(p.x + mx + Math.sign(mx) * R, p.y)) p.x += mx; else if (mx) bump(p.x + mx + Math.sign(mx) * R, p.y);
+  if (!solidAt(p.x, p.y + my + Math.sign(my) * R)) p.y += my; else if (my) bump(p.x, p.y + my + Math.sign(my) * R);
 
   // throw
   p.cool -= dt; p.kick = Math.max(0, p.kick - dt * 5); p.hurt = Math.max(0, p.hurt - dt);
-  // Every weapon plays the same: 1 damage, one shot per 0.32 s, speed 9.
-  // It never runs out; hold fire too long and it overheats for a moment.
-  const wasHot = p.hot > 0;
-  p.hot = Math.max(0, p.hot - dt); p.flash = Math.max(0, p.flash - dt);
-  if (wasHot && !p.hot) p.heat = 0.6;
-  // Cools only while you're not firing: about 4 s of non-stop fire overheats it.
-  if (!p.hot && p.cool < -0.1) p.heat = Math.max(0, p.heat - dt * 0.5);
-  if ((keys.has("Space") || touch.fire) && p.cool <= 0 && !p.hot) {
-    p.cool = 0.32; p.kick = 1; p.flash = 0.06; p.heat += 0.085;
-    if (p.heat >= 1) { p.heat = 1; p.hot = 1.4; sfx.hot(); }
-    shots.push({ x: p.x + p.dx * 0.3, y: p.y + p.dy * 0.3, vx: p.dx * 9, vy: p.dy * 9, life: 1.4, born: performance.now() });
+  // Every weapon plays the same: 1 damage, one shot per 0.32 s, speed 9, 1 ammo per shot.
+  p.flash = Math.max(0, p.flash - dt);
+  if ((keys.has("Space") || touch.fire) && p.cool <= 0 && p.ammo <= 0) {
+    p.cool = 0.45; sfx.empty();
+    if (performance.now() - (p.emptySaid || 0) > 2500) { p.emptySaid = performance.now(); say("OUT OF AMMO", "Find Seeker batteries"); setTimeout(() => { if (state === "play") say(""); }, 1200); }
+  }
+  if ((keys.has("Space") || touch.fire) && p.cool <= 0 && p.ammo > 0) {
+    p.cool = 0.32; p.kick = 1; p.flash = 0.06; p.ammo--;
+    // Phones: aim assist bends the shot onto an enemy within ~6° of the crosshair
+    // (DOOM's auto-aim checks a few degrees either side the same way).
+    let vx = p.dx, vy = p.dy;
+    if (isTouch && settings.assist) {
+      const t = assistTarget(0.105, 14);
+      if (t) { const d = Math.hypot(t.x - p.x, t.y - p.y); vx = (t.x - p.x) / d; vy = (t.y - p.y) / d; }
+    }
+    shots.push({ x: p.x + vx * 0.3, y: p.y + vy * 0.3, vx: vx * 9, vy: vy * 9, life: 1.4, born: performance.now() });
     sfx.throw();
-    // Gunfire wakes anything close by, even around a corner.
-    for (const e of things) if (isFoe(e) && !e.seen && e.hp > 0 && Math.hypot(e.x - p.x, e.y - p.y) < 7 && flowAt(e.x, e.y) < 12) e.seen = true;
+    // Gunfire carries through open floor and open doors (a shut door muffles it),
+    // like DOOM's sound flood, and wakes whatever hears it.
+    const heard = hearing(Math.floor(p.x), Math.floor(p.y), 16);
+    for (const e of things) if (isFoe(e) && !e.seen && e.hp > 0 && heard.has(Math.floor(e.y) * MW + Math.floor(e.x))) e.seen = true;
   }
   for (let i = shots.length - 1; i >= 0; i--) {
     const s = shots[i];
@@ -438,7 +555,8 @@ function update(dt) {
         }
         if (e.hp <= 0) {
           p.kills++; e.dieAt = performance.now(); sfx.die();
-          if (rnd() < 0.5) things.push({ kind: "banana", x: e.x, y: e.y });
+          const r = rnd();
+          if (r < 0.4) things.push({ kind: "ammo", x: e.x, y: e.y }); else if (r < 0.7) things.push({ kind: "banana", x: e.x, y: e.y, dropped: true });
         } else sfx.hit();
       }
     }
@@ -465,8 +583,8 @@ function update(dt) {
       if (!wallAt(e.x, e.y + uy * sp * 1.5)) e.y += uy * sp;
     }
     if (d < (e.kind === "bear" ? 1.3 : 0.75) && e.cool <= 0 && !flee) {
-      if (e.kind === "jeet") { p.hp -= dmg(10); p.hurt = 0.3; e.cool = 0.7; sfx.hurt(); }
-      else if (e.kind === "bear") { p.hp -= dmg(22); p.hurt = 0.5; e.cool = 1.2; sfx.hurt(); sfx.roar(); }
+      if (e.kind === "jeet") { hurtPlayer(dmg(10), e); e.cool = 0.7; }
+      else if (e.kind === "bear") { hurtPlayer(dmg(22), e, 0.5); e.cool = 1.2; sfx.roar(); }
       else {
         // The rug pull: grabs bananas and vanishes somewhere else in the cave.
         const took = Math.min(p.bananas, 4); p.bananas -= took; e.cool = 1.5; sfx.steal();
@@ -481,23 +599,27 @@ function update(dt) {
   // pickups
   for (let i = things.length - 1; i >= 0; i--) {
     const t = things[i];
-    if (t.kind !== "banana" && t.kind !== "health" && t.kind !== "badge") continue;
+    if (t.kind !== "banana" && t.kind !== "health" && t.kind !== "badge" && t.kind !== "ammo" && t.kind !== "idol") continue;
     if (Math.hypot(t.x - p.x, t.y - p.y) < 0.5) {
       if (t.kind === "badge") {
-        p.badges.add(t.b); things.splice(i, 1); sfx.badge();
+        p.badges.add(t.b); p.grin = 1.5; things.splice(i, 1); sfx.badge();
         say(`${BADGES[t.b].name} BADGE`, `Opens the ${BADGES[t.b].name.toLowerCase()} doors.`); setTimeout(() => { if (state === "play") say(""); }, 1500);
         continue;
       }
-      if (t.kind === "banana") p.bananas += 5; else if (p.hp < 100) p.hp = Math.min(100, p.hp + 25); else continue;
+      // Health and ammo stay on the floor when you're already full.
+      if (t.kind === "banana") { p.bananas += 5; if (!t.dropped) p.items++; }
+      else if (t.kind === "idol") { p.bananas += 25; p.items++; p.grin = 1.5; say("MONKE IDOL", "+25 bananas"); setTimeout(() => { if (state === "play") say(""); }, 1100); }
+      else if (t.kind === "ammo") { if (p.ammo >= AMMO_MAX) continue; p.ammo = Math.min(AMMO_MAX, p.ammo + (t.big ? 40 : 10)); }
+      else if (p.hp < 100) p.hp = Math.min(100, p.hp + (t.big ? 25 : 10)); else continue;
       things.splice(i, 1); sfx.pick();
     }
   }
   // Banana Phone slime
-  p.slime = Math.max(0, p.slime - dt); p.popup = Math.max(0, p.popup - dt);
+  p.slime = Math.max(0, p.slime - dt); p.popup = Math.max(0, p.popup - dt); p.ouch = Math.max(0, p.ouch - dt); p.grin = Math.max(0, p.grin - dt);
   for (let i = spits.length - 1; i >= 0; i--) {
     const s = spits[i];
     s.x += s.vx * dt; s.y += s.vy * dt; s.life -= dt;
-    if (Math.hypot(s.x - p.x, s.y - p.y) < 0.35) { p.hp -= s.dmg ?? dmg(8); p.hurt = 0.25; if (!s.spr) p.slime = 1.4; sfx.hurt(); spits.splice(i, 1); continue; }
+    if (Math.hypot(s.x - p.x, s.y - p.y) < 0.35) { hurtPlayer(s.dmg ?? dmg(8), { x: s.x - s.vx, y: s.y - s.vy }, 0.25); if (!s.spr) p.slime = 1.4; spits.splice(i, 1); continue; }
     if (s.life <= 0 || wallAt(s.x, s.y)) spits.splice(i, 1);
   }
   // drop corpses after a moment
@@ -513,16 +635,62 @@ function update(dt) {
       const best = parseInt(store.get(`best:${CAVES_VERSION}:${levelIx + 1}`) || "0", 10);
       const isBest = !best || clearTime < best;
       if (isBest) store.set(`best:${CAVES_VERSION}:${levelIx + 1}`, String(Math.round(clearTime)));
+      const pct = (a, b) => `${b ? Math.round((100 * a) / b) : 100}%`, par = (LEVELS[levelIx].par || 0) * 1000;
       card(last ? "YOU ESCAPED" : "CAVE CLEAR", [
         `<div class="big">${fmtRun(clearTime)}</div>`,
+        par ? `<div class="${clearTime <= par ? "tag" : "dim"}">PAR ${fmt(par)}${clearTime <= par ? " · BEAT IT" : ""}</div>` : "",
         isBest ? `<div class="tag">${best ? "NEW BEST" : "FIRST CLEAR"}</div>` : `<div class="dim">best ${fmtRun(best)}</div>`,
-        `<div class="row"><span>bananas ${p.bananas}</span><span>jeets ${p.kills}</span><span>secrets ${secretsFound}/${secrets}</span></div>`,
+        `<div class="stats"><span>KILLS</span><b>${pct(p.kills, totals.foes)}</b><span>ITEMS</span><b>${pct(p.items, totals.items)}</b><span>SECRETS</span><b>${pct(secretsFound, secrets)}</b></div>`,
         `<div class="cta">${tap} ${last ? "to play again" : `for cave ${levelIx + 2}`}</div>`,
       ]);
       if (t0) post({ event: "clear", v: CAVES_VERSION, level: levelIx + 1, timeMs: Math.round(clearTime), kills: p.kills, secrets: secretsFound, bananas: p.bananas });
     }
   }
 }
+
+// Open cells within `depth` steps of (sx, sy) through floor and open doors.
+function hearing(sx, sy, depth) {
+  const start = sy * MW + sx, dist = new Map([[start, 0]]), q = [start];
+  for (let h = 0; h < q.length; h++) {
+    const i = q[h], v = dist.get(i) + 1;
+    if (v > depth) continue;
+    for (const j of [i + 1, i - 1, i + MW, i - MW]) {
+      if (dist.has(j)) continue;
+      const c = map[(j / MW) | 0][j % MW];
+      if (c === "." || (DOOR_CHARS.has(c) && (doors.get(j)?.open ?? 0) > 0.5)) { dist.set(j, v); q.push(j); }
+    }
+  }
+  return dist;
+}
+
+// The nearest live enemy within `cone` radians of the crosshair, in sight, within `range`.
+function assistTarget(cone, range) {
+  const p = player, face = Math.atan2(p.dy, p.dx);
+  let best = null, bestD = range;
+  for (const e of things) {
+    if (!isFoe(e) || e.hp <= 0 || e.dieAt) continue;
+    const d = Math.hypot(e.x - p.x, e.y - p.y);
+    if (d >= bestD) continue;
+    const a = Math.atan2(e.y - p.y, e.x - p.x) - face;
+    if (Math.abs(Math.atan2(Math.sin(a), Math.cos(a))) > cone + 0.25 / Math.max(1, d)) continue;
+    if (!lineOfSight(p.x, p.y, e.x, e.y)) continue;
+    best = e; bestD = d;
+  }
+  return best;
+}
+
+// Tilt to aim (phones): turning the phone left/right turns the monke. Uses the
+// gyroscope rate, so holding still never drifts. Portrait turns about the
+// phone's long axis, landscape about its short one.
+addEventListener("devicemotion", (e) => {
+  if (!isTouch || !settings.tilt || state !== "play" || paused) return;
+  const r = e.rotationRate; if (!r) return;
+  const ang = (screen.orientation && screen.orientation.angle) || window.orientation || 0;
+  const rate = ang === 90 ? -(r.beta || 0) : ang === 270 || ang === -90 ? (r.beta || 0) : -(r.gamma || 0);
+  if (Math.abs(rate) < 4) return;
+  const dt = Math.min(0.05, (e.interval || 16) / ((e.interval || 16) > 1 ? 1000 : 1));
+  turn(rate * Math.PI / 180 * dt * settings.sens);
+});
 
 // Chasing around walls: a distance-to-player field over the open floor, rebuilt
 // when the player changes cell. An awake enemy that can't see you walks downhill on it.
@@ -535,7 +703,7 @@ function buildFlow() {
   for (let h = 0; h < q.length; h++) {
     const i = q[h], v = flow[i] + 1;
     if (v > 40) continue;
-    for (const j of [i + 1, i - 1, i + MW, i - MW]) if (flow[j] > v && map[(j / MW) | 0][j % MW] === ".") { flow[j] = v; q.push(j); }
+    for (const j of [i + 1, i - 1, i + MW, i - MW]) { const c = map[(j / MW) | 0][j % MW]; if (flow[j] > v && (c === "." || c === "d")) { flow[j] = v; q.push(j); } }
   }
 }
 const flowAt = (x, y) => { buildFlow(); return flow[Math.floor(y) * MW + Math.floor(x)]; };
@@ -546,16 +714,18 @@ function chase(e, dx, dy, d) {
   let best = flow[cy * MW + cx], tx = null, ty = null;
   for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const v = flow[(cy + oy) * MW + cx + ox]; if (v < best) { best = v; tx = cx + ox + 0.5; ty = cy + oy + 0.5; } }
   if (tx === null) return [dx / d, dy / d];
+  const nd = doors.get(Math.floor(ty) * MW + Math.floor(tx));
+  if (nd && map[nd.y][nd.x] === "d" && nd.open < 1) openDoor(nd);
   const vx = tx - e.x, vy = ty - e.y, n = Math.hypot(vx, vy) || 1;
   return [vx / n, vy / n];
 }
 
 // The Big Tech crowd (caves-foes.js).
 function move(e, mx, my) {
-  if (!wallAt(e.x + mx * 2, e.y)) e.x += mx;
-  if (!wallAt(e.x, e.y + my * 2)) e.y += my;
+  if (!solidAt(e.x + mx * 2, e.y)) e.x += mx;
+  if (!solidAt(e.x, e.y + my * 2)) e.y += my;
 }
-function bite(e, f) { player.hp -= dmg(f.hit); player.hurt = 0.3; e.cool = f.cool; sfx.hurt(); }
+function bite(e, f) { hurtPlayer(dmg(f.hit), e); e.cool = f.cool; }
 function foeAI(e, dx, dy, d, dt) {
   const f = FOES[e.kind], sp = f.speed * dt, [ux, uy] = e.kind === "eye" ? [dx / d, dy / d] : chase(e, dx, dy, d);
   if (e.kind === "cookie") {
@@ -605,7 +775,7 @@ function phoneAI(e, dx, dy, d, dt) {
     const spread = bare ? [-0.18, 0, 0.18] : [0];
     for (const a of spread) { const c = Math.cos(a), s2 = Math.sin(a); spits.push({ x: e.x, y: e.y, vx: (ux * c - uy * s2) * 5, vy: (uy * c + ux * s2) * 5, life: 3 }); }
   }
-  if (d < 1.2 && e.cool <= 0) { p.hp -= dmg(14); p.hurt = 0.4; e.cool = 1.2; sfx.hurt(); }
+  if (d < 1.2 && e.cool <= 0) { hurtPlayer(dmg(14), e, 0.4); e.cool = 1.2; }
   if (sees && e.tax <= 0) {
     e.tax = 9; const took = Math.floor(p.bananas * 0.3);
     if (took > 0) { p.bananas -= took; sfx.tax(); say("30% TAX", `The Banana Phone took ${took} bananas`); setTimeout(() => { if (state === "play") say(""); }, 1300); }
@@ -663,9 +833,10 @@ function render() {
     let fx = p.x + dist * r0x, fy = p.y + dist * r0y;
     const f = fog(dist), yc = H - y - 1;
     for (let x = 0; x < W; x++) {
-      const tx = (TEX * (fx - Math.floor(fx))) & (TEX - 1), ty = (TEX * (fy - Math.floor(fy))) & (TEX - 1);
-      buf[y * W + x] = shade(FLOOR[ty * TEX + tx], f);
-      buf[yc * W + x] = shade(CEIL[ty * TEX + tx], f);
+      const ix = Math.floor(fx), iy = Math.floor(fy), tx = (TEX * (fx - ix)) & (TEX - 1), ty = (TEX * (fy - iy)) & (TEX - 1);
+      const ci = iy * MW + ix, ok = ix >= 0 && iy >= 0 && ix < MW && iy < MH, l = ok ? Math.min(1, f * light[ci]) : f;
+      buf[y * W + x] = shade((ok ? floorAt[ci] : baseFloor)[ty * TEX + tx], l);
+      buf[yc * W + x] = shade((ok ? ceilAt[ci] : baseCeil)[ty * TEX + tx], l);
       fx += sx; fy += sy;
     }
   }
@@ -678,25 +849,42 @@ function render() {
     const ddx = Math.abs(1 / rx), ddy = Math.abs(1 / ry);
     const stx = rx < 0 ? -1 : 1, sty = ry < 0 ? -1 : 1;
     let sdx = (rx < 0 ? p.x - mx : mx + 1 - p.x) * ddx, sdy = (ry < 0 ? p.y - my : my + 1 - p.y) * ddy;
-    let side = 0, cell = null;
+    let side = 0, cell = null, doorHit = null;
     for (let i = 0; i < 160; i++) {
       if (sdx < sdy) { sdx += ddx; mx += stx; side = 0; } else { sdy += ddy; my += sty; side = 1; }
-      cell = map[my]?.[mx]; if (cell !== ".") break;
+      cell = map[my]?.[mx]; if (cell === ".") continue;
+      if (DOOR_CHARS.has(cell)) {
+        // Hit the door slab in the middle of the cell, unless the ray passes the open part.
+        const d = doors.get(my * MW + mx);
+        if (d) {
+          const t = d.alongX ? (my + 0.5 - p.y) / ry : (mx + 0.5 - p.x) / rx;
+          const hx = p.x + t * rx, hy = p.y + t * ry;
+          if (t > 0 && Math.floor(hx) === mx && Math.floor(hy) === my) {
+            const u = (d.alongX ? hx : hy) - (d.alongX ? mx : my);
+            if (u >= d.open) { doorHit = { t, u: u - d.open }; break; }
+          }
+          continue;
+        }
+      }
+      break;
     }
     if (mx >= 0 && my >= 0 && mx < MW && my < MH) seen[my * MW + mx] = 1;
-    const perp = side === 0 ? sdx - ddx : sdy - ddy;
+    const perp = doorHit ? doorHit.t : side === 0 ? sdx - ddx : sdy - ddy;
     zbuf[x] = perp;
     const lh = Math.floor(H / perp);
     const top = Math.max(0, Math.floor(half - lh / 2)), bot = Math.min(H - 1, Math.floor(half + lh / 2));
     let wx = side === 0 ? p.y + perp * ry : p.x + perp * rx; wx -= Math.floor(wx);
     let tx = Math.floor(wx * TEX); if ((side === 0 && rx > 0) || (side === 1 && ry < 0)) tx = TEX - tx - 1;
+    if (doorHit) tx = Math.min(TEX - 1, Math.floor(doorHit.u * TEX));
     const tex = TEXTURES[cell] || TEXTURES["#"];
-    const f = fog(perp) * (side ? 0.78 : 1), step = TEX / lh;
-    // Shots light up the wall they fly past, in their own colour.
     const hx = p.x + perp * rx, hy = p.y + perp * ry;
+    const li = Math.floor(hy - ry * 0.02) * MW + Math.floor(hx - rx * 0.02);
+    const f = Math.min(1, fog(perp) * (side ? 0.78 : 1) * (light[li] || 1)), step = TEX / lh;
+    // Shots light up the wall they fly past, in their own colour.
     let lr = 0, lg = 0, lb = 0;
     for (const s of shots) { const k = 0.85 / (1 + ((s.x - hx) ** 2 + (s.y - hy) ** 2) * 2.2); if (k > 0.04) { lr += s.c[0] * k; lg += s.c[1] * k; lb += s.c[2] * k; } }
     let tpos = (top - half + lh / 2) * step;
+    if (cell === "W") tpos -= (now / 30) % TEX;
     if (lr + lg + lb < 8) for (let y = top; y <= bot; y++) { buf[y * W + x] = shade(tex[((tpos & (TEX - 1)) * TEX) + tx], f); tpos += step; }
     else for (let y = top; y <= bot; y++) { buf[y * W + x] = addLight(shade(tex[((tpos & (TEX - 1)) * TEX) + tx], f), lr, lg, lb); tpos += step; }
   }
@@ -713,6 +901,10 @@ function render() {
       if (FOES[t.kind]) { scale = FOES[t.kind].scale; lift = FOES[t.kind].lift || 0; if (t.kind === "bat") lift += Math.sin(t.phase * 0.4) * 0.05; }
     }
     else if (t.kind === "badge") { spr = SPR.badge[t.b]; scale = 0.42; lift = 0.12 + Math.sin(now / 300) * 0.04; }
+    else if (t.kind === "ammo") { spr = t.big ? SPR.ammoBig : SPR.ammo; scale = 0.4; }
+    else if (t.kind === "decor") { spr = SPR[t.d]; scale = t.d === "tree" ? 1.05 : t.d === "torch" ? 0.7 : 0.38; }
+    else if (t.kind === "idol") { spr = SPR.idol; scale = 0.42; lift = 0.06 + Math.sin(now / 350) * 0.03; }
+    else if (t.kind === "health" && t.big) { spr = SPR.healthBig; scale = 0.42; }
     else { spr = SPR[t.kind]; scale = 0.4; }
     sprites.push({ x: t.x, y: t.y, spr, scale, lift, flash: t.flash > 0, dying: !!t.dieAt });
   }
@@ -742,19 +934,13 @@ function render() {
   // launcher
   const bob = Math.sin(performance.now() / 160) * (Math.abs(touch.mx) + Math.abs(touch.my) + (keys.size ? 1 : 0) > 0 ? 2 : 0);
   if (player.flash > 0) { const c = shotColour(WEAPON.shot.color, now); for (let y = H - 70; y < H; y++) for (let x = (W >> 1) - 40; x < (W >> 1) + 50; x++) { const k = 0.5 * (1 - Math.hypot(x - W / 2 - 6, y - H + 40) / 60); if (k > 0) buf[y * W + x] = addLight(buf[y * W + x], c[0] * k, c[1] * k, c[2] * k); } }
-  const G = 3, gx = Math.round(W / 2 - GUN.w * G / 2 + 8), gy = H - GUN.h * G + 8 + Math.round(player.kick * 10 + bob) + (player.hot > 0 ? 8 : 0);
+  const G = 3, gx = Math.round(W / 2 - GUN.w * G / 2 + 8), gy = H - GUN.h * G + 8 + Math.round(player.kick * 10 + bob);
   for (let y = 0; y < GUN.h; y++) for (let x = 0; x < GUN.w; x++) {
     const c = GUN.data[y * GUN.w + x]; if (!c) continue;
     for (let yy = 0; yy < G; yy++) for (let xx = 0; xx < G; xx++) {
       const px = gx + x * G + xx, py = gy + y * G + yy;
       if (px >= 0 && px < W && py >= 0 && py < H) buf[py * W + px] = c;
     }
-  }
-  // Overheat bar: only shows while the weapon is warm.
-  if (player.heat > 0.02) {
-    const bw = 40, bx = 6, by = H - 7, fill = Math.round(bw * player.heat);
-    const col = player.hot > 0 ? (Math.floor(now / 120) % 2 ? rgb(255, 80, 60) : rgb(255, 200, 60)) : rgb(255, Math.round(220 - 160 * player.heat), 60);
-    for (let y = by; y < by + 3; y++) for (let x = bx - 1; x <= bx + bw; x++) buf[y * W + x] = x >= bx && x < bx + fill && x < bx + bw ? col : rgb(20, 16, 28);
   }
   if (player.slime > 0) {
     const k = Math.min(1, player.slime) * 0.55;
@@ -786,8 +972,8 @@ function render() {
   ctx.putImageData(frame, 0, 0);
 
   $("hp").textContent = Math.max(0, Math.round(player.hp));
-  $("ammo").textContent = player.bananas;
-  $("kills").textContent = player.kills;
+  $("ammo").textContent = player.ammo;
+  $("bananas").textContent = player.bananas;
   $("clock").textContent = fmtRun(state === "play" ? runTime() : clearTime);
   drawFace();
 }
@@ -844,6 +1030,16 @@ document.getElementById("pause").addEventListener("pointerdown", (e) => { e.stop
 addEventListener("keydown", (e) => { if (e.code === "KeyP" || e.code === "Escape") setPaused(!paused); if (e.code === "KeyM" || e.code === "Tab") { e.preventDefault(); showMap = !showMap; } });
 document.getElementById("mapbtn").addEventListener("pointerdown", (e) => { e.stopPropagation(); showMap = !showMap; });
 document.addEventListener("visibilitychange", () => { if (document.hidden) setPaused(true); });
+const sensEl = document.getElementById("m-sens"), sensVal = document.getElementById("m-sensv");
+sensEl.value = String(settings.sens); sensVal.textContent = `${settings.sens.toFixed(1)}×`;
+sensEl.addEventListener("input", () => { settings.sens = parseFloat(sensEl.value); sensVal.textContent = `${settings.sens.toFixed(1)}×`; store.set("sens", String(settings.sens)); });
+const toggle = (id, key, label) => {
+  const el = document.getElementById(id), show = () => { el.textContent = `${label}: ${settings[key] ? "on" : "off"}`; };
+  show(); el.addEventListener("click", () => { settings[key] = !settings[key]; store.set(key, settings[key] ? "1" : "0"); show(); });
+};
+toggle("m-assist", "assist", "Aim assist");
+toggle("m-tilt", "tilt", "Tilt to aim");
+if (!isTouch) for (const id of ["m-assist", "m-tilt", "m-sensrow"]) document.getElementById(id).hidden = true;
 const soundBtn = document.getElementById("m-sound");
 const showSound = () => { soundBtn.textContent = muted ? "Sound: off" : "Sound: on"; };
 showSound();
@@ -853,7 +1049,7 @@ document.getElementById("m-restart").addEventListener("click", () => { setPaused
 
 let last = performance.now();
 // Test hooks only with ?debug=1 (headless playtests); never on a normal page.
-if (params.has("debug")) window.__caves = { player, things, shots, spits, keys, touch, turn, step: (dt) => update(dt), map, get door() { return door; }, get level() { return levelIx; }, get weapon() { return WEAPON; }, get state() { return state; }, frames: 0, goto(i) { levelIx = i; loadLevel(); state = "play"; t0 = performance.now(); say(""); } };
+if (params.has("debug")) window.__caves = { player, things, shots, spits, keys, touch, turn, step: (dt) => update(dt), map, get door() { return door; }, get level() { return levelIx; }, get weapon() { return WEAPON; }, get state() { return state; }, get totals() { return totals; }, get secrets() { return [secretsFound, secrets]; }, blocked: (x, y) => blockers.has(y * MW + x), wallAt, settings, assistTarget, frames: 0, goto(i) { levelIx = i; loadLevel(); state = "play"; t0 = performance.now(); say(""); } };
 function loop(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
   update(dt); render(); if (window.__caves) window.__caves.frames++;
