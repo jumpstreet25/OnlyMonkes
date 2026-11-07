@@ -2447,7 +2447,7 @@ export function useXmtp() {
         Sentry.captureException(err instanceof Error ? err : new Error(message), { extra: { ...marks, area: "xmtpInit" } });
       }
       setError(message);
-      toast.error(t("useXmtp.connectionLost"));
+      toast.error(t(message === XMTP_SIGNATURE_REQUIRED_ERROR ? "useXmtp.signNeeded" : "useXmtp.connectionLost"));
     } finally {
       _initRunning = false;
       setLoading(false);
