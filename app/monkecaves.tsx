@@ -15,6 +15,7 @@ import { FONTS, THEME } from "@/lib/constants";
 import { useAppStore } from "@/store/appStore";
 import { parseMonkeNumber } from "@/lib/monkeMeme/monkeNumbers";
 import { getMonkeCavesConfig, monkeCavesVisible } from "@/lib/monkeCaves/config";
+import { MiniChat } from "@/components/MiniChat";
 
 const GAME_URL = Platform.OS === "web" ? "/viewer/caves" : "https://onlymonkes.app/viewer/caves";
 
@@ -55,6 +56,7 @@ export default function MonkeCavesRoute() {
           mediaPlaybackRequiresUserAction={false}
         />
       )}
+      {allowed && <MiniChat top={insets.top} bottom={insets.bottom} />}
     </View>
   );
 }

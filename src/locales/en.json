@@ -1099,5 +1099,14 @@
     "closeTab": "Close {{name}}",
     "resizeChat": "Drag to resize Main Chat",
     "resizeMenu": "Drag to resize the menu"
+  },
+  "miniChat": {
+    "title": "Main Chat",
+    "open": "Open Main Chat, {{count}} new",
+    "close": "Minimise chat",
+    "move": "Move chat to another corner",
+    "placeholder": "Say something…",
+    "send": "Send",
+    "commandsInMain": "Commands work in the full Main Chat"
   }
 }
