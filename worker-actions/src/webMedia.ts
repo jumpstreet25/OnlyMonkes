@@ -31,7 +31,11 @@ const GIPHY_USERNAMES = new Set(["sagamonkes"]);
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 const UPLOADS_PER_DAY = 60;
 
-function allowedOrigin(origin: string | null, env: WebMediaEnv): string | null {
+function allowedOrigin(request: Request, env: WebMediaEnv): string | null {
+  // Browsers leave Origin off same-origin GETs (the GIF search from onlymonkes.app
+  // itself); Sec-Fetch-Site is set by the browser and can't be changed by the page.
+  const origin = request.headers.get("Origin")
+    ?? (request.headers.get("Sec-Fetch-Site") === "same-origin" ? new URL(request.url).origin : null);
   if (!origin) return null;
   if (LOCAL_ORIGIN.test(origin)) return origin;
   const list = (env.WEB_APP_ORIGINS ?? "").split(",").map((o) => o.trim()).filter(Boolean);
@@ -54,7 +58,7 @@ export function isWebMediaPath(path: string): boolean {
 }
 
 export async function handleWebMedia(path: string, request: Request, env: WebMediaEnv, ctx?: { waitUntil(p: Promise<unknown>): void }): Promise<Response> {
-  const origin = allowedOrigin(request.headers.get("Origin"), env);
+  const origin = allowedOrigin(request, env);
   if (!origin) return reply({ error: "origin not allowed" }, 403, null);
   const ip = request.headers.get("CF-Connecting-IP") ?? "unknown";
 
