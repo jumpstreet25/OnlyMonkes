@@ -1094,5 +1094,10 @@
       "bags": "Your bags",
       "off": "Hide column"
     }
+  },
+  "workspace": {
+    "closeTab": "Close {{name}}",
+    "resizeChat": "Drag to resize Main Chat",
+    "resizeMenu": "Drag to resize the menu"
   }
 }
