@@ -96,7 +96,7 @@ const JUNGLE = Object.fromEntries(Object.entries(WALL_PAINT).map(([k, f]) => [k,
 const ROCK = { "#": TEXTURES["#"], S: TEXTURES["#"] };
 const FLOORS = Object.fromEntries(Object.entries(FLOOR_PAINT).map(([k, f]) => [k, fromPaint(f)]));
 const SKY = fromPaint(SKY_PAINT);
-const ROOTS = makeTex((x, y) => { const n = 0.6 + rnd() * 0.4, root = Math.abs(((x + Math.round(Math.sin(y / 3) * 3)) % 11) - 5) < 1; return root ? rgb(52 * n, 36 * n, 22 * n) : rgb(22 * n, 26 * n, 18 * n); });
+const ROOTS = makeTex((x, y) => { const n = 0.6 + rnd() * 0.4, root = Math.abs((((x + Math.round(Math.sin(y * Math.PI / 8) * 3)) % 16) + 16) % 16 - 8) < 1; return root ? rgb(52 * n, 36 * n, 22 * n) : rgb(22 * n, 26 * n, 18 * n); });
 for (const k of ["V", "T", "Z", "W", "d"]) TEXTURES[k] = JUNGLE[k];
 let floorAt = new Array(1), ceilAt = new Array(1), light = new Float32Array(1), blockers = new Set();
 let baseFloor = FLOOR, baseCeil = CEIL;
@@ -824,7 +824,9 @@ function drawShot(s, x0, y0, size, tY) {
   }
 }
 function render() {
-  const p = player, half = H / 2;
+  // Whole pixels: on an odd-height canvas H / 2 lands between rows, and the floor rows
+  // were then written half a row (= half the screen) to the side.
+  const p = player, half = H >> 1, now = performance.now(), flowY = Math.floor(now / 90) & (TEX - 1);
   // floor + ceiling, row by row
   const r0x = p.dx - p.px, r0y = p.dy - p.py, r1x = p.dx + p.px, r1y = p.dy + p.py;
   for (let y = half + 1; y < H; y++) {
@@ -835,12 +837,12 @@ function render() {
     for (let x = 0; x < W; x++) {
       const ix = Math.floor(fx), iy = Math.floor(fy), tx = (TEX * (fx - ix)) & (TEX - 1), ty = (TEX * (fy - iy)) & (TEX - 1);
       const ci = iy * MW + ix, ok = ix >= 0 && iy >= 0 && ix < MW && iy < MH, l = ok ? Math.min(1, f * light[ci]) : f;
-      buf[y * W + x] = shade((ok ? floorAt[ci] : baseFloor)[ty * TEX + tx], l);
+      const ft = ok ? floorAt[ci] : baseFloor;
+      buf[y * W + x] = shade(ft[(ft === FLOORS.w ? (ty + flowY) & (TEX - 1) : ty) * TEX + tx], l);
       buf[yc * W + x] = shade((ok ? ceilAt[ci] : baseCeil)[ty * TEX + tx], l);
       fx += sx; fy += sy;
     }
   }
-  const now = performance.now();
   for (const s of shots) s.c = shotColour(WEAPON.shot.color, now);
   // walls
   for (let x = 0; x < W; x++) {
