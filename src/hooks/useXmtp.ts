@@ -115,6 +115,13 @@ let _client: XmtpClient | null = null;
 
 export function getXmtpClient(): XmtpClient | null { return _client; }
 
+/** Plain text to Main Chat from outside ChatScreen (the mini-chat over MonkeCaves). */
+export async function sendMainChatText(content: string): Promise<void> {
+  if (!_group) throw new Error("Not connected to chat");
+  await sendMessage(_group, content, useAppStore.getState().username);
+  incrementProgress('messages_sent');
+}
+
 /** Send a raw string to the global group (no MSG: wrapping). Used by marketplace listings/delists —
  *  the only two marketplace message types actually meant to be public (see marketplace.ts's doc
  *  comment). Everything else (bid/offer/accept/swap/complete) goes through sendRawToDm instead. */
@@ -2381,26 +2388,30 @@ export function useXmtp() {
               // body shows the actual message content. Respects the global
               // notificationsEnabled toggle.
               const { notificationsEnabled: _dmNotifEnabled } = useAppStore.getState();
+              const senderProfile = getCachedProfile(senderInboxId);
+              const senderName = senderProfile?.username ?? senderInboxId.slice(0, 8);
+              let displayBody = content;
+              if (content.startsWith('MSG:')) {
+                // MSG:<username>:<content> — drop prefix + username
+                const afterPrefix = content.slice('MSG:'.length);
+                const colonIdx = afterPrefix.indexOf(':');
+                if (colonIdx >= 0) displayBody = afterPrefix.slice(colonIdx + 1);
+              }
+              if (
+                displayBody.startsWith("PORTFOLIO_RESPONSE:") ||
+                displayBody.startsWith("TRADE_CLOSED:") ||
+                displayBody.startsWith("TRADE_OPENED:") ||
+                displayBody.startsWith("AUTOMONKE_STATUS:") ||
+                displayBody.startsWith("COPY_TRADE_STATUS:") ||
+                displayBody.startsWith("IMAGE_CAPTION_")
+              ) {
+                return;
+              }
+              // Brief highlight over MonkeCaves (only the game's mini-chat shows these).
+              import('@/lib/gameFlash').then(({ useGameFlash }) => useGameFlash.getState().push({
+                title: senderName, body: displayBody.slice(0, 140), image: senderProfile?.nftImage ?? null,
+              })).catch(() => {});
               if (_dmNotifEnabled) {
-                const senderProfile = getCachedProfile(senderInboxId);
-                const senderName = senderProfile?.username ?? senderInboxId.slice(0, 8);
-                let displayBody = content;
-                if (content.startsWith('MSG:')) {
-                  // MSG:<username>:<content> — drop prefix + username
-                  const afterPrefix = content.slice('MSG:'.length);
-                  const colonIdx = afterPrefix.indexOf(':');
-                  if (colonIdx >= 0) displayBody = afterPrefix.slice(colonIdx + 1);
-                }
-                if (
-                  displayBody.startsWith("PORTFOLIO_RESPONSE:") ||
-                  displayBody.startsWith("TRADE_CLOSED:") ||
-                  displayBody.startsWith("TRADE_OPENED:") ||
-                  displayBody.startsWith("AUTOMONKE_STATUS:") ||
-                  displayBody.startsWith("COPY_TRADE_STATUS:") ||
-                  displayBody.startsWith("IMAGE_CAPTION_")
-                ) {
-                  return;
-                }
                 showLocalNotification(
                   t('useXmtp.dmdYou', { name: senderName }),
                   displayBody.slice(0, 100),
