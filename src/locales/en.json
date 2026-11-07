@@ -728,6 +728,7 @@
     "admin": "Admin",
     "badgeEarned": "{{emoji}} Badge earned: {{name}}",
     "connectionLost": "Connection lost — retrying...",
+    "signNeeded": "Please sign with your wallet to open chat",
     "reactionSent": "Reaction sent",
     "joinedChatWithHandle": "🍌 @{{handle}} joined chat",
     "newMonkeJoinedChat": "🍌 New Monke joined chat",
