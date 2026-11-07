@@ -3,6 +3,7 @@
 // against a per-column depth buffer. Textures and enemies are drawn here as
 // pixel maps; the player's face is their Saga Monke PFP (monkeModel.js).
 import { imageFor, loadImage, readGrid } from "/viewer/monkeModel.js";
+import { weaponFor, heldSprite, shotMask, shotColour } from "/viewer/caves-weapons.js";
 
 const TEX = 32;
 const view = document.getElementById("view");
@@ -116,7 +117,22 @@ const BEAR = [
   ".kbbbbbbbbbbbbk.", ".kbbbbkkkkbbbbk.", "..kbbbkwwkbbbk..", "..kbbbbkkbbbbk..", ".kbbbbbbbbbbbbk.", "kbbbbbRRRRbbbbbk",
   "kbbkbbbRRbbbkbbk", "kbbkbbbbbbbbkbbk", ".kk.kbbkkbbk.kk.", "....kkk..kkk....",
 ];
+// The Banana Phone: the back of a sleek phone with a banana where the logo
+// goes, a two-lens camera bump, cable arms and little legs. First it wears a
+// case; shoot the case off and it fights faster.
+const PHONE = (legs) => [
+  "................", "....kkkkkkkk....", "...kwwwwwwwwk...", "...kwkkkwwwwk...", "...kwkLkwwwwk...", "...kwkLkwwwwk...",
+  ".c.kwkkkwwwwk.c.", ".ckkwwwwyywwkkc.", "..ckwwwwyyywkc..", "...kwwwyyyywk...", "...kwwyyyywwk...", "...kwwwyywwwk...",
+  "...kwwwwwwwwk...", "....kkkkkkkk....", legs ? "....kg....kg...." : ".....kg..kg.....", legs ? "....kk....kk...." : ".....kk..kk.....",
+];
+const PHONE_PAL = { ...PAL, w: [214, 220, 230], L: [60, 70, 90], c: [235, 235, 240], g: [140, 146, 158], y: [255, 210, 63] };
+const CASE_PAL = { ...PHONE_PAL, w: [46, 60, 92], y: [255, 210, 63] };
+const SLIME = makeSprite(["................", "................", ".....kkkk.......", "....kGGGGk......", "...kGgggGGk.....", "...kGgwgggk.....",
+  "...kGggggGk.....", "....kGGGGk......", ".....kkkk.......", "................", "................", "................",
+  "................", "................", "................", "................"], { ...PAL, G: [80, 200, 60], g: [125, 255, 80] });
 const SPR = {
+  phone: [makeSprite(PHONE(0), PHONE_PAL), makeSprite(PHONE(1), PHONE_PAL)],
+  phoneCase: [makeSprite(PHONE(0), CASE_PAL), makeSprite(PHONE(1), CASE_PAL)],
   bear: [makeSprite(BEAR, PAL), makeSprite(BEAR, PAL)],
   jeet: JEET.map((r) => makeSprite(r, PAL)),
   goblin: GOBLIN.map((r) => makeSprite(r, PAL)),
@@ -132,15 +148,12 @@ const SPR = {
   ], PAL),
 };
 
-// The launcher, drawn over the view (32×24, scaled 2×).
-const GUN = makeSprite([
-  "..............kkkk..............", ".............kyyYk..............", "............kyyyYk..............", "............kyyyk...............",
-  "...........kkyyyk...............", "..........kbbkkkkk..............", ".........kbbbbbbbbk.............", "........kbbbbbbbbbbk............",
-  "........kbkkkkkkkbbk............", "........kbk.....kbbk............", ".......kbbk.....kbbbk...........", ".......kbbk....ksssbk...........",
-  "......kbbbk...ksssssk...........", "......kbbbk..kssssssk...........", ".....kbbbbk.kssssssk............", ".....kbbbbkkssssssk.............",
-  "....kbbbbbbssssssk..............", "....kbbbbbbsssssk...............", "...kbbbbbbbsssk.................", "...kbbbbbbbbkk..................",
-  "..kbbbbbbbbbk...................", "..kbbbbbbbbbk...................", ".kbbbbbbbbbbk...................", ".kkkkkkkkkkkk...................",
-], PAL);
+// The held weapon comes from the player's monke (caves-weapons.js), set at start.
+let WEAPON = null, GUN = null, SHOT = null;
+function equip(n) {
+  WEAPON = weaponFor(n); GUN = heldSprite(WEAPON);
+  SHOT = shotMask(WEAPON.shot.shape);
+}
 
 // ── Levels ── # rock, C chart, B crate, D exit, S secret wall (slides open when
 // you walk into it), P start, J jeet, G rug goblin, X bear boss (the exit stays
@@ -186,7 +199,7 @@ const LEVELS = [
     "#..........#....J....b...#",
     "#..######..#######.#######",
     "#..#....#............#...#",
-    "#..#.J..#..G....J....S.h.#",
+    "#..#.J..#..G..X.J....S.h.#",
     "#..#....#............#...#",
     "#..##.###...######...#####",
     "#.........J.#....#.......#",
@@ -197,7 +210,7 @@ const LEVELS = [
     "#..b........J.....G....b.D",
     "##########################",
   ] },
-  { name: "BEAR MARKET", rows: [
+  { name: "BIG TECH HQ", boss: "phone", rows: [
     "########################",
     "#P...#.........#.......#",
     "#....#...J.....#...J...#",
@@ -224,16 +237,16 @@ const LEVELS = [
 let levelIx = 0;
 let MW = 0, MH = 0, secrets = 0, secretsFound = 0, boss = null;
 const map = [];
-const player = { x: 1.5, y: 1.5, dx: 1, dy: 0, px: 0, py: 0.66, hp: 100, ammo: 20, kills: 0, hurt: 0, cool: 0, kick: 0 };
+const player = { x: 1.5, y: 1.5, dx: 1, dy: 0, px: 0, py: 0.66, hp: 100, bananas: 0, heat: 0, hot: 0, kills: 0, hurt: 0, slime: 0, cool: 0, kick: 0, flash: 0 };
 const things = []; // enemies + pickups
-const shots = [];
+const shots = [], spits = [];
 let door = null;
 
 function loadLevel(keepStats = false) {
   const LEVEL = LEVELS[levelIx].rows;
   MW = Math.max(...LEVEL.map((r) => r.length)); MH = LEVEL.length;
-  map.length = 0; things.length = 0; shots.length = 0; door = null; boss = null; secrets = 0; secretsFound = 0;
-  const carry = keepStats ? { hp: player.hp, ammo: player.ammo, kills: player.kills } : null;
+  map.length = 0; things.length = 0; shots.length = 0; spits.length = 0; door = null; boss = null; secrets = 0; secretsFound = 0;
+  const carry = keepStats ? { hp: player.hp, bananas: player.bananas, kills: player.kills } : null;
   for (let y = 0; y < MH; y++) {
     const row = [];
     for (let x = 0; x < MW; x++) {
@@ -243,7 +256,12 @@ function loadLevel(keepStats = false) {
       if (c === "P") { player.x = cx; player.y = cy; c = "."; }
       else if (c === "J") { things.push({ kind: "jeet", x: cx, y: cy, hp: 3, cool: 0, seen: false, phase: rnd() * 6 }); c = "."; }
       else if (c === "G") { things.push({ kind: "goblin", x: cx, y: cy, hp: 2, cool: 0, seen: false, phase: rnd() * 6 }); c = "."; }
-      else if (c === "X") { boss = { kind: "bear", x: cx, y: cy, hp: 18, max: 18, cool: 0, seen: false, phase: 0 }; things.push(boss); c = "."; }
+      else if (c === "X") {
+        boss = LEVELS[levelIx].boss === "phone"
+          ? { kind: "phone", x: cx, y: cy, hp: 22, max: 22, armour: 8, cool: 1, spit: 1.5, tax: 6, seen: false, phase: 0 }
+          : { kind: "bear", x: cx, y: cy, hp: 18, max: 18, cool: 0, seen: false, phase: 0 };
+        things.push(boss); c = ".";
+      }
       else if (c === "S") secrets++;
       else if (c === "b") { things.push({ kind: "banana", x: cx, y: cy }); c = "."; }
       else if (c === "h") { things.push({ kind: "health", x: cx, y: cy }); c = "."; }
@@ -252,10 +270,10 @@ function loadLevel(keepStats = false) {
     }
     map.push(row);
   }
-  Object.assign(player, { dx: 1, dy: 0, px: 0, py: 0.66, hp: 100, ammo: 20, kills: 0, hurt: 0, cool: 0, kick: 0 }, carry || {});
+  Object.assign(player, { dx: 1, dy: 0, px: 0, py: 0.66, hp: 100, bananas: 0, heat: 0, hot: 0, kills: 0, hurt: 0, slime: 0, cool: 0, kick: 0, flash: 0 }, carry || {});
 }
 const wallAt = (x, y) => { const r = map[Math.floor(y)]; const c = r ? r[Math.floor(x)] : "#"; return c !== "." && c !== undefined ? c : null; };
-const isFoe = (t) => t.kind === "jeet" || t.kind === "goblin" || t.kind === "bear";
+const isFoe = (t) => t.kind === "jeet" || t.kind === "goblin" || t.kind === "bear" || t.kind === "phone";
 // Walking into a secret wall slides it open.
 function bump(x, y) {
   if (wallAt(x, y) !== "S") return;
@@ -331,17 +349,32 @@ const sfx = {
   steal: () => blip(900, 0.25, "triangle", 0.07, -700),
   secret: () => [392, 523, 784].forEach((f, i) => setTimeout(() => blip(f, 0.12, "triangle", 0.08), i * 80)),
   roar: () => blip(70, 0.5, "sawtooth", 0.12, -30),
+  spit: () => blip(240, 0.15, "triangle", 0.07, 200),
+  crack: () => { blip(1400, 0.08, "square", 0.07, -900); setTimeout(() => blip(700, 0.2, "sawtooth", 0.07, -500), 60); },
+  tax: () => [880, 660, 440].forEach((f, i) => setTimeout(() => blip(f, 0.1, "square", 0.06), i * 70)),
+  hot: () => blip(160, 0.3, "sawtooth", 0.06, -60),
   clear: () => [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => blip(f, 0.18, "triangle", 0.09), i * 120)),
 };
 
 // ── HUD ──
 const $ = (id) => document.querySelector(`#${id} b`);
-const face = document.getElementById("face").getContext("2d");
-let facePx = null;
+const faceEl = document.getElementById("face"), face = faceEl.getContext("2d");
+let facePx = null, crop = { x: 0, y: 0, n: 16 };
+// Crop the PFP to the monke itself (its pixels, not the background) so it fills the frame.
+function setFace(g) {
+  facePx = g.px;
+  let x0 = 16, y0 = 16, x1 = -1, y1 = -1;
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) if (g.solid[y][x]) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+  if (x1 < 0) return;
+  const n = Math.max(8, Math.min(16, Math.max(x1 - x0 + 1, Math.min(y1 - y0 + 1, 13))));
+  crop = { x: Math.max(0, Math.min(16 - n, Math.round((x0 + x1 + 1) / 2 - n / 2))), y: Math.max(0, Math.min(16 - n, y0 - 1)), n };
+  faceEl.width = faceEl.height = n;
+}
 function drawFace() {
-  face.clearRect(0, 0, 16, 16);
-  if (facePx) for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
-    const [r, g, b] = facePx[y][x];
+  const { x: cx, y: cy, n } = crop;
+  face.clearRect(0, 0, n, n);
+  if (facePx) for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+    const [r, g, b] = facePx[cy + y][cx + x];
     const hurt = player.hurt > 0 ? 0.5 : 0;
     face.fillStyle = `rgb(${Math.round(r + (255 - r) * hurt)},${Math.round(g * (1 - hurt))},${Math.round(b * (1 - hurt))})`;
     face.fillRect(x, y, 1, 1);
@@ -383,9 +416,17 @@ function update(dt) {
 
   // throw
   p.cool -= dt; p.kick = Math.max(0, p.kick - dt * 5); p.hurt = Math.max(0, p.hurt - dt);
-  if ((keys.has("Space") || touch.fire) && p.cool <= 0 && p.ammo > 0) {
-    p.ammo--; p.cool = 0.32; p.kick = 1;
-    shots.push({ x: p.x + p.dx * 0.3, y: p.y + p.dy * 0.3, vx: p.dx * 9, vy: p.dy * 9, life: 1.4 });
+  // Every weapon plays the same: 1 damage, one shot per 0.32 s, speed 9.
+  // It never runs out; hold fire too long and it overheats for a moment.
+  const wasHot = p.hot > 0;
+  p.hot = Math.max(0, p.hot - dt); p.flash = Math.max(0, p.flash - dt);
+  if (wasHot && !p.hot) p.heat = 0.6;
+  // Cools only while you're not firing: about 4 s of non-stop fire overheats it.
+  if (!p.hot && p.cool < -0.1) p.heat = Math.max(0, p.heat - dt * 0.5);
+  if ((keys.has("Space") || touch.fire) && p.cool <= 0 && !p.hot) {
+    p.cool = 0.32; p.kick = 1; p.flash = 0.06; p.heat += 0.085;
+    if (p.heat >= 1) { p.heat = 1; p.hot = 1.4; sfx.hot(); }
+    shots.push({ x: p.x + p.dx * 0.3, y: p.y + p.dy * 0.3, vx: p.dx * 9, vy: p.dy * 9, life: 1.4, born: performance.now() });
     sfx.throw();
   }
   for (let i = shots.length - 1; i >= 0; i--) {
@@ -396,6 +437,13 @@ function update(dt) {
       if (dead || !isFoe(e) || e.hp <= 0) continue;
       if (Math.hypot(e.x - s.x, e.y - s.y) < (e.kind === "bear" ? 0.8 : 0.42)) {
         dead = true; e.hp--; e.seen = true; e.flash = 0.12;
+        if (e.kind === "phone" && e.armour > 0 && --e.armour === 0) {
+          sfx.crack(); say("CASE CRACKED", "SALE! UPGRADE NOW"); setTimeout(() => { if (state === "play") say(""); }, 1300);
+        }
+        if (e.hp <= 0 && e.kind === "phone") {
+          for (let k = 0; k < 10; k++) { const a = k / 10 * Math.PI * 2; const bx = e.x + Math.cos(a) * 0.9, by = e.y + Math.sin(a) * 0.9; if (!wallAt(bx, by)) things.push({ kind: "banana", x: bx, y: by }); }
+          say("PERMISSIONLESS", "The Banana Phone is down. The exit is open."); setTimeout(() => { if (state === "play") say(""); }, 2000);
+        }
         if (e.hp <= 0) {
           p.kills++; e.dieAt = performance.now(); sfx.die();
           if (rnd() < 0.5) things.push({ kind: "banana", x: e.x, y: e.y });
@@ -412,6 +460,7 @@ function update(dt) {
     const dx = p.x - e.x, dy = p.y - e.y, d = Math.hypot(dx, dy);
     if (!e.seen && d < 9 && lineOfSight(e.x, e.y, p.x, p.y)) e.seen = true;
     if (!e.seen) continue;
+    if (e.kind === "phone") { phoneAI(e, dx, dy, d, dt); continue; }
     // Paper hands: a jeet down to its last hit runs away instead of fighting.
     const flee = e.kind === "jeet" && e.hp === 1;
     // The bear charges in bursts: slow, then a rush every few seconds.
@@ -427,7 +476,7 @@ function update(dt) {
       else if (e.kind === "bear") { p.hp -= 22; p.hurt = 0.5; e.cool = 1.2; sfx.hurt(); sfx.roar(); }
       else {
         // The rug pull: grabs bananas and vanishes somewhere else in the cave.
-        const took = Math.min(p.ammo, 4); p.ammo -= took; e.cool = 1.5; sfx.steal();
+        const took = Math.min(p.bananas, 4); p.bananas -= took; e.cool = 1.5; sfx.steal();
         for (let k = 0; k < 40; k++) {
           const nx = 1.5 + Math.floor(rnd() * (MW - 2)), ny = 1.5 + Math.floor(rnd() * (MH - 2));
           if (!wallAt(nx, ny) && Math.hypot(nx - p.x, ny - p.y) > 6) { e.x = nx; e.y = ny; e.seen = false; break; }
@@ -441,30 +490,82 @@ function update(dt) {
     const t = things[i];
     if (t.kind !== "banana" && t.kind !== "health") continue;
     if (Math.hypot(t.x - p.x, t.y - p.y) < 0.5) {
-      if (t.kind === "banana") p.ammo += 5; else if (p.hp < 100) p.hp = Math.min(100, p.hp + 25); else continue;
+      if (t.kind === "banana") p.bananas += 5; else if (p.hp < 100) p.hp = Math.min(100, p.hp + 25); else continue;
       things.splice(i, 1); sfx.pick();
     }
+  }
+  // Banana Phone slime
+  p.slime = Math.max(0, p.slime - dt);
+  for (let i = spits.length - 1; i >= 0; i--) {
+    const s = spits[i];
+    s.x += s.vx * dt; s.y += s.vy * dt; s.life -= dt;
+    if (Math.hypot(s.x - p.x, s.y - p.y) < 0.35) { p.hp -= 8; p.hurt = 0.25; p.slime = 1.4; sfx.hurt(); spits.splice(i, 1); continue; }
+    if (s.life <= 0 || wallAt(s.x, s.y)) spits.splice(i, 1);
   }
   // drop corpses after a moment
   for (let i = things.length - 1; i >= 0; i--) if (things[i].dieAt && performance.now() - things[i].dieAt > 700) things.splice(i, 1);
 
   if (p.hp <= 0) { p.hp = 0; state = "dead"; say("REKT", `${isTouch ? "Tap FIRE" : "Space"} to start over`); }
   else if (door && Math.hypot(door.x - p.x, door.y - p.y) < 1.05) {
-    if (boss && boss.hp > 0) { if (!p.lockedSaid) { say("LOCKED", "The bear holds the exit. Take it down."); p.lockedSaid = true; setTimeout(() => { say(""); p.lockedSaid = false; }, 1600); } }
+    if (boss && boss.hp > 0) { if (!p.lockedSaid) { say("LOCKED", boss.kind === "phone" ? "The Banana Phone holds the exit. Take it down." : "The bear holds the exit. Take it down."); p.lockedSaid = true; setTimeout(() => { say(""); p.lockedSaid = false; }, 1600); } }
     else {
       clearTime = performance.now() - t0; sfx.clear();
       const last = levelIx === LEVELS.length - 1, tap = isTouch ? "tap FIRE" : "Space";
       state = last ? "won" : "clear";
-      say(last ? "BEAR MARKET OVER" : "LEVEL CLEAR",
+      say(last ? "YOU ESCAPED" : "LEVEL CLEAR",
         `${fmt(clearTime)} · ${p.kills} jeets · secrets ${secretsFound}/${secrets} · ${tap} ${last ? "to play again" : "for the next cave"}`);
-      post({ event: "clear", level: levelIx + 1, timeMs: Math.round(clearTime), kills: p.kills, secrets: secretsFound });
+      post({ event: "clear", level: levelIx + 1, timeMs: Math.round(clearTime), kills: p.kills, secrets: secretsFound, bananas: p.bananas });
     }
+  }
+}
+
+// The Banana Phone keeps its distance, side-steps, slings propaganda slime,
+// whips you with its cable up close and taxes 30% of your bananas now and then.
+function phoneAI(e, dx, dy, d, dt) {
+  const p = player, bare = e.armour <= 0, ux = dx / d, uy = dy / d;
+  const want = d > 4.5 ? 1 : d < 2.6 ? -1 : 0;
+  const strafe = Math.sin(performance.now() / (bare ? 380 : 620));
+  const sp = (bare ? 2.6 : 1.7) * dt;
+  const mx = (ux * want - uy * strafe) * sp, my = (uy * want + ux * strafe) * sp;
+  if (!wallAt(e.x + mx * 2, e.y)) e.x += mx;
+  if (!wallAt(e.x, e.y + my * 2)) e.y += my;
+  const sees = lineOfSight(e.x, e.y, p.x, p.y);
+  e.spit -= dt; e.tax -= dt;
+  if (sees && e.spit <= 0) {
+    e.spit = bare ? 0.85 : 1.4; sfx.spit();
+    const spread = bare ? [-0.18, 0, 0.18] : [0];
+    for (const a of spread) { const c = Math.cos(a), s2 = Math.sin(a); spits.push({ x: e.x, y: e.y, vx: (ux * c - uy * s2) * 5, vy: (uy * c + ux * s2) * 5, life: 3 }); }
+  }
+  if (d < 1.2 && e.cool <= 0) { p.hp -= 14; p.hurt = 0.4; e.cool = 1.2; sfx.hurt(); }
+  if (sees && e.tax <= 0) {
+    e.tax = 9; const took = Math.floor(p.bananas * 0.3);
+    if (took > 0) { p.bananas -= took; sfx.tax(); say("30% TAX", `The Banana Phone took ${took} bananas`); setTimeout(() => { if (state === "play") say(""); }, 1300); }
   }
 }
 
 const fmt = (ms) => { const s = Math.floor(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
 
 // ── Render ──
+function addLight(c, r, g, b) {
+  return ((255 << 24) | Math.min(255, ((c >>> 16) & 255) + (b | 0)) << 16 | Math.min(255, ((c >>> 8) & 255) + (g | 0)) << 8 | Math.min(255, (c & 255) + (r | 0))) >>> 0;
+}
+// A shot: a soft glow in its colour, then the 8×8 shape over it.
+function drawShot(s, x0, y0, size, tY) {
+  const [r, g, b] = s.c, cx = x0 + size / 2, cy = y0 + size / 2, R = size * 1.7;
+  for (let y = Math.max(0, Math.floor(cy - R)); y < Math.min(H, cy + R); y++) for (let x = Math.max(0, Math.floor(cx - R)); x < Math.min(W, cx + R); x++) {
+    if (tY >= zbuf[x]) continue;
+    const k = 0.55 * (1 - Math.hypot(x - cx, y - cy) / R); if (k > 0) buf[y * W + x] = addLight(buf[y * W + x], r * k, g * k, b * k);
+  }
+  const main = rgb(r, g, b), core = rgb(255, 255, 255), dark = rgb(r * 0.4, g * 0.4, b * 0.4);
+  for (let x = Math.max(0, x0); x < Math.min(W, x0 + size); x++) {
+    if (tY >= zbuf[x]) continue;
+    const mx = Math.floor((x - x0) * 8 / size);
+    for (let y = Math.max(0, y0); y < Math.min(H, y0 + size); y++) {
+      const m = s.mask[Math.floor((y - y0) * 8 / size)][mx];
+      if (m === "1") buf[y * W + x] = main; else if (m === "2") buf[y * W + x] = core; else if (m === "3") buf[y * W + x] = dark;
+    }
+  }
+}
 function render() {
   const p = player, half = H / 2;
   // floor + ceiling, row by row
@@ -481,6 +582,8 @@ function render() {
       fx += sx; fy += sy;
     }
   }
+  const now = performance.now();
+  for (const s of shots) s.c = shotColour(WEAPON.shot.color, now);
   // walls
   for (let x = 0; x < W; x++) {
     const cam = 2 * x / W - 1, rx = p.dx + p.px * cam, ry = p.dy + p.py * cam;
@@ -501,18 +604,27 @@ function render() {
     let tx = Math.floor(wx * TEX); if ((side === 0 && rx > 0) || (side === 1 && ry < 0)) tx = TEX - tx - 1;
     const tex = TEXTURES[cell] || TEXTURES["#"];
     const f = fog(perp) * (side ? 0.78 : 1), step = TEX / lh;
+    // Shots light up the wall they fly past, in their own colour.
+    const hx = p.x + perp * rx, hy = p.y + perp * ry;
+    let lr = 0, lg = 0, lb = 0;
+    for (const s of shots) { const k = 0.85 / (1 + ((s.x - hx) ** 2 + (s.y - hy) ** 2) * 2.2); if (k > 0.04) { lr += s.c[0] * k; lg += s.c[1] * k; lb += s.c[2] * k; } }
     let tpos = (top - half + lh / 2) * step;
-    for (let y = top; y <= bot; y++) { buf[y * W + x] = shade(tex[((tpos & (TEX - 1)) * TEX) + tx], f); tpos += step; }
+    if (lr + lg + lb < 8) for (let y = top; y <= bot; y++) { buf[y * W + x] = shade(tex[((tpos & (TEX - 1)) * TEX) + tx], f); tpos += step; }
+    else for (let y = top; y <= bot; y++) { buf[y * W + x] = addLight(shade(tex[((tpos & (TEX - 1)) * TEX) + tx], f), lr, lg, lb); tpos += step; }
   }
   // sprites, far to near
   const sprites = [];
   for (const t of things) {
     let spr, scale = 0.62;
-    if (isFoe(t)) { spr = SPR[t.kind][Math.floor(t.phase || 0) % 2]; if (t.kind === "bear") scale = 1.1; }
+    if (isFoe(t)) {
+      const set = t.kind === "phone" && t.armour > 0 ? SPR.phoneCase : SPR[t.kind];
+      spr = set[Math.floor(t.phase || 0) % 2]; if (t.kind === "bear") scale = 1.1; if (t.kind === "phone") scale = 0.7;
+    }
     else { spr = SPR[t.kind]; scale = 0.4; }
     sprites.push({ x: t.x, y: t.y, spr, scale, flash: t.flash > 0, dying: !!t.dieAt });
   }
-  for (const s of shots) sprites.push({ x: s.x, y: s.y, spr: SPR.banana, scale: 0.18, lift: 0.18 });
+  for (const s of shots) sprites.push({ x: s.x, y: s.y, mask: SHOT, c: s.c, scale: 0.14, lift: 0.24 });
+  for (const s of spits) sprites.push({ x: s.x, y: s.y, spr: SLIME, scale: 0.4, lift: 0.1 });
   for (const s of sprites) s.d = (p.x - s.x) ** 2 + (p.y - s.y) ** 2;
   sprites.sort((a, b) => b.d - a.d);
   const inv = 1 / (p.px * p.dy - p.dx * p.py);
@@ -524,6 +636,7 @@ function render() {
     const size = Math.floor((H / tY) * s.scale * (s.dying ? 0.6 : 1));
     const floorY = Math.floor(half + (H / tY) / 2 - (s.lift || 0) * (H / tY));
     const y0 = floorY - size, x0 = scrX - (size >> 1), f = fog(tY);
+    if (s.mask) { drawShot(s, x0, y0, size, tY); continue; }
     for (let x = Math.max(0, x0); x < Math.min(W, x0 + size); x++) {
       if (tY >= zbuf[x]) continue;
       const tx = Math.floor((x - x0) * s.spr.w / size);
@@ -535,13 +648,25 @@ function render() {
   }
   // launcher
   const bob = Math.sin(performance.now() / 160) * (Math.abs(touch.mx) + Math.abs(touch.my) + (keys.size ? 1 : 0) > 0 ? 2 : 0);
-  const gx = W / 2 + 6, gy = H - GUN.h * 2 + 6 + Math.round(player.kick * 8 + bob);
+  if (player.flash > 0) { const c = shotColour(WEAPON.shot.color, now); for (let y = H - 70; y < H; y++) for (let x = (W >> 1) - 40; x < (W >> 1) + 50; x++) { const k = 0.5 * (1 - Math.hypot(x - W / 2 - 6, y - H + 40) / 60); if (k > 0) buf[y * W + x] = addLight(buf[y * W + x], c[0] * k, c[1] * k, c[2] * k); } }
+  const G = 3, gx = Math.round(W / 2 - GUN.w * G / 2 + 8), gy = H - GUN.h * G + 8 + Math.round(player.kick * 10 + bob) + (player.hot > 0 ? 8 : 0);
   for (let y = 0; y < GUN.h; y++) for (let x = 0; x < GUN.w; x++) {
     const c = GUN.data[y * GUN.w + x]; if (!c) continue;
-    for (let yy = 0; yy < 2; yy++) for (let xx = 0; xx < 2; xx++) {
-      const px = gx + x * 2 + xx, py = gy + y * 2 + yy;
+    for (let yy = 0; yy < G; yy++) for (let xx = 0; xx < G; xx++) {
+      const px = gx + x * G + xx, py = gy + y * G + yy;
       if (px >= 0 && px < W && py >= 0 && py < H) buf[py * W + px] = c;
     }
+  }
+  // Overheat bar: only shows while the weapon is warm.
+  if (player.heat > 0.02) {
+    const bw = 40, bx = 6, by = H - 7, fill = Math.round(bw * player.heat);
+    const col = player.hot > 0 ? (Math.floor(now / 120) % 2 ? rgb(255, 80, 60) : rgb(255, 200, 60)) : rgb(255, Math.round(220 - 160 * player.heat), 60);
+    for (let y = by; y < by + 3; y++) for (let x = bx - 1; x <= bx + bw; x++) buf[y * W + x] = x >= bx && x < bx + fill && x < bx + bw ? col : rgb(20, 16, 28);
+  }
+  if (player.slime > 0) {
+    const k = Math.min(1, player.slime) * 0.55;
+    for (let i = 0; i < buf.length; i++) { const c = buf[i], x = i % W, y = (i / W) | 0; const drip = ((x * 7 + (y >> 2) * 13) % 23 === 0) || ((x >> 3) % 5 === 2 && y < (40 + ((x * 37) % 50)) * Math.min(1, player.slime)); const kk = drip ? Math.min(0.9, k * 1.8) : k;
+      buf[i] = ((255 << 24) | Math.round(((c >>> 16) & 255) * (1 - kk) + 40 * kk) << 16 | Math.round(((c >>> 8) & 255) * (1 - kk) + 220 * kk) << 8 | Math.round((c & 255) * (1 - kk) + 50 * kk)) >>> 0; }
   }
   if (player.hurt > 0) for (let i = 0; i < buf.length; i += 1) { const c = buf[i]; buf[i] = ((255 << 24) | ((c >>> 16) & 255) * 0.6 << 16 | ((c >>> 8) & 255) * 0.6 << 8 | Math.min(255, (c & 255) + 70)) >>> 0; }
   if (boss && boss.hp > 0 && boss.seen) {
@@ -551,7 +676,7 @@ function render() {
   ctx.putImageData(frame, 0, 0);
 
   $("hp").textContent = Math.max(0, Math.round(player.hp));
-  $("ammo").textContent = player.ammo;
+  $("ammo").textContent = player.bananas;
   $("kills").textContent = player.kills;
   $("clock").textContent = fmt(state === "play" ? performance.now() - t0 : clearTime);
   drawFace();
@@ -578,13 +703,14 @@ fit();
 const params = new URLSearchParams(location.search);
 let n = parseInt(params.get("n") || "", 10);
 if (!imageFor(n)) { do n = 1 + Math.floor(Math.random() * 8888); while (!imageFor(n)); }
-loadImage(imageFor(n)).then(readGrid).then((g) => { facePx = g.px; }).catch(() => { /* face stays blank */ });
+loadImage(imageFor(n)).then(readGrid).then(setFace).catch(() => { /* face stays blank */ });
+equip(n);
 loadLevel();
-say("MONKECAVES", `Cave 1: ${LEVELS[0].name}. Hunt the jeets, find the pink exit.`);
+say("MONKECAVES", `MONKE #${n} · ${WEAPON.name}<br>Cave 1: ${LEVELS[0].name}. Hunt the jeets, find the pink exit.`);
 setTimeout(() => { if (state === "play") say(""); }, 2200);
 
 let last = performance.now();
-window.__caves = { player, things, get state() { return state; }, frames: 0 };
+window.__caves = { player, things, shots, spits, get weapon() { return WEAPON; }, get state() { return state; }, frames: 0, goto(i) { levelIx = i; loadLevel(); state = "play"; t0 = performance.now(); } };
 function loop(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
   update(dt); render(); window.__caves.frames++;
