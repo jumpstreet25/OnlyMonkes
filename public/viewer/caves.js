@@ -158,6 +158,9 @@ function equip(n) {
 // ── Levels ── # rock, C chart, B crate, D exit, S secret wall (slides open when
 // you walk into it), P start, J jeet, G rug goblin, X bear boss (the exit stays
 // shut until it's down), b bananas, h health.
+// Speed-run board (worker caves.ts) only takes runs from this level set. Change a
+// level → bump this and CAVES_VERSION/MIN_MS in worker-actions/src/caves.ts together.
+const CAVES_VERSION = 1;
 const LEVELS = [
   { name: "THE DIP", rows: [
     "########################",
@@ -324,6 +327,7 @@ fireEl.addEventListener("pointerup", () => { touch.fire = false; });
 fireEl.addEventListener("pointercancel", () => { touch.fire = false; });
 
 function turn(a) {
+  if (state === "play" && !t0 && a) t0 = performance.now();
   const c = Math.cos(a), s = Math.sin(a), p = player;
   [p.dx, p.dy] = [p.dx * c - p.dy * s, p.dx * s + p.dy * c];
   [p.px, p.py] = [p.px * c - p.py * s, p.px * s + p.py * c];
@@ -331,9 +335,12 @@ function turn(a) {
 
 // ── Sound: tiny synth, no files ──
 let audio = null;
+// Per-device conveniences (sound, best times). Storage can be blocked; the game works without it.
+const store = { get(k) { try { return localStorage.getItem(`caves:${k}`); } catch { return null; } }, set(k, v) { try { localStorage.setItem(`caves:${k}`, v); } catch { /* blocked */ } } };
+let muted = store.get("muted") === "1";
 function unlockAudio() { if (!audio) try { audio = new AudioContext(); } catch { /* no audio */ } }
 function blip(freq, dur, type = "square", vol = 0.08, slide = 0) {
-  if (!audio) return;
+  if (!audio || muted) return;
   const t = audio.currentTime, o = audio.createOscillator(), g = audio.createGain();
   o.type = type; o.frequency.setValueAtTime(freq, t);
   if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, freq + slide), t + dur);
@@ -381,10 +388,15 @@ function drawFace() {
   }
 }
 const msg = document.getElementById("msg");
-const say = (title, line = "") => { msg.innerHTML = title ? `<h1>${title}</h1><p>${line}</p>` : ""; };
+const say = (title, line = "") => { msg.className = ""; msg.innerHTML = title ? `<h1>${title}</h1><p>${line}</p>` : ""; };
+// A framed card for the title and cave-clear screens (our own strings only, never user text).
+const card = (title, lines) => { msg.className = "card"; msg.innerHTML = `<h1>${title}</h1>${lines.join("")}`; };
 
 // ── Game state ──
-let state = "play", t0 = performance.now(), clearTime = 0;
+// title → play → clear | dead | won. t0 = 0 until the first move, turn or shot, so a
+// speed run starts on the player's first input, not when the cave loads.
+let state = "title", t0 = 0, clearTime = 0, paused = 0;
+const runTime = () => (t0 ? performance.now() - t0 : 0);
 function post(m) {
   const s = JSON.stringify({ type: "caves", ...m });
   if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage(s);
@@ -393,13 +405,14 @@ function post(m) {
 
 function update(dt) {
   const p = player;
+  if (paused) return;
   if (state !== "play") {
     if (keys.has("Space") || keys.has("Enter") || touch.fire) {
       touch.fire = false; keys.clear();
+      // A clear goes on to the next cave; dying restarts the same cave; winning starts over.
       const next = state === "clear";
-      levelIx = next ? levelIx + 1 : 0;
-      loadLevel(next); state = "play"; t0 = performance.now();
-      say(LEVELS[levelIx].name, `Cave ${levelIx + 1} of ${LEVELS.length}`); setTimeout(() => { if (state === "play") say(""); }, 1800);
+      levelIx = next ? levelIx + 1 : state === "won" ? 0 : levelIx;
+      startCave(next);
     }
     return;
   }
@@ -407,6 +420,7 @@ function update(dt) {
   let fwd = (keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0) - (keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0) - touch.my;
   let side = (keys.has("KeyD") ? 1 : 0) - (keys.has("KeyA") ? 1 : 0) + touch.mx;
   const rot = (keys.has("ArrowRight") || keys.has("KeyE") ? 1 : 0) - (keys.has("ArrowLeft") || keys.has("KeyQ") ? 1 : 0);
+  if (!t0 && (fwd || side || rot || touch.fire || keys.has("Space"))) t0 = performance.now();
   if (rot) turn(rot * 2.6 * dt);
   const len = Math.hypot(fwd, side); if (len > 1) { fwd /= len; side /= len; }
   const speed = 3.2 * dt, R = 0.22;
@@ -505,16 +519,23 @@ function update(dt) {
   // drop corpses after a moment
   for (let i = things.length - 1; i >= 0; i--) if (things[i].dieAt && performance.now() - things[i].dieAt > 700) things.splice(i, 1);
 
-  if (p.hp <= 0) { p.hp = 0; state = "dead"; say("REKT", `${isTouch ? "Tap FIRE" : "Space"} to start over`); }
+  if (p.hp <= 0) { p.hp = 0; state = "dead"; say("REKT", `${isTouch ? "Tap FIRE" : "Space"} to try ${LEVELS[levelIx].name} again`); }
   else if (door && Math.hypot(door.x - p.x, door.y - p.y) < 1.05) {
     if (boss && boss.hp > 0) { if (!p.lockedSaid) { say("LOCKED", boss.kind === "phone" ? "The Banana Phone holds the exit. Take it down." : "The bear holds the exit. Take it down."); p.lockedSaid = true; setTimeout(() => { say(""); p.lockedSaid = false; }, 1600); } }
     else {
-      clearTime = performance.now() - t0; sfx.clear();
-      const last = levelIx === LEVELS.length - 1, tap = isTouch ? "tap FIRE" : "Space";
+      clearTime = runTime(); sfx.clear();
+      const last = levelIx === LEVELS.length - 1, tap = isTouch ? "Tap FIRE" : "Space";
       state = last ? "won" : "clear";
-      say(last ? "YOU ESCAPED" : "LEVEL CLEAR",
-        `${fmt(clearTime)} · ${p.kills} jeets · secrets ${secretsFound}/${secrets} · ${tap} ${last ? "to play again" : "for the next cave"}`);
-      post({ event: "clear", level: levelIx + 1, timeMs: Math.round(clearTime), kills: p.kills, secrets: secretsFound, bananas: p.bananas });
+      const best = parseInt(store.get(`best:${CAVES_VERSION}:${levelIx + 1}`) || "0", 10);
+      const isBest = !best || clearTime < best;
+      if (isBest) store.set(`best:${CAVES_VERSION}:${levelIx + 1}`, String(Math.round(clearTime)));
+      card(last ? "YOU ESCAPED" : "CAVE CLEAR", [
+        `<div class="big">${fmtRun(clearTime)}</div>`,
+        isBest ? `<div class="tag">${best ? "NEW BEST" : "FIRST CLEAR"}</div>` : `<div class="dim">best ${fmtRun(best)}</div>`,
+        `<div class="row"><span>bananas ${p.bananas}</span><span>jeets ${p.kills}</span><span>secrets ${secretsFound}/${secrets}</span></div>`,
+        `<div class="cta">${tap} ${last ? "to play again" : `for cave ${levelIx + 2}`}</div>`,
+      ]);
+      if (t0) post({ event: "clear", v: CAVES_VERSION, level: levelIx + 1, timeMs: Math.round(clearTime), kills: p.kills, secrets: secretsFound, bananas: p.bananas });
     }
   }
 }
@@ -544,6 +565,7 @@ function phoneAI(e, dx, dy, d, dt) {
 }
 
 const fmt = (ms) => { const s = Math.floor(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
+const fmtRun = (ms) => `${fmt(ms)}.${Math.floor((ms % 1000) / 100)}`;
 
 // ── Render ──
 function addLight(c, r, g, b) {
@@ -673,12 +695,19 @@ function render() {
     const bw = Math.floor(W * 0.6), bx = (W - bw) >> 1, fill = Math.floor(bw * boss.hp / boss.max);
     for (let y = 6; y < 11; y++) for (let x = bx - 1; x <= bx + bw; x++) buf[y * W + x] = x - bx < fill && x >= bx && y > 6 && y < 10 ? rgb(235, 60, 80) : rgb(20, 16, 28);
   }
+  // Crosshair in the shot colour, dimmed.
+  if (state === "play") { const c = shotColour(WEAPON.shot.color, now), cx = W >> 1, cy = H >> 1; for (const [x, y] of [[-3, 0], [-2, 0], [2, 0], [3, 0], [0, -3], [0, -2], [0, 2], [0, 3]]) buf[(cy + y) * W + cx + x] = addLight(buf[(cy + y) * W + cx + x], c[0] * 0.7, c[1] * 0.7, c[2] * 0.7); }
+  // Low health: a red pulse at the edges.
+  if (state === "play" && player.hp > 0 && player.hp < 30) {
+    const k = 0.35 + 0.25 * Math.sin(now / 180);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const e = Math.min(x, W - 1 - x, y, H - 1 - y); if (e < 14) { const kk = k * (1 - e / 14); buf[y * W + x] = addLight(buf[y * W + x], 255 * kk, 0, 0); } }
+  }
   ctx.putImageData(frame, 0, 0);
 
   $("hp").textContent = Math.max(0, Math.round(player.hp));
   $("ammo").textContent = player.bananas;
   $("kills").textContent = player.kills;
-  $("clock").textContent = fmt(state === "play" ? performance.now() - t0 : clearTime);
+  $("clock").textContent = fmtRun(state === "play" ? runTime() : clearTime);
   drawFace();
 }
 
@@ -706,11 +735,42 @@ if (!imageFor(n)) { do n = 1 + Math.floor(Math.random() * 8888); while (!imageFo
 loadImage(imageFor(n)).then(readGrid).then(setFace).catch(() => { /* face stays blank */ });
 equip(n);
 loadLevel();
-say("MONKECAVES", `MONKE #${n} · ${WEAPON.name}<br>Cave 1: ${LEVELS[0].name}. Hunt the jeets, find the pink exit.`);
-setTimeout(() => { if (state === "play") say(""); }, 2200);
+const swatch = (c) => c === "rainbow" ? "linear-gradient(90deg,#f44,#fd4,#4f6,#4cf,#a4f)" : c;
+card("MONKECAVES", [
+  `<div class="dim">MONKE #${n}</div>`,
+  `<div class="weapon"><i style="background:${swatch(WEAPON.shot.color)}"></i>${WEAPON.name}</div>`,
+  `<div class="dim">${LEVELS.length} caves · hunt the jeets · find the pink exit<br>The Banana Phone waits at the end.</div>`,
+  `<div class="cta">${isTouch ? "Tap FIRE" : "Space"} to start</div>`,
+]);
+document.getElementById("fire").style.background = WEAPON.shot.color === "rainbow" ? swatch("rainbow") : WEAPON.shot.color;
+setTimeout(() => document.getElementById("help").classList.add("gone"), 6000);
+
+function startCave(keepLoadout) {
+  loadLevel(keepLoadout); state = "play"; t0 = 0;
+  say(LEVELS[levelIx].name, `Cave ${levelIx + 1} of ${LEVELS.length} · the clock starts when you move`);
+  setTimeout(() => { if (state === "play") say(""); }, 2200);
+}
+
+// ── Pause: button, P / Esc, or leaving the app. The clock stops while paused. ──
+const menu = document.getElementById("menu");
+function setPaused(on) {
+  if (on === !!paused || (on && state !== "play")) return;
+  if (on) { paused = performance.now(); touch.fire = false; keys.clear(); document.exitPointerLock?.(); }
+  else { if (t0) t0 += performance.now() - paused; paused = 0; }
+  menu.hidden = !on;
+}
+document.getElementById("pause").addEventListener("pointerdown", (e) => { e.stopPropagation(); setPaused(true); });
+addEventListener("keydown", (e) => { if (e.code === "KeyP" || e.code === "Escape") setPaused(!paused); });
+document.addEventListener("visibilitychange", () => { if (document.hidden) setPaused(true); });
+const soundBtn = document.getElementById("m-sound");
+const showSound = () => { soundBtn.textContent = muted ? "Sound: off" : "Sound: on"; };
+showSound();
+soundBtn.addEventListener("click", () => { muted = !muted; store.set("muted", muted ? "1" : "0"); showSound(); });
+document.getElementById("m-resume").addEventListener("click", () => setPaused(false));
+document.getElementById("m-restart").addEventListener("click", () => { setPaused(false); startCave(levelIx > 0); });
 
 let last = performance.now();
-window.__caves = { player, things, shots, spits, get weapon() { return WEAPON; }, get state() { return state; }, frames: 0, goto(i) { levelIx = i; loadLevel(); state = "play"; t0 = performance.now(); } };
+window.__caves = { player, things, shots, spits, get door() { return door; }, get weapon() { return WEAPON; }, get state() { return state; }, frames: 0, goto(i) { levelIx = i; loadLevel(); state = "play"; t0 = performance.now(); say(""); } };
 function loop(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
   update(dt); render(); window.__caves.frames++;
