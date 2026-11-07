@@ -1,0 +1,23 @@
+<!doctype html><meta charset="utf-8"><style>body{margin:0;background:#15121c;color:#ddd;font:12px monospace}.r{display:flex;gap:12px;padding:8px 12px;align-items:center}canvas{width:96px;height:96px;image-rendering:pixelated;background:#2a2436;border:2px solid #3a3150}</style>
+<div id="o"></div>
+<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.min.js" } }</script>
+<script type="module">
+import { imageFor, loadImage, readGrid } from "/viewer/monkeModel.js";
+import { paintFace } from "/viewer/caves-face.js";
+const hps = [100, 70, 50, 30, 10];
+for (const n of [8982, 1234, 4321, 777]) {
+  const g = readGrid(await loadImage(imageFor(n)));
+  let x0 = 16, y0 = 16, x1 = -1, y1 = -1;
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) if (g.solid[y][x]) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+  const k = Math.max(8, Math.min(16, Math.max(x1 - x0 + 1, Math.min(y1 - y0 + 1, 13))));
+  const crop = { x: Math.max(0, Math.min(16 - k, Math.round((x0 + x1 + 1) / 2 - k / 2))), y: Math.max(0, Math.min(16 - k, y0 - 1)), n: k };
+  const row = document.createElement("div"); row.className = "r"; row.textContent = "#" + n;
+  for (const hp of hps) {
+    const c = document.createElement("canvas"); c.width = c.height = k; const x = c.getContext("2d");
+    paintFace(g.px, g.solid, crop, { hp, look: 0, ouch: 0, grin: 0, hurt: 0, t: 0 }).forEach((r, j) => r.forEach((p, i) => { if (p) { x.fillStyle = `rgb(${p})`; x.fillRect(i, j, 1, 1); } }));
+    row.append(c);
+  }
+  document.getElementById("o").append(row);
+}
+document.title = "ready";
+</script>
