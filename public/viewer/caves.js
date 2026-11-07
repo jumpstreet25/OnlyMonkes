@@ -401,7 +401,8 @@ let muted = store.get("muted") === "1";
 const settings = {
   sens: Math.max(0.4, Math.min(2.2, parseFloat(store.get("sens") || "1") || 1)),
   assist: store.get("assist") !== "0",
-  tilt: store.get("tilt") !== "0",
+  // New key: tilt starts off for everyone (the first version was on and too much).
+  tilt: store.get("tilt2") === "1",
 };
 function unlockAudio() { if (!audio) try { audio = new AudioContext(); } catch { /* no audio */ } }
 function blip(freq, dur, type = "square", vol = 0.08, slide = 0) {
@@ -679,17 +680,26 @@ function assistTarget(cone, range) {
   return best;
 }
 
-// Tilt to aim (phones): turning the phone left/right turns the monke. Uses the
-// gyroscope rate, so holding still never drifts. Portrait turns about the
-// phone's long axis, landscape about its short one.
+// Tilt to aim (phones, off by default): fine aim on top of the thumb drag, the way
+// mobile shooters do gyro. It only works while the right thumb is down (turn area or
+// FIRE): lift it to bring the phone back to a comfy angle without turning, so nobody
+// has to spin in their chair. A small wrist twist turns 1.8× as far, with a dead
+// zone and smoothing so hand shake doesn't jitter the view. Uses the gyro's rotation
+// rate (never drifts): yaw is the phone's long axis in portrait, short in landscape.
+const TILT_GAIN = 1.8, TILT_DEADZONE = 3; // deg/s
+let tiltRate = 0;
 addEventListener("devicemotion", (e) => {
   if (!isTouch || !settings.tilt || state !== "play" || paused) return;
+  if (turnId === null && !touch.fire) { tiltRate = 0; return; }
   const r = e.rotationRate; if (!r) return;
   const ang = (screen.orientation && screen.orientation.angle) || window.orientation || 0;
-  const rate = ang === 90 ? -(r.beta || 0) : ang === 270 || ang === -90 ? (r.beta || 0) : -(r.gamma || 0);
-  if (Math.abs(rate) < 4) return;
+  const raw = ang === 90 ? -(r.beta || 0) : ang === 270 || ang === -90 ? (r.beta || 0) : -(r.gamma || 0);
+  tiltRate = tiltRate * 0.55 + raw * 0.45;
+  const mag = Math.abs(tiltRate) - TILT_DEADZONE;
+  if (mag <= 0) return;
   const dt = Math.min(0.05, (e.interval || 16) / ((e.interval || 16) > 1 ? 1000 : 1));
-  turn(rate * Math.PI / 180 * dt * settings.sens);
+  const sticky = settings.assist && assistTarget(0.07, 14) ? 0.55 : 1;
+  turn(Math.sign(tiltRate) * mag * Math.PI / 180 * dt * TILT_GAIN * settings.sens * sticky);
 });
 
 // Chasing around walls: a distance-to-player field over the open floor, rebuilt
@@ -1035,12 +1045,15 @@ document.addEventListener("visibilitychange", () => { if (document.hidden) setPa
 const sensEl = document.getElementById("m-sens"), sensVal = document.getElementById("m-sensv");
 sensEl.value = String(settings.sens); sensVal.textContent = `${settings.sens.toFixed(1)}×`;
 sensEl.addEventListener("input", () => { settings.sens = parseFloat(sensEl.value); sensVal.textContent = `${settings.sens.toFixed(1)}×`; store.set("sens", String(settings.sens)); });
-const toggle = (id, key, label) => {
+const toggle = (id, key, label, storeKey = key, onHint = "") => {
   const el = document.getElementById(id), show = () => { el.textContent = `${label}: ${settings[key] ? "on" : "off"}`; };
-  show(); el.addEventListener("click", () => { settings[key] = !settings[key]; store.set(key, settings[key] ? "1" : "0"); show(); });
+  show(); el.addEventListener("click", () => {
+    settings[key] = !settings[key]; store.set(storeKey, settings[key] ? "1" : "0"); show();
+    if (settings[key] && onHint) { el.textContent = onHint; setTimeout(show, 2600); }
+  });
 };
 toggle("m-assist", "assist", "Aim assist");
-toggle("m-tilt", "tilt", "Tilt to aim");
+toggle("m-tilt", "tilt", "Tilt to aim", "tilt2", "Tilts while your right thumb is down");
 if (!isTouch) for (const id of ["m-assist", "m-tilt", "m-sensrow"]) document.getElementById(id).hidden = true;
 const soundBtn = document.getElementById("m-sound");
 const showSound = () => { soundBtn.textContent = muted ? "Sound: off" : "Sound: on"; };
