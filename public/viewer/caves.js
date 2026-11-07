@@ -347,12 +347,42 @@ const keys = new Set();
 const touch = { mx: 0, my: 0, turn: 0, fire: false };
 const isTouch = matchMedia("(pointer: coarse)").matches;
 if (!isTouch) document.body.classList.add("desktop");
-document.getElementById("help").textContent = isTouch ? "Left stick: move · drag right side: turn · FIRE · MAP" : "WASD move · mouse / ← → turn · click or space: fire · M map · click to lock the mouse";
+document.getElementById("help").textContent = isTouch ? "Left stick: move · drag right side: turn · FIRE · MAP" : "WASD move · mouse / ← → turn · click or space: fire · M map · click to lock the mouse · or use a controller";
 addEventListener("keydown", (e) => { keys.add(e.code); if (e.code === "Space") e.preventDefault(); unlockAudio(); });
 addEventListener("keyup", (e) => keys.delete(e.code));
 view.addEventListener("click", () => { unlockAudio(); if (!isTouch && document.pointerLockElement !== view) view.requestPointerLock?.(); });
 addEventListener("mousemove", (e) => { if (document.pointerLockElement === view) turn(e.movementX * 0.0035); });
 addEventListener("mousedown", (e) => { if (document.pointerLockElement === view && e.button === 0) touch.fire = true; });
+
+// Gamepads (any controller the browser maps to the standard layout: Xbox, PlayStation,
+// Switch Pro, 8BitDo, Apple TV-style MFi pads on a Mac/iPhone). Left stick or D-pad up/
+// down moves, left stick sideways strafes, right stick or D-pad left/right turns,
+// A / RT / RB fires, Start pauses (A or Start starts a cave), Back/Select shows the map.
+const gpad = { mx: 0, my: 0, turn: 0, fire: false, tap: false, gp: null };
+const padHeld = new Set();
+const PAD_DEAD = 0.18;
+const padAxis = (v = 0) => (Math.abs(v) < PAD_DEAD ? 0 : (v - Math.sign(v) * PAD_DEAD) / (1 - PAD_DEAD));
+function pollPad() {
+  const gp = Array.from(navigator.getGamepads?.() ?? []).find((g) => g && g.connected) ?? null;
+  gpad.gp = gp;
+  if (!gp) { gpad.mx = gpad.my = gpad.turn = 0; gpad.fire = false; padHeld.clear(); return; }
+  const b = (i) => !!gp.buttons[i]?.pressed;
+  const pressed = (i) => b(i) && !padHeld.has(i);
+  gpad.mx = padAxis(gp.axes[0]);
+  gpad.my = padAxis(gp.axes[1]) + (b(13) ? 1 : 0) - (b(12) ? 1 : 0);
+  gpad.turn = padAxis(gp.axes[2]) + (b(15) ? 1 : 0) - (b(14) ? 1 : 0);
+  gpad.fire = b(0) || b(7) || b(5);
+  if (pressed(9)) { if (state === "play") setPaused(!paused); else gpad.tap = true; }
+  if (pressed(0)) { if (paused) setPaused(false); else if (state !== "play") gpad.tap = true; }
+  if (pressed(8) && state === "play") showMap = !showMap;
+  if (gpad.fire || gpad.tap) unlockAudio();
+  padHeld.clear();
+  gp.buttons.forEach((x, i) => { if (x.pressed) padHeld.add(i); });
+}
+function rumble(ms, strength) {
+  try { gpad.gp?.vibrationActuator?.playEffect("dual-rumble", { duration: ms, strongMagnitude: strength, weakMagnitude: strength * 0.6 }); } catch { /* no rumble */ }
+}
+addEventListener("gamepadconnected", () => { if (state === "play") { say("Controller connected"); setTimeout(() => { if (state === "play") say(""); }, 1400); } });
 addEventListener("mouseup", () => { if (!isTouch) touch.fire = false; });
 
 const pad = document.getElementById("pad"), knob = document.getElementById("knob");
@@ -463,7 +493,7 @@ function drawFace() {
 // (DOOM's status face does the same) and pulls an "ouch" on a big hit.
 function hurtPlayer(amount, from, flash = 0.3) {
   const p = player;
-  p.hp -= amount; p.hurt = flash; sfx.hurt();
+  p.hp -= amount; p.hurt = flash; sfx.hurt(); rumble(amount >= 20 ? 260 : 120, amount >= 20 ? 0.9 : 0.45);
   if (amount >= 20) p.ouch = 0.6;
   if (from) {
     const a = Math.atan2(from.y - p.y, from.x - p.x) - Math.atan2(p.dy, p.dx), d = Math.atan2(Math.sin(a), Math.cos(a));
@@ -490,8 +520,8 @@ function update(dt) {
   const p = player;
   if (paused) return;
   if (state !== "play") {
-    if (keys.has("Space") || keys.has("Enter") || touch.fire) {
-      touch.fire = false; keys.clear();
+    if (keys.has("Space") || keys.has("Enter") || touch.fire || gpad.tap) {
+      touch.fire = false; gpad.tap = false; keys.clear();
       // A clear goes on to the next cave; dying restarts the same cave; winning starts over.
       const next = state === "clear";
       levelIx = next ? levelIx + 1 : state === "won" ? 0 : levelIx;
@@ -501,10 +531,11 @@ function update(dt) {
   }
   tickDoors(dt);
   // move
-  let fwd = (keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0) - (keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0) - touch.my;
-  let side = (keys.has("KeyD") ? 1 : 0) - (keys.has("KeyA") ? 1 : 0) + touch.mx;
-  const rot = (keys.has("ArrowRight") || keys.has("KeyE") ? 1 : 0) - (keys.has("ArrowLeft") || keys.has("KeyQ") ? 1 : 0);
-  if (!t0 && (fwd || side || rot || touch.fire || keys.has("Space"))) t0 = performance.now();
+  let fwd = (keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0) - (keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0) - touch.my - gpad.my;
+  let side = (keys.has("KeyD") ? 1 : 0) - (keys.has("KeyA") ? 1 : 0) + touch.mx + gpad.mx;
+  const rot = (keys.has("ArrowRight") || keys.has("KeyE") ? 1 : 0) - (keys.has("ArrowLeft") || keys.has("KeyQ") ? 1 : 0) + Math.max(-1.3, Math.min(1.3, gpad.turn * 1.3));
+  const firing = keys.has("Space") || touch.fire || gpad.fire;
+  if (!t0 && (fwd || side || rot || firing)) t0 = performance.now();
   if (rot) turn(rot * 2.6 * dt);
   const len = Math.hypot(fwd, side); if (len > 1) { fwd /= len; side /= len; }
   const speed = 3.2 * dt, R = 0.22;
@@ -516,11 +547,11 @@ function update(dt) {
   p.cool -= dt; p.kick = Math.max(0, p.kick - dt * 5); p.hurt = Math.max(0, p.hurt - dt);
   // Every weapon plays the same: 1 damage, one shot per 0.32 s, speed 9, 1 ammo per shot.
   p.flash = Math.max(0, p.flash - dt);
-  if ((keys.has("Space") || touch.fire) && p.cool <= 0 && p.ammo <= 0) {
+  if (firing && p.cool <= 0 && p.ammo <= 0) {
     p.cool = 0.45; sfx.empty();
     if (performance.now() - (p.emptySaid || 0) > 2500) { p.emptySaid = performance.now(); say("OUT OF AMMO", "Find Seeker batteries"); setTimeout(() => { if (state === "play") say(""); }, 1200); }
   }
-  if ((keys.has("Space") || touch.fire) && p.cool <= 0 && p.ammo > 0) {
+  if (firing && p.cool <= 0 && p.ammo > 0) {
     p.cool = 0.32; p.kick = 1; p.flash = 0.06; p.ammo--;
     // Phones: aim assist bends the shot onto an enemy within ~6° of the crosshair
     // (DOOM's auto-aim checks a few degrees either side the same way).
@@ -944,7 +975,7 @@ function render() {
     }
   }
   // launcher
-  const bob = Math.sin(performance.now() / 160) * (Math.abs(touch.mx) + Math.abs(touch.my) + (keys.size ? 1 : 0) > 0 ? 2 : 0);
+  const bob = Math.sin(performance.now() / 160) * (Math.abs(touch.mx) + Math.abs(touch.my) + Math.abs(gpad.mx) + Math.abs(gpad.my) + (keys.size ? 1 : 0) > 0 ? 2 : 0);
   if (player.flash > 0) { const c = shotColour(WEAPON.shot.color, now); for (let y = H - 70; y < H; y++) for (let x = (W >> 1) - 40; x < (W >> 1) + 50; x++) { const k = 0.5 * (1 - Math.hypot(x - W / 2 - 6, y - H + 40) / 60); if (k > 0) buf[y * W + x] = addLight(buf[y * W + x], c[0] * k, c[1] * k, c[2] * k); } }
   const G = 3, gx = Math.round(W / 2 - GUN.w * G / 2 + 8), gy = H - GUN.h * G + 8 + Math.round(player.kick * 10 + bob);
   for (let y = 0; y < GUN.h; y++) for (let x = 0; x < GUN.w; x++) {
@@ -1064,10 +1095,10 @@ document.getElementById("m-restart").addEventListener("click", () => { setPaused
 
 let last = performance.now();
 // Test hooks only with ?debug=1 (headless playtests); never on a normal page.
-if (params.has("debug")) window.__caves = { player, things, shots, spits, keys, touch, turn, step: (dt) => update(dt), map, get door() { return door; }, get level() { return levelIx; }, get weapon() { return WEAPON; }, get state() { return state; }, get totals() { return totals; }, get secrets() { return [secretsFound, secrets]; }, blocked: (x, y) => blockers.has(y * MW + x), wallAt, settings, assistTarget, frames: 0, goto(i) { levelIx = i; loadLevel(); state = "play"; t0 = performance.now(); say(""); } };
+if (params.has("debug")) window.__caves = { gpad, pollPad, player, things, shots, spits, keys, touch, turn, step: (dt) => update(dt), map, get door() { return door; }, get level() { return levelIx; }, get weapon() { return WEAPON; }, get state() { return state; }, get totals() { return totals; }, get secrets() { return [secretsFound, secrets]; }, blocked: (x, y) => blockers.has(y * MW + x), wallAt, settings, assistTarget, frames: 0, goto(i) { levelIx = i; loadLevel(); state = "play"; t0 = performance.now(); say(""); } };
 function loop(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
-  update(dt); render(); if (window.__caves) window.__caves.frames++;
+  pollPad(); update(dt); render(); if (window.__caves) window.__caves.frames++;
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
