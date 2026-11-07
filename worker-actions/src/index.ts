@@ -103,6 +103,7 @@ import { handleWebAuth, handleWebHistory, handleWebProfile } from "./webAuth";
 import { handleWebMedia, isWebMediaPath } from "./webMedia";
 import { handleShareCard, isShareCardPath } from "./shareCard";
 import { handleReferral, isReferralPath } from "./referrals";
+import { handleCaves, isCavesPath } from "./caves";
 import { handleLivekitAuthorize, INTERNAL_HOST } from "./livekitAuth";
 import { handleApkDownload, isApkDownloadPath } from "./apkDownloads";
 import { handleWebPair } from "./webPair";
@@ -175,6 +176,10 @@ export interface Env {
   DI_ALLOW_STALE?: string;
   /** Referral ledger (referrals.ts). */
   REFERRALS?: KVNamespace;
+  /** MonkeCaves speed-run board (caves.ts): "off" (default) | "testers" | "on". */
+  CAVES_BOARD?: string;
+  /** Comma-separated sha256 hex of tester wallets (CAVES_BOARD=testers). */
+  CAVES_TESTERS?: string;
   // MonkeGlobe/MonkeEvents public web repo backend — see community.ts.
   COMMUNITY_DATA: KVNamespace;
   // Service Binding to the MonkeLedger worker (same Cloudflare account) — see wrangler.toml's
@@ -3791,6 +3796,7 @@ export default {
     }
     // Referrals: /api/referral/*, /r/<code>[/card.png], /referrals (referrals.ts).
     if (isReferralPath(path)) return handleReferral(path, request, env, ctx);
+    if (isCavesPath(path)) return handleCaves(request, env, path);
     // /monke/<number>[/card.png]: share page + pixel card (shareCard.ts); /monke/<mint> below.
     if (isShareCardPath(path)) return handleShareCard(path, request, ctx);
     const monkeImageMatch = path.match(/^\/monke\/([^/]+)\/image$/);
