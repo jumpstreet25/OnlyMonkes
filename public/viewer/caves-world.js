@@ -11,6 +11,9 @@
 
 const n = (rnd, a = 0.75) => a + rnd() * (1 - a);
 const mix = (a, b, k) => a.map((v, i) => v + (b[i] - v) * k);
+// Textures are 32×32 and repeat every tile, so every pattern below repeats in 32
+// (periods of 4, 8, 16 or 32, sines of 2π/32 multiples); anything else leaves a seam.
+const TAU = Math.PI * 2 / 32;
 
 export const WALL_PAINT = {
   "#": (x, y, rnd) => {
@@ -24,7 +27,7 @@ export const WALL_PAINT = {
   },
   V: (x, y, rnd) => {
     const stone = WALL_PAINT["#"](x, y, rnd);
-    const vine = Math.abs(((x + Math.round(Math.sin(y / 4 + x) * 2)) % 9) - 4) < 1.2;
+    const vine = Math.abs((((x + Math.round(Math.sin(y * TAU * 2) * 2)) % 8) + 8) % 8 - 4) < 1.2;
     const leaf = vine && rnd() < 0.45;
     return leaf ? [70, 170, 60] : vine ? [36, 110, 40] : stone;
   },
@@ -47,8 +50,8 @@ export const WALL_PAINT = {
     return stalk < 3 ? [150 * k, 180 * k, 70 * k] : [110 * k, 150 * k, 56 * k];
   },
   W: (x, y, rnd) => {
-    const k = n(rnd, 0.7), streak = (x * 13) % 7 < 2;
-    return streak ? [200 * k, 235 * k, 255] : [60 * k, 140 * k, 200 * k];
+    const k = n(rnd, 0.7), streak = (x * 5) % 8 < 2 || ((x * 3 + y) % 16 === 0);
+    return streak ? [215 * k, 240 * k, 255] : [70 * k, 150 * k, 210 * k];
   },
   d: (x, y, rnd) => {
     const k = n(rnd, 0.85), plank = x % 8 === 0, band = y === 6 || y === 25;
@@ -67,19 +70,37 @@ export const WALL_PAINT = {
 
 export const FLOOR_PAINT = {
   g: (x, y, rnd) => { const k = n(rnd, 0.6); const blade = rnd() < 0.12; return blade ? [90 * k, 170 * k, 60 * k] : [46 * k, 98 * k, 38 * k]; },
-  m: (x, y, rnd) => { const k = n(rnd, 0.7); return ((x >> 2) + (y >> 3)) % 5 === 0 ? [70 * k, 50 * k, 30 * k] : [92 * k, 66 * k, 40 * k]; },
-  w: (x, y, rnd) => { const k = n(rnd, 0.8); const glint = (x + y * 3) % 17 === 0; return glint ? [170, 220, 240] : [40 * k, 96 * k, 120 * k]; },
+  m: (x, y, rnd) => { const k = n(rnd, 0.7); return ((x >> 2) + (y >> 3)) % 4 === 0 ? [70 * k, 50 * k, 30 * k] : [92 * k, 66 * k, 40 * k]; },
+  w: (x, y, rnd) => {
+    // Clear shallow water: ripple bands, light glints; caves.js scrolls it so it flows.
+    const k = n(rnd, 0.85), wave = Math.sin((x + y) * TAU * 2) + Math.sin((x - y) * TAU * 3) * 0.6;
+    if (wave > 1.3) return [190, 235, 250];
+    return wave > 0.6 ? [70 * k, 165 * k, 200 * k] : [40 * k, 120 * k, 165 * k];
+  },
   s: (x, y, rnd) => { const k = n(rnd, 0.7); return x % 16 === 0 || y % 16 === 0 ? [40, 40, 36] : [86 * k, 84 * k, 74 * k]; },
 };
 
 // Open sky in clearings: canopy leaves with light coming through the gaps.
+// Smooth random noise that wraps at the tile edge and has no mirror line (a sine
+// pattern mirrors around the tile's middle, which reads as a split screen when you
+// stand in the middle of a tile).
+function wrapNoise(rnd, cells) {
+  const g = Array.from({ length: cells * cells }, () => rnd()), step = 32 / cells;
+  const at = (i, j) => g[((j + cells) % cells) * cells + ((i + cells) % cells)];
+  const ease = (t) => t * t * (3 - 2 * t);
+  return (x, y) => {
+    const fx = x / step, fy = y / step, i = Math.floor(fx), j = Math.floor(fy), u = ease(fx - i), v = ease(fy - j);
+    return (at(i, j) * (1 - u) + at(i + 1, j) * u) * (1 - v) + (at(i, j + 1) * (1 - u) + at(i + 1, j + 1) * u) * v;
+  };
+}
+let canopy = null;
 export const SKY_PAINT = (x, y, rnd) => {
-  // Big soft leaf clumps; light shows through a few round gaps between them.
-  const g = Math.sin(x * 0.39) * Math.cos(y * 0.33) + Math.sin((x + y) * 0.21) * 0.6;
-  const k = 0.85 + rnd() * 0.15;
-  if (g > 1.05) return [170 * k, 205 * k, 120 * k];
-  if (g > 0.8) return [90 * k, 140 * k, 64 * k];
-  return g > 0 ? [40 * k, 96 * k, 40 * k] : [28 * k, 74 * k, 32 * k];
+  // Big soft leaf clumps; light shows through a few gaps between them.
+  if (!canopy) { const a = wrapNoise(rnd, 4), b = wrapNoise(rnd, 8); canopy = (x, y) => a(x, y) * 0.65 + b(x, y) * 0.35; }
+  const g = canopy(x, y), k = 0.85 + rnd() * 0.15;
+  if (g > 0.68) return [170 * k, 205 * k, 120 * k];
+  if (g > 0.6) return [90 * k, 140 * k, 64 * k];
+  return g > 0.4 ? [40 * k, 96 * k, 40 * k] : [28 * k, 74 * k, 32 * k];
 };
 
 // Light: sunlit clearings are brighter than the torch-lit tunnels.

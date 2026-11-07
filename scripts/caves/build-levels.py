@@ -165,8 +165,8 @@ def lost_temple():
 
     # 1. Start clearing (sun, grass) with a waterfall pool. Two ways north.
     c.blob(10, 46, 7.5, 5, wall="V", floor="g", sky=True)
-    c.room(7, 50, 7, 3, floor="w", sky=True)
-    c.put("W", *[(x, 53) for x in range(7, 13)])
+    c.room(5, 49, 11, 4, floor="w", sky=True)                             # the pool under the falls
+    c.put("W", *[(x, 53) for x in range(5, 16) if x != 13])
     c.room(12, 54, 4, 3, floor="s").put("S", (13, 53))                     # secret 1: behind the falls
     c.hall([(6, 31), (6, 42)], floor="m")                                  # west: vine tunnel (dark)
     c.room(12, 33, 9, 7, wall="Z", floor="g", sky=True)                    # east: bamboo grove
@@ -204,8 +204,8 @@ def lost_temple():
     c.put("D", (47, 3))
 
     # Start: two batteries, a banana, nobody in sight. Torches and trees.
-    c.put("P", (10, 45)).put("q", (8, 43)).put("b", (12, 49))
-    c.put("Y", (4, 43), (16, 49), (13, 34), (19, 38), (46, 21), (54, 29), (53, 21))
+    c.put("P", (10, 45)).put("q", (8, 43)).put("b", (12, 47))
+    c.put("Y", (4, 43), (17, 47), (13, 34), (19, 38), (46, 21), (54, 29), (53, 21))
     c.put("F", (7, 33), (5, 24), (23, 24), (18, 5), (28, 5), (27, 21), (41, 21), (27, 31), (41, 31),
           (40, 5), (54, 5), (8, 6), (29, 36), (42, 44))
     c.put("M", (12, 9), (6, 13), (31, 43), (40, 37), (36, 44))
