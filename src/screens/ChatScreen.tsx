@@ -39,6 +39,12 @@ import { useTranslation } from "react-i18next";
 import type { FlashListRef } from "@shopify/flash-list";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ChatSidebar, type SidebarPanel } from "@/components/ChatSidebar";
+import { ResizeHandle } from "@/components/web/ResizeHandle";
+import { WorkspacePane } from "@/components/web/WorkspacePane";
+import {
+  useWorkspace, CHAT_MIN, MIDDLE_MIN, SIDEBAR_MIN, SIDEBAR_COMPACT_BELOW, WORKSPACE_MIN_WINDOW,
+} from "@/lib/webWorkspace";
+import { getMonkeCavesConfig, monkeCavesVisible } from "@/lib/monkeCaves/config";
 import { OnboardingChecklist, markOnboardingStep } from "@/components/OnboardingChecklist";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAppStore } from "@/store/appStore";
@@ -122,10 +128,10 @@ import { MonkeGlass, MonkeGlassActionButton } from "@/components/MonkeGlass";
 import { GoLivePicker } from "@/components/GoLivePicker";
 import { ChatMessageList } from "@/components/ChatMessageList";
 
-/** Narrowest browser window that gets the sidebar (half a desktop screen is
- *  ~950 px): below SIDEBAR_FULL_WINDOW it's the compact icon rail. */
+/** Narrowest browser window that gets the menu column instead of the popup.
+ *  Wider windows also get the middle pane (webWorkspace.ts); every column is
+ *  dragged to size, and the menu turns into the icon rail when narrow. */
 const SIDEBAR_MIN_WINDOW = 600;
-const SIDEBAR_FULL_WINDOW = 1000;
 
 export default function ChatScreen() {
   const { t } = useTranslation();
@@ -237,7 +243,25 @@ export default function ChatScreen() {
   // popup (ChatSidebar). Phone browsers and the app keep the popup.
   const { width: windowWidth } = useWindowDimensions();
   const sidebarMode = Platform.OS === "web" && windowWidth >= SIDEBAR_MIN_WINDOW;
-  const sidebarCompact = windowWidth < SIDEBAR_FULL_WINDOW;
+  const ws = useWorkspace();
+  const isGroupAdminWs = useAppStore((s) => s.isGroupAdmin);
+  const walletWs = useAppStore((s) => s.wallet?.address ?? null);
+  const [cavesAllowed, setCavesAllowed] = useState(false);
+  useEffect(() => {
+    if (!sidebarMode) return;
+    getMonkeCavesConfig().then((cfg) => {
+      const ok = monkeCavesVisible(cfg, isGroupAdminWs, walletWs);
+      setCavesAllowed(ok);
+      // First visit on a wide window: MonkeCaves in the middle (3D Monke without game access).
+      useWorkspace.getState().seed(ok ? "caves" : "3d");
+    }).catch(() => {});
+  }, [sidebarMode, isGroupAdminWs, walletWs]);
+  const workspaceMode = sidebarMode && windowWidth >= WORKSPACE_MIN_WINDOW;
+  const middleOpen = workspaceMode && ws.tabs.some((x) => x !== "caves" || cavesAllowed);
+  const sidebarW = Math.max(SIDEBAR_MIN, Math.min(ws.sidebarW, windowWidth - CHAT_MIN - (middleOpen ? MIDDLE_MIN : 0)));
+  const chatW = Math.max(CHAT_MIN, Math.min(ws.chatW, windowWidth - sidebarW - MIDDLE_MIN));
+  const sidebarCompact = sidebarW < SIDEBAR_COMPACT_BELOW;
+  const dragStart = useRef({ chat: 0, side: 0 });
   const headerHeight = sidebarMode ? CHAT_HEADER_BARE_HEIGHT : CHAT_HEADER_HEIGHT;
   const [menuPanel, setMenuPanel] = useState<SidebarPanel | undefined>(undefined);
   // 2026-07-24: measured height of the absolute-positioned bottom toolbar
@@ -1473,16 +1497,7 @@ export default function ChatScreen() {
   return (
     <ErrorBoundary fallbackMessage={t("chatScreen.errorBoundaryFallback")}>
     <View style={{ flex: 1, flexDirection: "row" }}>
-    {sidebarMode && (
-      <ErrorBoundary silent>
-        <ChatSidebar
-          compact={sidebarCompact}
-          onOpenPanel={(panel) => { setMenuPanel(panel); setDrawerOpen(true); }}
-          onEditProfile={() => { setEditingProfile(true); setShowUsernameModal(true); }}
-        />
-      </ErrorBoundary>
-    )}
-    <View style={{ flex: 1 }}>
+    <View style={middleOpen ? { width: chatW } : { flex: 1, minWidth: 0 }}>
     <SwipeToSwitchChat from="main" enabled={isGenesisHolder}>
       <KeyboardAvoidingView
         // 2026-08-06: when a Chat World is equipped the solid themeBg fill
@@ -1855,6 +1870,36 @@ export default function ChatScreen() {
       </KeyboardAvoidingView>
     </SwipeToSwitchChat>
     </View>
+    {middleOpen && (
+      <>
+        <ResizeHandle
+          label={t("workspace.resizeChat")}
+          onDragStart={() => { dragStart.current.chat = chatW; }}
+          onDrag={(dx) => ws.setChatW(dragStart.current.chat + dx)}
+          onReset={() => ws.setChatW(420)}
+        />
+        <WorkspacePane cavesAllowed={cavesAllowed} />
+      </>
+    )}
+    {sidebarMode && (
+      <>
+        <ResizeHandle
+          label={t("workspace.resizeMenu")}
+          onDragStart={() => { dragStart.current.side = sidebarW; }}
+          onDrag={(dx) => ws.setSidebarW(dragStart.current.side - dx)}
+          onReset={() => ws.setSidebarW(248)}
+        />
+        <ErrorBoundary silent>
+          <ChatSidebar
+            compact={sidebarCompact}
+            width={sidebarW}
+            onOpenTab={workspaceMode ? ws.open : undefined}
+            onOpenPanel={(panel) => { setMenuPanel(panel); setDrawerOpen(true); }}
+            onEditProfile={() => { setEditingProfile(true); setShowUsernameModal(true); }}
+          />
+        </ErrorBoundary>
+      </>
+    )}
     </View>
       <MonkeGlass
         visible={shareMediaSheetOpen}

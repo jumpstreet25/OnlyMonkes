@@ -1094,5 +1094,10 @@
       "bags": "Tus bolsas",
       "off": "Ocultar columna"
     }
+  },
+  "workspace": {
+    "closeTab": "Cerrar {{name}}",
+    "resizeChat": "Arrastra para cambiar el ancho del chat",
+    "resizeMenu": "Arrastra para cambiar el ancho del menú"
   }
 }

@@ -15,6 +15,7 @@ import { MenuIcon, type MenuIconName } from "@/components/MenuIcon";
 import { BananaShopModal } from "@/components/BananaShopModal";
 import { getMonkeMemeConfig, monkeMemeVisible, type MonkeMemeConfig } from "@/lib/monkeMeme/config";
 import { getMonkeCavesConfig, monkeCavesVisible, type MonkeCavesConfig } from "@/lib/monkeCaves/config";
+import type { WorkspaceTab } from "@/lib/webWorkspace";
 
 export const SIDEBAR_WIDTH = 248;
 /** Half-screen windows: icon rail with the name under each icon. */
@@ -34,10 +35,14 @@ interface Item {
   active?: boolean;
 }
 
-export function ChatSidebar({ onOpenPanel, onEditProfile, compact = false }: {
+export function ChatSidebar({ onOpenPanel, onEditProfile, compact = false, width, onOpenTab }: {
   onOpenPanel: (panel: SidebarPanel) => void;
   onEditProfile: () => void;
   compact?: boolean;
+  /** Dragged width (workspace); the default widths otherwise. */
+  width?: number;
+  /** Workspace: open MonkeCaves / 3D Monke / MonkeMeme as a middle-pane tab instead of a page. */
+  onOpenTab?: (tab: WorkspaceTab) => void;
 }) {
   const { t } = useTranslation();
   const bg = useThemeColor("surface");
@@ -59,8 +64,11 @@ export function ChatSidebar({ onOpenPanel, onEditProfile, compact = false }: {
   const [cavesCfg, setCavesCfg] = useState<MonkeCavesConfig | null>(null);
   useEffect(() => { getMonkeCavesConfig().then(setCavesCfg).catch(() => {}); }, []);
   const [shopOpen, setShopOpen] = useState(false);
+  // The column sits on the right of the window, so its border faces chat on the left.
+  const edge = { backgroundColor: bg, borderRightWidth: 0, borderLeftWidth: 1, borderLeftColor: border };
 
   const go = (path: string) => () => router.push(path as any);
+  const tabOr = (tab: WorkspaceTab, path: string) => (onOpenTab ? () => onOpenTab(tab) : go(path));
   const sections: { title: string; items: Item[] }[] = [
     {
       title: t("sidebar.community"),
@@ -91,9 +99,9 @@ export function ChatSidebar({ onOpenPanel, onEditProfile, compact = false }: {
     {
       title: t("sidebar.create"),
       items: [
-        ...(monkeMemeVisible(memeCfg, isGroupAdmin, wallet) ? [{ key: "meme", label: t("menuDrawer.monkeMeme"), icon: "monkeface" as MenuIconName, onPress: go("/monkememe") }] : []),
-        { key: "3d", label: "3D Monke", icon: "monkeface", onPress: go("/monke3d") },
-        ...(monkeCavesVisible(cavesCfg, isGroupAdmin, wallet) ? [{ key: "caves", label: t("menuDrawer.monkeCaves"), icon: "target" as MenuIconName, onPress: go("/monkecaves") }] : []),
+        ...(monkeMemeVisible(memeCfg, isGroupAdmin, wallet) ? [{ key: "meme", label: t("menuDrawer.monkeMeme"), icon: "monkeface" as MenuIconName, onPress: tabOr("meme", "/monkememe") }] : []),
+        { key: "3d", label: "3D Monke", icon: "monkeface", onPress: tabOr("3d", "/monke3d") },
+        ...(monkeCavesVisible(cavesCfg, isGroupAdmin, wallet) ? [{ key: "caves", label: t("menuDrawer.monkeCaves"), icon: "target" as MenuIconName, onPress: tabOr("caves", "/monkecaves") }] : []),
       ],
     },
     {
@@ -108,7 +116,7 @@ export function ChatSidebar({ onOpenPanel, onEditProfile, compact = false }: {
 
   if (compact) {
     return (
-      <View style={[styles.rail, styles.railCompact, { backgroundColor: bg, borderRightColor: border }]}>
+      <View style={[styles.rail, styles.railCompact, edge, width != null && { width }]}>
         <Pressable
           onPress={onEditProfile}
           style={({ hovered }: any) => [styles.cTop, { borderBottomColor: border }, hovered && { backgroundColor: hover }]}
@@ -163,7 +171,7 @@ export function ChatSidebar({ onOpenPanel, onEditProfile, compact = false }: {
   }
 
   return (
-    <View style={[styles.rail, { backgroundColor: bg, borderRightColor: border }]}>
+    <View style={[styles.rail, edge, width != null && { width }]}>
       <View style={[styles.top, { borderBottomColor: border }]}>
         <Pressable
           onPress={onEditProfile}

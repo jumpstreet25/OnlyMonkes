@@ -102,7 +102,9 @@ async function fetchLedgerTraits(mint: string): Promise<OwnedNFT["traits"]> {
   }
 }
 
-export default function MonkeMemeScreen() {
+/** onBack: the website's workspace tab closes itself instead of going back. */
+export default function MonkeMemeScreen({ onBack }: { onBack?: () => void } = {}) {
+  const goBack = onBack ?? (() => router.back());
   const { t } = useTranslation();
   const { width } = useWindowDimensions();
   const cardStyle = useWorldGlassCardStyle();
@@ -280,7 +282,7 @@ export default function MonkeMemeScreen() {
   if (!allowed || (cfg && !monkeMemeVisible(cfg, isAdmin, walletAddress))) {
     const disabled = allowed && cfg && !monkeMemeVisible(cfg, isAdmin, walletAddress);
     return (
-      <WorldScreenShell title={t("monkeMeme.title")} onBack={() => router.back()}>
+      <WorldScreenShell title={t("monkeMeme.title")} onBack={goBack}>
         <View style={styles.center}>
           <View style={[styles.lockCard, cardStyle]}>
             <Text style={styles.lockTitle}>{disabled ? t("monkeMeme.disabledTitle") : t("monkeMeme.lockedTitle")}</Text>
@@ -299,7 +301,7 @@ export default function MonkeMemeScreen() {
   return (
     <WorldScreenShell
       title={t("monkeMeme.title")}
-      onBack={() => router.back()}
+      onBack={goBack}
       headerRight={cfg ? <Text style={styles.leftBadge}>{t("monkeMeme.leftToday", { left, limit })}</Text> : null}
     >
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
