@@ -14,6 +14,7 @@ import { useAppStore } from "@/store/appStore";
 import { MenuIcon, type MenuIconName } from "@/components/MenuIcon";
 import { BananaShopModal } from "@/components/BananaShopModal";
 import { getMonkeMemeConfig, monkeMemeVisible, type MonkeMemeConfig } from "@/lib/monkeMeme/config";
+import { getMonkeCavesConfig, monkeCavesVisible, type MonkeCavesConfig } from "@/lib/monkeCaves/config";
 
 export const SIDEBAR_WIDTH = 248;
 /** Half-screen windows: icon rail with the name under each icon. */
@@ -55,6 +56,8 @@ export function ChatSidebar({ onOpenPanel, onEditProfile, compact = false }: {
   const wallet = useAppStore((s) => s.wallet?.address ?? null);
   const [memeCfg, setMemeCfg] = useState<MonkeMemeConfig | null>(null);
   useEffect(() => { getMonkeMemeConfig().then(setMemeCfg).catch(() => {}); }, []);
+  const [cavesCfg, setCavesCfg] = useState<MonkeCavesConfig | null>(null);
+  useEffect(() => { getMonkeCavesConfig().then(setCavesCfg).catch(() => {}); }, []);
   const [shopOpen, setShopOpen] = useState(false);
 
   const go = (path: string) => () => router.push(path as any);
@@ -90,6 +93,7 @@ export function ChatSidebar({ onOpenPanel, onEditProfile, compact = false }: {
       items: [
         ...(monkeMemeVisible(memeCfg, isGroupAdmin, wallet) ? [{ key: "meme", label: t("menuDrawer.monkeMeme"), icon: "monkeface" as MenuIconName, onPress: go("/monkememe") }] : []),
         { key: "3d", label: "3D Monke", icon: "monkeface", onPress: go("/monke3d") },
+        ...(monkeCavesVisible(cavesCfg, isGroupAdmin, wallet) ? [{ key: "caves", label: t("menuDrawer.monkeCaves"), icon: "target" as MenuIconName, onPress: go("/monkecaves") }] : []),
       ],
     },
     {
