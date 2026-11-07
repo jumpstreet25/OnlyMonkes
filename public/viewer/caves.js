@@ -4,6 +4,7 @@
 // pixel maps; the player's face is their Saga Monke PFP (monkeModel.js).
 import { imageFor, loadImage, readGrid } from "/viewer/monkeModel.js";
 import { weaponFor, heldSprite, shotMask, shotColour } from "/viewer/caves-weapons.js";
+import { FOE_ROWS, FOE_PAL, AD_PAL2, XSHOT, BEAM, FOES, FOE_LETTERS } from "/viewer/caves-foes.js";
 
 const TEX = 32;
 const view = document.getElementById("view");
@@ -135,6 +136,14 @@ const SPR = {
   phoneCase: [makeSprite(PHONE(0), CASE_PAL), makeSprite(PHONE(1), CASE_PAL)],
   bear: [makeSprite(BEAR, PAL), makeSprite(BEAR, PAL)],
   jeet: JEET.map((r) => makeSprite(r, PAL)),
+  cookie: FOE_ROWS.cookie.map((r) => makeSprite(r, FOE_PAL)),
+  bat: FOE_ROWS.bat.map((r) => makeSprite(r, FOE_PAL)),
+  ad: [makeSprite(FOE_ROWS.ad[0], FOE_PAL), makeSprite(FOE_ROWS.ad[1], AD_PAL2)],
+  keeper: FOE_ROWS.keeper.map((r) => makeSprite(r, FOE_PAL)),
+  keeperBack: FOE_ROWS.keeperBack.map((r) => makeSprite(r, FOE_PAL)),
+  eye: FOE_ROWS.eye.map((r) => makeSprite(r, FOE_PAL)),
+  xshot: makeSprite(XSHOT, FOE_PAL),
+  beam: makeSprite(BEAM, FOE_PAL),
   goblin: GOBLIN.map((r) => makeSprite(r, PAL)),
   banana: makeSprite([
     "................", "................", "...........kk...", "..........kYk...", ".........kyyk...", "........kyyyk...",
@@ -240,7 +249,7 @@ const LEVELS = [
 let levelIx = 0;
 let MW = 0, MH = 0, secrets = 0, secretsFound = 0, boss = null;
 const map = [];
-const player = { x: 1.5, y: 1.5, dx: 1, dy: 0, px: 0, py: 0.66, hp: 100, bananas: 0, heat: 0, hot: 0, kills: 0, hurt: 0, slime: 0, cool: 0, kick: 0, flash: 0 };
+const player = { x: 1.5, y: 1.5, dx: 1, dy: 0, px: 0, py: 0.66, hp: 100, bananas: 0, heat: 0, hot: 0, kills: 0, hurt: 0, slime: 0, cool: 0, kick: 0, flash: 0, popup: 0, popupX: 0 };
 const things = []; // enemies + pickups
 const shots = [], spits = [];
 let door = null;
@@ -259,6 +268,7 @@ function loadLevel(keepStats = false) {
       if (c === "P") { player.x = cx; player.y = cy; c = "."; }
       else if (c === "J") { things.push({ kind: "jeet", x: cx, y: cy, hp: 3, cool: 0, seen: false, phase: rnd() * 6 }); c = "."; }
       else if (c === "G") { things.push({ kind: "goblin", x: cx, y: cy, hp: 2, cool: 0, seen: false, phase: rnd() * 6 }); c = "."; }
+      else if (FOE_LETTERS[c]) { const kind = FOE_LETTERS[c]; things.push({ kind, x: cx, y: cy, hp: FOES[kind].hp, cool: rnd(), seen: false, phase: rnd() * 6, face: rnd() * 6.3 }); c = "."; }
       else if (c === "X") {
         boss = LEVELS[levelIx].boss === "phone"
           ? { kind: "phone", x: cx, y: cy, hp: 22, max: 22, armour: 8, cool: 1, spit: 1.5, tax: 6, seen: false, phase: 0 }
@@ -276,7 +286,9 @@ function loadLevel(keepStats = false) {
   Object.assign(player, { dx: 1, dy: 0, px: 0, py: 0.66, hp: 100, bananas: 0, heat: 0, hot: 0, kills: 0, hurt: 0, slime: 0, cool: 0, kick: 0, flash: 0 }, carry || {});
 }
 const wallAt = (x, y) => { const r = map[Math.floor(y)]; const c = r ? r[Math.floor(x)] : "#"; return c !== "." && c !== undefined ? c : null; };
-const isFoe = (t) => t.kind === "jeet" || t.kind === "goblin" || t.kind === "bear" || t.kind === "phone";
+const isFoe = (t) => t.kind === "jeet" || t.kind === "goblin" || t.kind === "bear" || t.kind === "phone" || !!FOES[t.kind];
+// Every cave hits a little harder than the one before (one difficulty for everyone).
+const dmg = (n) => Math.round(n * (1 + 0.15 * levelIx));
 // Walking into a secret wall slides it open.
 function bump(x, y) {
   if (wallAt(x, y) !== "S") return;
@@ -361,6 +373,11 @@ const sfx = {
   tax: () => [880, 660, 440].forEach((f, i) => setTimeout(() => blip(f, 0.1, "square", 0.06), i * 70)),
   hot: () => blip(160, 0.3, "sawtooth", 0.06, -60),
   clear: () => [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => blip(f, 0.18, "triangle", 0.09), i * 120)),
+  ping: () => { blip(1320, 0.07, "sine", 0.08); setTimeout(() => blip(1760, 0.1, "sine", 0.08), 90); },
+  pop: () => blip(700, 0.06, "square", 0.06, 500),
+  clink: () => blip(2200, 0.05, "square", 0.05, -1200),
+  beam: () => blip(330, 0.35, "sine", 0.07, -200),
+  munch: () => blip(260, 0.05, "square", 0.05, -100),
 };
 
 // ── HUD ──
@@ -449,8 +466,11 @@ function update(dt) {
     let dead = s.life <= 0 || !!wallAt(s.x, s.y);
     for (const e of things) {
       if (dead || !isFoe(e) || e.hp <= 0) continue;
-      if (Math.hypot(e.x - s.x, e.y - s.y) < (e.kind === "bear" ? 0.8 : 0.42)) {
-        dead = true; e.hp--; e.seen = true; e.flash = 0.12;
+      if (Math.hypot(e.x - s.x, e.y - s.y) < (e.kind === "bear" ? 0.8 : FOES[e.kind]?.r ?? 0.42)) {
+        dead = true; e.seen = true;
+        // The Gatekeeper's padlock shield stops anything that hits it from the front.
+        if (e.kind === "keeper" && Math.cos(e.face) * s.vx + Math.sin(e.face) * s.vy < -0.35 * Math.hypot(s.vx, s.vy)) { sfx.clink(); continue; }
+        e.hp--; e.flash = 0.12;
         if (e.kind === "phone" && e.armour > 0 && --e.armour === 0) {
           sfx.crack(); say("CASE CRACKED", "SALE! UPGRADE NOW"); setTimeout(() => { if (state === "play") say(""); }, 1300);
         }
@@ -472,9 +492,10 @@ function update(dt) {
     if (!isFoe(e) || e.hp <= 0) continue;
     e.flash = Math.max(0, (e.flash || 0) - dt); e.cool -= dt; e.phase += dt * 8;
     const dx = p.x - e.x, dy = p.y - e.y, d = Math.hypot(dx, dy);
-    if (!e.seen && d < 9 && lineOfSight(e.x, e.y, p.x, p.y)) e.seen = true;
+    if (!e.seen && d < 9 && lineOfSight(e.x, e.y, p.x, p.y)) { e.seen = true; if (e.kind === "bat") sfx.ping(); }
     if (!e.seen) continue;
     if (e.kind === "phone") { phoneAI(e, dx, dy, d, dt); continue; }
+    if (FOES[e.kind]) { foeAI(e, dx, dy, d, dt); continue; }
     // Paper hands: a jeet down to its last hit runs away instead of fighting.
     const flee = e.kind === "jeet" && e.hp === 1;
     // The bear charges in bursts: slow, then a rush every few seconds.
@@ -486,8 +507,8 @@ function update(dt) {
       if (!wallAt(e.x, e.y + uy * sp * 1.5)) e.y += uy * sp;
     }
     if (d < (e.kind === "bear" ? 1.3 : 0.75) && e.cool <= 0 && !flee) {
-      if (e.kind === "jeet") { p.hp -= 9; p.hurt = 0.3; e.cool = 0.8; sfx.hurt(); }
-      else if (e.kind === "bear") { p.hp -= 22; p.hurt = 0.5; e.cool = 1.2; sfx.hurt(); sfx.roar(); }
+      if (e.kind === "jeet") { p.hp -= dmg(9); p.hurt = 0.3; e.cool = 0.8; sfx.hurt(); }
+      else if (e.kind === "bear") { p.hp -= dmg(22); p.hurt = 0.5; e.cool = 1.2; sfx.hurt(); sfx.roar(); }
       else {
         // The rug pull: grabs bananas and vanishes somewhere else in the cave.
         const took = Math.min(p.bananas, 4); p.bananas -= took; e.cool = 1.5; sfx.steal();
@@ -509,11 +530,11 @@ function update(dt) {
     }
   }
   // Banana Phone slime
-  p.slime = Math.max(0, p.slime - dt);
+  p.slime = Math.max(0, p.slime - dt); p.popup = Math.max(0, p.popup - dt);
   for (let i = spits.length - 1; i >= 0; i--) {
     const s = spits[i];
     s.x += s.vx * dt; s.y += s.vy * dt; s.life -= dt;
-    if (Math.hypot(s.x - p.x, s.y - p.y) < 0.35) { p.hp -= 8; p.hurt = 0.25; p.slime = 1.4; sfx.hurt(); spits.splice(i, 1); continue; }
+    if (Math.hypot(s.x - p.x, s.y - p.y) < 0.35) { p.hp -= s.dmg ?? dmg(8); p.hurt = 0.25; if (!s.spr) p.slime = 1.4; sfx.hurt(); spits.splice(i, 1); continue; }
     if (s.life <= 0 || wallAt(s.x, s.y)) spits.splice(i, 1);
   }
   // drop corpses after a moment
@@ -540,6 +561,44 @@ function update(dt) {
   }
 }
 
+// The Big Tech crowd (caves-foes.js).
+function move(e, mx, my) {
+  if (!wallAt(e.x + mx * 2, e.y)) e.x += mx;
+  if (!wallAt(e.x, e.y + my * 2)) e.y += my;
+}
+function bite(e, f) { player.hp -= dmg(f.hit); player.hurt = 0.3; e.cool = f.cool; sfx.hurt(); }
+function foeAI(e, dx, dy, d, dt) {
+  const f = FOES[e.kind], ux = dx / d, uy = dy / d, sp = f.speed * dt;
+  if (e.kind === "cookie") {
+    // Swarms straight at you and nibbles.
+    if (d > 0.45) move(e, ux * sp, uy * sp);
+    else if (e.cool <= 0) { bite(e, f); sfx.munch(); }
+  } else if (e.kind === "bat") {
+    // Zigzags in, faster once it's close.
+    const zig = Math.sin(e.phase * 0.55) * 1.2, k = d < 3 ? 1.6 : 1;
+    if (d > 0.55) move(e, (ux - uy * zig) * sp * k, (uy + ux * zig) * sp * k);
+    else if (e.cool <= 0) bite(e, f);
+  } else if (e.kind === "ad") {
+    // Hangs back at range and fires X's; drifts in close enough to pop over your screen.
+    const sees = lineOfSight(e.x, e.y, player.x, player.y);
+    const want = d > 6 ? 1 : d < 3.5 ? -0.6 : 0, side = Math.sin(e.phase * 0.25);
+    move(e, (ux * want - uy * side) * sp, (uy * want + ux * side) * sp);
+    if (sees && d < f.range && e.cool <= 0) { e.cool = f.cool; sfx.pop(); spits.push({ x: e.x, y: e.y, vx: ux * 4.5, vy: uy * 4.5, life: 3, dmg: dmg(f.hit), spr: "xshot" }); }
+    if (d < 1.8 && player.popup <= 0) { player.popup = 1.2; player.popupX = rnd(); sfx.pop(); }
+  } else if (e.kind === "keeper") {
+    // Turns slowly to keep its shield on you; walk around it and hit it from behind.
+    const want = Math.atan2(dy, dx); let diff = want - e.face;
+    diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+    e.face += Math.max(-f.turn * dt, Math.min(f.turn * dt, diff));
+    if (d > 0.8 && Math.abs(diff) < 0.6) move(e, Math.cos(e.face) * sp, Math.sin(e.face) * sp);
+    if (d < 1 && e.cool <= 0) bite(e, f);
+  } else if (e.kind === "eye") {
+    if (d < f.range && e.cool <= 0 && lineOfSight(e.x, e.y, player.x, player.y)) {
+      e.cool = f.cool; sfx.beam(); spits.push({ x: e.x, y: e.y, vx: ux * 3.2, vy: uy * 3.2, life: 5, dmg: dmg(f.hit), spr: "beam" });
+    }
+  }
+}
+
 // The Banana Phone keeps its distance, side-steps, slings propaganda slime,
 // whips you with its cable up close and taxes 30% of your bananas now and then.
 function phoneAI(e, dx, dy, d, dt) {
@@ -557,7 +616,7 @@ function phoneAI(e, dx, dy, d, dt) {
     const spread = bare ? [-0.18, 0, 0.18] : [0];
     for (const a of spread) { const c = Math.cos(a), s2 = Math.sin(a); spits.push({ x: e.x, y: e.y, vx: (ux * c - uy * s2) * 5, vy: (uy * c + ux * s2) * 5, life: 3 }); }
   }
-  if (d < 1.2 && e.cool <= 0) { p.hp -= 14; p.hurt = 0.4; e.cool = 1.2; sfx.hurt(); }
+  if (d < 1.2 && e.cool <= 0) { p.hp -= dmg(14); p.hurt = 0.4; e.cool = 1.2; sfx.hurt(); }
   if (sees && e.tax <= 0) {
     e.tax = 9; const took = Math.floor(p.bananas * 0.3);
     if (took > 0) { p.bananas -= took; sfx.tax(); say("30% TAX", `The Banana Phone took ${took} bananas`); setTimeout(() => { if (state === "play") say(""); }, 1300); }
@@ -637,16 +696,20 @@ function render() {
   // sprites, far to near
   const sprites = [];
   for (const t of things) {
-    let spr, scale = 0.62;
+    let spr, scale = 0.62, lift = 0;
     if (isFoe(t)) {
-      const set = t.kind === "phone" && t.armour > 0 ? SPR.phoneCase : SPR[t.kind];
-      spr = set[Math.floor(t.phase || 0) % 2]; if (t.kind === "bear") scale = 1.1; if (t.kind === "phone") scale = 0.7;
+      // The Gatekeeper shows its back (no shield) once you're behind it.
+      const behind = t.kind === "keeper" && Math.cos(t.face) * (p.x - t.x) + Math.sin(t.face) * (p.y - t.y) < 0;
+      const set = t.kind === "phone" && t.armour > 0 ? SPR.phoneCase : behind ? SPR.keeperBack : SPR[t.kind];
+      const fr = t.kind === "ad" ? Math.floor(now / 250) : t.kind === "eye" ? (Math.sin(t.phase * 0.2) > 0.9 ? 1 : 0) : Math.floor(t.phase || 0);
+      spr = set[fr % 2]; if (t.kind === "bear") scale = 1.1; if (t.kind === "phone") scale = 0.7;
+      if (FOES[t.kind]) { scale = FOES[t.kind].scale; lift = FOES[t.kind].lift || 0; if (t.kind === "bat") lift += Math.sin(t.phase * 0.4) * 0.05; }
     }
     else { spr = SPR[t.kind]; scale = 0.4; }
-    sprites.push({ x: t.x, y: t.y, spr, scale, flash: t.flash > 0, dying: !!t.dieAt });
+    sprites.push({ x: t.x, y: t.y, spr, scale, lift, flash: t.flash > 0, dying: !!t.dieAt });
   }
   for (const s of shots) sprites.push({ x: s.x, y: s.y, mask: SHOT, c: s.c, scale: 0.14, lift: 0.24 });
-  for (const s of spits) sprites.push({ x: s.x, y: s.y, spr: SLIME, scale: 0.4, lift: 0.1 });
+  for (const s of spits) sprites.push({ x: s.x, y: s.y, spr: s.spr ? SPR[s.spr] : SLIME, scale: s.spr ? 0.32 : 0.4, lift: s.spr ? 0.22 : 0.1 });
   for (const s of sprites) s.d = (p.x - s.x) ** 2 + (p.y - s.y) ** 2;
   sprites.sort((a, b) => b.d - a.d);
   const inv = 1 / (p.px * p.dy - p.dx * p.py);
@@ -694,6 +757,15 @@ function render() {
   if (boss && boss.hp > 0 && boss.seen) {
     const bw = Math.floor(W * 0.6), bx = (W - bw) >> 1, fill = Math.floor(bw * boss.hp / boss.max);
     for (let y = 6; y < 11; y++) for (let x = bx - 1; x <= bx + bw; x++) buf[y * W + x] = x - bx < fill && x >= bx && y > 6 && y < 10 ? rgb(235, 60, 80) : rgb(20, 16, 28);
+  }
+  // A Pop-up Ad up close covers part of the screen for a moment.
+  if (player.popup > 0) {
+    const bw = Math.floor(W * 0.55), bh = Math.floor(H * 0.42), bx = Math.floor((W - bw) * player.popupX), by = Math.floor(H * 0.18);
+    for (let y = by; y < by + bh; y++) for (let x = bx; x < bx + bw; x++) {
+      const edge = x === bx || x === bx + bw - 1 || y === by || y === by + bh - 1, bar = y < by + 10, close = bar && x > bx + bw - 11;
+      const stripe = y > by + bh * 0.35 && y < by + bh * 0.6 && ((x - bx) >> 3) % 2;
+      buf[y * W + x] = edge ? rgb(16, 14, 20) : close ? rgb(225, 50, 60) : bar ? rgb(44, 96, 210) : stripe ? rgb(255, 210, 63) : rgb(245, 245, 250);
+    }
   }
   // Crosshair in the shot colour, dimmed.
   if (state === "play") { const c = shotColour(WEAPON.shot.color, now), cx = W >> 1, cy = H >> 1; for (const [x, y] of [[-3, 0], [-2, 0], [2, 0], [3, 0], [0, -3], [0, -2], [0, 2], [0, 3]]) buf[(cy + y) * W + cx + x] = addLight(buf[(cy + y) * W + cx + x], c[0] * 0.7, c[1] * 0.7, c[2] * 0.7); }
