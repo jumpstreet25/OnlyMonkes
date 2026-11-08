@@ -9,14 +9,16 @@ import { paintFace } from "/viewer/caves-face.js";
 import { WALL_PAINT, FLOOR_PAINT, SKY_PAINT, DECOR_PAL, DECOR_ROWS, DECOR_LETTERS, DECOR_BLOCKS } from "/viewer/caves-world.js";
 import { FOE_ROWS, FOE_PAL, AD_PAL2, XSHOT, BEAM, FOES, FOE_LETTERS } from "/viewer/caves-foes.js";
 import { ARENAS } from "/viewer/caves-arenas.js";
-import { createMatch, VS, matchBananas, ROYALE_VERSION } from "/viewer/caves-royale.js";
+import { createMatch, VS, ROYALE_VERSION } from "/viewer/caves-royale.js";
 
-// ?mode=royale: Jungle Royale (versus, caves-royale.js). Offline against OnlyTreasury
-// bots for now; online holder matches come with the match server.
+// ?mode=royale: Jungle Royale (versus, caves-royale.js). Saga Monke holders only:
+// it plays only inside the OnlyMonkes app, which proves holder status to the match
+// server. There's no public or offline version (the public demo is cave 1 only).
 const ROYALE = new URLSearchParams(location.search).get("mode") === "royale";
 let royale = null, me = null;
 // Inside the app (dApp WebView or the web app's frame), which can prove holder status.
 const hosted = !!window.ReactNativeWebView || parent !== window;
+const HOLDERS_ONLY = "Jungle Royale is for Saga Monke holders, inside the OnlyMonkes app";
 
 const TEX = 32;
 const view = document.getElementById("view");
@@ -1040,9 +1042,8 @@ if (ROYALE) {
   card("JUNGLE ROYALE", [
     `<div class="dim">MONKE #${n}</div>`,
     `<div class="weapon"><i style="background:${swatch(WEAPON.shot.color)}"></i>${WEAPON.name}</div>`,
-    `<div class="dim">${hosted ? `Up to ${VS.SEATS} holders · OnlyTreasury bot monkes fill empty seats` : `You vs ${VS.SEATS - 1} OnlyTreasury bot monkes`}<br>First to ${VS.KILLS_TO_WIN} kills · ${VS.TIME / 60} minutes · same weapon power for all</div>`,
-    `<div class="tag">${hosted ? "TEST · ONLINE" : "TEST · OFFLINE"}</div>`,
-    `<div class="cta">${isTouch ? "Tap FIRE" : "Space"} to start</div>`,
+    `<div class="dim">Up to ${VS.SEATS} holders · OnlyTreasury bot monkes fill empty seats<br>First to ${VS.KILLS_TO_WIN} kills · ${VS.TIME / 60} minutes · same weapon power for all</div>`,
+    hosted ? `<div class="cta">${isTouch ? "Tap FIRE" : "Space"} to start</div>` : `<div class="tag">HOLDERS ONLY</div><div class="dim">${HOLDERS_ONLY}</div>`,
   ]);
 } else card("MONKECAVES", [
   `<div class="dim">MONKE #${n}</div>`,
@@ -1105,10 +1106,8 @@ function showScore() {
   }
 }
 
-// Online (holders, match server) when the app around the page hands it a holder
-// proof; offline against local bots otherwise (a bare link, or no answer).
+// Matches run on the match server; the app around the page hands it a holder proof.
 let net = null; // { ws, you, bananas, standings, closedByUs }
-let forceOffline = false; // after a refusal, the next match is the offline one
 function askHostForProof() {
   return new Promise((resolve) => {
     if (!hosted) { resolve(null); return; }
@@ -1129,26 +1128,19 @@ function startMatch() {
   loadLevel();
   scoreEl.hidden = true; feedEl.innerHTML = "";
   if (net?.ws?.readyState === 1) { state = "wait"; say("FINDING MONKES", "Holders first, bots fill the rest"); net.ws.send(JSON.stringify({ t: "again" })); return; }
-  if (!hosted || forceOffline) { forceOffline = false; startOffline(); return; }
+  if (!hosted) { state = "over"; say("HOLDERS ONLY", HOLDERS_ONLY); return; }
   state = "wait"; say("CHECKING HOLDER", "One moment");
   askHostForProof().then((r) => {
     if (r?.proof) connect(r.proof);
-    else { say(r?.error ? "OFFLINE MATCH" : "OFFLINE MATCH", r?.error ? `${r.error} · playing the bots offline` : "Playing the bots offline"); setTimeout(startOffline, 1400); }
+    else { state = "over"; say("HOLDERS ONLY", `${r?.error ? `${r.error}<br>` : ""}${isTouch ? "Tap FIRE" : "Space"} to try again`); }
   });
-}
-function startOffline() {
-  net = null;
-  royale = createMatch(ARENAS[0], { seed: (Date.now() & 0xffff) + 1 });
-  me = royale.addFighter({ id: "me", n, name: "You" });
-  royale.fillBots(VS.SEATS);
-  begin();
 }
 function begin() {
   for (const f of royale.fighters) if (f !== me) monkeSprite(f.n);
   takeSpawn();
   state = "play"; t0 = performance.now();
   scoreEl.hidden = false; showScore();
-  say(ARENAS[0].name, `First to ${VS.KILLS_TO_WIN} kills${net ? "" : " · offline"}`);
+  say(ARENAS[0].name, `First to ${VS.KILLS_TO_WIN} kills`);
   setTimeout(() => { if (state === "play" && !me.dead) say(""); }, 1800);
 }
 
@@ -1165,7 +1157,7 @@ function connect(proof) {
   };
 }
 function onServer(d) {
-  if (d.t === "err") { net.closedByUs = true; forceOffline = true; state = "over"; say("CAN'T JOIN", `${d.msg}<br>${isTouch ? "Tap FIRE" : "Space"} to play the bots offline`); net = null; return; }
+  if (d.t === "err") { net.closedByUs = true; state = "over"; say("CAN'T JOIN", `${d.msg}<br>${isTouch ? "Tap FIRE" : "Space"} to try again`); net = null; return; }
   if (d.t === "welcome" && d.n !== n) { n = d.n; equip(n); loadImage(imageFor(n)).then(readGrid).then(setFace).catch(() => {}); }
   else if (d.t === "wait") say("FINDING MONKES", `${d.holders} holder${d.holders === 1 ? "" : "s"} in · bots fill the rest in ${d.startsIn}s`);
   else if (d.t === "start") {
@@ -1244,9 +1236,7 @@ function matchEvents(events) {
       if (e.by === me.id) { sfx.die(); p.grin = 1.5; }
       if (e.id === me.id) say("REKT", `by ${nameOf(e.by)} · back in ${VS.RESPAWN}s`);
     }
-    else if (e.t === "spawn" && e.id === me.id && !net) { takeSpawn(); say(""); }
     else if (e.t === "pickup" && e.id === me.id) sfx.pick();
-    else if (e.t === "over" && !net) matchOver();
   }
 }
 let lastSent = 0, fireCool = 0;
@@ -1259,22 +1249,17 @@ function royaleTick(dt) {
     p.emptySaid = performance.now(); sfx.empty(); say("OUT OF AMMO", "Find Seeker batteries"); setTimeout(() => { if (state === "play" && !me.dead) say(""); }, 1200);
   }
   const input = { x: p.x, y: p.y, a: Math.atan2(p.dy, p.dx), aim: royaleAim(), fire: firing };
-  if (net) {
+  {
     // Your own shot kicks at once; the server decides whether it hits.
     if (firing && !me.dead && me.ammo > 0 && fireCool <= 0) { fireCool = VS.COOL; p.kick = 1; p.flash = 0.06; sfx.throw(); }
     const now = performance.now();
-    if (now - lastSent >= 66 && net.ws.readyState === 1) {
+    if (net && now - lastSent >= 66 && net.ws.readyState === 1) {
       lastSent = now;
       const r = (v) => Math.round(v * 1000) / 1000;
       net.ws.send(JSON.stringify({ t: "in", x: r(input.x), y: r(input.y), a: r(input.a), aim: r(input.aim), f: input.fire ? 1 : 0 }));
     }
     for (const f of royale.fighters) if (f !== me && f.tx !== undefined) { const k = Math.min(1, dt * 12); f.x += (f.tx - f.x) * k; f.y += (f.ty - f.y) * k; }
     for (const s of royale.shots) { s.x += s.vx * dt; s.y += s.vy * dt; }
-  } else {
-    matchEvents(royale.step(dt, { me: input }));
-    // The match refused a move (a wall in the way): stand where it says.
-    if (me.fix) { me.fix = false; p.x = me.x; p.y = me.y; }
-    if (royale.events.some((e) => e.t === "kill")) showScore();
   }
   for (const f of royale.fighters) f.flashT = Math.max(0, (f.flashT || 0) - dt);
   p.hp = me.hp; p.ammo = me.ammo;
@@ -1306,7 +1291,7 @@ function matchOver() {
   card(won ? "YOU WIN" : "MATCH OVER", [
     `<div class="big">${won ? "TOP MONKE" : `${nameOf(royale.winner)} wins`}</div>`,
     `<div class="stats"><span>KILLS · DEATHS</span><b></b>${rows}</div>`,
-    net ? `<div class="tag">+${net.bananas} BANANAS</div><div class="dim">Paid out once bananas go live</div>` : `<div class="dim">Online this match would pay ${matchBananas(royale, me.id)} bananas</div>`,
+    `<div class="tag">+${net?.bananas ?? 0} BANANAS</div><div class="dim">Paid out once bananas go live</div>`,
     `<div class="cta">${tap} for a rematch</div>`,
   ]);
 }
