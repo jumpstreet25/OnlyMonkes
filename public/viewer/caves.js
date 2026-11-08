@@ -1214,7 +1214,7 @@ function begin() {
 
 function connect(proof) {
   const ws = new WebSocket(`${location.origin.replace(/^http/, "ws")}/api/royale/play`);
-  net = { ws, you: null, closedByUs: false };
+  net = { ws, you: null, closedByUs: false }; lastInput = null;
   say("FINDING MONKES", "Holders first, bots fill the rest");
   ws.onopen = () => ws.send(JSON.stringify({ t: "hello", v: ROYALE_VERSION, n, proof }));
   ws.onmessage = (e) => { let d; try { d = JSON.parse(e.data); } catch { return; } onServer(d); };
@@ -1232,7 +1232,7 @@ function onServer(d) {
     loadLevel();
     royale = createMatch(ARENAS[0]);
     royale.fighters.length = 0;
-    net.you = d.you;
+    net.you = d.you; lastInput = null;
     rosterFrom(d.fighters);
     me = royale.fighters.find((f) => f.id === d.you);
     begin();
@@ -1309,7 +1309,11 @@ function matchEvents(events) {
     else if (e.t === "pickup" && e.id === me.id) sfx.pick();
   }
 }
-let lastSent = 0, fireCool = 0;
+// Inputs go out at most every 80 ms and only when something changed: the server keeps
+// acting on the last one (a held trigger keeps firing), and every message counts against
+// Cloudflare's request allowance.
+const SEND_MS = 80;
+let lastSent = 0, lastInput = null, fireCool = 0;
 function royaleTick(dt) {
   const p = player, firing = keys.has("Space") || touch.fire || gpad.fire;
   p.kick = Math.max(0, p.kick - dt * 5); p.hurt = Math.max(0, p.hurt - dt); p.flash = Math.max(0, p.flash - dt);
@@ -1323,10 +1327,15 @@ function royaleTick(dt) {
     // Your own shot kicks at once; the server decides whether it hits.
     if (firing && !me.dead && me.ammo > 0 && fireCool <= 0) { fireCool = VS.COOL; p.kick = 1; p.flash = 0.06; sfx.throw(); }
     const now = performance.now();
-    if (net && now - lastSent >= 66 && net.ws.readyState === 1) {
-      lastSent = now;
+    if (net && now - lastSent >= SEND_MS && net.ws.readyState === 1) {
       const r = (v) => Math.round(v * 1000) / 1000;
-      net.ws.send(JSON.stringify({ t: "in", x: r(input.x), y: r(input.y), a: r(input.a), aim: r(input.aim), f: input.fire ? 1 : 0 }));
+      const msg = { t: "in", x: r(input.x), y: r(input.y), a: r(input.a), aim: r(input.aim), f: input.fire ? 1 : 0 };
+      const was = lastInput;
+      const turned = (p, q) => Math.abs(Math.atan2(Math.sin(p - q), Math.cos(p - q))) > 0.01;
+      if (!was || msg.f !== was.f || Math.hypot(msg.x - was.x, msg.y - was.y) > 0.005 || turned(msg.a, was.a) || turned(msg.aim, was.aim)) {
+        lastSent = now; lastInput = msg;
+        net.ws.send(JSON.stringify(msg));
+      }
     }
     for (const f of royale.fighters) if (f !== me && f.tx !== undefined) { const k = Math.min(1, dt * 12); f.x += (f.tx - f.x) * k; f.y += (f.ty - f.y) * k; }
     for (const s of royale.shots) { s.x += s.vx * dt; s.y += s.vy * dt; }
