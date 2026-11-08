@@ -309,6 +309,13 @@ export async function holderClaimsFromToken(env: WebAuthEnv, token: string): Pro
   return { wallet: claims.sub, tier: claims.tier };
 }
 
+/** Wallet + holder tier ("monke" | "genesis") from a live holder token. */
+export async function holderFromToken(env: WebAuthEnv, token: string): Promise<{ wallet: string; tier?: string } | null> {
+  if (!env.XMTP_JWT_PRIVATE_KEY || !token) return null;
+  const claims = await readOwnToken(env, token);
+  return claims && claims.exp > Math.floor(Date.now() / 1000) ? { wallet: claims.sub, tier: claims.tier } : null;
+}
+
 export async function holderWalletFromToken(env: WebAuthEnv, token: string): Promise<string | null> {
   if (!env.XMTP_JWT_PRIVATE_KEY || !token) return null;
   const claims = await readOwnToken(env, token);
