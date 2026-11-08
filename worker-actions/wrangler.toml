@@ -160,3 +160,11 @@ class_name = "PhoneCamRoom"
 [[migrations]]
 tag = "v1-phone-cam"
 new_sqlite_classes = ["PhoneCamRoom"]
+
+[[durable_objects.bindings]]
+name = "ROYALE"
+class_name = "RoyaleHall"
+
+[[migrations]]
+tag = "v2-royale"
+new_sqlite_classes = ["RoyaleHall"]
