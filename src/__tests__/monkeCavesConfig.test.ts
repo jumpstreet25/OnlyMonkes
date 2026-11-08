@@ -17,8 +17,9 @@ describe("MonkeCaves dark launch", () => {
     expect(monkeCavesVisible(parseMonkeCavesConfig({ testersOnly: false }), false, null)).toBe(true);
     expect(monkeCavesVisible(parseMonkeCavesConfig({ enabled: false, testersOnly: false }), true, W)).toBe(false);
   });
-  test("the shipped config is a dark launch", () => {
+  test("the shipped config is launched to every holder (2026-11-08)", () => {
     const cfg = parseMonkeCavesConfig(require("../../config/monkecaves.json"));
-    expect(cfg.testersOnly).toBe(true);
+    expect(cfg.enabled).toBe(true);
+    expect(cfg.testersOnly).toBe(false);
   });
 });
