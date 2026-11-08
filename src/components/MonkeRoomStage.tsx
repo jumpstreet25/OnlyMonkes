@@ -24,7 +24,12 @@ export interface MonkeRoomStageHandle {
   sendFace(id: string, params: BlendshapeParams): void;
 }
 
-export const MonkeRoomStage = forwardRef<MonkeRoomStageHandle, { members: StageMember[]; onFail?: (reason: string) => void }>(function MonkeRoomStage({ members, onFail }, ref) {
+export const MonkeRoomStage = forwardRef<MonkeRoomStageHandle, {
+  members: StageMember[];
+  onFail?: (reason: string) => void;
+  /** Frame rate + pixel ratio the page reports every ~10 s. */
+  onPerf?: (fps: number, dpr: number) => void;
+}>(function MonkeRoomStage({ members, onFail, onPerf }, ref) {
   const web = useRef<any>(null);
   const latest = useRef(members);
   latest.current = members;
@@ -35,6 +40,8 @@ export const MonkeRoomStage = forwardRef<MonkeRoomStageHandle, { members: StageM
   const failed = useRef(false);
   const onFailRef = useRef(onFail);
   onFailRef.current = onFail;
+  const onPerfRef = useRef(onPerf);
+  onPerfRef.current = onPerf;
   const fail = useCallback((reason: string) => {
     if (failed.current) return;
     failed.current = true;
@@ -69,6 +76,8 @@ export const MonkeRoomStage = forwardRef<MonkeRoomStageHandle, { members: StageM
       if (d?.type === "ready") {
         ready.current = true;
         sendRoom();
+      } else if (d?.type === "perf") {
+        onPerfRef.current?.(Number(d.fps), Number(d.dpr));
       } else if (d?.type === "error") {
         // Page errors (a CDN script that didn't load, no WebGL…): fatal only before the page is ready.
         const reason = `page: ${String(d.message ?? "").slice(0, 300)}`;
