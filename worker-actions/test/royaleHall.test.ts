@@ -76,4 +76,18 @@ describe("Jungle Royale hall", () => {
     h.again(a);
     expect(last(a, "wait")).toBeTruthy();
   });
+
+  it("reports what each holder still in the match earned, not leavers", () => {
+    const earned: [string, number][] = [];
+    const h = new Hall(() => now, (_s, wallet, bananas) => earned.push([wallet, bananas]));
+    const a = sock(), b = sock();
+    h.join(a, "walletA", 8982);
+    h.join(b, "walletB", 1234);
+    run(h, 13);
+    h.leave(b);
+    run(h, 300);
+    const over = last(a, "over");
+    expect(earned.every(([w]) => w === "walletA")).toBe(true);
+    expect(earned.reduce((t, [, n]) => t + n, 0)).toBe(over.bananas);
+  });
 });
