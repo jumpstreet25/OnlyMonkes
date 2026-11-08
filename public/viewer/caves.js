@@ -15,6 +15,10 @@ import { createMatch, VS, ROYALE_VERSION } from "/viewer/caves-royale.js";
 // it plays only inside the OnlyMonkes app, which proves holder status to the match
 // server. There's no public or offline version (the public demo is cave 1 only).
 const ROYALE = new URLSearchParams(location.search).get("mode") === "royale";
+// ?mode=demo: the public, shareable demo. Cave 1 only, any monke look; the rest of
+// the caves and Jungle Royale are for holders in the OnlyMonkes app.
+const DEMO = new URLSearchParams(location.search).get("mode") === "demo";
+const GET_APP = `<a href="https://onlymonkes.app/get" target="_blank" rel="noopener">Get OnlyMonkes</a>`;
 let royale = null, me = null;
 // Inside the app (dApp WebView or the web app's frame), which can prove holder status.
 const hosted = !!window.ReactNativeWebView || parent !== window;
@@ -647,17 +651,18 @@ function update(dt) {
     if (boss && boss.hp > 0) { if (!p.lockedSaid) { say("LOCKED", boss.kind === "phone" ? "The Banana Phone holds the exit. Take it down." : "The bear holds the exit. Take it down."); p.lockedSaid = true; setTimeout(() => { say(""); p.lockedSaid = false; }, 1600); } }
     else {
       clearTime = runTime(); sfx.clear();
-      const last = levelIx === LEVELS.length - 1, tap = isTouch ? "Tap FIRE" : "Space";
+      const last = DEMO || levelIx === LEVELS.length - 1, tap = isTouch ? "Tap FIRE" : "Space";
       state = last ? "won" : "clear";
       const best = parseInt(store.get(`best:${CAVES_VERSION}:${levelIx + 1}`) || "0", 10);
       const isBest = !best || clearTime < best;
       if (isBest) store.set(`best:${CAVES_VERSION}:${levelIx + 1}`, String(Math.round(clearTime)));
       const pct = (a, b) => `${b ? Math.round((100 * a) / b) : 100}%`, par = (LEVELS[levelIx].par || 0) * 1000;
-      card(last ? "YOU ESCAPED" : "CAVE CLEAR", [
+      card(DEMO ? "DEMO CLEAR" : last ? "YOU ESCAPED" : "CAVE CLEAR", [
         `<div class="big">${fmtRun(clearTime)}</div>`,
         par ? `<div class="${clearTime <= par ? "tag" : "dim"}">PAR ${fmt(par)}${clearTime <= par ? " · BEAT IT" : ""}</div>` : "",
         isBest ? `<div class="tag">${best ? "NEW BEST" : "FIRST CLEAR"}</div>` : `<div class="dim">best ${fmtRun(best)}</div>`,
         `<div class="stats"><span>KILLS</span><b>${pct(p.kills, totals.foes)}</b><span>ITEMS</span><b>${pct(p.items, totals.items)}</b><span>SECRETS</span><b>${pct(secretsFound, secrets)}</b></div>`,
+        DEMO ? `<div class="dim">${LEVELS.length - 1} more caves and the Banana Phone wait for Saga Monke holders<br>${GET_APP}</div>` : "",
         `<div class="cta">${tap} ${last ? "to play again" : `for cave ${levelIx + 2}`}</div>`,
       ]);
       if (t0) post({ event: "clear", v: CAVES_VERSION, level: levelIx + 1, timeMs: Math.round(clearTime), kills: p.kills, secrets: secretsFound, bananas: p.bananas });
@@ -1045,7 +1050,14 @@ if (ROYALE) {
     `<div class="dim">Up to ${VS.SEATS} holders · OnlyTreasury bot monkes fill empty seats<br>First to ${VS.KILLS_TO_WIN} kills · ${VS.TIME / 60} minutes · same weapon power for all</div>`,
     hosted ? `<div class="cta">${isTouch ? "Tap FIRE" : "Space"} to start</div>` : `<div class="tag">HOLDERS ONLY</div><div class="dim">${HOLDERS_ONLY}</div>`,
   ]);
-} else card("MONKECAVES", [
+} else if (DEMO) card("MONKECAVES", [
+  `<div class="tag">DEMO · CAVE 1</div>`,
+  `<div class="dim">MONKE #${n}</div>`,
+  `<div class="weapon"><i style="background:${swatch(WEAPON.shot.color)}"></i>${WEAPON.name}</div>`,
+  `<div class="dim">Hunt the jeets · find the pink exit<br>The full game (${LEVELS.length} caves) is for Saga Monke holders</div>`,
+  `<div class="cta">${isTouch ? "Tap FIRE" : "Space"} to start</div>`,
+]);
+else card("MONKECAVES", [
   `<div class="dim">MONKE #${n}</div>`,
   `<div class="weapon"><i style="background:${swatch(WEAPON.shot.color)}"></i>${WEAPON.name}</div>`,
   `<div class="dim">${LEVELS.length} caves · hunt the jeets · find the pink exit<br>The Banana Phone waits at the end.</div>`,
@@ -1057,7 +1069,7 @@ setTimeout(() => document.getElementById("help").classList.add("gone"), 6000);
 function startCave(keepLoadout) {
   if (ROYALE) { startMatch(); return; }
   loadLevel(keepLoadout); state = "play"; t0 = 0;
-  say(LEVELS[levelIx].name, `Cave ${levelIx + 1} of ${LEVELS.length} · the clock starts when you move`);
+  say(LEVELS[levelIx].name, `${DEMO ? "Demo" : `Cave ${levelIx + 1} of ${LEVELS.length}`} · the clock starts when you move`);
   setTimeout(() => { if (state === "play") say(""); }, 2200);
 }
 
@@ -1329,7 +1341,7 @@ document.getElementById("m-restart").addEventListener("click", () => { setPaused
 
 let last = performance.now();
 // Test hooks only with ?debug=1 (headless playtests); never on a normal page.
-if (params.has("debug")) window.__caves = { player, things, shots, spits, keys, touch, turn, step: (dt) => update(dt), map, get door() { return door; }, get level() { return levelIx; }, get weapon() { return WEAPON; }, get state() { return state; }, get totals() { return totals; }, get secrets() { return [secretsFound, secrets]; }, get royale() { return royale; }, blocked: (x, y) => blockers.has(y * MW + x), wallAt, settings, assistTarget, frames: 0, goto(i) { levelIx = i; loadLevel(); state = "play"; t0 = performance.now(); say(""); } };
+if (params.has("debug")) window.__caves = { player, things, shots, spits, keys, touch, turn, step: (dt) => update(dt), map, get door() { return door; }, get level() { return levelIx; }, get weapon() { return WEAPON; }, get state() { return state; }, get totals() { return totals; }, get secrets() { return [secretsFound, secrets]; }, get royale() { return royale; }, blocked: (x, y) => blockers.has(y * MW + x), wallAt, settings, assistTarget, frames: 0, goto(i) { if (DEMO) return; levelIx = i; loadLevel(); state = "play"; t0 = performance.now(); say(""); } };
 function loop(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
   update(dt); render(); if (window.__caves) window.__caves.frames++;
