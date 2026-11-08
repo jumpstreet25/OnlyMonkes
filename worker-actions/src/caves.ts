@@ -2,18 +2,21 @@
  * MonkeCaves weekly speed-run board (2026-11-07). The game (onlymonkes.app/viewer/caves)
  * posts each cleared cave to its host; the app (phone: Device Integrity key, web: holder
  * token, same proofs as referrals.ts) sends it here. Best time per holder per cave per
- * ISO week; the bot posts the top 10 on Sundays.
+ * ISO week.
  *
- * NOT RELEASED: env CAVES_BOARD is "off" (default) until the owner is happy with the game.
- * "testers" accepts runs only from CAVES_TESTERS (comma-separated sha256 hex of wallets)
- * and shows the board to anyone who asks; "on" is the public launch.
+ * Release switch, env CAVES_BOARD: "off" (default) | "testers" | "on".
+ * "testers" accepts runs only from CAVES_TESTERS (comma-separated sha256 hex of wallets);
+ * each accepted run's reply carries that cave's top 10, and GET /board stays hidden.
+ * "on" is the public launch: anyone can read the board.
  *
  * The game runs on the player's device, so a run can be faked. These checks only stop
  * impossible ones: a known level version, a time over the fastest walkable route (+ boss),
  * one submit per 10 s per holder. Wallets are stored only as hashes.
- *   POST /api/caves/run   { proof, v, cave, timeMs, kills?, secrets?, n?, name? } → { ok, best, improved }
+ *   POST /api/caves/run   { proof, v, cave, timeMs, kills?, secrets?, n?, name? } → { ok, week, best, improved, rank, top }
  *   GET  /api/caves/board ?week=2026-W45                                     → { week, caves: { 1: [...], 2: [...], 3: [...] } }
- * KV (COMMUNITY_DATA): caves:wk:<week>:c<cave>:<id> { t, n, name, at }
+ * KV (COMMUNITY_DATA): caves:wk:<week>:c<cave>:<id> { t, n, name, at } (each holder's best)
+ *                      caves:top:<week>:c<cave> [{ id, t, n, name, at }] (top 10, kept on write
+ *                      so reading the board never lists keys)
  */
 import type { Env } from "./index";
 import { holderClaimsFromToken } from "./webAuth";
@@ -23,9 +26,13 @@ import { cleanName } from "./referrals";
 import { monkeImageForNumber } from "./shareCard";
 
 /** Level set the floors below were measured on (caves.js LEVELS). Bump both together. */
-export const CAVES_VERSION = 1;
-/** Fastest possible clear per cave (ms): shortest route at full speed, plus the boss kill. */
-export const MIN_MS: Record<number, number> = { 1: 9_000, 2: 12_000, 3: 12_000 };
+export const CAVES_VERSION = 2;
+/**
+ * Fastest possible clear per cave (ms), a little under the shortest walkable route at full
+ * speed (3.2 cells/s, secret walls and doors counted open) plus the boss kill. v2 (Lost Temple
+ * cave 1): 140 cells ≈ 44 s; caves 2–3 unchanged (≈ 11.5 s walk + boss).
+ */
+export const MIN_MS: Record<number, number> = { 1: 40_000, 2: 12_000, 3: 12_000 };
 const MAX_MS = 60 * 60_000;
 const TOP = 10;
 
@@ -79,6 +86,13 @@ async function who(env: Env, proof: any, action: string): Promise<{ wallet: stri
 }
 
 type Entry = { t: number; n: number | null; name: string; at: number };
+type TopRow = Entry & { id: string };
+const topKey = (week: string, cave: number) => `caves:top:${week}:c${cave}`;
+const shown = (r: Entry) => ({ name: r.name || (r.n ? `Monke #${r.n}` : "A Saga Monke holder"), n: r.n, t: r.t });
+
+async function readTop(env: Env, week: string, cave: number): Promise<TopRow[]> {
+  try { return JSON.parse((await env.COMMUNITY_DATA.get(topKey(week, cave))) ?? "[]") as TopRow[]; } catch { return []; }
+}
 
 async function submit(env: Env, body: any, now = Date.now()): Promise<Response> {
   const mode = env.CAVES_BOARD ?? "off";
@@ -102,26 +116,25 @@ async function submit(env: Env, body: any, now = Date.now()): Promise<Response> 
   const prev = JSON.parse((await kv.get(key)) ?? "null") as Entry | null;
   const n = monkeImageForNumber(Number(body.n)) ? Number(body.n) : null;
   const t = Math.round(body.timeMs);
-  if (prev && prev.t <= t) return json({ ok: true, week, best: prev.t, improved: false });
+  const cave = body.cave as number;
+  let top = await readTop(env, week, cave);
+  const reply = (best: number, improved: boolean) => {
+    const at = top.findIndex((r) => r.id === holder);
+    return json({ ok: true, week, best, improved, rank: at < 0 ? null : at + 1, top: top.map(shown) });
+  };
+  if (prev && prev.t <= t) return reply(prev.t, false);
   const entry: Entry = { t, n, name: cleanName(body.name), at: now };
   // Weeks expire on their own after ~5 weeks.
   await kv.put(key, JSON.stringify(entry), { expirationTtl: 35 * 86_400 });
-  return json({ ok: true, week, best: t, improved: true });
+  // Two holders improving in the same instant can drop one from the top list until their next run.
+  top = [...top.filter((r) => r.id !== holder), { ...entry, id: holder }].sort((a, b) => a.t - b.t || a.at - b.at).slice(0, TOP);
+  await kv.put(topKey(week, cave), JSON.stringify(top), { expirationTtl: 35 * 86_400 });
+  return reply(t, true);
 }
 
 export async function board(env: Env, week: string): Promise<Record<number, { name: string; n: number | null; t: number }[]>> {
   const out: Record<number, { name: string; n: number | null; t: number }[]> = {};
-  for (const cave of Object.keys(MIN_MS).map(Number)) {
-    const rows: Entry[] = [];
-    let cursor: string | undefined;
-    do {
-      const page = await env.COMMUNITY_DATA.list({ prefix: `caves:wk:${week}:c${cave}:`, cursor });
-      for (const k of page.keys) { const v = await env.COMMUNITY_DATA.get(k.name); if (v) rows.push(JSON.parse(v)); }
-      cursor = page.list_complete ? undefined : page.cursor;
-    } while (cursor);
-    out[cave] = rows.sort((a, b) => a.t - b.t || a.at - b.at).slice(0, TOP)
-      .map((r) => ({ name: r.name || (r.n ? `Monke #${r.n}` : "A Saga Monke holder"), n: r.n, t: r.t }));
-  }
+  for (const cave of Object.keys(MIN_MS).map(Number)) out[cave] = (await readTop(env, week, cave)).map(shown);
   return out;
 }
 
@@ -132,10 +145,13 @@ export async function handleCaves(request: Request, env: Env, path: string): Pro
     return submit(env, body);
   }
   if (path === "/api/caves/board" && request.method === "GET") {
-    if ((env.CAVES_BOARD ?? "off") === "off") return json({ error: "not released" }, 404);
+    // Testers see the board in their run replies; the public board waits for "on".
+    if (env.CAVES_BOARD !== "on") return json({ error: "not released" }, 404);
     const q = new URL(request.url).searchParams.get("week") ?? "";
     const week = /^\d{4}-W\d{2}$/.test(q) ? q : isoWeek(Date.now());
-    return json({ week, caves: await board(env, week) });
+    return new Response(JSON.stringify({ week, caves: await board(env, week) }), {
+      headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=60" },
+    });
   }
   return json({ error: "not found" }, 404);
 }
