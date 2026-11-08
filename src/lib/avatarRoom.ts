@@ -18,6 +18,8 @@ import {
 import { AudioSession } from '@livekit/react-native';
 import { Platform, PermissionsAndroid } from 'react-native';
 import { ensureLiveKitGlobals } from './livekit';
+import { startRoomHealth, stopRoomHealth } from './roomHealth';
+import { getCachedProfile } from './userProfile';
 import { type MouthTrait, DEFAULT_MOUTH_TRAIT, parseMouthTrait } from './mouthOverlays';
 import {
   type FaceParams,
@@ -187,6 +189,14 @@ function _withPhone(p: AvatarParticipant, phone: Participant | undefined): Avata
   };
 }
 
+// The name in the LiveKit token is the app's username, which can be the bare
+// default "Monke": prefer the member's chat profile name then.
+function _displayName(p: Participant): string {
+  const n = p.name?.trim();
+  if (n && n.toLowerCase() !== 'monke') return n;
+  return getCachedProfile(p.identity)?.username?.trim() || n || p.identity.slice(0, 8);
+}
+
 function _mapParticipant(p: Participant, isLocal: boolean): AvatarParticipant {
   const identity = p.identity;
   const audioTrack = [...p.trackPublications.values()].find(
@@ -194,7 +204,7 @@ function _mapParticipant(p: Participant, isLocal: boolean): AvatarParticipant {
   );
   return {
     identity,
-    name: p.name ?? identity.slice(0, 8),
+    name: _displayName(p),
     isSpeaking: _speakers.has(identity),
     isMuted: audioTrack ? audioTrack.isMuted : true,
     isLocal,
@@ -244,8 +254,8 @@ function _teardown(): AvatarSessionStats | null {
 }
 
 // Exponential smoothing factor: 0 = no smoothing (raw), 1 = frozen.
-// 0.65 gives responsive yet smooth mouth movement at 30fps.
-const AUDIO_SMOOTH = 0.65;
+// 0.5 at 15fps ≈ the old 0.65 at 30fps (same time constant).
+const AUDIO_SMOOTH = 0.5;
 
 function _startEnergyPolling() {
   if (_energyPollTimer) return;
@@ -281,7 +291,7 @@ function _startEnergyPolling() {
     }
 
     if (changed) _notify();
-  }, 33); // ~30fps for smooth mouth animation
+  }, 66); // ~15fps: the 3D stage gets room state every 80 ms anyway, and each tick re-renders the room screen
 }
 
 function _stopEnergyPolling() {
@@ -415,6 +425,7 @@ export async function connectToAvatarRoom(
 
   _room.on(RoomEvent.Disconnected, () => {
     _stopEnergyPolling();
+    stopRoomHealth();
     _teardown(); // involuntary disconnect (network drop) — still snapshot stats
     _onDisconnectCallback?.();
   });
@@ -481,6 +492,7 @@ export async function connectToAvatarRoom(
   await _enableMic();
 
   // Enable Krisp noise cancellation on the mic track (non-fatal if unsupported)
+  let krisp = false;
   try {
     const { KrispNoiseFilter, isKrispNoiseFilterSupported } = require('@livekit/react-native-krisp-noise-filter');
     if (isKrispNoiseFilterSupported()) {
@@ -488,6 +500,7 @@ export async function connectToAvatarRoom(
       const audioTrack = micPub?.track;
       if (audioTrack) {
         audioTrack.setProcessor(KrispNoiseFilter());
+        krisp = true;
         console.log('[AvatarRoom] Krisp noise filter enabled');
       }
     }
@@ -509,6 +522,7 @@ export async function connectToAvatarRoom(
 
   // Start audio energy polling
   _startEnergyPolling();
+  startRoomHealth(_room, { krisp });
 
   _notify();
 }
@@ -523,6 +537,7 @@ export async function disconnectFromAvatarRoom(): Promise<AvatarSessionStats | n
   const stats = _teardown();
   _onDisconnectCallback = null;
   _stopEnergyPolling();
+  stopRoomHealth();
   try {
     await _room.disconnect();
     await AudioSession.stopAudioSession();

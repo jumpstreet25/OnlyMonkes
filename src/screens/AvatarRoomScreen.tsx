@@ -41,6 +41,7 @@ import { LK_URL } from '@/lib/livekit';
 import { getCachedProfile } from '@/lib/userProfile';
 import { useAppStore } from '@/store/appStore';
 import { AnimatedAvatar } from '@/components/AnimatedAvatar';
+import { noteRoomView, noteStagePerf } from '@/lib/roomHealth';
 import { MonkeRoomStage, type MonkeRoomStageHandle } from '@/components/MonkeRoomStage';
 import { PhoneLinkModal } from '@/components/PhoneLinkModal';
 import { startPhoneLink, type PhoneLink } from '@/lib/phoneCompanion';
@@ -223,6 +224,11 @@ export default function AvatarRoomScreen() {
 
   // ── Handlers ───────────────────────────────────────────────────────────────
 
+  // For the room health report (src/lib/roomHealth.ts).
+  useEffect(() => {
+    if (!connecting) noteRoomView({ stage3d: show3d, face: faceTrackingEnabled });
+  }, [connecting, show3d, faceTrackingEnabled]);
+
   const handleMinimize = useCallback(() => {
     router.back();
   }, []);
@@ -381,7 +387,7 @@ export default function AvatarRoomScreen() {
 
       {/* 3D stage or 2D grid */}
       {show3d ? (
-        <MonkeRoomStage ref={stageRef} members={members} onFail={handleStageFail} />
+        <MonkeRoomStage ref={stageRef} members={members} onFail={handleStageFail} onPerf={noteStagePerf} />
       ) : (
       <GridWrapper style={styles.grid}>
         <View style={styles.gridInner}>
