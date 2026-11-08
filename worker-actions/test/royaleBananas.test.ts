@@ -4,7 +4,7 @@ import { RoyaleHall } from "../src/royale/royale";
 
 function fakeCtx() {
   const m = new Map<string, unknown>();
-  return { m, storage: { get: async (k: string) => m.get(k), put: async (k: string, v: unknown) => { m.set(k, structuredClone(v)); } } };
+  return { m, getWebSockets: () => [] as any[], storage: { get: async (k: string) => m.get(k), put: async (k: string, v: unknown) => { m.set(k, structuredClone(v)); } } };
 }
 const sock = () => { const msgs: any[] = []; return { msgs, send: (d: string) => msgs.push(JSON.parse(d)), close() {} }; };
 const collect = async (h: any, key: string) => (await (await h.collect(new Request("https://royale/collect", { method: "POST", body: JSON.stringify({ key }) }))).json()).bananas;
