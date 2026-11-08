@@ -1,4 +1,8 @@
-// Jungle Royale: MonkeCaves versus. The match itself (fighters, shots, kills,
+// Jungle Royale: MonkeCaves versus.
+// The match server (worker-actions/src/royale/) runs a copy of this file: change
+// both together and bump ROYALE_VERSION (old pages are told to reload).
+export const ROYALE_VERSION = 1;
+// The match itself (fighters, shots, kills,
 // respawns, pickups, bots) with no DOM, so the page runs it offline today and the
 // match server can run the same code later. Every weapon plays the same (damage,
 // fire rate, shot speed); only the looks differ, as in the caves.
@@ -98,10 +102,25 @@ export function createMatch(arena, { seed = 1 } = {}) {
   }
 
   m.addFighter = (opts) => {
-    const f = { id: opts.id, n: opts.n, name: opts.name ?? `#${opts.n}`, bot: !!opts.bot, skill: opts.skill ?? 0.6, kills: 0, deaths: 0, joinedAt: m.time, brain: opts.bot ? { goal: null, seenFor: 0, strafe: 1, strafeT: 0, target: null, lastSeen: null, stuckT: 0, lastX: 0, lastY: 0, think: 0, wantA: 0 } : null };
+    const f = { id: opts.id, n: opts.n, name: opts.name ?? `#${opts.n}`, bot: !!opts.bot, skill: opts.skill ?? 0.6, kills: 0, deaths: 0, joinedAt: m.time, brain: opts.bot ? newBrain() : null, budget: 0 };
     place(f);
     m.fighters.push(f);
     return f;
+  };
+  const newBrain = () => ({ goal: null, seenFor: 0, strafe: 1, strafeT: 0, target: null, lastSeen: null, stuckT: 0, lastX: 0, lastY: 0, think: 0, wantA: 0 });
+  // A holder joining a running match takes a bot's seat (the bot's score goes with it).
+  m.replaceBot = (opts) => {
+    let i = m.fighters.findIndex((f) => f.bot && f.n === opts.n); // never two of the same monke
+    if (i < 0) i = m.fighters.findIndex((f) => f.bot);
+    if (i < 0) return null;
+    m.fighters.splice(i, 1);
+    m.shots = m.shots.filter((s) => m.fighters.some((f) => f.id === s.by));
+    return m.addFighter(opts);
+  };
+  // A holder who leaves mid-match: a bot plays out their seat.
+  m.botify = (id) => {
+    const f = m.fighters.find((x) => x.id === id);
+    if (f && !f.bot) { f.bot = true; f.skill = 0.6; f.brain = newBrain(); }
   };
   // Fill empty seats with roster bots nobody is already playing as.
   m.fillBots = (seats = VS.SEATS) => {
@@ -217,10 +236,19 @@ export function createMatch(arena, { seed = 1 } = {}) {
         continue;
       }
       if (f.bot) botThink(f, dt);
-      else if (human[f.id]) {
+      else {
+        // Humans move themselves (their screen shouldn't wait for the server), but
+        // never faster than the walk speed allows, into a wall or through one.
+        f.budget = Math.min(1.2, f.budget + VS.MOVE * dt * 1.3);
         const h = human[f.id];
-        f.x = h.x; f.y = h.y; f.a = h.a;
-        if (h.fire) fire(f, Math.cos(h.aim ?? h.a), Math.sin(h.aim ?? h.a));
+        if (h) {
+          const x = +h.x, y = +h.y, d = Math.hypot(x - f.x, y - f.y);
+          if (Number.isFinite(x) && Number.isFinite(y) && d <= f.budget + 0.02 && !solid(x, y) && sight(f.x, f.y, x, y)) { f.x = x; f.y = y; f.budget -= d; }
+          else if (d > 0.001) { f.fix = true; }
+          if (Number.isFinite(+h.a)) f.a = +h.a;
+          const aim = Number.isFinite(+h.aim) ? +h.aim : f.a;
+          if (h.fire) fire(f, Math.cos(aim), Math.sin(aim));
+        }
       }
       f.vx = (f.x - px) / dt; f.vy = (f.y - py) / dt;
       for (const p of pickups) {
@@ -257,6 +285,14 @@ export function createMatch(arena, { seed = 1 } = {}) {
     return m.events;
   };
 
+  // What every screen needs 20 times a second (numbers only, rounded).
+  const r2 = (v) => Math.round(v * 100) / 100;
+  m.snapshot = () => ({
+    tm: r2(m.time),
+    f: m.fighters.map((f) => [f.id, r2(f.x), r2(f.y), r2(f.a), Math.max(0, Math.round(f.hp)), f.dead > 0 ? 1 : 0, f.shield > 0 ? 1 : 0, f.kills, f.deaths]),
+    s: m.shots.map((s) => [r2(s.x), r2(s.y), r2(s.vx), r2(s.vy), s.by]),
+    p: pickups.map((p) => (p.back > 0 ? 0 : 1)).join(""),
+  });
   m.standings = () => [...m.fighters].sort((a, b) => b.kills - a.kills || a.deaths - b.deaths || a.joinedAt - b.joinedAt);
   function end() {
     m.over = true;
