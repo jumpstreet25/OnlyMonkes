@@ -47,6 +47,12 @@ export class Hall {
     this.seat(p);
   }
 
+  /** A player whose socket outlived a hibernation (royale.ts): known again, out of any match, waiting for "again". */
+  adopt(sock: Sock, wallet: string, n: number): void {
+    if (this.bySock.has(sock)) return;
+    this.bySock.set(sock, { sock, wallet, n, id: `p${++this.seq}`, room: null, input: null, queuedAt: this.now() });
+  }
+
   // Into a running match (a bot's seat), else the queue.
   private seat(p: Player): void {
     for (const r of this.rooms.values()) {

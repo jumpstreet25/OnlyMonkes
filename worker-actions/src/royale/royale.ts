@@ -56,6 +56,8 @@ const enc = new TextEncoder();
 const bananaKey = async (wallet: string) => `b:${(await sha256Hex(enc.encode(`om-royale:${wallet}`))).slice(0, 40)}`;
 const utcDay = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 type Ledger = { owed: number; day: string; today: number };
+/** Per-socket state that survives hibernation (serializeAttachment). */
+type Att = { state: "hello" | "checking" | "in"; wallet?: string; n?: number };
 
 /** POST /api/royale/collect: the phone collects the bananas its holder earned. */
 export async function handleRoyaleCollect(request: Request, env: Env): Promise<Response> {
@@ -116,7 +118,19 @@ export class RoyaleHall {
   private timer: ReturnType<typeof setInterval> | null = null;
   private last = Date.now();
 
-  constructor(private ctx: DurableObjectState, private env: Env) {}
+  private socks = new Map<WebSocket, Sock>();
+  private rate = new Map<WebSocket, { count: number; start: number }>();
+  private helloTimers = new Map<WebSocket, ReturnType<typeof setTimeout>>();
+
+  constructor(private ctx: DurableObjectState, private env: Env) {
+    // Woken from hibernation: players whose sockets stayed open (on the end card) come back,
+    // out of any match. A socket that never finished its hello can't be here (see fetch).
+    for (const ws of ctx.getWebSockets()) {
+      const a = ws.deserializeAttachment() as Att | null;
+      if (a?.state === "in" && a.wallet && a.n) this.hall.adopt(this.sockFor(ws), a.wallet, a.n);
+      else this.sockFor(ws).close(4002, "no hello");
+    }
+  }
 
   // Storage reads and writes hold this object's input gate, so a credit and a
   // collect for the same wallet never interleave.
@@ -146,41 +160,71 @@ export class RoyaleHall {
     if (new URL(request.url).pathname === "/collect") return this.collect(request);
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
-    server.accept();
-    const sock: Sock = { send: (d) => server.send(d), close: (c, r) => { try { server.close(c, r); } catch { /* already */ } } };
-    let state: "hello" | "checking" | "in" = "hello";
-    let count = 0, windowStart = Date.now();
-    const helloTimer = setTimeout(() => { if (state !== "in") sock.close(4002, "no hello"); }, HELLO_MS);
-
-    server.addEventListener("message", async (e) => {
-      const now = Date.now();
-      if (now - windowStart > 1000) { windowStart = now; count = 0; }
-      if (++count > MAX_MSGS_PER_S || typeof e.data !== "string" || e.data.length > MAX_MSG_BYTES) { sock.close(4003, "too much"); return; }
-      let msg: any;
-      try { msg = JSON.parse(e.data); } catch { return; }
-      if (state === "hello") {
-        if (msg?.t !== "hello") return;
-        if (msg.v !== ROYALE_VERSION) { sock.send(JSON.stringify({ t: "err", msg: "Reload the game for the new version", reload: true })); sock.close(4004, "version"); return; }
-        state = "checking";
-        const who = await holderFromProof(this.env, msg.proof);
-        if ("error" in who) { sock.send(JSON.stringify({ t: "err", msg: who.error })); sock.close(4005, "not a holder"); return; }
-        const n = await monkeFor(this.env, who.wallet, parseInt(msg.n, 10));
-        if (n == null) { sock.send(JSON.stringify({ t: "err", msg: "No Saga Monke found in this wallet" })); sock.close(4005, "no monke"); return; }
-        clearTimeout(helloTimer);
-        state = "in";
-        sock.send(JSON.stringify({ t: "welcome", n }));
-        this.hall.join(sock, who.wallet, n);
-        this.run();
-        return;
-      }
-      if (state !== "in") return;
-      if (msg?.t === "in") this.hall.input(sock, msg);
-      else if (msg?.t === "again") { this.hall.again(sock); this.run(); }
-    });
-    const gone = () => { clearTimeout(helloTimer); this.hall.leave(sock); };
-    server.addEventListener("close", gone);
-    server.addEventListener("error", gone);
+    // Hibernatable: between matches (nobody queued or playing) the object can sleep with
+    // the sockets still open, and idle time costs nothing. The pending hello timer keeps it
+    // awake until the hello is checked, so only "in" sockets ever outlive a hibernation.
+    this.ctx.acceptWebSocket(server);
+    server.serializeAttachment({ state: "hello" } satisfies Att);
+    this.helloTimers.set(server, setTimeout(() => {
+      if ((server.deserializeAttachment() as Att | null)?.state !== "in") this.sockFor(server).close(4002, "no hello");
+    }, HELLO_MS));
     return new Response(null, { status: 101, webSocket: client });
+  }
+
+  async webSocketMessage(ws: WebSocket, data: string | ArrayBuffer): Promise<void> {
+    const sock = this.sockFor(ws), now = Date.now();
+    const r = this.rate.get(ws) ?? { count: 0, start: now };
+    if (now - r.start > 1000) { r.start = now; r.count = 0; }
+    this.rate.set(ws, r);
+    if (++r.count > MAX_MSGS_PER_S || typeof data !== "string" || data.length > MAX_MSG_BYTES) { sock.close(4003, "too much"); return; }
+    let msg: any;
+    try { msg = JSON.parse(data); } catch { return; }
+    const att = ws.deserializeAttachment() as Att | null;
+    if (att?.state === "hello") {
+      if (msg?.t !== "hello") return;
+      if (msg.v !== ROYALE_VERSION) { sock.send(JSON.stringify({ t: "err", msg: "Reload the game for the new version", reload: true })); sock.close(4004, "version"); return; }
+      ws.serializeAttachment({ state: "checking" } satisfies Att);
+      const who = await holderFromProof(this.env, msg.proof);
+      if ("error" in who) { sock.send(JSON.stringify({ t: "err", msg: who.error })); sock.close(4005, "not a holder"); return; }
+      const n = await monkeFor(this.env, who.wallet, parseInt(msg.n, 10));
+      if (n == null) { sock.send(JSON.stringify({ t: "err", msg: "No Saga Monke found in this wallet" })); sock.close(4005, "no monke"); return; }
+      this.clearHello(ws);
+      // Kept server-side by Cloudflare with the socket; never sent to any client.
+      ws.serializeAttachment({ state: "in", wallet: who.wallet, n } satisfies Att);
+      sock.send(JSON.stringify({ t: "welcome", n }));
+      this.hall.join(sock, who.wallet, n);
+      this.run();
+      return;
+    }
+    if (att?.state !== "in") return;
+    if (msg?.t === "in") this.hall.input(sock, msg);
+    else if (msg?.t === "again") { this.hall.again(sock); this.run(); }
+  }
+
+  async webSocketClose(ws: WebSocket): Promise<void> { this.gone(ws); }
+  async webSocketError(ws: WebSocket): Promise<void> { this.gone(ws); }
+
+  private clearHello(ws: WebSocket): void {
+    const t = this.helloTimers.get(ws);
+    if (t !== undefined) clearTimeout(t);
+    this.helloTimers.delete(ws);
+  }
+
+  private gone(ws: WebSocket): void {
+    this.clearHello(ws);
+    this.rate.delete(ws);
+    const sock = this.socks.get(ws);
+    if (sock) this.hall.leave(sock);
+    this.socks.delete(ws);
+  }
+
+  private sockFor(ws: WebSocket): Sock {
+    let sock = this.socks.get(ws);
+    if (!sock) {
+      sock = { send: (d) => { try { ws.send(d); } catch { /* closed */ } }, close: (c, r) => { try { ws.close(c, r); } catch { /* already */ } } };
+      this.socks.set(ws, sock);
+    }
+    return sock;
   }
 
   // The game loop runs only while someone is waiting or playing.
