@@ -6,6 +6,8 @@
  * OnlyTreasury bots fill the empty seats. A holder who joins a running match
  * (under 4 min in) takes a bot's seat; one who leaves is played out by a bot.
  * The match code (match.js) decides movement limits, shots, hits and kills.
+ * At the end, `onEarned` gets each holder still in the match and their bananas
+ * (royale.ts credits them, capped per day).
  */
 import { createMatch, matchBananas, VS, type Match } from "./match.js";
 import { ARENAS } from "./arenas.js";
@@ -28,7 +30,10 @@ export class Hall {
   private seq = 0;
   private lastWaitNote = 0;
 
-  constructor(private now: () => number = () => Date.now()) {}
+  constructor(
+    private now: () => number = () => Date.now(),
+    private onEarned: (sock: Sock, wallet: string, bananas: number) => void = () => {},
+  ) {}
 
   get playerCount() { return this.bySock.size; }
   get busy() { return this.queue.length > 0 || this.rooms.size > 0; }
@@ -112,8 +117,11 @@ export class Hall {
       if (r.m.over) {
         r.endedAt = now;
         const standings = r.m.standings().map((f) => [f.id, f.n, f.name, f.bot ? 1 : 0, f.kills, f.deaths]);
-        // Bananas are paid in step 3 (signed results, phone collects); the amount shows now.
-        for (const p of r.players) send(p.sock, { t: "over", winner: r.m.winner, standings, bananas: matchBananas(r.m, p.id) });
+        for (const p of r.players) {
+          const bananas = matchBananas(r.m, p.id);
+          send(p.sock, { t: "over", winner: r.m.winner, standings, bananas });
+          if (bananas > 0) this.onEarned(p.sock, p.wallet, bananas);
+        }
       }
     }
   }

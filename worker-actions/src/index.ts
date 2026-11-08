@@ -107,7 +107,7 @@ import { handleLivekitAuthorize, INTERNAL_HOST } from "./livekitAuth";
 import { handleApkDownload, isApkDownloadPath } from "./apkDownloads";
 import { handleWebPair } from "./webPair";
 import { handlePhoneCam } from "./phoneCam";
-import { handleRoyale } from "./royale/royale";
+import { handleRoyale, handleRoyaleCollect } from "./royale/royale";
 import { verifyGenesisTokenOwnership } from "./genesisVerify";
 import { handleMonkeMemeGenerate } from "./monkeMeme";
 
@@ -3612,6 +3612,9 @@ export default {
 
     if (path === "/api/royale/play") {
       return handleRoyale(request, env);
+    }
+    if (path === "/api/royale/collect") {
+      return handleRoyaleCollect(request, env);
     }
 
     if (path.startsWith("/api/auth/")) {

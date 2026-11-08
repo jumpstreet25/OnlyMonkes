@@ -12,12 +12,19 @@
  * Saga Monke holders only (a Genesis Token alone doesn't seat you). The monke
  * you play as must be one the wallet holds (MonkeLedger), else its first one.
  * Wallets never leave this file: players show as their monke number.
+ *
+ * Bananas (BANANAS in match.js): the hall credits what each holder earned when a
+ * match ends, at most BANANAS.DAILY_MAX per UTC day, into this object's storage
+ * under a hash of the wallet, and tells the player { t: "paid", bananas, capped }.
+ * The phone app collects them (bananas live on the phone; the web only mirrors):
+ *   POST /api/royale/collect { proof } → { bananas }   (everything owed, once)
  */
 import type { Env } from "../index";
 import { holderFromToken } from "../webAuth";
 import { walletFromDeviceProof } from "../livekitAuth";
 import { Hall, type Sock } from "./hall";
-import { ROYALE_VERSION } from "./match.js";
+import { BANANAS, ROYALE_VERSION } from "./match.js";
+import { sha256Hex } from "../cryptoVerify";
 
 export const royaleProofMessage = (nonce: string) => `OnlyMonkes Jungle Royale\nnonce:${nonce}`;
 
@@ -42,6 +49,27 @@ export async function handleRoyale(request: Request, env: Env): Promise<Response
   }
   const stub = env.ROYALE.get(env.ROYALE.idFromName("hall"));
   return stub.fetch(new Request("https://royale/play", { headers: { Upgrade: "websocket" } }));
+}
+
+const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
+const enc = new TextEncoder();
+const bananaKey = async (wallet: string) => `b:${(await sha256Hex(enc.encode(`om-royale:${wallet}`))).slice(0, 40)}`;
+const utcDay = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+type Ledger = { owed: number; day: string; today: number };
+
+/** POST /api/royale/collect: the phone collects the bananas its holder earned. */
+export async function handleRoyaleCollect(request: Request, env: Env): Promise<Response> {
+  if (request.method !== "POST") return json({ error: "POST only" }, 405);
+  if (env.WEB_RPC_LIMITER) {
+    const ip = request.headers.get("CF-Connecting-IP") ?? "unknown";
+    if (!(await env.WEB_RPC_LIMITER.limit({ key: `royale-collect:${ip}` })).success) return json({ error: "Too many requests" }, 429);
+  }
+  let body: any = null;
+  try { body = await request.json(); } catch { /* below */ }
+  const who = await holderFromProof(env, body?.proof);
+  if ("error" in who) return json({ error: who.error }, 401);
+  const stub = env.ROYALE.get(env.ROYALE.idFromName("hall"));
+  return stub.fetch(new Request("https://royale/collect", { method: "POST", body: JSON.stringify({ key: await bananaKey(who.wallet) }) }));
 }
 
 /** Holder wallet + tier from a hello proof, or why not. */
@@ -84,13 +112,38 @@ async function monkeFor(env: Env, wallet: string, asked: number): Promise<number
 }
 
 export class RoyaleHall {
-  private hall = new Hall();
+  private hall = new Hall(undefined, (sock, wallet, bananas) => { void this.credit(sock, wallet, bananas); });
   private timer: ReturnType<typeof setInterval> | null = null;
   private last = Date.now();
 
   constructor(private ctx: DurableObjectState, private env: Env) {}
 
-  async fetch(_request: Request): Promise<Response> {
+  // Storage reads and writes hold this object's input gate, so a credit and a
+  // collect for the same wallet never interleave.
+  private async credit(sock: Sock, wallet: string, earned: number): Promise<void> {
+    try {
+      const key = await bananaKey(wallet), day = utcDay(Date.now());
+      const l = ((await this.ctx.storage.get<Ledger>(key)) ?? { owed: 0, day, today: 0 });
+      if (l.day !== day) { l.day = day; l.today = 0; }
+      const bananas = Math.max(0, Math.min(earned, BANANAS.DAILY_MAX - l.today));
+      if (bananas) { l.today += bananas; l.owed += bananas; await this.ctx.storage.put(key, l); }
+      sock.send(JSON.stringify({ t: "paid", bananas, capped: bananas < earned, today: l.today, max: BANANAS.DAILY_MAX }));
+    } catch { /* the player is gone; what was credited stays owed */ }
+  }
+
+  private async collect(request: Request): Promise<Response> {
+    const { key } = (await request.json()) as { key: string };
+    const l = await this.ctx.storage.get<Ledger>(key);
+    if (!l?.owed) return json({ bananas: 0 });
+    // Mark first, pay after: a lost reply costs bananas, a retry never doubles them.
+    const bananas = l.owed;
+    l.owed = 0;
+    await this.ctx.storage.put(key, l);
+    return json({ bananas });
+  }
+
+  async fetch(request: Request): Promise<Response> {
+    if (new URL(request.url).pathname === "/collect") return this.collect(request);
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
     server.accept();

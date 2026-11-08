@@ -1156,5 +1156,8 @@
     "removeFailed": "No se pudo quitar ese teléfono. Inténtalo de nuevo.",
     "retry": "Reintentar",
     "close": "Cerrar"
+  },
+  "caves": {
+    "toastRoyale": "+{{bananas}} bananas de Jungle Royale"
   }
 }
