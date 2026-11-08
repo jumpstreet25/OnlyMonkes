@@ -9,12 +9,14 @@ import { paintFace } from "/viewer/caves-face.js";
 import { WALL_PAINT, FLOOR_PAINT, SKY_PAINT, DECOR_PAL, DECOR_ROWS, DECOR_LETTERS, DECOR_BLOCKS } from "/viewer/caves-world.js";
 import { FOE_ROWS, FOE_PAL, AD_PAL2, XSHOT, BEAM, FOES, FOE_LETTERS } from "/viewer/caves-foes.js";
 import { ARENAS } from "/viewer/caves-arenas.js";
-import { createMatch, VS, matchBananas } from "/viewer/caves-royale.js";
+import { createMatch, VS, matchBananas, ROYALE_VERSION } from "/viewer/caves-royale.js";
 
 // ?mode=royale: Jungle Royale (versus, caves-royale.js). Offline against OnlyTreasury
 // bots for now; online holder matches come with the match server.
 const ROYALE = new URLSearchParams(location.search).get("mode") === "royale";
 let royale = null, me = null;
+// Inside the app (dApp WebView or the web app's frame), which can prove holder status.
+const hosted = !!window.ReactNativeWebView || parent !== window;
 
 const TEX = 32;
 const view = document.getElementById("view");
@@ -499,6 +501,7 @@ function update(dt) {
   const p = player;
   if (paused) return;
   if (state !== "play") {
+    if (ROYALE && state === "wait") return;
     if (keys.has("Space") || keys.has("Enter") || touch.fire) {
       touch.fire = false; keys.clear();
       // A clear goes on to the next cave; dying restarts the same cave; winning starts over.
@@ -1037,8 +1040,8 @@ if (ROYALE) {
   card("JUNGLE ROYALE", [
     `<div class="dim">MONKE #${n}</div>`,
     `<div class="weapon"><i style="background:${swatch(WEAPON.shot.color)}"></i>${WEAPON.name}</div>`,
-    `<div class="dim">You vs ${VS.SEATS - 1} OnlyTreasury bot monkes<br>First to ${VS.KILLS_TO_WIN} kills · ${VS.TIME / 60} minutes · same weapon power for all</div>`,
-    `<div class="tag">TEST · OFFLINE</div>`,
+    `<div class="dim">${hosted ? `Up to ${VS.SEATS} holders · OnlyTreasury bot monkes fill empty seats` : `You vs ${VS.SEATS - 1} OnlyTreasury bot monkes`}<br>First to ${VS.KILLS_TO_WIN} kills · ${VS.TIME / 60} minutes · same weapon power for all</div>`,
+    `<div class="tag">${hosted ? "TEST · ONLINE" : "TEST · OFFLINE"}</div>`,
     `<div class="cta">${isTouch ? "Tap FIRE" : "Space"} to start</div>`,
   ]);
 } else card("MONKECAVES", [
@@ -1102,18 +1105,117 @@ function showScore() {
   }
 }
 
+// Online (holders, match server) when the app around the page hands it a holder
+// proof; offline against local bots otherwise (a bare link, or no answer).
+let net = null; // { ws, you, bananas, standings, closedByUs }
+let forceOffline = false; // after a refusal, the next match is the offline one
+function askHostForProof() {
+  return new Promise((resolve) => {
+    if (!hosted) { resolve(null); return; }
+    const done = (v) => { removeEventListener("message", on); document.removeEventListener("message", on); clearTimeout(t); resolve(v); };
+    const on = (e) => {
+      if (!window.ReactNativeWebView && e.origin !== location.origin) return;
+      let d = e.data;
+      if (typeof d === "string") { try { d = JSON.parse(d); } catch { return; } }
+      if (d?.type === "royaleProof") done(d.proof ? d : { error: d.error || "no proof" });
+    };
+    addEventListener("message", on); document.addEventListener("message", on);
+    const t = setTimeout(() => done(null), 15000); // a wallet prompt can take a while
+    post({ event: "royale-auth" });
+  });
+}
+
 function startMatch() {
   loadLevel();
+  scoreEl.hidden = true; feedEl.innerHTML = "";
+  if (net?.ws?.readyState === 1) { state = "wait"; say("FINDING MONKES", "Holders first, bots fill the rest"); net.ws.send(JSON.stringify({ t: "again" })); return; }
+  if (!hosted || forceOffline) { forceOffline = false; startOffline(); return; }
+  state = "wait"; say("CHECKING HOLDER", "One moment");
+  askHostForProof().then((r) => {
+    if (r?.proof) connect(r.proof);
+    else { say(r?.error ? "OFFLINE MATCH" : "OFFLINE MATCH", r?.error ? `${r.error} · playing the bots offline` : "Playing the bots offline"); setTimeout(startOffline, 1400); }
+  });
+}
+function startOffline() {
+  net = null;
   royale = createMatch(ARENAS[0], { seed: (Date.now() & 0xffff) + 1 });
   me = royale.addFighter({ id: "me", n, name: "You" });
   royale.fillBots(VS.SEATS);
+  begin();
+}
+function begin() {
   for (const f of royale.fighters) if (f !== me) monkeSprite(f.n);
   takeSpawn();
   state = "play"; t0 = performance.now();
   scoreEl.hidden = false; showScore();
-  say(ARENAS[0].name, `First to ${VS.KILLS_TO_WIN} kills`);
+  say(ARENAS[0].name, `First to ${VS.KILLS_TO_WIN} kills${net ? "" : " · offline"}`);
   setTimeout(() => { if (state === "play" && !me.dead) say(""); }, 1800);
 }
+
+function connect(proof) {
+  const ws = new WebSocket(`${location.origin.replace(/^http/, "ws")}/api/royale/play`);
+  net = { ws, you: null, closedByUs: false };
+  say("FINDING MONKES", "Holders first, bots fill the rest");
+  ws.onopen = () => ws.send(JSON.stringify({ t: "hello", v: ROYALE_VERSION, n, proof }));
+  ws.onmessage = (e) => { let d; try { d = JSON.parse(e.data); } catch { return; } onServer(d); };
+  ws.onclose = () => {
+    if (net?.ws !== ws || net.closedByUs) return;
+    if (state === "play" || state === "wait") { state = "over"; say("CONNECTION LOST", `${isTouch ? "Tap FIRE" : "Space"} to rejoin`); }
+    net = null;
+  };
+}
+function onServer(d) {
+  if (d.t === "err") { net.closedByUs = true; forceOffline = true; state = "over"; say("CAN'T JOIN", `${d.msg}<br>${isTouch ? "Tap FIRE" : "Space"} to play the bots offline`); net = null; return; }
+  if (d.t === "welcome" && d.n !== n) { n = d.n; equip(n); loadImage(imageFor(n)).then(readGrid).then(setFace).catch(() => {}); }
+  else if (d.t === "wait") say("FINDING MONKES", `${d.holders} holder${d.holders === 1 ? "" : "s"} in · bots fill the rest in ${d.startsIn}s`);
+  else if (d.t === "start") {
+    loadLevel();
+    royale = createMatch(ARENAS[0]);
+    royale.fighters.length = 0;
+    net.you = d.you;
+    rosterFrom(d.fighters);
+    me = royale.fighters.find((f) => f.id === d.you);
+    begin();
+  }
+  else if (d.t === "roster" && royale) { rosterFrom(d.fighters); showScore(); }
+  else if (d.t === "fix") { player.x = d.x; player.y = d.y; }
+  else if (d.t === "s" && royale && me) takeSnapshot(d);
+  else if (d.t === "over" && royale) { net.standings = d.standings; net.bananas = d.bananas; royale.winner = d.winner; matchOver(); }
+}
+function rosterFrom(list) {
+  const keep = new Map(royale.fighters.map((f) => [f.id, f]));
+  royale.fighters.length = 0;
+  for (const x of list) {
+    const f = keep.get(x.id) ?? { id: x.id, x: 0, y: 0, a: 0, hp: VS.HP, ammo: 0, dead: 0, shield: 0, kills: 0, deaths: 0 };
+    Object.assign(f, { n: x.n, name: x.id === net.you ? "You" : x.name, bot: !!x.bot });
+    royale.fighters.push(f);
+    if (x.id !== net.you) monkeSprite(x.n);
+  }
+  if (me) me = royale.fighters.find((f) => f.id === net.you) ?? me;
+}
+function takeSnapshot(d) {
+  royale.time = d.tm;
+  const was = me.dead;
+  let scored = false;
+  for (const [id, x, y, a, hp, dead, shield, kills, deaths] of d.f) {
+    const f = royale.fighters.find((q) => q.id === id);
+    if (!f) continue;
+    if (f.kills !== kills || f.deaths !== deaths) scored = true;
+    Object.assign(f, { hp, dead, shield, kills, deaths });
+    if (f === me) { f.x = x; f.y = y; f.a = a; continue; }
+    // Others glide to where the server says they are (royaleTick).
+    if (f.tx === undefined || Math.hypot(x - f.x, y - f.y) > 3) { f.x = x; f.y = y; }
+    f.tx = x; f.ty = y; f.a = a;
+  }
+  me.ammo = d.ammo;
+  royale.shots = d.s.map(([x, y, vx, vy, by]) => ({ x, y, vx, vy, by }));
+  royale.pickups.forEach((k, i) => { k.back = d.p[i] === "1" ? 0 : 1; });
+  // Back from the dead: take the spawn the server picked.
+  if (was && !me.dead) { takeSpawn(); say(""); }
+  matchEvents(d.e.filter((e) => !(e.t === "shot" && e.by === me.id)));
+  if (scored) showScore();
+}
+
 function takeSpawn() {
   Object.assign(player, { x: me.x, y: me.y, dx: Math.cos(me.a), dy: Math.sin(me.a), px: -Math.sin(me.a) * 0.66, py: Math.cos(me.a) * 0.66, hp: me.hp, ammo: me.ammo, hurt: 0 });
 }
@@ -1129,15 +1231,8 @@ function royaleAim() {
   }
   return best ?? a;
 }
-function royaleTick(dt) {
-  const p = player, firing = keys.has("Space") || touch.fire;
-  p.kick = Math.max(0, p.kick - dt * 5); p.hurt = Math.max(0, p.hurt - dt); p.flash = Math.max(0, p.flash - dt);
-  p.ouch = Math.max(0, p.ouch - dt); p.grin = Math.max(0, p.grin - dt);
-  if (firing && !me.dead && me.ammo <= 0 && me.cool <= 0 && performance.now() - (p.emptySaid || 0) > 2500) {
-    p.emptySaid = performance.now(); sfx.empty(); say("OUT OF AMMO", "Find Seeker batteries"); setTimeout(() => { if (state === "play" && !me.dead) say(""); }, 1200);
-  }
-  const events = royale.step(dt, { me: { x: p.x, y: p.y, a: Math.atan2(p.dy, p.dx), aim: royaleAim(), fire: firing } });
-  let scored = false;
+function matchEvents(events) {
+  const p = player;
   for (const e of events) {
     if (e.t === "shot" && e.by === me.id) { p.kick = 1; p.flash = 0.06; sfx.throw(); }
     else if (e.t === "hit") {
@@ -1145,18 +1240,44 @@ function royaleTick(dt) {
       else { const f = royale.fighters.find((x) => x.id === e.id); if (f) f.flashT = 0.12; if (e.by === me.id) sfx.hit(); }
     }
     else if (e.t === "kill") {
-      scored = true;
       feed(`${nameOf(e.by)} rekt ${nameOf(e.id)}`);
       if (e.by === me.id) { sfx.die(); p.grin = 1.5; }
       if (e.id === me.id) say("REKT", `by ${nameOf(e.by)} · back in ${VS.RESPAWN}s`);
     }
-    else if (e.t === "spawn" && e.id === me.id) { takeSpawn(); say(""); }
+    else if (e.t === "spawn" && e.id === me.id && !net) { takeSpawn(); say(""); }
     else if (e.t === "pickup" && e.id === me.id) sfx.pick();
-    else if (e.t === "over") matchOver();
+    else if (e.t === "over" && !net) matchOver();
+  }
+}
+let lastSent = 0, fireCool = 0;
+function royaleTick(dt) {
+  const p = player, firing = keys.has("Space") || touch.fire;
+  p.kick = Math.max(0, p.kick - dt * 5); p.hurt = Math.max(0, p.hurt - dt); p.flash = Math.max(0, p.flash - dt);
+  p.ouch = Math.max(0, p.ouch - dt); p.grin = Math.max(0, p.grin - dt);
+  fireCool -= dt;
+  if (firing && !me.dead && me.ammo <= 0 && fireCool <= 0 && performance.now() - (p.emptySaid || 0) > 2500) {
+    p.emptySaid = performance.now(); sfx.empty(); say("OUT OF AMMO", "Find Seeker batteries"); setTimeout(() => { if (state === "play" && !me.dead) say(""); }, 1200);
+  }
+  const input = { x: p.x, y: p.y, a: Math.atan2(p.dy, p.dx), aim: royaleAim(), fire: firing };
+  if (net) {
+    // Your own shot kicks at once; the server decides whether it hits.
+    if (firing && !me.dead && me.ammo > 0 && fireCool <= 0) { fireCool = VS.COOL; p.kick = 1; p.flash = 0.06; sfx.throw(); }
+    const now = performance.now();
+    if (now - lastSent >= 66 && net.ws.readyState === 1) {
+      lastSent = now;
+      const r = (v) => Math.round(v * 1000) / 1000;
+      net.ws.send(JSON.stringify({ t: "in", x: r(input.x), y: r(input.y), a: r(input.a), aim: r(input.aim), f: input.fire ? 1 : 0 }));
+    }
+    for (const f of royale.fighters) if (f !== me && f.tx !== undefined) { const k = Math.min(1, dt * 12); f.x += (f.tx - f.x) * k; f.y += (f.ty - f.y) * k; }
+    for (const s of royale.shots) { s.x += s.vx * dt; s.y += s.vy * dt; }
+  } else {
+    matchEvents(royale.step(dt, { me: input }));
+    // The match refused a move (a wall in the way): stand where it says.
+    if (me.fix) { me.fix = false; p.x = me.x; p.y = me.y; }
+    if (royale.events.some((e) => e.t === "kill")) showScore();
   }
   for (const f of royale.fighters) f.flashT = Math.max(0, (f.flashT || 0) - dt);
   p.hp = me.hp; p.ammo = me.ammo;
-  if (scored) showScore();
   // The page draws the match's shots with each shooter's own weapon look.
   shots.length = 0;
   for (const s of royale.shots) {
@@ -1179,16 +1300,16 @@ function royaleSprites(sprites, now) {
 function matchOver() {
   state = "over"; showScore();
   const won = royale.winner === me.id, tap = isTouch ? "Tap FIRE" : "Space";
-  const rows = royale.standings().map((f) => `<span>${f === me ? "You" : f.name}${f.bot ? " (bot)" : ""}</span><b>${f.kills} · ${f.deaths}</b>`).join("");
+  const list = royale.standings ? royale.standings() : [...royale.fighters].sort((a, b) => b.kills - a.kills || a.deaths - b.deaths);
+  const rows = list.map((f) => `<span>${f === me ? "You" : f.name}${f.bot ? " (bot)" : ""}</span><b>${f.kills} · ${f.deaths}</b>`).join("");
   sfx.clear();
   card(won ? "YOU WIN" : "MATCH OVER", [
     `<div class="big">${won ? "TOP MONKE" : `${nameOf(royale.winner)} wins`}</div>`,
     `<div class="stats"><span>KILLS · DEATHS</span><b></b>${rows}</div>`,
-    `<div class="dim">Online this match would pay ${matchBananas(royale, me.id)} bananas</div>`,
+    net ? `<div class="tag">+${net.bananas} BANANAS</div><div class="dim">Paid out once bananas go live</div>` : `<div class="dim">Online this match would pay ${matchBananas(royale, me.id)} bananas</div>`,
     `<div class="cta">${tap} for a rematch</div>`,
   ]);
 }
-
 // ── Pause: button, P / Esc, or leaving the app. The clock stops while paused. ──
 const menu = document.getElementById("menu");
 function setPaused(on) {
