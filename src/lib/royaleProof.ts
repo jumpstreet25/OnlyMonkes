@@ -6,6 +6,7 @@
  * prompt) when this wallet has a clean Saga Monke verdict; otherwise one wallet
  * signature for the holder sign-in token (livekitProof.ts holderProof, kept 24 h).
  * Web has its own version (royaleProof.web.ts, the holder sign-in token).
+ * canPrompt false: never a wallet prompt (throws instead).
  */
 import { Buffer } from "buffer";
 import { Platform } from "react-native";
@@ -16,7 +17,7 @@ import { holderProof } from "@/lib/livekitProof";
 
 const WORKER_BASE = "https://onlymonkes.app";
 
-export async function royaleProof(): Promise<Record<string, string>> {
+export async function royaleProof(canPrompt = true): Promise<Record<string, string>> {
   const wallet = useAppStore.getState().wallet?.address;
   if (!wallet) throw new Error("Connect your wallet first");
   if (Platform.OS === "android" && isDeviceAttestAvailable()) {
@@ -34,5 +35,5 @@ export async function royaleProof(): Promise<Record<string, string>> {
       } catch { /* fall back to the wallet signature */ }
     }
   }
-  return holderProof();
+  return holderProof(canPrompt);
 }

@@ -1186,7 +1186,9 @@ function onServer(d) {
   else if (d.t === "roster" && royale) { rosterFrom(d.fighters); showScore(); }
   else if (d.t === "fix") { player.x = d.x; player.y = d.y; }
   else if (d.t === "s" && royale && me) takeSnapshot(d);
-  else if (d.t === "over" && royale) { net.standings = d.standings; net.bananas = d.bananas; royale.winner = d.winner; matchOver(); }
+  else if (d.t === "over" && royale) { net.standings = d.standings; net.bananas = d.bananas; net.paid = null; royale.winner = d.winner; matchOver(); }
+  // The server credited this match's bananas (capped per day); the phone app collects them.
+  else if (d.t === "paid") { net.paid = d; if (d.bananas > 0) post({ event: "royale-paid" }); if (state === "over" && royale) matchOver(true); }
 }
 function rosterFrom(list) {
   const keep = new Map(royale.fighters.map((f) => [f.id, f]));
@@ -1296,16 +1298,24 @@ function royaleSprites(sprites, now) {
     sprites.push({ x: k.x, y: k.y, spr, scale: k.big ? 0.42 : 0.4, lift: 0 });
   }
 }
-function matchOver() {
+function bananaLine() {
+  const earned = net?.bananas ?? 0, paid = net?.paid;
+  if (!earned) return `<div class="dim">No bananas this match · win or rekt monkes to earn them</div>`;
+  if (!paid) return `<div class="tag">+${earned} BANANAS</div><div class="dim">Adding them to your balance…</div>`;
+  const where = window.ReactNativeWebView ? "Added to your banana balance" : "They land in your balance in the phone app";
+  const cap = paid.capped ? `<br>Daily limit: ${paid.max} Royale bananas a day${paid.bananas ? "" : " · reached"}` : "";
+  return `<div class="tag">+${paid.bananas} BANANAS</div><div class="dim">${paid.bananas ? where : "No more today"}${cap}</div>`;
+}
+function matchOver(refresh = false) {
   state = "over"; showScore();
   const won = royale.winner === me.id, tap = isTouch ? "Tap FIRE" : "Space";
   const list = royale.standings ? royale.standings() : [...royale.fighters].sort((a, b) => b.kills - a.kills || a.deaths - b.deaths);
   const rows = list.map((f) => `<span>${f === me ? "You" : f.name}${f.bot ? " (bot)" : ""}</span><b>${f.kills} · ${f.deaths}</b>`).join("");
-  sfx.clear();
+  if (!refresh) sfx.clear();
   card(won ? "YOU WIN" : "MATCH OVER", [
     `<div class="big">${won ? "TOP MONKE" : `${nameOf(royale.winner)} wins`}</div>`,
     `<div class="stats"><span>KILLS · DEATHS</span><b></b>${rows}</div>`,
-    `<div class="tag">+${net?.bananas ?? 0} BANANAS</div><div class="dim">Paid out once bananas go live</div>`,
+    bananaLine(),
     `<div class="cta">${tap} for a rematch</div>`,
   ]);
 }
