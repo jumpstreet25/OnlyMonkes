@@ -179,6 +179,7 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
   const [selectedEvent, setSelectedEvent] = useState<LumaEvent | CalendarEvent | null>(null);
   const [clusterUsers, setClusterUsers] = useState<GlobeMarker[]>([]);
   const [onlineEvents, setOnlineEvents] = useState<LumaEvent[]>([]); // Events without location
+  const [appEvents, setAppEvents] = useState<CalendarEvent[]>([]); // App events with no pin (online / no place)
   const webViewRef = useRef<WebView>(null);
 
   // ── Load markers (users + events) ─────────────────────────────────────────
@@ -352,11 +353,13 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
       } catch { /* non-fatal */ }
       if (!cancelled) setOnlineEvents(_onlineEvts);
 
-      // 3. IRL events from app calendar (only future events — remove after date passes)
+      // 3. Events from the app calendar (only future ones — removed after the date passes).
+      // A real place gets a pin; online ones (Avatar Room chats, location "OnlyMonkes")
+      // and places that don't geocode go in the events column instead of vanishing.
       const now = Date.now();
+      const _appOnline: CalendarEvent[] = [];
       for (const evt of calendarEvents) {
         if (cancelled) return;
-        if (!evt.location || evt.location === "OnlyMonkes") continue;
         // Parse "MM/DD/YYYY" + "HH:MM" — skip events that have ended (start + 2h buffer)
         const [mm, dd, yyyy] = (evt.date ?? "").split("/").map(Number);
         if (mm && dd && yyyy) {
@@ -365,8 +368,9 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
           const eventEnd = (hh || hh === 0) ? eventStart + 2 * 3600000 : eventStart;
           if (eventEnd < now) continue;
         }
-        const coords = await geocodeLocation(evt.location);
-        if (!coords) continue;
+        const place = evt.location && evt.location !== "OnlyMonkes" ? evt.location : null;
+        const coords = place ? await geocodeLocation(place) : null;
+        if (!coords) { _appOnline.push(evt); continue; }
         allMarkers.push({
           id: `irl-${evt.id}`, lat: coords.lat, lng: coords.lng,
           type: "irl-event", label: evt.title, event: evt,
@@ -374,6 +378,7 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
       }
 
       if (!cancelled) {
+        setAppEvents(_appOnline);
         setMarkers([...allMarkers]);
         setLoading(false);
       }
@@ -667,7 +672,7 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
         </View>
         <View style={styles.legendItem}>
           <View style={[styles.legendDot, { backgroundColor: "#6CB4EE" }]} />
-          <Text style={styles.legendText}>Events ({lumaMarkers.length + onlineEvents.length})</Text>
+          <Text style={styles.legendText}>Events ({lumaMarkers.length + onlineEvents.length + appEvents.length})</Text>
         </View>
         <View style={styles.legendItem}>
           <View style={[styles.legendDot, { backgroundColor: "#10B981" }]} />
@@ -708,6 +713,19 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
           </View>
 
           <View style={styles.column}>
+            {appEvents.length > 0 && (
+              <>
+                <Text style={styles.columnTitle}>📅 OnlyMonkes ({appEvents.length})</Text>
+                {appEvents.map((evt) => (
+                  <Pressable key={evt.id} style={styles.eventColumnRow} onPress={() => setSelectedEvent(evt)}>
+                    <Text style={styles.onlineName} numberOfLines={1}>{evt.title}</Text>
+                    <Text style={styles.onlineDate} numberOfLines={1}>
+                      {evt.date}{evt.time ? ` · ${evt.time}` : ""}{evt.location ? ` · ${evt.location}` : ""}
+                    </Text>
+                  </Pressable>
+                ))}
+              </>
+            )}
             <Text style={styles.columnTitle}>🌐 Solana Events ({allLumaEvents.length})</Text>
             {allLumaEvents.map((evt) => (
               <Pressable

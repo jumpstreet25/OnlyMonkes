@@ -2,7 +2,7 @@
  * FaceTracker — Headless component that runs ML Kit Face Detection
  * via react-native-vision-camera-face-detector for stable face tracking.
  *
- * Renders a 1×1px invisible camera. Outputs BlendshapeParams at ~20fps
+ * Renders a 1×1px invisible camera. Outputs BlendshapeParams at ~15fps
  * via callback. The camera feed is never shown — it only serves as
  * input for face tracking that drives AnimatedAvatar.
  *
@@ -29,6 +29,13 @@ import {
   type BlendshapeParams,
   BLENDSHAPE_IDLE,
 } from '@/lib/faceTracking';
+
+// The detector runs ML Kit back-to-back on every frame it can get (it only
+// skips frames while busy), at 1280×720 — a whole CPU core on a mid-range
+// phone, beside the mic and the 3D stage. 15 fps from the camera caps that;
+// the avatar only needs ~15 face updates a second. Module constant: a new
+// array each render would reconfigure the camera session.
+const CAMERA_CONSTRAINTS = [{ fps: 15 }];
 
 interface FaceTrackerProps {
   enabled: boolean;
@@ -60,9 +67,9 @@ export const FaceTracker = React.memo(function FaceTracker({ enabled, onBlendsha
   const handleFaceResults = useCallback((faces: Face[]) => {
     if (!faces || faces.length === 0) return;
 
-    // Throttle to ~20fps
+    // Throttle to ~15fps (if a phone ignores the fps constraint)
     const now = Date.now();
-    if (now - lastFrameRef.current < 50) return;
+    if (now - lastFrameRef.current < 60) return;
     lastFrameRef.current = now;
 
     const face = faces[0];
@@ -177,7 +184,7 @@ export const FaceTracker = React.memo(function FaceTracker({ enabled, onBlendsha
     performanceMode: 'fast',
     runClassifications: true,
     runContours: true,
-    runLandmarks: true,
+    runLandmarks: false, // unused: everything below reads contours, classifications and angles
     minFaceSize: 0.15,
     outputResolution: 'preview',
     onFacesDetected: (faces: Face[]) => onFacesRef.current(faces),
@@ -194,6 +201,7 @@ export const FaceTracker = React.memo(function FaceTracker({ enabled, onBlendsha
         device={device}
         isActive={true}
         outputs={outputs}
+        constraints={CAMERA_CONSTRAINTS}
       />
     </View>
   );

@@ -436,6 +436,8 @@
     "monkeMeme": "MonkeMeme",
     "monke3d": "3D Monke",
     "monke3dBack": "Back",
+    "monkeCaves": "MonkeCaves",
+    "monkeCavesBack": "Back",
     "invite": "Invite"
   },
   "watchlist": {
@@ -726,6 +728,7 @@
     "admin": "Admin",
     "badgeEarned": "{{emoji}} Badge earned: {{name}}",
     "connectionLost": "Connection lost — retrying...",
+    "signNeeded": "Please sign with your wallet to open chat",
     "reactionSent": "Reaction sent",
     "joinedChatWithHandle": "🍌 @{{handle}} joined chat",
     "newMonkeJoinedChat": "🍌 New Monke joined chat",
@@ -1153,5 +1156,8 @@
     "removeFailed": "Couldn't remove that phone. Try again.",
     "retry": "Try again",
     "close": "Close"
+  },
+  "caves": {
+    "toastRoyale": "+{{bananas}} bananas from Jungle Royale"
   }
 }

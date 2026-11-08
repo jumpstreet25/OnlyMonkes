@@ -49,6 +49,7 @@ import {
   parseProfileUpdate,
   openOrCreateDm,
   sendDmMessage,
+  XMTP_SIGNATURE_REQUIRED_ERROR,
 } from "@/lib/xmtp";
 import { parseLiveRoomMessage, buildLiveRoomMessage, type LiveRoomData } from "@/lib/livekit";
 import { parsePinMessage, pinMessage, unpinMessage, getPinnedMessages } from "@/lib/pinnedMessages";
@@ -1018,6 +1019,17 @@ export function useXmtp() {
                 const n = applyLocationSync(locs as Record<string, { u?: string; loc?: string; ni?: string }>);
                 if (__DEV__) console.log(`[XMTP] Location sync: updated ${n} users`);
               } catch { /* ignore */ }
+            } else if (typeof content === "string" && content.startsWith("POLL_OPEN:")) {
+              // A poll that opened while the app was closed: show it once on open, as long as
+              // it's still running and this phone hasn't voted (the live stream does the rest).
+              if (isBotSender(raw.senderInboxId as string)) (async () => {
+                try {
+                  const { parsePollOpen, markPollSeenIfFirstTime, getMyVote } = await import("@/lib/poll");
+                  const data = parsePollOpen(content);
+                  if (!data || data.resolvesAt <= Date.now() || await getMyVote(data.id)) return;
+                  if (await markPollSeenIfFirstTime(`open-${data.id}`)) useAppStore.getState().setActivePoll(data);
+                } catch { /* ignore */ }
+              })();
             } else if (typeof content === "string" && content.startsWith("RSVP:")) {
               processRsvpMessage(content).catch(() => {});
             } else if (typeof content === "string" && (
@@ -1054,8 +1066,9 @@ export function useXmtp() {
             // Falling through here without a match is intentional: these
             // message types are already in the system-prefix filter list, so
             // simply not handling them means they're silently dropped, same
-            // as any other filtered system message. POLL_OPEN:/POLL_RESULT:
-            // (2026-07-20) follow the exact same pattern — live-stream only.
+            // as any other filtered system message. POLL_RESULT: (2026-07-20)
+            // follows the same pattern — live-stream only. POLL_OPEN: is handled
+            // above for polls still running when the app opens (2026-11-07).
           } catch { /* skip */ }
         }
       };
@@ -2441,9 +2454,12 @@ export function useXmtp() {
       const message =
         err instanceof Error ? err.message : "XMTP initialization failed";
       if (__DEV__) console.error("[XMTP] initialize() failed:", message, err);
-      Sentry.captureException(err instanceof Error ? err : new Error(message), { extra: { ...marks, area: "xmtpInit" } });
+      // Needing a fresh wallet signature is expected (the chat shows "Sign and retry"), not a bug.
+      if (message !== XMTP_SIGNATURE_REQUIRED_ERROR) {
+        Sentry.captureException(err instanceof Error ? err : new Error(message), { extra: { ...marks, area: "xmtpInit" } });
+      }
       setError(message);
-      toast.error(t("useXmtp.connectionLost"));
+      toast.error(t(message === XMTP_SIGNATURE_REQUIRED_ERROR ? "useXmtp.signNeeded" : "useXmtp.connectionLost"));
     } finally {
       _initRunning = false;
       setLoading(false);

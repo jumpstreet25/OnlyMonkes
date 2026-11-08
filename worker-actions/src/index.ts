@@ -108,6 +108,7 @@ import { handleLivekitAuthorize, INTERNAL_HOST } from "./livekitAuth";
 import { handleApkDownload, isApkDownloadPath } from "./apkDownloads";
 import { handleWebPair } from "./webPair";
 import { handlePhoneCam } from "./phoneCam";
+import { handleRoyale, handleRoyaleCollect } from "./royale/royale";
 import { verifyGenesisTokenOwnership } from "./genesisVerify";
 import { handleMonkeMemeGenerate } from "./monkeMeme";
 
@@ -209,6 +210,7 @@ export interface Env {
   PUBLIC_GLOBAL_LIMITER?: { limit: (opts: { key: string }) => Promise<{ success: boolean }> };
   /** Phone-as-camera relay rooms (phoneCam.ts). */
   PHONE_CAM: DurableObjectNamespace;
+  ROYALE: DurableObjectNamespace;
   // Web sign-in (webAuth.ts): Ed25519 PKCS8 (base64) signing the XMTP access
   // JWTs; the self-hosted XMTP backend holds the matching public key.
   XMTP_JWT_PRIVATE_KEY?: string;
@@ -3611,6 +3613,13 @@ export default {
 
     if (path.startsWith("/api/cam/")) {
       return handlePhoneCam(path, request, env);
+    }
+
+    if (path === "/api/royale/play") {
+      return handleRoyale(request, env);
+    }
+    if (path === "/api/royale/collect") {
+      return handleRoyaleCollect(request, env);
     }
 
     if (path.startsWith("/api/auth/")) {
