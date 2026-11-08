@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""MonkeCaves level builder → public/viewer/caves-levels.js (+ a top-down PNG per cave).
+"""MonkeCaves level builder → public/viewer/caves-levels.js and caves-arenas.js (Jungle Royale)
+(+ a top-down PNG per cave / arena).
 
 Each cave is laid out as rooms (rectangles), halls (axis-aligned polylines) and things
 placed by coordinate. The builder carves them into rock, then checks the cave plays:
@@ -15,6 +16,7 @@ Map letters (caves.js): # rock  C chart wall  B crate  S secret wall  D exit  d 
   Y banana tree  F torch (both block)  M glowing mushroom
   1 2 3 blue/pink/gold badge  7 8 9 blue/pink/gold door
   J jeet  G rug goblin  X boss  c cookie  n notification bat  a pop-up ad  K gatekeeper  E algorithm eye
+  R Jungle Royale spawn point (arenas only)
 Jungle caves also carry `floor` rows (g grass, m mud, w water, s stone) and `ceil` rows
 (o open sky) so clearings are sunlit and tunnels are dark.
 Every cave layout here is our own.
@@ -25,7 +27,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "public/viewer/caves-levels.js"
-FLOORISH = set(".PbhHqQIMJGXcnaKE123")
+OUT_ARENAS = ROOT / "public/viewer/caves-arenas.js"
+FLOORISH = set(".PRbhHqQIMJGXcnaKE123")
 THINGS = "bhHqQIMJGXcnaKE123"
 DOOR_OF = {"7": "1", "8": "2", "9": "3"}
 
@@ -245,6 +248,59 @@ def lost_temple():
     return c
 
 
+class Arena(Cave):
+    """A Jungle Royale versus map: no doors, badges, enemies or exit; spawn points (R)
+    and pickups only. Doors stay out so the match server only has to know walls."""
+
+    def check(self):
+        rows = self.rows()
+        find = lambda ch: [(i, j) for j, r in enumerate(rows) for i, c in enumerate(r) if c == ch]
+        spawns = find("R")
+        assert len(spawns) >= 6, f"{self.name}: need 6+ spawn points"
+        assert not any(c in r for r in rows for c in "PDdS789123JGXcnaKE"), f"{self.name}: arenas have no doors, secrets, badges or enemies"
+        seen, q = {spawns[0]}, deque([spawns[0]])
+        while q:
+            x, y = q.popleft()
+            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                n = (x + dx, y + dy)
+                if rows[n[1]][n[0]] in FLOORISH and n not in seen:
+                    seen.add(n); q.append(n)
+        stray = [(i, j, c) for j, r in enumerate(rows) for i, c in enumerate(r) if c in FLOORISH and (i, j) not in seen]
+        assert not stray, f"{self.name}: floor cut off from the spawns {stray[:5]}"
+        # Spawns spread out: no two closer than 6 tiles.
+        for a in spawns:
+            for b in spawns:
+                assert a == b or math.dist(a, b) >= 6, f"{self.name}: spawns {a} and {b} too close"
+        count = lambda s: sum(r.count(ch) for r in rows for ch in s)
+        return {"spawns": len(spawns), "health": count("hH"), "ammo": count("q") * 10 + count("Q") * 40, "floor": len(seen)}
+
+
+def temple_ring():
+    """Jungle Royale arena 1: a sunlit temple courtyard (the big health sits in the
+    middle, in the open) inside a ring of dark root tunnels joining four jungle
+    clearings. Every spawn has two ways out; the courtyard pillars break sightlines."""
+    a = Arena("TEMPLE RING", 34, 34, theme="jungle", seed=11)
+    a.face = 0
+    for cx, cy, wall in ((6, 6, "V"), (27, 6, "Z"), (6, 27, "Z"), (27, 27, "V")):
+        a.blob(cx, cy, 4.5, 4.2, wall=wall, floor="g", sky=True)
+    a.room(3, 24, 5, 3, floor="w", sky=True)                                   # SW pool
+    for pts in (((6, 6), (27, 6)), ((27, 6), (27, 27)), ((6, 27), (27, 27)), ((6, 6), (6, 27))):
+        a.hall(list(pts), floor="m")                                           # the ring (dark)
+    a.room(12, 12, 10, 10, floor="s", sky=True)                                # courtyard
+    for pts in (((16, 7), (16, 12)), ((16, 21), (16, 27)), ((7, 16), (12, 16)), ((21, 16), (27, 16))):
+        a.hall(list(pts), floor="s")                                           # four spokes in
+    a.put("T", (14, 14), (19, 14), (14, 19), (19, 19))                          # pillars
+    a.put("F", (12, 12), (21, 12), (12, 21), (21, 21))                          # torches in the corners
+    a.put("M", (10, 6), (23, 6), (10, 28), (23, 28), (6, 11), (28, 22))
+    a.put("R", (5, 5), (28, 5), (5, 28), (28, 28), (16, 9), (16, 25), (9, 16), (25, 16))
+    a.put("H", (16, 16)).put("h", (8, 8), (25, 25)).put("Q", (25, 8), (8, 25))
+    a.put("q", (17, 6), (17, 28), (6, 17), (28, 17))
+    return a
+
+
+ARENAS = [temple_ring]
+
+
 # Caves 2 and 3 are the old prototype maps until they're rebuilt full length.
 OLD = json.loads((Path(__file__).with_name("old-levels.json")).read_text())
 
@@ -256,7 +312,7 @@ def png(rows, path, cs=8):
            "7": (60, 140, 255), "8": (233, 22, 113), "9": (255, 210, 63), ".": (24, 21, 30), "P": (255, 255, 255),
            "b": (255, 210, 63), "h": (240, 70, 80), "1": (60, 140, 255), "2": (233, 22, 113), "3": (255, 210, 63),
            "J": (46, 160, 80), "G": (150, 70, 210), "X": (255, 60, 60), "c": (206, 152, 84), "n": (255, 230, 120),
-           "a": (90, 140, 255), "K": (150, 150, 170), "E": (190, 110, 255)}
+           "a": (90, 140, 255), "K": (150, 150, 170), "E": (190, 110, 255), "R": (120, 255, 255)}
     H, W = len(rows) * cs, len(rows[0]) * cs
     raw = bytearray()
     for j in range(H):
@@ -290,6 +346,18 @@ def main():
                    "// Change a level → bump CAVES_VERSION in caves.js and worker-actions/src/caves.ts.\n"
                    f"export const LEVELS = [\n{body},\n];\n")
     print("wrote", OUT.relative_to(ROOT))
+    arenas = []
+    for build in ARENAS:
+        a = build()
+        print(f"arena {a.name}: {a.w}x{a.h} {a.check()}")
+        arenas.append(a.level())
+        if "--png" in sys.argv:
+            png(arenas[-1]["rows"], Path(sys.argv[sys.argv.index("--png") + 1]) / f"arena{len(arenas)}.png")
+    body = ",\n".join("  " + json.dumps(lv, separators=(", ", ": ")).replace('"rows": [', '"rows": [\n    ').replace('", "', '",\n    "') for lv in arenas)
+    OUT_ARENAS.write_text("// Generated by scripts/caves/build-levels.py: edit the builder, not this file.\n"
+                          "// Jungle Royale versus arenas (caves-royale.js).\n"
+                          f"export const ARENAS = [\n{body},\n];\n")
+    print("wrote", OUT_ARENAS.relative_to(ROOT))
 
 
 if __name__ == "__main__":
