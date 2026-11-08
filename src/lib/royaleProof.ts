@@ -1,6 +1,6 @@
 /**
- * Holder proof for Jungle Royale (MonkeCaves versus, worker-actions/src/royale/).
- * The game page asks the app for it; the match server checks it.
+ * Holder proofs for MonkeCaves: Jungle Royale (worker-actions/src/royale/) and the
+ * speed-run board (worker-actions/src/caves.ts). Each signs its own message.
  *
  * Phone: the Device Integrity hardware key signs a fresh server nonce (no wallet
  * prompt) when this wallet has a clean Saga Monke verdict; otherwise one wallet
@@ -17,7 +17,9 @@ import { holderProof } from "@/lib/livekitProof";
 
 const WORKER_BASE = "https://onlymonkes.app";
 
-export async function royaleProof(canPrompt = true): Promise<Record<string, string>> {
+export const royaleProof = (canPrompt = true) => holderGameProof((nonce) => `OnlyMonkes Jungle Royale\nnonce:${nonce}`, canPrompt);
+
+export async function holderGameProof(messageFor: (nonce: string) => string, canPrompt = true): Promise<Record<string, string>> {
   const wallet = useAppStore.getState().wallet?.address;
   if (!wallet) throw new Error("Connect your wallet first");
   if (Platform.OS === "android" && isDeviceAttestAvailable()) {
@@ -28,8 +30,7 @@ export async function royaleProof(canPrompt = true): Promise<Record<string, stri
         const { nonce } = (await res.json()) as { nonce?: string };
         if (res.ok && nonce) {
           const devicePubKey = await getDevicePublicKeyBase64();
-          const message = `OnlyMonkes Jungle Royale\nnonce:${nonce}`;
-          const sig = await signWithDeviceKey(Buffer.from(message, "utf8").toString("base64"));
+          const sig = await signWithDeviceKey(Buffer.from(messageFor(nonce), "utf8").toString("base64"));
           return { kind: "device", wallet, devicePubKey, nonce, sig };
         }
       } catch { /* fall back to the wallet signature */ }
