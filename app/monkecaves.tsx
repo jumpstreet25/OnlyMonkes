@@ -6,7 +6,9 @@
  * config/monkecaves.json lets this user in (src/lib/monkeCaves/config.ts).
  * The ROYALE button switches to Jungle Royale (versus); the page asks for a
  * holder proof ({ type: "caves", event: "royale-auth" }) and gets it back as
- * { type: "royaleProof", proof } (src/lib/royaleProof.ts).
+ * { type: "royaleProof", proof } (src/lib/royaleProof.ts). After a match the
+ * server credits the bananas and the page says { event: "royale-paid" }: the
+ * phone collects them (src/lib/royaleBananas.ts; the web never does).
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
@@ -19,6 +21,7 @@ import { useAppStore } from "@/store/appStore";
 import { parseMonkeNumber } from "@/lib/monkeMeme/monkeNumbers";
 import { getMonkeCavesConfig, monkeCavesVisible } from "@/lib/monkeCaves/config";
 import { royaleProof } from "@/lib/royaleProof";
+import { collectRoyaleBananas } from "@/lib/royaleBananas";
 import { MiniChat } from "@/components/MiniChat";
 
 const GAME_URL = Platform.OS === "web" ? "/viewer/caves" : "https://onlymonkes.app/viewer/caves";
@@ -47,7 +50,9 @@ export default function MonkeCavesRoute() {
   const onMessage = useCallback((e: { nativeEvent: { data: string } }) => {
     let d: any;
     try { d = JSON.parse(e.nativeEvent.data); } catch { return; }
-    if (d?.type !== "caves" || d.event !== "royale-auth") return;
+    if (d?.type !== "caves") return;
+    if (d.event === "royale-paid") { void collectRoyaleBananas(true); return; }
+    if (d.event !== "royale-auth") return;
     const reply = (msg: object) => web.current?.postMessage(JSON.stringify({ type: "royaleProof", ...msg }));
     royaleProof().then((proof) => reply({ proof })).catch((err) => reply({ error: String(err?.message ?? "no holder proof").slice(0, 120) }));
   }, []);
