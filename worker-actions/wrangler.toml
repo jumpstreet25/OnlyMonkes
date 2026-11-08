@@ -108,6 +108,10 @@ XMTP_JWT_KID = "om-1"
 # Bot base URL: Cloudflare Tunnel onlymonkes-bot on the VPS. Its ingress passes only
 # /web-profile, /command, /inbox-reset, /api/sales-stats and /sentry-webhook to bot :3001; all else 404.
 BOT_PROFILE_URL = "https://bot.onlymonkes.app"
+# MonkeCaves speed-run board (caves.ts): "off" | "testers" | "on". Testers = sha256 hex of
+# wallets: the owner's login wallet, then the testers in config/monkecaves.json.
+CAVES_BOARD = "testers"
+CAVES_TESTERS = "72ecfcfc708fb734e94f33c9b20df524b11e5472f093eecf859f3e3d10dcd760,326ac81460be4de300c8ebc8d078d805b62e0ae99102b1e43aef1230d25e800a"
 
 # APKs on onlymonkes.app (apkDownloads.ts). Test builds expire after 30 days
 # (lifecycle rule "test-expiry" on test/). Uploads: scripts/apk/upload-apk.sh.
