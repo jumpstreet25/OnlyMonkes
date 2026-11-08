@@ -70,6 +70,13 @@ const FACE_TALK_JAW = 0.18;
 const FACE_TALK_HOLD_MS = 500;
 const EASE_RATE = 28; // snappier than the single viewer (14): speech is fast
 const MAX_MEMBERS = 16;
+// Phones: never draw faster than 30 fps (screens run at 60–120 Hz; face numbers
+// come ~15 times a second), and if frames still come in late, draw less sharp
+// rather than leave 3D: the stage shares the phone with the mic and the camera.
+const FRAME_MS = 1000 / 30;
+const SLOW_FRAME_MS = 48;          // ~21 fps or worse while drawing
+const DPR_STEPS = [2, 1.5, 1.25, 1];
+let dprCap = 2;
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5)); // phones draw faster; layout() sharpens small rooms
@@ -124,7 +131,7 @@ function layout() {
   camera.position.set(0, 0.06 * dist, dist);
   camera.lookAt(0, -0.5, 0);
   // Up to 4 monkes are big on screen: draw them as sharp as Monke 3D does.
-  renderer.setPixelRatio(Math.min(devicePixelRatio, n <= 4 ? 2 : 1.5));
+  renderer.setPixelRatio(Math.min(devicePixelRatio, n <= 4 ? 2 : 1.5, dprCap));
   camera.updateProjectionMatrix();
   dirty = true;
 }
@@ -310,8 +317,35 @@ if (!hosted) {
 
 // ── Loop: draw only while something moves ──
 let prev = performance.now();
+// Frame pacing while drawing: average gap between drawn frames, checked every 3 s.
+let drawn = 0, drawMs = 0, slowWindows = 0, windowStart = prev, lastDraw = 0;
+let perfFrames = 0, perfMs = 0, perfStart = prev;
+function pace(now, didDraw) {
+  if (didDraw) {
+    if (lastDraw && now - lastDraw < 250) { drawn++; drawMs += now - lastDraw; perfFrames++; perfMs += now - lastDraw; }
+    lastDraw = now;
+  } else lastDraw = 0;
+  if (now - windowStart >= 3000) {
+    if (drawn >= 20 && drawMs / drawn > SLOW_FRAME_MS) slowWindows++; else if (drawn >= 20) slowWindows = 0;
+    if (slowWindows >= 2) {
+      const next = DPR_STEPS.find((d) => d < Math.min(dprCap, renderer.getPixelRatio()));
+      if (next) { dprCap = next; renderer.setPixelRatio(Math.min(renderer.getPixelRatio(), dprCap)); dirty = true; }
+      slowWindows = 0;
+    }
+    drawn = 0; drawMs = 0; windowStart = now;
+  }
+  if (hosted && now - perfStart >= 10000) {
+    if (perfFrames >= 20) {
+      const msg = JSON.stringify({ type: "perf", fps: Math.round(10000 / (perfMs / perfFrames)) / 10, dpr: renderer.getPixelRatio() });
+      if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage(msg);
+      else parent.postMessage(msg, "*");
+    }
+    perfFrames = 0; perfMs = 0; perfStart = now;
+  }
+}
 renderer.setAnimationLoop(() => {
   const now = performance.now();
+  if (now - prev < FRAME_MS - 2) return;
   const dt = Math.min(0.1, (now - prev) / 1000);
   prev = now;
   let moving = false;
@@ -348,11 +382,13 @@ renderer.setAnimationLoop(() => {
     if (Math.abs(s - m.scale) > 0.001) moving = true;
     m.monke.root.scale.setScalar(m.scale);
   }
-  if (moving || dirty) {
+  const draw = moving || dirty;
+  if (draw) {
     renderer.render(scene, camera);
     placeLabels();
     dirty = false;
   }
+  pace(now, draw);
 });
 
 </script>
