@@ -33,9 +33,13 @@
   .desktop #pad, .desktop #fire, .desktop #turn { display: none; }
   #help { position: fixed; top: 8px; left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100vw - 120px); text-align: center; color: var(--muted); font-size: 11px; pointer-events: none; transition: opacity .8s; }
   #help.gone { opacity: 0; }
+  #score { position: fixed; top: 44px; left: 8px; font-size: 11px; line-height: 15px; color: var(--muted); background: rgba(12,10,18,0.6); padding: 4px 7px; pointer-events: none; white-space: pre; }
+  #score .me { color: var(--banana); }
+  #feed { position: fixed; top: 44px; right: 8px; font-size: 11px; line-height: 15px; color: #fff; text-align: right; pointer-events: none; text-shadow: 0 1px 0 #000; }
   #msg.card { top: 30%; min-width: 230px; max-width: calc(100vw - 48px); padding: 16px 18px 14px; background: rgba(12,10,18,0.88); border: 2px solid #3a3150; box-shadow: 0 0 0 2px #000, 0 8px 0 rgba(0,0,0,0.5); display: grid; gap: 8px; justify-items: center; }
   #msg.card h1 { margin: 0; }
   #msg .big { font-size: 34px; font-weight: 700; color: #fff; letter-spacing: 1px; }
+  #msg a { pointer-events: auto; color: var(--banana); font-weight: 700; }
   #msg .tag { background: var(--banana); color: #1a1408; font-weight: 700; padding: 2px 8px; letter-spacing: 1px; }
   #msg .dim { color: var(--muted); }
   #msg .row { display: flex; gap: 14px; color: var(--text); }
@@ -79,6 +83,8 @@
   </div>
 </div>
 <div id="msg"></div>
+<div id="score" hidden></div>
+<div id="feed"></div>
 <div id="help"></div>
 <div id="turn"></div>
 <div id="pad"><div id="knob"></div></div>

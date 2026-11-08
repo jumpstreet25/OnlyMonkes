@@ -8,6 +8,23 @@ import { LEVELS } from "/viewer/caves-levels.js";
 import { paintFace } from "/viewer/caves-face.js";
 import { WALL_PAINT, FLOOR_PAINT, SKY_PAINT, DECOR_PAL, DECOR_ROWS, DECOR_LETTERS, DECOR_BLOCKS } from "/viewer/caves-world.js";
 import { FOE_ROWS, FOE_PAL, AD_PAL2, XSHOT, BEAM, FOES, FOE_LETTERS } from "/viewer/caves-foes.js";
+import { ARENAS } from "/viewer/caves-arenas.js";
+import { createMatch, VS, ROYALE_VERSION } from "/viewer/caves-royale.js";
+
+// ?mode=royale: Jungle Royale (versus, caves-royale.js). Saga Monke holders only:
+// it plays only inside the OnlyMonkes app, which proves holder status to the match
+// server. There's no public or offline version (the public demo is cave 1 only).
+// Inside the OnlyMonkes app: the dApp WebView, or the web app framing this page from our own origin.
+const inApp = (() => { if (window.ReactNativeWebView) return true; try { return parent !== window && parent.location.origin === location.origin; } catch { return false; } })();
+const ROYALE = inApp && new URLSearchParams(location.search).get("mode") === "royale";
+// The demo: cave 1 only, any monke look. Every link opened outside the app is the demo
+// (old Jungle Royale links too); all caves and Jungle Royale are for holders in the app.
+// ?mode=demo forces it.
+const DEMO = new URLSearchParams(location.search).get("mode") === "demo" || !inApp;
+const GET_APP = `<a href="https://onlymonkes.app/get" target="_blank" rel="noopener">Get OnlyMonkes</a>`;
+let royale = null, me = null;
+const hosted = inApp;
+const HOLDERS_ONLY = "Jungle Royale is for Saga Monke holders, inside the OnlyMonkes app";
 
 const TEX = 32;
 const view = document.getElementById("view");
@@ -230,10 +247,11 @@ let door = null;
 let seen = new Uint8Array(1); // map cells the player has seen (automap)
 let totals = { foes: 0, items: 0 };
 
+const currentLevel = () => (ROYALE ? ARENAS[0] : LEVELS[levelIx]);
 function loadLevel(keepStats = false) {
-  const LEVEL = LEVELS[levelIx].rows;
+  const LEVEL = currentLevel().rows;
   MW = Math.max(...LEVEL.map((r) => r.length)); MH = LEVEL.length;
-  const lv = LEVELS[levelIx], jungle = lv.theme === "jungle";
+  const lv = currentLevel(), jungle = lv.theme === "jungle";
   Object.assign(TEXTURES, jungle ? { "#": JUNGLE["#"], S: JUNGLE.S } : ROCK);
   baseFloor = jungle ? FLOORS.m : FLOOR; baseCeil = jungle ? ROOTS : CEIL;
   blockers = new Set();
@@ -246,6 +264,7 @@ function loadLevel(keepStats = false) {
       if (x === 0 || y === 0 || x === MW - 1 || y === MH - 1) c = c === "D" ? "D" : "#";
       const cx = x + 0.5, cy = y + 0.5;
       if (c === "P") { player.x = cx; player.y = cy; c = "."; }
+      else if (ROYALE && "RhHqQ".includes(c)) { if (c === "R") { player.x = cx; player.y = cy; } c = "."; } // the match owns spawns and pickups
       else if (c === "J") { things.push({ kind: "jeet", x: cx, y: cy, hp: 3, cool: 0, seen: false, phase: rnd() * 6 }); c = "."; }
       else if (c === "G") { things.push({ kind: "goblin", x: cx, y: cy, hp: 2, cool: 0, seen: false, phase: rnd() * 6 }); c = "."; }
       else if (FOE_LETTERS[c]) { const kind = FOE_LETTERS[c]; things.push({ kind, x: cx, y: cy, hp: FOES[kind].hp, cool: rnd(), seen: false, phase: rnd() * 6, face: rnd() * 6.3 }); c = "."; }
@@ -520,6 +539,7 @@ function update(dt) {
   const p = player;
   if (paused) return;
   if (state !== "play") {
+    if (ROYALE && state === "wait") return;
     if (keys.has("Space") || keys.has("Enter") || touch.fire || gpad.tap) {
       touch.fire = false; gpad.tap = false; keys.clear();
       // A clear goes on to the next cave; dying restarts the same cave; winning starts over.
@@ -530,6 +550,7 @@ function update(dt) {
     return;
   }
   tickDoors(dt);
+  if (ROYALE && me?.dead) { royaleTick(dt); return; }
   // move
   let fwd = (keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0) - (keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0) - touch.my - gpad.my;
   let side = (keys.has("KeyD") ? 1 : 0) - (keys.has("KeyA") ? 1 : 0) + touch.mx + gpad.mx;
@@ -543,6 +564,7 @@ function update(dt) {
   if (!solidAt(p.x + mx + Math.sign(mx) * R, p.y)) p.x += mx; else if (mx) bump(p.x + mx + Math.sign(mx) * R, p.y);
   if (!solidAt(p.x, p.y + my + Math.sign(my) * R)) p.y += my; else if (my) bump(p.x, p.y + my + Math.sign(my) * R);
 
+  if (ROYALE) { royaleTick(dt); return; }
   // throw
   p.cool -= dt; p.kick = Math.max(0, p.kick - dt * 5); p.hurt = Math.max(0, p.hurt - dt);
   // Every weapon plays the same: 1 damage, one shot per 0.32 s, speed 9, 1 ammo per shot.
@@ -662,17 +684,18 @@ function update(dt) {
     if (boss && boss.hp > 0) { if (!p.lockedSaid) { say("LOCKED", boss.kind === "phone" ? "The Banana Phone holds the exit. Take it down." : "The bear holds the exit. Take it down."); p.lockedSaid = true; setTimeout(() => { say(""); p.lockedSaid = false; }, 1600); } }
     else {
       clearTime = runTime(); sfx.clear();
-      const last = levelIx === LEVELS.length - 1, tap = isTouch ? "Tap FIRE" : "Space";
+      const last = DEMO || levelIx === LEVELS.length - 1, tap = isTouch ? "Tap FIRE" : "Space";
       state = last ? "won" : "clear";
       const best = parseInt(store.get(`best:${CAVES_VERSION}:${levelIx + 1}`) || "0", 10);
       const isBest = !best || clearTime < best;
       if (isBest) store.set(`best:${CAVES_VERSION}:${levelIx + 1}`, String(Math.round(clearTime)));
       const pct = (a, b) => `${b ? Math.round((100 * a) / b) : 100}%`, par = (LEVELS[levelIx].par || 0) * 1000;
-      card(last ? "YOU ESCAPED" : "CAVE CLEAR", [
+      card(DEMO ? "DEMO CLEAR" : last ? "YOU ESCAPED" : "CAVE CLEAR", [
         `<div class="big">${fmtRun(clearTime)}</div>`,
         par ? `<div class="${clearTime <= par ? "tag" : "dim"}">PAR ${fmt(par)}${clearTime <= par ? " · BEAT IT" : ""}</div>` : "",
         isBest ? `<div class="tag">${best ? "NEW BEST" : "FIRST CLEAR"}</div>` : `<div class="dim">best ${fmtRun(best)}</div>`,
         `<div class="stats"><span>KILLS</span><b>${pct(p.kills, totals.foes)}</b><span>ITEMS</span><b>${pct(p.items, totals.items)}</b><span>SECRETS</span><b>${pct(secretsFound, secrets)}</b></div>`,
+        DEMO ? `<div class="dim">${LEVELS.length - 1} more caves and the Banana Phone wait for Saga Monke holders<br>${GET_APP}</div>` : "",
         `<div class="cta">${tap} ${last ? "to play again" : `for cave ${levelIx + 2}`}</div>`,
       ]);
       if (t0) post({ event: "clear", v: CAVES_VERSION, level: levelIx + 1, timeMs: Math.round(clearTime), kills: p.kills, secrets: secretsFound, bananas: p.bananas });
@@ -884,7 +907,7 @@ function render() {
       fx += sx; fy += sy;
     }
   }
-  for (const s of shots) s.c = shotColour(WEAPON.shot.color, now);
+  for (const s of shots) s.c = shotColour((s.w || WEAPON).shot.color, now);
   // walls
   for (let x = 0; x < W; x++) {
     const cam = 2 * x / W - 1, rx = p.dx + p.px * cam, ry = p.dy + p.py * cam;
@@ -951,7 +974,8 @@ function render() {
     else { spr = SPR[t.kind]; scale = 0.4; }
     sprites.push({ x: t.x, y: t.y, spr, scale, lift, flash: t.flash > 0, dying: !!t.dieAt });
   }
-  for (const s of shots) sprites.push({ x: s.x, y: s.y, mask: SHOT, c: s.c, scale: 0.14, lift: 0.24 });
+  for (const s of shots) sprites.push({ x: s.x, y: s.y, mask: s.mask || SHOT, c: s.c, scale: 0.14, lift: 0.24 });
+  if (ROYALE && royale) royaleSprites(sprites, now);
   for (const s of spits) sprites.push({ x: s.x, y: s.y, spr: s.spr ? SPR[s.spr] : SLIME, scale: s.spr ? 0.32 : 0.4, lift: s.spr ? 0.22 : 0.1 });
   for (const s of sprites) s.d = (p.x - s.x) ** 2 + (p.y - s.y) ** 2;
   sprites.sort((a, b) => b.d - a.d);
@@ -1016,8 +1040,13 @@ function render() {
 
   $("hp").textContent = Math.max(0, Math.round(player.hp));
   $("ammo").textContent = player.ammo;
-  $("bananas").textContent = player.bananas;
-  $("clock").textContent = fmtRun(state === "play" ? runTime() : clearTime);
+  if (ROYALE && royale) {
+    $("bananas").textContent = me.kills;
+    $("clock").textContent = fmt(Math.max(0, VS.TIME - royale.time) * 1000);
+  } else {
+    $("bananas").textContent = player.bananas;
+    $("clock").textContent = fmtRun(state === "play" ? runTime() : clearTime);
+  }
   drawFace();
 }
 
@@ -1046,7 +1075,22 @@ loadImage(imageFor(n)).then(readGrid).then(setFace).catch(() => { /* face stays 
 equip(n);
 loadLevel();
 const swatch = (c) => c === "rainbow" ? "linear-gradient(90deg,#f44,#fd4,#4f6,#4cf,#a4f)" : c;
-card("MONKECAVES", [
+if (ROYALE) {
+  document.querySelector("#bananas span").textContent = "kills";
+  card("JUNGLE ROYALE", [
+    `<div class="dim">MONKE #${n}</div>`,
+    `<div class="weapon"><i style="background:${swatch(WEAPON.shot.color)}"></i>${WEAPON.name}</div>`,
+    `<div class="dim">Up to ${VS.SEATS} holders · OnlyTreasury bot monkes fill empty seats<br>First to ${VS.KILLS_TO_WIN} kills · ${VS.TIME / 60} minutes · same weapon power for all</div>`,
+    hosted ? `<div class="cta">${isTouch ? "Tap FIRE" : "Space"} to start</div>` : `<div class="tag">HOLDERS ONLY</div><div class="dim">${HOLDERS_ONLY}</div>`,
+  ]);
+} else if (DEMO) card("MONKECAVES", [
+  `<div class="tag">DEMO · CAVE 1</div>`,
+  `<div class="dim">MONKE #${n}</div>`,
+  `<div class="weapon"><i style="background:${swatch(WEAPON.shot.color)}"></i>${WEAPON.name}</div>`,
+  `<div class="dim">Hunt the jeets · find the pink exit<br>The full game (${LEVELS.length} caves) is for Saga Monke holders</div>`,
+  `<div class="cta">${isTouch ? "Tap FIRE" : "Space"} to start</div>`,
+]);
+else card("MONKECAVES", [
   `<div class="dim">MONKE #${n}</div>`,
   `<div class="weapon"><i style="background:${swatch(WEAPON.shot.color)}"></i>${WEAPON.name}</div>`,
   `<div class="dim">${LEVELS.length} caves · hunt the jeets · find the pink exit<br>The Banana Phone waits at the end.</div>`,
@@ -1056,11 +1100,256 @@ document.getElementById("fire").style.background = WEAPON.shot.color === "rainbo
 setTimeout(() => document.getElementById("help").classList.add("gone"), 6000);
 
 function startCave(keepLoadout) {
+  if (ROYALE) { startMatch(); return; }
   loadLevel(keepLoadout); state = "play"; t0 = 0;
-  say(LEVELS[levelIx].name, `Cave ${levelIx + 1} of ${LEVELS.length} · the clock starts when you move`);
+  say(LEVELS[levelIx].name, `${DEMO ? "Demo" : `Cave ${levelIx + 1} of ${LEVELS.length}`} · the clock starts when you move`);
   setTimeout(() => { if (state === "play") say(""); }, 2200);
 }
 
+
+// ── Jungle Royale ──
+// Other monkes: their PFP (background cut away) on a pair of legs in their fur colour,
+// holding a block in their weapon's colour. Loaded once per monke number.
+const monkeSprites = new Map();
+function monkeSprite(n) {
+  if (monkeSprites.has(n)) return monkeSprites.get(n);
+  monkeSprites.set(n, null);
+  loadImage(imageFor(n)).then(readGrid).then((g) => {
+    const w = 16, h = 22, data = new Uint32Array(w * h), count = new Map();
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) if (g.solid[y][x]) {
+      const [r, gg, b] = g.px[y][x]; data[y * w + x] = rgb(r, gg, b);
+      if (y >= 9) { const k = `${r},${gg},${b}`; count.set(k, (count.get(k) || 0) + 1); }
+    }
+    const fur = [...count.entries()].sort((a, b) => b[1] - a[1])[0]?.[0].split(",").map(Number) ?? [110, 80, 50];
+    const leg = rgb(...fur.map((v) => v * 0.8)), dark = rgb(16, 14, 20);
+    for (let y = 16; y < h; y++) for (const x0 of [5, 9]) for (let x = x0; x < x0 + 2; x++) data[y * w + x] = y === h - 1 ? dark : leg;
+    const wpn = weaponFor(n), body = hexToRgb(wpn.held.body), acc = hexToRgb(wpn.held.accent);
+    for (let y = 12; y < 15; y++) for (let x = 11; x < 16; x++) data[y * w + x] = rgb(...(y === 13 && x === 15 ? acc : body));
+    monkeSprites.set(n, { w, h, data, weapon: wpn, mask: shotMask(wpn.shot.shape) });
+  }).catch(() => { /* drawn as a plate */ });
+  return null;
+}
+const hexToRgb = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+const PLATE = makeSprite(["................", "....kkkkkkkk....", "...kyyyyyyyyk...", "...kyykyykyyk...", "...kyyyyyyyyk...", "...kyykkkkyyk...", "...kyyyyyyyyk...", "....kkkkkkkk....", "......kkkk......", ".....kyyyyk.....", ".....kyyyyk.....", ".....kyyyyk.....", "......k..k......", "......k..k......", ".....kk..kk.....", "................"], PAL);
+
+const feedEl = document.getElementById("feed"), scoreEl = document.getElementById("score");
+const nameOf = (id) => (id === me?.id ? "You" : royale?.fighters.find((f) => f.id === id)?.name ?? "?");
+function feed(text) {
+  const line = document.createElement("div");
+  line.textContent = text;
+  feedEl.prepend(line);
+  while (feedEl.children.length > 4) feedEl.lastChild.remove();
+  setTimeout(() => line.remove(), 4000);
+}
+function showScore() {
+  scoreEl.innerHTML = "";
+  for (const f of royale.standings()) {
+    const row = document.createElement("div");
+    if (f === me) row.className = "me";
+    row.textContent = `${f.kills}  ${f === me ? "You" : f.name}${f.bot ? " · BOT" : ""}`;
+    scoreEl.append(row);
+  }
+}
+
+// Matches run on the match server; the app around the page hands it a holder proof.
+let net = null; // { ws, you, bananas, standings, closedByUs }
+function askHostForProof() {
+  return new Promise((resolve) => {
+    if (!hosted) { resolve(null); return; }
+    const done = (v) => { removeEventListener("message", on); document.removeEventListener("message", on); clearTimeout(t); resolve(v); };
+    const on = (e) => {
+      if (!window.ReactNativeWebView && e.origin !== location.origin) return;
+      let d = e.data;
+      if (typeof d === "string") { try { d = JSON.parse(d); } catch { return; } }
+      if (d?.type === "royaleProof") done(d.proof ? d : { error: d.error || "no proof" });
+    };
+    addEventListener("message", on); document.addEventListener("message", on);
+    const t = setTimeout(() => done(null), 15000); // a wallet prompt can take a while
+    post({ event: "royale-auth" });
+  });
+}
+
+function startMatch() {
+  loadLevel();
+  scoreEl.hidden = true; feedEl.innerHTML = "";
+  if (net?.ws?.readyState === 1) { state = "wait"; say("FINDING MONKES", "Holders first, bots fill the rest"); net.ws.send(JSON.stringify({ t: "again" })); return; }
+  if (!hosted) { state = "over"; say("HOLDERS ONLY", HOLDERS_ONLY); return; }
+  state = "wait"; say("CHECKING HOLDER", "One moment");
+  askHostForProof().then((r) => {
+    if (r?.proof) connect(r.proof);
+    else { state = "over"; say("HOLDERS ONLY", `${r?.error ? `${r.error}<br>` : ""}${isTouch ? "Tap FIRE" : "Space"} to try again`); }
+  });
+}
+function begin() {
+  for (const f of royale.fighters) if (f !== me) monkeSprite(f.n);
+  takeSpawn();
+  state = "play"; t0 = performance.now();
+  scoreEl.hidden = false; showScore();
+  say(ARENAS[0].name, `First to ${VS.KILLS_TO_WIN} kills`);
+  setTimeout(() => { if (state === "play" && !me.dead) say(""); }, 1800);
+}
+
+function connect(proof) {
+  const ws = new WebSocket(`${location.origin.replace(/^http/, "ws")}/api/royale/play`);
+  net = { ws, you: null, closedByUs: false };
+  say("FINDING MONKES", "Holders first, bots fill the rest");
+  ws.onopen = () => ws.send(JSON.stringify({ t: "hello", v: ROYALE_VERSION, n, proof }));
+  ws.onmessage = (e) => { let d; try { d = JSON.parse(e.data); } catch { return; } onServer(d); };
+  ws.onclose = () => {
+    if (net?.ws !== ws || net.closedByUs) return;
+    if (state === "play" || state === "wait") { state = "over"; say("CONNECTION LOST", `${isTouch ? "Tap FIRE" : "Space"} to rejoin`); }
+    net = null;
+  };
+}
+function onServer(d) {
+  if (d.t === "err") { net.closedByUs = true; state = "over"; say("CAN'T JOIN", `${d.msg}<br>${isTouch ? "Tap FIRE" : "Space"} to try again`); net = null; return; }
+  if (d.t === "welcome" && d.n !== n) { n = d.n; equip(n); loadImage(imageFor(n)).then(readGrid).then(setFace).catch(() => {}); }
+  else if (d.t === "wait") say("FINDING MONKES", `${d.holders} holder${d.holders === 1 ? "" : "s"} in · bots fill the rest in ${d.startsIn}s`);
+  else if (d.t === "start") {
+    loadLevel();
+    royale = createMatch(ARENAS[0]);
+    royale.fighters.length = 0;
+    net.you = d.you;
+    rosterFrom(d.fighters);
+    me = royale.fighters.find((f) => f.id === d.you);
+    begin();
+  }
+  else if (d.t === "roster" && royale) { rosterFrom(d.fighters); showScore(); }
+  else if (d.t === "fix") { player.x = d.x; player.y = d.y; }
+  else if (d.t === "s" && royale && me) takeSnapshot(d);
+  else if (d.t === "over" && royale) { net.standings = d.standings; net.bananas = d.bananas; net.paid = null; royale.winner = d.winner; matchOver(); }
+  // The server credited this match's bananas (capped per day); the phone app collects them.
+  else if (d.t === "paid") { net.paid = d; if (d.bananas > 0) post({ event: "royale-paid" }); if (state === "over" && royale) matchOver(true); }
+}
+function rosterFrom(list) {
+  const keep = new Map(royale.fighters.map((f) => [f.id, f]));
+  royale.fighters.length = 0;
+  for (const x of list) {
+    const f = keep.get(x.id) ?? { id: x.id, x: 0, y: 0, a: 0, hp: VS.HP, ammo: 0, dead: 0, shield: 0, kills: 0, deaths: 0 };
+    Object.assign(f, { n: x.n, name: x.id === net.you ? "You" : x.name, bot: !!x.bot });
+    royale.fighters.push(f);
+    if (x.id !== net.you) monkeSprite(x.n);
+  }
+  if (me) me = royale.fighters.find((f) => f.id === net.you) ?? me;
+}
+function takeSnapshot(d) {
+  royale.time = d.tm;
+  const was = me.dead;
+  let scored = false;
+  for (const [id, x, y, a, hp, dead, shield, kills, deaths] of d.f) {
+    const f = royale.fighters.find((q) => q.id === id);
+    if (!f) continue;
+    if (f.kills !== kills || f.deaths !== deaths) scored = true;
+    Object.assign(f, { hp, dead, shield, kills, deaths });
+    if (f === me) { f.x = x; f.y = y; f.a = a; continue; }
+    // Others glide to where the server says they are (royaleTick).
+    if (f.tx === undefined || Math.hypot(x - f.x, y - f.y) > 3) { f.x = x; f.y = y; }
+    f.tx = x; f.ty = y; f.a = a;
+  }
+  me.ammo = d.ammo;
+  royale.shots = d.s.map(([x, y, vx, vy, by]) => ({ x, y, vx, vy, by }));
+  royale.pickups.forEach((k, i) => { k.back = d.p[i] === "1" ? 0 : 1; });
+  // Back from the dead: take the spawn the server picked.
+  if (was && !me.dead) { takeSpawn(); say(""); }
+  matchEvents(d.e.filter((e) => !(e.t === "shot" && e.by === me.id)));
+  if (scored) showScore();
+}
+
+function takeSpawn() {
+  Object.assign(player, { x: me.x, y: me.y, dx: Math.cos(me.a), dy: Math.sin(me.a), px: -Math.sin(me.a) * 0.66, py: Math.cos(me.a) * 0.66, hp: me.hp, ammo: me.ammo, hurt: 0 });
+}
+// Phones: aim assist bends the shot onto a monke within ~6° of the crosshair.
+function royaleAim() {
+  const p = player, a = Math.atan2(p.dy, p.dx);
+  if (!isTouch || !settings.assist) return a;
+  let best = null, bd = 0.105;
+  for (const f of royale.fighters) {
+    if (f === me || f.dead) continue;
+    const d = Math.hypot(f.x - p.x, f.y - p.y), off = Math.abs(Math.atan2(Math.sin(Math.atan2(f.y - p.y, f.x - p.x) - a), Math.cos(Math.atan2(f.y - p.y, f.x - p.x) - a)));
+    if (d < 14 && off < bd && lineOfSight(p.x, p.y, f.x, f.y)) { bd = off; best = Math.atan2(f.y - p.y, f.x - p.x); }
+  }
+  return best ?? a;
+}
+function matchEvents(events) {
+  const p = player;
+  for (const e of events) {
+    if (e.t === "shot" && e.by === me.id) { p.kick = 1; p.flash = 0.06; sfx.throw(); }
+    else if (e.t === "hit") {
+      if (e.id === me.id) hurtPlayer(0, { x: e.fx, y: e.fy }, 0.25);
+      else { const f = royale.fighters.find((x) => x.id === e.id); if (f) f.flashT = 0.12; if (e.by === me.id) sfx.hit(); }
+    }
+    else if (e.t === "kill") {
+      feed(`${nameOf(e.by)} rekt ${nameOf(e.id)}`);
+      if (e.by === me.id) { sfx.die(); p.grin = 1.5; }
+      if (e.id === me.id) say("REKT", `by ${nameOf(e.by)} · back in ${VS.RESPAWN}s`);
+    }
+    else if (e.t === "pickup" && e.id === me.id) sfx.pick();
+  }
+}
+let lastSent = 0, fireCool = 0;
+function royaleTick(dt) {
+  const p = player, firing = keys.has("Space") || touch.fire || gpad.fire;
+  p.kick = Math.max(0, p.kick - dt * 5); p.hurt = Math.max(0, p.hurt - dt); p.flash = Math.max(0, p.flash - dt);
+  p.ouch = Math.max(0, p.ouch - dt); p.grin = Math.max(0, p.grin - dt);
+  fireCool -= dt;
+  if (firing && !me.dead && me.ammo <= 0 && fireCool <= 0 && performance.now() - (p.emptySaid || 0) > 2500) {
+    p.emptySaid = performance.now(); sfx.empty(); say("OUT OF AMMO", "Find Seeker batteries"); setTimeout(() => { if (state === "play" && !me.dead) say(""); }, 1200);
+  }
+  const input = { x: p.x, y: p.y, a: Math.atan2(p.dy, p.dx), aim: royaleAim(), fire: firing };
+  {
+    // Your own shot kicks at once; the server decides whether it hits.
+    if (firing && !me.dead && me.ammo > 0 && fireCool <= 0) { fireCool = VS.COOL; p.kick = 1; p.flash = 0.06; sfx.throw(); }
+    const now = performance.now();
+    if (net && now - lastSent >= 66 && net.ws.readyState === 1) {
+      lastSent = now;
+      const r = (v) => Math.round(v * 1000) / 1000;
+      net.ws.send(JSON.stringify({ t: "in", x: r(input.x), y: r(input.y), a: r(input.a), aim: r(input.aim), f: input.fire ? 1 : 0 }));
+    }
+    for (const f of royale.fighters) if (f !== me && f.tx !== undefined) { const k = Math.min(1, dt * 12); f.x += (f.tx - f.x) * k; f.y += (f.ty - f.y) * k; }
+    for (const s of royale.shots) { s.x += s.vx * dt; s.y += s.vy * dt; }
+  }
+  for (const f of royale.fighters) f.flashT = Math.max(0, (f.flashT || 0) - dt);
+  p.hp = me.hp; p.ammo = me.ammo;
+  // The page draws the match's shots with each shooter's own weapon look.
+  shots.length = 0;
+  for (const s of royale.shots) {
+    const by = royale.fighters.find((f) => f.id === s.by), spr = by && by !== me ? monkeSprites.get(by.n) : null;
+    shots.push({ x: s.x, y: s.y, w: spr?.weapon, mask: spr?.mask });
+  }
+}
+function royaleSprites(sprites, now) {
+  for (const f of royale.fighters) {
+    if (f === me || f.dead) continue;
+    if (f.shield > 0 && Math.floor(now / 90) % 2) continue; // blinking just after a respawn
+    sprites.push({ x: f.x, y: f.y, spr: monkeSprites.get(f.n) || PLATE, scale: 0.72, lift: 0, flash: f.flashT > 0 });
+  }
+  for (const k of royale.pickups) {
+    if (k.back > 0) continue;
+    const spr = k.kind === "health" ? (k.big ? SPR.healthBig : SPR.health) : (k.big ? SPR.ammoBig : SPR.ammo);
+    sprites.push({ x: k.x, y: k.y, spr, scale: k.big ? 0.42 : 0.4, lift: 0 });
+  }
+}
+function bananaLine() {
+  const earned = net?.bananas ?? 0, paid = net?.paid;
+  if (!earned) return `<div class="dim">No bananas this match · win or rekt monkes to earn them</div>`;
+  if (!paid) return `<div class="tag">+${earned} BANANAS</div><div class="dim">Adding them to your balance…</div>`;
+  const where = window.ReactNativeWebView ? "Added to your banana balance" : "They land in your balance in the phone app";
+  const cap = paid.capped ? `<br>Daily limit: ${paid.max} Royale bananas a day${paid.bananas ? "" : " · reached"}` : "";
+  return `<div class="tag">+${paid.bananas} BANANAS</div><div class="dim">${paid.bananas ? where : "No more today"}${cap}</div>`;
+}
+function matchOver(refresh = false) {
+  state = "over"; showScore();
+  const won = royale.winner === me.id, tap = isTouch ? "Tap FIRE" : "Space";
+  const list = royale.standings ? royale.standings() : [...royale.fighters].sort((a, b) => b.kills - a.kills || a.deaths - b.deaths);
+  const rows = list.map((f) => `<span>${f === me ? "You" : f.name}${f.bot ? " (bot)" : ""}</span><b>${f.kills} · ${f.deaths}</b>`).join("");
+  if (!refresh) sfx.clear();
+  card(won ? "YOU WIN" : "MATCH OVER", [
+    `<div class="big">${won ? "TOP MONKE" : `${nameOf(royale.winner)} wins`}</div>`,
+    `<div class="stats"><span>KILLS · DEATHS</span><b></b>${rows}</div>`,
+    bananaLine(),
+    `<div class="cta">${tap} for a rematch</div>`,
+  ]);
+}
 // ── Pause: button, P / Esc, or leaving the app. The clock stops while paused. ──
 const menu = document.getElementById("menu");
 function setPaused(on) {
@@ -1095,7 +1384,7 @@ document.getElementById("m-restart").addEventListener("click", () => { setPaused
 
 let last = performance.now();
 // Test hooks only with ?debug=1 (headless playtests); never on a normal page.
-if (params.has("debug")) window.__caves = { gpad, pollPad, player, things, shots, spits, keys, touch, turn, step: (dt) => update(dt), map, get door() { return door; }, get level() { return levelIx; }, get weapon() { return WEAPON; }, get state() { return state; }, get totals() { return totals; }, get secrets() { return [secretsFound, secrets]; }, blocked: (x, y) => blockers.has(y * MW + x), wallAt, settings, assistTarget, frames: 0, goto(i) { levelIx = i; loadLevel(); state = "play"; t0 = performance.now(); say(""); } };
+if (params.has("debug")) window.__caves = { gpad, pollPad, player, things, shots, spits, keys, touch, turn, step: (dt) => update(dt), map, get door() { return door; }, get level() { return levelIx; }, get weapon() { return WEAPON; }, get state() { return state; }, get totals() { return totals; }, get secrets() { return [secretsFound, secrets]; }, get royale() { return royale; }, blocked: (x, y) => blockers.has(y * MW + x), wallAt, settings, assistTarget, frames: 0, goto(i) { if (DEMO) return; levelIx = i; loadLevel(); state = "play"; t0 = performance.now(); say(""); } };
 function loop(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
   pollPad(); update(dt); render(); if (window.__caves) window.__caves.frames++;
