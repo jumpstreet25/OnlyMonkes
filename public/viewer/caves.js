@@ -494,6 +494,29 @@ const say = (title, line = "") => { msg.className = ""; msg.innerHTML = title ? 
 // A framed card for the title and cave-clear screens (our own strings only, never user text).
 const card = (title, lines) => { msg.className = "card"; msg.innerHTML = `<h1>${title}</h1>${lines.join("")}`; };
 
+// Speed-run board: after a clear the app sends the time (holders, worker caves.ts) and hands
+// back { type: "cavesRun", best, improved, rank, top } — shown on the clear card it belongs to.
+function showBoard(d) {
+  if ((state !== "clear" && state !== "won") || msg.className !== "card" || !Array.isArray(d.top)) return;
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  const board = el("div", "stats");
+  board.append(el("span", null, `THIS WEEK · CAVE ${levelIx + 1}`), el("b"));
+  d.top.slice(0, 5).forEach((r, i) => board.append(el("span", null, `${i + 1}. ${r.name}`), el("b", null, fmtRun(r.t))));
+  const you = el("div", d.improved && d.rank ? "tag" : "dim",
+    d.rank ? `${d.improved ? "NEW WEEK BEST · " : ""}#${d.rank} this week · best ${fmtRun(d.best)}` : `Your best this week ${fmtRun(d.best)} · top 10 shown on the board`);
+  const cta = msg.querySelector(".cta");
+  msg.insertBefore(board, cta); msg.insertBefore(you, cta);
+}
+if (inApp) {
+  const onHost = (e) => {
+    if (!window.ReactNativeWebView && e.origin !== location.origin) return;
+    let d = e.data;
+    if (typeof d === "string") { try { d = JSON.parse(d); } catch { return; } }
+    if (d?.type === "cavesRun" && d.ok) showBoard(d);
+  };
+  addEventListener("message", onHost); document.addEventListener("message", onHost);
+}
+
 // ── Game state ──
 // title → play → clear | dead | won. t0 = 0 until the first move, turn or shot, so a
 // speed run starts on the player's first input, not when the cave loads.
