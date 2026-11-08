@@ -14,14 +14,16 @@ import { createMatch, VS, ROYALE_VERSION } from "/viewer/caves-royale.js";
 // ?mode=royale: Jungle Royale (versus, caves-royale.js). Saga Monke holders only:
 // it plays only inside the OnlyMonkes app, which proves holder status to the match
 // server. There's no public or offline version (the public demo is cave 1 only).
-const ROYALE = new URLSearchParams(location.search).get("mode") === "royale";
-// ?mode=demo: the public, shareable demo. Cave 1 only, any monke look; the rest of
-// the caves and Jungle Royale are for holders in the OnlyMonkes app.
-const DEMO = new URLSearchParams(location.search).get("mode") === "demo";
+// Inside the OnlyMonkes app: the dApp WebView, or the web app framing this page from our own origin.
+const inApp = (() => { if (window.ReactNativeWebView) return true; try { return parent !== window && parent.location.origin === location.origin; } catch { return false; } })();
+const ROYALE = inApp && new URLSearchParams(location.search).get("mode") === "royale";
+// The demo: cave 1 only, any monke look. Every link opened outside the app is the demo
+// (old Jungle Royale links too); all caves and Jungle Royale are for holders in the app.
+// ?mode=demo forces it.
+const DEMO = new URLSearchParams(location.search).get("mode") === "demo" || !inApp;
 const GET_APP = `<a href="https://onlymonkes.app/get" target="_blank" rel="noopener">Get OnlyMonkes</a>`;
 let royale = null, me = null;
-// Inside the app (dApp WebView or the web app's frame), which can prove holder status.
-const hosted = !!window.ReactNativeWebView || parent !== window;
+const hosted = inApp;
 const HOLDERS_ONLY = "Jungle Royale is for Saga Monke holders, inside the OnlyMonkes app";
 
 const TEX = 32;
