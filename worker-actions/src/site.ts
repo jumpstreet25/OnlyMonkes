@@ -80,6 +80,7 @@ footer{border-top:1px solid var(--line);margin-top:72px;padding:28px 0 40px;colo
 footer .wrap{display:flex;flex-wrap:wrap;gap:12px 22px;justify-content:space-between}
 footer nav{display:flex;flex-wrap:wrap;gap:8px 18px}
 @media (max-width:640px){header.top nav a.hide-sm{display:none}}
+@media (max-width:420px){header.top .wrap{gap:8px}header.top img{height:28px}header.top nav{gap:8px}header.top .btn.sm{padding:7px 12px;font-size:13px}}
 `;
 
 function head(title: string, description: string, path: string, extraCss = ""): string {
@@ -204,8 +205,14 @@ a.tool .go{margin-top:auto;color:var(--sky);font-weight:700}
 details{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 20px;margin-bottom:10px}
 summary{cursor:pointer;font-weight:700;font-size:17px}
 details p{color:var(--mut);margin-top:10px}
-@media (max-width:860px){.hero .wrap{grid-template-columns:1fr}.hero img.mascot{max-width:220px;order:-1}.tiers,.explore{grid-template-columns:1fr}.grid,.steps{grid-template-columns:1fr 1fr}}
-@media (max-width:560px){.grid,.steps{grid-template-columns:1fr}.hero{padding-top:40px}}
+.shots{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.shots figure{background:var(--card);border:1px solid var(--line);border-radius:22px;padding:10px;margin:0}
+.shots img{display:block;width:100%;height:auto;aspect-ratio:720/1138;object-fit:cover;border-radius:14px;background:#0a0b12}
+.shots figcaption{padding:12px 6px 4px}
+.shots figcaption b{display:block;font-family:"Fredoka",sans-serif;font-size:18px}
+.shots figcaption span{color:var(--mut);font-size:14px}
+@media (max-width:860px){.hero .wrap{grid-template-columns:1fr}.hero img.mascot{max-width:220px;order:-1}.tiers,.explore{grid-template-columns:1fr}.shots{grid-template-columns:1fr 1fr}.grid,.steps{grid-template-columns:1fr 1fr}}
+@media (max-width:560px){.grid,.steps{grid-template-columns:1fr}.shots{grid-template-columns:1fr;max-width:340px;margin:0 auto}.hero{padding-top:40px}}
 `;
 
 export function renderLanding(stats: SiteStats | null, globePins: number | null = null): Response {
@@ -266,7 +273,7 @@ export function renderLanding(stats: SiteStats | null, globePins: number | null 
         <li>MonkeTrades — live trade alerts from MonkeBrain</li>
         <li>Monke, the bot in your DMs: portfolio, limit orders, sell ladders</li>
         <li>AutonoMonke — opt-in automated trading from your own hot wallet</li>
-        <li>Saga Monkes marketplace, MonkeMeme, Avatar Rooms</li>
+        <li>Saga Monkes marketplace, Avatar Rooms, MonkeCaves</li>
         <li>Private DMs and group chats</li>
       </ul>
       <a class="btn primary" href="${TENSOR_URL}" target="_blank" rel="noopener">Get a Saga Monke on Tensor</a>
@@ -283,10 +290,20 @@ export function renderLanding(stats: SiteStats | null, globePins: number | null 
     <div class="card"><div class="ic">🐒</div><h3>Monke, the bot</h3><p>Ask about any token, check your bags, set targets and ladders, all by DM. Nothing trades without your YES.</p></div>
     <div class="card"><div class="ic">📈</div><h3>MonkeTrades</h3><p>Alerts with entry, targets and stop, plus a one-tap buy you sign in your own wallet.</p></div>
     <div class="card"><div class="ic">🛒</div><h3>Marketplace</h3><p>List, bid and swap Saga Monkes holder to holder, settled on-chain.</p></div>
-    <div class="card"><div class="ic">🎨</div><h3>MonkeMeme</h3><p>Turn any Saga Monke into a cartoon meme from its own traits, then share it to X.</p></div>
+    <div class="card"><div class="ic">🕹️</div><h3>MonkeCaves</h3><p>A retro cave shooter starring your own monke, plus Jungle Royale online. Earn bananas every day.</p></div>
     <div class="card"><div class="ic">🎙️</div><h3>Avatar Rooms</h3><p>Voice rooms where your monke PFP talks when you do.</p></div>
   </div>
   <p class="risk">MonkeTrades alerts and AutonoMonke are not financial advice. Crypto trading is risky and can lose money; past results don't predict future ones. See the <a href="/terms">terms</a>.</p>
+</div></section>
+
+<section id="screens"><div class="wrap">
+  <h2>See it</h2>
+  <p class="sub">Every Saga Monke comes to life in 3D, from its own traits.</p>
+  <div class="shots">
+    <figure><img src="/site/screen-caves.jpg" alt="MonkeCaves: a first-person cave with a waterfall wall and a glowing blue floor" width="720" height="1138" loading="lazy"><figcaption><b>MonkeCaves</b><span>Clear the caves, beat the clock.</span></figcaption></figure>
+    <figure><img src="/site/screen-room.jpg" alt="Avatar Room 3D stage with four Saga Monkes, two of them talking" width="720" height="1138" loading="lazy"><figcaption><b>Avatar Rooms</b><span>Your monke talks when you do.</span></figcaption></figure>
+    <figure><img src="/site/screen-monke3d.jpg" alt="A Saga Monke rebuilt as a 3D block model" width="720" height="1138" loading="lazy"><figcaption><b>Monke 3D</b><span>Any monke by number, face-tracked by your camera.</span></figcaption></figure>
+  </div>
 </div></section>
 
 <section id="explore"><div class="wrap">

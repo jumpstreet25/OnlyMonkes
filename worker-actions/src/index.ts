@@ -1966,7 +1966,8 @@ async function fetchMonkeHolderCount(env: Env): Promise<number> {
 
 // Bot's own sales-book, exposed for exactly this purpose (see sagaMonkesSales.ts +
 // xmtpOnlyMonkes.ts's /api/sales-stats), reached through the bot tunnel (BOT_PROFILE_URL).
-async function fetchSalesStatsFromBot(env: Env): Promise<{ floorSol: number | null; volume24hSol: number; recentSales: StatsSnapshot["recentSales"] } | null> {
+type BotMarket = { floorSol: number | null; floorChg24h: number | null; volume24hSol: number | null };
+async function fetchSalesStatsFromBot(env: Env): Promise<{ floorSol: number | null; volume24hSol: number; recentSales: StatsSnapshot["recentSales"]; market: BotMarket | null } | null> {
   try {
     const base = (env.BOT_PROFILE_URL ?? "").replace(/\/$/, "");
     if (!base) return null;
@@ -1978,7 +1979,13 @@ async function fetchSalesStatsFromBot(env: Env): Promise<{ floorSol: number | nu
       ? d.recentSales.map((s: any) => ({ signature: s.signature, priceSol: s.priceSol, ts: s.ts }))
       : [];
     // No sales in 24h → the bot has no floor; keep null so CoinGecko fills it (was 0 on the site).
-    return { floorSol: typeof d.floorSol === "number" && d.floorSol > 0 ? d.floorSol : null, volume24hSol: d.volume24hSol, recentSales };
+    // CoinGecko's numbers as the bot sees them: CoinGecko often refuses Cloudflare's IPs.
+    const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+    const m = d.market;
+    const market: BotMarket | null = m && num(m.floorSol)
+      ? { floorSol: num(m.floorSol), floorChg24h: num(m.floorChg24h), volume24hSol: num(m.volume24hSol) }
+      : null;
+    return { floorSol: typeof d.floorSol === "number" && d.floorSol > 0 ? d.floorSol : null, volume24hSol: d.volume24hSol, recentSales, market };
   } catch {
     return null;
   }
@@ -2014,6 +2021,12 @@ async function fetchFloorAndMarket(env: Env): Promise<{ floorSol: number | null;
         if (!fromBot) volume24hSol = d?.volume_24h?.native_currency ?? null;
       }
     } catch { /* best-effort, page still works without market data */ }
+  }
+  const market = fromBot?.market;
+  if (market) {
+    if (floorSol == null) { floorSol = market.floorSol; floorChg24h = market.floorChg24h; }
+    // Our sales book only sees sales the webhook caught; the market total covers every marketplace.
+    if (market.volume24hSol != null && market.volume24hSol > (volume24hSol ?? 0)) volume24hSol = market.volume24hSol;
   }
 
   try {
