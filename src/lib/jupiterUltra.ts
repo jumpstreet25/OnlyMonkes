@@ -23,10 +23,10 @@
 import {
   VersionedTransaction,
 } from "@solana/web3.js";
-import { JUP_API_KEY } from "./constants";
 
-const ULTRA_ORDER_URL = "https://api.jup.ag/swap/v2/order";
-const ULTRA_EXECUTE_URL = "https://api.jup.ag/swap/v2/execute";
+// Through the actions worker (jupProxy.ts), which adds our Jupiter key.
+const ULTRA_ORDER_URL = "https://onlymonkes.app/api/jup/order";
+const ULTRA_EXECUTE_URL = "https://onlymonkes.app/api/jup/execute";
 const ULTRA_TIMEOUT = 10_000;
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -124,7 +124,6 @@ export async function getUltraQuote(
   const headers: Record<string, string> = {
     "Accept": "application/json",
   };
-  if (JUP_API_KEY) headers["x-api-key"] = JUP_API_KEY;
 
   const res = await fetchWithTimeout(
     `${ULTRA_ORDER_URL}?${params}`,
@@ -185,7 +184,6 @@ export async function executeUltraSwap(
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
-  if (JUP_API_KEY) headers["x-api-key"] = JUP_API_KEY;
 
   const res = await fetchWithTimeout(
     ULTRA_EXECUTE_URL,

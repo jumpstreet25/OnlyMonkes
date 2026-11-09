@@ -100,7 +100,8 @@ import { handleWebRpc } from "./webRpc";
 import { heliusKey } from "./heliusKeys";
 import { publicRateLimited } from "./publicLimits";
 import { handleWebAuth, handleWebHistory, handleWebProfile } from "./webAuth";
-import { handleWebMedia, isWebMediaPath } from "./webMedia";
+import { handleWebMedia, isWebMediaPath, refreshMediaUsage } from "./webMedia";
+import { handleJupProxy, isJupProxyPath } from "./jupProxy";
 import { handleShareCard, isShareCardPath } from "./shareCard";
 import { handleReferral, isReferralPath } from "./referrals";
 import { handleCaves, isCavesPath } from "./caves";
@@ -3819,6 +3820,7 @@ export default {
     // Referrals: /api/referral/*, /r/<code>[/card.png], /referrals (referrals.ts).
     if (isReferralPath(path)) return handleReferral(path, request, env, ctx);
     if (isCavesPath(path)) return handleCaves(request, env, path);
+    if (isJupProxyPath(path)) return handleJupProxy(request, env, CORS_HEADERS, path);
     // /monke/<number>[/card.png]: share page + pixel card (shareCard.ts); /monke/<mint> below.
     if (isShareCardPath(path)) return handleShareCard(path, request, ctx);
     const monkeImageMatch = path.match(/^\/monke\/([^/]+)\/image$/);
@@ -4061,6 +4063,7 @@ export default {
       ctx.waitUntil(checkBotHealthForAgents(env).catch(() => {}));
       return;
     }
+    ctx.waitUntil(refreshMediaUsage(env as any).catch((err) => console.error("[scheduled] media usage failed:", err)));
     ctx.waitUntil(
       computeStatsSnapshot(env)
         .then(async snapshot => {

@@ -119,6 +119,13 @@ CAVES_TESTERS = "72ecfcfc708fb734e94f33c9b20df524b11e5472f093eecf859f3e3d10dcd76
 binding = "APKS"
 bucket_name = "onlymonkes-apks"
 
+# Chat videos, photos and files (webMedia.ts /api/upload), public at
+# media.onlymonkes.app (bucket custom domain, CDN-cached; reads never hit the
+# worker). Uploads pause at 8 GB stored (4-hourly cron), under the 10 GB free plan.
+[[r2_buckets]]
+binding = "MEDIA"
+bucket_name = "onlymonkes-media"
+
 # Per-IP download limit for /download/* (R2 never-charged guardrail).
 [[ratelimits]]
 name = "APK_LIMITER"
