@@ -61,7 +61,7 @@
     { "cmd": "/autonomonke close", "args": "<token>", "group": "autonomonke", "where": ["dm"], "ticker": false, "desc": { "en": "Close a position", "es": "Cerrar una posición" } },
     { "cmd": "/autonomonke forceexit", "args": "<token>", "group": "autonomonke", "where": ["dm"], "ticker": false, "desc": { "en": "Force-exit a stuck position", "es": "Forzar salida de una posición" } },
     { "cmd": "/autonomonke writeoff", "args": "<token>", "group": "autonomonke", "where": ["dm"], "ticker": false, "desc": { "en": "Write off a dead position", "es": "Dar de baja una posición muerta" } },
-    { "cmd": "/autonomonke confidence", "args": "<50-100>", "group": "autonomonke", "where": ["dm"], "ticker": false, "desc": { "en": "Minimum signal confidence", "es": "Confianza mínima de la señal" } },
+    { "cmd": "/autonomonke confidence", "args": "<50-100>", "group": "autonomonke", "where": ["dm"], "ticker": false, "desc": { "en": "Saved only; no longer filters trades (since Sep 15)", "es": "Solo se guarda; ya no filtra operaciones (desde el 15 sep)" } },
     { "cmd": "/autonomonke size", "args": "<0.5-10>", "group": "autonomonke", "where": ["dm"], "ticker": false, "desc": { "en": "% of wallet per trade", "es": "% de la wallet por operación" } },
     { "cmd": "/autonomonke pertrade", "args": "<SOL>", "group": "autonomonke", "where": ["dm"], "ticker": false, "desc": { "en": "Fixed SOL per trade", "es": "SOL fijo por operación" } },
     { "cmd": "/autonomonke max", "args": "<0.1-100>", "group": "autonomonke", "where": ["dm"], "ticker": false, "desc": { "en": "Max SOL the bot may use", "es": "SOL máximo que puede usar el bot" } },
