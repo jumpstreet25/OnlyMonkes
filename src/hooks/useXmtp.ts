@@ -2417,7 +2417,8 @@ export function useXmtp() {
               // body shows the actual message content. Respects the global
               // notificationsEnabled toggle.
               const { notificationsEnabled: _dmNotifEnabled } = useAppStore.getState();
-              if (_dmNotifEnabled) {
+              // Bot DMs get a push from the bot (it reaches killed apps too), so no local banner — same as Main Chat.
+              if (_dmNotifEnabled && !isBotSender(senderInboxId)) {
                 const senderProfile = getCachedProfile(senderInboxId);
                 const senderName = senderProfile?.username ?? senderInboxId.slice(0, 8);
                 let displayBody = content;
