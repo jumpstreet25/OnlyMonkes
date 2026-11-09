@@ -40,7 +40,7 @@ import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
 import * as Clipboard from "expo-clipboard";
 import { toast } from "sonner-native";
-import { THEME, FONTS, SKR_MINT, JUP_API_KEY, DEV_WALLET, getWorldBarTint, getWorldAccent, surfaceToBarTint, resolveBarTint } from "@/lib/constants";
+import { THEME, FONTS, SKR_MINT, DEV_WALLET, getWorldBarTint, getWorldAccent, surfaceToBarTint, resolveBarTint } from "@/lib/constants";
 import { MenuIcon, type MenuIconName } from "@/components/MenuIcon";
 import { WorldLayer } from "@/components/worlds/WorldLayer";
 import { useThemeColor } from "@/lib/shopTheme";
@@ -1311,7 +1311,6 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
 
 function buildSupportLink(amount?: number): string {
   const skrMint = SKR_MINT;
-  const jupApiKey = JUP_API_KEY;
 
   if (skrMint) {
     // Solana Pay: opens Seed Vault / any Solana wallet to send SKR directly
@@ -1321,9 +1320,7 @@ function buildSupportLink(amount?: number): string {
     return uri;
   }
   // Fallback: Jupiter swap SOL → SKR (SKR_MINT not set yet)
-  let url = `https://jup.ag/swap/SOL-SKR?outputMint=${DEV_WALLET}`;
-  if (jupApiKey) url += `&referralKey=${DEV_WALLET}&feeBps=50`;
-  return url;
+  return `https://jup.ag/swap/SOL-SKR?outputMint=${DEV_WALLET}`;
 }
 
 function SupportCard({ onDevTip }: { onDevTip?: (amount: number) => void }) {

@@ -1,14 +1,9 @@
 import {
-  GIPHY_API_KEY as ENV_GIPHY,
-  CLOUDINARY_CLOUD_NAME as ENV_CLOUD_NAME,
-  CLOUDINARY_UPLOAD_PRESET as ENV_CLOUD_PRESET,
   LIVEKIT_URL as ENV_LK_URL,
   LIVEKIT_TOKEN_URL as ENV_LK_TOKEN,
-  JUP_API_KEY as ENV_JUP,
   SKR_MINT as ENV_SKR,
   DEV_WALLET as ENV_DEV,
   SENTRY_DSN as ENV_SENTRY,
-  GROQ_API_KEY as ENV_GROQ,
 } from '@env';
 import Constants from 'expo-constants';
 
@@ -92,23 +87,11 @@ export const RPC_PROXY_URL = 'https://onlymonkes.app/api/rpc';
 export const HELIUS_API_KEY: string = RPC_KEY_MARKER;
 export const HELIUS_NFT_API_KEY: string = RPC_KEY_MARKER;
 export const HELIUS_NFT_RPC_URL = RPC_PROXY_URL;
-export const GIPHY_API_KEY: string = ENV_GIPHY || _str(_extra.giphyApiKey);
-export const CLOUDINARY_CLOUD_NAME: string = ENV_CLOUD_NAME || _str(_extra.cloudinaryCloudName);
-export const CLOUDINARY_UPLOAD_PRESET: string = ENV_CLOUD_PRESET || _str(_extra.cloudinaryUploadPreset);
 export const LIVEKIT_URL_ENV: string = ENV_LK_URL || _str(_extra.livekitUrl);
 export const LIVEKIT_TOKEN_URL_ENV: string = ENV_LK_TOKEN || _str(_extra.livekitTokenUrl);
-export const JUP_API_KEY: string = ENV_JUP || _str(_extra.jupApiKey);
 export const SENTRY_DSN_ENV: string = ENV_SENTRY || _str(_extra.sentryDsn);
-// 2026-08-04: nftFeatureDetection.ts and avatarEmotions.ts were reading
-// `process.env.GROQ_API_KEY` directly — that's always undefined in a React
-// Native runtime (no Node process env on-device) regardless of `.env` or
-// build type, so the Groq fallback path in both never actually ran. Not
-// currently set in this app's `.env` either; both call sites already guard
-// on a missing key and degrade gracefully (return null → next fallback), so
-// this was silent, not a crash. Routing through the same safe pattern as
-// everything else here so it starts working the moment the key is added to
-// `.env` + `app.config.ts`'s `extra.groqApiKey`.
-export const GROQ_API_KEY: string = ENV_GROQ || _str(_extra.groqApiKey);
+// GIPHY, Jupiter and uploads go through the actions worker (webMedia.ts, jupProxy.ts):
+// no third-party key ships in the app (2026-11-09).
 // QuickNode DAS endpoint — auth token is embedded in the URL path itself
 // (QuickNode's convention), so this is used as a full URL, not a bare key.
 // Added 2026-07-13 as a 30-day trial; see project memory for the expiry

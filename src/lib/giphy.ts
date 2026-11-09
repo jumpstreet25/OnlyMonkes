@@ -2,13 +2,11 @@
  * giphy.ts
  *
  * GIPHY REST API helpers (no native SDK, no rebuild needed).
- * Uses the v1 REST API with a public API key.
+ * Through the actions worker (worker-actions/src/webMedia.ts), which adds the key.
  */
 
-import { GIPHY_API_KEY } from '@/lib/constants';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
-const API_KEY: string = GIPHY_API_KEY;
-const BASE_URL = "https://api.giphy.com/v1";
+const BASE_URL = "https://onlymonkes.app/api/giphy";
 
 export interface GiphyItem {
   id: string;
@@ -51,11 +49,7 @@ function parseItems(data: any[]): GiphyItem[] {
 const SAGA_GIPHY_USER = "sagamonkes";
 
 function giphyUrl(kind: "gifs" | "stickers", path: "search" | "trending", extra: Record<string, string>): string {
-  const params = new URLSearchParams({
-    api_key: API_KEY,
-    rating: "g",
-    ...extra,
-  });
+  const params = new URLSearchParams(extra);
   return `${BASE_URL}/${kind}/${path}?${params.toString()}`;
 }
 
@@ -80,10 +74,6 @@ function setStatus(s: string): void {
  * with no diagnostic.
  */
 async function fetchGiphy(label: string, url: string): Promise<GiphyItem[]> {
-  if (!API_KEY) {
-    setStatus(`${label}: API key MISSING in bundle`);
-    return [];
-  }
   try {
     // Use fetchWithTimeout — Hermes' bundled AbortSignal polyfill lacks the
     // static .timeout() helper, so calling it throws "undefined is not a
@@ -101,7 +91,7 @@ async function fetchGiphy(label: string, url: string): Promise<GiphyItem[]> {
     } else if (items.length === 0) {
       setStatus(`${label}: 0 results from Giphy`);
     } else {
-      setStatus(`${label}: ${items.length} ok (key=${API_KEY.length}c)`);
+      setStatus(`${label}: ${items.length} ok`);
     }
     return items;
   } catch (err) {

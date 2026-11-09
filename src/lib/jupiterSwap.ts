@@ -39,7 +39,7 @@ import {
   transact,
   Web3MobileWallet,
 } from "@solana-mobile/mobile-wallet-adapter-protocol-web3js";
-import { HELIUS_RPC_URL, DEV_WALLET, TOKEN_TRADE_FEE_PCT, JUP_API_KEY, JUP_PLATFORM_FEE_BPS } from "./constants";
+import { HELIUS_RPC_URL, DEV_WALLET, TOKEN_TRADE_FEE_PCT, JUP_PLATFORM_FEE_BPS } from "./constants";
 import { useAppStore } from "@/store/appStore";
 import { loadCostBasis, recordBuy, getCostBasis, recordSell } from "./costBasis";
 import { onBuy as positionOnBuy, onSell as positionOnSell } from "./positions";
@@ -48,7 +48,8 @@ import type { UltraQuote } from "./jupiterUltra";
 import { assertDeviceTrusted } from "./security";
 import bs58 from "bs58";
 
-const JUP_BUILD_URL = "https://api.jup.ag/swap/v2/build";
+// Jupiter Swap v2 /build through the actions worker (jupProxy.ts), which adds our key.
+const JUP_BUILD_URL = "https://onlymonkes.app/api/jup/build";
 // 2026-08-01: `token.jup.ag/strict` is DNS-dead (NXDOMAIN) — every ticker
 // (and even raw-mint, since resolveToken's mint branch also hit this list
 // for decimals) resolution was silently failing. Bot-side hit and fixed the
@@ -246,10 +247,7 @@ export async function getSwapQuote(
     ...getPlatformFeeParams(inputMint, outputMint),
   });
 
-  const headers: Record<string, string> = {};
-  if (JUP_API_KEY) headers["x-api-key"] = JUP_API_KEY;
-
-  const res = await fetch(`${JUP_BUILD_URL}?${params}`, { headers });
+  const res = await fetch(`${JUP_BUILD_URL}?${params}`);
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     throw new Error(`Jupiter quote failed (${res.status}): ${body}`);
@@ -414,8 +412,6 @@ export async function executeSwap(quote: SwapQuote): Promise<SwapResult> {
     const realWallet = senderPubkey.toBase58();
     const quoteTaker = useAppStore.getState().wallet?.address || "";
     if (quoteTaker !== realWallet) {
-      const rebuildHeaders: Record<string, string> = {};
-      if (JUP_API_KEY) rebuildHeaders["x-api-key"] = JUP_API_KEY;
       const params = new URLSearchParams({
         inputMint: quote.inputMint,
         outputMint: quote.outputMint,
@@ -426,7 +422,7 @@ export async function executeSwap(quote: SwapQuote): Promise<SwapResult> {
         prioritizationFeeLamports: "auto",
         ...getPlatformFeeParams(quote.inputMint, quote.outputMint),
       });
-      const rebuildRes = await fetch(`${JUP_BUILD_URL}?${params}`, { headers: rebuildHeaders });
+      const rebuildRes = await fetch(`${JUP_BUILD_URL}?${params}`);
       if (rebuildRes.ok) {
         buildData = await rebuildRes.json() as JupBuildResponse;
       }
