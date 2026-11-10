@@ -24,7 +24,7 @@ export function useNFTVerification() {
     // TEMP DIAGNOSTIC (2026-07-23): confirming whether the wallet connection
     // is actually dropping between login and a later retry. Remove once
     // root-caused.
-    console.log(`[NFTVerify][DIAG] wallet at verify() call: ${wallet?.address ? wallet.address.slice(0, 8) + '…' : 'MISSING'}`);
+    console.log(`[NFTVerify][DIAG] wallet at verify() call: ${wallet?.address ? 'present' : 'MISSING'}`);
     if (!wallet?.address) {
       setError('No wallet connected');
       // 2026-07-23: was providerError: false, which VerifyScreen's caller
