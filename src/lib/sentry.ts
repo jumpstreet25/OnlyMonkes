@@ -8,6 +8,10 @@ import * as Sentry from '@sentry/react-native';
 import Constants from 'expo-constants';
 import { SENTRY_DSN_ENV } from '@/lib/constants';
 
+import { scrubAddresses } from '@/lib/scrubAddresses';
+
+const SECRET_KEYS = ['authToken', 'mwaAuthToken', 'privateKey'];
+
 const SENTRY_DSN: string = SENTRY_DSN_ENV;
 
 export function initSentry() {
@@ -35,21 +39,25 @@ export function initSentry() {
     // ONLYMONKES-10, "Object captured as exception with keys: _bubbles, …".
     // The room recovers by itself; nothing to act on.
     ignoreErrors: [/Object captured as exception with keys: _bubbles/],
+    // Breadcrumbs are cleaned when they're recorded, so native crash reports
+    // (which never pass through beforeSend) get the clean copy too.
+    beforeBreadcrumb(b) {
+      const data = b.data && typeof b.data === 'object' ? { ...b.data } : b.data;
+      if (data && typeof data === 'object') for (const k of SECRET_KEYS) delete (data as Record<string, unknown>)[k];
+      return { ...b, message: scrubAddresses(b.message), data: scrubAddresses(data) };
+    },
     beforeSend(event) {
-      // Strip any wallet private keys or auth tokens from breadcrumbs
-      if (event.breadcrumbs) {
-        event.breadcrumbs = event.breadcrumbs.map((b) => {
-          if (b.data && typeof b.data === 'object') {
-            const d = { ...b.data };
-            delete d.authToken;
-            delete d.mwaAuthToken;
-            delete d.privateKey;
-            return { ...b, data: d };
-          }
-          return b;
-        });
-      }
-      return event;
+      return {
+        ...event,
+        message: scrubAddresses(event.message),
+        breadcrumbs: scrubAddresses(event.breadcrumbs),
+        extra: scrubAddresses(event.extra),
+        request: scrubAddresses(event.request),
+        exception: event.exception && {
+          ...event.exception,
+          values: event.exception.values?.map((e) => ({ ...e, value: scrubAddresses(e.value) })),
+        },
+      };
     },
   });
 }

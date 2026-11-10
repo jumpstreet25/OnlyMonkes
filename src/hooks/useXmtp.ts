@@ -178,7 +178,11 @@ let _profileBroadcastDone = false;
 let _initRunning = false;
 // Last time the app left the foreground: a load that spans background time is not slow.
 let _lastBackgroundAt = 0;
-AppState.addEventListener("change", (s) => { if (s !== "active") _lastBackgroundAt = Date.now(); });
+let _lastForegroundAt = 0;
+AppState.addEventListener("change", (s) => {
+  if (s === "active") _lastForegroundAt = Date.now();
+  else _lastBackgroundAt = Date.now();
+});
 // streamAllMessages() has no unsubscribe. Start it once per inbox, and
 // drop duplicate deliveries so one DM cannot fire N "DM'd you" banners.
 let _dmAllStreamInbox: string | null = null;
@@ -599,6 +603,7 @@ export function useXmtp() {
     // Startup timing (owner: Main Chat took ~1 min to load): each step's ms,
     // sent to Sentry once when the whole load is slow.
     const t0 = Date.now();
+    const startedActive = AppState.currentState === "active";
     const marks: Record<string, number> = {};
     const mark = (step: string) => { marks[step] = Date.now() - t0; };
     let afterReady: (() => Promise<void>) | null = null;
@@ -1284,7 +1289,10 @@ export function useXmtp() {
           } catch { /* the stream and resyncs catch up */ }
         });
       }
-      if (marks.ready > 15_000 && _lastBackgroundAt < t0 && AppState.currentState === "active") {
+      // Only a start that ran in the foreground the whole time: one begun in the
+      // background and finished after the user came back counted the time away
+      // (ONLYMONKES-14, "315s").
+      if (marks.ready > 15_000 && startedActive && _lastBackgroundAt < t0 && _lastForegroundAt < t0 && AppState.currentState === "active") {
         Sentry.captureMessage(`Main Chat slow start: ${Math.round(marks.ready / 1000)}s`, { level: "warning", extra: { ...marks, history: rawHistory.length } });
       }
 
