@@ -123,7 +123,9 @@ function withHsts(res: Response): Response {
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    const path = new URL(request.url).pathname;
+    const url = new URL(request.url), path = url.pathname;
+    // Banana Rockets was replaced by Monke RC (2026-11-11); links already shared still work.
+    if (/^\/viewer\/rockets?(\.html)?\/?$/.test(path)) return withHsts(Response.redirect(`${url.origin}/viewer/racer${url.search}`, 301));
     if (path === "/svc/csp-report") return cspReport(request);
     if (path.startsWith("/svc/")) {
       const res = await serviceRoute(path, request, env);
