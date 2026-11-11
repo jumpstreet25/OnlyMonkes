@@ -166,7 +166,7 @@ export interface ChatModalsProps {
   // Share on X
   xShareImageUri: string | null;
   setXShareImageUri: (v: string | null) => void;
-  handleShareToX: () => void;
+  handleShareToX: (stampedUri?: string) => void;
 
   // Photo review (caption picker before send)
   photoReviewVisible: boolean;
@@ -188,6 +188,25 @@ export interface ChatModalsProps {
 }
 
 export function ChatModals(props: ChatModalsProps) {
+  // Share to X sends the photo with the watermark drawn on it, not just shown
+  // over the preview: an off-screen copy at the photo's own shape is captured.
+  const stampRef = React.useRef<View>(null);
+  const [stampAspect, setStampAspect] = React.useState(1);
+  React.useEffect(() => {
+    if (!props.xShareImageUri) return;
+    Image.getSize(props.xShareImageUri, (w, h) => { if (w > 0 && h > 0) setStampAspect(w / h); }, () => setStampAspect(1));
+  }, [props.xShareImageUri]);
+  const shareStampedToX = React.useCallback(async () => {
+    let stamped: string | undefined;
+    try {
+      const { captureRef } = await import("react-native-view-shot");
+      const width = 1080;
+      stamped = await captureRef(stampRef as never, {
+        format: "jpg", quality: 0.9, result: "tmpfile", width, height: Math.round(width / stampAspect),
+      });
+    } catch { /* share the plain photo */ }
+    props.handleShareToX(stamped);
+  }, [props.handleShareToX, stampAspect]);
   const {
     showConfetti, setShowConfetti,
     bananaClaim, setBananaClaim,
@@ -541,7 +560,23 @@ export function ChatModals(props: ChatModalsProps) {
           )}
           <Text style={modalStyles.caption}>Shot Using @xOnlyMonkes</Text>
 
-          <Pressable onPress={handleShareToX} style={modalStyles.xBtn}>
+          {xShareImageUri && (
+            <View
+              ref={stampRef}
+              collapsable={false}
+              pointerEvents="none"
+              style={[modalStyles.stampWrap, { height: STAMP_W / stampAspect }]}
+            >
+              <Image source={{ uri: xShareImageUri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+              <Image
+                source={require("../../assets/watermark.png")}
+                style={modalStyles.stampWatermark}
+                resizeMode="contain"
+              />
+            </View>
+          )}
+
+          <Pressable onPress={shareStampedToX} style={modalStyles.xBtn}>
             <Text style={modalStyles.xBtnText}>Share this Image on X</Text>
           </Pressable>
         </View>
@@ -571,6 +606,8 @@ export function ChatModals(props: ChatModalsProps) {
     </>
   );
 }
+
+const STAMP_W = 360;
 
 const modalStyles = StyleSheet.create({
   overlay: {
@@ -687,6 +724,21 @@ const modalStyles = StyleSheet.create({
   previewImg: {
     width: 220,
     height: 220,
+  },
+  stampWrap: {
+    position: "absolute",
+    left: -10000,
+    top: 0,
+    width: STAMP_W,
+  },
+  // Same share of the width as the preview's watermark (135 / 220).
+  stampWatermark: {
+    position: "absolute",
+    bottom: STAMP_W * 0.02,
+    right: STAMP_W * 0.02,
+    width: STAMP_W * 0.61,
+    height: STAMP_W * 0.31,
+    opacity: 0.9,
   },
   previewWatermark: {
     position: "absolute",

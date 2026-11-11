@@ -1164,9 +1164,9 @@ export default function ChatScreen() {
   // saves the image to the gallery + copies the caption + opens X's compose
   // screen with the caption prefilled (that part already works via the web
   // intent) — user's only remaining step is tapping X's image-picker icon.
-  const handleShareToX = useCallback(async () => {
+  const handleShareToX = useCallback(async (stampedUri?: string) => {
     const fallbackCaption = "I snapped this using @xOnlyMonkes via Solana Mobile, The Future is Monke! 🐒";
-    const imageUri = xShareImageUri;
+    const imageUri = stampedUri ?? xShareImageUri;
     const messageId = xShareMessageId;
     setXShareImageUri(null);
     setXShareMessageId(null);
