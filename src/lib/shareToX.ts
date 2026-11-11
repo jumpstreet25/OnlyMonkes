@@ -22,54 +22,62 @@ function openTweet(text: string): void {
   });
 }
 
+/** `data:` URIs (camera photos) → a real cache file: the gallery save needs
+ *  one, and a data URI never reaches X's web composer. */
+async function toLocalFile(imageUri: string): Promise<string> {
+  const m = /^data:image\/(\w+);base64,/.exec(imageUri);
+  if (!m) return imageUri;
+  const FS = await import("expo-file-system/legacy");
+  const path = `${FS.cacheDirectory}x-share-${Date.now()}.${m[1] === "png" ? "png" : "jpg"}`;
+  await FS.writeAsStringAsync(path, imageUri.slice(m[0].length), { encoding: FS.EncodingType.Base64 });
+  return path;
+}
+
 /**
- * Share a locally-generated image (e.g. a captured share card) to X.
+ * Share a locally-generated image (share card, camera photo) to X.
  *
- * 2026-07-18: primary path is now react-native-share's shareSingle(),
- * targeting the X app directly with BOTH the image and the caption in one
- * native share-sheet call — no more manual save-and-reattach. This needed
- * a native rebuild (new autolinked module + an AndroidManifest <queries>
- * entry for X's package, com.twitter.android), which is why it was
- * deferred when this file was first written. RN core `Share.share()` was
- * tried before that and rejected — reliably attaches `url` on iOS but
- * inconsistent on Android, frequently dropping the image entirely.
+ * X app installed → react-native-share's shareSingle() hands X the image
+ * and the caption in one intent. No X app → shareSingle doesn't throw, it
+ * opens X's web composer with the image as `&url=`, which X drops and shows
+ * the caption's invite-link card (the sharer's QR) instead of the photo
+ * (RugDoctor, 2026-11-11). So check for the app first; without it the image
+ * goes to the gallery and the web composer opens text-only.
  *
- * Falls back to the ORIGINAL stopgap (gallery save + clipboard copy +
- * text-only tweet-intent URL) if shareSingle throws — most commonly
- * because the X app isn't installed on the device, which shareSingle
- * can't work around (unlike the web-intent fallback, which always works
- * via browser). Still saves to gallery first either way as a defensive
- * backup regardless of which path succeeds.
+ * `saved` is true only when the user has to attach the saved image by hand.
  */
 export async function shareImageToX(
   imageUri: string,
   caption: string,
 ): Promise<{ saved: boolean }> {
   const message = await addShareLink(caption);
+  const fileUri = await toLocalFile(imageUri).catch(() => imageUri);
+
+  try {
+    const { default: Share, Social } = await import("react-native-share");
+    const { isInstalled } = await Share.isPackageInstalled("com.twitter.android");
+    if (isInstalled) {
+      await Share.shareSingle({
+        message,
+        url: fileUri,
+        social: Social.Twitter,
+        type: "image/*",
+      });
+      return { saved: false };
+    }
+  } catch {
+    // native-share failure — fall back to gallery + text-only composer.
+  }
+
   let saved = false;
   try {
     const MediaLibrary = await import("expo-media-library");
     const { status } = await MediaLibrary.requestPermissionsAsync();
     if (status === "granted") {
-      await MediaLibrary.saveToLibraryAsync(imageUri);
+      await MediaLibrary.saveToLibraryAsync(fileUri);
       saved = true;
     }
   } catch {
-    // non-fatal — still proceed; worst case the user has no gallery backup.
-  }
-
-  try {
-    const { default: Share, Social } = await import("react-native-share");
-    await Share.shareSingle({
-      message,
-      url: imageUri,
-      social: Social.Twitter,
-      type: "image/*",
-    });
-    return { saved };
-  } catch {
-    // X app not installed, or any other native-share failure — fall back
-    // to the text-only intent URL so the caption at least still prefills.
+    // non-fatal — the composer still opens with the caption.
   }
 
   try {
