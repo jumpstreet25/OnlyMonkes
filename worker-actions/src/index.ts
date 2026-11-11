@@ -105,6 +105,7 @@ import { handleJupProxy, isJupProxyPath } from "./jupProxy";
 import { handleShareCard, isShareCardPath } from "./shareCard";
 import { handleReferral, isReferralPath } from "./referrals";
 import { handleCaves, isCavesPath } from "./caves";
+import { handleRacer, isRacerPath } from "./racer";
 import { handleLivekitAuthorize, INTERNAL_HOST } from "./livekitAuth";
 import { handleApkDownload, isApkDownloadPath } from "./apkDownloads";
 import { handleWebPair } from "./webPair";
@@ -182,6 +183,10 @@ export interface Env {
   CAVES_BOARD?: string;
   /** Comma-separated sha256 hex of tester wallets (CAVES_BOARD=testers). */
   CAVES_TESTERS?: string;
+  /** Monke RC daily board, leader ghost + bananas (racer.ts): "off" (default) | "testers" | "on". */
+  RACER_BOARD?: string;
+  /** Comma-separated sha256 hex of tester wallets (RACER_BOARD=testers). */
+  RACER_TESTERS?: string;
   // MonkeGlobe/MonkeEvents public web repo backend — see community.ts.
   COMMUNITY_DATA: KVNamespace;
   // Service Binding to the MonkeLedger worker (same Cloudflare account) — see wrangler.toml's
@@ -3820,6 +3825,7 @@ export default {
     // Referrals: /api/referral/*, /r/<code>[/card.png], /referrals (referrals.ts).
     if (isReferralPath(path)) return handleReferral(path, request, env, ctx);
     if (isCavesPath(path)) return handleCaves(request, env, path);
+    if (isRacerPath(path)) return handleRacer(request, env, path);
     if (isJupProxyPath(path)) return handleJupProxy(request, env, CORS_HEADERS, path);
     // /monke/<number>[/card.png]: share page + pixel card (shareCard.ts); /monke/<mint> below.
     if (isShareCardPath(path)) return handleShareCard(path, request, ctx);
