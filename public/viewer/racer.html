@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+<title>Monke RC</title>
+<!--
+  Monke RC: an original 3D arcade RC racer for Saga Monke holders. Your monke drives an RC
+  buggy round a jungle track: drag to steer, drag hard to drift, let go of a drift for a
+  boost. Daily track for everyone (built from the date in racer-sim.js), 3 laps against
+  the ghost of your best run. ?n=<monke> seats that monke and paints the buggy from its
+  traits (looks only). In the app a finished race posts {type:"racer", event:"clear", …}.
+-->
+<style>
+  :root { --bg: #0b1a12; --text: #F2F2EA; --muted: #a8b3a8; --banana: #FFD23F; --accent: #E91671; --panel: rgba(10,18,12,0.88); --line: #2f4a36; --good: #7dff9a; --bad: #ff6b6b; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 13px/1.3 ui-monospace, Menlo, Consolas, monospace; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; }
+  canvas#view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  #hud { position: fixed; top: max(8px, env(safe-area-inset-top)); left: max(10px, env(safe-area-inset-left)); right: max(58px, calc(env(safe-area-inset-right) + 58px)); display: flex; gap: 14px; align-items: flex-start; pointer-events: none; text-shadow: 0 2px 0 rgba(0,0,0,0.7); }
+  .stat { display: grid; } .stat b { font-size: 20px; letter-spacing: 0.5px; } .stat span { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+  #lap b { color: var(--banana); } #time b { min-width: 76px; color: #fff; } #bestlap b { color: #9fd8ff; font-size: 15px; margin-top: 4px; }
+  #delta { position: fixed; top: calc(max(8px, env(safe-area-inset-top)) + 54px); left: 50%; transform: translateX(-50%); font-weight: 700; font-size: 20px; text-shadow: 0 2px 0 #000; opacity: 0; transition: opacity .3s; pointer-events: none; }
+  #delta.on { opacity: 1; } #delta.good { color: var(--good); } #delta.bad { color: var(--bad); }
+  #pause { position: fixed; top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); width: 42px; height: 42px; border: 2px solid rgba(255,255,255,0.25); background: rgba(0,0,0,0.35); color: #fff; font: 700 14px/1 ui-monospace, monospace; border-radius: 8px; z-index: 3; }
+  #meter { position: fixed; left: 50%; bottom: max(16px, env(safe-area-inset-bottom)); transform: translateX(-50%); display: grid; justify-items: center; gap: 4px; pointer-events: none; text-shadow: 0 2px 0 #000; }
+  #speed { font-size: 30px; font-weight: 700; font-style: italic; } #speed small { font-size: 11px; color: var(--muted); font-style: normal; margin-left: 4px; }
+  #boostbar { width: 150px; height: 7px; border: 2px solid rgba(0,0,0,0.6); background: rgba(255,255,255,0.12); border-radius: 4px; overflow: hidden; }
+  #boostbar i { display: block; height: 100%; width: 0%; background: linear-gradient(90deg, #6cf, #ffd23f, #e91671); }
+  #count { position: fixed; left: 50%; top: 38%; transform: translate(-50%, -50%) scale(1); font: 900 96px/1 ui-monospace, monospace; color: var(--banana); text-shadow: 0 6px 0 #000; pointer-events: none; opacity: 0; }
+  #count.pop { animation: pop .7s ease-out; }
+  @keyframes pop { 0% { opacity: 1; transform: translate(-50%, -50%) scale(1.6); } 70% { opacity: 1; transform: translate(-50%, -50%) scale(1); } 100% { opacity: 0; transform: translate(-50%, -50%) scale(0.9); } }
+  #toast { position: fixed; left: 50%; top: 27%; transform: translate(-50%, -50%); font-weight: 800; font-size: 22px; letter-spacing: 2px; color: var(--banana); text-shadow: 0 3px 0 #000; opacity: 0; transition: opacity .4s; pointer-events: none; text-align: center; }
+  #toast.on { opacity: 1; } #toast small { display: block; font-size: 12px; letter-spacing: 0; color: var(--text); font-weight: 400; margin-top: 4px; }
+  #hint { position: fixed; bottom: calc(max(16px, env(safe-area-inset-bottom)) + 64px); left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100vw - 32px); text-align: center; color: #fff; font-size: 12px; background: rgba(0,0,0,0.45); padding: 6px 10px; border-radius: 6px; pointer-events: none; transition: opacity .8s; }
+  #hint.gone { opacity: 0; }
+  #wheel { position: fixed; width: 64px; height: 64px; margin: -32px 0 0 -32px; border: 3px solid rgba(255,255,255,0.35); border-radius: 50%; pointer-events: none; display: none; }
+  #wheel i { position: absolute; left: 50%; top: 50%; width: 22px; height: 22px; margin: -11px; background: rgba(255,210,63,0.85); border-radius: 50%; }
+  .card { position: fixed; left: 50%; top: 47%; transform: translate(-50%, -50%); min-width: 250px; max-width: calc(100vw - 36px); max-height: calc(100vh - 40px); overflow: auto; padding: 18px 20px 16px; background: var(--panel); border: 2px solid var(--line); border-radius: 12px; box-shadow: 0 0 0 2px #000, 0 10px 0 rgba(0,0,0,0.45); display: grid; gap: 9px; justify-items: center; text-align: center; z-index: 4; }
+  .card[hidden] { display: none; }
+  .card h1 { margin: 0; font-size: 30px; color: var(--banana); letter-spacing: 3px; font-style: italic; }
+  .card .big { font-size: 34px; font-weight: 800; color: #fff; }
+  .card .dim { color: var(--muted); } .card a { color: var(--banana); }
+  .card .tag { background: var(--banana); color: #1a1408; font-weight: 800; padding: 2px 8px; letter-spacing: 1px; border-radius: 3px; }
+  .card .stats { display: grid; grid-template-columns: auto auto; gap: 3px 18px; color: var(--muted); } .card .stats b { color: #fff; text-align: right; }
+  .card .row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  .card button, #menu button { font: 800 14px/1 ui-monospace, monospace; padding: 12px 16px; background: #183022; color: var(--text); border: 2px solid var(--line); border-radius: 8px; }
+  .card button.go { background: var(--banana); color: #1a1408; border-color: #000; }
+  .card .how { font-size: 12px; line-height: 1.55; }
+  .card .swatch { display: inline-block; width: 12px; height: 12px; border: 2px solid #000; border-radius: 2px; vertical-align: -2px; margin-right: 4px; }
+  #menu { position: fixed; inset: 0; background: rgba(4,8,5,0.78); display: grid; place-items: center; z-index: 5; }
+  #menu[hidden] { display: none; }
+  #menu > div { display: grid; gap: 9px; min-width: 230px; text-align: center; }
+  #menu h1 { margin: 0 0 6px; color: var(--banana); font-size: 22px; letter-spacing: 2px; }
+  #loading { position: fixed; inset: 0; display: grid; place-items: center; color: var(--muted); }
+</style>
+</head>
+<body>
+<canvas id="view"></canvas>
+<div id="loading">Loading the track…</div>
+<div id="hud">
+  <div class="stat" id="lap"><b>1/3</b><span>lap</span></div>
+  <div class="stat" id="time"><b>0:00.00</b><span>time</span></div>
+  <div class="stat" id="bestlap"><b>--</b><span>best lap</span></div>
+</div>
+<div id="delta"></div>
+<button id="pause" aria-label="Menu">II</button>
+<div id="meter"><div id="speed">0<small>km/h</small></div><div id="boostbar"><i></i></div></div>
+<div id="count"></div>
+<div id="toast"></div>
+<div id="hint">Drag left / right to steer · drag far to drift · let go of a drift to boost</div>
+<div id="wheel"><i></i></div>
+<div class="card" id="card" hidden></div>
+<div id="menu" hidden>
+  <div>
+    <h1>PAUSED</h1>
+    <button id="resume">Resume</button>
+    <button id="restart">Restart race</button>
+    <button id="ghostbtn">Ghost: on</button>
+    <button id="sound">Sound: on</button>
+  </div>
+</div>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.min.js" } }
+</script>
+<script type="module" src="/viewer/racer.js"></script>
+</body>
+</html>
