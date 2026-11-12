@@ -33,12 +33,9 @@ import { HELIUS_RPC_URL } from "./constants";
 import { useAppStore } from "@/store/appStore";
 import { fetchWithTimeout } from "./fetchWithTimeout";
 import { assertDeviceTrusted } from "./security";
+import { WALLET_IDENTITY } from "@/lib/mwaIdentity";
 
-const APP_IDENTITY = {
-  name: "OnlyMonkes",
-  uri: "https://onlymonkes-actions.jumpstreet25.workers.dev",
-  icon: "favicon.ico",
-};
+const APP_IDENTITY = WALLET_IDENTITY;
 
 const CLAIM_BASE = "https://onlymonkes.app/claim";
 const ESCROW_ENDPOINT = "https://onlymonkes.app/escrow";
