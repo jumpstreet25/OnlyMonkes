@@ -6,7 +6,7 @@
 import * as THREE from "three";
 import { imageFor, loadImage, readGrid, buildMonke } from "/viewer/monkeModel.js";
 import { weaponFor } from "/viewer/caves-weapons.js";
-import { RV, DT, LAPS, ROAD_W, SHOULDER, V_MAX, DRIFT_TIERS, driftTier, launch, buildTrack, createRun, step, speedOf, ghostAt, autopilot, todayId, rng } from "/viewer/racer-sim.js";
+import { RV, DT, LAPS, ROAD_W, SHOULDER, V_MAX, V_BOOST, DRIFT_TIERS, driftTier, launch, buildTrack, createRun, step, speedOf, sideOf, ghostAt, autopilot, todayId, rng } from "/viewer/racer-sim.js";
 
 const params = new URLSearchParams(location.search);
 const inApp = (() => { if (window.ReactNativeWebView) return true; try { return parent !== window && parent.location.origin === location.origin; } catch { return false; } })();
@@ -217,6 +217,41 @@ function offTrack(x, z, clear) {
   }
 }
 
+// Roadside props, close to the road so they stream past: marker posts on both barriers
+// every 12 units, plus cones, tyre stacks and flag poles just outside, more of them on corners.
+{
+  const outer = ROAD_W / 2 + SHOULDER, m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), v = new THREE.Vector3(), sc = new THREE.Vector3();
+  const posts = [], cones = [], tyres = [], flags = [];
+  for (let i = 0; i < T.N; i += 3) for (const sg of [-1, 1]) posts.push([i, sg]);
+  for (let i = 6; i < T.N; i += 5) {
+    const bend = Math.abs(T.curv[i]) > 0.012;
+    if (!bend && R() < 0.55) continue;
+    const sg = bend ? (T.curv[i] > 0 ? 1 : -1) * (R() < 0.8 ? 1 : -1) : (R() < 0.5 ? -1 : 1);
+    const k = R();
+    (k < 0.45 ? cones : k < 0.8 ? tyres : flags).push([i, sg, outer + 2.5 + R() * 4]);
+  }
+  const at = (i, sg, off, y) => { const p = T.pts[i], nn = T.nor[i]; return v.set(p[0] + nn[0] * sg * off, y, p[1] + nn[1] * sg * off); };
+  const yaw = (i) => q.setFromEuler(e.set(0, -Math.atan2(T.tan[i][1], T.tan[i][0]), 0));
+  const inst = (geo, mat, list, place) => {
+    const im = new THREE.InstancedMesh(geo, mat, Math.max(1, list.length));
+    list.forEach((it, j) => { place(it); im.setMatrixAt(j, m4); });
+    im.count = list.length; scene.add(im); return im;
+  };
+  const postTex = canvasTex(8, 32, (g, w, h) => { g.fillStyle = "#f4f4f0"; g.fillRect(0, 0, w, h); g.fillStyle = "#e0312b"; g.fillRect(0, 0, w, h * 0.3); g.fillStyle = "#ffd23f"; g.fillRect(0, h * 0.3, w, h * 0.08); }, false);
+  const postG = new THREE.BoxGeometry(0.7, 4.4, 0.7); postG.translate(0, 2.2, 0);
+  inst(postG, new THREE.MeshLambertMaterial({ map: postTex }), posts, ([i, sg]) => m4.compose(at(i, sg, outer + 0.6, -0.6), yaw(i), sc.set(1, 1, 1)));
+  const coneG = new THREE.ConeGeometry(1.1, 3, 8); coneG.translate(0, 1.5, 0);
+  inst(coneG, new THREE.MeshLambertMaterial({ color: 0xff7a1a, flatShading: true }), cones, ([i, sg, off]) => m4.compose(at(i, sg, off, -0.1), yaw(i), sc.set(1, 1, 1)));
+  const tyreG = new THREE.TorusGeometry(1.5, 0.75, 6, 12); tyreG.rotateX(Math.PI / 2);
+  const tyreM = new THREE.MeshLambertMaterial({ color: 0x1d1d22, flatShading: true });
+  for (const lvl of [0, 1, 2]) inst(tyreG, tyreM, tyres, ([i, sg, off]) => m4.compose(at(i, sg, off, 0.2 + lvl * 1.45), yaw(i), sc.set(1, 1, 1)));
+  const poleG = new THREE.CylinderGeometry(0.25, 0.25, 9, 5); poleG.translate(0, 4.5, 0);
+  inst(poleG, new THREE.MeshLambertMaterial({ color: 0x2b2b30 }), flags, ([i, sg, off]) => m4.compose(at(i, sg, off, -0.6), yaw(i), sc.set(1, 1, 1)));
+  const flagG = new THREE.PlaneGeometry(3.4, 2.2); flagG.translate(1.7, 7.4, 0);
+  const flagTex = canvasTex(32, 20, (g, w, h) => { g.fillStyle = "#ffd23f"; g.fillRect(0, 0, w, h); g.fillStyle = "#151515"; for (let x = 0; x < 4; x++) for (let y = 0; y < 3; y++) if ((x + y) % 2) g.fillRect(x * 8, y * 7, 8, 7); }, false);
+  inst(flagG, new THREE.MeshLambertMaterial({ map: flagTex, side: THREE.DoubleSide }), flags, ([i, sg, off]) => m4.compose(at(i, sg, off, -0.6), yaw(i), sc.set(1, 1, 1)));
+}
+
 // ── The buggy ──
 function buildCar(ghostCar) {
   const g = new THREE.Group();
@@ -248,7 +283,7 @@ const blob = new THREE.Mesh(new THREE.PlaneGeometry(11, 7), new THREE.MeshBasicM
 blob.rotation.x = -Math.PI / 2; scene.add(blob);
 // boost flame
 const flame = new THREE.Mesh(new THREE.ConeGeometry(0.9, 4, 8), new THREE.MeshBasicMaterial({ color: 0xffb030, transparent: true, opacity: 0.85 }));
-flame.rotation.z = Math.PI / 2; flame.position.set(-5.8, 2.0, 0); flame.visible = false; car.root.add(flame);
+flame.rotation.z = Math.PI / 2; flame.position.set(-5.2, 2.0, 0); flame.visible = false; car.root.add(flame);
 // driver: the holder's 3D block monke
 let driver = null;
 loadImage(imageFor(n)).then(readGrid).then((grid) => {
@@ -266,12 +301,52 @@ loadImage(imageFor(n)).then(readGrid).then((grid) => {
 // ── Particles: drift smoke + sparks ──
 const puffTex = canvasTex(32, 32, (g, w, h) => { const gr = g.createRadialGradient(16, 16, 1, 16, 16, 16); gr.addColorStop(0, "rgba(255,255,255,0.9)"); gr.addColorStop(1, "rgba(255,255,255,0)"); g.fillStyle = gr; g.fillRect(0, 0, w, h); }, false);
 const puffs = [];
-for (let i = 0; i < 60; i++) { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: puffTex, transparent: true, depthWrite: false, opacity: 0 })); s.visible = false; scene.add(s); puffs.push({ s, life: 0, t: 0, vx: 0, vy: 0, vz: 0 }); }
+for (let i = 0; i < 110; i++) { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: puffTex, transparent: true, depthWrite: false, opacity: 0 })); s.visible = false; scene.add(s); puffs.push({ s, life: 0, t: 0, vx: 0, vy: 0, vz: 0 }); }
 let puffIx = 0;
 function puff(x, y, z, colour, size, life, vx = 0, vy = 2, vz = 0) {
   const p = puffs[puffIx++ % puffs.length];
   p.s.visible = true; p.s.position.set(x, y, z); p.s.material.color.set(colour); p.s.scale.setScalar(size);
   p.life = life; p.t = 0; p.vx = vx; p.vy = vy; p.vz = vz; p.size = size;
+}
+
+// Skid marks: a ring of dark quads laid under the rear wheels while drifting.
+const SKIDS = 480;
+const skidMesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1.6, 1).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x15151a, transparent: true, opacity: 0.38, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }), SKIDS);
+skidMesh.count = 0; skidMesh.frustumCulled = false; scene.add(skidMesh);
+let skidIx = 0; const skidLast = [null, null];
+const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler(), _v = new THREE.Vector3(), _s = new THREE.Vector3();
+function skid(k, x, z, a) {
+  const last = skidLast[k];
+  if (last) {
+    const dx = x - last[0], dz = z - last[1], len = Math.hypot(dx, dz);
+    if (len < 0.8) return;
+    if (len < 6) {
+      _m.compose(_v.set((x + last[0]) / 2, 0.11, (z + last[1]) / 2), _q.setFromEuler(_e.set(0, -Math.atan2(dz, dx), 0)), _s.set(len, 1, 1));
+      skidMesh.setMatrixAt(skidIx % SKIDS, _m); skidIx++;
+      skidMesh.count = Math.min(SKIDS, skidIx); skidMesh.instanceMatrix.needsUpdate = true;
+    }
+  }
+  skidLast[k] = [x, z];
+}
+function clearSkids() { skidIx = 0; skidMesh.count = 0; skidLast[0] = skidLast[1] = null; }
+
+// Speed lines: streaks from the screen edges, from 75% of top speed and strongest on boost.
+const lines = document.getElementById("lines"), lctx = lines.getContext("2d");
+const streaks = Array.from({ length: 34 }, () => ({ a: Math.random() * Math.PI * 2, r: Math.random(), w: 1 + Math.random() * 2 }));
+function drawLines(spd, boosting, dt) {
+  const w = innerWidth, h = innerHeight;
+  if (lines.width !== w || lines.height !== h) { lines.width = w; lines.height = h; } else lctx.clearRect(0, 0, w, h);
+  const k = Math.max(0, (spd - V_MAX * 0.75) / (V_BOOST - V_MAX * 0.75)) + (boosting ? 0.35 : 0);
+  if (k <= 0.02 || state !== "race") return;
+  const cx = w / 2, cy = h * 0.42, R0 = Math.hypot(w, h) * 0.5;
+  lctx.lineCap = "round";
+  for (const st of streaks) {
+    st.r += dt * (1.6 + k * 2.4); if (st.r > 1) { st.r = Math.random() * 0.2; st.a = Math.random() * Math.PI * 2; }
+    const r1 = R0 * (0.55 + st.r * 0.5), r2 = r1 + R0 * (0.08 + k * 0.14), ca = Math.cos(st.a), sa = Math.sin(st.a);
+    lctx.strokeStyle = boosting ? `rgba(255,214,120,${Math.min(0.55, k * 0.5)})` : `rgba(255,255,255,${Math.min(0.4, k * 0.4)})`;
+    lctx.lineWidth = st.w;
+    lctx.beginPath(); lctx.moveTo(cx + ca * r1, cy + sa * r1); lctx.lineTo(cx + ca * r2, cy + sa * r2); lctx.stroke();
+  }
 }
 
 // ── Sound ──
@@ -293,9 +368,18 @@ function startEngine() {
   const ns = a.createBufferSource(), nf = a.createBiquadFilter(), ng = a.createGain();
   ns.buffer = noiseBuf(a); ns.loop = true; nf.type = "bandpass"; nf.frequency.value = 1800; nf.Q.value = 0.8; ng.gain.value = 0;
   ns.connect(nf).connect(ng).connect(a.destination); ns.start();
-  engine = { o1, o2, lp, g, ng };
+  // wind (rises with speed²), wall scrape (bright noise), drift charge (sine climbing with the charge)
+  const ws = a.createBufferSource(), wf = a.createBiquadFilter(), wg = a.createGain();
+  ws.buffer = noiseBuf(a); ws.loop = true; wf.type = "lowpass"; wf.frequency.value = 900; wg.gain.value = 0;
+  ws.connect(wf).connect(wg).connect(a.destination); ws.start();
+  const ss = a.createBufferSource(), sf = a.createBiquadFilter(), sg = a.createGain();
+  ss.buffer = noiseBuf(a); ss.loop = true; sf.type = "highpass"; sf.frequency.value = 2600; sg.gain.value = 0;
+  ss.connect(sf).connect(sg).connect(a.destination); ss.start();
+  const dc = a.createOscillator(), dg = a.createGain();
+  dc.type = "sine"; dc.frequency.value = 300; dg.gain.value = 0; dc.connect(dg).connect(a.destination); dc.start();
+  engine = { o1, o2, lp, g, ng, wf, wg, sg, dc, dg };
 }
-function setEngine(spd, drifting, boosting) {
+function setEngine(spd, drifting, boosting, scraping = false, charge = 0) {
   if (!engine || !ac) return;
   const t = ac.currentTime, k = Math.min(1.4, spd / V_MAX), on = soundOn && state === "race" && !paused;
   engine.o1.frequency.setTargetAtTime(48 + k * 120 + (boosting ? 30 : 0), t, 0.05);
@@ -303,6 +387,12 @@ function setEngine(spd, drifting, boosting) {
   engine.lp.frequency.setTargetAtTime(500 + k * 1600, t, 0.08);
   engine.g.gain.setTargetAtTime(on ? 0.035 + k * 0.03 : 0, t, 0.08);
   engine.ng.gain.setTargetAtTime(on && drifting ? 0.06 : 0, t, 0.05);
+  const kw = Math.min(1.2, spd / V_BOOST);
+  engine.wg.gain.setTargetAtTime(on ? kw * kw * 0.07 + (boosting ? 0.02 : 0) : 0, t, 0.1);
+  engine.wf.frequency.setTargetAtTime(500 + kw * 1800, t, 0.1);
+  engine.sg.gain.setTargetAtTime(on && scraping ? 0.05 : 0, t, 0.03);
+  engine.dc.frequency.setTargetAtTime(260 + charge * 520, t, 0.05);
+  engine.dg.gain.setTargetAtTime(on && drifting && charge > 0.1 ? 0.025 : 0, t, 0.04);
 }
 const sfx = {
   beep: (hi) => tone(hi ? 880 : 440, hi ? 880 : 440, hi ? 0.45 : 0.18, "square", 0.08),
@@ -380,26 +470,33 @@ function readInput() {
 let state = "title", paused = false, run = null, countT = 0, acc = 0, lastT = performance.now(), wallFx = 0;
 const camPos = new THREE.Vector3(), camLook = new THREE.Vector3();
 
+// Phase 2 camera (2026-11-12): lower and closer than before (was 21 back / 10 up in portrait)
+// and aimed far ahead so the car sits low on screen and the road rushes under it; eases with real frame time; widens with speed, more on boost;
+// a slight shake near top speed.
+let lastCamT = 0;
 function placeCamera(snap) {
-  const a = run.a, fx = Math.cos(a), fz = Math.sin(a), spd = speedOf(run);
+  const now = performance.now(), dt = Math.min(0.05, (now - (lastCamT || now)) / 1000); lastCamT = now;
+  const a = run.a, fx = Math.cos(a), fz = Math.sin(a), spd = speedOf(run), kv = Math.min(1.3, spd / V_MAX);
   const portrait = innerHeight > innerWidth;
-  const back = portrait ? 21 : 16, up = portrait ? 10 : 7.5;
+  const back = (portrait ? 16 : 13) + kv * 2, up = portrait ? 9 : 7;
   const want = new THREE.Vector3(run.x - fx * back, up, run.z - fz * back);
-  const look = new THREE.Vector3(run.x + fx * 10, 2.4, run.z + fz * 10);
+  const look = new THREE.Vector3(run.x + fx * 20, 0, run.z + fz * 20);
   if (snap) { camPos.copy(want); camLook.copy(look); }
-  else { camPos.lerp(want, 0.12); camLook.lerp(look, 0.2); }
+  else { camPos.lerp(want, 1 - Math.exp(-dt * 7)); camLook.lerp(look, 1 - Math.exp(-dt * 12)); }
   camera.position.copy(camPos);
-  if (wallFx > 0) camera.position.add(new THREE.Vector3((Math.random() - 0.5) * wallFx, (Math.random() - 0.5) * wallFx, 0));
+  const shake = wallFx + Math.max(0, kv - 0.9) * 0.6 + (run.boost > 0 ? 0.12 : 0);
+  if (shake > 0 && state === "race") camera.position.add(new THREE.Vector3((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake * 0.6, (Math.random() - 0.5) * shake));
   camera.lookAt(camLook);
   // Portrait screens are narrow: a wider vertical view keeps the road and corners in sight.
-  const fov = (portrait ? 82 : 62) + Math.min(1.3, spd / V_MAX) * 9 + (run.boost > 0 ? 6 : 0);
-  camera.fov += (fov - camera.fov) * 0.08; camera.updateProjectionMatrix();
+  const fov = (portrait ? 78 : 60) + kv * 12 + (run.boost > 0 ? 9 : 0);
+  camera.fov += (fov - camera.fov) * (1 - Math.exp(-dt * (run.boost > 0 ? 9 : 4))); camera.updateProjectionMatrix();
 }
 
 function newRace() {
   run = createRun(T);
   acc = 0; countT = 0;
   for (const p of puffs) { p.s.visible = false; p.life = 0; }
+  clearSkids(); lastTier = 0;
   placeCamera(true);
   updateHud();
 }
@@ -524,7 +621,7 @@ function updateHud() {
 
 function handle(events) {
   for (const e of events) {
-    if (e.type === "wall") { sfx.wall(); buzz(25); wallFx = Math.min(1.6, e.speed / 25); }
+    if (e.type === "wall") { sfx.wall(); buzz(25); wallFx = Math.min(1.6, e.speed / 25); sparks(10); }
     if (e.type === "pad") { sfx.pad(); buzz(15); toast("BOOST"); }
     if (e.type === "driftBoost") { sfx.boost(e.s); buzz(8 + e.tier * 6); toast(["BOOST", "SUPER BOOST", "ULTRA BOOST"][e.tier - 1]); }
     if (e.type === "checkpoint" && ghost && ghostOn) {
@@ -557,13 +654,19 @@ function frame(now) {
     updateHud();
   }
   if (run) drawCar(dt);
-  setEngine(run ? speedOf(run) : 0, run?.drifting, run?.boost > 0);
+  setEngine(run ? speedOf(run) : 0, run?.drifting, run?.boost > 0, !!run && run.hitWall > 0.1, run ? Math.min(1, run.driftCharge / DRIFT_TIERS[DRIFT_TIERS.length - 1].charge) : 0);
+  drawLines(run ? speedOf(run) : 0, !!run && run.boost > 0, dt);
   padTex.offset.y -= dt * 1.6;
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
 }
 
-let spin = 0, roll = 0;
+let spin = 0, roll = 0, lastTier = 0;
+function sparks(nSp) {
+  const sg = Math.sign(sideOf(T, run.idx, run.x, run.z)) || 1, nn = T.nor[run.idx];
+  const x = run.x + nn[0] * sg * 2.6, z = run.z + nn[1] * sg * 2.6, ca = Math.cos(run.a), sa = Math.sin(run.a);
+  for (let i = 0; i < nSp; i++) puff(x, 1 + Math.random(), z, Math.random() < 0.5 ? "#ffd23f" : "#ff8a1a", 0.6 + Math.random() * 0.5, 0.3, -ca * 14 + (Math.random() - 0.5) * 16, 3 + Math.random() * 7, -sa * 14 + (Math.random() - 0.5) * 16);
+}
 function drawCar(dt) {
   car.root.position.set(run.x, 0, run.z);
   car.root.rotation.y = -run.a;
@@ -574,7 +677,7 @@ function drawCar(dt) {
   for (const w of car.wheels) { w.w.rotation.z = -spin; if (w.front) w.pivot.rotation.y = -run.steer * 0.45; }
   car.root.position.y = run.grass ? Math.abs(Math.sin(performance.now() / 45)) * 0.18 : 0;
   blob.position.set(run.x, 0.15, run.z); blob.rotation.z = -run.a;
-  flame.visible = run.boost > 0; if (flame.visible) { flame.scale.set(1, 0.8 + Math.random() * 0.6, 1); flame.material.color.set(run.boost > 1 ? GLOW : "#ffb030"); }
+  flame.visible = run.boost > 0; if (flame.visible) { flame.scale.set(0.55, 0.45 + Math.random() * 0.35, 0.55); flame.material.color.set(run.boost > 1 ? GLOW : "#ffb030"); }
   // drift smoke and spark colour by charge (blue → yellow → pink)
   const spd = speedOf(run), ca = Math.cos(run.a), sa = Math.sin(run.a);
   if (state === "race" && (run.drifting || (run.grass && spd > 20)) && Math.random() < 0.7) {
@@ -583,10 +686,18 @@ function drawCar(dt) {
       puff(x, 0.8, z, run.grass ? "#a08a60" : "#e8e8e8", 2.2 + Math.random() * 1.5, 0.7, (Math.random() - 0.5) * 3, 2.5, (Math.random() - 0.5) * 3);
     }
     if (run.drifting) {
-      const c = ["#9aa4b0", "#6cf", "#ffd23f", "#ff4fd8"][driftTier(run.driftCharge)];
+      const tier = driftTier(run.driftCharge);
+      if (tier > lastTier) { tone(500 + tier * 220, 900 + tier * 300, 0.12, "triangle", 0.06); buzz(6); }
+      lastTier = tier;
+      const c = ["#9aa4b0", "#6cf", "#ffd23f", "#ff4fd8"][tier];
       for (const side of [-1, 1]) puff(run.x - ca * 3 - sa * side * 2.8, 0.6, run.z - sa * 3 + ca * side * 2.8, c, 0.9, 0.25, (Math.random() - 0.5) * 10, 4 + Math.random() * 4, (Math.random() - 0.5) * 10);
     }
   }
+  if (!run.drifting) lastTier = 0;
+  if (state === "race" && run.hitWall > 0.15 && spd > 25 && Math.random() < 0.6) sparks(2);
+  if (state === "race" && !run.grass && (run.drifting || Math.abs(run.vl) > 9)) {
+    for (const k of [0, 1]) { const side = k ? 1 : -1; skid(k, run.x - ca * 2.9 - sa * side * 2.8, run.z - sa * 2.9 + ca * side * 2.8, run.a); }
+  } else skidLast[0] = skidLast[1] = null;
   if (run.boost > 0 && Math.random() < 0.6) puff(run.x - ca * 6.5, 2, run.z - sa * 6.5, run.boost > 1 ? GLOW : "#ffb030", 1.6, 0.25, -ca * 8, 1, -sa * 8);
   for (const p of puffs) {
     if (p.life <= 0) continue;

@@ -32,6 +32,7 @@
   #toast.on { opacity: 1; } #toast small { display: block; font-size: 12px; letter-spacing: 0; color: var(--text); font-weight: 400; margin-top: 4px; }
   #hint { position: fixed; bottom: calc(max(16px, env(safe-area-inset-bottom)) + 64px); left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100vw - 32px); text-align: center; color: #fff; font-size: 12px; background: rgba(0,0,0,0.45); padding: 6px 10px; border-radius: 6px; pointer-events: none; transition: opacity .8s; }
   #hint.gone { opacity: 0; }
+  #lines { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; }
   #wheel { position: fixed; width: 64px; height: 64px; margin: -32px 0 0 -32px; border: 3px solid rgba(255,255,255,0.35); border-radius: 50%; pointer-events: none; display: none; }
   #wheel i { position: absolute; left: 50%; top: 50%; width: 22px; height: 22px; margin: -11px; background: rgba(255,210,63,0.85); border-radius: 50%; }
   .card { position: fixed; left: 50%; top: 47%; transform: translate(-50%, -50%); min-width: 250px; max-width: calc(100vw - 36px); max-height: calc(100vh - 40px); overflow: auto; padding: 18px 20px 16px; background: var(--panel); border: 2px solid var(--line); border-radius: 12px; box-shadow: 0 0 0 2px #000, 0 10px 0 rgba(0,0,0,0.45); display: grid; gap: 9px; justify-items: center; text-align: center; z-index: 4; }
@@ -55,6 +56,7 @@
 </head>
 <body>
 <canvas id="view"></canvas>
+<canvas id="lines"></canvas>
 <div id="loading">Loading the track…</div>
 <div id="hud">
   <div class="stat" id="lap"><b>1/3</b><span>lap</span></div>
