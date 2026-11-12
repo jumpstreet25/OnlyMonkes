@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { safeStorageSet } from '@/lib/storageRescue';
+import { useAppStore } from '@/store/appStore';
 
 const SK_USERNAME      = 'profile_username';
 const SK_BIO           = 'profile_bio';
@@ -9,6 +10,28 @@ const SK_XACCOUNT      = 'profile_xaccount';
 const SK_TIP_WALLET    = 'profile_tip_wallet';
 const SK_LOCATION      = 'profile_location';
 const SK_SELECTED_MINT = 'profile_selected_nft_mint';
+const SK_OWNER_WALLET  = 'profile_owner_wallet';
+const PROFILE_KEYS = [SK_USERNAME, SK_BIO, SK_XACCOUNT, SK_TIP_WALLET, SK_LOCATION, SK_SELECTED_MINT];
+
+/**
+ * The profile belongs to a wallet, not the phone (2026-11-12). It used to be
+ * phone-wide, so a second wallet on the same phone (another account in Seed
+ * Vault, Phantom, Solflare, Backpack…) skipped the username setup and kept the
+ * first wallet's name, chosen monke and *tip wallet* — tips went to the wrong
+ * person. A profile saved before this has no owner and is adopted by the
+ * wallet that's connected now, so existing holders aren't asked again.
+ */
+async function claimProfileForWallet(): Promise<void> {
+  const wallet = useAppStore.getState().wallet?.address;
+  if (!wallet) return;
+  const owner = await SecureStore.getItemAsync(SK_OWNER_WALLET);
+  if (owner === wallet) return;
+  if (owner) {
+    await Promise.all(PROFILE_KEYS.map((k) => SecureStore.deleteItemAsync(k).catch(() => {})));
+    useAppStore.setState({ username: null, bio: null, xAccount: null, tipWallet: null, location: null });
+  }
+  await SecureStore.setItemAsync(SK_OWNER_WALLET, wallet);
+}
 
 export interface UserProfile {
   username: string | null;
@@ -19,6 +42,7 @@ export interface UserProfile {
 }
 
 export async function loadUserProfile(): Promise<UserProfile> {
+  await claimProfileForWallet().catch(() => {});
   const [username, bio, xAccount, tipWallet, location] = await Promise.all([
     SecureStore.getItemAsync(SK_USERNAME),
     SecureStore.getItemAsync(SK_BIO),
@@ -36,6 +60,7 @@ export async function saveUserProfile(
   tipWallet: string = '',
   location: string = '',
 ): Promise<void> {
+  await claimProfileForWallet().catch(() => {});
   await Promise.all([
     SecureStore.setItemAsync(SK_USERNAME, username.trim()),
     SecureStore.setItemAsync(SK_BIO, bio.trim()),
@@ -48,10 +73,12 @@ export async function saveUserProfile(
 // ─── Selected NFT mint persistence ───────────────────────────────────────────
 
 export async function saveSelectedNftMint(mint: string): Promise<void> {
+  await claimProfileForWallet().catch(() => {});
   await SecureStore.setItemAsync(SK_SELECTED_MINT, mint);
 }
 
 export async function loadSelectedNftMint(): Promise<string | null> {
+  await claimProfileForWallet().catch(() => {});
   return SecureStore.getItemAsync(SK_SELECTED_MINT);
 }
 
