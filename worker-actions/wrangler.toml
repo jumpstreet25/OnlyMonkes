@@ -108,12 +108,26 @@ XMTP_JWT_KID = "om-1"
 # Bot base URL: Cloudflare Tunnel onlymonkes-bot on the VPS. Its ingress passes only
 # /web-profile, /command, /inbox-reset, /api/sales-stats and /sentry-webhook to bot :3001; all else 404.
 BOT_PROFILE_URL = "https://bot.onlymonkes.app"
+# MonkeCaves speed-run board (caves.ts): "off" | "testers" | "on". Testers = sha256 hex of
+# wallets: the owner's login wallet, then the testers in config/monkecaves.json.
+CAVES_BOARD = "testers"
+CAVES_TESTERS = "72ecfcfc708fb734e94f33c9b20df524b11e5472f093eecf859f3e3d10dcd760,326ac81460be4de300c8ebc8d078d805b62e0ae99102b1e43aef1230d25e800a"
+# Monke RC daily board, leader ghost + daily bananas (src/racer.ts): "off" | "testers" | "on". Public since 2026-11-11.
+RACER_BOARD = "on"
+RACER_TESTERS = "72ecfcfc708fb734e94f33c9b20df524b11e5472f093eecf859f3e3d10dcd760,326ac81460be4de300c8ebc8d078d805b62e0ae99102b1e43aef1230d25e800a"
 
 # APKs on onlymonkes.app (apkDownloads.ts). Test builds expire after 30 days
 # (lifecycle rule "test-expiry" on test/). Uploads: scripts/apk/upload-apk.sh.
 [[r2_buckets]]
 binding = "APKS"
 bucket_name = "onlymonkes-apks"
+
+# Chat videos, photos and files (webMedia.ts /api/upload), public at
+# media.onlymonkes.app (bucket custom domain, CDN-cached; reads never hit the
+# worker). Uploads pause at 8 GB stored (4-hourly cron), under the 10 GB free plan.
+[[r2_buckets]]
+binding = "MEDIA"
+bucket_name = "onlymonkes-media"
 
 # Per-IP download limit for /download/* (R2 never-charged guardrail).
 [[ratelimits]]
@@ -133,6 +147,24 @@ name = "WEB_RPC_LIMITER"
 namespace_id = "1001"
 simple = { limit = 120, period = 60 }
 
+# /api/rpc ceiling across all IPs (webRpc.ts, key "global").
+[[ratelimits]]
+name = "RPC_GLOBAL_LIMITER"
+namespace_id = "1004"
+simple = { limit = 600, period = 60 }
+
+# Public routes that spend Helius credits or KV writes/lists without sign-in
+# (publicLimits.ts): per IP, and a ceiling per route across all IPs.
+[[ratelimits]]
+name = "PUBLIC_IP_LIMITER"
+namespace_id = "1005"
+simple = { limit = 30, period = 60 }
+
+[[ratelimits]]
+name = "PUBLIC_GLOBAL_LIMITER"
+namespace_id = "1006"
+simple = { limit = 300, period = 60 }
+
 # Phone as the website's camera (phoneCam.ts): one relay room per QR, WebSocket
 # hibernation, sealed face numbers only. SQLite-backed so it runs on the free plan.
 [[durable_objects.bindings]]
@@ -142,3 +174,11 @@ class_name = "PhoneCamRoom"
 [[migrations]]
 tag = "v1-phone-cam"
 new_sqlite_classes = ["PhoneCamRoom"]
+
+[[durable_objects.bindings]]
+name = "ROYALE"
+class_name = "RoyaleHall"
+
+[[migrations]]
+tag = "v2-royale"
+new_sqlite_classes = ["RoyaleHall"]

@@ -449,7 +449,17 @@ export async function refreshTreasurySnapshotCache(env: Env): Promise<void> {
 }
 
 // ─── GET /api/treasury/status — read-only balances, no Action envelope ────────
+// Public GET: a snapshot this fresh is served as-is, so a flood of requests costs one KV
+// read each instead of ~6 Helius calls + 2 KV writes (audit 2026-11-04). The hourly cron
+// and the first request after it go live.
+const STATUS_FRESH_MS = 10 * 60_000;
+
 export async function handleTreasuryStatus(env: Env): Promise<Response> {
+  const recent = await readCachedSnapshot(env);
+  if (recent && Date.now() - recent.cachedAtMs < STATUS_FRESH_MS) {
+    const { cachedAtMs, ...snap } = recent;
+    return buildStatusResponse(snap, { stale: false, asOfMs: cachedAtMs });
+  }
   try {
     const snap = await readTreasurySnapshot(env);
     return buildStatusResponse(snap, { stale: false, asOfMs: Date.now() });

@@ -17,12 +17,20 @@
  *    room + identity + a fresh single-use nonce. No wallet prompt needed.
  *  - { kind: "bot", secret } — Monke's voice (agents/monke-voice on the VPS)
  *    joining a room it was called into; BOT_HTTP_SECRET, bot identity only.
+ *
+ * Identity (audit 2026-11-04): a proof shows a wallet, not an inbox, and
+ * LiveKit kicks whoever already holds an identity. So holder/device proofs
+ * may never take the bot's identity, and an inbox identity (or its `~phone`
+ * companion) is refused when that inbox's own PROFILE_UPDATE named a
+ * different wallet — the bot keeps that claim under the real XMTP sender, so
+ * only the inbox itself could have written it. Unknown (bot unreachable, inbox
+ * never named a wallet) still mints and logs `[livekit] identity unchecked`.
  */
 
 import type { Env } from "./index";
 import { base58ToBytes, base64ToBytes, sha256Hex, verifyEcdsaP256 } from "./cryptoVerify";
 import { holderWalletFromToken } from "./webAuth";
-import type { DeviceIntegrityVerdict } from "./deviceIntegrity";
+import { deviceVerdict } from "./deviceIntegrity";
 
 export const INTERNAL_HOST = "internal.onlymonkes";
 const ROOM = /^omv?-\d{10,14}-[A-Za-z0-9]{1,8}$/;
@@ -46,9 +54,14 @@ export async function handleLivekitAuthorize(request: Request, env: Env): Promis
   const proof = body?.proof;
   if (!ROOM.test(roomName) || !identity || identity.length > 128) return json({ error: "invalid room or identity" }, 400);
 
+  const isBotIdentity = identity.split("~")[0] === BOT_INBOX_ID;
+
   if (proof?.kind === "holder") {
+    if (isBotIdentity) return json({ error: "not authorized" }, 403);
     const wallet = await holderWalletFromToken(env as any, typeof proof.token === "string" ? proof.token : "");
-    return wallet ? json({ ok: true, wallet, via: "holder" }) : json({ error: "sign in again" }, 401);
+    if (!wallet) return json({ error: "sign in again" }, 401);
+    if ((await identityWalletMatch(env, identity, wallet)) === false) return json({ error: "identity belongs to another wallet" }, 403);
+    return json({ ok: true, wallet, via: "holder" });
   }
 
   if (proof?.kind === "bot") {
@@ -59,8 +72,11 @@ export async function handleLivekitAuthorize(request: Request, env: Env): Promis
   }
 
   if (proof?.kind === "device") {
+    if (isBotIdentity) return json({ error: "not authorized" }, 403);
     const r = await walletFromDeviceProof(env, proof, (nonce) => livekitProofMessage(roomName, identity, nonce));
-    return "error" in r ? json({ error: r.error }, r.status) : json({ ok: true, wallet: r.wallet, tier: r.tier, via: "device" });
+    if ("error" in r) return json({ error: r.error }, r.status);
+    if ((await identityWalletMatch(env, identity, r.wallet)) === false) return json({ error: "identity belongs to another wallet" }, 403);
+    return json({ ok: true, wallet: r.wallet, tier: r.tier, via: "device" });
   }
 
   return json({ error: "proof required" }, 401);
@@ -87,16 +103,40 @@ export async function walletFromDeviceProof(
   if (!(await env.DEVICE_INTEGRITY.get(nonceKey))) return { error: "nonce expired", status: 401 };
   await env.DEVICE_INTEGRITY.delete(nonceKey);
 
-  const raw = await env.DEVICE_INTEGRITY.get(`wallet:${wallet}`);
-  const verdict = raw ? (JSON.parse(raw) as DeviceIntegrityVerdict) : null;
-  if (!verdict || verdict.expiresAt < Date.now() || !verdict.hardwareVerified || !verdict.raspClean || verdict.holderTier === "none") {
-    return { error: "device not verified for this wallet", status: 403 };
-  }
   let keyBytes: Uint8Array, sigBytes: Uint8Array;
   try { keyBytes = base64ToBytes(devicePubKey); sigBytes = base64ToBytes(sig); } catch { return { error: "invalid proof", status: 400 }; }
-  if ((await sha256Hex(keyBytes)) !== verdict.deviceHash) return { error: "device not verified for this wallet", status: 403 };
+  const verdict = await deviceVerdict(env, wallet, await sha256Hex(keyBytes));
+  if (!verdict || !verdict.hardwareVerified || !verdict.raspClean || verdict.holderTier === "none") {
+    return { error: "device not verified for this wallet", status: 403 };
+  }
   if (!(await verifyEcdsaP256(keyBytes, new TextEncoder().encode(message(nonce)), sigBytes))) return { error: "bad device signature", status: 401 };
   return { wallet, tier: verdict.holderTier };
+}
+
+/**
+ * Did this inbox (identity minus any `~phone` suffix) name `wallet` in its own
+ * PROFILE_UPDATE? true / false, or null when unknown — non-inbox identity, bot
+ * unreachable, or the inbox never named a wallet.
+ */
+export async function identityWalletMatch(env: Env, identity: string, wallet: string): Promise<boolean | null> {
+  const inboxId = identity.split("~")[0];
+  if (!/^[0-9a-f]{64}$/.test(inboxId)) return null;
+  const base = (env.BOT_PROFILE_URL ?? "").replace(/\/$/, "");
+  let match: boolean | null = null;
+  if (base && env.BOT_HTTP_SECRET) {
+    try {
+      const res = await fetch(`${base}/web-profile`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.BOT_HTTP_SECRET}` },
+        body: JSON.stringify({ inboxId, checkWallet: wallet }),
+        signal: AbortSignal.timeout(3_000),
+      });
+      const m = res.ok ? ((await res.json()) as { walletMatch?: unknown }).walletMatch : undefined;
+      if (typeof m === "boolean") match = m;
+    } catch { /* unknown */ }
+  }
+  console.log(`[livekit] identity ${match === null ? "unchecked" : match ? "matches" : "REFUSED (other wallet)"}`);
+  return match;
 }
 
 async function sameSecret(a: string, b: string): Promise<boolean> {

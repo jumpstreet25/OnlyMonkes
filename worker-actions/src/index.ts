@@ -67,6 +67,7 @@ import {
   handleDeviceIntegrityChallenge,
   handleDeviceIntegrityIssue,
   handleDeviceIntegrityStatus,
+  handleDeviceIntegrityDevices,
 } from "./deviceIntegrity";
 import {
   handleTreasuryStatus,
@@ -96,14 +97,20 @@ import { handleGetLumaEvents } from "./lumaEvents";
 import { handlePublishAppConfig } from "./adminConfig";
 import { handleBotCommand, handleInboxReset } from "./botCommand";
 import { handleWebRpc } from "./webRpc";
+import { heliusKey } from "./heliusKeys";
+import { publicRateLimited } from "./publicLimits";
 import { handleWebAuth, handleWebHistory, handleWebProfile } from "./webAuth";
-import { handleWebMedia, isWebMediaPath } from "./webMedia";
+import { handleWebMedia, isWebMediaPath, refreshMediaUsage } from "./webMedia";
+import { handleJupProxy, isJupProxyPath } from "./jupProxy";
 import { handleShareCard, isShareCardPath } from "./shareCard";
 import { handleReferral, isReferralPath } from "./referrals";
+import { handleCaves, isCavesPath } from "./caves";
+import { handleRacer, isRacerPath } from "./racer";
 import { handleLivekitAuthorize, INTERNAL_HOST } from "./livekitAuth";
 import { handleApkDownload, isApkDownloadPath } from "./apkDownloads";
 import { handleWebPair } from "./webPair";
 import { handlePhoneCam } from "./phoneCam";
+import { handleRoyale, handleRoyaleCollect } from "./royale/royale";
 import { verifyGenesisTokenOwnership } from "./genesisVerify";
 import { handleMonkeMemeGenerate } from "./monkeMeme";
 
@@ -128,6 +135,8 @@ export interface KVNamespace {
 export interface Env {
   HELIUS_API_KEY: string;
   HELIUS_NFT_API_KEY?: string;
+  /** Second Helius account's key (heliusKeys.ts). */
+  HELIUS_API_KEY_2?: string;
   JUP_API_KEY: string;
   BOT_HTTP_SECRET: string;
   // Bot Express on the VPS (`AGENT_HTTP_PORT`, default 3001, BIND_HOST 0.0.0.0).
@@ -164,8 +173,20 @@ export interface Env {
   // Device Integrity Attestation — see deviceIntegrity.ts. Backend-verified
   // (Key Attestation chain + RASP + Saga/Genesis ownership), no on-chain write.
   DEVICE_INTEGRITY: KVNamespace;
+  /** "1": no Device Integrity verdict for a phone failing verified boot / locked bootloader / genuine app. */
+  DI_HARDWARE_ENFORCE?: string;
+  /** "0" refuses out-of-date attestation certs from apps that send no one-time check key (pre-3.1). */
+  DI_ALLOW_STALE?: string;
   /** Referral ledger (referrals.ts). */
   REFERRALS?: KVNamespace;
+  /** MonkeCaves speed-run board (caves.ts): "off" (default) | "testers" | "on". */
+  CAVES_BOARD?: string;
+  /** Comma-separated sha256 hex of tester wallets (CAVES_BOARD=testers). */
+  CAVES_TESTERS?: string;
+  /** Monke RC daily board, leader ghost + bananas (racer.ts): "off" (default) | "testers" | "on". */
+  RACER_BOARD?: string;
+  /** Comma-separated sha256 hex of tester wallets (RACER_BOARD=testers). */
+  RACER_TESTERS?: string;
   // MonkeGlobe/MonkeEvents public web repo backend — see community.ts.
   COMMUNITY_DATA: KVNamespace;
   // Service Binding to the MonkeLedger worker (same Cloudflare account) — see wrangler.toml's
@@ -187,8 +208,15 @@ export interface Env {
   // ([vars] in wrangler.toml) and an optional per-IP rate-limit binding.
   WEB_APP_ORIGINS?: string;
   WEB_RPC_LIMITER?: { limit: (opts: { key: string }) => Promise<{ success: boolean }> };
+  /** /api/rpc: global per-minute ceiling, and "1" = holder sign-in token required (webRpc.ts). */
+  RPC_GLOBAL_LIMITER?: { limit: (opts: { key: string }) => Promise<{ success: boolean }> };
+  WEB_RPC_REQUIRE_AUTH?: string;
+  /** Public routes that spend Helius / KV without sign-in (publicLimits.ts). */
+  PUBLIC_IP_LIMITER?: { limit: (opts: { key: string }) => Promise<{ success: boolean }> };
+  PUBLIC_GLOBAL_LIMITER?: { limit: (opts: { key: string }) => Promise<{ success: boolean }> };
   /** Phone-as-camera relay rooms (phoneCam.ts). */
   PHONE_CAM: DurableObjectNamespace;
+  ROYALE: DurableObjectNamespace;
   // Web sign-in (webAuth.ts): Ed25519 PKCS8 (base64) signing the XMTP access
   // JWTs; the self-hosted XMTP backend holds the matching public key.
   XMTP_JWT_PRIVATE_KEY?: string;
@@ -268,13 +296,12 @@ function errorResponse(message: string, status = 400): Response {
 }
 
 export function rpcUrl(env: Env): string {
-  return `https://mainnet.helius-rpc.com/?api-key=${env.HELIUS_API_KEY}`;
+  return `https://mainnet.helius-rpc.com/?api-key=${heliusKey(env)}`;
 }
 
 /** Wallet-ownership DAS only — isolated quota from swaps/sales/stats. */
 export function verifyRpcUrl(env: Env): string {
-  const key = env.HELIUS_NFT_API_KEY || env.HELIUS_API_KEY;
-  return `https://mainnet.helius-rpc.com/?api-key=${key}`;
+  return `https://mainnet.helius-rpc.com/?api-key=${heliusKey(env)}`;
 }
 
 /** Fetch with timeout — prevents worker from hanging on slow upstream APIs. */
@@ -1945,7 +1972,8 @@ async function fetchMonkeHolderCount(env: Env): Promise<number> {
 
 // Bot's own sales-book, exposed for exactly this purpose (see sagaMonkesSales.ts +
 // xmtpOnlyMonkes.ts's /api/sales-stats), reached through the bot tunnel (BOT_PROFILE_URL).
-async function fetchSalesStatsFromBot(env: Env): Promise<{ floorSol: number; volume24hSol: number; recentSales: StatsSnapshot["recentSales"] } | null> {
+type BotMarket = { floorSol: number | null; floorChg24h: number | null; volume24hSol: number | null };
+async function fetchSalesStatsFromBot(env: Env): Promise<{ floorSol: number | null; volume24hSol: number; recentSales: StatsSnapshot["recentSales"]; market: BotMarket | null } | null> {
   try {
     const base = (env.BOT_PROFILE_URL ?? "").replace(/\/$/, "");
     if (!base) return null;
@@ -1956,7 +1984,14 @@ async function fetchSalesStatsFromBot(env: Env): Promise<{ floorSol: number; vol
     const recentSales: StatsSnapshot["recentSales"] = Array.isArray(d.recentSales)
       ? d.recentSales.map((s: any) => ({ signature: s.signature, priceSol: s.priceSol, ts: s.ts }))
       : [];
-    return { floorSol: d.floorSol ?? 0, volume24hSol: d.volume24hSol, recentSales };
+    // No sales in 24h → the bot has no floor; keep null so CoinGecko fills it (was 0 on the site).
+    // CoinGecko's numbers as the bot sees them: CoinGecko often refuses Cloudflare's IPs.
+    const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+    const m = d.market;
+    const market: BotMarket | null = m && num(m.floorSol)
+      ? { floorSol: num(m.floorSol), floorChg24h: num(m.floorChg24h), volume24hSol: num(m.volume24hSol) }
+      : null;
+    return { floorSol: typeof d.floorSol === "number" && d.floorSol > 0 ? d.floorSol : null, volume24hSol: d.volume24hSol, recentSales, market };
   } catch {
     return null;
   }
@@ -1978,8 +2013,9 @@ async function fetchFloorAndMarket(env: Env): Promise<{ floorSol: number | null;
     volume24hSol = fromBot.volume24hSol;
     // floorChg24h isn't computable from our own sales book (would need a historical floor
     // snapshot we don't keep) — left null when the bot answers. CoinGecko's own copy is only
-    // still fetched below when the bot is unreachable.
-  } else {
+    // still fetched below when the bot is unreachable or has no sale-based floor.
+  }
+  if (floorSol == null) {
     try {
       const res = await fetchWithTimeout("https://api.coingecko.com/api/v3/nfts/saga-monkes", {
         headers: { "User-Agent": "OnlyMonkes-Web/1.0" },
@@ -1988,9 +2024,15 @@ async function fetchFloorAndMarket(env: Env): Promise<{ floorSol: number | null;
         const d = await res.json() as any;
         floorSol = d?.floor_price?.native_currency ?? null;
         floorChg24h = d?.floor_price_24h_percentage_change?.native_currency ?? null;
-        volume24hSol = d?.volume_24h?.native_currency ?? null;
+        if (!fromBot) volume24hSol = d?.volume_24h?.native_currency ?? null;
       }
     } catch { /* best-effort, page still works without market data */ }
+  }
+  const market = fromBot?.market;
+  if (market) {
+    if (floorSol == null) { floorSol = market.floorSol; floorChg24h = market.floorChg24h; }
+    // Our sales book only sees sales the webhook caught; the market total covers every marketplace.
+    if (market.volume24hSol != null && market.volume24hSol > (volume24hSol ?? 0)) volume24hSol = market.volume24hSol;
   }
 
   try {
@@ -2016,7 +2058,7 @@ async function fetchRecentSales(env: Env): Promise<StatsSnapshot["recentSales"]>
   if (fromBot && fromBot.recentSales.length > 0) return fromBot.recentSales;
 
   try {
-    const url = `https://api.helius.xyz/v0/addresses/${SAGA_CREATOR_WALLET}/transactions?api-key=${env.HELIUS_API_KEY}&type=NFT_SALE&limit=10`;
+    const url = `https://api.helius.xyz/v0/addresses/${SAGA_CREATOR_WALLET}/transactions?api-key=${heliusKey(env)}&type=NFT_SALE&limit=10`;
     const res = await fetchWithTimeout(url, { headers: { "User-Agent": "OnlyMonkes-Web/1.0" } }, 10_000);
     if (!res.ok) return [];
     const body = await res.json();
@@ -2630,10 +2672,35 @@ async function handleVerifyApi(url: URL, env: Env): Promise<Response> {
     return errorResponse("Invalid wallet address", 400);
   }
 
+  const cacheKey = new Request(`${WORKER_BASE}/api/verify?wallet=${encodeURIComponent(wallet)}`);
+  const remembered = VERIFY_MEMO.get(wallet);
+  if (remembered && remembered.until > Date.now()) return verifyReply(remembered.body, "hit-mem");
+  const edge = await caches.default.match(cacheKey).catch(() => undefined);
+  if (edge) return verifyReply(await edge.text(), "hit-edge");
+
   const { monke, uncertain, reasons } = await fetchOwnedMonke(wallet, env);
   if (uncertain) return jsonResponse({ owned: false, uncertain: true, reasons }, 200);
-  if (!monke) return jsonResponse({ owned: false });
-  return jsonResponse({ owned: true, mint: monke.mint, name: monke.name, image: monke.image, traits: monke.traits });
+  const body = JSON.stringify(
+    monke ? { owned: true, mint: monke.mint, name: monke.name, image: monke.image, traits: monke.traits } : { owned: false },
+  );
+  const ttl = monke ? VERIFY_OWNED_TTL_S : VERIFY_NOT_OWNED_TTL_S;
+  if (VERIFY_MEMO.size >= 500) VERIFY_MEMO.clear();
+  VERIFY_MEMO.set(wallet, { body, until: Date.now() + ttl * 1000 });
+  await caches.default
+    .put(cacheKey, new Response(body, { headers: { "Content-Type": "application/json", "Cache-Control": `max-age=${ttl}` } }))
+    .catch(() => {});
+  return verifyReply(body, "miss");
+}
+
+// /api/verify answers are cached per wallet (audit 2026-11-04): a holder for an hour, a
+// non-holder for 2 min so a new buyer isn't locked out of login, uncertain never. Edge
+// cache (Cache API, custom domains only) plus a small per-isolate memo for workers.dev.
+const VERIFY_OWNED_TTL_S = 3600;
+const VERIFY_NOT_OWNED_TTL_S = 120;
+const VERIFY_MEMO = new Map<string, { body: string; until: number }>();
+
+function verifyReply(body: string, cache: "hit-mem" | "hit-edge" | "miss"): Response {
+  return new Response(body, { headers: { "Content-Type": "application/json", "X-Verify-Cache": cache, ...CORS_HEADERS } });
 }
 
 /** GET /monke/:mint — shareable, OG-preview-rich page for a specific Saga
@@ -3494,6 +3561,8 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
 
+    if (await publicRateLimited(request, path, env)) return errorResponse("Too many requests — try again in a minute", 429);
+
     // 2026-10-22: onlymonkes.app belongs to the web app (onlymonkes-web), whose
     // front door forwards the public-site paths here with the host unchanged.
     // The workers.dev legal URLs (the 3.4 app's About screen) move there too.
@@ -3516,7 +3585,10 @@ export default {
     // Link-preview bots (X, Discord…) often send HEAD first; answer it like GET.
     const isPageRead = request.method === "GET" || request.method === "HEAD";
     if (path === "/" || path === "/welcome") {
-      if (isPageRead) return renderLanding(await getCachedStats(env));
+      if (isPageRead) {
+        const pins = await env.COMMUNITY_DATA.get("locations:latest").then((r) => (r ? (JSON.parse(r) as unknown[]).length : null)).catch(() => null);
+        return renderLanding(await getCachedStats(env), pins);
+      }
       return errorResponse("Method not allowed", 405);
     }
     if (path === "/get") {
@@ -3560,6 +3632,13 @@ export default {
 
     if (path.startsWith("/api/cam/")) {
       return handlePhoneCam(path, request, env);
+    }
+
+    if (path === "/api/royale/play") {
+      return handleRoyale(request, env);
+    }
+    if (path === "/api/royale/collect") {
+      return handleRoyaleCollect(request, env);
     }
 
     if (path.startsWith("/api/auth/")) {
@@ -3720,11 +3799,15 @@ export default {
     }
 
     if (path === "/api/device-integrity/challenge") {
-      if (request.method === "POST") return handleDeviceIntegrityChallenge(env);
+      if (request.method === "POST") return handleDeviceIntegrityChallenge(env, url);
       return errorResponse("Method not allowed", 405);
     }
     if (path === "/api/device-integrity/issue") {
       if (request.method === "POST") return handleDeviceIntegrityIssue(request, env);
+      return errorResponse("Method not allowed", 405);
+    }
+    if (path === "/api/device-integrity/devices") {
+      if (request.method === "POST") return handleDeviceIntegrityDevices(request, env);
       return errorResponse("Method not allowed", 405);
     }
     if (path === "/api/device-integrity/status") {
@@ -3741,6 +3824,9 @@ export default {
     }
     // Referrals: /api/referral/*, /r/<code>[/card.png], /referrals (referrals.ts).
     if (isReferralPath(path)) return handleReferral(path, request, env, ctx);
+    if (isCavesPath(path)) return handleCaves(request, env, path);
+    if (isRacerPath(path)) return handleRacer(request, env, path);
+    if (isJupProxyPath(path)) return handleJupProxy(request, env, CORS_HEADERS, path);
     // /monke/<number>[/card.png]: share page + pixel card (shareCard.ts); /monke/<mint> below.
     if (isShareCardPath(path)) return handleShareCard(path, request, ctx);
     const monkeImageMatch = path.match(/^\/monke\/([^/]+)\/image$/);
@@ -3983,6 +4069,7 @@ export default {
       ctx.waitUntil(checkBotHealthForAgents(env).catch(() => {}));
       return;
     }
+    ctx.waitUntil(refreshMediaUsage(env as any).catch((err) => console.error("[scheduled] media usage failed:", err)));
     ctx.waitUntil(
       computeStatsSnapshot(env)
         .then(async snapshot => {

@@ -30,6 +30,10 @@ export const OPEN_TARGETS: Record<string, { label: string; app: string; web: str
   treasury: { label: "Treasury", app: "treasury", web: "/treasury", tier: "monke" },
 };
 
+/** Public community tools, each on its own friendly address. */
+const GLOBE_URL = "https://globe.onlymonkes.app";
+const LEDGER_URL = "https://monkeledger.onlymonkes.app";
+
 export interface SiteStats {
   holders: number;
   floorSol: number | null;
@@ -76,6 +80,7 @@ footer{border-top:1px solid var(--line);margin-top:72px;padding:28px 0 40px;colo
 footer .wrap{display:flex;flex-wrap:wrap;gap:12px 22px;justify-content:space-between}
 footer nav{display:flex;flex-wrap:wrap;gap:8px 18px}
 @media (max-width:640px){header.top nav a.hide-sm{display:none}}
+@media (max-width:420px){header.top .wrap{gap:8px}header.top img{height:28px}header.top nav{gap:8px}header.top .btn.sm{padding:7px 12px;font-size:13px}}
 `;
 
 function head(title: string, description: string, path: string, extraCss = ""): string {
@@ -114,6 +119,7 @@ function head(title: string, description: string, path: string, extraCss = ""): 
   <nav>
     <a class="hide-sm" href="/welcome#access">Access</a>
     <a class="hide-sm" href="/welcome#features">Features</a>
+    <a class="hide-sm" href="/welcome#explore">Explore</a>
     <a class="hide-sm" href="/welcome#faq">FAQ</a>
     <a class="btn sm ghost" href="${WEB_APP_BASE}">Web app</a>
     <a class="btn sm primary" href="/get">Get the app</a>
@@ -125,6 +131,7 @@ function foot(): string {
   return `<footer><div class="wrap">
   <span>© ${new Date().getUTCFullYear()} OnlyMonkes · a community app for Saga Monkes holders</span>
   <nav>
+    <a href="${GLOBE_URL}">MonkeGlobe</a><a href="${LEDGER_URL}">MonkeLedger</a>
     <a href="/legal">Legal</a><a href="/terms">Terms</a><a href="/privacy">Privacy</a><a href="/copyright">Copyright</a>
     <a href="mailto:${CONTACT_EMAIL}">Contact</a>
   </nav>
@@ -187,14 +194,28 @@ section p.sub{color:var(--mut);max-width:640px;margin-bottom:28px}
 .chips{display:flex;flex-wrap:wrap;gap:10px}
 .chip{background:var(--card);border:1px solid var(--line);border-radius:999px;padding:10px 16px;color:var(--fg);font-weight:600}
 .chip:hover{border-color:var(--blue);text-decoration:none}
+.explore{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+a.tool{display:flex;flex-direction:column;gap:8px;background:var(--card);border:1px solid var(--line);border-radius:20px;padding:24px;color:var(--fg)}
+a.tool:hover{border-color:var(--blue);text-decoration:none;background:linear-gradient(180deg,#123063 0%,var(--card) 70%)}
+a.tool .ic{font-size:30px}
+a.tool h3{font-size:22px}
+a.tool p{color:var(--mut);font-size:15px}
+a.tool .num{font-family:"Fredoka",sans-serif;font-size:18px;color:var(--ok)}
+a.tool .go{margin-top:auto;color:var(--sky);font-weight:700}
 details{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 20px;margin-bottom:10px}
 summary{cursor:pointer;font-weight:700;font-size:17px}
 details p{color:var(--mut);margin-top:10px}
-@media (max-width:860px){.hero .wrap{grid-template-columns:1fr}.hero img.mascot{max-width:220px;order:-1}.tiers{grid-template-columns:1fr}.grid,.steps{grid-template-columns:1fr 1fr}}
-@media (max-width:560px){.grid,.steps{grid-template-columns:1fr}.hero{padding-top:40px}}
+.shots{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.shots figure{background:var(--card);border:1px solid var(--line);border-radius:22px;padding:10px;margin:0}
+.shots img{display:block;width:100%;height:auto;aspect-ratio:720/1138;object-fit:cover;border-radius:14px;background:#0a0b12}
+.shots figcaption{padding:12px 6px 4px}
+.shots figcaption b{display:block;font-family:"Fredoka",sans-serif;font-size:18px}
+.shots figcaption span{color:var(--mut);font-size:14px}
+@media (max-width:860px){.hero .wrap{grid-template-columns:1fr}.hero img.mascot{max-width:220px;order:-1}.tiers,.explore{grid-template-columns:1fr}.shots{grid-template-columns:1fr 1fr}.grid,.steps{grid-template-columns:1fr 1fr}}
+@media (max-width:560px){.grid,.steps{grid-template-columns:1fr}.shots{grid-template-columns:1fr;max-width:340px;margin:0 auto}.hero{padding-top:40px}}
 `;
 
-export function renderLanding(stats: SiteStats | null): Response {
+export function renderLanding(stats: SiteStats | null, globePins: number | null = null): Response {
   const statChips = stats
     ? [
         `<div class="stat"><b>${stats.holders.toLocaleString("en-US")}</b><span>Saga Monkes holders</span></div>`,
@@ -252,7 +273,7 @@ export function renderLanding(stats: SiteStats | null): Response {
         <li>MonkeTrades — live trade alerts from MonkeBrain</li>
         <li>Monke, the bot in your DMs: portfolio, limit orders, sell ladders</li>
         <li>AutonoMonke — opt-in automated trading from your own hot wallet</li>
-        <li>Saga Monkes marketplace, MonkeMeme, Avatar Rooms</li>
+        <li>Saga Monkes marketplace, Avatar Rooms, MonkeCaves</li>
         <li>Private DMs and group chats</li>
       </ul>
       <a class="btn primary" href="${TENSOR_URL}" target="_blank" rel="noopener">Get a Saga Monke on Tensor</a>
@@ -269,10 +290,41 @@ export function renderLanding(stats: SiteStats | null): Response {
     <div class="card"><div class="ic">🐒</div><h3>Monke, the bot</h3><p>Ask about any token, check your bags, set targets and ladders, all by DM. Nothing trades without your YES.</p></div>
     <div class="card"><div class="ic">📈</div><h3>MonkeTrades</h3><p>Alerts with entry, targets and stop, plus a one-tap buy you sign in your own wallet.</p></div>
     <div class="card"><div class="ic">🛒</div><h3>Marketplace</h3><p>List, bid and swap Saga Monkes holder to holder, settled on-chain.</p></div>
-    <div class="card"><div class="ic">🎨</div><h3>MonkeMeme</h3><p>Turn any Saga Monke into a cartoon meme from its own traits, then share it to X.</p></div>
+    <div class="card"><div class="ic">🕹️</div><h3>MonkeCaves</h3><p>A retro cave shooter starring your own monke, plus Jungle Royale online. Earn bananas every day.</p></div>
     <div class="card"><div class="ic">🎙️</div><h3>Avatar Rooms</h3><p>Voice rooms where your monke PFP talks when you do.</p></div>
   </div>
   <p class="risk">MonkeTrades alerts and AutonoMonke are not financial advice. Crypto trading is risky and can lose money; past results don't predict future ones. See the <a href="/terms">terms</a>.</p>
+</div></section>
+
+<section id="screens"><div class="wrap">
+  <h2>See it</h2>
+  <p class="sub">Every Saga Monke comes to life in 3D, from its own traits.</p>
+  <div class="shots">
+    <figure><img src="/site/screen-caves.jpg" alt="MonkeCaves: a first-person cave with a waterfall wall and a glowing blue floor" width="720" height="1138" loading="lazy"><figcaption><b>MonkeCaves</b><span>Clear the caves, beat the clock.</span></figcaption></figure>
+    <figure><img src="/site/screen-room.jpg" alt="Avatar Room 3D stage with four Saga Monkes, two of them talking" width="720" height="1138" loading="lazy"><figcaption><b>Avatar Rooms</b><span>Your monke talks when you do.</span></figcaption></figure>
+    <figure><img src="/site/screen-monke3d.jpg" alt="A Saga Monke rebuilt as a 3D block model" width="720" height="1138" loading="lazy"><figcaption><b>Monke 3D</b><span>Any monke by number, face-tracked by your camera.</span></figcaption></figure>
+  </div>
+</div></section>
+
+<section id="explore"><div class="wrap">
+  <h2>Explore the community</h2>
+  <p class="sub">Open to everyone, no wallet needed. Share them anywhere.</p>
+  <div class="explore">
+    <a class="tool" href="${GLOBE_URL}">
+      <div class="ic">🌍</div>
+      <h3>MonkeGlobe</h3>
+      <p>Where Saga Monkes holders are around the world, and the community's upcoming events. Holders add themselves at city level.</p>
+      ${globePins ? `<span class="num">${globePins.toLocaleString("en-US")} holders pinned</span>` : ""}
+      <span class="go">globe.onlymonkes.app →</span>
+    </a>
+    <a class="tool" href="${LEDGER_URL}">
+      <div class="ic">📒</div>
+      <h3>MonkeLedger</h3>
+      <p>Free Saga Monkes lookups: who holds which monke, ownership checks and proofs, checked against the chain. For holders and builders.</p>
+      <span class="num">9,999 Monkes indexed${stats ? ` · ${stats.holders.toLocaleString("en-US")} holders` : ""}</span>
+      <span class="go">monkeledger.onlymonkes.app →</span>
+    </a>
+  </div>
 </div></section>
 
 <section id="start"><div class="wrap">
