@@ -585,9 +585,11 @@ interface BananaShopModalProps {
    *  remaining way to log out. Dual holders never need this (they can
    *  disconnect from Main Chat's MenuDrawer), so it's still opt-in. */
   onDisconnectPress?: () => void;
+  /** Genesis Chat: edit your name/bio — Main Chat edits from its own PFP, Genesis has no PFP to tap. */
+  onProfilePress?: () => void;
 }
 
-export function BananaShopModal({ visible, onClose, onLeaderboardPress, onSupportPress, onDisconnectPress }: BananaShopModalProps) {
+export function BananaShopModal({ visible, onClose, onLeaderboardPress, onSupportPress, onDisconnectPress, onProfilePress }: BananaShopModalProps) {
   const { t } = useTranslation();
   const bananaBalance = useAppStore(s => s.bananaBalance);
   const worldId = useAppStore(s => s.shopStyles?.worldId) as string | undefined;
@@ -964,6 +966,11 @@ export function BananaShopModal({ visible, onClose, onLeaderboardPress, onSuppor
           <View style={styles.balancePill}>
             <Text style={styles.balanceText}>{bananaBalance} 🍌</Text>
           </View>
+          {onProfilePress && (
+            <Pressable onPress={onProfilePress} hitSlop={12} style={[styles.backBtn, worldId ? { backgroundColor: "rgba(255,255,255,0.08)" } : null]}>
+              <Text style={styles.backText}>✏️</Text>
+            </Pressable>
+          )}
           {onLeaderboardPress && (
             <Pressable onPress={onLeaderboardPress} hitSlop={12} style={[styles.backBtn, worldId ? { backgroundColor: "rgba(255,255,255,0.08)" } : null]}>
               <Text style={styles.backText}>🏆</Text>
