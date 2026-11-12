@@ -78,12 +78,9 @@ import { HELIUS_RPC_URL, DEV_WALLET, NFT_SALE_FEE_PCT, SKR_MINT, MONKE_LEDGER_UR
 import { fetchSolPriceUsd, fetchSkrPriceUsd } from "./solana";
 import { useAppStore } from "@/store/appStore";
 import { assertDeviceTrusted } from "./security";
+import { WALLET_IDENTITY } from "@/lib/mwaIdentity";
 
-const APP_IDENTITY = {
-  name: "OnlyMonkes",
-  uri: "https://onlymonkes-actions.jumpstreet25.workers.dev",
-  icon: "favicon.ico",
-};
+const APP_IDENTITY = WALLET_IDENTITY;
 
 /** Re-authorize with cached MWA auth token (matches solana.ts pattern). */
 async function mwaAuthorize(mobileWallet: Web3MobileWallet): Promise<PublicKey> {

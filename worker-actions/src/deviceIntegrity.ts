@@ -104,7 +104,11 @@ const NONCE_TTL_SECONDS = 120;
 const SIGNIN_NONCE_TTL_SECONDS = 600;
 const BINDING_TTL_SECONDS = 180 * 24 * 3600;
 /** The SIWS domain the app puts in its sign-in request (host of its MWA identity URI). */
+/** Returned by the sign-in challenge; installs from before 2026-11-11 sign in with it. */
 export const SIGNIN_DOMAIN = "onlymonkes-actions.jumpstreet25.workers.dev";
+/** Accepted sign-in domains: the app now signs in as onlymonkes.app (its wallet identity —
+ *  Backpack blocked the workers.dev origin). Keep the old one while those installs exist. */
+export const SIGNIN_DOMAINS: readonly string[] = ["onlymonkes.app", SIGNIN_DOMAIN];
 const APP_PACKAGE = "com.onlymonkes.app";
 // SHA-256 of the release signing cert (CN=OnlyMonkes) — same as the apex assetlinks.json.
 const RELEASE_CERT_SHA256 = "2e2feeb81ccf0de5d191f6e174113ba9839181b1cb7540ab6d5c94a9cff487d8";
@@ -590,7 +594,7 @@ export async function handleDeviceIntegrityIssue(request: Request, env: Env): Pr
       return errorResponse("Invalid base64 encoding", 400);
     }
     const signIn = parseSignInMessage(new TextDecoder().decode(msgBytes));
-    if (!signIn || signIn.domain !== SIGNIN_DOMAIN || signIn.address !== walletAddress || signIn.nonce !== nonce) {
+    if (!signIn || !SIGNIN_DOMAINS.includes(signIn.domain) || signIn.address !== walletAddress || signIn.nonce !== nonce) {
       return errorResponse("Sign-in message does not match this request", 401);
     }
     if (signIn.expirationTime && Date.parse(signIn.expirationTime) < Date.now()) {

@@ -35,6 +35,7 @@ import { HELIUS_RPC_URL, DEV_WALLET } from "@/lib/constants";
 import { useAppStore } from "@/store/appStore";
 import { assertDeviceTrusted } from "@/lib/security";
 import type { ShopItem } from "@/lib/bananaShop";
+import { WALLET_IDENTITY } from "@/lib/mwaIdentity";
 
 // ─── Config (from env) ──────────────────────────────────────────────────────
 
@@ -67,11 +68,7 @@ const TOKEN_METADATA_PROGRAM_ID = new PublicKey(
   "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s",
 );
 
-const APP_IDENTITY = {
-  name: "OnlyMonkes",
-  uri: "https://onlymonkes-actions.jumpstreet25.workers.dev",
-  icon: "favicon.ico",
-};
+const APP_IDENTITY = WALLET_IDENTITY;
 
 // ─── Borsh helpers (minimal, no external dep) ───────────────────────────────
 

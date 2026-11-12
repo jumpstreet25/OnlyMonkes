@@ -41,6 +41,7 @@ import {
   type ActionMetadata,
   type ActionLink,
 } from "@/lib/blinkActions";
+import { WALLET_IDENTITY } from "@/lib/mwaIdentity";
 
 const OM_BLUE = "#0096C7";
 const OM_BLUE_DIM = "rgba(0, 150, 199, 0.12)";
@@ -51,11 +52,7 @@ const OM_BLUE_DIM = "rgba(0, 150, 199, 0.12)";
 // DNS at all — so wallets couldn't verify the requester and flagged every
 // Blink buy "Scam site detected" (2026-09-30), and the mismatched identity
 // also invalidated the cached auth token on every Blink.
-const APP_IDENTITY = {
-  name: "OnlyMonkes",
-  uri: "https://onlymonkes-actions.jumpstreet25.workers.dev",
-  icon: "favicon.ico",
-};
+const APP_IDENTITY = WALLET_IDENTITY;
 
 type BlinkState = "loading" | "ready" | "signing" | "confirmed" | "failed";
 

@@ -47,6 +47,7 @@ import { getUltraQuote, deserializeUltraTransaction, executeUltraSwap } from "./
 import type { UltraQuote } from "./jupiterUltra";
 import { assertDeviceTrusted } from "./security";
 import bs58 from "bs58";
+import { WALLET_IDENTITY } from "@/lib/mwaIdentity";
 
 // Jupiter Swap v2 /build through the actions worker (jupProxy.ts), which adds our key.
 const JUP_BUILD_URL = "https://onlymonkes.app/api/jup/build";
@@ -92,11 +93,7 @@ function getPlatformFeeParams(inputMint: string, outputMint: string): Record<str
   };
 }
 
-const APP_IDENTITY = {
-  name: "OnlyMonkes",
-  uri: "https://onlymonkes-actions.jumpstreet25.workers.dev",
-  icon: "favicon.ico",
-};
+const APP_IDENTITY = WALLET_IDENTITY;
 
 // ── Token resolution (live search, no bulk list) ────────────────────────────
 

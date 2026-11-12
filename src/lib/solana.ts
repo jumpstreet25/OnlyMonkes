@@ -41,12 +41,9 @@ import { HELIUS_RPC_URL, SKR_MINT, DEV_WALLET, DEV_ADMIN_WALLET, USDC_MINT, SKR_
 import { useAppStore } from "@/store/appStore";
 import { assertDeviceTrusted } from "./security";
 import bs58 from "bs58";
+import { WALLET_IDENTITY } from "@/lib/mwaIdentity";
 
-const APP_IDENTITY = {
-  name: "OnlyMonkes",
-  uri: "https://onlymonkes-actions.jumpstreet25.workers.dev",
-  icon: "favicon.ico",
-};
+const APP_IDENTITY = WALLET_IDENTITY;
 
 
 const SOL_MINT = "So11111111111111111111111111111111111111112";

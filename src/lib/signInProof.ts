@@ -5,6 +5,8 @@
  * Wallets without native sign-in get the MWA library's fallback (one sign at connect).
  */
 
+import { SIGNIN_DOMAIN } from "@/lib/mwaIdentity";
+
 const WORKER_BASE = "https://onlymonkes.app";
 const CHALLENGE_TIMEOUT_MS = 3_000;
 const MAX_AGE_MS = 9 * 60 * 1000;
@@ -26,12 +28,14 @@ export async function fetchSignInPayload(): Promise<{ nonce: string; payload: Re
   try {
     const res = await fetch(`${WORKER_BASE}/api/device-integrity/challenge?for=signin`, { method: "POST", signal: ctrl.signal });
     if (!res.ok) return null;
-    const { nonce, domain } = (await res.json()) as { nonce?: string; domain?: string };
-    if (!nonce || !domain) return null;
+    // The worker still returns the old workers.dev domain for older installs; ours must
+    // match the identity we connect with, so it's fixed here (worker accepts both).
+    const { nonce } = (await res.json()) as { nonce?: string };
+    if (!nonce) return null;
     return {
       nonce,
       payload: {
-        domain,
+        domain: SIGNIN_DOMAIN,
         statement: "Sign in to OnlyMonkes. This only proves the wallet is yours; it can't move funds.",
         nonce,
         issuedAt: new Date().toISOString(),

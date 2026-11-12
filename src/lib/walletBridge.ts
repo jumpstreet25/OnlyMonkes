@@ -30,12 +30,9 @@ import {
 } from "@solana-mobile/mobile-wallet-adapter-protocol-web3js";
 import { useAppStore } from "@/store/appStore";
 import { assertDeviceTrusted } from "@/lib/security";
+import { WALLET_IDENTITY } from "@/lib/mwaIdentity";
 
-const APP_IDENTITY = {
-  name: "OnlyMonkes",
-  uri: "https://onlymonkes-actions.jumpstreet25.workers.dev",
-  icon: "favicon.ico",
-};
+const APP_IDENTITY = WALLET_IDENTITY;
 
 // 1×1 transparent PNG → keeps the wallet icon valid without bundling assets.
 // dApps render this; OK to swap for a branded icon later.
