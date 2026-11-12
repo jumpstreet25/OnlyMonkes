@@ -6,7 +6,7 @@
 import * as THREE from "three";
 import { imageFor, loadImage, readGrid, buildMonke } from "/viewer/monkeModel.js";
 import { weaponFor } from "/viewer/caves-weapons.js";
-import { RV, DT, LAPS, ROAD_W, SHOULDER, V_MAX, buildTrack, createRun, step, speedOf, ghostAt, autopilot, todayId, rng } from "/viewer/racer-sim.js";
+import { RV, DT, LAPS, ROAD_W, SHOULDER, V_MAX, DRIFT_TIERS, driftTier, launch, buildTrack, createRun, step, speedOf, ghostAt, autopilot, todayId, rng } from "/viewer/racer-sim.js";
 
 const params = new URLSearchParams(location.search);
 const inApp = (() => { if (window.ReactNativeWebView) return true; try { return parent !== window && parent.location.origin === location.origin; } catch { return false; } })();
@@ -342,7 +342,7 @@ const touches = new Map(); let steerId = null, steerX0 = 0;
 const wheel = $("wheel");
 const STEER_SPAN = () => Math.min(innerWidth, 520) * 0.2;
 view.addEventListener("pointerdown", (e) => {
-  audio();
+  audio(); notePress();
   touches.set(e.pointerId, e);
   if (steerId === null) { steerId = e.pointerId; steerX0 = e.clientX; wheel.style.display = "block"; wheel.style.left = `${e.clientX}px`; wheel.style.top = `${e.clientY}px`; wheel.firstElementChild.style.transform = ""; }
   view.setPointerCapture?.(e.pointerId);
@@ -355,6 +355,7 @@ view.addEventListener("pointermove", (e) => {
 const lift = (e) => { touches.delete(e.pointerId); if (e.pointerId === steerId) { steerId = null; wheel.style.display = "none"; } };
 view.addEventListener("pointerup", lift); view.addEventListener("pointercancel", lift);
 addEventListener("keydown", (e) => {
+  if (!e.repeat) notePress();
   keys.add(e.key.toLowerCase());
   if (e.key === "Escape") { e.preventDefault(); menu.hidden ? openMenu() : resume(); }
   if ((e.key === "Enter" || e.key === " ") && !card.hidden) card.querySelector("button.go")?.click();
@@ -423,14 +424,39 @@ function showLeaderLine() {
   if (el && leader) el.textContent = `Gold ghost: today's #1, ${leader.name} · ${fmt(leader.t)}`;
 }
 
+// Start boost: press in the last beat before GO (best within 0.35 s of it), or just after.
+const GO_MS = 2100;
+let goAt = 0, pressAt = null, launched = true;
+function notePress() {
+  if (state === "count" && pressAt === null) pressAt = performance.now();
+  else if (state === "race" && !launched) doLaunch(performance.now());
+}
+function doLaunch(now) {
+  if (launched || !run) return;
+  launched = true;
+  let q = 0;
+  if (pressAt !== null) {
+    const early = goAt - pressAt;
+    q = early > 700 ? 0 : early > 350 ? 1 - (early - 350) / 350 : 1;
+    if (early > 700) toast("TOO EARLY");
+  } else if (now - goAt <= 200) q = 0.5;
+  const s = launch(run, q);
+  if (s > 0.15) { sfx.boost(s); buzz(15); toast(q >= 0.95 ? "PERFECT START" : "GOOD START"); }
+}
+
 function countdown() {
   lastReply = null;
   card.hidden = true; audio(); startEngine();
   newRace();
-  state = "count"; countT = 0;
+  state = "count"; countT = 0; pressAt = null; launched = false; goAt = performance.now() + GO_MS;
   $("hint").classList.remove("gone"); setTimeout(() => $("hint").classList.add("gone"), 6000);
   [3, 2, 1].forEach((k, i) => setTimeout(() => { if (state === "count") { countPop(String(k)); sfx.beep(false); } }, i * 700));
-  setTimeout(() => { if (state === "count") { countPop("GO!"); sfx.beep(true); state = "race"; } }, 2100);
+  setTimeout(() => {
+    if (state !== "count") return;
+    countPop("GO!"); sfx.beep(true); state = "race";
+    if (pressAt !== null) doLaunch(performance.now());
+    else setTimeout(() => { if (!launched) launched = true; }, 220);
+  }, GO_MS);
 }
 
 function finish(ms) {
@@ -492,7 +518,7 @@ function updateHud() {
   $("time").firstElementChild.textContent = fmt(run.t * 1000);
   $("bestlap").firstElementChild.textContent = fmt(bestLap);
   $("speed").firstChild.nodeValue = String(Math.round(speedOf(run) * 1.6));
-  const charge = run.boost > 0 ? 1 : Math.min(1, run.driftCharge / 1.2);
+  const charge = run.boost > 0 ? 1 : Math.min(1, run.driftCharge / DRIFT_TIERS[DRIFT_TIERS.length - 1].charge);
   $("boostbar").firstElementChild.style.width = `${Math.round(charge * 100)}%`;
 }
 
@@ -500,7 +526,7 @@ function handle(events) {
   for (const e of events) {
     if (e.type === "wall") { sfx.wall(); buzz(25); wallFx = Math.min(1.6, e.speed / 25); }
     if (e.type === "pad") { sfx.pad(); buzz(15); toast("BOOST"); }
-    if (e.type === "driftBoost") { sfx.boost(e.s); buzz(12); toast(e.s > 0.9 ? "SUPER BOOST" : "BOOST"); }
+    if (e.type === "driftBoost") { sfx.boost(e.s); buzz(8 + e.tier * 6); toast(["BOOST", "SUPER BOOST", "ULTRA BOOST"][e.tier - 1]); }
     if (e.type === "checkpoint" && ghost && ghostOn) {
       // compare with where the ghost was at this checkpoint: the ghost frame closest to this spot
       const gi = ghostIndexNear(run.x, run.z, run.t);
@@ -557,7 +583,7 @@ function drawCar(dt) {
       puff(x, 0.8, z, run.grass ? "#a08a60" : "#e8e8e8", 2.2 + Math.random() * 1.5, 0.7, (Math.random() - 0.5) * 3, 2.5, (Math.random() - 0.5) * 3);
     }
     if (run.drifting) {
-      const c = run.driftCharge > 1.0 ? "#ff4fd8" : run.driftCharge > 0.6 ? "#ffd23f" : "#6cf";
+      const c = ["#9aa4b0", "#6cf", "#ffd23f", "#ff4fd8"][driftTier(run.driftCharge)];
       for (const side of [-1, 1]) puff(run.x - ca * 3 - sa * side * 2.8, 0.6, run.z - sa * 3 + ca * side * 2.8, c, 0.9, 0.25, (Math.random() - 0.5) * 10, 4 + Math.random() * 4, (Math.random() - 0.5) * 10);
     }
   }

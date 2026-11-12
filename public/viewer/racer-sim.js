@@ -2,17 +2,26 @@
 // on the worker. One track per UTC day built from the date; a fixed 120 Hz step so a run
 // and its ghost replay the same everywhere. World: x/z ground plane, y up, heading a
 // (forward = (cos a, sin a) in x/z).
-export const RV = 1;
+export const RV = 2;
 export const DT = 1 / 120;
 export const LAPS = 3;
-export const ROAD_W = 26;          // road width
-export const SHOULDER = 7;         // grass strip between road edge and barrier
-export const V_MAX = 78;           // top speed on road
-export const V_GRASS = 34;         // top speed on grass
-export const V_BOOST = 108;
-const ACCEL = 46, BRAKE = 95, DRAG = 0.35, GRASS_DRAG = 2.4;
-const GRIP = 9, DRIFT_GRIP = 2.2, TURN = 2.25, DRIFT_TURN = 3.05;
-const BOOST_PAD_S = 1.1, DRIFT_BOOST_MAX = 1.2;
+// RV 2 (2026-11-12, owner: "without boost the car travels slow"): RV 1's drag cancelled
+// ~28% of V_MAX (real cruise ~56, boost 108 = +93%). Now throttle reaches V_MAX exactly
+// (drag only when coasting), cruise is +60% (~90), boost is a +40% bonus, roads and
+// tracks are wider/larger to match, grass and shallow wall scrapes keep most speed.
+export const ROAD_W = 32;          // road width
+export const SHOULDER = 8;         // grass strip between road edge and barrier
+export const V_MAX = 90;           // top speed on road
+export const V_GRASS = 50;         // speed cap on grass (grass drag settles it near 44)
+export const V_BOOST = 126;
+const ACCEL = 82, BRAKE = 120, DRAG = 0.35, GRASS_DRAG = 0.4;
+const GRIP = 9, DRIFT_GRIP = 2.2, TURN = 2.6, DRIFT_TURN = 3.4;
+const BOOST_PAD_S = 1.0, PADS = 6; // 4–6 pads by track length
+/** Drift boost levels: hold a drift past `charge` for a boost of `s` seconds (blue → yellow → pink). */
+export const DRIFT_TIERS = [{ charge: 0.5, s: 0.5 }, { charge: 1.1, s: 0.9 }, { charge: 1.8, s: 1.4 }];
+export const driftTier = (charge) => DRIFT_TIERS.reduce((t, d, i) => (charge >= d.charge ? i + 1 : t), 0);
+/** Start boost for pressing right before GO (racer.js times it; quality 0..1). */
+export const LAUNCH_MAX_S = 1.0;
 export const GHOST_EVERY = 3;      // record a ghost frame every 3 steps (40 Hz)
 
 export function hashSeed(s) { let h = 2166136261; for (const c of String(s)) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return h >>> 0; }
@@ -65,7 +74,7 @@ export function buildTrack(id) {
   const seed = hashSeed(`monke-rc:${RV}:${id}`);
   for (let attempt = 0; attempt < 60; attempt++) {
     const r = rng(seed + attempt * 7919);
-    const n = 9 + Math.floor(r() * 4), base = 230 + r() * 70, ctrl = [];
+    const n = 9 + Math.floor(r() * 4), base = (230 + r() * 70) * 1.2, ctrl = [];
     for (let i = 0; i < n; i++) {
       const ang = (i / n) * Math.PI * 2 + (r() - 0.5) * 0.35;
       let rad = base * (0.62 + r() * 0.6);
@@ -73,7 +82,7 @@ export function buildTrack(id) {
       ctrl.push([Math.cos(ang) * rad * 1.15, Math.sin(ang) * rad]);
     }
     const pts = sampleLoop(ctrl, 4);
-    if (pts.length < 220 || pts.length > 700) continue;
+    if (pts.length < 260 || pts.length > 840) continue;
     if (selfOverlap(pts, ROAD_W + 2 * SHOULDER + 22)) continue;
     const N = pts.length, tan = [], nor = [], curv = [];
     for (let i = 0; i < N; i++) {
@@ -87,7 +96,7 @@ export function buildTrack(id) {
       const c = Math.atan2(t0[0] * t1[1] - t0[1] * t1[0], t0[0] * t1[0] + t0[1] * t1[1]) / 24;
       curv.push(c); maxCurv = Math.max(maxCurv, Math.abs(c));
     }
-    if (maxCurv > 0.07) continue; // tighter than a ~14-unit radius: undriveable
+    if (maxCurv > 0.06) continue; // tighter than a ~17-unit radius: undriveable at RV 2 speeds
     // Start on the straightest stretch.
     let start = 0, bestSum = Infinity;
     for (let i = 0; i < N; i++) { let s = 0; for (let k = -12; k <= 12; k++) s += Math.abs(curv[(i + k + N) % N]); if (s < bestSum) { bestSum = s; start = i; } }
@@ -96,10 +105,11 @@ export function buildTrack(id) {
     // Boost pads on the straighter parts, away from the start.
     T.pads = [];
     const pr = rng(seed ^ 0xb005);
-    for (let tries = 0; tries < 200 && T.pads.length < 3; tries++) {
+    const nPads = Math.min(PADS, Math.max(4, Math.round(N / 100)));
+    for (let tries = 0; tries < 400 && T.pads.length < nPads; tries++) {
       const i = 40 + Math.floor(pr() * (N - 80));
       let s = 0; for (let k = -6; k <= 6; k++) s += Math.abs(T.curv[(i + k) % N]);
-      if (s > 0.12 || T.pads.some((p) => Math.abs(p.i - i) < N / 6)) continue;
+      if (s > 0.2 || T.pads.some((p) => Math.abs(p.i - i) < N / 10)) continue;
       T.pads.push({ i, off: (pr() - 0.5) * (ROAD_W * 0.45) });
     }
     T.checkpoints = [0.25, 0.5, 0.75].map((f) => Math.floor(N * f));
@@ -127,12 +137,19 @@ export function createRun(T) {
   return {
     T, x: p[0] - t[0] * 10, z: p[1] - t[1] * 10, a: Math.atan2(t[1], t[0]),
     vf: 0, vl: 0, steer: 0, idx: T.N - 3, lap: 0, cp: 0, t: 0, started: false, done: false,
-    lapStart: 0, laps: [], boost: 0, driftCharge: 0, drifting: false, grass: false, hitWall: 0,
+    lapStart: 0, laps: [], boost: 0, driftCharge: 0, drifting: false, grass: false, hitWall: 0, lastPad: -1,
     ghost: [], step: 0, cpTimes: [],
   };
 }
 
 export const speedOf = (r) => Math.hypot(r.vf, r.vl);
+
+/** Start boost: called once at GO with how well the press was timed (0..1). */
+export function launch(r, quality) {
+  const s = Math.max(0, Math.min(1, quality)) * LAUNCH_MAX_S;
+  if (s > 0.15) r.boost = Math.max(r.boost, s);
+  return s;
+}
 
 /**
  * One fixed step. input: { steer: -1..1 (+ = right), gas: 0..1, brake: 0..1, drift: bool, reverse?: bool }.
@@ -147,19 +164,23 @@ export function step(r, input) {
   // steering eases toward the input; faster cars turn a little less
   r.steer += (Math.max(-1, Math.min(1, input.steer)) - r.steer) * Math.min(1, DT * 10);
   const spd = speedOf(r);
-  const drift = !!input.drift && spd > 34 && Math.abs(r.steer) > 0.35;
-  if (r.drifting && !drift && r.driftCharge > 0.35) { const s = Math.min(DRIFT_BOOST_MAX, r.driftCharge); r.boost = Math.max(r.boost, s); ev.push({ type: "driftBoost", s }); }
+  const drift = !!input.drift && spd > 40 && Math.abs(r.steer) > 0.35;
+  const tier = driftTier(r.driftCharge);
+  if (r.drifting && !drift && tier > 0) { const s = DRIFT_TIERS[tier - 1].s; r.boost = Math.max(r.boost, s); ev.push({ type: "driftBoost", s, tier }); }
   if (!drift) r.driftCharge = 0;
   r.drifting = drift;
   if (drift) r.driftCharge += DT * (0.6 + Math.abs(r.steer) * 0.6);
-  const turnK = (drift ? DRIFT_TURN : TURN) * Math.min(1, spd / 18) * (1 - Math.min(0.35, spd / 300));
+  const turnK = (drift ? DRIFT_TURN : TURN) * Math.min(1, spd / 18) * (1 - Math.min(0.3, spd / 400));
   r.a += r.steer * turnK * DT * Math.sign(r.vf || 1);
   // forward/lateral velocity in the car's frame
   const vmax = r.boost > 0 ? V_BOOST : r.grass ? V_GRASS : V_MAX;
-  if (r.boost > 0) { r.vf += ACCEL * 2.2 * DT; r.boost = Math.max(0, r.boost - DT); }
+  const gas = input.gas ?? 0;
+  if (r.boost > 0) { r.vf += ACCEL * 1.6 * DT; r.boost = Math.max(0, r.boost - DT); }
   else if (input.brake > 0) r.vf = r.vf > 0 ? Math.max(0, r.vf - BRAKE * input.brake * DT) : r.vf - BRAKE * input.brake * DT * 0.35 * (input.gas === 0 && input.reverse ? 1 : 0);
-  else r.vf += ACCEL * (input.gas ?? 0) * (1 - Math.max(0, r.vf) / vmax) * DT * 1.6;
-  r.vf -= r.vf * (r.grass ? GRASS_DRAG : DRAG) * DT;
+  else r.vf += ACCEL * gas * (1 - Math.max(0, r.vf) / vmax) * DT * 1.6;
+  // Coasting drag only on the road (throttle settles exactly at vmax); grass always drags.
+  if (r.grass) r.vf -= r.vf * GRASS_DRAG * DT;
+  else if (r.boost <= 0 && !(gas > 0)) r.vf -= r.vf * DRAG * DT;
   if (r.vf > vmax) r.vf += (vmax - r.vf) * Math.min(1, DT * 3);
   if (r.vf < -18) r.vf = -18;
   // turning pushes velocity sideways; grip pulls it back in line
@@ -182,7 +203,8 @@ export function step(r, input) {
     let da = Math.atan2(Math.sin(r.a - along), Math.cos(r.a - along));
     const hit = Math.abs(Math.sin(da)) * Math.abs(r.vf);
     r.a -= da * 0.35;
-    r.vf *= 0.82 - Math.min(0.4, Math.abs(Math.sin(da)) * 0.5);
+    // a shallow scrape keeps ~90% of the speed, a head-on hit keeps ~42%
+    r.vf *= 0.97 - Math.min(0.55, Math.abs(Math.sin(da)) * 0.8);
     r.vl = -r.vl * 0.3 - sg * 4;
     if (r.hitWall <= 0 && hit > 8) ev.push({ type: "wall", speed: hit });
     r.hitWall = 0.25;
@@ -191,7 +213,7 @@ export function step(r, input) {
   // boost pads
   for (const p of T.pads) {
     const di = (r.idx - p.i + T.N) % T.N;
-    if (di <= 2 && Math.abs(side - p.off) < 6 && r.boost < BOOST_PAD_S - 0.1) { r.boost = BOOST_PAD_S; ev.push({ type: "pad" }); }
+    if (di <= 3 && Math.abs(side - p.off) < 6.5 && r.lastPad !== p.i) { r.lastPad = p.i; r.boost = Math.max(r.boost, BOOST_PAD_S); ev.push({ type: "pad" }); }
   }
   // checkpoints and laps (moving forward past each in order; the line is index 0)
   const fwd = (a, b) => { const d = (b - a + T.N) % T.N; return d > 0 && d < T.N / 2; };
@@ -204,7 +226,7 @@ export function step(r, input) {
     if (!r.started) { r.started = true; }
     else if (r.cp === 3) {
       const ms = Math.round((r.t - r.lapStart) * 1000);
-      r.laps.push(ms); r.lap++; r.cp = 0; r.lapStart = r.t;
+      r.laps.push(ms); r.lap++; r.cp = 0; r.lapStart = r.t; r.lastPad = -1;
       ev.push({ type: "lap", n: r.lap, ms });
       if (r.lap >= LAPS) { r.done = true; ev.push({ type: "finish", ms: Math.round(r.t * 1000) }); }
     }
@@ -231,7 +253,7 @@ export function autopilot(r, look = 9, skill = 1) {
   const want = Math.atan2(p[1] - r.z, p[0] - r.x);
   const da = Math.atan2(Math.sin(want - r.a), Math.cos(want - r.a));
   let curveAhead = 0; for (let k = 4; k < 30; k += 2) curveAhead = Math.max(curveAhead, Math.abs(T.curv[(r.idx + k) % T.N]));
-  const target = V_MAX * (1 - Math.min(0.62, curveAhead * 9 / skill));
+  const target = V_MAX * (1 - Math.min(0.62, curveAhead * 11 / skill));
   const spd = speedOf(r);
   return { steer: Math.max(-1, Math.min(1, da * 2.4)), gas: spd < target ? 1 : 0, brake: spd > target + 8 ? 0.6 : 0, drift: Math.abs(da) > 0.5 && spd > 40 };
 }
