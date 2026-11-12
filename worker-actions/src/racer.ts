@@ -17,8 +17,9 @@
  *                         → { ok, day, best, improved, rank, top, paid }
  *   GET  /api/racer/board ?day=  → { day, top }               (only when "on")
  *   GET  /api/racer/ghost ?day=  → { day, name, n, t, ghost }  (when not "off")
- * KV (COMMUNITY_DATA): racer:day:<day>:<id> { t, n, name, at }, racer:top:<day> [...],
- *                      racer:ghost:<day> { id, name, n, t, ghost }, racer:paid:<day>:<id>
+ * KV (COMMUNITY_DATA): racer:day:<bday>:<id> { t, n, name, at }, racer:top:<bday> [...],
+ *                      racer:ghost:<bday> { id, name, n, t, ghost }, racer:paid:<day>:<id>
+ *                      (<bday> = v<RV>:<day> from RV 2; <day> alone for RV 1)
  */
 import type { Env } from "./index";
 import { holderClaimsFromToken } from "./webAuth";
@@ -28,10 +29,10 @@ import { cleanName } from "./referrals";
 import { monkeImageForNumber } from "./shareCard";
 
 /** racer-sim.js RV. Bump both together when the physics or track builder changes. */
-export const RACER_VERSION = 1;
+export const RACER_VERSION = 2;
 export const LAPS = 3;
-/** Shortest track is ~1,350 units; boosting the whole way (108 u/s) can't lap under ~12 s. */
-export const MIN_LAP_MS = 11_000;
+/** RV 2: shortest track is ~1,440 units; boosting the whole way (126 u/s) can't lap under ~11.4 s. */
+export const MIN_LAP_MS = 10_000;
 const MAX_MS = 20 * 60_000;
 const TOP = 10;
 const GRACE_MS = 2 * 3_600_000;
@@ -93,7 +94,10 @@ const idFor = async (wallet: string) => (await sha256Hex(enc.encode(`om-racer:${
 
 type Entry = { t: number; n: number | null; name: string; at: number };
 type TopRow = Entry & { id: string };
-const topKey = (day: string) => `racer:top:${day}`;
+/** Board, best-time and ghost keys carry the game version from RV 2 on (each RV has its own
+ *  track for the day); the daily banana key does not, so a version change never pays twice. */
+const boardDay = (day: string) => (RACER_VERSION === 1 ? day : `v${RACER_VERSION}:${day}`);
+const topKey = (day: string) => `racer:top:${boardDay(day)}`;
 const nameOf = (r: { name: string; n: number | null }) => r.name || (r.n ? `Monke #${r.n}` : "A Saga Monke holder");
 const shown = (r: Entry) => ({ name: nameOf(r), n: r.n, t: r.t });
 
@@ -129,7 +133,7 @@ async function submit(env: Env, body: any, now = Date.now()): Promise<Response> 
     }
   }
 
-  const key = `racer:day:${day}:${holder}`;
+  const key = `racer:day:${boardDay(day)}:${holder}`;
   const prev = JSON.parse((await kv.get(key)) ?? "null") as Entry | null;
   let top = await readTop(env, day);
   const reply = (best: number, improved: boolean) => {
@@ -144,7 +148,7 @@ async function submit(env: Env, body: any, now = Date.now()): Promise<Response> 
   await kv.put(topKey(day), JSON.stringify(top), { expirationTtl: 35 * 86_400 });
   // New #1 with a usable ghost: it becomes the day's leader ghost.
   if (top[0]?.id === holder && ghostOk(body.ghost, t)) {
-    await kv.put(`racer:ghost:${day}`, JSON.stringify({ id: holder, name: nameOf(entry), n, t, ghost: body.ghost }), { expirationTtl: 8 * 86_400 });
+    await kv.put(`racer:ghost:${boardDay(day)}`, JSON.stringify({ id: holder, name: nameOf(entry), n, t, ghost: body.ghost }), { expirationTtl: 8 * 86_400 });
   }
   return reply(t, true);
 }
@@ -164,7 +168,7 @@ export async function handleRacer(request: Request, env: Env, path: string): Pro
   }
   if (path === "/api/racer/ghost" && request.method === "GET") {
     if ((env.RACER_BOARD ?? "off") === "off") return json({ error: "not released" }, 404);
-    const g = await env.COMMUNITY_DATA.get(`racer:ghost:${day}`);
+    const g = await env.COMMUNITY_DATA.get(`racer:ghost:${boardDay(day)}`);
     if (!g) return json({ error: "no ghost yet" }, 404, "public, max-age=60");
     const { id: _id, ...rest } = JSON.parse(g);
     return json({ day, ...rest }, 200, "public, max-age=60");

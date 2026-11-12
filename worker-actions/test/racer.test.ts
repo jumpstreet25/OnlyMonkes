@@ -37,7 +37,7 @@ describe("runProblem", () => {
     expect(runProblem(run({ course: "demo" }), T)).toBe("only the daily track counts");
     expect(runProblem(run({ course: "2026-11-09" }), T)).toBe("not today's track");
     expect(runProblem(run({ course: "2026-11-10" }), Date.UTC(2026, 10, 11, 1))).toBeNull();
-    expect(runProblem(run({ ms: 30_000 }), T)).toBe("faster than possible");
+    expect(runProblem(run({ ms: 27_000 }), T)).toBe("faster than possible");
     expect(runProblem(run({ laps: [30_000, 30_000] }), T)).toBe("bad laps");
     expect(runProblem(run({ laps: [30_000, 30_000, 31_000] }), T)).toBe("laps don't add up");
   });
@@ -78,6 +78,10 @@ describe("submit", () => {
     const gj = await body(g);
     expect(gj).toMatchObject({ day: "2026-11-11", name: "Monke #1", t: 75_000 });
     expect(gj.ghost.length).toBe(3000);
+    // board and ghost are kept per game version (each version has its own track); bananas are not
+    expect([...env.COMMUNITY_DATA.m.keys()].filter((k: string) => k.startsWith("racer:top:"))).toEqual([`racer:top:v${RACER_VERSION}:2026-11-11`]);
+    expect(env.COMMUNITY_DATA.m.has(`racer:ghost:v${RACER_VERSION}:2026-11-11`)).toBe(true);
+    expect([...env.COMMUNITY_DATA.m.keys()].some((k: string) => /^racer:paid:2026-11-11:/.test(k))).toBe(true);
     expect(gj.id).toBeUndefined();
   });
   test("board hidden until on; ghost hidden when off", async () => {
