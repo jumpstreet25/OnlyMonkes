@@ -21,9 +21,13 @@ describe("MonkeGlobe roster", () => {
     expect(getLocatedUserCount()).toBe(2 + 1 + 1);
   });
 
-  it("a holder with no name gets their monke number, else a generic label", () => {
+  it("a holder with no name gets their X handle, else their monke number, else a generic label", () => {
     expect(globeName("Jump.skr", null)).toBe("Jump.skr");
     expect(globeName("", null)).toBe("Saga Monke holder");
     expect(globeName("  ", undefined)).toBe("Saga Monke holder");
+    expect(globeName("", null, "@RugDoctor")).toBe("@RugDoctor");
+    expect(globeName("", null, "https://x.com/Rug_Doctor?s=21")).toBe("@Rug_Doctor");
+    expect(globeName("Named", null, "@RugDoctor")).toBe("Named");
+    expect(globeName("", null, "not a handle!")).toBe("Saga Monke holder");
   });
 });
