@@ -268,8 +268,17 @@ export function getPersistedLocation(inboxId: string): string | undefined {
  * without waiting for each monke's original PROFILE_UPDATE broadcast.
  */
 export function applyLocationSync(
-  locs: Record<string, { u?: string; loc?: string; ni?: string }>,
+  locs: Record<string, { u?: string; loc?: string; ni?: string; d?: number }>,
 ): number {
+  // 2026-11-13: the bot now sends one pin per holder wallet (d: 1). That list is the roster for
+  // MonkeGlobe and the 🌍 count, so every device shows the same holders: before, each device
+  // dropped duplicate inboxes only where it had seen that holder's own PROFILE_UPDATE, and a
+  // fresh browser counted 21 while a phone counted 19.
+  const ids = Object.entries(locs).filter(([id, v]) => id && v?.d === 1 && v.loc?.trim()).map(([id]) => id);
+  if (ids.length) {
+    _globeRoster = ids;
+    AsyncStorage.setItem(AK_GLOBE_ROSTER, JSON.stringify(ids)).catch(() => {});
+  }
   let n = 0;
   for (const [inboxId, data] of Object.entries(locs)) {
     if (!inboxId || !data?.loc?.trim()) continue;
@@ -284,6 +293,40 @@ export function applyLocationSync(
     n++;
   }
   return n;
+}
+
+// ─── MonkeGlobe roster (bot LOCATION_SYNC, one inbox per holder) ──────────────
+const AK_GLOBE_ROSTER = 'globe_roster_v1';
+let _globeRoster: string[] | null = null;
+
+/** Load the last one-per-holder roster the bot sent (call once on app start). */
+export async function loadGlobeRoster(): Promise<void> {
+  try {
+    const raw = await AsyncStorage.getItem(AK_GLOBE_ROSTER);
+    const ids = raw ? (JSON.parse(raw) as unknown) : null;
+    if (Array.isArray(ids) && ids.every((x) => typeof x === 'string')) _globeRoster = ids as string[];
+  } catch { /* ignore */ }
+}
+
+/**
+ * Other holders' located inboxes from the bot's roster, without any inbox of this wallet (the
+ * Globe adds the local user itself). Null until a one-per-holder LOCATION_SYNC has arrived;
+ * callers then fall back to the local profile cache.
+ */
+export function getGlobeRoster(myInboxId: string | null): string[] | null {
+  if (!_globeRoster) return null;
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { isMineInbox } = require('@/lib/inboxLinking') as { isMineInbox: (a: string, b: string) => boolean };
+  return _globeRoster.filter((id) => !(myInboxId && isMineInbox(id, myInboxId)));
+}
+
+/** A display name for a holder with no username: their monke number from the PFP, else a generic label. */
+export function globeName(username: string | null | undefined, nftImage: string | null | undefined): string {
+  if (username?.trim()) return username.trim();
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { monkeNumberFromImage } = require('@/lib/monkeMeme/monkeNumbers') as { monkeNumberFromImage: (u: string | null | undefined) => number | null };
+  const n = monkeNumberFromImage(nftImage);
+  return n ? `Monke #${n}` : 'Saga Monke holder';
 }
 
 // ─── All-time user registry ───────────────────────────────────────────────────
@@ -412,6 +455,13 @@ export function getLocatedUserCount(): number {
   // Lazy require to avoid a circular import at module load (constants ↔ profile).
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { BOT_INBOX_IDS } = require('@/lib/constants') as { BOT_INBOX_IDS: string[] };
+  const { myInboxId, location: myLocation } = useAppStore.getState();
+  const roster = getGlobeRoster(myInboxId ?? null);
+  if (roster) {
+    // Same set the Globe draws: the bot's one-per-holder roster + me + the bot pin(s).
+    const ids = new Set(roster.filter((id) => !BOT_INBOX_IDS.includes(id)));
+    return ids.size + (myInboxId && myLocation ? 1 : 0) + BOT_INBOX_IDS.length;
+  }
   const deduped = getDeduplicatedUsers();
   const counted = new Set<string>();
   for (const inboxId of deduped.keys()) {
