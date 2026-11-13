@@ -287,9 +287,13 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
         });
       }
 
-      // 1. Other user locations from profile cache (deduped by wallet)
-      const { getDeduplicatedUsers } = await import("@/lib/userProfile");
-      const allUsers = getDeduplicatedUsers();
+      // 1. Other holders: the bot's one-per-holder roster when we have it (same list on every
+      // device), else the local profile cache deduped by wallet.
+      const { getDeduplicatedUsers, getGlobeRoster, globeName } = await import("@/lib/userProfile");
+      const roster = getGlobeRoster(myInboxId ?? null);
+      const allUsers = roster
+        ? new Map(roster.map((id) => [id, getCachedProfile(id)?.username ?? ""] as [string, string]))
+        : getDeduplicatedUsers();
 
       // Diagnostic: classify every known user by why they do/don't get a
       // marker. Logged at the end of load() once geocoding (phase 2, below)
@@ -307,14 +311,15 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
         const key = location.trim().toLowerCase();
         const cached = cachedGeo[key];
 
+        const name = globeName(username || profile?.username, profile?.nftImage);
         if (cached) {
           allMarkers.push({
             id: `user-${inboxId}`, lat: cached.lat, lng: cached.lng,
-            type: "user", label: username, inboxId, username, nftImage: profile?.nftImage ?? null,
+            type: "user", label: name, inboxId, username: name, nftImage: profile?.nftImage ?? null,
           });
         } else {
           skipReasons.set(inboxId, "pending-geocode");
-          uncachedUserLocs.push({ inboxId, username, profile: profile ?? {}, location });
+          uncachedUserLocs.push({ inboxId, username: name, profile: profile ?? {}, location });
         }
       }
 
