@@ -38,6 +38,14 @@ describe("runProblem", () => {
     expect(runProblem(run({ timeMs: 39_000 }))).toBe("faster than possible");
     expect(runProblem(run({ timeMs: NaN }))).toBe("bad time");
     expect(runProblem(run({ kills: -1 }))).toBe("bad kills");
+    expect(runProblem(run({ kills: 121 }))).toBe("bad kills");
+  });
+  test("v3 rebuilt cave 2: new floor, old v2 runs only for caves 1 and 3", () => {
+    expect(runProblem(run({ cave: 2, timeMs: 61_000 }))).toBe("faster than possible");
+    expect(runProblem(run({ cave: 2, timeMs: 90_000, kills: 66 }))).toBeNull();
+    expect(runProblem(run({ v: 2, cave: 2, timeMs: 90_000 }))).toBe("old game version");
+    expect(runProblem(run({ v: 2, cave: 1 }))).toBeNull();
+    expect(runProblem(run({ v: 2, cave: 3, timeMs: 30_000 }))).toBeNull();
   });
 });
 
@@ -77,6 +85,13 @@ describe("submit", () => {
     expect(b[2]).toEqual([]);
     expect([...env.COMMUNITY_DATA.m.keys()].join()).not.toContain(HOLDER);
     expect(JSON.stringify(other)).not.toContain('"id"');
+  });
+  test("rebuilt cave 2 starts a fresh board: old-map times don't show", async () => {
+    const env: any = { COMMUNITY_DATA: kv(), CAVES_BOARD: "on" };
+    const week = isoWeek(T);
+    env.COMMUNITY_DATA.m.set(`caves:top:${week}:c2`, JSON.stringify([{ id: "old", t: 14_000, n: 1, name: "old map", at: T }]));
+    expect(await (await __test.submit(env, run({ cave: 2, timeMs: 95_000 }), T)).json()).toMatchObject({ improved: true, rank: 1 });
+    expect((await board(env, week))[2]).toEqual([{ name: "Jump.skr", n: 8982, t: 95_000 }]);
   });
 });
 

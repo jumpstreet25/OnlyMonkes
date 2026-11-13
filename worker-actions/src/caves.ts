@@ -26,13 +26,17 @@ import { cleanName } from "./referrals";
 import { monkeImageForNumber } from "./shareCard";
 
 /** Level set the floors below were measured on (caves.js LEVELS). Bump both together. */
-export const CAVES_VERSION = 2;
+export const CAVES_VERSION = 3;
+/** Older game versions still accepted for the caves they didn't change (v2 → v3 rebuilt cave 2 only),
+ *  so a page cached through the deploy doesn't lose a cave 1 or 3 run. */
+const STILL_VALID: Record<number, number[]> = { 2: [1, 3] };
 /**
  * Fastest possible clear per cave (ms), a little under the shortest walkable route at full
  * speed (3.2 cells/s, secret walls and doors counted open) plus the boss kill. v2 (Lost Temple
- * cave 1): 140 cells ≈ 44 s; caves 2–3 unchanged (≈ 11.5 s walk + boss).
+ * cave 1): 140 cells ≈ 44 s. v3 (Paper Hands Alley cave 2, 2026-11-13): 222 cells ≈ 70 s + the
+ * bear (18 hits × 0.32 s); 62 s since the bear can be shot from range. Cave 3 unchanged (≈ 11.5 s + boss).
  */
-export const MIN_MS: Record<number, number> = { 1: 40_000, 2: 12_000, 3: 12_000 };
+export const MIN_MS: Record<number, number> = { 1: 40_000, 2: 62_000, 3: 12_000 };
 const MAX_MS = 60 * 60_000;
 const TOP = 10;
 
@@ -62,14 +66,14 @@ const walletHash = async (wallet: string) => sha256Hex(enc.encode(wallet));
 
 /** Server-side checks on a submitted run. Returns the reason it's refused, or null. */
 export function runProblem(r: { v?: unknown; cave?: unknown; timeMs?: unknown; kills?: unknown }): string | null {
-  if (r.v !== CAVES_VERSION) return "old game version";
   const cave = r.cave as number;
+  if (r.v !== CAVES_VERSION && !STILL_VALID[r.v as number]?.includes(cave)) return "old game version";
   if (!Number.isInteger(cave) || !MIN_MS[cave]) return "unknown cave";
   const t = r.timeMs as number;
   if (!Number.isFinite(t)) return "bad time";
   if (t < MIN_MS[cave]) return "faster than possible";
   if (t > MAX_MS) return "too slow to count";
-  if (r.kills !== undefined && (!Number.isInteger(r.kills) || (r.kills as number) < 0 || (r.kills as number) > 60)) return "bad kills";
+  if (r.kills !== undefined && (!Number.isInteger(r.kills) || (r.kills as number) < 0 || (r.kills as number) > 120)) return "bad kills";
   return null;
 }
 
@@ -87,7 +91,10 @@ async function who(env: Env, proof: any, action: string): Promise<{ wallet: stri
 
 type Entry = { t: number; n: number | null; name: string; at: number };
 type TopRow = Entry & { id: string };
-const topKey = (week: string, cave: number) => `caves:top:${week}:c${cave}`;
+/** A rebuilt cave gets fresh board slots so times on the old map don't outrank it (cave 2 rebuilt in v3). */
+const EDITION: Record<number, string> = { 2: "v3" };
+const caveSlot = (cave: number) => `c${cave}${EDITION[cave] ?? ""}`;
+const topKey = (week: string, cave: number) => `caves:top:${week}:${caveSlot(cave)}`;
 const shown = (r: Entry) => ({ name: r.name || (r.n ? `Monke #${r.n}` : "A Saga Monke holder"), n: r.n, t: r.t });
 
 async function readTop(env: Env, week: string, cave: number): Promise<TopRow[]> {
@@ -112,7 +119,7 @@ async function submit(env: Env, body: any, now = Date.now()): Promise<Response> 
   await kv.put(lastKey, String(now), { expirationTtl: 60 });
 
   const week = isoWeek(now);
-  const key = `caves:wk:${week}:c${body.cave}:${holder}`;
+  const key = `caves:wk:${week}:${caveSlot(body.cave)}:${holder}`;
   const prev = JSON.parse((await kv.get(key)) ?? "null") as Entry | null;
   const n = monkeImageForNumber(Number(body.n)) ? Number(body.n) : null;
   const t = Math.round(body.timeMs);
