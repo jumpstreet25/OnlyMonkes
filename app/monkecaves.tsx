@@ -12,7 +12,8 @@
  * goes to the speed-run board (src/lib/cavesRun.ts); the reply comes back to the page
  * as { type: "cavesRun", ... }; a clear that earned bananas makes the phone collect them
  * (src/lib/cavesBananas.ts). The page asks for saved progress with { event: "progress" } and
- * gets { type: "cavesProgress", max, today, cap }.
+ * gets { type: "cavesProgress", max, today, cap }. SHARE on a clear card sends { event: "share", cave, grade,
+ * tenths } and opens X with the clear's card link (src/lib/shareToX.ts shareCavesClear).
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
@@ -28,6 +29,7 @@ import { royaleProof } from "@/lib/royaleProof";
 import { collectRoyaleBananas } from "@/lib/royaleBananas";
 import { fetchCavesProgress, submitCavesRun } from "@/lib/cavesRun";
 import { collectCavesBananas } from "@/lib/cavesBananas";
+import { shareCavesClear } from "@/lib/shareToX";
 
 const GAME_URL = Platform.OS === "web" ? "/viewer/caves" : "https://onlymonkes.app/viewer/caves";
 
@@ -46,8 +48,10 @@ export default function MonkeCavesRoute() {
     if (allowed === false) router.back();
   }, [allowed]);
   const [royale, setRoyale] = useState(false);
+  const monkeN = useRef<number | null>(null);
   const uri = useMemo(() => {
     const n = parseMonkeNumber(verifiedNft?.name) ?? allNfts.map((x) => parseMonkeNumber(x.name)).find((x) => x != null);
+    monkeN.current = n ?? null;
     const q = [n ? `n=${n}` : "", royale ? "mode=royale" : ""].filter(Boolean).join("&");
     return q ? `${GAME_URL}?${q}` : GAME_URL;
   }, [verifiedNft, allNfts, royale]);
@@ -63,6 +67,11 @@ export default function MonkeCavesRoute() {
         web.current?.postMessage(JSON.stringify({ type: "cavesRun", ...r }));
         if ((r.bananas ?? 0) > 0) void collectCavesBananas(true);
       });
+      return;
+    }
+    if (d.event === "share") {
+      // Our own monke number, never the page's.
+      if (monkeN.current) shareCavesClear(monkeN.current, Number(d.cave), String(d.grade), Number(d.tenths));
       return;
     }
     if (d.event === "progress") {
