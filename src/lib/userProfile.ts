@@ -426,6 +426,8 @@ export function getLocatedUserCount(): number {
   // Lazy require to avoid a circular import at module load (constants ↔ profile).
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { BOT_INBOX_IDS } = require('@/lib/constants') as { BOT_INBOX_IDS: string[] };
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { useAppStore } = require('@/store/appStore') as typeof import('@/store/appStore');
   const { myInboxId, location: myLocation } = useAppStore.getState();
   const roster = getGlobeRoster(myInboxId ?? null);
   if (roster) {
