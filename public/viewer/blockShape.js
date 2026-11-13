@@ -96,7 +96,11 @@ export function blockFaces(px, solid, shape = BLOCK_SHAPE) {
   const bodyKeys = [], headKeys = [];
   for (let r = 0; r < 16; r++) for (let x = 0; x < 16; x++) if (solid[r][x]) (r < NECK_ROW ? headKeys : bodyKeys).push(key(px[r][x]));
   const furSet = new Set(bodyKeys);
-  const fur = mostCommon(bodyKeys) ?? mostCommon(headKeys) ?? 0x808080;
+  // Fur = the head colour that also shows on the body (the neck). The body's own
+  // most common colour is usually clothing (a black hoodie painted #2431's gold
+  // head black from behind); it stays the fallback for monkes with no shared colour.
+  const shared = headKeys.filter((k) => furSet.has(k));
+  const fur = mostCommon(shared) ?? mostCommon(bodyKeys) ?? mostCommon(headKeys) ?? 0x808080;
   const skin = mostCommon(headKeys, furSet) ?? fur;
   const leftX = (r) => solid[r].findIndex(Boolean);
   const isEar = (x, r) => r < NECK_ROW && x === leftX(r) && !furSet.has(key(px[r][x])) && diff(key(px[r][x]), skin) <= 30;
