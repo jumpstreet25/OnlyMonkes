@@ -16,6 +16,7 @@ import { useTranslation } from "react-i18next";
 import { THEME, FONTS } from "@/lib/constants";
 import { useAppStore } from "@/store/appStore";
 import { getMonkeCavesConfig, monkeCavesVisible, type MonkeCavesConfig } from "@/lib/monkeCaves/config";
+import { getRacerConfig, racerVisible, type RacerConfig } from "@/lib/racer/config";
 import { useTradesStore } from "@/store/tradesStore";
 
 /** The screens a column can hold, loaded on first use (replaceable in tests). */
@@ -72,8 +73,8 @@ const NO_SHELL = new Set(["/", "/verify", "/pair"]);
 interface RailItem { path: string; icon: string; label: string; match?: (p: string) => boolean }
 
 /** Pure: which rail entries a holder sees (Genesis-only holders reach Genesis Chat only).
- *  caves: MonkeCaves is in its testers-only preview (config/monkecaves.json). */
-export function railItems(t: (k: string) => string, monke: boolean, genesis: boolean, caves = false): RailItem[] {
+ *  caves / racer: shown when config/monkecaves.json / config/racer.json let this holder in. */
+export function railItems(t: (k: string) => string, monke: boolean, genesis: boolean, caves = false, racer = false): RailItem[] {
   if (!monke) return genesis ? [{ path: "/genesis-chat", icon: "✨", label: t("wide.genesis") }] : [];
   const items: RailItem[] = [
     { path: "/chat", icon: "💬", label: t("wide.mainChat") },
@@ -88,6 +89,7 @@ export function railItems(t: (k: string) => string, monke: boolean, genesis: boo
     { path: "/treasury", icon: "🍌", label: "OnlyTreasury" },
     { path: "/monke3d", icon: "🧊", label: "3D Monke" },
     ...(caves ? [{ path: "/monkecaves", icon: "🎯", label: t("menuDrawer.monkeCaves") }] : []),
+    ...(racer ? [{ path: "/racer", icon: "⚡", label: t("menuDrawer.monkeRC") }] : []),
     { path: "/globe", icon: "🌍", label: t("menuDrawer.globe") },
     { path: "/settings", icon: "⚙️", label: t("menuDrawer.settings") },
   );
@@ -261,6 +263,9 @@ export function WideShell({ children }: { children: ReactNode }) {
   const [cavesCfg, setCavesCfg] = useState<MonkeCavesConfig | null>(null);
   useEffect(() => { getMonkeCavesConfig().then(setCavesCfg).catch(() => {}); }, []);
   const caves = monkeCavesVisible(cavesCfg, isAdmin, wallet?.address ?? null);
+  const [racerCfg, setRacerCfg] = useState<RacerConfig | null>(null);
+  useEffect(() => { getRacerConfig().then(setRacerCfg).catch(() => {}); }, []);
+  const racer = racerVisible(racerCfg, isAdmin, wallet?.address ?? null);
   const [prefs, setPrefs] = useState<ColumnPrefs>(loadPrefs);
   const setSide = useCallback((side: "left" | "right", k: PaneKind) => {
     setPrefs((p) => { const next = { ...p, [side]: k }; savePrefs(next); return next; });
@@ -274,7 +279,7 @@ export function WideShell({ children }: { children: ReactNode }) {
   const rightSide: "left" | "right" = width >= THREE_COL_MIN_PX || prefs.right !== "off" ? "right" : "left";
   return (
     <View style={styles.shell}>
-      {wide && <Optional><Rail items={railItems(t, monke, genesis, caves)} pathname={pathname} /></Optional>}
+      {wide && <Optional><Rail items={railItems(t, monke, genesis, caves, racer)} pathname={pathname} /></Optional>}
       {cols.left && <Pane side="left" kind={cols.left} pathname={pathname} onChange={(k) => setSide("left", k)} />}
       <View style={[styles.center, wide && styles.centerWide]}>{children}</View>
       {cols.right && <Pane side="right" kind={cols.right} pathname={pathname} onChange={(k) => setSide(rightSide, k)} />}

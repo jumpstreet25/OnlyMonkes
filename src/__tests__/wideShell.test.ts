@@ -24,6 +24,8 @@ describe("wide web layout rail", () => {
   test("MonkeCaves only while the preview lets this holder in", () => {
     expect(railItems(t, true, false).map((i) => i.path)).not.toContain("/monkecaves");
     expect(railItems(t, true, false, true).map((i) => i.path)).toContain("/monkecaves");
+    expect(railItems(t, true, false).map((i) => i.path)).not.toContain("/racer");
+    expect(railItems(t, true, false, false, true).map((i) => i.path)).toContain("/racer");
   });
 
   test("active entry follows the current route", () => {

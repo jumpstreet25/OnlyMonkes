@@ -15,6 +15,7 @@ import { MenuIcon, type MenuIconName } from "@/components/MenuIcon";
 import { BananaShopModal } from "@/components/BananaShopModal";
 import { getMonkeMemeConfig, monkeMemeVisible, type MonkeMemeConfig } from "@/lib/monkeMeme/config";
 import { getMonkeCavesConfig, monkeCavesVisible, type MonkeCavesConfig } from "@/lib/monkeCaves/config";
+import { getRacerConfig, racerVisible, type RacerConfig } from "@/lib/racer/config";
 import type { WorkspaceTab } from "@/lib/webWorkspace";
 
 export const SIDEBAR_WIDTH = 248;
@@ -63,6 +64,8 @@ export function ChatSidebar({ onOpenPanel, onEditProfile, compact = false, width
   useEffect(() => { getMonkeMemeConfig().then(setMemeCfg).catch(() => {}); }, []);
   const [cavesCfg, setCavesCfg] = useState<MonkeCavesConfig | null>(null);
   useEffect(() => { getMonkeCavesConfig().then(setCavesCfg).catch(() => {}); }, []);
+  const [racerCfg, setRacerCfg] = useState<RacerConfig | null>(null);
+  useEffect(() => { getRacerConfig().then(setRacerCfg).catch(() => {}); }, []);
   const [shopOpen, setShopOpen] = useState(false);
   // The column sits on the left of the window, so its border faces chat on the right.
   const edge = { backgroundColor: bg, borderRightColor: border };
@@ -102,6 +105,8 @@ export function ChatSidebar({ onOpenPanel, onEditProfile, compact = false, width
         ...(monkeMemeVisible(memeCfg, isGroupAdmin, wallet) ? [{ key: "meme", label: t("menuDrawer.monkeMeme"), icon: "monkeface" as MenuIconName, onPress: tabOr("meme", "/monkememe") }] : []),
         { key: "3d", label: "3D Monke", icon: "monkeface", onPress: tabOr("3d", "/monke3d") },
         ...(monkeCavesVisible(cavesCfg, isGroupAdmin, wallet) ? [{ key: "caves", label: t("menuDrawer.monkeCaves"), icon: "target" as MenuIconName, onPress: tabOr("caves", "/monkecaves") }] : []),
+        // Monke RC opens its own page (not a workspace tab) so finished races reach the daily board.
+        ...(racerVisible(racerCfg, isGroupAdmin, wallet) ? [{ key: "racer", label: t("menuDrawer.monkeRC"), icon: "bolt" as MenuIconName, onPress: go("/racer") }] : []),
       ],
     },
     {
