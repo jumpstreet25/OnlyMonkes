@@ -367,6 +367,108 @@ const PAGE_CSS = `
 .page .tip[hidden]{display:none}
 `;
 
+// ── /live: the next live Avatar Room hangout (owner 2026-11-13). Change LIVE_EVENT for the next one. ──
+export const LIVE_EVENT = {
+  start: Date.UTC(2026, 10, 14, 22, 0), // Sat Nov 14 2026, 5:00 PM EST
+  hours: 3,
+  title: "Monke Live: Avatar Room hangout",
+};
+const LIVE_ZONES: [string, string][] = [
+  ["Los Angeles (PT)", "America/Los_Angeles"], ["Denver (MT)", "America/Denver"], ["Chicago (CT)", "America/Chicago"],
+  ["New York (ET)", "America/New_York"], ["São Paulo", "America/Sao_Paulo"], ["London", "Europe/London"],
+  ["Paris · Berlin · Lagos", "Europe/Paris"], ["Dubai", "Asia/Dubai"], ["India", "Asia/Kolkata"],
+  ["Singapore · Manila", "Asia/Singapore"], ["Tokyo · Seoul", "Asia/Tokyo"], ["Sydney", "Australia/Sydney"],
+];
+export function liveZoneTime(ms: number, tz: string): string {
+  return new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "short", hour: "numeric", minute: "2-digit" }).format(new Date(ms));
+}
+const icsStamp = (ms: number) => new Date(ms).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+
+export function renderLive(now = Date.now()): Response {
+  const e = LIVE_EVENT, end = e.start + e.hours * 3_600_000;
+  const et = liveZoneTime(e.start, "America/New_York");
+  const desc = `Live Avatar Room hangout for Saga Monke holders on OnlyMonkes, ${et} ET onward. Your 3D monke talks when you do.`;
+  const self = `${SITE_BASE}/live`;
+  const gcal = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(e.title)}&dates=${icsStamp(e.start)}/${icsStamp(end)}&details=${encodeURIComponent(`Open Main Chat in OnlyMonkes and tap the LIVE pill. ${self}`)}&location=${encodeURIComponent(self)}`;
+  const ics = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//OnlyMonkes//Live//EN", "BEGIN:VEVENT", `UID:live-${e.start}@onlymonkes.app`, `DTSTAMP:${icsStamp(e.start)}`,
+    `DTSTART:${icsStamp(e.start)}`, `DTEND:${icsStamp(end)}`, `SUMMARY:${e.title}`, `DESCRIPTION:Open Main Chat in OnlyMonkes and tap the LIVE pill. ${self}`, `URL:${self}`,
+    "BEGIN:VALARM", "TRIGGER:-PT15M", "ACTION:DISPLAY", "DESCRIPTION:Monke Live starts in 15 minutes", "END:VALARM", "END:VEVENT", "END:VCALENDAR"].join("\r\n");
+  const tweet = `🎙️ ${e.title} — ${et} ET (${liveZoneTime(e.start, "UTC")} UTC). Bring your Saga Monke, your 3D monke talks when you do 🐒🍌\n\n${self}\n\n@xOnlyMonkes #SagaMonkes #SolanaMobile`;
+  const rows = LIVE_ZONES.map(([label, tz]) => `<tr data-tz="${tz}"><td>${esc(label)}</td><td>${esc(liveZoneTime(e.start, tz))}</td></tr>`).join("");
+  const phase = now >= end ? "ended" : now >= e.start ? "live" : "soon";
+  const body = `${head(`${e.title} · ${et} ET`, desc, "/live", PAGE_CSS + LIVE_CSS)}
+<main class="page live">
+  <img class="mascot" src="/site/icon-512.png" alt="">
+  <div class="pill ${phase}" id="phase">${phase === "live" ? "● LIVE NOW" : phase === "ended" ? "This hangout has ended" : "LIVE AVATAR ROOM"}</div>
+  <h1>${esc(e.title)}</h1>
+  <p class="when"><b>${esc(et)} ET</b> onward · come and go any time</p>
+  <div class="local" id="local" hidden></div>
+  <div class="count" id="count" hidden></div>
+  <div class="stack">
+    <a class="btn primary" href="/open/chat">Open Main Chat (holders)</a>
+    <a class="btn ghost" href="/get">New here? Get OnlyMonkes</a>
+  </div>
+  <div class="cal"><a href="${esc(gcal)}" target="_blank" rel="noopener">Add to Google Calendar</a> · <a href="data:text/calendar;charset=utf-8,${encodeURIComponent(ics)}" download="monke-live.ics">Add to phone calendar (.ics)</a></div>
+
+  <h2>Start time around the world</h2>
+  <table class="zones">${rows}</table>
+
+  <h2>What happens</h2>
+  <ul class="list">
+    <li>Every holder shows up as their own 3D Saga Monke on one stage.</li>
+    <li>Your monke's mouth and head follow yours (face tracking on your phone), or move with your voice.</li>
+    <li>Call the bot in by voice: tap 🤖 and say "Hey Monke".</li>
+    <li>On a computer with no mic? Tap 📱 and use your phone as mic and camera.</li>
+  </ul>
+
+  <h2>How to join</h2>
+  <ol class="list">
+    <li><b>Hold a Saga Monke.</b> Rooms are for holders. <a href="${TENSOR_URL}" target="_blank" rel="noopener">Get one on Tensor</a><span id="floor"></span>.</li>
+    <li><b>Get OnlyMonkes</b> from the Solana dApp Store on Seeker or Saga, or use the <a href="${WEB_APP_BASE}">web app</a> on a computer.</li>
+    <li><b>Log in with your wallet.</b> Main Chat opens.</li>
+    <li><b>At ${esc(et.replace(/^\w+ /, ""))} ET</b>, tap the LIVE pill in Main Chat to join.</li>
+  </ol>
+  <div class="stack">
+    <a class="btn ghost" target="_blank" rel="noopener" href="https://x.com/intent/tweet?text=${encodeURIComponent(tweet)}">Share on X</a>
+  </div>
+  <p class="tip">Holders: invite a friend from Menu → Invite. New holders who join through your link count for the November referral season (250 bananas each).</p>
+</main>
+<script>
+(function(){var S=${e.start},E=${end};
+try{var tz=Intl.DateTimeFormat().resolvedOptions().timeZone;var t=new Intl.DateTimeFormat(undefined,{weekday:'long',hour:'numeric',minute:'2-digit'}).format(new Date(S));
+var l=document.getElementById('local');l.textContent='Your time: '+t+(tz?' ('+tz.replace(/_/g,' ')+')':'');l.hidden=false;
+var r=document.querySelector('tr[data-tz="'+tz+'"]');if(r)r.className='me';}catch(_){}
+var c=document.getElementById('count'),p=document.getElementById('phase');
+function tick(){var n=Date.now();if(n>=E){c.hidden=true;p.textContent='This hangout has ended';p.className='pill ended';return;}
+if(n>=S){c.hidden=false;c.textContent='We are live, come in';p.textContent='● LIVE NOW';p.className='pill live';return;}
+var d=Math.floor((S-n)/1000),h=Math.floor(d/3600),m=Math.floor(d%3600/60),s=d%60;c.hidden=false;c.textContent='Starts in '+h+'h '+String(m).padStart(2,'0')+'m '+String(s).padStart(2,'0')+'s';}
+tick();setInterval(tick,1000);
+fetch('/api/floor').then(function(r){return r.ok?r.json():null}).then(function(f){if(f&&f.floorSol)document.getElementById('floor').textContent=' (floor ~'+(Math.round(f.floorSol*100)/100)+' SOL)';}).catch(function(){});
+})();
+</script>
+${foot()}`;
+  return html(body, 200, "public, max-age=60");
+}
+
+const LIVE_CSS = `
+.live img.mascot{display:block;margin:0 auto 14px}
+.live .pill{display:table;margin-left:auto;margin-right:auto;font-size:13px;font-weight:700;letter-spacing:1px;padding:4px 12px;border-radius:999px;border:1px solid var(--line);color:var(--sky);margin-bottom:12px}
+.live .pill.live{background:#e91671;border-color:#e91671;color:#fff}
+.live .pill.ended{color:var(--mut)}
+.live .when{font-size:18px;color:var(--fg);margin-bottom:6px}
+.live .local{font-size:17px;color:var(--ok);font-weight:600;margin-bottom:4px}
+.live .count{font-variant-numeric:tabular-nums;color:var(--mut);margin-bottom:20px}
+.live .cal{margin:16px 0 8px;font-size:14px}
+.live h2{font-size:22px;margin:36px 0 12px}
+.live table.zones{width:100%;max-width:420px;margin:0 auto;border-collapse:collapse;font-size:15px}
+.live table.zones td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:left}
+.live table.zones td+td{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.live table.zones tr.me td{color:var(--ok);font-weight:700}
+.live .list{text-align:left;max-width:460px;margin:0 auto;padding-left:22px;color:var(--mut)}
+.live .list li{margin-bottom:8px}
+.live .list b{color:var(--fg)}
+`;
+
 /** In-app browsers (X, Instagram, Facebook, LINE…) usually block intents. */
 const IN_APP_UA = /(Twitter|FBAN|FBAV|Instagram|Line\/|TikTok|Snapchat|Discord)/i;
 
