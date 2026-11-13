@@ -22,7 +22,7 @@
   .stat b { font-size: 20px; letter-spacing: 1px; }
   .stat span { font-size: 10px; color: var(--muted); text-transform: uppercase; }
   #hp b { color: #ff5d6c; } #ammo b { color: #3cdcaa; } #bananas b { color: var(--banana); }
-  #msg { position: fixed; left: 50%; top: 32%; transform: translate(-50%, -50%); text-align: center; pointer-events: none; text-shadow: 0 2px 0 #000; }
+  #msg { position: fixed; left: 50%; top: 32%; transform: translate(-50%, -50%); text-align: center; pointer-events: none; z-index: 2; text-shadow: 0 2px 0 #000; }
   #msg h1 { margin: 0 0 6px; font-size: 28px; color: var(--banana); letter-spacing: 2px; }
   #msg p { margin: 0; color: var(--text); }
   #pad, #turn, #fire { position: fixed; touch-action: none; }
@@ -51,6 +51,11 @@
   #msg .stats b { color: #fff; text-align: right; }
   #msg .weapon { display: flex; align-items: center; gap: 8px; font-size: 15px; color: #fff; }
   #msg .weapon i { width: 14px; height: 14px; border: 2px solid #000; box-shadow: 0 0 8px currentColor; }
+  #msg .grade { display: flex; align-items: center; gap: 10px; }
+  #msg .grade b { font-size: 64px; line-height: 1; }
+  #msg .grade span { color: var(--muted); letter-spacing: 2px; font-size: 12px; }
+  #msg .gS b { color: #ffd23f; } #msg .gA b { color: #7dff9a; } #msg .gB b { color: #6cccff; } #msg .gC b { color: #e91671; } #msg .gD b { color: #9a9ab0; }
+  #msg .share { pointer-events: auto; font: 700 14px/1 inherit; font-family: inherit; padding: 10px 16px; background: var(--banana); color: #1a1408; border: 2px solid #000; letter-spacing: 1px; cursor: pointer; }
   #msg .cta { margin-top: 4px; color: var(--banana); animation: blink 1.1s steps(2) infinite; }
   @keyframes blink { 50% { opacity: 0.35; } }
   #pause { position: fixed; top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); width: 40px; height: 40px; border: 2px solid rgba(255,255,255,0.2); background: rgba(12,10,18,0.6); color: #fff; font: 700 14px/1 ui-monospace, monospace; z-index: 3; touch-action: none; }

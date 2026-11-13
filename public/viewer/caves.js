@@ -561,6 +561,14 @@ let state = "title", t0 = 0, clearTime = 0, paused = 0;
 // Highest cave beaten (campaign, below) and whether the player chose a cave on the title card.
 let beaten = DEMO ? 0 : parseInt(store.get("beaten") || "0", 10) || 0, picked = false;
 const runTime = () => (t0 ? performance.now() - t0 : 0);
+// Clear grade: time vs par 40 pts, kills 30, secrets 20, items 10 → S 90+ · A 75+ · B 55+ · C 35+ · D.
+function grade(ms, par, kills, secs, items) {
+  const t = !par ? 25 : ms <= par ? 40 : ms <= par * 1.5 ? 25 : ms <= par * 2 ? 10 : 0;
+  const pts = t + 30 * Math.min(1, kills) + 20 * Math.min(1, secs) + 10 * Math.min(1, items);
+  return pts >= 90 ? "S" : pts >= 75 ? "A" : pts >= 55 ? "B" : pts >= 35 ? "C" : "D";
+}
+// The last clear the player can share (in the app, as their own monke): { cave, grade, tenths }.
+let lastClear = null;
 function post(m) {
   const s = JSON.stringify({ type: "caves", ...m });
   if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage(s);
@@ -724,14 +732,20 @@ function update(dt) {
       const isBest = !best || clearTime < best;
       if (isBest) store.set(`best:${CAVES_VERSION}:${levelIx + 1}`, String(Math.round(clearTime)));
       const pct = (a, b) => `${b ? Math.round((100 * a) / b) : 100}%`, par = (LEVELS[levelIx].par || 0) * 1000;
+      const g = grade(clearTime, par, p.kills / (totals.foes || 1), secretsFound / (secrets || 1), p.items / (totals.items || 1));
+      const share = inApp && !DEMO && OWN_MONKE && t0;
+      lastClear = share ? { cave: levelIx + 1, grade: g, tenths: Math.max(100, Math.round(clearTime / 100)) } : null;
       card(DEMO ? "DEMO CLEAR" : last ? "YOU ESCAPED" : "CAVE CLEAR", [
+        `<div class="grade g${g}"><b>${g}</b><span>GRADE</span></div>`,
         `<div class="big">${fmtRun(clearTime)}</div>`,
         par ? `<div class="${clearTime <= par ? "tag" : "dim"}">PAR ${fmt(par)}${clearTime <= par ? " · BEAT IT" : ""}</div>` : "",
         isBest ? `<div class="tag">${best ? "NEW BEST" : "FIRST CLEAR"}</div>` : `<div class="dim">best ${fmtRun(best)}</div>`,
         `<div class="stats"><span>KILLS</span><b>${pct(p.kills, totals.foes)}</b><span>ITEMS</span><b>${pct(p.items, totals.items)}</b><span>SECRETS</span><b>${pct(secretsFound, secrets)}</b></div>`,
         DEMO ? `<div class="dim">${LEVELS.length - 1} more caves and the Banana Phone wait for Saga Monke holders<br>${GET_APP}</div>` : "",
+        share ? `<button class="share" id="sharebtn">SHARE CLEAR</button>` : "",
         `<div class="cta">${tap} ${last ? "to play again" : `for cave ${levelIx + 2}`}</div>`,
       ]);
+      document.getElementById("sharebtn")?.addEventListener("pointerdown", (e) => { e.stopPropagation(); if (lastClear) post({ event: "share", n, ...lastClear }); });
       if (t0) post({ event: "clear", v: CAVES_VERSION, level: levelIx + 1, timeMs: Math.round(clearTime), kills: p.kills, secrets: secretsFound, bananas: p.bananas });
     }
   }
@@ -1104,6 +1118,8 @@ fit();
 // ── Start ──
 const params = new URLSearchParams(location.search);
 let n = parseInt(params.get("n") || "", 10);
+// Only a monke the app handed us (?n=) gets a share card, never the random stand-in.
+const OWN_MONKE = !!imageFor(n);
 if (!imageFor(n)) { do n = 1 + Math.floor(Math.random() * 8888); while (!imageFor(n)); }
 loadImage(imageFor(n)).then(readGrid).then(setFace).catch(() => { /* face stays blank */ });
 equip(n);
@@ -1468,7 +1484,7 @@ document.getElementById("m-restart").addEventListener("click", () => { setPaused
 
 let last = performance.now();
 // Test hooks only with ?debug=1 (headless playtests); never on a normal page.
-if (params.has("debug")) window.__caves = { gpad, pollPad, player, things, shots, spits, keys, touch, turn, step: (dt) => update(dt), map, get door() { return door; }, get level() { return levelIx; }, get weapon() { return WEAPON; }, get state() { return state; }, get totals() { return totals; }, get secrets() { return [secretsFound, secrets]; }, get royale() { return royale; }, blocked: (x, y) => blockers.has(y * MW + x), wallAt, settings, assistTarget, frames: 0, goto(i) { if (DEMO) return; levelIx = i; loadLevel(); state = "play"; t0 = performance.now(); say(""); } };
+if (params.has("debug")) window.__caves = { grade, get lastClear() { return lastClear; }, gpad, pollPad, player, things, shots, spits, keys, touch, turn, step: (dt) => update(dt), map, get door() { return door; }, get level() { return levelIx; }, get weapon() { return WEAPON; }, get state() { return state; }, get totals() { return totals; }, get secrets() { return [secretsFound, secrets]; }, get royale() { return royale; }, blocked: (x, y) => blockers.has(y * MW + x), wallAt, settings, assistTarget, frames: 0, goto(i) { if (DEMO) return; levelIx = i; loadLevel(); state = "play"; t0 = performance.now(); say(""); } };
 function loop(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
   pollPad(); update(dt); render(); if (window.__caves) window.__caves.frames++;
