@@ -73,7 +73,7 @@ async function cspReport(request: Request): Promise<Response> {
 
 function isSitePath(path: string): boolean {
   return (
-    path === "/welcome" || path === "/get" || path === "/bot" || path === "/health" || path === "/actions.json" || path === "/claim" || path === "/escrow" ||
+    path === "/welcome" || path === "/get" || path === "/live" || path === "/bot" || path === "/health" || path === "/actions.json" || path === "/claim" || path === "/escrow" ||
     path === "/robots.txt" || path === "/sitemap.xml" ||
     path === "/referrals" || path === "/referrals/" || /^\/r\/[^/]+(\/card\.png)?\/?$/.test(path) ||
     /^\/(legal|terms|privacy|copyright)(\/|\.html)?$/.test(path) ||
