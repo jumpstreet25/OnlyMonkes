@@ -25,6 +25,7 @@ const ROUTES: [RegExp, string][] = [
   [/^\/api\/community\/events\/[^/]+\/rsvps$/, "rsvps"], // KV list
   [/^\/api\/referral\/leaderboard$/, "refboard"], // KV list + N gets
   [/^\/api\/racer\/ghost$/, "racerghost"], // KV get of a ~100 KB ghost
+  [/^\/api\/floor$/, "floor"], // edge-cached; a miss asks the bot
 ];
 
 export function publicLimitName(path: string): string | null {

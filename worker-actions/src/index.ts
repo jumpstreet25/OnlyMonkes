@@ -106,6 +106,7 @@ import { handleShareCard, isShareCardPath } from "./shareCard";
 import { handleReferral, isReferralPath } from "./referrals";
 import { handleCaves, isCavesPath } from "./caves";
 import { handleRacer, isRacerPath } from "./racer";
+import { liveFloor } from "./floor";
 import { handleLivekitAuthorize, INTERNAL_HOST } from "./livekitAuth";
 import { handleApkDownload, isApkDownloadPath } from "./apkDownloads";
 import { handleWebPair } from "./webPair";
@@ -1721,6 +1722,8 @@ interface StatsSnapshot {
   holders: number;
   holdersDelta: number | null; // vs previous snapshot
   floorSol: number | null;
+  /** "tensor" when overlaid from the live Tensor floor (floor.ts). */
+  floorSource?: "tensor" | "coingecko";
   floorChg24h: number | null;
   volume24hSol: number | null;
   skrPriceUsd: number | null;
@@ -2444,8 +2447,15 @@ function timeAgo(ts: number): string {
 }
 
 /** GET /api/stats — public JSON, no auth. Reads the cron-refreshed KV cache. */
+/** The snapshot is up to 4 h old; the floor is overlaid live (Tensor listings, 5 min edge cache). */
+async function getStatsWithLiveFloor(env: Env): Promise<StatsSnapshot | null> {
+  const [stats, live] = await Promise.all([getCachedStats(env), liveFloor(env).catch(() => null)]);
+  if (!stats) return null;
+  return live ? { ...stats, floorSol: live.floorSol, floorSource: live.source } : stats;
+}
+
 async function handleStatsApi(env: Env): Promise<Response> {
-  const stats = await getCachedStats(env);
+  const stats = await getStatsWithLiveFloor(env);
   if (!stats) return jsonResponse({ error: "Stats not available yet" }, 503);
   return jsonResponse(stats);
 }
@@ -2710,7 +2720,7 @@ function verifyReply(body: string, cache: "hit-mem" | "hit-edge" | "miss"): Resp
 async function handleMonkePage(mint: string, env: Env): Promise<Response> {
   const [monke, stats] = await Promise.all([
     fetchMonkeByMint(mint, env),
-    getCachedStats(env),
+    getStatsWithLiveFloor(env),
   ]);
 
   if (!monke) {
@@ -3587,7 +3597,7 @@ export default {
     if (path === "/" || path === "/welcome") {
       if (isPageRead) {
         const pins = await env.COMMUNITY_DATA.get("locations:latest").then((r) => (r ? (JSON.parse(r) as unknown[]).length : null)).catch(() => null);
-        return renderLanding(await getCachedStats(env), pins);
+        return renderLanding(await getStatsWithLiveFloor(env), pins);
       }
       return errorResponse("Method not allowed", 405);
     }
@@ -3600,6 +3610,11 @@ export default {
       const page = renderOpen(openMatch[1]);
       if (page) return page;
       return Response.redirect(`${SITE_BASE}/welcome`, 302);
+    }
+    if (path === "/api/floor") {
+      if (request.method !== "GET") return errorResponse("Method not allowed", 405);
+      const f = await liveFloor(env).catch(() => null);
+      return f ? jsonResponse(f) : jsonResponse({ error: "floor unavailable" }, 503);
     }
     if (path === "/api/stats") {
       if (request.method === "GET") return handleStatsApi(env);
