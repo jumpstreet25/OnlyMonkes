@@ -233,7 +233,7 @@ function equip(n) {
 // ── Levels ── map letters are listed in scripts/caves/build-levels.py.
 // Speed-run board (worker caves.ts) only takes runs from this level set. Change a
 // level → bump this and CAVES_VERSION/MIN_MS in worker-actions/src/caves.ts together.
-const CAVES_VERSION = 2;
+const CAVES_VERSION = 3; // 3: cave 2 rebuilt full size (2026-11-13)
 // Levels: caves-levels.js (built by scripts/caves/build-levels.py).
 let levelIx = 0;
 let MW = 0, MH = 0, secrets = 0, secretsFound = 0, boss = null;
