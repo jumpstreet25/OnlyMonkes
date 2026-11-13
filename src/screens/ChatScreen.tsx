@@ -661,10 +661,19 @@ export default function ChatScreen() {
   // ─── Fetch $SKR price + Saga Monkes floor price (live, every 5 min) ─────────
   useEffect(() => {
     let mounted = true;
-    // Load cached floor price immediately so it shows while API warms up
-    AsyncStorage.getItem('cached_floor_price').then(cached => {
-      if (mounted && cached) setFloorPrice(cached);
+    // Saved floor shows while the fetch runs, but only if it's under an hour old
+    // (a phone CoinGecko refused kept showing a days-old price before).
+    AsyncStorage.getItem('cached_floor_price_v2').then(cached => {
+      try {
+        const c = cached ? JSON.parse(cached) as { v: string; at: number } : null;
+        if (mounted && c?.v && Date.now() - c.at < 60 * 60_000) setFloorPrice(c.v);
+      } catch { /* ignore */ }
     }).catch(() => {});
+    const showFloor = (fp: number) => {
+      const fpStr = `${fp.toFixed(2)} SOL`;
+      setFloorPrice(fpStr);
+      AsyncStorage.setItem('cached_floor_price_v2', JSON.stringify({ v: fpStr, at: Date.now() })).catch(() => {});
+    };
     const fetchPrices = () => {
       // /tokens/{address} returns pairs:null for SKR as of 2026-08-24 (confirmed
       // live) — /search still indexes it. Filter to this exact Solana mint and
@@ -681,16 +690,17 @@ export default function ChatScreen() {
           if (p) setSkrPrice(Number(p) < 0.01 ? `$${Number(p).toFixed(6)}` : `$${Number(p).toFixed(4)}`);
         })
         .catch(() => {});
-      fetchAbortable('https://api.coingecko.com/api/v3/nfts/saga-monkes')
-        .then(r => r.json())
+      // Tensor's buy-now floor from its on-chain cNFT listings (worker /api/floor ← bot
+      // tensorFloor.ts), the number Tensor shows. CoinGecko lags it; only a fallback.
+      fetchAbortable('https://onlymonkes.app/api/floor')
+        .then(r => (r.ok ? r.json() : null))
         .then(d => {
           if (!mounted) return;
-          const fp = d?.floor_price?.native_currency;
-          if (fp) {
-            const fpStr = `${Number(fp).toFixed(2)} SOL`;
-            setFloorPrice(fpStr);
-            AsyncStorage.setItem('cached_floor_price', fpStr).catch(() => {});
-          }
+          const fp = Number(d?.floorSol);
+          if (fp > 0) { showFloor(fp); return; }
+          return fetchAbortable('https://api.coingecko.com/api/v3/nfts/saga-monkes')
+            .then(r => r.json())
+            .then(g => { const v = Number(g?.floor_price?.native_currency); if (mounted && v > 0) showFloor(v); });
         })
         .catch(() => {});
     };
