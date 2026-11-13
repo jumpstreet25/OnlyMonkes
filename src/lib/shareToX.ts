@@ -143,6 +143,28 @@ export function shareMonkeOfTheWeek(username: string): void {
   );
 }
 
+/**
+ * MonkeCaves clear → X, with the card page (worker shareCard.ts) as the link so X shows the
+ * pixel card. Every field is checked here; returns false (nothing opened) on a bad one.
+ */
+export function cavesClearUrl(n: number, cave: number, grade: string, tenths: number): string | null {
+  if (!Number.isInteger(n) || n < 1 || n > 9999 || !Number.isInteger(cave) || cave < 1 || cave > 9) return null;
+  if (!/^[SABCD]$/.test(grade) || !Number.isInteger(tenths) || tenths < 100 || tenths > 36_000) return null;
+  return `https://onlymonkes.app/monke/${n}/cave/${cave}/${grade}/${tenths}`;
+}
+
+export function shareCavesClear(n: number, cave: number, grade: string, tenths: number): boolean {
+  const url = cavesClearUrl(n, cave, grade, tenths);
+  if (!url) return false;
+  const time = `${Math.floor(tenths / 600)}:${String(Math.floor((tenths % 600) / 10)).padStart(2, "0")}.${tenths % 10}`;
+  openTweet(`🕹️ MONKE #${n} cleared MonkeCaves cave ${cave} in ${time} · grade ${grade}
+
+${url}
+
+${HANDLE} ${HASHTAGS}`);
+  return true;
+}
+
 /** Generic milestone share. */
 export function shareMilestone(text: string): void {
   openTweet(`${text}\n\n${HANDLE} — Saga Monkes holders only 🐒\n${HASHTAGS}`);

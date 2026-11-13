@@ -27,8 +27,16 @@ export function monkeImageForNumber(n: number): string | null {
 
 const CARD_PATH = /^\/monke\/(\d{1,5})\/card\.png$/;
 const PAGE_PATH = /^\/monke\/(\d{1,5})\/?$/;
+// MonkeCaves clear: /monke/<n>/cave/<cave>/<grade>/<tenths>[/card.png] (2026-11-13). Everything in the
+// path is checked (digits and a grade letter only), so the page never prints text a sharer typed.
+const CAVE_PATH = /^\/monke\/(\d{1,5})\/cave\/([1-9])\/([SABCD])\/(\d{1,5})(\/card\.png)?\/?$/;
+export const CAVE_NAMES: Record<number, string> = { 1: "LOST TEMPLE", 2: "PAPER HANDS ALLEY", 3: "BIG TECH HQ" };
+const GRADE_COLOR: Record<string, RGB> = { S: [255, 210, 63], A: [125, 255, 154], B: [108, 204, 255], C: [233, 22, 113], D: [154, 154, 176] };
+/** 1613 tenths → "2:41.3" */
+export const fmtTenths = (t: number) => `${Math.floor(t / 600)}:${String(Math.floor((t % 600) / 10)).padStart(2, "0")}.${t % 10}`;
+
 export function isShareCardPath(path: string): boolean {
-  return CARD_PATH.test(path) || PAGE_PATH.test(path);
+  return CARD_PATH.test(path) || PAGE_PATH.test(path) || CAVE_PATH.test(path);
 }
 
 // ── Pixel font (5×7) ──
@@ -187,6 +195,62 @@ async function buildCard(n: number, art: RGB[][] | null): Promise<Uint8Array> {
   return encodePng(c.px);
 }
 
+async function buildCaveCard(n: number, art: RGB[][] | null, cave: number, grade: string, tenths: number): Promise<Uint8Array> {
+  const c = new Canvas(BG);
+  const cell = 33, ax = 51, ay = 51;
+  c.rect(ax - 6, ay - 6, 16 * cell + 12, 16 * cell + 12, ACCENT);
+  if (art) for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) c.rect(ax + x * cell, ay + y * cell, cell, cell, art[y][x]);
+  else c.rect(ax, ay, 16 * cell, 16 * cell, [30, 30, 40]);
+  const tx = 648, name = CAVE_NAMES[cave] ?? `CAVE ${cave}`;
+  c.text("MONKECAVES", tx, 64, 6, MUTED);
+  c.text(`CAVE ${cave} CLEAR`, tx, 120, 5, TEXT);
+  c.text(name, tx, 170, Math.max(3, Math.min(6, Math.floor((W - tx - 40 + 5) / (name.length * 6)))), ACCENT);
+  // Grade: a big letter in its colour, the time beside it.
+  c.text(grade, tx, 250, 22, GRADE_COLOR[grade] ?? TEXT);
+  c.text("GRADE", tx + 150, 270, 4, MUTED);
+  c.text(fmtTenths(tenths), tx + 150, 316, 9, TEXT);
+  c.text(`MONKE #${n}`, tx, 446, 5, TEXT);
+  c.rect(tx, 510, textWidth("ONLYMONKES.APP", 5), 5, ACCENT);
+  c.text("ONLYMONKES.APP", tx, 530, 5, MUTED);
+  return encodePng(c.px);
+}
+
+function cavePage(n: number, cave: number, grade: string, tenths: number): Response {
+  const name = CAVE_NAMES[cave] ?? `Cave ${cave}`, time = fmtTenths(tenths);
+  const title = `Monke #${n} cleared ${name} in ${time} · grade ${grade}`;
+  const desc = "MonkeCaves: the retro shooter for Saga Monke holders on OnlyMonkes. Play cave 1 free in your browser.";
+  const base = `${SITE}/monke/${n}/cave/${cave}/${grade}/${tenths}`, card = `${base}/card.png`;
+  const html = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(title)}</title>
+<meta name="description" content="${esc(desc)}">
+<meta property="og:title" content="${esc(title)}"><meta property="og:description" content="${esc(desc)}">
+<meta property="og:image" content="${card}"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
+<meta property="og:url" content="${base}"><meta property="og:type" content="website"><meta property="og:site_name" content="OnlyMonkes">
+<meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="${esc(title)}">
+<meta name="twitter:description" content="${esc(desc)}"><meta name="twitter:image" content="${card}">
+<link rel="canonical" href="${base}">
+<style>
+:root{--bg:#0A0A0F;--text:#EDEDF3;--muted:#9A9AB0;--accent:#e91671;--line:rgba(255,255,255,.12)}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+main{max-width:720px;margin:0 auto;padding:24px 16px 48px;text-align:center}
+img{width:100%;height:auto;border-radius:16px;image-rendering:pixelated;display:block}
+h1{font-size:24px;margin:20px 0 6px}p{color:var(--muted);margin:0 0 24px}
+.b{display:flex;flex-wrap:wrap;gap:10px;justify-content:center}
+a.btn{display:inline-block;padding:12px 18px;border-radius:12px;background:var(--accent);color:#fff;text-decoration:none;font-weight:600}
+a.ghost{background:transparent;border:1px solid var(--line);color:var(--text)}
+</style></head><body><main>
+<img src="${card}" width="1200" height="630" alt="${esc(title)}">
+<h1>${esc(title)}</h1>
+<p>${esc(desc)}</p>
+<div class="b">
+<a class="btn" href="${SITE}/viewer/caves?mode=demo">Play cave 1</a>
+<a class="btn ghost" href="${SITE}/get">Get OnlyMonkes</a>
+</div>
+</main></body></html>`;
+  return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "public, max-age=86400" } });
+}
+
 export function esc(s: string): string {
   return s.replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]!);
 }
@@ -230,11 +294,27 @@ a.ghost{background:transparent;border:1px solid var(--line);color:var(--text)}
 
 export async function handleShareCard(path: string, request: Request, ctx: { waitUntil(p: Promise<unknown>): void }): Promise<Response> {
   if (request.method !== "GET" && request.method !== "HEAD") return new Response("Method not allowed", { status: 405 });
-  const m = path.match(CARD_PATH) ?? path.match(PAGE_PATH)!;
+  const cm = path.match(CAVE_PATH);
+  const m = cm ?? path.match(CARD_PATH) ?? path.match(PAGE_PATH)!;
   const n = parseInt(m[1], 10);
   const url = monkeImageForNumber(n);
   if (!url) return new Response("Not a live Saga Monke", { status: 404, headers: { "Content-Type": "text/plain" } });
   const head = (r: Response) => (request.method === "HEAD" ? new Response(null, { status: r.status, headers: r.headers }) : r);
+  if (cm) {
+    const cave = parseInt(cm[2], 10), grade = cm[3], tenths = parseInt(cm[4], 10);
+    if (tenths < 100 || tenths > 36_000) return new Response("Not a clear time", { status: 404, headers: { "Content-Type": "text/plain" } });
+    if (!cm[5]) return head(cavePage(n, cave, grade, tenths));
+    const cache = (caches as unknown as { default: Cache }).default;
+    const key = new Request(`${SITE}/monke/${n}/cave/${cave}/${grade}/${tenths}/card.png`, { method: "GET" });
+    const hit = await cache.match(key);
+    if (hit) return head(hit);
+    const art = await readArt(url);
+    const res = new Response(await buildCaveCard(n, art, cave, grade, tenths), {
+      headers: { "Content-Type": "image/png", "Cache-Control": art ? "public, max-age=31536000, immutable" : "public, max-age=300", "X-Content-Type-Options": "nosniff" },
+    });
+    if (art) ctx.waitUntil(cache.put(key, res.clone()).catch(() => {}));
+    return head(res);
+  }
   if (!CARD_PATH.test(path)) return head(sharePage(n));
 
   const cache = (caches as unknown as { default: Cache }).default;
