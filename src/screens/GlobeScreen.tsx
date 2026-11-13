@@ -311,7 +311,7 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
         const key = location.trim().toLowerCase();
         const cached = cachedGeo[key];
 
-        const name = globeName(username || profile?.username, profile?.nftImage);
+        const name = globeName(username || profile?.username, profile?.nftImage, profile?.xAccount);
         if (cached) {
           allMarkers.push({
             id: `user-${inboxId}`, lat: cached.lat, lng: cached.lng,
