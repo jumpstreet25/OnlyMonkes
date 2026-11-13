@@ -58,7 +58,7 @@ import { parseMarketplaceMessage, addListing, addBid, addSwapOffer, cancelBid, m
 import { parseVideoRoomMessage, type VideoRoomData } from "@/lib/liveVideo";
 import { parseAvatarRoomMessage, type AvatarRoomData } from "@/lib/avatarRoom";
 import { verifyNFTOwnership, verifyNftMintInCollection, checkMonkeLedgerWalletOwnership } from "@/lib/nftVerification";
-import { cacheProfile, getCachedProfile, loadProfileCache, trackUser, loadAllTimeUsers, applyLocationSync, getLocatedUserCount } from "@/lib/userProfile";
+import { cacheProfile, getCachedProfile, loadProfileCache, trackUser, loadAllTimeUsers, applyLocationSync, getLocatedUserCount, loadGlobeRoster } from "@/lib/userProfile";
 import { loadWeeklyActivity, trackActivity } from "@/lib/activityTracker";
 import { incrementProgress, updateStreak, getEarnedBadges, grantSpecialBadge, type BadgeDef } from "@/lib/badges";
 import { processBananaGrant } from "@/lib/bananaGrant";
@@ -604,7 +604,7 @@ export function useXmtp() {
     try {
       // Load caches in background — don't block XMTP client boot
       // loadAllTimeUsers seeds from profileCache, so it must run after loadProfileCache
-      const cacheReady = loadProfileCache().then(() => Promise.all([loadAllTimeUsers(), loadWeeklyActivity()]));
+      const cacheReady = loadProfileCache().then(() => Promise.all([loadAllTimeUsers(), loadWeeklyActivity(), loadGlobeRoster()]));
 
       // ── 1. Boot XMTP client (uses prefetched if available) ─────────────────
       const client = await getOrInitXmtpClient();
