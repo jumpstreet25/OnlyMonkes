@@ -38,7 +38,7 @@
 import { bearerOk } from "./botAuth";
 import { botHealthEvent, holdersChangeEvent, probeBot, relayEvent, salesDailyEvent, sentryEvent } from "./agentBridge";
 import { filterInbox, parseInbound, readInbox, storeInbound } from "./agentInbox";
-import { renderLanding, renderGet, renderOpen, renderBot, LEGAL_PATHS, SITE_BASE, type BotCommand } from "./site";
+import { renderLanding, renderGet, renderOpen, renderLive, renderBot, LEGAL_PATHS, SITE_BASE, type BotCommand } from "./site";
 import botCommands from "../../config/bot-commands.json";
 import {
   Connection,
@@ -3599,6 +3599,10 @@ export default {
         const pins = await env.COMMUNITY_DATA.get("locations:latest").then((r) => (r ? (JSON.parse(r) as unknown[]).length : null)).catch(() => null);
         return renderLanding(await getStatsWithLiveFloor(env), pins);
       }
+      return errorResponse("Method not allowed", 405);
+    }
+    if (path === "/live" || path === "/live/") {
+      if (isPageRead) return renderLive();
       return errorResponse("Method not allowed", 405);
     }
     if (path === "/get") {
