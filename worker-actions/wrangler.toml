@@ -110,7 +110,7 @@ XMTP_JWT_KID = "om-1"
 BOT_PROFILE_URL = "https://bot.onlymonkes.app"
 # MonkeCaves speed-run board (caves.ts): "off" | "testers" | "on". Testers = sha256 hex of
 # wallets: the owner's login wallet, then the testers in config/monkecaves.json.
-CAVES_BOARD = "testers"
+CAVES_BOARD = "on"
 CAVES_TESTERS = "72ecfcfc708fb734e94f33c9b20df524b11e5472f093eecf859f3e3d10dcd760,326ac81460be4de300c8ebc8d078d805b62e0ae99102b1e43aef1230d25e800a"
 # Monke RC daily board, leader ghost + daily bananas (src/racer.ts): "off" | "testers" | "on". Public since 2026-11-11.
 RACER_BOARD = "on"
