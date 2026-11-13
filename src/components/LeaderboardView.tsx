@@ -22,6 +22,7 @@ import { useWorldGlassCardStyle } from "@/components/worlds/WorldScreenShell";
 import { WorldGlassFill } from "@/components/WorldGlassFill";
 import { useAppStore } from "@/store/appStore";
 import { CopyTradeToggle } from "@/components/CopyTradeToggle";
+import { GamesBoardView } from "@/components/GamesBoardView";
 import { toast } from "sonner-native";
 
 /** -1 = fewer than 3 measured trades (the bot doesn't guess). */
@@ -243,7 +244,7 @@ function LifetimeTraderRow({
   );
 }
 
-export function LeaderboardView() {
+function TradersBoard() {
   const [traders, setTraders] = useState<TopTrader[]>([]);
   const [lifetimeTraders, setLifetimeTraders] = useState<TopTrader[]>([]);
   const [loading, setLoading] = useState(true);
@@ -382,8 +383,30 @@ export function LeaderboardView() {
   );
 }
 
+/** Leaderboard: top traders, or the game boards (Monke RC daily, MonkeCaves weekly). */
+export function LeaderboardView() {
+  const [tab, setTab] = useState<"traders" | "games">("traders");
+  return (
+    <View style={styles.root}>
+      <View style={styles.tabs}>
+        {(["traders", "games"] as const).map((k) => (
+          <Pressable key={k} onPress={() => setTab(k)} style={[styles.tab, tab === k && styles.tabOn]} accessibilityRole="tab" accessibilityState={{ selected: tab === k }}>
+            <Text style={[styles.tabText, tab === k && styles.tabTextOn]}>{k === "traders" ? "TRADERS" : "GAMES"}</Text>
+          </Pressable>
+        ))}
+      </View>
+      {tab === "traders" ? <TradersBoard /> : <GamesBoardView />}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  tabs: { flexDirection: "row", alignSelf: "center", gap: 6, marginBottom: 10, padding: 3, borderRadius: 14, backgroundColor: "rgba(255,255,255,0.06)" },
+  tab: { paddingVertical: 6, paddingHorizontal: 16, borderRadius: 11 },
+  tabOn: { backgroundColor: "#FFD54F" },
+  tabText: { fontFamily: FONTS.mono, fontSize: 11, fontWeight: "700", letterSpacing: 1.5, color: THEME.textMuted },
+  tabTextOn: { color: "#1a1408" },
   content: { paddingTop: 0, paddingBottom: 16, gap: 0 },
 
   header: {
