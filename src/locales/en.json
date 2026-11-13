@@ -1159,6 +1159,7 @@
     "close": "Close"
   },
   "caves": {
-    "toastRoyale": "+{{bananas}} bananas from Jungle Royale"
+    "toastRoyale": "+{{bananas}} bananas from Jungle Royale",
+    "toastCaves": "+{{bananas}} bananas from MonkeCaves"
   }
 }

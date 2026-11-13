@@ -10,7 +10,9 @@
  * server credits the bananas and the page says { event: "royale-paid" }: the
  * phone collects them (src/lib/royaleBananas.ts). A cleared cave ({ event: "clear" })
  * goes to the speed-run board (src/lib/cavesRun.ts); the reply comes back to the page
- * as { type: "cavesRun", ... }.
+ * as { type: "cavesRun", ... }; a clear that earned bananas makes the phone collect them
+ * (src/lib/cavesBananas.ts). The page asks for saved progress with { event: "progress" } and
+ * gets { type: "cavesProgress", max, today, cap }.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
@@ -24,7 +26,8 @@ import { parseMonkeNumber } from "@/lib/monkeMeme/monkeNumbers";
 import { getMonkeCavesConfig, monkeCavesVisible } from "@/lib/monkeCaves/config";
 import { royaleProof } from "@/lib/royaleProof";
 import { collectRoyaleBananas } from "@/lib/royaleBananas";
-import { submitCavesRun } from "@/lib/cavesRun";
+import { fetchCavesProgress, submitCavesRun } from "@/lib/cavesRun";
+import { collectCavesBananas } from "@/lib/cavesBananas";
 
 const GAME_URL = Platform.OS === "web" ? "/viewer/caves" : "https://onlymonkes.app/viewer/caves";
 
@@ -55,7 +58,15 @@ export default function MonkeCavesRoute() {
     if (d?.type !== "caves") return;
     if (d.event === "royale-paid") { void collectRoyaleBananas(true); return; }
     if (d.event === "clear") {
-      void submitCavesRun(d).then((r) => { if (r) web.current?.postMessage(JSON.stringify({ type: "cavesRun", ...r })); });
+      void submitCavesRun(d).then((r) => {
+        if (!r) return;
+        web.current?.postMessage(JSON.stringify({ type: "cavesRun", ...r }));
+        if ((r.bananas ?? 0) > 0) void collectCavesBananas(true);
+      });
+      return;
+    }
+    if (d.event === "progress") {
+      void fetchCavesProgress().then((p) => { if (p) web.current?.postMessage(JSON.stringify({ type: "cavesProgress", ...p })); });
       return;
     }
     if (d.event !== "royale-auth") return;

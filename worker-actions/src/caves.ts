@@ -14,9 +14,22 @@
  * one submit per 10 s per holder. Wallets are stored only as hashes.
  *   POST /api/caves/run   { proof, v, cave, timeMs, kills?, secrets?, n?, name? } → { ok, week, best, improved, rank, top }
  *   GET  /api/caves/board ?week=2026-W45                                     → { week, caves: { 1: [...], 2: [...], 3: [...] } }
+ *   POST /api/caves/progress { proof }                                       → { max, today, cap }
+ *   POST /api/caves/collect  { proof }                                       → { bananas }   (phone only, everything owed, once)
+ *
+ * Campaign (owner 2026-11-13): progress is saved per holder (phone and web share it); a cave
+ * unlocks when the one before it is beaten. A clear pays CLEAR_BANANAS(cave) once per cave per
+ * UTC day, at most DAILY_BANANAS a day, its own cap (Jungle Royale has a separate 100). Before
+ * progress was saved the only way into cave N was clearing 1..N-1 in one sitting, so a valid
+ * cave N run marks every cave up to N as beaten. Bananas are earned here and collected by the
+ * phone (bananas live on the phone; the web only mirrors the balance).
  * KV (COMMUNITY_DATA): caves:wk:<week>:c<cave>:<id> { t, n, name, at } (each holder's best)
  *                      caves:top:<week>:c<cave> [{ id, t, n, name, at }] (top 10, kept on write
  *                      so reading the board never lists keys)
+ *                      caves:prog:<id> { max }            highest cave beaten
+ *                      caves:day:<id>:<YYYY-MM-DD> { caves, total }   paid clears that day
+ *                      caves:earned:<id> / caves:paid:<id>  running totals; only submit writes
+ *                      earned and only collect writes paid, so the two never overwrite each other
  */
 import type { Env } from "./index";
 import { holderClaimsFromToken } from "./webAuth";
@@ -44,7 +57,52 @@ export function cavesProofMessage(action: string, nonce: string): string {
   return `OnlyMonkes Caves\naction:${action}\nnonce:${nonce}`;
 }
 
-export const isCavesPath = (path: string) => path === "/api/caves/run" || path === "/api/caves/board";
+export const isCavesPath = (path: string) => path === "/api/caves/run" || path === "/api/caves/board" || path === "/api/caves/progress" || path === "/api/caves/collect";
+
+/** Bananas for a clear: deeper caves pay more. Once per cave per UTC day, DAILY_BANANAS a day. */
+export const CLEAR_BANANAS = (cave: number) => 15 + 10 * cave;
+export const DAILY_BANANAS = 100;
+const utcDay = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+const num = async (kv: KVNamespace, key: string) => parseInt((await kv.get(key)) ?? "0", 10) || 0;
+
+/** Records a clear: progress up to this cave, and today's bananas if this cave hasn't paid today. */
+async function recordClear(kv: KVNamespace, holder: string, cave: number, now: number): Promise<{ max: number; bananas: number; today: number }> {
+  const progKey = `caves:prog:${holder}`;
+  const prog = JSON.parse((await kv.get(progKey)) ?? "null") as { max: number } | null;
+  const max = Math.max(prog?.max ?? 0, cave);
+  if (max !== prog?.max) await kv.put(progKey, JSON.stringify({ max }));
+  const dayKey = `caves:day:${holder}:${utcDay(now)}`;
+  const day = (JSON.parse((await kv.get(dayKey)) ?? "null") as { caves: number[]; total: number } | null) ?? { caves: [], total: 0 };
+  if (day.caves.includes(cave)) return { max, bananas: 0, today: day.total };
+  const bananas = Math.max(0, Math.min(CLEAR_BANANAS(cave), DAILY_BANANAS - day.total));
+  day.caves.push(cave); day.total += bananas;
+  await kv.put(dayKey, JSON.stringify(day), { expirationTtl: 3 * 86_400 });
+  if (bananas) await kv.put(`caves:earned:${holder}`, String((await num(kv, `caves:earned:${holder}`)) + bananas));
+  return { max, bananas, today: day.total };
+}
+
+async function progress(env: Env, body: any, now = Date.now()): Promise<Response> {
+  const id = await who(env, body?.proof, "progress");
+  if ("error" in id) return json({ error: id.error }, id.status);
+  const holder = await idFor(id.wallet), kv = env.COMMUNITY_DATA;
+  const prog = JSON.parse((await kv.get(`caves:prog:${holder}`)) ?? "null") as { max: number } | null;
+  const day = JSON.parse((await kv.get(`caves:day:${holder}:${utcDay(now)}`)) ?? "null") as { total: number } | null;
+  return json({ max: prog?.max ?? 0, today: day?.total ?? 0, cap: DAILY_BANANAS });
+}
+
+async function collect(env: Env, body: any, now = Date.now()): Promise<Response> {
+  const id = await who(env, body?.proof, "collect");
+  if ("error" in id) return json({ error: id.error }, id.status);
+  const holder = await idFor(id.wallet), kv = env.COMMUNITY_DATA;
+  const lastKey = `caves:collect:${holder}`;
+  if (now - ((await num(kv, lastKey)) || 0) < 10_000) return json({ bananas: 0 });
+  await kv.put(lastKey, String(now), { expirationTtl: 60 });
+  const earned = await num(kv, `caves:earned:${holder}`), paid = await num(kv, `caves:paid:${holder}`);
+  const bananas = Math.max(0, Math.min(10_000, earned - paid));
+  // Mark first, pay after: a lost reply costs bananas, a retry never doubles them.
+  if (bananas) await kv.put(`caves:paid:${holder}`, String(earned));
+  return json({ bananas });
+}
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
@@ -118,6 +176,7 @@ async function submit(env: Env, body: any, now = Date.now()): Promise<Response> 
   if (now - last < 10_000) return json({ error: "slow down" }, 429);
   await kv.put(lastKey, String(now), { expirationTtl: 60 });
 
+  const cleared = await recordClear(kv, holder, body.cave as number, now);
   const week = isoWeek(now);
   const key = `caves:wk:${week}:${caveSlot(body.cave)}:${holder}`;
   const prev = JSON.parse((await kv.get(key)) ?? "null") as Entry | null;
@@ -127,7 +186,7 @@ async function submit(env: Env, body: any, now = Date.now()): Promise<Response> 
   let top = await readTop(env, week, cave);
   const reply = (best: number, improved: boolean) => {
     const at = top.findIndex((r) => r.id === holder);
-    return json({ ok: true, week, best, improved, rank: at < 0 ? null : at + 1, top: top.map(shown) });
+    return json({ ok: true, week, best, improved, rank: at < 0 ? null : at + 1, top: top.map(shown), max: cleared.max, bananas: cleared.bananas, today: cleared.today, cap: DAILY_BANANAS });
   };
   if (prev && prev.t <= t) return reply(prev.t, false);
   const entry: Entry = { t, n, name: cleanName(body.name), at: now };
@@ -151,6 +210,11 @@ export async function handleCaves(request: Request, env: Env, path: string): Pro
     try { body = await request.json(); } catch { /* bad body */ }
     return submit(env, body);
   }
+  if ((path === "/api/caves/progress" || path === "/api/caves/collect") && request.method === "POST") {
+    let body: any = null;
+    try { body = await request.json(); } catch { /* bad body */ }
+    return path === "/api/caves/progress" ? progress(env, body) : collect(env, body);
+  }
   if (path === "/api/caves/board" && request.method === "GET") {
     // Testers see the board in their run replies; the public board waits for "on".
     if (env.CAVES_BOARD !== "on") return json({ error: "not released" }, 404);
@@ -163,4 +227,4 @@ export async function handleCaves(request: Request, env: Env, path: string): Pro
   return json({ error: "not found" }, 404);
 }
 
-export const __test = { submit };
+export const __test = { submit, progress, collect };

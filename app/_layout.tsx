@@ -41,6 +41,7 @@ import { router } from 'expo-router';
 import { takeHeldLink } from '../src/lib/deepLinks';
 import { collectReferralBananas } from '../src/lib/referrals';
 import { collectRoyaleBananas } from '../src/lib/royaleBananas';
+import { collectCavesBananas } from '../src/lib/cavesBananas';
 import { prepareShareLink } from '../src/lib/shareLink';
 import i18n from '../src/lib/i18n';
 import { useFreeRasp } from 'freerasp-react-native';
@@ -226,6 +227,8 @@ export default function RootLayout() {
     }).catch(() => {});
     // Jungle Royale bananas a match credited but the phone hadn't collected yet.
     collectRoyaleBananas().then((n) => { if (n > 0) toast(i18n.t('caves.toastRoyale', { bananas: n })); }).catch(() => {});
+    // MonkeCaves clear bananas (a clear on the web, or a collect that didn't land).
+    collectCavesBananas().then((n) => { if (n > 0) toast(i18n.t('caves.toastCaves', { bananas: n })); }).catch(() => {});
     return () => clearTimeout(timer);
   }, [_verified, _pathname]);
 

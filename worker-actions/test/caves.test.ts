@@ -95,6 +95,31 @@ describe("submit", () => {
   });
 });
 
+describe("campaign: progress + bananas", () => {
+  const proof = { kind: "holder", token: "good" };
+  test("a clear saves progress, pays once per cave per day, 100 a day, and the phone collects once", async () => {
+    const env: any = { COMMUNITY_DATA: kv(), CAVES_BOARD: "on" };
+    expect(await (await __test.progress(env, { proof }, T)).json()).toEqual({ max: 0, today: 0, cap: 100 });
+    // A cave 3 clear (only reachable through 1 and 2 before progress was saved) unlocks up to 3.
+    expect(await (await __test.submit(env, run({ cave: 3, timeMs: 30_000 }), T)).json()).toMatchObject({ max: 3, bananas: 45, today: 45 });
+    expect(await (await __test.submit(env, run({ cave: 3, timeMs: 29_000 }), T + 20_000)).json()).toMatchObject({ max: 3, bananas: 0, today: 45 });
+    expect(await (await __test.submit(env, run({ cave: 1 }), T + 40_000)).json()).toMatchObject({ max: 3, bananas: 25, today: 70 });
+    expect(await (await __test.submit(env, run({ cave: 2, timeMs: 90_000 }), T + 60_000)).json()).toMatchObject({ bananas: 30, today: 100 });
+    expect(await (await __test.progress(env, { proof }, T + 61_000)).json()).toEqual({ max: 3, today: 100, cap: 100 });
+    expect(await (await __test.collect(env, { proof }, T + 70_000)).json()).toEqual({ bananas: 100 });
+    expect(await (await __test.collect(env, { proof }, T + 90_000)).json()).toEqual({ bananas: 0 });
+    // Next UTC day pays again.
+    const next = T + 86_400_000;
+    expect(await (await __test.submit(env, run({ cave: 1 }), next)).json()).toMatchObject({ bananas: 25, today: 25 });
+    expect(await (await __test.collect(env, { proof }, next + 20_000)).json()).toEqual({ bananas: 25 });
+  });
+  test("progress and collect need a proof", async () => {
+    const env: any = { COMMUNITY_DATA: kv() };
+    expect((await __test.progress(env, {}, T)).status).toBe(401);
+    expect((await __test.collect(env, { proof: { kind: "holder", token: "bad" } }, T)).status).toBe(401);
+  });
+});
+
 describe("GET /api/caves/board", () => {
   const get = (env: any) => handleCaves(new Request("https://x/api/caves/board"), env, "/api/caves/board");
   test("hidden while off or testers-only, public when on", async () => {
