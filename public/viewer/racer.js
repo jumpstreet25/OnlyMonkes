@@ -625,9 +625,21 @@ function title() {
     <div class="dim" id="leaderline"></div>
     ${!DEMO ? `<div class="dim">Finish today's track for bananas · fastest time tops the daily board</div>` : ""}
     ${DEMO ? `<div class="dim">The daily track, leaderboard and bananas are for Saga Monke holders · ${GET_APP}</div>` : ""}
-    <div class="row"><button class="go" data-act="go">RACE</button></div>
-  `, (act) => { if (act === "go") countdown(); });
+    <div class="row"><button class="go" data-act="go">RACE</button><button data-act="board">BOARD</button></div>
+  `, (act) => { if (act === "go") countdown(); else if (act === "board") boardCard(); });
   showLeaderLine();
+}
+// Today's daily board (worker racer.ts, public GET while RACER_BOARD is "on").
+const esc = (t) => String(t).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+function boardCard() {
+  const day = todayId();
+  showCard(`<h1>DAILY BOARD</h1><div class="tag">${esc(day)} · UTC</div><div class="stats" id="boardrows"><span>Loading…</span><b></b></div><div class="row"><button class="go" data-act="back">BACK</button></div>`, () => title());
+  fetch(`/api/racer/board?day=${day}`).then((r) => (r.ok ? r.json() : null)).then((d) => {
+    const rows = document.getElementById("boardrows"); if (!rows) return;
+    const top = Array.isArray(d?.top) ? d.top : null;
+    rows.innerHTML = !top ? `<span>Board not open yet</span><b></b>` : !top.length ? `<span>No times yet today — be first</span><b></b>`
+      : top.slice(0, 10).map((r, i) => `<span>${i + 1}. ${esc(r.name || "Monke")}${r.n === n ? " (you)" : ""}</span><b>${fmt(r.t)}</b>`).join("");
+  }).catch(() => { const rows = document.getElementById("boardrows"); if (rows) rows.innerHTML = `<span>Couldn't load the board</span><b></b>`; });
 }
 function showLeaderLine() {
   const el = document.getElementById("leaderline");

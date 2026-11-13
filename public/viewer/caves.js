@@ -1117,8 +1117,19 @@ else card("MONKECAVES", [
   `<div class="dim">MONKE #${n}</div>`,
   `<div class="weapon"><i style="background:${swatch(WEAPON.shot.color)}"></i>${WEAPON.name}</div>`,
   `<div class="dim">${LEVELS.length} caves · hunt the jeets · find the pink exit<br>The Banana Phone waits at the end.</div>`,
+  `<div class="stats" id="weektop" style="display:none"></div>`,
   `<div class="cta">${isTouch ? "Tap FIRE" : "Space"} to start</div>`,
 ]);
+// This week's #1 per cave on the start card (worker caves.ts, public GET once CAVES_BOARD is "on").
+if (!ROYALE && !DEMO) fetch("/api/caves/board").then((r) => (r.ok ? r.json() : null)).then((d) => {
+  const box = document.getElementById("weektop"); if (!box || state !== "title" || !d?.caves) return;
+  const esc = (t) => String(t).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+  box.innerHTML = `<span>THIS WEEK'S FASTEST</span><b></b>` + LEVELS.map((_, i) => {
+    const r = (d.caves[i + 1] || [])[0];
+    return `<span>Cave ${i + 1} · ${r ? esc(r.name || "Monke") : "open"}</span><b>${r ? fmtRun(r.t) : "--"}</b>`;
+  }).join("");
+  box.style.display = "";
+}).catch(() => {});
 document.getElementById("fire").style.background = WEAPON.shot.color === "rainbow" ? swatch("rainbow") : WEAPON.shot.color;
 setTimeout(() => document.getElementById("help").classList.add("gone"), 6000);
 
