@@ -241,7 +241,7 @@ export function getPersistedLocation(inboxId: string): string | undefined {
  * without waiting for each monke's original PROFILE_UPDATE broadcast.
  */
 export function applyLocationSync(
-  locs: Record<string, { u?: string; loc?: string; ni?: string; d?: number }>,
+  locs: Record<string, { u?: string; loc?: string; ni?: string; x?: string; d?: number }>,
 ): number {
   // 2026-11-13: the bot now sends one pin per holder wallet (d: 1). That list is the roster for
   // MonkeGlobe and the 🌍 count, so every device shows the same holders: before, each device
@@ -259,6 +259,7 @@ export function applyLocationSync(
       username: data.u || undefined,
       location: data.loc.trim(),
       nftImage: data.ni || undefined,
+      xAccount: getCachedProfile(inboxId)?.xAccount ? undefined : xHandle(data.x) || undefined,
     });
     trackUser(inboxId, data.u || undefined);
     n++;
@@ -291,9 +292,17 @@ export function getGlobeRoster(myInboxId: string | null): string[] | null {
   return _globeRoster.filter((id) => !(myInboxId && isMineInbox(id, myInboxId)));
 }
 
-/** A display name for a holder with no username: their monke number from the PFP, else a generic label. */
-export function globeName(username: string | null | undefined, nftImage: string | null | undefined): string {
+/** An X handle from a profile's bio field: "@name", "name" or an x.com / twitter.com link → "name" ("" if it isn't one). */
+export function xHandle(raw: string | null | undefined): string {
+  const t = String(raw ?? '').trim().replace(/^(https?:\/\/)?(www\.)?(x|twitter)\.com\//i, '').replace(/^@/, '').split(/[/?#]/)[0];
+  return /^[A-Za-z0-9_]{1,15}$/.test(t) ? t : '';
+}
+
+/** A holder's MonkeGlobe name: username, else the X handle linked in their bio, else their monke number from the PFP. */
+export function globeName(username: string | null | undefined, nftImage: string | null | undefined, xAccount?: string | null): string {
   if (username?.trim()) return username.trim();
+  const x = xHandle(xAccount);
+  if (x) return `@${x}`;
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { monkeNumberFromImage } = require('@/lib/monkeMeme/monkeNumbers') as { monkeNumberFromImage: (u: string | null | undefined) => number | null };
   const n = monkeNumberFromImage(nftImage);
