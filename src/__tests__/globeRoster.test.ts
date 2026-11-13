@@ -1,5 +1,5 @@
 import { useAppStore } from "../store/appStore";
-import { applyLocationSync, getGlobeRoster, getLocatedUserCount, globeName } from "../lib/userProfile";
+import { applyLocationSync, getGlobeRoster, getLocatedUserCount, getSyncDomain, globeName } from "../lib/userProfile";
 
 jest.mock("../lib/constants", () => ({ BOT_INBOX_IDS: ["bot1"] }));
 jest.mock("../lib/inboxLinking", () => ({ isMineInbox: (a: string, b: string) => a === b || a === "myOldInbox" }));
@@ -14,10 +14,11 @@ describe("MonkeGlobe roster", () => {
     useAppStore.setState({ myInboxId: "me", location: "Denver" } as never);
     applyLocationSync({
       a: { u: "A", loc: "Austin", d: 1 },
-      b: { u: "", loc: "Boston", d: 1 },
+      b: { u: "", loc: "Boston", dn: "bee.skr", d: 1 },
       myOldInbox: { u: "Me", loc: "Denver", d: 1 },
     });
     expect(getGlobeRoster("me")).toEqual(["a", "b"]);
+    expect(getSyncDomain("b")).toBe("bee.skr");
     expect(getLocatedUserCount()).toBe(2 + 1 + 1);
   });
 
@@ -29,5 +30,8 @@ describe("MonkeGlobe roster", () => {
     expect(globeName("", null, "https://x.com/Rug_Doctor?s=21")).toBe("@Rug_Doctor");
     expect(globeName("Named", null, "@RugDoctor")).toBe("Named");
     expect(globeName("", null, "not a handle!")).toBe("Saga Monke holder");
+    expect(globeName("", null, "", "jump.skr")).toBe("jump.skr");
+    expect(globeName("", null, "@RugDoctor", "jump.skr")).toBe("@RugDoctor");
+    expect(globeName("", null, "", "<b>x</b>")).toBe("Saga Monke holder");
   });
 });
