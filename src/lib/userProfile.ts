@@ -241,7 +241,7 @@ export function getPersistedLocation(inboxId: string): string | undefined {
  * without waiting for each monke's original PROFILE_UPDATE broadcast.
  */
 export function applyLocationSync(
-  locs: Record<string, { u?: string; loc?: string; ni?: string; x?: string; d?: number }>,
+  locs: Record<string, { u?: string; loc?: string; ni?: string; x?: string; dn?: string; d?: number }>,
 ): number {
   // 2026-11-13: the bot now sends one pin per holder wallet (d: 1). That list is the roster for
   // MonkeGlobe and the 🌍 count, so every device shows the same holders: before, each device
@@ -250,6 +250,7 @@ export function applyLocationSync(
   const ids = Object.entries(locs).filter(([id, v]) => id && v?.d === 1 && v.loc?.trim()).map(([id]) => id);
   if (ids.length) {
     _globeRoster = ids;
+    _syncDomains = new Map(Object.entries(locs).filter(([, v]) => v?.dn).map(([id, v]) => [id, String(v.dn)]));
     AsyncStorage.setItem(AK_GLOBE_ROSTER, JSON.stringify(ids)).catch(() => {});
   }
   let n = 0;
@@ -270,6 +271,13 @@ export function applyLocationSync(
 // ─── MonkeGlobe roster (bot LOCATION_SYNC, one inbox per holder) ──────────────
 const AK_GLOBE_ROSTER = 'globe_roster_v1';
 let _globeRoster: string[] | null = null;
+// inboxId → on-chain name (.skr / .sol / .monke …) the bot found for that holder's wallet.
+let _syncDomains = new Map<string, string>();
+
+/** The on-chain name the bot found for this holder, if any (from the last LOCATION_SYNC). */
+export function getSyncDomain(inboxId: string): string | undefined {
+  return _syncDomains.get(inboxId);
+}
 
 /** Load the last one-per-holder roster the bot sent (call once on app start). */
 export async function loadGlobeRoster(): Promise<void> {
@@ -298,11 +306,17 @@ export function xHandle(raw: string | null | undefined): string {
   return /^[A-Za-z0-9_]{1,15}$/.test(t) ? t : '';
 }
 
-/** A holder's MonkeGlobe name: username, else the X handle linked in their bio, else their monke number from the PFP. */
-export function globeName(username: string | null | undefined, nftImage: string | null | undefined, xAccount?: string | null): string {
+/**
+ * A holder's MonkeGlobe name: username, else the X handle linked in their bio, else an on-chain name
+ * for their wallet (AllDomains main, .sol primary, .skr, .monke — looked up by the bot), else their
+ * monke number from the PFP.
+ */
+export function globeName(username: string | null | undefined, nftImage: string | null | undefined, xAccount?: string | null, domain?: string | null): string {
   if (username?.trim()) return username.trim();
   const x = xHandle(xAccount);
   if (x) return `@${x}`;
+  const d = String(domain ?? '').trim().toLowerCase();
+  if (/^[a-z0-9_.-]{1,40}\.[a-z0-9]{1,12}$/.test(d)) return d;
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { monkeNumberFromImage } = require('@/lib/monkeMeme/monkeNumbers') as { monkeNumberFromImage: (u: string | null | undefined) => number | null };
   const n = monkeNumberFromImage(nftImage);

@@ -309,7 +309,7 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
 
       // 1. Other holders: the bot's one-per-holder roster when we have it (same list on every
       // device), else the local profile cache deduped by wallet.
-      const { getDeduplicatedUsers, getGlobeRoster, globeName } = await import("@/lib/userProfile");
+      const { getDeduplicatedUsers, getGlobeRoster, globeName, getSyncDomain } = await import("@/lib/userProfile");
       const roster = getGlobeRoster(myInboxId ?? null);
       const allUsers = roster
         ? new Map(roster.map((id) => [id, getCachedProfile(id)?.username ?? ""] as [string, string]))
@@ -331,7 +331,7 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
         const key = location.trim().toLowerCase();
         const cached = cachedGeo[key];
 
-        const name = globeName(username || profile?.username, profile?.nftImage, profile?.xAccount);
+        const name = globeName(username || profile?.username, profile?.nftImage, profile?.xAccount, getSyncDomain(inboxId));
         if (cached) {
           allMarkers.push({
             id: `user-${inboxId}`, lat: cached.lat, lng: cached.lng,
