@@ -539,27 +539,68 @@ function post(m) {
   else if (parent !== window) parent.postMessage(s, location.origin);
 }
 const card = $("card"), menu = $("menu");
+const HOW = {
+  pads: "Left thumb: slide to <b>steer</b>.<br>Right thumb: hold <b>DRIFT</b> in a turn, let go to <b>boost</b> · <b>BRAKE</b> above it.<br>Controls can be changed in the ‖ menu",
+  tilt: "<b>Tilt</b> the phone to steer.<br>Hold <b>DRIFT</b> in a turn, let go to <b>boost</b> · <b>BRAKE</b> above it.<br>Hold the phone how you'll race when the countdown starts",
+  swipe: "Drag left / right anywhere to steer.<br>Drag far to <b>drift</b> · let go of a drift for a <b>boost</b>.<br>Two fingers = brake · ⚡ pads boost",
+};
+const HINT = {
+  pads: "Slide left thumb to steer · hold DRIFT in a turn, let go to boost · tap DRIFT right before GO for a start boost",
+  tilt: "Tilt to steer · hold DRIFT in a turn, let go to boost · tap DRIFT right before GO for a start boost",
+  swipe: "Drag left / right to steer · drag far to drift · hold a drift longer for a bigger boost · tap right before GO for a start boost",
+};
+function setHint() { if (isTouch) $("hint").textContent = HINT[ctrl]; }
 function showCard(html, onAct) {
   card.innerHTML = html; card.hidden = false;
   card.querySelectorAll("[data-act]").forEach((b) => b.addEventListener("click", (e) => { e.stopPropagation(); onAct(b.dataset.act); }));
 }
 
-// ── Input: drag anywhere to steer (a virtual wheel where the thumb lands) ──
+// ── Input (2026-11-13 controls pass) ──
+// Touch has three schemes, picked in the pause menu (rc:ctrl):
+//   pads  (default) left side = floating thumb stick for steering only (dead zone + curve, the
+//         stick follows the thumb past full lock); right side = DRIFT and BRAKE buttons.
+//   tilt  tilt the phone to steer (zeroed at the countdown); same DRIFT/BRAKE buttons.
+//   swipe the old scheme: drag anywhere, drag far = drift, two fingers = brake.
+// Before this, steering hard always started a drift and the brake was an invisible second finger.
 const input = { steer: 0, gas: 1, brake: 0, drift: false };
 const keys = new Set();
 const touches = new Map(); let steerId = null, steerX0 = 0;
-const wheel = $("wheel");
+const wheel = $("wheel"), pads = $("pads"), driftBtn = $("drift"), brakeBtn = $("brake");
 const STEER_SPAN = () => Math.min(innerWidth, 520) * 0.2;
+const CTRLS = ["pads", "tilt", "swipe"];
+let ctrl = CTRLS.includes(store.get("rc:ctrl")) ? store.get("rc:ctrl") : "pads";
+setHint();
+const held = { drift: new Set(), brake: new Set() };
+const DEAD = 0.08, curve = (d) => { const a = Math.abs(d); return a < DEAD ? 0 : Math.sign(d) * Math.min(1, ((a - DEAD) / (1 - DEAD)) ** 1.25); };
+let tiltG = null, tilt0 = 0;
+addEventListener("deviceorientation", (e) => {
+  if (e.gamma == null) return;
+  // Portrait: gamma is left/right tilt. Landscape: beta, signed by which way the phone is turned.
+  const ang = screen.orientation?.angle ?? 0;
+  tiltG = ang === 90 ? e.beta : ang === 270 || ang === -90 ? -e.beta : e.gamma;
+});
+const zeroTilt = () => { tilt0 = tiltG ?? 0; };
+function showPads() { pads.hidden = !(isTouch && ctrl !== "swipe" && (state === "race" || state === "count")); }
+function setStick(dx) { wheel.firstElementChild.style.transform = `translateX(${Math.max(-1, Math.min(1, dx)) * 26}px)`; }
+for (const [btn, set] of [[driftBtn, held.drift], [brakeBtn, held.brake]]) {
+  btn.addEventListener("pointerdown", (e) => { e.stopPropagation(); e.preventDefault(); audio(); notePress(); set.add(e.pointerId); btn.classList.add("on"); btn.setPointerCapture?.(e.pointerId); if (set === held.brake) buzz(5); });
+  const up = (e) => { set.delete(e.pointerId); if (!set.size) btn.classList.remove("on"); };
+  btn.addEventListener("pointerup", up); btn.addEventListener("pointercancel", up); btn.addEventListener("lostpointercapture", up);
+}
 view.addEventListener("pointerdown", (e) => {
   audio(); notePress();
   touches.set(e.pointerId, e);
-  if (steerId === null) { steerId = e.pointerId; steerX0 = e.clientX; wheel.style.display = "block"; wheel.style.left = `${e.clientX}px`; wheel.style.top = `${e.clientY}px`; wheel.firstElementChild.style.transform = ""; }
+  const steerZone = ctrl === "swipe" || (ctrl === "pads" && e.clientX < innerWidth * 0.62);
+  if (steerId === null && steerZone) { steerId = e.pointerId; steerX0 = e.clientX; wheel.style.display = "block"; wheel.style.left = `${e.clientX}px`; wheel.style.top = `${e.clientY}px`; setStick(0); }
   view.setPointerCapture?.(e.pointerId);
 });
 view.addEventListener("pointermove", (e) => {
   if (!touches.has(e.pointerId)) return;
   touches.set(e.pointerId, e);
-  if (e.pointerId === steerId) { const dx = Math.max(-1.25, Math.min(1.25, (e.clientX - steerX0) / STEER_SPAN())); wheel.firstElementChild.style.transform = `translateX(${dx * 24}px)`; }
+  if (e.pointerId !== steerId) return;
+  let dx = (e.clientX - steerX0) / STEER_SPAN();
+  if (ctrl === "pads" && Math.abs(dx) > 1.1) { steerX0 = e.clientX - Math.sign(dx) * 1.1 * STEER_SPAN(); dx = Math.sign(dx) * 1.1; wheel.style.left = `${steerX0}px`; }
+  setStick(dx);
 });
 const lift = (e) => { touches.delete(e.pointerId); if (e.pointerId === steerId) { steerId = null; wheel.style.display = "none"; } };
 view.addEventListener("pointerup", lift); view.addEventListener("pointercancel", lift);
@@ -573,8 +614,15 @@ addEventListener("keyup", (e) => keys.delete(e.key.toLowerCase()));
 function readInput() {
   let steer = 0, brake = 0, drift = false;
   const st = touches.get(steerId);
-  if (st) { const dx = (st.clientX - steerX0) / STEER_SPAN(); steer = Math.max(-1, Math.min(1, dx)); drift = Math.abs(dx) > 0.82; }
-  if (touches.size >= 2) brake = 1;
+  if (ctrl === "swipe") {
+    if (st) { const dx = (st.clientX - steerX0) / STEER_SPAN(); steer = Math.max(-1, Math.min(1, dx)); drift = Math.abs(dx) > 0.82; }
+    if (touches.size >= 2) brake = 1;
+  } else {
+    if (ctrl === "pads" && st) steer = curve((st.clientX - steerX0) / STEER_SPAN());
+    if (ctrl === "tilt" && tiltG != null) steer = curve((tiltG - tilt0) / 24);
+    if (held.drift.size) drift = true;
+    if (held.brake.size) brake = 1;
+  }
   if (keys.has("arrowleft") || keys.has("a")) steer -= 1;
   if (keys.has("arrowright") || keys.has("d")) steer += 1;
   if (keys.has("arrowdown") || keys.has("s")) brake = 1;
@@ -622,12 +670,12 @@ function newRace() {
 }
 
 function title() {
-  state = "title";
+  state = "title"; showPads();
   showCard(`
     <h1>MONKE RC</h1>
     <div class="tag">${COURSE_NAME}</div>
     <div>MONKE #${n} <span class="dim">· <span class="swatch" style="background:${HULL}"></span>body <span class="swatch" style="background:${TRIM}"></span>trim</span></div>
-    <div class="how">${isTouch ? "Drag left / right anywhere to steer.<br>Drag far to <b>drift</b> · let go of a drift for a <b>boost</b>.<br>Two fingers = brake · ⚡ pads boost" : "← → steer · Shift drift (let go to boost)<br>↓ brake · Esc pause"}</div>
+    <div class="how">${isTouch ? HOW[ctrl] : "← → steer · Shift drift (let go to boost)<br>↓ brake · Esc pause"}</div>
     <div class="dim">${LAPS} laps${best ? ` · your best ${fmt(best)}` : ""}${ghost && ghostOn ? " · racing your ghost" : ""}</div>
     <div class="dim" id="leaderline"></div>
     ${!DEMO ? `<div class="dim">Finish today's track for bananas · fastest time tops the daily board</div>` : ""}
@@ -678,6 +726,7 @@ function countdown() {
   card.hidden = true; audio(); startEngine();
   newRace();
   state = "count"; countT = 0; pressAt = null; launched = false; goAt = performance.now() + GO_MS;
+  zeroTilt(); setHint(); showPads();
   $("hint").classList.remove("gone"); setTimeout(() => $("hint").classList.add("gone"), 6000);
   [3, 2, 1].forEach((k, i) => setTimeout(() => { if (state === "count") { countPop(String(k)); sfx.beep(false); } }, i * 700));
   setTimeout(() => {
@@ -689,7 +738,7 @@ function countdown() {
 }
 
 function finish(ms) {
-  state = "done";
+  state = "done"; showPads();
   const lapBest = Math.min(...run.laps), isBest = !best || ms < best;
   if (isBest) { best = ms; store.set(K.best, String(ms)); store.set(K.ghost, JSON.stringify(run.ghost)); ghost = run.ghost; }
   if (!bestLap || lapBest < bestLap) { bestLap = lapBest; store.set(K.lap, String(lapBest)); }
@@ -732,9 +781,11 @@ if (inApp) {
   addEventListener("message", onHost); document.addEventListener("message", onHost);
 }
 
-function openMenu() { if (state === "title") return; paused = true; touches.clear(); steerId = null; wheel.style.display = "none"; renderMenu(); menu.hidden = false; }
+function openMenu() { if (state === "title") return; paused = true; touches.clear(); held.drift.clear(); held.brake.clear(); driftBtn.classList.remove("on"); brakeBtn.classList.remove("on"); steerId = null; wheel.style.display = "none"; renderMenu(); menu.hidden = false; }
 function resume() { menu.hidden = true; paused = false; lastT = performance.now(); }
-function renderMenu() { $("ghostbtn").textContent = `Ghost: ${ghostOn ? "on" : "off"}`; $("sound").textContent = `Sound: ${soundOn ? "on" : "off"}`; }
+const CTRL_NAME = { pads: "Buttons", tilt: "Tilt", swipe: "Swipe (old)" };
+function renderMenu() { $("ghostbtn").textContent = `Ghost: ${ghostOn ? "on" : "off"}`; $("sound").textContent = `Sound: ${soundOn ? "on" : "off"}`; $("ctrlbtn").textContent = `Controls: ${CTRL_NAME[ctrl]}`; $("ctrlbtn").hidden = !isTouch; }
+$("ctrlbtn").addEventListener("click", () => { ctrl = CTRLS[(CTRLS.indexOf(ctrl) + 1) % CTRLS.length]; store.set("rc:ctrl", ctrl); zeroTilt(); renderMenu(); setHint(); });
 $("pause").addEventListener("click", openMenu);
 $("resume").addEventListener("click", resume);
 $("restart").addEventListener("click", () => { menu.hidden = true; paused = false; countdown(); });
