@@ -286,7 +286,7 @@ function offTrack(x, z, clear) {
   inst(flagG, new THREE.MeshLambertMaterial({ map: flagTex, side: THREE.DoubleSide }), flags, ([i, sg, off]) => m4.compose(at(i, sg, off, -0.6), yaw(i), sc.set(1, 1, 1)));
 }
 
-// Monke Camp: carved tiki gates over the road on the straights, crate stacks on corners.
+// Monke Camp: carved tiki gates over the road on the straights (5 a lap), crate stacks on every bend.
 {
   const CR = rng(T.seed ^ 0x71c1), outer = ROAD_W / 2 + SHOULDER;
   const tikiTex = canvasTex(32, 96, (g, w, h) => {
@@ -311,8 +311,8 @@ function offTrack(x, z, clear) {
   const gateAt = [];
   const straight = (i) => { for (let d = -8; d <= 8; d++) if (Math.abs(T.curv[(i + d + T.N) % T.N]) > 0.01) return false; return true; };
   const nearPad = (i) => T.pads.some((p) => Math.min(Math.abs(p.i - i), T.N - Math.abs(p.i - i)) < 14);
-  for (const f of [0.22, 0.5, 0.78]) {
-    for (let d = 0; d < T.N * 0.12; d++) { const i = Math.floor(T.N * f + d) % T.N; if (straight(i) && !nearPad(i) && i > 20) { gateAt.push(i); break; } }
+  for (const f of [0.1, 0.3, 0.5, 0.7, 0.88]) {
+    for (let d = 0; d < T.N * 0.08; d++) { const i = Math.floor(T.N * f + d) % T.N; if (straight(i) && !nearPad(i) && i > 20) { gateAt.push(i); break; } }
   }
   for (const i of gateAt) {
     const p = T.pts[i], t = T.tan[i], gate = new THREE.Group(), span = outer + 3;
@@ -335,14 +335,21 @@ function offTrack(x, z, clear) {
     g.strokeStyle = "#6a4420"; g.lineWidth = 3; g.beginPath(); g.moveTo(3, 3); g.lineTo(w - 3, h - 3); g.stroke();
     g.strokeStyle = "#ffd23f"; g.lineWidth = 3; g.beginPath(); g.arc(w / 2 + 6, 6, 7, 0.6, 2.4); g.stroke();
   }, false);
-  const crates = [];
+  // Crates: a stack on the outside of every bend (2026-11-13: was only the sharpest few, ~2 a lap,
+  // hidden behind the wall) and a pile at the foot of each tiki gate. C = 4.2 m boxes.
+  const crates = [], C = 4.2;
+  const pile = (i, sg, off, n) => {
+    const base = Math.min(n, 3);
+    for (let k = 0; k < base; k++) crates.push([i, sg, off + k * (C + 0.3), C / 2 - 0.6, CR() * 0.5]);
+    for (let k = 0; k < n - base; k++) crates.push([i, sg, off + (k + 0.5) * (C + 0.3), C * 1.5 - 0.6, CR() * 0.5]);
+  };
   for (let i = 10; i < T.N; i += 9) {
-    if (Math.abs(T.curv[i]) < 0.016 || CR() < 0.5) continue;
-    const sg = T.curv[i] > 0 ? -1 : 1, off = outer + 5 + CR() * 5, stack = 1 + Math.floor(CR() * 3);
-    for (let k = 0; k < stack; k++) crates.push([i, sg, off + (k === 2 ? 0 : k * 3.4), k === 2 ? 4.2 : 1.0, CR() * 0.6]);
+    if (Math.abs(T.curv[i]) < 0.006 || gateAt.some((g) => Math.abs(g - i) < 10)) continue;
+    pile(i, T.curv[i] > 0 ? -1 : 1, outer + 3 + CR() * 3, 2 + Math.floor(CR() * 4));
   }
+  for (const i of gateAt) for (const sg of [-1, 1]) pile((i + 3) % T.N, sg, outer + 6.5, 3 + Math.floor(CR() * 3));
   if (crates.length) {
-    const im = new THREE.InstancedMesh(new THREE.BoxGeometry(3.2, 3.2, 3.2), new THREE.MeshLambertMaterial({ map: crateTex }), crates.length);
+    const im = new THREE.InstancedMesh(new THREE.BoxGeometry(C, C, C), new THREE.MeshLambertMaterial({ map: crateTex }), crates.length);
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), v = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1);
     crates.forEach(([i, sg, off, y, r], j) => {
       const p = T.pts[i], nn = T.nor[i];
