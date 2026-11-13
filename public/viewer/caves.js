@@ -233,7 +233,7 @@ function equip(n) {
 // ── Levels ── map letters are listed in scripts/caves/build-levels.py.
 // Speed-run board (worker caves.ts) only takes runs from this level set. Change a
 // level → bump this and CAVES_VERSION/MIN_MS in worker-actions/src/caves.ts together.
-const CAVES_VERSION = 2;
+const CAVES_VERSION = 3; // 3: cave 2 rebuilt full size (2026-11-13)
 // Levels: caves-levels.js (built by scripts/caves/build-levels.py).
 let levelIx = 0;
 let MW = 0, MH = 0, secrets = 0, secretsFound = 0, boss = null;
@@ -536,13 +536,20 @@ function showBoard(d) {
     d.rank ? `${d.improved ? "NEW WEEK BEST · " : ""}#${d.rank} this week · best ${fmtRun(d.best)}` : `Your best this week ${fmtRun(d.best)} · top 10 shown on the board`);
   const cta = msg.querySelector(".cta");
   msg.insertBefore(board, cta); msg.insertBefore(you, cta);
+  if (typeof d.bananas === "number") {
+    const cap = d.cap || 100;
+    msg.insertBefore(d.bananas > 0
+      ? el("div", "tag", `+${d.bananas} BANANAS · today ${d.today}/${cap}`)
+      : el("div", "dim", d.today >= cap ? `Daily cave bananas reached (${cap})` : "This cave already paid bananas today"), cta);
+  }
 }
 if (inApp) {
   const onHost = (e) => {
     if (!window.ReactNativeWebView && e.origin !== location.origin) return;
     let d = e.data;
     if (typeof d === "string") { try { d = JSON.parse(d); } catch { return; } }
-    if (d?.type === "cavesRun" && d.ok) showBoard(d);
+    if (d?.type === "cavesRun" && d.ok) { showBoard(d); if (Number.isInteger(d.max)) noteBeaten(d.max); }
+    if (d?.type === "cavesProgress" && Number.isInteger(d.max)) noteBeaten(d.max);
   };
   addEventListener("message", onHost); document.addEventListener("message", onHost);
 }
@@ -551,6 +558,8 @@ if (inApp) {
 // title → play → clear | dead | won. t0 = 0 until the first move, turn or shot, so a
 // speed run starts on the player's first input, not when the cave loads.
 let state = "title", t0 = 0, clearTime = 0, paused = 0;
+// Highest cave beaten (campaign, below) and whether the player chose a cave on the title card.
+let beaten = DEMO ? 0 : parseInt(store.get("beaten") || "0", 10) || 0, picked = false;
 const runTime = () => (t0 ? performance.now() - t0 : 0);
 function post(m) {
   const s = JSON.stringify({ type: "caves", ...m });
@@ -565,7 +574,9 @@ function update(dt) {
     if (ROYALE && state === "wait") return;
     if (keys.has("Space") || keys.has("Enter") || touch.fire || gpad.tap) {
       touch.fire = false; gpad.tap = false; keys.clear();
-      // A clear goes on to the next cave; dying restarts the same cave; winning starts over.
+      // A clear goes on to the next cave; dying restarts the same cave; beating the last cave
+      // goes back to the cave select (the demo replays its one cave).
+      if (state === "won" && !DEMO && !ROYALE) { state = "title"; picked = false; levelIx = unlocked() - 1; loadLevel(); titleCard(); return; }
       const next = state === "clear";
       levelIx = next ? levelIx + 1 : state === "won" ? 0 : levelIx;
       startCave(next);
@@ -706,7 +717,7 @@ function update(dt) {
   else if (door && Math.hypot(door.x - p.x, door.y - p.y) < 1.05) {
     if (boss && boss.hp > 0) { if (!p.lockedSaid) { say("LOCKED", boss.kind === "phone" ? "The Banana Phone holds the exit. Take it down." : "The bear holds the exit. Take it down."); p.lockedSaid = true; setTimeout(() => { say(""); p.lockedSaid = false; }, 1600); } }
     else {
-      clearTime = runTime(); sfx.clear();
+      clearTime = runTime(); sfx.clear(); noteBeaten(levelIx + 1);
       const last = DEMO || levelIx === LEVELS.length - 1, tap = isTouch ? "Tap FIRE" : "Space";
       state = last ? "won" : "clear";
       const best = parseInt(store.get(`best:${CAVES_VERSION}:${levelIx + 1}`) || "0", 10);
@@ -1113,13 +1124,7 @@ if (ROYALE) {
   `<div class="dim">Hunt the jeets · find the pink exit<br>The full game (${LEVELS.length} caves) is for Saga Monke holders</div>`,
   `<div class="cta">${isTouch ? "Tap FIRE" : "Space"} to start</div>`,
 ]);
-else card("MONKECAVES", [
-  `<div class="dim">MONKE #${n}</div>`,
-  `<div class="weapon"><i style="background:${swatch(WEAPON.shot.color)}"></i>${WEAPON.name}</div>`,
-  `<div class="dim">${LEVELS.length} caves · hunt the jeets · find the pink exit<br>The Banana Phone waits at the end.</div>`,
-  `<div class="stats" id="weektop" style="display:none"></div>`,
-  `<div class="cta">${isTouch ? "Tap FIRE" : "Space"} to start</div>`,
-]);
+else { levelIx = unlocked() - 1; loadLevel(); titleCard(); if (inApp) post({ event: "progress" }); }
 // This week's #1 per cave on the start card (worker caves.ts, public GET once CAVES_BOARD is "on").
 if (!ROYALE && !DEMO) fetch("/api/caves/board").then((r) => (r.ok ? r.json() : null)).then((d) => {
   const box = document.getElementById("weektop"); if (!box || state !== "title" || !d?.caves) return;
@@ -1132,6 +1137,42 @@ if (!ROYALE && !DEMO) fetch("/api/caves/board").then((r) => (r.ok ? r.json() : n
 }).catch(() => {});
 document.getElementById("fire").style.background = WEAPON.shot.color === "rainbow" ? swatch("rainbow") : WEAPON.shot.color;
 setTimeout(() => document.getElementById("help").classList.add("gone"), 6000);
+
+// ── Campaign (owner 2026-11-13): progress is saved, any beaten cave can be replayed, the next
+// one unlocks when the one before it is beaten. The host (app) sends the holder's saved progress
+// ({ type: "cavesProgress", max }, worker caves.ts, shared by phone and web); this device's own
+// record covers a page with no host or no proof yet.
+function unlocked() { return DEMO ? 1 : Math.max(1, Math.min(LEVELS.length, beaten + 1)); }
+function noteBeaten(c) {
+  if (DEMO || ROYALE || !(c > beaten)) return;
+  beaten = Math.min(LEVELS.length, c); store.set("beaten", String(beaten));
+  if (state === "title") { if (!picked) { levelIx = unlocked() - 1; loadLevel(); } titleCard(); }
+}
+function pickCave(i) {
+  if (state !== "title" || i < 0 || i >= unlocked() || i === levelIx) return;
+  picked = true; levelIx = i; loadLevel(); titleCard(); sfx.pick?.();
+}
+function titleCard() {
+  const esc = (t) => String(t).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+  const caves = LEVELS.map((lv, i) => i < unlocked()
+    ? `<button data-cave="${i}" class="${i === levelIx ? "on" : ""}">${i + 1} · ${esc(lv.name)}${i < beaten ? " ✓" : ""}</button>`
+    : `<button disabled>${i + 1} · LOCKED · beat cave ${i}</button>`).join("");
+  const box = document.getElementById("weektop"), keep = box && box.style.display !== "none" ? box.outerHTML : `<div class="stats" id="weektop" style="display:none"></div>`;
+  card("MONKECAVES", [
+    `<div class="dim">MONKE #${n}</div>`,
+    `<div class="weapon"><i style="background:${swatch(WEAPON.shot.color)}"></i>${WEAPON.name}</div>`,
+    `<div class="pick">${caves}</div>`,
+    `<div class="dim">${beaten >= LEVELS.length ? "Every cave beaten · more caves are coming" : `Beat a cave to unlock the next · ${LEVELS.length} caves so far`}<br>Clears pay bananas once per cave a day</div>`,
+    keep,
+    `<div class="cta">${isTouch ? "Tap FIRE" : "Space"} to play cave ${levelIx + 1}</div>`,
+  ]);
+  msg.querySelectorAll("button[data-cave]").forEach((b) => b.addEventListener("click", (e) => { e.stopPropagation(); pickCave(+b.dataset.cave); }));
+}
+addEventListener("keydown", (e) => {
+  if (state !== "title" || ROYALE || DEMO) return;
+  if (e.code === "ArrowUp" || e.code === "ArrowLeft" || e.code === "KeyW") pickCave(levelIx - 1);
+  if (e.code === "ArrowDown" || e.code === "ArrowRight" || e.code === "KeyS") pickCave(levelIx + 1);
+});
 
 function startCave(keepLoadout) {
   if (ROYALE) { startMatch(); return; }

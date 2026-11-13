@@ -138,6 +138,11 @@ class Cave:
         for x, y in find("d") + [p for d in DOOR_OF for p in find(d)]:
             wall = lambda c: c not in FLOORISH and c not in "dYF"
             assert (wall(rows[y][x - 1]) and wall(rows[y][x + 1])) or (wall(rows[y - 1][x]) and wall(rows[y + 1][x])), f"{self.name}: door at {(x, y)} has no frame"
+        for x, y in find("S"):
+            open_n = [(x + dx, y + dy) for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)) if rows[y + dy][x + dx] in FLOORISH or rows[y + dy][x + dx] in "YFM"]
+            assert len(open_n) >= 2, f"{self.name}: secret at {(x, y)} doesn't join floor to a closet"
+        for x, y in find("Y") + find("F") + find("M"):
+            assert any(rows[y + dy][x + dx] in FLOORISH for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))), f"{self.name}: decor at {(x, y)} is buried in rock"
         count = lambda s: sum(r.count(ch) for r in rows for ch in s)
         return {"enemies": count("JGXcnaKE"), "health": count("hH"), "ammo": count("q") * 10 + count("Q") * 40,
                 "bananas": count("b"), "idols": count("I"), "secrets": count("S"), "floor": len(floor)}
@@ -248,6 +253,108 @@ def lost_temple():
     return c
 
 
+def paper_hands_alley():
+    """Cave 2: the buried trading post where paper hands panic-sold. Harder than the temple:
+    more enemies per room, less health, pop-up ads that shoot from range, two badges.
+
+    Flow: a dark drop into the cave → the sunlit market square (hub, crates and chart
+    walls for cover) shows both locked gates → the order-book vault (east) holds the blue
+    badge → the blue gate opens the exchange hall → its west tunnel drops into the
+    bagholder cellars and the rug pit, where the pink badge sits on an island → back
+    through the hall, the pink gate opens the bear market canyon (ads on the ridges) →
+    the bear's den, where the bear holds the exit. Six secrets, each behind a wall with
+    a banana scratched into it; two rooms are quiet on purpose (the cellar stairs, the
+    canyon spring)."""
+    c = Cave("PAPER HANDS ALLEY", 60, 60, theme="jungle", boss="bear", par=210, seed=23)
+    c.face = 0  # start looking east down the tunnel
+
+    # 1. The drop: a dark landing under the hole from cave 1. One way on.
+    c.blob(7, 7, 4.5, 4, floor="m")
+    c.room(7, 12, 3, 2, floor="m").put("S", (8, 11))                         # secret 1: under the rope
+    c.hall([(11, 6), (17, 6)], floor="m")
+
+    # 2. Hub: the market square, open sky. Crates and chart walls make cover.
+    c.room(18, 3, 22, 13, floor="s", sky=True)
+    c.put("C", (23, 7), (24, 7), (33, 7), (34, 7), (23, 12), (24, 12), (33, 12), (34, 12))
+    c.put("B", (20, 13), (21, 13), (20, 14), (37, 4), (38, 4), (38, 5), (29, 10))
+    c.hall([(28, 16), (28, 19)], width=1).put("7", (28, 17))                 # blue gate, south
+
+    # 3. East: the ticker tunnel and the order-book vault (blue badge).
+    c.hall([(40, 9), (43, 9)], width=1).put("d", (41, 9))
+    c.room(44, 3, 12, 12, wall="C", floor="s")
+    c.put("B", (46, 5), (47, 5), (46, 12), (53, 12), (54, 12))
+    c.room(57, 5, 1, 4, floor="s").put("S", (56, 7))                         # secret 2: vault closet
+
+    # 4. Behind the blue gate: the exchange hall (torches, pillars).
+    c.room(18, 20, 22, 12, floor="s")
+    c.put("T", (22, 23), (22, 28), (35, 23), (35, 28))
+    c.room(14, 23, 3, 3, floor="s").put("S", (17, 24))                       # secret 3: trading desk stash
+    c.hall([(40, 25), (45, 25)], width=1).put("8", (41, 25))                 # pink gate, east
+
+    # 5. West of the hall: cellar stairs (quiet), the bagholder cellars, the rug pit.
+    c.hall([(12, 30), (17, 30)], width=1).put("d", (17, 30))
+    c.hall([(12, 30), (12, 35)], width=2, floor="m")
+    c.blob(13, 41, 7, 5, floor="m")
+    c.room(4, 47, 12, 7, wall="V", floor="w")                                # the rug pit, flooded
+    c.room(8, 49, 3, 3, floor="s")                                           # the island
+    c.hall([(10, 45), (10, 47)], width=2, floor="m")
+    c.room(22, 38, 3, 3, floor="m").put("S", (21, 39))                       # secret 4: dumped bags
+
+    # 6. Behind the pink gate: the bear market canyon (sun, ads on the ridges).
+    c.blob(49, 31, 6.5, 9, wall="V", floor="g", sky=True)
+    c.room(54, 36, 3, 4, floor="w", sky=True)                                # the spring
+    c.room(58, 28, 1, 3, floor="g").put("S", (57, 29))                       # secret 5: ridge cache
+    c.hall([(49, 36), (49, 44)], width=1).put("d", (49, 42))
+
+    # 7. The bear's den. The bear holds the exit.
+    c.room(30, 45, 26, 11, wall="T", floor="m")
+    c.put("B", (40, 47), (41, 47), (40, 48), (46, 52), (47, 52), (34, 49))
+    c.room(26, 50, 3, 3, floor="m").put("S", (29, 51))                       # secret 6: den bones
+    c.put("D", (31, 56))
+
+    # Start: a battery and a banana, nobody in sight.
+    c.put("P", (6, 7)).put("q", (8, 9)).put("b", (5, 5))
+    # Light: torches in the tunnels, trees and mushrooms in the open.
+    c.put("F", (3, 6), (10, 9), (18, 3), (39, 3), (44, 3), (55, 3), (18, 20), (39, 20), (18, 31), (39, 31),
+          (30, 45), (55, 45), (30, 55), (55, 55), (11, 37), (18, 43))
+    c.put("Y", (19, 9), (38, 14), (46, 30), (53, 26), (47, 38))
+    c.put("M", (9, 10), (13, 33), (10, 42), (17, 40), (45, 50), (52, 54))
+    # Secrets: idols, Seeker phones, a big health.
+    c.put("I", (8, 13)).put("q", (7, 12))
+    c.put("I", (57, 6)).put("Q", (57, 8))
+    c.put("I", (15, 24)).put("H", (14, 25))
+    c.put("I", (23, 39)).put("Q", (24, 40))
+    c.put("I", (58, 28)).put("H", (58, 30))
+    c.put("I", (27, 51)).put("Q", (26, 52))
+
+    # Market square: the first real fight, jeets behind the stalls, cookies in the open.
+    c.put("J", (22, 5), (31, 4), (36, 9), (26, 14), (35, 14)).put("G", (29, 8))
+    c.put("c", (25, 9), (26, 10), (31, 11), (32, 10)).put("n", (28, 4))
+    c.put("q", (19, 4), (38, 13)).put("h", (21, 10)).put("b", (27, 6), (30, 13))
+    # Vault: the blue badge behind the order book, ads on guard.
+    c.put("1", (53, 8)).put("a", (49, 4), (54, 10)).put("J", (47, 8), (51, 12), (45, 13)).put("G", (52, 6))
+    c.put("c", (48, 10), (49, 11)).put("q", (45, 4)).put("h", (54, 4)).put("b", (50, 8))
+    # Exchange hall: the big fight.
+    c.put("J", (20, 22), (27, 21), (32, 22), (38, 26), (24, 30), (33, 30)).put("G", (29, 25), (36, 30))
+    c.put("a", (37, 21)).put("n", (25, 25), (31, 28)).put("c", (21, 26), (22, 26), (34, 25), (35, 26))
+    c.put("q", (19, 21), (38, 30)).put("Q", (28, 28)).put("h", (19, 30)).put("b", (28, 22))
+    # Cellar stairs: quiet. Cellars: bats in the dark, goblins stealing bananas.
+    c.put("q", (13, 32)).put("b", (12, 34))
+    c.put("n", (9, 39), (16, 38), (12, 44)).put("G", (8, 41), (18, 42)).put("J", (14, 40), (11, 43))
+    c.put("c", (15, 43), (16, 43), (10, 38)).put("q", (7, 40), (19, 40)).put("h", (13, 38)).put("b", (17, 44))
+    # Rug pit: the pink badge on the island, goblins and bats over the water.
+    c.put("2", (9, 50)).put("G", (5, 48), (14, 52)).put("n", (6, 52), (13, 48)).put("J", (12, 50))
+    c.put("h", (5, 53)).put("q", (14, 48)).put("b", (7, 49))
+    # Bear market canyon: ads on the ridges, jeets in the grass.
+    c.put("a", (44, 27), (54, 29), (46, 35)).put("J", (47, 24), (52, 33), (45, 31), (50, 37))
+    c.put("c", (49, 28), (50, 28), (48, 33)).put("n", (51, 24))
+    c.put("H", (55, 37)).put("q", (48, 26), (53, 35)).put("b", (50, 30))
+    # Den: the bear and its jeets. Health and phones round the edge.
+    c.put("X", (37, 51)).put("J", (33, 47), (50, 47), (44, 54)).put("c", (52, 49), (53, 50))
+    c.put("h", (54, 46), (31, 54)).put("Q", (54, 54)).put("q", (32, 46), (48, 50))
+    return c
+
+
 class Arena(Cave):
     """A Jungle Royale versus map: no doors, badges, enemies or exit; spawn points (R)
     and pickups only. Doors stay out so the match server only has to know walls."""
@@ -301,7 +408,7 @@ def temple_ring():
 ARENAS = [temple_ring]
 
 
-# Caves 2 and 3 are the old prototype maps until they're rebuilt full length.
+# Cave 3 is the old prototype map until it's rebuilt full length (cave 2 rebuilt 2026-11-13).
 OLD = json.loads((Path(__file__).with_name("old-levels.json")).read_text())
 
 
@@ -330,13 +437,13 @@ def png(rows, path, cs=8):
 
 
 def main():
-    caves = [lost_temple()]
+    caves = [lost_temple(), paper_hands_alley()]
     levels = []
     for c in caves:
         stats = c.check()
         print(f"{c.name}: {c.w}x{c.h} {stats}")
         levels.append(c.level())
-    levels += OLD
+    levels += OLD[len(caves) - 1:]
     if "--png" in sys.argv:
         d = Path(sys.argv[sys.argv.index("--png") + 1])
         for k, lv in enumerate(levels[:len(caves)]):

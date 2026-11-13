@@ -43,6 +43,10 @@
   #msg .tag { background: var(--banana); color: #1a1408; font-weight: 700; padding: 2px 8px; letter-spacing: 1px; }
   #msg .dim { color: var(--muted); }
   #msg .row { display: flex; gap: 14px; color: var(--text); }
+  #msg .pick { display: grid; gap: 6px; width: 100%; max-width: 300px; }
+  #msg .pick button { pointer-events: auto; font: 700 13px/1 inherit; font-family: inherit; padding: 9px 10px; background: rgba(30,26,44,0.9); color: var(--text); border: 2px solid #3a3150; text-align: left; letter-spacing: 1px; cursor: pointer; }
+  #msg .pick button.on { background: var(--banana); color: #1a1408; border-color: #000; }
+  #msg .pick button:disabled { color: var(--muted); opacity: 0.6; cursor: default; }
   #msg .stats { display: grid; grid-template-columns: auto auto; gap: 2px 18px; color: var(--muted); }
   #msg .stats b { color: #fff; text-align: right; }
   #msg .weapon { display: flex; align-items: center; gap: 8px; font-size: 15px; color: #fff; }
