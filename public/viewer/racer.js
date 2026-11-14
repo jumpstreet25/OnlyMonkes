@@ -611,6 +611,22 @@ addEventListener("keydown", (e) => {
   if ((e.key === "Enter" || e.key === " ") && !card.hidden) card.querySelector("button.go")?.click();
 });
 addEventListener("keyup", (e) => keys.delete(e.key.toLowerCase()));
+// Controller (2026-11-13: an 8BitDo had no way to drift — it needed RT+RB together or button 2, whose
+// label differs between Xbox and Nintendo layouts). Gas is automatic, so every free button drifts:
+// A X Y · LB RB · RT. Brake: B · LT · D-pad down. Steer: stick or D-pad. A/Start starts a race, Start pauses.
+const PAD_DRIFT = [0, 2, 3, 4, 5, 7], PAD_BRAKE = [1, 6, 13];
+const gamepad = () => [...(navigator.getGamepads?.() ?? [])].find((p) => p?.connected) ?? null;
+const btn = (p, i) => { const b = p.buttons[i]; return !!b && (b.pressed || b.value > 0.3); };
+let padPrev = [];
+function pollPadButtons() {
+  const pad = gamepad();
+  if (!pad) { padPrev = []; return; }
+  const now = pad.buttons.map((_, i) => btn(pad, i)), down = (i) => now[i] && !padPrev[i];
+  if (now.some((v, i) => v && !padPrev[i])) notePress();
+  if (!card.hidden && menu.hidden) { if (down(0) || down(9)) card.querySelector("button.go")?.click(); }
+  else if (down(9) && state !== "title") menu.hidden ? openMenu() : resume();
+  padPrev = now;
+}
 function readInput() {
   let steer = 0, brake = 0, drift = false;
   const st = touches.get(steerId);
@@ -627,8 +643,15 @@ function readInput() {
   if (keys.has("arrowright") || keys.has("d")) steer += 1;
   if (keys.has("arrowdown") || keys.has("s")) brake = 1;
   if (keys.has("shift") || keys.has(" ")) drift = true;
-  const pad = navigator.getGamepads?.().find((p) => p?.connected);
-  if (pad) { const ax = pad.axes[0] || 0; if (Math.abs(ax) > 0.12) steer += ax; if (pad.buttons[6]?.pressed || pad.buttons[1]?.pressed) brake = 1; if (pad.buttons[7]?.value > 0.5 && pad.buttons[5]?.pressed || pad.buttons[2]?.pressed) drift = true; }
+  const pad = gamepad();
+  if (pad) {
+    const ax = pad.axes[0] || 0;
+    if (Math.abs(ax) > 0.12) steer += ax;
+    if (btn(pad, 14)) steer -= 1;
+    if (btn(pad, 15)) steer += 1;
+    if (PAD_BRAKE.some((i) => btn(pad, i))) brake = 1;
+    if (PAD_DRIFT.some((i) => btn(pad, i))) drift = true;
+  }
   input.steer = Math.max(-1, Math.min(1, steer)); input.brake = brake; input.drift = drift; input.gas = brake ? 0 : 1;
   return input;
 }
@@ -675,7 +698,7 @@ function title() {
     <h1>MONKE RC</h1>
     <div class="tag">${COURSE_NAME}</div>
     <div>MONKE #${n} <span class="dim">· <span class="swatch" style="background:${HULL}"></span>body <span class="swatch" style="background:${TRIM}"></span>trim</span></div>
-    <div class="how">${isTouch ? HOW[ctrl] : "← → steer · Shift drift (let go to boost)<br>↓ brake · Esc pause"}</div>
+    <div class="how">${isTouch ? HOW[ctrl] : "← → steer · Shift drift (let go to boost)<br>↓ brake · Esc pause<br>🎮 stick steer · A / RB / RT drift · B / LT brake · Start pause"}</div>
     <div class="dim">${LAPS} laps${best ? ` · your best ${fmt(best)}` : ""}${ghost && ghostOn ? " · racing your ghost" : ""}</div>
     <div class="dim" id="leaderline"></div>
     ${!DEMO ? `<div class="dim">Finish today's track for bananas · fastest time tops the daily board</div>` : ""}
@@ -826,6 +849,7 @@ function ghostIndexNear(x, z, t) {
 }
 
 function frame(now) {
+  pollPadButtons();
   const dt = Math.min(0.05, (now - lastT) / 1000); lastT = now;
   if (run && !paused && (state === "race" || state === "count" || state === "done")) {
     acc += dt;
