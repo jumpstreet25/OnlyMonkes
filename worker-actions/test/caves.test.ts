@@ -58,7 +58,10 @@ describe("runProblem", () => {
   test("v5 adds Walled Garden as cave 4; Big Tech HQ is cave 5; v4 runs only for caves 1–3", () => {
     expect(runProblem(run({ cave: 4, timeMs: 91_000 }))).toBe("faster than possible");
     expect(runProblem(run({ cave: 4, timeMs: 300_000, kills: 77 }))).toBeNull();
-    expect(runProblem(run({ cave: 5, timeMs: 30_000 }))).toBeNull();
+    expect(runProblem(run({ cave: 5, timeMs: 79_000 }))).toBe("faster than possible");
+    expect(runProblem(run({ cave: 5, timeMs: 330_000, kills: 75 }))).toBeNull();
+    expect(runProblem(run({ v: 5, cave: 4, timeMs: 300_000 }))).toBeNull();
+    expect(runProblem(run({ v: 5, cave: 5, timeMs: 300_000 }))).toBe("old game version");
     expect(runProblem(run({ v: 4, cave: 3, timeMs: 200_000 }))).toBeNull();
     expect(runProblem(run({ v: 4, cave: 4, timeMs: 300_000 }))).toBe("old game version");
   });

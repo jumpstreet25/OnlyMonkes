@@ -39,22 +39,24 @@ import { cleanName } from "./referrals";
 import { monkeImageForNumber } from "./shareCard";
 
 /** Level set the floors below were measured on (caves.js LEVELS). Bump both together. */
-export const CAVES_VERSION = 5;
+export const CAVES_VERSION = 6;
 /** Older game versions still accepted for the caves they didn't change (v2 → v3 rebuilt cave 2 only;
  *  v3 → v4 added Data Center as cave 3 and moved Big Tech HQ to cave 4), so a page cached through
  *  the deploy doesn't lose a run. A v3 "cave 3" run was Big Tech HQ, so it isn't accepted as cave 3;
- *  likewise v4 → v5 added Walled Garden as cave 4 (Big Tech HQ → cave 5), so v4 counts for caves 1–3. */
-const STILL_VALID: Record<number, number[]> = { 2: [1], 3: [1, 2], 4: [1, 2, 3] };
+ *  likewise v4 → v5 added Walled Garden as cave 4 (Big Tech HQ → cave 5), so v4 counts for caves 1–3;
+ *  v5 → v6 rebuilt cave 5 (Big Tech HQ full size), so v5 counts for caves 1–4. */
+const STILL_VALID: Record<number, number[]> = { 2: [1], 3: [1, 2], 4: [1, 2, 3], 5: [1, 2, 3, 4] };
 /**
  * Fastest possible clear per cave (ms), a little under the shortest walkable route at full
  * speed (3.2 cells/s, secret walls and doors counted open) plus the boss kill. v2 (Lost Temple
  * cave 1): 140 cells ≈ 44 s. v3 (Paper Hands Alley cave 2, 2026-11-13): 222 cells ≈ 70 s + the
  * bear (18 hits × 0.32 s); 62 s since the bear can be shot from range. v4 (Data Center cave 3,
  * 2026-11-14): ~170 cells through three badge rooms ≈ 53 s → 48 s. v5 (Walled Garden cave 4,
- * 2026-11-14): ~330 cells (maze, mall, the long T&C corridor) ≈ 103 s → 92 s. Cave 5 = the old
- * Big Tech HQ prototype (≈ 11.5 s + the Banana Phone).
+ * 2026-11-14): ~330 cells (maze, mall, the long T&C corridor) ≈ 103 s → 92 s. v6 (Big Tech HQ cave 5
+ * rebuilt, 2026-11-14): 272 cells (lobby, office, ad sales, legal, boardroom, roof) ≈ 85 s, plus
+ * the Banana Phone (40 hits × 0.32 s, partly shot on the approach) → 80 s.
  */
-export const MIN_MS: Record<number, number> = { 1: 40_000, 2: 62_000, 3: 48_000, 4: 92_000, 5: 12_000 };
+export const MIN_MS: Record<number, number> = { 1: 40_000, 2: 62_000, 3: 48_000, 4: 92_000, 5: 80_000 };
 const MAX_MS = 60 * 60_000;
 const TOP = 10;
 
@@ -155,8 +157,8 @@ async function who(env: Env, proof: any, action: string): Promise<{ wallet: stri
 type Entry = { t: number; n: number | null; name: string; at: number };
 type TopRow = Entry & { id: string };
 /** A rebuilt cave gets fresh board slots so times on the old map don't outrank it (cave 2 rebuilt in v3,
- *  cave 3 became Data Center in v4, cave 4 became Walled Garden in v5; cave 5's slot is new). */
-const EDITION: Record<number, string> = { 2: "v3", 3: "v4", 4: "v5" };
+ *  cave 3 became Data Center in v4, cave 4 became Walled Garden in v5, cave 5 rebuilt full size in v6). */
+const EDITION: Record<number, string> = { 2: "v3", 3: "v4", 4: "v5", 5: "v6" };
 const caveSlot = (cave: number) => `c${cave}${EDITION[cave] ?? ""}`;
 const topKey = (week: string, cave: number) => `caves:top:${week}:${caveSlot(cave)}`;
 const shown = (r: Entry) => ({ name: r.name || (r.n ? `Monke #${r.n}` : "A Saga Monke holder"), n: r.n, t: r.t });
