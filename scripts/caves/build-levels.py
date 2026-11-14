@@ -153,6 +153,7 @@ class Cave:
         if self.theme: lv["theme"] = self.theme
         if self.par: lv["par"] = self.par
         if getattr(self, "face", None) is not None: lv["face"] = self.face
+        lv.update(getattr(self, "extra", {}))
         lv["rows"] = self.rows()
         if self.theme:
             lv["floor"] = ["".join(r) for r in self.fl]
@@ -569,6 +570,112 @@ def walled_garden():
     return c
 
 
+def big_tech_hq():
+    """Cave 5: Big Tech HQ, the tower itself. The finale: the Banana Phone waits on the roof.
+
+    Flow: the street (night sky) → a revolving door into the marble Lobby (hub, glass atrium,
+    ad screens, Gatekeepers at security) → west, the open-plan office (cubicle rows, jeets at
+    every desk), blue badge in the corner office → the blue gate east opens Ad Sales (screen
+    walls, Eyes, ads), pink badge in The Algorithm → the pink gate north opens Legal &
+    Lobbying (walnut offices, Gatekeepers) and the Boardroom, gold badge on the table → the
+    gold gate opens the executive elevator to the rooftop helipad: the Banana Phone, out of
+    its case it pings notification bats for backup; the exit is the helicopter. Seven secrets,
+    each a glass panel with a banana sticker."""
+    c = Cave("BIG TECH HQ", 60, 60, boss="phone", theme="hq", par=330, seed=53)
+    c.face = 270
+    c.extra = {"bossHp": 28, "bossArmour": 8, "bossMinions": True}
+
+    # 1. The street, under the night sky; a revolving door into the lobby.
+    c.room(25, 53, 10, 5, floor="u", sky=True)
+    c.hall([(30, 47), (30, 52)], width=1, floor="u").put("d", (30, 50))
+    c.room(36, 55, 2, 2, floor="u").put("S", (35, 55))                      # secret 1: the smokers' corner
+
+    # 2. The Lobby (hub): marble, a glass atrium, ad screens on the pillars, the security desk.
+    c.room(18, 32, 24, 15, floor="u")
+    c.room(24, 36, 12, 7, floor="u", sky=True)
+    c.put("T", (22, 35), (22, 36), (37, 35), (37, 36), (22, 42), (22, 43), (37, 42), (37, 43))
+    c.put("V", (28, 44), (29, 44), (30, 44), (31, 44))                        # security desk
+    c.room(43, 33, 2, 3, floor="u").put("S", (42, 34))                      # secret 2: lost badges
+
+    # 3. West: the open-plan office. Cubicle rows, blue badge in the corner office.
+    c.room(2, 28, 15, 20, floor="t")
+    c.hall([(17, 39), (17, 40)], width=1, floor="t")
+    for y in (31, 35, 39, 43):
+        c.put("Z", *[(x, y) for x in range(4, 15) if x != 9])
+    c.hall([(5, 48), (5, 48)], width=1, floor="t").put("d", (5, 48))
+    c.room(3, 49, 6, 4, wall="V", floor="y")
+    c.room(10, 24, 3, 3, floor="t").put("S", (11, 27))                      # secret 3: the nap pod
+
+    # 4. Behind the blue gate (east): Ad Sales. Screen walls, The Algorithm upstairs.
+    c.hall([(42, 40), (45, 40)], width=1, floor="t").put("7", (43, 40))
+    c.room(46, 28, 12, 20, floor="t")
+    c.put("T", *[(x, y) for x in (50, 54) for y in list(range(31, 35)) + list(range(41, 45))])
+    c.hall([(51, 27), (51, 27)], width=1, floor="u").put("d", (51, 27))
+    c.room(47, 22, 10, 5, wall="T", floor="u")
+    c.room(50, 49, 3, 2, floor="t").put("S", (51, 48))                      # secret 4: the shredder
+
+    # 5. Behind the pink gate (north): Legal & Lobbying, then the Boardroom.
+    c.hall([(30, 25), (30, 31)], width=1, floor="t").put("8", (30, 28))
+    c.room(14, 15, 30, 10, wall="V", floor="t")
+    for x in (20, 26, 32, 38):
+        c.put("V", *[(x, y) for y in range(15, 22) if y != 18])
+    c.room(10, 17, 3, 3, floor="t").put("S", (13, 18))                      # secret 5: the lobbyist's safe
+    c.hall([(30, 12), (30, 14)], width=1, floor="y").put("d", (30, 13))
+    c.room(22, 4, 16, 8, wall="V", floor="y")
+    c.put("V", *[(x, y) for x in range(26, 34) for y in (7, 8)])             # the boardroom table
+    c.room(39, 5, 2, 3, floor="y").put("S", (38, 6))                        # secret 6: the golden parachute
+
+    # 6. Behind the gold gate: the executive elevator, then the roof.
+    c.hall([(13, 22), (8, 22), (8, 12)], width=1, floor="u").put("9", (10, 22))
+    c.room(8, 14, 1, 6, wall="W", floor="u")
+    c.room(2, 2, 16, 10, floor="z", sky=True)
+    c.room(19, 3, 2, 2, floor="z").put("S", (18, 4))                        # secret 7: the drone hangar
+    c.put("D", (1, 6))
+
+    # Start: a battery, a banana.
+    c.put("P", (29, 56)).put("q", (27, 54)).put("b", (32, 54))
+    # Logo pylons (light), plants, water coolers.
+    c.put("F", (18, 32), (41, 32), (18, 46), (41, 46), (2, 28), (16, 47), (46, 28), (57, 47), (14, 15), (43, 24), (2, 2), (17, 11), (25, 53), (34, 53))
+    c.put("Y", (24, 33), (35, 33), (24, 45), (35, 45), (16, 28), (2, 47), (57, 28), (46, 47), (22, 4), (37, 11))
+    c.put("M", (20, 38), (39, 38), (9, 29), (55, 38), (17, 23), (40, 23), (36, 4))
+    # Secrets: idols, Seeker phones, big health.
+    c.put("I", (36, 55)).put("Q", (37, 56))
+    c.put("I", (43, 33)).put("H", (44, 35))
+    c.put("I", (10, 24)).put("Q", (12, 25))
+    c.put("I", (50, 49)).put("H", (52, 50))
+    c.put("I", (10, 17)).put("Q", (12, 19))
+    c.put("I", (39, 5)).put("H", (40, 7))
+    c.put("I", (19, 3)).put("Q", (20, 4))
+
+    # Lobby: Gatekeepers at security, an Eye on the atrium, ads on the screens, jeets.
+    c.put("a", (36, 39)).put("E", (30, 33)).put("J", (19, 34), (40, 36))
+    c.put("c", (33, 37), (34, 37), (20, 40), (21, 41)).put("n", (30, 39))
+    c.put("q", (19, 40), (40, 35), (25, 46), (34, 46), (23, 39)).put("h", (19, 45), (40, 33), (26, 46), (33, 46)).put("Q", (29, 36)).put("b", (30, 41))
+    # Open-plan office: a jeet at every other desk, cookies, goblins in the aisles.
+    c.put("J", (5, 30), (12, 33), (6, 37), (13, 41), (4, 45), (11, 46)).put("c", (9, 32), (9, 36), (9, 40), (9, 44), (15, 30), (3, 38))
+    c.put("G", (3, 33), (15, 45)).put("n", (7, 29)).put("a", (8, 46))
+    c.put("q", (3, 29), (15, 33), (3, 42), (14, 42), (8, 34)).put("h", (15, 41), (4, 36)).put("Q", (8, 41)).put("b", (12, 29))
+    # Corner office: the blue badge, the boss's PA.
+    c.put("1", (5, 51)).put("J", (7, 50)).put("h", (3, 52)).put("q", (8, 52))
+    # Ad Sales: ads at the screens, Eyes down the aisles, jeets, a Gatekeeper.
+    c.put("a", (52, 30)).put("E", (56, 30)).put("K", (56, 45))
+    c.put("J", (48, 32), (56, 36)).put("c", (52, 35), (52, 36), (52, 40), (52, 41)).put("n", (57, 41))
+    c.put("q", (47, 29), (57, 33), (47, 40), (57, 46), (53, 47), (48, 38)).put("h", (49, 37), (55, 40), (47, 42), (53, 28)).put("Q", (57, 29)).put("b", (52, 33))
+    # The Algorithm: the pink badge, an Eye that never blinks, ads.
+    c.put("2", (51, 23)).put("E", (55, 24)).put("a", (48, 25)).put("h", (54, 23)).put("q", (48, 23))
+    # Legal & Lobbying: Gatekeepers in the corridor, jeets in the offices, cookies.
+    c.put("J", (16, 16), (41, 20), (37, 23)).put("G", (17, 21), (41, 16))
+    c.put("c", (40, 22), (41, 23), (17, 17)).put("n", (19, 23)).put("a", (24, 19))
+    c.put("q", (15, 23), (42, 24), (22, 20), (34, 19), (28, 16)).put("h", (18, 18), (37, 19)).put("Q", (29, 23)).put("b", (36, 22))
+    # Boardroom: the gold badge on the table's head, Gatekeepers, an Eye at the far end.
+    c.put("3", (35, 7)).put("G", (24, 7)).put("E", (36, 4)).put("J", (30, 5))
+    c.put("H", (23, 5)).put("q", (36, 10), (26, 10)).put("h", (33, 5), (29, 10))
+    # The roof: the Banana Phone, its entourage, supplies round the edge.
+    c.put("X", (15, 3)).put("H", (8, 17))
+    c.put("H", (3, 3), (16, 10)).put("Q", (16, 3), (3, 10), (8, 15)).put("q", (8, 11), (12, 2), (2, 6), (17, 7)).put("h", (8, 13), (2, 9))
+    return c
+
+
 class Arena(Cave):
     """A Jungle Royale versus map: no doors, badges, enemies or exit; spawn points (R)
     and pickups only. Doors stay out so the match server only has to know walls."""
@@ -622,8 +729,6 @@ def temple_ring():
 ARENAS = [temple_ring]
 
 
-# Cave 5 is the old Big Tech HQ prototype (the Banana Phone) until it's rebuilt full length.
-OLD = json.loads((Path(__file__).with_name("old-levels.json")).read_text())
 
 
 def png(rows, path, cs=8):
@@ -651,13 +756,12 @@ def png(rows, path, cs=8):
 
 
 def main():
-    caves = [lost_temple(), paper_hands_alley(), data_center(), walled_garden()]
+    caves = [lost_temple(), paper_hands_alley(), data_center(), walled_garden(), big_tech_hq()]
     levels = []
     for c in caves:
         stats = c.check()
         print(f"{c.name}: {c.w}x{c.h} {stats}")
         levels.append(c.level())
-    levels += [lv for lv in OLD if lv["name"] == "BIG TECH HQ"]
     if "--png" in sys.argv:
         d = Path(sys.argv[sys.argv.index("--png") + 1])
         for k, lv in enumerate(levels[:len(caves)]):
