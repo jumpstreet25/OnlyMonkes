@@ -7,6 +7,7 @@ import { weaponFor, heldSprite, shotMask, shotColour } from "/viewer/caves-weapo
 import { LEVELS } from "/viewer/caves-levels.js";
 import { paintFace } from "/viewer/caves-face.js";
 import { WALL_PAINT, FLOOR_PAINT, SKY_PAINT, DECOR_PAL, DECOR_ROWS, DECOR_LETTERS, DECOR_BLOCKS } from "/viewer/caves-world.js";
+import { TECH_WALL_PAINT, TECH_WALL_FRAMES, TECH_FLOOR_PAINT, TECH_LIGHT_PANEL, TECH_CEIL_PAINT, TECH_LIGHT, TECH_DECOR_PAL, TECH_DECOR_ROWS, TECH_DECOR_LETTERS } from "/viewer/caves-tech.js";
 import { FOE_ROWS, FOE_PAL, AD_PAL2, XSHOT, BEAM, FOES, FOE_LETTERS } from "/viewer/caves-foes.js";
 import { ARENAS } from "/viewer/caves-arenas.js";
 import { createMatch, VS, ROYALE_VERSION } from "/viewer/caves-royale.js";
@@ -115,6 +116,22 @@ const FLOORS = Object.fromEntries(Object.entries(FLOOR_PAINT).map(([k, f]) => [k
 const SKY = fromPaint(SKY_PAINT);
 const ROOTS = makeTex((x, y) => { const n = 0.6 + rnd() * 0.4, root = Math.abs((((x + Math.round(Math.sin(y * Math.PI / 8) * 3)) % 16) + 16) % 16 - 8) < 1; return root ? rgb(52 * n, 36 * n, 22 * n) : rgb(22 * n, 26 * n, 18 * n); });
 for (const k of ["V", "T", "Z", "W", "d"]) TEXTURES[k] = JUNGLE[k];
+// Data Center (caves-tech.js), made after the jungle set so the seeded noise above is unchanged.
+const TECH = Object.fromEntries(Object.entries(TECH_WALL_PAINT).map(([k, f]) => [k, fromPaint(f)]));
+const TECH_FRAMES = Object.fromEntries(Object.entries(TECH_WALL_FRAMES).map(([k, fs]) => [k, fs.map(fromPaint)]));
+Object.assign(FLOORS, Object.fromEntries(Object.entries(TECH_FLOOR_PAINT).map(([k, f]) => [k, fromPaint(f)])));
+const PANELS = fromPaint(TECH_LIGHT_PANEL), TECH_CEIL = fromPaint(TECH_CEIL_PAINT);
+const FLOWING = new Set([FLOORS.w, FLOORS.c]);
+const JUNGLE_WALLS = { "#": JUNGLE["#"], S: JUNGLE.S, V: JUNGLE.V, T: JUNGLE.T, Z: JUNGLE.Z, W: JUNGLE.W, d: JUNGLE.d };
+// Per theme: walls, default floor/ceiling, the lit-room ceiling, light levels, decorations.
+const THEMES = {
+  jungle: { walls: JUNGLE_WALLS, floor: FLOORS.m, ceil: ROOTS, lit: SKY, light: { sky: 1.15, rock: 0.78 }, decor: DECOR_LETTERS, frames: {} },
+  tech: { walls: TECH, floor: FLOORS.r, ceil: TECH_CEIL, lit: PANELS, light: TECH_LIGHT, decor: TECH_DECOR_LETTERS, frames: TECH_FRAMES },
+};
+const BLOCKING_DECOR = new Set([...DECOR_BLOCKS, "cabinet", "pylon"]);
+const LAMPS = new Set(["torch", "pylon"]);
+const DECOR_SCALE = { tree: 1.05, cabinet: 1.0, torch: 0.7, pylon: 0.72 };
+let wallFrames = {};
 let floorAt = new Array(1), ceilAt = new Array(1), light = new Float32Array(1), blockers = new Set();
 let baseFloor = FLOOR, baseCeil = CEIL;
 
@@ -187,6 +204,7 @@ const SPR = {
   eye: FOE_ROWS.eye.map((r) => makeSprite(r, FOE_PAL)),
   xshot: makeSprite(XSHOT, FOE_PAL),
   ...Object.fromEntries(Object.entries(DECOR_ROWS).map(([k, rows]) => [k, makeSprite(rows, DECOR_PAL)])),
+  ...Object.fromEntries(Object.entries(TECH_DECOR_ROWS).map(([k, rows]) => [k, makeSprite(rows, TECH_DECOR_PAL)])),
   // Ammo: a Seeker battery (small) and a Seeker phone (big pack). Health: small kit, big kit.
   ammo: makeSprite([
     "................", "................", "................", "................", "................", "......kkkk......",
@@ -233,7 +251,7 @@ function equip(n) {
 // ── Levels ── map letters are listed in scripts/caves/build-levels.py.
 // Speed-run board (worker caves.ts) only takes runs from this level set. Change a
 // level → bump this and CAVES_VERSION/MIN_MS in worker-actions/src/caves.ts together.
-const CAVES_VERSION = 3; // 3: cave 2 rebuilt full size (2026-11-13)
+const CAVES_VERSION = 4; // 4: cave 3 Data Center added, Big Tech HQ moves to cave 4 (2026-11-14)
 // Levels: caves-levels.js (built by scripts/caves/build-levels.py).
 let levelIx = 0;
 let MW = 0, MH = 0, secrets = 0, secretsFound = 0, boss = null;
@@ -251,9 +269,11 @@ const currentLevel = () => (ROYALE ? ARENAS[0] : LEVELS[levelIx]);
 function loadLevel(keepStats = false) {
   const LEVEL = currentLevel().rows;
   MW = Math.max(...LEVEL.map((r) => r.length)); MH = LEVEL.length;
-  const lv = currentLevel(), jungle = lv.theme === "jungle";
-  Object.assign(TEXTURES, jungle ? { "#": JUNGLE["#"], S: JUNGLE.S } : ROCK);
-  baseFloor = jungle ? FLOORS.m : FLOOR; baseCeil = jungle ? ROOTS : CEIL;
+  const lv = currentLevel(), theme = THEMES[lv.theme] || null;
+  Object.assign(TEXTURES, JUNGLE_WALLS, theme ? theme.walls : ROCK);
+  baseFloor = theme ? theme.floor : FLOOR; baseCeil = theme ? theme.ceil : CEIL;
+  wallFrames = theme ? theme.frames : {};
+  const decorOf = theme ? theme.decor : DECOR_LETTERS;
   blockers = new Set();
   map.length = 0; things.length = 0; shots.length = 0; spits.length = 0; door = null; boss = null; secrets = 0; secretsFound = 0;
   const carry = keepStats ? { hp: player.hp, bananas: player.bananas, ammo: player.ammo, kills: player.kills } : null;
@@ -276,7 +296,7 @@ function loadLevel(keepStats = false) {
       }
       else if (c === "S") secrets++;
       else if (c === "I") { things.push({ kind: "idol", x: cx, y: cy }); c = "."; }
-      else if (DECOR_LETTERS[c]) { const d = DECOR_LETTERS[c]; things.push({ kind: "decor", d, x: cx, y: cy }); if (DECOR_BLOCKS.has(d)) blockers.add(y * MW + x); c = "."; }
+      else if (decorOf[c]) { const d = decorOf[c]; things.push({ kind: "decor", d, x: cx, y: cy }); if (BLOCKING_DECOR.has(d)) blockers.add(y * MW + x); c = "."; }
       else if (c === "b") { things.push({ kind: "banana", x: cx, y: cy }); c = "."; }
       else if (c === "h" || c === "H") { things.push({ kind: "health", x: cx, y: cy, big: c === "H" }); c = "."; }
       else if (c === "q" || c === "Q") { things.push({ kind: "ammo", x: cx, y: cy, big: c === "Q" }); c = "."; }
@@ -295,11 +315,11 @@ function loadLevel(keepStats = false) {
   // Per-cell floor/ceiling and light: sunlit clearings (sky) are bright, tunnels are
   // dim, and torches warm everything within a few tiles.
   floorAt = new Array(MW * MH); ceilAt = new Array(MW * MH); light = new Float32Array(MW * MH);
-  const torches = things.filter((t) => t.kind === "decor" && t.d === "torch");
+  const torches = things.filter((t) => t.kind === "decor" && LAMPS.has(t.d));
   for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
     const i = y * MW + x, fc = lv.floor?.[y]?.[x], cc = lv.ceil?.[y]?.[x];
-    floorAt[i] = FLOORS[fc] || baseFloor; ceilAt[i] = cc === "o" ? SKY : baseCeil;
-    let l = !jungle ? 1 : cc === "o" ? 1.15 : 0.78;
+    floorAt[i] = FLOORS[fc] || baseFloor; ceilAt[i] = cc === "o" ? (theme ? theme.lit : SKY) : baseCeil;
+    let l = !theme ? 1 : cc === "o" ? theme.light.sky : theme.light.rock;
     for (const t of torches) { const d = Math.hypot(t.x - x - 0.5, t.y - y - 0.5); if (d < 4.5) l += 0.38 * (1 - d / 4.5); }
     light[i] = Math.min(1.35, l);
   }
@@ -336,6 +356,7 @@ function tickDoors(dt) {
     }
   }
 }
+const KEEPER_LOCK = 6;
 const isFoe = (t) => t.kind === "jeet" || t.kind === "goblin" || t.kind === "bear" || t.kind === "phone" || !!FOES[t.kind];
 // Every cave hits a little harder than the one before (one difficulty for everyone).
 const dmg = (n) => Math.round(n * (1 + 0.15 * levelIx));
@@ -639,8 +660,13 @@ function update(dt) {
       if (dead || !isFoe(e) || e.hp <= 0) continue;
       if (Math.hypot(e.x - s.x, e.y - s.y) < (e.kind === "bear" ? 0.8 : FOES[e.kind]?.r ?? 0.42)) {
         dead = true; e.seen = true;
-        // The Gatekeeper's padlock shield stops anything that hits it from the front.
-        if (e.kind === "keeper" && Math.cos(e.face) * s.vx + Math.sin(e.face) * s.vy < -0.35 * Math.hypot(s.vx, s.vy)) { sfx.clink(); continue; }
+        // The Gatekeeper's padlock shield stops anything that hits it from the front, until
+        // KEEPER_LOCK hits break the padlock (flanking is quicker, but shooting it works).
+        if (e.kind === "keeper" && !e.broken && Math.cos(e.face) * s.vx + Math.sin(e.face) * s.vy < -0.5 * Math.hypot(s.vx, s.vy)) {
+          e.lock = (e.lock || 0) + 1; e.flash = 0.06;
+          if (e.lock >= KEEPER_LOCK) { e.broken = true; sfx.crack(); } else sfx.clink();
+          continue;
+        }
         e.hp--; e.flash = 0.12;
         if (e.kind === "phone" && e.armour > 0 && --e.armour === 0) {
           sfx.crack(); say("CASE CRACKED", "SALE! UPGRADE NOW"); setTimeout(() => { if (state === "play") say(""); }, 1300);
@@ -861,7 +887,8 @@ function foeAI(e, dx, dy, d, dt) {
     const want = Math.atan2(dy, dx); let diff = want - e.face;
     diff = Math.atan2(Math.sin(diff), Math.cos(diff));
     e.face += Math.max(-f.turn * dt, Math.min(f.turn * dt, diff));
-    if (d > 0.8 && Math.abs(diff) < 0.6) move(e, Math.cos(e.face) * sp, Math.sin(e.face) * sp);
+    // After a bite it stands still a moment (room to get round it).
+    if (d > 0.8 && Math.abs(diff) < 0.6 && e.cool < f.cool - 0.6) move(e, Math.cos(e.face) * sp, Math.sin(e.face) * sp);
     if (d < 1 && e.cool <= 0) bite(e, f);
   } else if (e.kind === "eye") {
     if (d < f.range && e.cool <= 0 && lineOfSight(e.x, e.y, player.x, player.y)) {
@@ -950,7 +977,7 @@ function render() {
       const ix = Math.floor(fx), iy = Math.floor(fy), tx = (TEX * (fx - ix)) & (TEX - 1), ty = (TEX * (fy - iy)) & (TEX - 1);
       const ci = iy * MW + ix, ok = ix >= 0 && iy >= 0 && ix < MW && iy < MH, l = ok ? Math.min(1, f * light[ci]) : f;
       const ft = ok ? floorAt[ci] : baseFloor;
-      buf[y * W + x] = shade(ft[(ft === FLOORS.w ? (ty + flowY) & (TEX - 1) : ty) * TEX + tx], l);
+      buf[y * W + x] = shade(ft[(FLOWING.has(ft) ? (ty + flowY) & (TEX - 1) : ty) * TEX + tx], l);
       buf[yc * W + x] = shade((ok ? ceilAt[ci] : baseCeil)[ty * TEX + tx], l);
       fx += sx; fy += sy;
     }
@@ -990,7 +1017,7 @@ function render() {
     let wx = side === 0 ? p.y + perp * ry : p.x + perp * rx; wx -= Math.floor(wx);
     let tx = Math.floor(wx * TEX); if ((side === 0 && rx > 0) || (side === 1 && ry < 0)) tx = TEX - tx - 1;
     if (doorHit) tx = Math.min(TEX - 1, Math.floor(doorHit.u * TEX));
-    const tex = TEXTURES[cell] || TEXTURES["#"];
+    const fr = wallFrames[cell], tex = fr ? fr[(Math.floor(now / 380) + mx * 7 + my * 13) % fr.length] : TEXTURES[cell] || TEXTURES["#"];
     const hx = p.x + perp * rx, hy = p.y + perp * ry;
     const li = Math.floor(hy - ry * 0.02) * MW + Math.floor(hx - rx * 0.02);
     const f = Math.min(1, fog(perp) * (side ? 0.78 : 1) * (light[li] || 1)), step = TEX / lh;
@@ -1008,7 +1035,7 @@ function render() {
     let spr, scale = 0.62, lift = 0;
     if (isFoe(t)) {
       // The Gatekeeper shows its back (no shield) once you're behind it.
-      const behind = t.kind === "keeper" && Math.cos(t.face) * (p.x - t.x) + Math.sin(t.face) * (p.y - t.y) < 0;
+      const behind = t.kind === "keeper" && (t.broken || Math.cos(t.face) * (p.x - t.x) + Math.sin(t.face) * (p.y - t.y) < 0);
       const set = t.kind === "phone" && t.armour > 0 ? SPR.phoneCase : behind ? SPR.keeperBack : SPR[t.kind];
       const fr = t.kind === "ad" ? Math.floor(now / 250) : t.kind === "eye" ? (Math.sin(t.phase * 0.2) > 0.9 ? 1 : 0) : Math.floor(t.phase || 0);
       spr = set[fr % 2]; if (t.kind === "bear") scale = 1.1; if (t.kind === "phone") scale = 0.7;
@@ -1016,7 +1043,7 @@ function render() {
     }
     else if (t.kind === "badge") { spr = SPR.badge[t.b]; scale = 0.42; lift = 0.12 + Math.sin(now / 300) * 0.04; }
     else if (t.kind === "ammo") { spr = t.big ? SPR.ammoBig : SPR.ammo; scale = 0.4; }
-    else if (t.kind === "decor") { spr = SPR[t.d]; scale = t.d === "tree" ? 1.05 : t.d === "torch" ? 0.7 : 0.38; }
+    else if (t.kind === "decor") { spr = SPR[t.d]; scale = DECOR_SCALE[t.d] ?? 0.38; }
     else if (t.kind === "idol") { spr = SPR.idol; scale = 0.42; lift = 0.06 + Math.sin(now / 350) * 0.03; }
     else if (t.kind === "health" && t.big) { spr = SPR.healthBig; scale = 0.42; }
     else { spr = SPR[t.kind]; scale = 0.4; }

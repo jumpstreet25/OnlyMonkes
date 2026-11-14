@@ -3,7 +3,7 @@
 //   Tracking Cookie  c  tiny, fast, comes in swarms, dies in one hit
 //   Notification Bat n  a winged bell; pings when it spots you, then zigzags in
 //   Pop-up Ad        a  floats at range and fires X's; up close it covers your screen
-//   Gatekeeper       K  padlock shield in front — shots from the front bounce; flank it
+//   Gatekeeper       K  padlock shield in front — shots from the front bounce; flank it (6 hits break the padlock)
 //   Algorithm Eye    E  never moves, tracks you and fires slow beams
 
 export const FOE_PAL = {
@@ -81,7 +81,7 @@ export const FOES = {
   cookie: { hp: 1, speed: 2.9, hit: 5, cool: 0.55, r: 0.32, scale: 0.34 },
   bat: { hp: 2, speed: 2.2, hit: 7, cool: 0.8, r: 0.4, scale: 0.42, lift: 0.32 },
   ad: { hp: 3, speed: 1.3, hit: 7, cool: 1.6, r: 0.45, scale: 0.46, lift: 0.22, range: 9 },
-  keeper: { hp: 6, speed: 1.1, hit: 15, cool: 1.1, r: 0.5, scale: 0.7, turn: 1.5 },
-  eye: { hp: 5, speed: 0, hit: 10, cool: 2.2, r: 0.45, scale: 0.6, range: 12 },
+  keeper: { hp: 5, speed: 1.1, hit: 12, cool: 1.4, r: 0.5, scale: 0.7, turn: 1.0 },
+  eye: { hp: 5, speed: 0, hit: 8, cool: 2.6, r: 0.45, scale: 0.6, range: 12 },
 };
 export const FOE_LETTERS = { c: "cookie", n: "bat", a: "ad", K: "keeper", E: "eye" };

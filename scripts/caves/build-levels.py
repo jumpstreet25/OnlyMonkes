@@ -355,6 +355,115 @@ def paper_hands_alley():
     return c
 
 
+def data_center():
+    """Cave 3: Big Tech's data center, dug in under the jungle: rows of servers holding
+    everything they track about you. Harder than the alley: three badges, the first
+    Gatekeepers (shield in front: flank them) and Algorithm Eyes (turrets that never
+    move), cookie swarms in the server aisles, and less health per fight.
+
+    Flow: the loading dock (dark, quiet) → the security lobby (lit hub: a Gatekeeper on
+    the turnstiles, both coloured gates in view) → south, server hall A (rack aisles, Eyes
+    at the aisle ends) and the tracking room off its west side with the blue badge → back
+    up, the blue gate opens the cooling plant (coolant falls, fans, bats over the pool),
+    pink badge on the catwalk → the pink gate drops into the cable vault (dark, goblins and
+    Gatekeepers in the cable runs) → the ad auction room (lit, full of pop-up ads), gold
+    badge → the gold gate opens the core, where four Eyes guard the exit lift to Big Tech
+    HQ. Seven secrets, each a wall panel with a banana sticker on it."""
+    c = Cave("DATA CENTER", 60, 60, theme="tech", par=270, seed=31)
+    c.face = 0  # start looking east, down the dock to the lobby door
+
+    # 1. Loading dock: dark, crates, nobody here. One way on.
+    c.room(3, 3, 9, 7, floor="x")
+    c.put("B", (8, 3), (9, 3), (9, 4), (3, 8), (4, 8), (11, 9))
+    c.room(3, 11, 3, 2, floor="x").put("S", (4, 10))                        # secret 1: pallet stash
+    c.hall([(12, 6), (17, 6)], width=1, floor="x").put("d", (14, 6))
+
+    # 2. Security lobby (hub, light panels): turnstiles and a desk for cover.
+    c.room(18, 2, 22, 14, floor="r", sky=True)
+    c.put("C", (26, 6), (27, 6), (32, 6), (33, 6))                          # status screens
+    c.put("B", (21, 11), (22, 11), (36, 11), (37, 11), (29, 9), (30, 9))
+    c.room(14, 12, 3, 3, floor="r").put("S", (17, 13))                      # secret 2: lost & found
+    c.hall([(40, 8), (45, 8)], width=1, floor="x").put("7", (41, 8))         # blue gate, east
+
+    # 3. South: server hall A, rack rows make aisles; cold aisles between.
+    c.hall([(24, 16), (24, 19)], width=1, floor="x").put("d", (24, 17))
+    c.room(14, 20, 18, 14, floor="k")
+    for y in (23, 27, 31):
+        c.put("T", *[(x, y) for x in range(16, 22)], *[(x, y) for x in range(25, 30)])
+    c.room(14, 35, 3, 2, floor="r").put("S", (15, 34))                      # secret 3: spare drives
+    # The tracking room (west), the blue badge on the big screen.
+    c.hall([(10, 27), (13, 27)], width=1, floor="x").put("d", (12, 27))
+    c.room(3, 23, 7, 9, wall="C", floor="r", sky=True)
+
+    # 4. Behind the blue gate: the cooling plant. Coolant falls, fans, a catwalk.
+    c.room(46, 3, 12, 15, floor="x", sky=True)
+    c.room(48, 7, 8, 8, floor="c", sky=True)                                # the coolant pool
+    c.room(51, 9, 2, 4, floor="x", sky=True)                                # the catwalk island
+    c.put("W", (48, 2), (49, 2), (54, 2), (55, 2)).put("V", (58, 5), (58, 9), (58, 13), (45, 15))
+    c.room(54, 19, 3, 2, floor="x").put("S", (55, 18))                      # secret 4: valve room
+    c.hall([(47, 18), (47, 24)], width=1, floor="x").put("8", (47, 20))      # pink gate, south
+
+    # 5. Behind the pink gate: the cable vault. Dark, cable runs, goblins.
+    c.room(43, 25, 14, 13, wall="Z", floor="x")
+    c.put("Z", *[(x, 29) for x in range(45, 52)], *[(x, 33) for x in range(48, 55)], (45, 30), (54, 32))
+    c.room(58, 30, 1, 3, floor="x").put("S", (57, 31))                      # secret 5: cable spool cache
+    # The ad auction room (west of the vault, lit): gold badge on the auction block.
+    c.hall([(42, 31), (42, 31)], width=1, floor="r").put("d", (42, 31))
+    c.room(34, 26, 8, 9, wall="C", floor="r", sky=True)
+    c.room(37, 23, 3, 2, floor="r").put("S", (38, 25))                      # secret 6: unsold ad slots
+    c.hall([(38, 35), (38, 41)], width=1, floor="x").put("9", (38, 37))      # gold gate, south
+
+    # 6. The core: the server core in the middle, Eyes on every side, the exit lift.
+    c.room(18, 42, 30, 14, floor="k")
+    c.put("T", *[(x, y) for x in range(30, 37) for y in (47, 51)], *[(x, y) for x in (30, 36) for y in range(48, 51)])
+    c.room(13, 47, 3, 3, floor="r").put("S", (17, 48))                      # secret 7: backup tapes
+    c.room(16, 48, 1, 1, floor="r")
+    c.put("D", (33, 56))
+
+    # Start: a battery, a banana, quiet.
+    c.put("P", (5, 6)).put("q", (7, 8)).put("b", (10, 5))
+    # Light: pylons in the dark rooms, cabinets and terminals for clutter.
+    c.put("F", (12, 7), (18, 16), (14, 20), (31, 20), (14, 33), (31, 33), (43, 25), (56, 25), (43, 37), (56, 37),
+          (18, 42), (47, 42), (18, 55), (47, 55), (25, 42), (41, 55))
+    c.put("Y", (20, 2), (38, 2), (46, 17), (57, 3), (34, 34), (41, 26))
+    c.put("M", (6, 4), (24, 4), (35, 14), (8, 30), (50, 4), (44, 27), (55, 35), (20, 44), (45, 53))
+    # Secrets: idols in display cases, Seeker phones, big health.
+    c.put("I", (4, 11)).put("q", (5, 12))
+    c.put("I", (15, 13)).put("H", (14, 14))
+    c.put("I", (15, 35)).put("Q", (16, 36))
+    c.put("I", (55, 19)).put("H", (56, 20))
+    c.put("I", (58, 30)).put("Q", (58, 32))
+    c.put("I", (38, 23)).put("H", (37, 24))
+    c.put("I", (14, 48)).put("Q", (13, 49))
+
+    # Lobby: the first Gatekeeper on the turnstiles, an Eye over the desk, cookies.
+    c.put("K", (29, 11)).put("J", (20, 4), (37, 4)).put("c", (25, 8), (26, 9)).put("n", (29, 5))
+    c.put("q", (19, 14), (38, 14), (35, 13), (22, 6)).put("h", (38, 3), (24, 13)).put("b", (29, 14))
+    # Server hall A: cookie swarms in the aisles, Eyes at the aisle ends, jeets.
+    c.put("E", (31, 25)).put("c", (18, 21), (19, 21), (27, 25), (28, 25), (29, 26), (18, 29))
+    c.put("J", (23, 22), (31, 21), (23, 29), (31, 30)).put("n", (24, 25), (20, 33)).put("G", (27, 32))
+    c.put("q", (14, 21), (30, 29), (17, 33), (31, 22)).put("Q", (23, 32)).put("h", (14, 26), (16, 25)).put("b", (22, 25))
+    # Tracking room: the blue badge, an Eye watching it, ads.
+    c.put("1", (4, 27)).put("E", (6, 23)).put("a", (8, 25)).put("J", (5, 30)).put("h", (3, 31)).put("q", (9, 23), (3, 24))
+    # Cooling plant: bats over the pool, jeets on the walkway, ads high up.
+    c.put("2", (51, 10)).put("n", (49, 8), (54, 8), (50, 13)).put("a", (47, 4)).put("Q", (56, 16)).put("h", (57, 7))
+    c.put("J", (46, 10), (52, 16)).put("h", (47, 16)).put("c", (53, 4), (54, 5))
+    c.put("H", (57, 17)).put("q", (46, 4), (57, 11), (46, 14)).put("b", (52, 12))
+    # Cable vault: goblins in the runs, Gatekeepers at the turns, bats in the dark.
+    c.put("G", (46, 27), (53, 31), (47, 35)).put("K", (50, 31)).put("n", (52, 26), (44, 32)).put("h", (45, 36))
+    c.put("J", (49, 27), (52, 35)).put("q", (56, 30)).put("c", (46, 31), (47, 31), (53, 34))
+    c.put("q", (56, 26), (43, 34), (50, 36)).put("Q", (44, 26)).put("h", (49, 36)).put("b", (54, 30))
+    # Ad auction: the gold badge, pop-up ads everywhere, an Eye on the block.
+    c.put("3", (38, 30)).put("a", (35, 27), (40, 27), (40, 33)).put("q", (37, 28)).put("E", (38, 33))
+    c.put("J", (36, 30)).put("q", (41, 34), (34, 26), (34, 30)).put("h", (41, 29)).put("b", (37, 32))
+    # The core: four Eyes round the server core, Gatekeepers, cookies, jeets.
+    c.put("E", (29, 46), (37, 46), (29, 52), (37, 52)).put("K", (24, 48), (42, 49)).put("q", (33, 54), (41, 53))
+    c.put("c", (20, 45), (21, 46), (45, 45), (44, 46)).put("J", (26, 44), (40, 44), (25, 53))
+    c.put("n", (33, 44)).put("H", (20, 50)).put("G", (46, 50))
+    c.put("H", (19, 43)).put("h", (46, 54)).put("q", (19, 54), (46, 43), (19, 47), (46, 47)).put("Q", (33, 45)).put("b", (27, 50))
+    return c
+
+
 class Arena(Cave):
     """A Jungle Royale versus map: no doors, badges, enemies or exit; spawn points (R)
     and pickups only. Doors stay out so the match server only has to know walls."""
@@ -408,7 +517,7 @@ def temple_ring():
 ARENAS = [temple_ring]
 
 
-# Cave 3 is the old prototype map until it's rebuilt full length (cave 2 rebuilt 2026-11-13).
+# Cave 4 is the old Big Tech HQ prototype (the Banana Phone) until caves 4-5 are built full length.
 OLD = json.loads((Path(__file__).with_name("old-levels.json")).read_text())
 
 
@@ -437,13 +546,13 @@ def png(rows, path, cs=8):
 
 
 def main():
-    caves = [lost_temple(), paper_hands_alley()]
+    caves = [lost_temple(), paper_hands_alley(), data_center()]
     levels = []
     for c in caves:
         stats = c.check()
         print(f"{c.name}: {c.w}x{c.h} {stats}")
         levels.append(c.level())
-    levels += OLD[len(caves) - 1:]
+    levels += [lv for lv in OLD if lv["name"] == "BIG TECH HQ"]
     if "--png" in sys.argv:
         d = Path(sys.argv[sys.argv.index("--png") + 1])
         for k, lv in enumerate(levels[:len(caves)]):
