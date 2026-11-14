@@ -8,7 +8,7 @@ import { Image, Platform, RefreshControl, ScrollView, StyleSheet, Text, View } f
 import { FONTS, THEME } from "@/lib/constants";
 import { monkeImageForNumber } from "@/lib/monkeMeme/monkeNumbers";
 import { useWorldGlassCardStyle } from "@/components/worlds/WorldScreenShell";
-import { cleanRows, fmtCave, fmtRace, type BoardRow } from "@/lib/gameBoards";
+import { cleanRows, fmtCave, fmtRace, raceDay, type BoardRow } from "@/lib/gameBoards";
 
 // Web is served from onlymonkes.app (same origin); the phone calls it directly.
 const BASE = Platform.OS === "web" ? "" : "https://onlymonkes.app";
@@ -46,8 +46,8 @@ export function GamesBoardView() {
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
-    // No ?day: the worker answers for the current race day (5pm→5pm New York since 2026-11-14).
-    const [r, c] = await Promise.all([getJson("/api/racer/board"), getJson("/api/caves/board")]);
+    // The player's own race day (local date, 3am→3am), the same track the game shows them.
+    const [r, c] = await Promise.all([getJson(`/api/racer/board?day=${raceDay()}`), getJson("/api/caves/board")]);
     setRacer(r && Array.isArray(r.top) ? { day: /^\d{4}-\d{2}-\d{2}$/.test(String(r.day)) ? String(r.day) : "", top: cleanRows(r.top, 10) } : null);
     setCaves(c && c.caves && typeof c.caves === "object"
       ? { week: String(c.week ?? ""), caves: Object.fromEntries(Object.entries(c.caves).map(([k, v]) => [k, cleanRows(v, 5)])) }
