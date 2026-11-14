@@ -8,6 +8,7 @@ import { LEVELS } from "/viewer/caves-levels.js";
 import { paintFace } from "/viewer/caves-face.js";
 import { WALL_PAINT, FLOOR_PAINT, SKY_PAINT, DECOR_PAL, DECOR_ROWS, DECOR_LETTERS, DECOR_BLOCKS } from "/viewer/caves-world.js";
 import { GARDEN_WALL_PAINT, GARDEN_WALL_FRAMES, GARDEN_FLOOR_PAINT, GARDEN_SKY_PAINT, GARDEN_CEIL_PAINT, GARDEN_LIGHT, GARDEN_DECOR_PAL, GARDEN_DECOR_ROWS, GARDEN_DECOR_LETTERS } from "/viewer/caves-garden.js";
+import { HQ_WALL_PAINT, HQ_WALL_FRAMES, HQ_FLOOR_PAINT, HQ_SKY_PAINT, HQ_CEIL_PAINT, HQ_LIGHT, HQ_DECOR_PAL, HQ_DECOR_ROWS, HQ_DECOR_LETTERS } from "/viewer/caves-hq.js";
 import { TECH_WALL_PAINT, TECH_WALL_FRAMES, TECH_FLOOR_PAINT, TECH_LIGHT_PANEL, TECH_CEIL_PAINT, TECH_LIGHT, TECH_DECOR_PAL, TECH_DECOR_ROWS, TECH_DECOR_LETTERS } from "/viewer/caves-tech.js";
 import { FOE_ROWS, FOE_PAL, AD_PAL2, XSHOT, BEAM, FOES, FOE_LETTERS } from "/viewer/caves-foes.js";
 import { ARENAS } from "/viewer/caves-arenas.js";
@@ -127,17 +128,23 @@ const GARDEN = Object.fromEntries(Object.entries(GARDEN_WALL_PAINT).map(([k, f])
 const GARDEN_FRAMES = Object.fromEntries(Object.entries(GARDEN_WALL_FRAMES).map(([k, fs]) => [k, fs.map(fromPaint)]));
 Object.assign(FLOORS, Object.fromEntries(Object.entries(GARDEN_FLOOR_PAINT).map(([k, f]) => [k, fromPaint(f)])));
 const FAKE_SKY = fromPaint(GARDEN_SKY_PAINT), GARDEN_CEIL = fromPaint(GARDEN_CEIL_PAINT);
+// Big Tech HQ (caves-hq.js), after the garden set for the same reason.
+const HQ = Object.fromEntries(Object.entries(HQ_WALL_PAINT).map(([k, f]) => [k, fromPaint(f)]));
+const HQ_FRAMES = Object.fromEntries(Object.entries(HQ_WALL_FRAMES).map(([k, fs]) => [k, fs.map(fromPaint)]));
+Object.assign(FLOORS, Object.fromEntries(Object.entries(HQ_FLOOR_PAINT).map(([k, f]) => [k, fromPaint(f)])));
+const NIGHT_SKY = fromPaint(HQ_SKY_PAINT), HQ_CEIL = fromPaint(HQ_CEIL_PAINT);
 const FLOWING = new Set([FLOORS.w, FLOORS.c, FLOORS.f]);
 const JUNGLE_WALLS = { "#": JUNGLE["#"], S: JUNGLE.S, V: JUNGLE.V, T: JUNGLE.T, Z: JUNGLE.Z, W: JUNGLE.W, d: JUNGLE.d };
 // Per theme: walls, default floor/ceiling, the lit-room ceiling, light levels, decorations.
 const THEMES = {
   jungle: { walls: JUNGLE_WALLS, floor: FLOORS.m, ceil: ROOTS, lit: SKY, light: { sky: 1.15, rock: 0.78 }, decor: DECOR_LETTERS, frames: {} },
   garden: { walls: GARDEN, floor: FLOORS.p, ceil: GARDEN_CEIL, lit: FAKE_SKY, light: GARDEN_LIGHT, decor: GARDEN_DECOR_LETTERS, frames: GARDEN_FRAMES },
+  hq: { walls: HQ, floor: FLOORS.t, ceil: HQ_CEIL, lit: NIGHT_SKY, light: HQ_LIGHT, decor: HQ_DECOR_LETTERS, frames: HQ_FRAMES },
   tech: { walls: TECH, floor: FLOORS.r, ceil: TECH_CEIL, lit: PANELS, light: TECH_LIGHT, decor: TECH_DECOR_LETTERS, frames: TECH_FRAMES },
 };
-const BLOCKING_DECOR = new Set([...DECOR_BLOCKS, "cabinet", "pylon", "topiary", "lamppost"]);
-const LAMPS = new Set(["torch", "pylon", "lamppost"]);
-const DECOR_SCALE = { tree: 1.05, cabinet: 1.0, torch: 0.7, pylon: 0.72, topiary: 0.8, lamppost: 0.95 };
+const BLOCKING_DECOR = new Set([...DECOR_BLOCKS, "cabinet", "pylon", "topiary", "lamppost", "plant", "pylon_hq"]);
+const LAMPS = new Set(["torch", "pylon", "lamppost", "pylon_hq"]);
+const DECOR_SCALE = { tree: 1.05, cabinet: 1.0, torch: 0.7, pylon: 0.72, topiary: 0.8, lamppost: 0.95, plant: 0.62, pylon_hq: 0.8, cooler: 0.55 };
 let wallFrames = {};
 let floorAt = new Array(1), ceilAt = new Array(1), light = new Float32Array(1), blockers = new Set();
 let baseFloor = FLOOR, baseCeil = CEIL;
@@ -213,6 +220,7 @@ const SPR = {
   ...Object.fromEntries(Object.entries(DECOR_ROWS).map(([k, rows]) => [k, makeSprite(rows, DECOR_PAL)])),
   ...Object.fromEntries(Object.entries(TECH_DECOR_ROWS).map(([k, rows]) => [k, makeSprite(rows, TECH_DECOR_PAL)])),
   ...Object.fromEntries(Object.entries(GARDEN_DECOR_ROWS).map(([k, rows]) => [k, makeSprite(rows, GARDEN_DECOR_PAL)])),
+  ...Object.fromEntries(Object.entries(HQ_DECOR_ROWS).map(([k, rows]) => [k, makeSprite(rows, HQ_DECOR_PAL)])),
   // Ammo: a Seeker battery (small) and a Seeker phone (big pack). Health: small kit, big kit.
   ammo: makeSprite([
     "................", "................", "................", "................", "................", "......kkkk......",
@@ -259,7 +267,7 @@ function equip(n) {
 // ── Levels ── map letters are listed in scripts/caves/build-levels.py.
 // Speed-run board (worker caves.ts) only takes runs from this level set. Change a
 // level → bump this and CAVES_VERSION/MIN_MS in worker-actions/src/caves.ts together.
-const CAVES_VERSION = 5; // 5: cave 4 Walled Garden added, Big Tech HQ moves to cave 5 (2026-11-14)
+const CAVES_VERSION = 6; // 6: cave 5 Big Tech HQ rebuilt full size, the finale (2026-11-14)
 // Levels: caves-levels.js (built by scripts/caves/build-levels.py).
 let levelIx = 0;
 let MW = 0, MH = 0, secrets = 0, secretsFound = 0, boss = null;
@@ -298,7 +306,7 @@ function loadLevel(keepStats = false) {
       else if (FOE_LETTERS[c]) { const kind = FOE_LETTERS[c]; things.push({ kind, x: cx, y: cy, hp: FOES[kind].hp, cool: rnd(), seen: false, phase: rnd() * 6, face: rnd() * 6.3 }); c = "."; }
       else if (c === "X") {
         boss = LEVELS[levelIx].boss === "phone"
-          ? { kind: "phone", x: cx, y: cy, hp: 22, max: 22, armour: 8, cool: 1, spit: 1.5, tax: 6, seen: false, phase: 0 }
+          ? { kind: "phone", x: cx, y: cy, hp: lv.bossHp || 22, max: lv.bossHp || 22, armour: lv.bossArmour || 8, cool: 1, spit: 1.5, tax: 6, call: 4, minions: !!lv.bossMinions, seen: false, phase: 0 }
           : { kind: "bear", x: cx, y: cy, hp: 18, max: 18, cool: 0, seen: false, phase: 0 };
         things.push(boss); c = ".";
       }
@@ -480,7 +488,9 @@ const settings = {
   sens: Math.max(0.4, Math.min(2.2, parseFloat(store.get("sens") || "1") || 1)),
   assist: store.get("assist") !== "0",
   // New key: tilt starts off for everyone (the first version was on and too much).
-  tilt: store.get("tilt2") === "1",
+  // Jungle Royale starts with tilt on (owner 2026-11-14: thumbs alone can't keep up there);
+  // turning it off in the pause menu stores "0", which wins everywhere.
+  tilt: ROYALE ? store.get("tilt2") !== "0" : store.get("tilt2") === "1",
 };
 function unlockAudio() { if (!audio) try { audio = new AudioContext(); } catch { /* no audio */ } }
 function blip(freq, dur, type = "square", vol = 0.08, slide = 0) {
@@ -684,7 +694,8 @@ function update(dt) {
           say("PERMISSIONLESS", "The Banana Phone is down. The exit is open."); setTimeout(() => { if (state === "play") say(""); }, 2000);
         }
         if (e.hp <= 0) {
-          p.kills++; e.dieAt = performance.now(); sfx.die();
+          if (!e.summoned) p.kills++;
+          e.dieAt = performance.now(); sfx.die();
           const r = rnd();
           if (r < 0.4) things.push({ kind: "ammo", x: e.x, y: e.y }); else if (r < 0.7) things.push({ kind: "banana", x: e.x, y: e.y, dropped: true });
         } else sfx.hit();
@@ -918,11 +929,23 @@ function phoneAI(e, dx, dy, d, dt) {
   const sees = lineOfSight(e.x, e.y, p.x, p.y);
   e.spit -= dt; e.tax -= dt;
   if (sees && e.spit <= 0) {
-    e.spit = bare ? 0.85 : 1.4; sfx.spit();
-    const spread = bare ? [-0.18, 0, 0.18] : [0];
+    // Out of its case: two blobs either side with a gap to stand in (the finale's phone used to fire
+    // three, which a thumb couldn't dodge with the bats also coming).
+    e.spit = bare ? (e.minions ? 1.05 : 0.85) : 1.4; sfx.spit();
+    const spread = bare ? (e.minions ? [-0.16, 0.16] : [-0.18, 0, 0.18]) : [0];
     for (const a of spread) { const c = Math.cos(a), s2 = Math.sin(a); spits.push({ x: e.x, y: e.y, vx: (ux * c - uy * s2) * 5, vy: (uy * c + ux * s2) * 5, life: 3 }); }
   }
   if (d < 1.2 && e.cool <= 0) { hurtPlayer(dmg(14), e, 0.4); e.cool = 1.2; }
+  // Out of its case it pings for help: notification bats, never more than 2 alive.
+  if (e.minions && bare && sees && (e.call -= dt) <= 0) {
+    e.call = 12;
+    const alive = things.filter((t) => t.kind === "bat" && t.hp > 0 && t.summoned).length;
+    for (let k = alive; k < 2; k++) {
+      const a = rnd() * Math.PI * 2, bx = e.x + Math.cos(a) * 1.2, by = e.y + Math.sin(a) * 1.2;
+      if (!wallAt(bx, by)) things.push({ kind: "bat", x: bx, y: by, hp: FOES.bat.hp, cool: 1, seen: true, phase: rnd() * 6, face: a, summoned: true });
+    }
+    say("NEW NOTIFICATIONS", "The Banana Phone pinged for backup"); setTimeout(() => { if (state === "play") say(""); }, 1200);
+  }
   if (sees && e.tax <= 0) {
     e.tax = 9; const took = Math.floor(p.bananas * 0.3);
     if (took > 0) { p.bananas -= took; sfx.tax(); say("30% TAX", `The Banana Phone took ${took} bananas`); setTimeout(() => { if (state === "play") say(""); }, 1300); }
