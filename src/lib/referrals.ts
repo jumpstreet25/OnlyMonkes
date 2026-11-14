@@ -32,6 +32,8 @@ export interface MyReferral {
   nextBadge: number | null;
   rewards: { referrer: number; newHolder: number };
   season: { id: string; end: number; count: number } | null;
+  /** Monke Live share card (worker, until the hangout ends). */
+  live?: { url: string; card: string; title: string; start: number } | null;
 }
 
 export type ReferralError = { error: string; reason?: string };

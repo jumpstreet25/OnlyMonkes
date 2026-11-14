@@ -1027,6 +1027,11 @@
     "artOnly": "Este monke se dibuja directo de su propio arte — sin tablero de rasgos."
   },
   "invite": {
+    "liveTitle": "🎙️ INVITACIÓN A MONKE LIVE",
+    "liveBody": "Quedada en Avatar Room en vivo, {{when}} en tu hora. Comparte tu tarjeta: lleva tu QR de invitación y los nuevos holders que entren con ella cuentan para tus referidos.",
+    "liveShareText": "🎙️ Monke Live: quedada en Avatar Room para holders de Saga Monkes, {{when}}. Entra con mi invitación 🐒🍌",
+    "liveVoteClosed": "La votación de Monke Live está cerrada",
+    "liveVoteNone": "Ahora no hay votación de Monke Live",
     "title": "Invitar amigos",
     "intro": "Invita a nuevos holders de Saga Monke. Cuando uno se une con tu enlace, tú recibes {{referrer}} bananas y él {{newHolder}}.",
     "loading": "Preparando tu invitación…",
