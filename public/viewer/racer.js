@@ -692,7 +692,26 @@ function newRace() {
   updateHud();
 }
 
+// The day's track is fixed when the page loads (COURSE). A page left open past 00:00 UTC kept
+// yesterday's track (owner 2026-11-14: "hasn't switched tracks yet"), so off the race the page
+// reloads onto the new day, and the title says when the next track arrives.
+const newDay = () => !DEMO && todayId() !== COURSE;
+function nextTrackLine() {
+  const now = new Date(), next = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1);
+  const m = Math.max(1, Math.round((next - now.getTime()) / 60000));
+  const at = new Date(next).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  return `New track in ${m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`} (${at})`;
+}
+const offRace = () => state === "title" || state === "board";
+setInterval(() => {
+  if (DEMO) return;
+  if (newDay() && offRace()) { location.reload(); return; }
+  const el = document.getElementById("nexttrack"); if (el) el.textContent = nextTrackLine();
+}, 30_000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden && newDay() && offRace()) location.reload(); });
+
 function title() {
+  if (newDay()) { location.reload(); return; }
   state = "title"; showPads();
   showCard(`
     <h1>MONKE RC</h1>
@@ -701,10 +720,10 @@ function title() {
     <div class="how">${isTouch ? HOW[ctrl] : "← → steer · Shift drift (let go to boost)<br>↓ brake · Esc pause<br>🎮 stick steer · A / RB / RT drift · B / LT brake · Start pause"}</div>
     <div class="dim">${LAPS} laps${best ? ` · your best ${fmt(best)}` : ""}${ghost && ghostOn ? " · racing your ghost" : ""}</div>
     <div class="dim" id="leaderline"></div>
-    ${!DEMO ? `<div class="dim">Finish today's track for bananas · fastest time tops the daily board</div>` : ""}
+    ${!DEMO ? `<div class="dim">Finish today's track for bananas · fastest time tops the daily board</div><div class="dim" id="nexttrack">${nextTrackLine()}</div>` : ""}
     ${DEMO ? `<div class="dim">The daily track, leaderboard and bananas are for Saga Monke holders · ${GET_APP}</div>` : ""}
     <div class="row"><button class="go" data-act="go">RACE</button><button data-act="board">BOARD</button></div>
-  `, (act) => { if (act === "go") countdown(); else if (act === "board") boardCard(); });
+  `, (act) => { if (newDay()) location.reload(); else if (act === "go") countdown(); else if (act === "board") boardCard(); });
   showLeaderLine();
 }
 // Today's daily board (worker racer.ts, public GET while RACER_BOARD is "on").
