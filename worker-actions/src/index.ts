@@ -104,6 +104,7 @@ import { handleWebMedia, isWebMediaPath, refreshMediaUsage } from "./webMedia";
 import { handleJupProxy, isJupProxyPath } from "./jupProxy";
 import { handleShareCard, isShareCardPath } from "./shareCard";
 import { handleReferral, isReferralPath } from "./referrals";
+import { handleLive, isLivePath } from "./liveEvent";
 import { handleCaves, isCavesPath } from "./caves";
 import { handleRacer, isRacerPath } from "./racer";
 import { liveFloor } from "./floor";
@@ -3602,7 +3603,7 @@ export default {
       return errorResponse("Method not allowed", 405);
     }
     if (path === "/live" || path === "/live/") {
-      if (isPageRead) return renderLive();
+      if (isPageRead) { const r = (url.searchParams.get("r") ?? "").toUpperCase(); return renderLive(Date.now(), /^[2-9A-HJ-NP-Z]{6}$/.test(r) ? r : null); }
       return errorResponse("Method not allowed", 405);
     }
     if (path === "/get") {
@@ -3615,6 +3616,7 @@ export default {
       if (page) return page;
       return Response.redirect(`${SITE_BASE}/welcome`, 302);
     }
+    if (isLivePath(path)) return handleLive(request, env, path);
     if (path === "/api/floor") {
       if (request.method !== "GET") return errorResponse("Method not allowed", 405);
       const f = await liveFloor(env).catch(() => null);
