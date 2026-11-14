@@ -9,6 +9,8 @@
  * fallback to /get when the app isn't installed. Verified https App Links
  * need a native intent filter and wait for the 3.1 APK.
  */
+import { LIVE_EVENT, liveZoneTime } from "./liveEvent";
+export { LIVE_EVENT, liveZoneTime };
 
 export const SITE_BASE = "https://onlymonkes.app";
 export const WEB_APP_BASE = SITE_BASE;
@@ -27,6 +29,7 @@ export const OPEN_TARGETS: Record<string, { label: string; app: string; web: str
   watchlist: { label: "Watchlist", app: "watchlist", web: "/watchlist", tier: "monke" },
   portfolio: { label: "Portfolio", app: "portfolio", web: "/portfolio", tier: "monke" },
   globe: { label: "MonkeGlobe", app: "globe", web: "/globe", tier: "monke" },
+  poll: { label: "the Monke Live vote", app: "live-poll", web: "/live-poll", tier: "monke" },
   treasury: { label: "Treasury", app: "treasury", web: "/treasury", tier: "monke" },
 };
 
@@ -367,24 +370,16 @@ const PAGE_CSS = `
 .page .tip[hidden]{display:none}
 `;
 
-// ── /live: the next live Avatar Room hangout (owner 2026-11-13). Change LIVE_EVENT for the next one. ──
-export const LIVE_EVENT = {
-  start: Date.UTC(2026, 10, 14, 22, 0), // Sat Nov 14 2026, 5:00 PM EST
-  hours: 3,
-  title: "Monke Live: Avatar Room hangout",
-};
+// ── /live: the next live Avatar Room hangout (owner 2026-11-13). The event itself is in liveEvent.ts. ──
 const LIVE_ZONES: [string, string][] = [
   ["Los Angeles (PT)", "America/Los_Angeles"], ["Denver (MT)", "America/Denver"], ["Chicago (CT)", "America/Chicago"],
   ["New York (ET)", "America/New_York"], ["São Paulo", "America/Sao_Paulo"], ["London", "Europe/London"],
   ["Paris · Berlin · Lagos", "Europe/Paris"], ["Dubai", "Asia/Dubai"], ["India", "Asia/Kolkata"],
   ["Singapore · Manila", "Asia/Singapore"], ["Tokyo · Seoul", "Asia/Tokyo"], ["Sydney", "Australia/Sydney"],
 ];
-export function liveZoneTime(ms: number, tz: string): string {
-  return new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "short", hour: "numeric", minute: "2-digit" }).format(new Date(ms));
-}
 const icsStamp = (ms: number) => new Date(ms).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
 
-export function renderLive(now = Date.now()): Response {
+export function renderLive(now = Date.now(), ref: string | null = null): Response {
   const e = LIVE_EVENT, end = e.start + e.hours * 3_600_000;
   const et = liveZoneTime(e.start, "America/New_York");
   const desc = `Live Avatar Room hangout for Saga Monke holders on OnlyMonkes, ${et} ET onward. Your 3D monke talks when you do.`;
@@ -406,9 +401,17 @@ export function renderLive(now = Date.now()): Response {
   <div class="count" id="count" hidden></div>
   <div class="stack">
     <a class="btn primary" href="/open/chat">Open Main Chat (holders)</a>
-    <a class="btn ghost" href="/get">New here? Get OnlyMonkes</a>
+    <a class="btn ghost" href="${ref ? `/r/${ref}` : "/get"}">New here? Get OnlyMonkes</a>
   </div>
   <div class="cal"><a href="${esc(gcal)}" target="_blank" rel="noopener">Add to Google Calendar</a> · <a href="data:text/calendar;charset=utf-8,${encodeURIComponent(ics)}" download="monke-live.ics">Add to phone calendar (.ics)</a></div>
+
+  <section class="vote" id="vote" hidden>
+    <h2>Vote for a time</h2>
+    <p class="sub" id="votesub">Holders vote in the app. Only Saga Monke holders are in Main Chat, so only holders count. Voting closes when the hangout starts.</p>
+    <div id="opts"></div>
+    <div class="stack"><a class="btn primary" id="votebtn" href="/open/poll">Vote in the app (holders)</a></div>
+    <p class="sub small">Not a holder yet? Results are open to everyone; see How to join below.</p>
+  </section>
 
   <h2>Start time around the world</h2>
   <table class="zones">${rows}</table>
@@ -443,6 +446,15 @@ function tick(){var n=Date.now();if(n>=E){c.hidden=true;p.textContent='This hang
 if(n>=S){c.hidden=false;c.textContent='We are live, come in';p.textContent='● LIVE NOW';p.className='pill live';return;}
 var d=Math.floor((S-n)/1000),h=Math.floor(d/3600),m=Math.floor(d%3600/60),s=d%60;c.hidden=false;c.textContent='Starts in '+h+'h '+String(m).padStart(2,'0')+'m '+String(s).padStart(2,'0')+'s';}
 tick();setInterval(tick,1000);
+function esc(t){return String(t).replace(/[&<>"']/g,function(c){return '&#'+c.charCodeAt(0)+';'})}
+function poll(){fetch('/api/live').then(function(r){return r.ok?r.json():null}).then(function(d){var p=d&&d.poll;if(!p)return;
+var tot=p.options.reduce(function(a,o){return a+o.votes},0),top=Math.max.apply(null,p.options.map(function(o){return o.votes}));
+document.getElementById('opts').innerHTML=p.options.map(function(o){var pc=tot?Math.round(100*o.votes/tot):0;
+return '<div class="opt'+(o.votes&&o.votes===top?' lead':'')+'"><div class="row"><span>'+esc(o.label)+'</span><b>'+o.votes+'</b></div><div class="bar"><i style="width:'+pc+'%"></i></div></div>'}).join('');
+var closed=p.status!=='open'||Date.now()>=p.resolvesAt;document.getElementById('votebtn').style.display=closed?'none':'';
+document.getElementById('votesub').textContent=closed?'Voting is closed. '+tot+' holder'+(tot===1?'':'s')+' voted.':tot+' holder'+(tot===1?'':'s')+' voted so far. Holders vote in the app; voting closes when the hangout starts.';
+document.getElementById('vote').hidden=false;}).catch(function(){})}
+poll();setInterval(poll,30000);
 fetch('/api/floor').then(function(r){return r.ok?r.json():null}).then(function(f){if(f&&f.floorSol)document.getElementById('floor').textContent=' (floor ~'+(Math.round(f.floorSol*100)/100)+' SOL)';}).catch(function(){});
 })();
 </script>
@@ -467,6 +479,13 @@ const LIVE_CSS = `
 .live .list{text-align:left;max-width:460px;margin:0 auto;padding-left:22px;color:var(--mut)}
 .live .list li{margin-bottom:8px}
 .live .list b{color:var(--fg)}
+.live .vote .sub{color:var(--mut);margin-bottom:14px}.live .vote .small{font-size:13px;margin-top:12px}
+.live .opt{max-width:460px;margin:0 auto 10px;text-align:left}
+.live .opt .row{display:flex;justify-content:space-between;gap:10px;font-size:15px}
+.live .opt .row b{font-variant-numeric:tabular-nums}
+.live .opt .bar{height:8px;border-radius:4px;background:var(--card);border:1px solid var(--line);overflow:hidden;margin-top:4px}
+.live .opt .bar i{display:block;height:100%;background:var(--blue)}
+.live .opt.lead .row span,.live .opt.lead .row b{color:var(--ok)}.live .opt.lead .bar i{background:var(--ok)}
 `;
 
 /** In-app browsers (X, Instagram, Facebook, LINE…) usually block intents. */
