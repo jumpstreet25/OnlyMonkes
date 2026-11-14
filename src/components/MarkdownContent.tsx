@@ -7,9 +7,11 @@
  * Styled to match OnlyMonkes THEME (dark glass bubbles, white text, accent headers).
  */
 
-import React, { useMemo } from "react";
-import { View, type TextStyle } from "react-native";
-import { useMarkdown } from "react-native-marked";
+import React, { useMemo, type ReactNode } from "react";
+import { Linking, Text, View, type TextStyle } from "react-native";
+import { router } from "expo-router";
+import { Renderer, useMarkdown } from "react-native-marked";
+import { routeForLink } from "@/lib/deepLinks";
 import type { MarkedStyles } from "react-native-marked";
 import { THEME, FONTS } from "@/lib/constants";
 
@@ -164,6 +166,48 @@ const mdTheme = {
   },
 };
 
+// Bot posts write "onlymonkes.app/live" without https://, which markdown leaves as plain
+// text (the Monke Live vote link "didn't do anything", 2026-11-13).
+const BARE_SITE_LINK = /(^|[\s(])((?:www\.)?onlymonkes\.app(?:\/[^\s)]*)?)/gi;
+function linkBareSiteUrls(text: string): string {
+  return text.replace(BARE_SITE_LINK, (_m, pre: string, url: string) => {
+    const trail = url.match(/[.,!?:;]+$/)?.[0] ?? "";
+    return `${pre}https://${url.slice(0, url.length - trail.length)}${trail}`;
+  });
+}
+
+/** Our own links open inside the app (the /live page's vote opens the poll pop-up). */
+function openLink(href: string) {
+  if (/^https:\/\/(?:www\.)?onlymonkes\.app\/live\/?(?:[?#].*)?$/i.test(href)) {
+    router.push("/live-poll");
+    return;
+  }
+  const route = routeForLink(href);
+  if (route && /^https:\/\/(?:www\.)?onlymonkes\.app\/open\//i.test(href)) {
+    router.push(route as never);
+    return;
+  }
+  Linking.openURL(href).catch(() => {});
+}
+
+class ChatRenderer extends Renderer {
+  link(children: string | ReactNode[], href: string, styles?: TextStyle, title?: string): ReactNode {
+    return (
+      <Text
+        selectable
+        accessibilityRole="link"
+        accessibilityLabel={title || "Link"}
+        key={this.getKey()}
+        onPress={() => openLink(href)}
+        style={styles}
+      >
+        {children}
+      </Text>
+    );
+  }
+}
+const chatRenderer = new ChatRenderer();
+
 function MarkdownContent({ content, style }: MarkdownContentProps) {
   const mergedStyles = useMemo(() => {
     if (!style) return mdStyles;
@@ -178,7 +222,9 @@ function MarkdownContent({ content, style }: MarkdownContentProps) {
     };
   }, [style]);
 
-  const elements = useMarkdown(content, {
+  const linked = useMemo(() => linkBareSiteUrls(content), [content]);
+  const elements = useMarkdown(linked, {
+    renderer: chatRenderer,
     colorScheme: "dark",
     theme: mdTheme,
     styles: mergedStyles,

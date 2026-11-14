@@ -1168,5 +1168,10 @@
   "caves": {
     "toastRoyale": "+{{bananas}} bananas from Jungle Royale",
     "toastCaves": "+{{bananas}} bananas from MonkeCaves"
+  },
+  "pollBar": {
+    "open": "POLL OPEN",
+    "openMany": "{{count}} POLLS OPEN",
+    "vote": "Vote"
   }
 }
