@@ -1100,6 +1100,11 @@
     "artOnly": "This monke is drawn straight from its own art — no trait board needed."
   },
   "invite": {
+    "liveTitle": "🎙️ MONKE LIVE INVITE",
+    "liveBody": "Live Avatar Room hangout, {{when}} your time. Share your card: it has your invite QR, and new holders who join with it count for your referrals.",
+    "liveShareText": "🎙️ Monke Live: Avatar Room hangout for Saga Monke holders, {{when}}. Join with my invite 🐒🍌",
+    "liveVoteClosed": "The Monke Live vote is closed",
+    "liveVoteNone": "No Monke Live vote right now",
     "title": "Invite friends",
     "intro": "Invite new Saga Monke holders. When one joins with your link, you get {{referrer}} bananas and they get {{newHolder}}.",
     "loading": "Getting your invite…",
