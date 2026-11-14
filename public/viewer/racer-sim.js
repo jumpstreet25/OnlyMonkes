@@ -1,5 +1,5 @@
 // Monke RC — the rules, with no DOM or three.js so they run in Node checks and (later)
-// on the worker. One track per UTC day built from the date; a fixed 120 Hz step so a run
+// on the worker. One track per race day (5pm→5pm New York) built from the date; a fixed 120 Hz step so a run
 // and its ghost replay the same everywhere. World: x/z ground plane, y up, heading a
 // (forward = (cos a, sin a) in x/z).
 export const RV = 2;
@@ -26,7 +26,11 @@ export const GHOST_EVERY = 3;      // record a ghost frame every 3 steps (40 Hz)
 
 export function hashSeed(s) { let h = 2166136261; for (const c of String(s)) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return h >>> 0; }
 export function rng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
-export const todayId = (d = new Date()) => d.toISOString().slice(0, 10);
+// The race day turns over at 5pm New York time (owner 2026-11-14), daylight saving included, and
+// is named for the date it ends on: 5pm Nov 14 → 5pm Nov 15 is "2026-11-15". Before that it was
+// the UTC date. worker-actions/src/racer.ts dayId must match.
+const NY_DATE = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" });
+export const todayId = (d = new Date()) => NY_DATE.format(new Date(d.getTime() + 7 * 3600_000));
 
 // ── Track ──
 function catmull(p0, p1, p2, p3, t) {

@@ -6,6 +6,7 @@
 import * as THREE from "three";
 import { imageFor, loadImage, readGrid, buildMonke } from "/viewer/monkeModel.js";
 import { weaponFor } from "/viewer/caves-weapons.js";
+import { themeFor } from "/viewer/racer-themes.js";
 import { RV, DT, LAPS, ROAD_W, SHOULDER, V_MAX, V_BOOST, DRIFT_TIERS, driftTier, launch, buildTrack, createRun, step, speedOf, sideOf, ghostAt, autopilot, todayId, rng } from "/viewer/racer-sim.js";
 
 const params = new URLSearchParams(location.search);
@@ -24,7 +25,8 @@ const GLOW = looks.shot.color === "rainbow" ? "#ff4fd8" : looks.shot.color;
 
 // ── Course ──
 const COURSE = DEMO ? "demo" : todayId();
-const COURSE_NAME = DEMO ? "DEMO TRACK" : `DAILY · ${new Date().toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" })}`;
+const TH = themeFor(COURSE);
+const COURSE_NAME = DEMO ? "DEMO TRACK" : `DAILY · ${new Date(`${COURSE}T12:00:00Z`).toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" })} · ${TH.name}`;
 const T = buildTrack(COURSE);
 
 // ── Storage (per device, never required) ──
@@ -82,12 +84,12 @@ function canvasTex(w, h, draw, repeat = true) {
 // Sky + light
 scene.background = canvasTex(4, 256, (g, w, h) => {
   const gr = g.createLinearGradient(0, 0, 0, h);
-  gr.addColorStop(0, "#5fb2ff"); gr.addColorStop(0.55, "#bfe4ff"); gr.addColorStop(1, "#fff4d6");
+  gr.addColorStop(0, TH.sky[0]); gr.addColorStop(0.55, TH.sky[1]); gr.addColorStop(1, TH.sky[2]);
   g.fillStyle = gr; g.fillRect(0, 0, w, h);
 }, false);
-scene.fog = new THREE.Fog(0xcfe9f2, 260, 1100);
-scene.add(new THREE.HemisphereLight(0xdff1ff, 0x3a5a2a, 1.25));
-const sun = new THREE.DirectionalLight(0xfff1d0, 1.6); sun.position.set(-300, 500, 200); scene.add(sun, sun.target);
+scene.fog = new THREE.Fog(TH.fog, TH.snow ? 200 : 260, TH.snow ? 950 : 1100);
+scene.add(new THREE.HemisphereLight(TH.hemi[0], TH.hemi[1], 1.25));
+const sun = new THREE.DirectionalLight(TH.sun, 1.6); sun.position.set(-300, 500, 200); scene.add(sun, sun.target);
 const SUN_DIR = sun.position.clone().normalize();
 sun.shadow.mapSize.set(1024, 1024);
 Object.assign(sun.shadow.camera, { left: -22, right: 22, top: 22, bottom: -22, near: 1, far: 260 });
@@ -97,10 +99,10 @@ sun.castShadow = HIGH;
 {
   const sky = canvasTex(1024, 128, (g, w, h) => {
     const r = rng(0x51ce);
-    g.fillStyle = "#7fae9a"; g.beginPath(); g.moveTo(0, h);
+    g.fillStyle = TH.hills[0]; g.beginPath(); g.moveTo(0, h);
     for (let x = 0; x <= w; x += 16) g.lineTo(x, h * (0.25 + 0.3 * Math.abs(Math.sin(x / 140 + 1.3)) + r() * 0.06));
     g.lineTo(w, h); g.fill();
-    g.fillStyle = "#3f7a4e"; g.beginPath(); g.moveTo(0, h);
+    g.fillStyle = TH.hills[1]; g.beginPath(); g.moveTo(0, h);
     for (let x = 0; x <= w; x += 6) g.lineTo(x, h * (0.62 + r() * 0.12 - (x % 48 < 10 ? 0.1 : 0)));
     g.lineTo(w, h); g.fill();
   });
@@ -115,11 +117,37 @@ sun.castShadow = HIGH;
   }
 }
 
+// Falling snow on snowy days: a box of flakes around the camera, drifting down and wrapping.
+let snowFx = null;
+if (TH.snow) {
+  const n = HIGH ? TH.snow : Math.round(TH.snow * 0.5), SB = 160, pos = new Float32Array(n * 3), sr = rng(0x5e0f);
+  for (let i = 0; i < n; i++) { pos[i * 3] = (sr() - 0.5) * SB * 2; pos[i * 3 + 1] = sr() * 90; pos[i * 3 + 2] = (sr() - 0.5) * SB * 2; }
+  const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  const flake = canvasTex(16, 16, (c, w, h) => { const gr = c.createRadialGradient(8, 8, 0, 8, 8, 8); gr.addColorStop(0, "rgba(255,255,255,1)"); gr.addColorStop(1, "rgba(255,255,255,0)"); c.fillStyle = gr; c.fillRect(0, 0, w, h); }, false);
+  const pts = new THREE.Points(g, new THREE.PointsMaterial({ map: flake, size: 1.6, transparent: true, depthWrite: false, fog: true }));
+  pts.frustumCulled = false; scene.add(pts);
+  snowFx = (dt) => {
+    const a = g.attributes.position.array, cx = camera.position.x, cz = camera.position.z;
+    for (let i = 0; i < n; i++) {
+      const k = i * 3;
+      a[k + 1] -= dt * (6 + (i % 7));
+      a[k] += Math.sin((a[k + 1] + i) * 0.05) * dt * 1.5;
+      if (a[k + 1] < -1) a[k + 1] += 90;
+      // keep every flake inside a box centred on the camera
+      a[k] = cx + ((((a[k] - cx) % (SB * 2)) + SB * 3) % (SB * 2)) - SB;
+      a[k + 2] = cz + ((((a[k + 2] - cz) % (SB * 2)) + SB * 3) % (SB * 2)) - SB;
+    }
+    g.attributes.position.needsUpdate = true;
+  };
+}
+
 // Ground
 const R = rng(T.seed ^ 0x9e37);
 const grassTex = canvasTex(256, 256, (g, w, h) => {
-  g.fillStyle = "#3f8a3a"; g.fillRect(0, 0, w, h);
-  for (let i = 0; i < 2600; i++) { const s = R(); g.fillStyle = s < 0.5 ? "#4a9a42" : s < 0.8 ? "#367a32" : "#5aa94c"; g.fillRect(R() * w, R() * h, 2 + R() * 3, 2 + R() * 3); }
+  g.fillStyle = TH.grass[0]; g.fillRect(0, 0, w, h);
+  for (let i = 0; i < 2600; i++) { const s = R(); g.fillStyle = s < 0.5 ? TH.grass[1] : s < 0.8 ? TH.grass[2] : TH.grass[3]; g.fillRect(R() * w, R() * h, 2 + R() * 3, 2 + R() * 3); }
+  // A dusting of snow over the grass on snowy days.
+  if (TH.dust) { g.fillStyle = "rgba(246,248,252,0.9)"; for (let i = 0; i < 2600 * TH.dust; i++) g.fillRect(R() * w, R() * h, 2 + R() * 4, 2 + R() * 3); }
 });
 grassTex.repeat.set(120, 120);
 const ground = new THREE.Mesh(new THREE.PlaneGeometry(4000, 4000), new THREE.MeshLambertMaterial({ map: grassTex }));
@@ -154,7 +182,7 @@ const curbMat = new THREE.MeshLambertMaterial({ map: curbTex });
 ribbon(-ROAD_W / 2 - 2.4, -ROAD_W / 2, 0.08, curbMat, 6);
 ribbon(ROAD_W / 2, ROAD_W / 2 + 2.4, 0.08, curbMat, 6);
 // dirt shoulder
-const dirtTex = canvasTex(64, 64, (g, w, h) => { g.fillStyle = "#8a7148"; g.fillRect(0, 0, w, h); for (let i = 0; i < 400; i++) { g.fillStyle = R() < 0.5 ? "#7a6340" : "#9a8156"; g.fillRect(R() * w, R() * h, 2, 2); } });
+const dirtTex = canvasTex(64, 64, (g, w, h) => { g.fillStyle = TH.dirt[0]; g.fillRect(0, 0, w, h); for (let i = 0; i < 400; i++) { g.fillStyle = R() < 0.5 ? TH.dirt[1] : TH.dirt[2]; g.fillRect(R() * w, R() * h, 2, 2); } });
 const dirtMat = new THREE.MeshLambertMaterial({ map: dirtTex });
 ribbon(-ROAD_W / 2 - SHOULDER, -ROAD_W / 2 - 2.4, 0.04, dirtMat, 10);
 ribbon(ROAD_W / 2 + 2.4, ROAD_W / 2 + SHOULDER, 0.04, dirtMat, 10);
@@ -175,7 +203,7 @@ function wall(off, h) {
   scene.add(new THREE.Mesh(g, bambooMat));
 }
 const bambooTex = canvasTex(64, 32, (g, w, h) => {
-  for (let i = 0; i < 4; i++) { g.fillStyle = i % 2 ? "#c9b45a" : "#d8c66a"; g.fillRect(i * 16, 0, 16, h); g.fillStyle = "#8f7b2c"; g.fillRect(i * 16, 0, 2, h); g.fillRect(i * 16, h * 0.45, 16, 2); }
+  for (let i = 0; i < 4; i++) { g.fillStyle = i % 2 ? TH.bamboo[0] : TH.bamboo[1]; g.fillRect(i * 16, 0, 16, h); g.fillStyle = TH.bamboo[2]; g.fillRect(i * 16, 0, 2, h); g.fillRect(i * 16, h * 0.45, 16, 2); }
   g.fillStyle = "#e0312b"; g.fillRect(0, 0, w, 4);
 });
 const bambooMat = new THREE.MeshLambertMaterial({ map: bambooTex, side: THREE.DoubleSide });
@@ -230,19 +258,23 @@ function offTrack(x, z, clear) {
   }
   const trunkG = new THREE.CylinderGeometry(0.9, 1.4, 1, 6); trunkG.translate(0, 0.5, 0);
   const leafG = new THREE.IcosahedronGeometry(1, 0);
-  const trunks = new THREE.InstancedMesh(trunkG, new THREE.MeshLambertMaterial({ color: 0x7a5530 }), spots.length);
-  const leaves = new THREE.InstancedMesh(leafG, new THREE.MeshLambertMaterial({ color: 0x2f7d2f, flatShading: true }), spots.length * 2);
+  const trunks = new THREE.InstancedMesh(trunkG, new THREE.MeshLambertMaterial({ color: TH.trunk }), spots.length);
+  // White material so each canopy takes its own colour from the theme (mixed autumn leaves, snow caps).
+  const leaves = new THREE.InstancedMesh(leafG, new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }), spots.length * 2);
+  const leafCol = new THREE.Color();
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler();
   spots.forEach(([x, z, s, r], i) => {
     const h = 14 * s;
     m4.compose(new THREE.Vector3(x, -0.6, z), q.setFromEuler(e.set(0, r, 0)), new THREE.Vector3(s, h + 0.6, s)); trunks.setMatrixAt(i, m4);
     m4.compose(new THREE.Vector3(x, h + 3 * s, z), q.setFromEuler(e.set(R(), r, R())), new THREE.Vector3(7 * s, 4.5 * s, 7 * s)); leaves.setMatrixAt(i * 2, m4);
     m4.compose(new THREE.Vector3(x + 2 * s, h + 0.5 * s, z - 1.5 * s), q.setFromEuler(e.set(R(), r + 1, R())), new THREE.Vector3(5 * s, 3.5 * s, 5 * s)); leaves.setMatrixAt(i * 2 + 1, m4);
+    leaves.setColorAt(i * 2, leafCol.setHex(TH.leaves[Math.floor(R() * TH.leaves.length)]));
+    leaves.setColorAt(i * 2 + 1, leafCol.setHex(TH.leaves[Math.floor(R() * TH.leaves.length)]));
   });
   scene.add(trunks, leaves);
   // a few giant bananas lying in the infield/outfield
   const banG = new THREE.TorusGeometry(10, 2.6, 8, 18, Math.PI * 0.75);
-  const banM = new THREE.MeshLambertMaterial({ color: 0xffd23f, flatShading: true });
+  const banM = new THREE.MeshLambertMaterial({ color: TH.banana, flatShading: true });
   let placed = 0;
   for (let tries = 0; tries < 800 && placed < 6; tries++) {
     const x = (R() - 0.5) * 2 * ext * 0.8, z = (R() - 0.5) * 2 * ext * 0.8;
@@ -301,13 +333,13 @@ function offTrack(x, z, clear) {
     }
   }, false);
   const campTex = canvasTex(512, 64, (g, w, h) => {
-    g.fillStyle = "#2f6a2c"; g.fillRect(0, 0, w, h);
-    g.fillStyle = "#c9b45a"; g.fillRect(0, 0, w, 6); g.fillRect(0, h - 6, w, 6);
-    g.fillStyle = "#ffd23f"; g.font = "italic 900 36px ui-monospace, monospace"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText("MONKE CAMP", w / 2, h / 2 + 2); for (const x of [70, w - 70]) { g.strokeStyle = "#ffd23f"; g.lineWidth = 9; g.lineCap = "round"; g.beginPath(); g.arc(x, 14, 22, 0.5, 2.5); g.stroke(); }
+    g.fillStyle = TH.banner.bg; g.fillRect(0, 0, w, h);
+    g.fillStyle = TH.bamboo[0]; g.fillRect(0, 0, w, 6); g.fillRect(0, h - 6, w, 6);
+    g.fillStyle = TH.banner.fg; g.font = "italic 900 36px ui-monospace, monospace"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(TH.banner.text, w / 2, h / 2 + 2); for (const x of [70, w - 70]) { g.strokeStyle = TH.banner.fg; g.lineWidth = 9; g.lineCap = "round"; g.beginPath(); g.arc(x, 14, 22, 0.5, 2.5); g.stroke(); }
   }, false);
   const tikiM = new THREE.MeshLambertMaterial({ map: tikiTex }), barM = new THREE.MeshLambertMaterial({ map: bambooTex }), dark = new THREE.MeshLambertMaterial({ color: 0x5a3a1c });
   const bannerM = new THREE.MeshBasicMaterial({ map: campTex, side: THREE.DoubleSide });
-  const leafM = new THREE.MeshLambertMaterial({ color: 0x2f8a35, flatShading: true, side: THREE.DoubleSide });
+  const leafM = new THREE.MeshLambertMaterial({ color: TH.gateLeaf, flatShading: true, side: THREE.DoubleSide });
   const gateAt = [];
   const straight = (i) => { for (let d = -8; d <= 8; d++) if (Math.abs(T.curv[(i + d + T.N) % T.N]) > 0.01) return false; return true; };
   const nearPad = (i) => T.pads.some((p) => Math.min(Math.abs(p.i - i), T.N - Math.abs(p.i - i)) < 14);
@@ -696,9 +728,10 @@ function newRace() {
 // yesterday's track (owner 2026-11-14: "hasn't switched tracks yet"), so off the race the page
 // reloads onto the new day, and the title says when the next track arrives.
 const newDay = () => !DEMO && todayId() !== COURSE;
+const NY_HM = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "numeric", hourCycle: "h23" });
 function nextTrackLine() {
-  const now = new Date(), next = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1);
-  const m = Math.max(1, Math.round((next - now.getTime()) / 60000));
+  const now = new Date(), [hh, mm] = NY_HM.format(now).split(":").map(Number);
+  const m = Math.max(1, (17 * 60 - (hh * 60 + mm) + 1440) % 1440 || 1440), next = now.getTime() + m * 60000;
   const at = new Date(next).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
   return `New track in ${m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`} (${at})`;
 }
@@ -883,6 +916,7 @@ function frame(now) {
   setEngine(run ? speedOf(run) : 0, run?.drifting, run?.boost > 0, !!run && run.hitWall > 0.1, run ? Math.min(1, run.driftCharge / DRIFT_TIERS[DRIFT_TIERS.length - 1].charge) : 0);
   drawLines(run ? speedOf(run) : 0, !!run && run.boost > 0, dt);
   padTex.offset.y -= dt * 1.6;
+  if (snowFx) snowFx(dt);
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
 }
