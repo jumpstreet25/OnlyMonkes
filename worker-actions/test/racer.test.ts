@@ -21,11 +21,11 @@ function kv() {
   const m = new Map<string, string>();
   return { m, get: async (k: string) => m.get(k) ?? null, put: async (k: string, v: string) => { m.set(k, v); } };
 }
-const T = Date.UTC(2026, 10, 11, 15);
+const T = Date.UTC(2026, 10, 20, 15);
 const ghostFor = (ms: number) => Array.from({ length: Math.round((ms / 1000) * 40) }, (_, i) => [i * 0.5, -i * 0.25, 0.1]);
 const run = (over: Record<string, unknown> = {}) => {
   const ms = (over.ms as number) ?? 90_000;
-  return { proof: { kind: "holder", token: "good" }, v: RACER_VERSION, course: "2026-11-11", ms, laps: [ms / 3, ms / 3, ms - 2 * (ms / 3)], n: 8982, pay: true, ...over };
+  return { proof: { kind: "holder", token: "good" }, v: RACER_VERSION, course: "2026-11-20", ms, laps: [ms / 3, ms / 3, ms - 2 * (ms / 3)], n: 8982, pay: true, ...over };
 };
 const on = () => ({ COMMUNITY_DATA: kv(), RACER_BOARD: "on" }) as any;
 const body = async (r: Response) => r.json() as Promise<any>;
@@ -35,20 +35,24 @@ describe("runProblem", () => {
     expect(runProblem(run(), T)).toBeNull();
     expect(runProblem(run({ v: 0 }), T)).toBe("old game version");
     expect(runProblem(run({ course: "demo" }), T)).toBe("only the daily track counts");
-    expect(runProblem(run({ course: "2026-11-09" }), T)).toBe("not today's track");
-    // just after 5pm EST (22:00 UTC) the race day is Nov 12; the just-ended Nov 11 still counts in the grace
-    expect(runProblem(run({ course: "2026-11-11" }), Date.UTC(2026, 10, 11, 22, 30))).toBeNull();
-    expect(runProblem(run({ course: "2026-11-12" }), Date.UTC(2026, 10, 11, 22, 30))).toBeNull();
-    expect(runProblem(run({ course: "2026-11-12" }), Date.UTC(2026, 10, 11, 21, 30))).toBe("not today's track");
+    expect(runProblem(run({ course: "2026-11-18" }), T)).toBe("not today's track");
+    // before the First Snow hold ends everyone races 2026-11-15 (2026-11-14 was still live somewhere)
+    expect(runProblem(run({ course: "2026-11-15" }), Date.UTC(2026, 10, 14, 23))).toBeNull();
+    // Mon Nov 16 10:00 UTC: NY/Tokyo race the 16th, Hawaii still the 15th; by 14:00 UTC Kiribati (UTC+14) is on the 17th
+    expect(runProblem(run({ course: "2026-11-15" }), Date.UTC(2026, 10, 16, 10))).toBeNull();
+    expect(runProblem(run({ course: "2026-11-17" }), Date.UTC(2026, 10, 16, 14))).toBeNull();
+    expect(runProblem(run({ course: "2026-11-18" }), Date.UTC(2026, 10, 16, 10))).toBe("not today's track");
+    expect(runProblem(run({ course: "2026-11-14" }), Date.UTC(2026, 10, 17, 10))).toBe("not today's track");
     expect(runProblem(run({ ms: 27_000 }), T)).toBe("faster than possible");
     expect(runProblem(run({ laps: [30_000, 30_000] }), T)).toBe("bad laps");
     expect(runProblem(run({ laps: [30_000, 30_000, 31_000] }), T)).toBe("laps don't add up");
   });
-  test("race day turns over at 5pm New York, DST included", () => {
-    expect(dayId(Date.UTC(2026, 10, 14, 21, 59))).toBe("2026-11-14");
-    expect(dayId(Date.UTC(2026, 10, 14, 22, 1))).toBe("2026-11-15");
-    expect(dayId(Date.UTC(2026, 6, 4, 20, 59))).toBe("2026-07-04");
-    expect(dayId(Date.UTC(2026, 6, 4, 21, 1))).toBe("2026-07-05");
+  test("default board day: New York date turning at 3am, held on 2026-11-15 until Monday 3am", () => {
+    expect(dayId(Date.UTC(2026, 10, 14, 23))).toBe("2026-11-15");
+    expect(dayId(Date.UTC(2026, 10, 16, 7, 59))).toBe("2026-11-15");
+    expect(dayId(Date.UTC(2026, 10, 16, 8, 1))).toBe("2026-11-16");
+    expect(dayId(Date.UTC(2027, 6, 4, 6, 59))).toBe("2027-07-03");
+    expect(dayId(Date.UTC(2027, 6, 4, 7, 1))).toBe("2027-07-04");
   });
   test("ghost shape", () => {
     expect(ghostOk(ghostFor(90_000), 90_000)).toBe(true);
@@ -83,18 +87,18 @@ describe("submit", () => {
     expect(r).toMatchObject({ rank: 1, paid: DAILY_BANANAS });
     expect(r.top.map((x: any) => x.t)).toEqual([75_000, 80_000]);
     expect(JSON.stringify(r)).not.toContain(HOLDER);
-    const g = await handleRacer(new Request("https://x/api/racer/ghost?day=2026-11-11"), env, "/api/racer/ghost");
+    const g = await handleRacer(new Request("https://x/api/racer/ghost?day=2026-11-20"), env, "/api/racer/ghost");
     const gj = await body(g);
-    expect(gj).toMatchObject({ day: "2026-11-11", name: "Monke #1", t: 75_000 });
+    expect(gj).toMatchObject({ day: "2026-11-20", name: "Monke #1", t: 75_000 });
     expect(gj.ghost.length).toBe(3000);
     // board and ghost are kept per game version (each version has its own track); bananas are not
-    expect([...env.COMMUNITY_DATA.m.keys()].filter((k: string) => k.startsWith("racer:top:"))).toEqual([`racer:top:v${RACER_VERSION}:2026-11-11`]);
-    expect(env.COMMUNITY_DATA.m.has(`racer:ghost:v${RACER_VERSION}:2026-11-11`)).toBe(true);
-    expect([...env.COMMUNITY_DATA.m.keys()].some((k: string) => /^racer:paid:2026-11-11:/.test(k))).toBe(true);
+    expect([...env.COMMUNITY_DATA.m.keys()].filter((k: string) => k.startsWith("racer:top:"))).toEqual([`racer:top:v${RACER_VERSION}:2026-11-20`]);
+    expect(env.COMMUNITY_DATA.m.has(`racer:ghost:v${RACER_VERSION}:2026-11-20`)).toBe(true);
+    expect([...env.COMMUNITY_DATA.m.keys()].some((k: string) => /^racer:paid:2026-11-20:/.test(k))).toBe(true);
     expect(gj.id).toBeUndefined();
   });
   test("board hidden until on; ghost hidden when off", async () => {
-    const req = new Request("https://x/api/racer/board?day=2026-11-11");
+    const req = new Request("https://x/api/racer/board?day=2026-11-20");
     expect((await handleRacer(req, { COMMUNITY_DATA: kv(), RACER_BOARD: "testers" } as any, "/api/racer/board")).status).toBe(404);
     expect((await handleRacer(req, on(), "/api/racer/board")).status).toBe(200);
     expect((await handleRacer(new Request("https://x/api/racer/ghost"), { COMMUNITY_DATA: kv() } as any, "/api/racer/ghost")).status).toBe(404);

@@ -1,7 +1,7 @@
 /**
  * Monke RC daily board, leader ghost and daily bananas (2026-11-11). The game
- * (onlymonkes.app/viewer/racer, racer-sim.js) builds one track per race day (5pm→5pm New York,
- * named for the date it ends on, since 2026-11-14; before that the UTC date); a holder's
+ * (onlymonkes.app/viewer/racer, racer-sim.js) builds one track per race day (the player's local
+ * date, 3am→3am, since 2026-11-14; before that the UTC date); a holder's
  * app posts each finished daily race here with a holder proof (phone: Device Integrity
  * key, web: holder token — same as caves.ts). Best time per holder per day, top 10
  * kept on write, and the #1 race's ghost (positions only) so everyone can race the leader.
@@ -52,16 +52,27 @@ function json(body: unknown, status = 200, cache = "no-store"): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", "Cache-Control": cache } });
 }
 
-/** Race day id, same as racer-sim.js todayId: turns over at 5pm New York (DST included). */
+/** The race day is the player's local date, turning over at 3am local (racer-sim.js todayId, since
+ *  2026-11-14 — the First Snow track "2026-11-15" was held until Monday 3am). One board per date. */
+const DAY_START_MS = 3 * 3_600_000, HOLD_UNTIL = "2026-11-15";
 const NY_DATE = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" });
-export const dayId = (ms: number) => NY_DATE.format(new Date(ms + 7 * 3600_000));
+const clampHold = (id: string) => (id < HOLD_UNTIL ? HOLD_UNTIL : id);
+/** The New York race day: the default board when a caller sends no ?day. */
+export const dayId = (ms: number) => clampHold(NY_DATE.format(new Date(ms - DAY_START_MS)));
+const utcDate = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+/** True when `course` is the race day somewhere on Earth now (UTC−12 … UTC+14), or was within the grace. */
+export function dayIsLive(course: string, now: number): boolean {
+  const lo = clampHold(utcDate(now - GRACE_MS - DAY_START_MS - 12 * 3_600_000));
+  const hi = clampHold(utcDate(now - DAY_START_MS + 14 * 3_600_000));
+  return course >= lo && course <= hi;
+}
 
 /** Why a race is refused, or null. */
 export function runProblem(r: Record<string, unknown>, now = Date.now()): string | null {
   if (r.v !== RACER_VERSION) return "old game version";
   const course = r.course;
   if (typeof course !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(course)) return "only the daily track counts";
-  if (course !== dayId(now) && course !== dayId(now - GRACE_MS)) return "not today's track";
+  if (!dayIsLive(course, now)) return "not today's track";
   const t = r.ms as number;
   if (!Number.isFinite(t)) return "bad time";
   if (t > MAX_MS) return "too slow to count";
