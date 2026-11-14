@@ -33,19 +33,28 @@ describe("runProblem", () => {
   test("refuses impossible runs", () => {
     expect(runProblem(run())).toBeNull();
     expect(runProblem(run({ v: 0 }))).toBe("old game version");
-    expect(runProblem(run({ cave: 4 }))).toBe("unknown cave");
+    expect(runProblem(run({ cave: 5 }))).toBe("unknown cave");
     expect(runProblem(run({ timeMs: 2_000 }))).toBe("faster than possible");
     expect(runProblem(run({ timeMs: 39_000 }))).toBe("faster than possible");
     expect(runProblem(run({ timeMs: NaN }))).toBe("bad time");
     expect(runProblem(run({ kills: -1 }))).toBe("bad kills");
     expect(runProblem(run({ kills: 121 }))).toBe("bad kills");
   });
-  test("v3 rebuilt cave 2: new floor, old v2 runs only for caves 1 and 3", () => {
+  test("v3 rebuilt cave 2: new floor, old v2 runs only for cave 1", () => {
     expect(runProblem(run({ cave: 2, timeMs: 61_000 }))).toBe("faster than possible");
     expect(runProblem(run({ cave: 2, timeMs: 90_000, kills: 66 }))).toBeNull();
     expect(runProblem(run({ v: 2, cave: 2, timeMs: 90_000 }))).toBe("old game version");
     expect(runProblem(run({ v: 2, cave: 1 }))).toBeNull();
-    expect(runProblem(run({ v: 2, cave: 3, timeMs: 30_000 }))).toBeNull();
+    expect(runProblem(run({ v: 2, cave: 3, timeMs: 30_000 }))).toBe("old game version");
+  });
+  test("v4 adds Data Center as cave 3; Big Tech HQ is cave 4; v3 runs only for caves 1 and 2", () => {
+    expect(runProblem(run({ cave: 3, timeMs: 47_000 }))).toBe("faster than possible");
+    expect(runProblem(run({ cave: 3, timeMs: 200_000, kills: 90 }))).toBeNull();
+    expect(runProblem(run({ cave: 4, timeMs: 30_000 }))).toBeNull();
+    expect(runProblem(run({ v: 3, cave: 1 }))).toBeNull();
+    expect(runProblem(run({ v: 3, cave: 2, timeMs: 90_000 }))).toBeNull();
+    expect(runProblem(run({ v: 3, cave: 3, timeMs: 30_000 }))).toBe("old game version");
+    expect(runProblem(run({ v: 3, cave: 4, timeMs: 30_000 }))).toBe("old game version");
   });
 });
 
@@ -101,8 +110,8 @@ describe("campaign: progress + bananas", () => {
     const env: any = { COMMUNITY_DATA: kv(), CAVES_BOARD: "on" };
     expect(await (await __test.progress(env, { proof }, T)).json()).toEqual({ max: 0, today: 0, cap: 100 });
     // A cave 3 clear (only reachable through 1 and 2 before progress was saved) unlocks up to 3.
-    expect(await (await __test.submit(env, run({ cave: 3, timeMs: 30_000 }), T)).json()).toMatchObject({ max: 3, bananas: 45, today: 45 });
-    expect(await (await __test.submit(env, run({ cave: 3, timeMs: 29_000 }), T + 20_000)).json()).toMatchObject({ max: 3, bananas: 0, today: 45 });
+    expect(await (await __test.submit(env, run({ cave: 3, timeMs: 200_000 }), T)).json()).toMatchObject({ max: 3, bananas: 45, today: 45 });
+    expect(await (await __test.submit(env, run({ cave: 3, timeMs: 190_000 }), T + 20_000)).json()).toMatchObject({ max: 3, bananas: 0, today: 45 });
     expect(await (await __test.submit(env, run({ cave: 1 }), T + 40_000)).json()).toMatchObject({ max: 3, bananas: 25, today: 70 });
     expect(await (await __test.submit(env, run({ cave: 2, timeMs: 90_000 }), T + 60_000)).json()).toMatchObject({ bananas: 30, today: 100 });
     expect(await (await __test.progress(env, { proof }, T + 61_000)).json()).toEqual({ max: 3, today: 100, cap: 100 });
