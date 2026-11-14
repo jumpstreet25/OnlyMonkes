@@ -7,7 +7,7 @@ import * as THREE from "three";
 import { imageFor, loadImage, readGrid, buildMonke } from "/viewer/monkeModel.js";
 import { weaponFor } from "/viewer/caves-weapons.js";
 import { themeFor } from "/viewer/racer-themes.js";
-import { RV, DT, LAPS, ROAD_W, SHOULDER, V_MAX, V_BOOST, DRIFT_TIERS, driftTier, launch, buildTrack, createRun, step, speedOf, sideOf, ghostAt, autopilot, todayId, rng } from "/viewer/racer-sim.js";
+import { RV, DT, LAPS, ROAD_W, SHOULDER, V_MAX, V_BOOST, DRIFT_TIERS, driftTier, launch, buildTrack, createRun, step, speedOf, sideOf, ghostAt, autopilot, todayId, nextTrackAt, rng } from "/viewer/racer-sim.js";
 
 const params = new URLSearchParams(location.search);
 const inApp = (() => { if (window.ReactNativeWebView) return true; try { return parent !== window && parent.location.origin === location.origin; } catch { return false; } })();
@@ -728,11 +728,9 @@ function newRace() {
 // yesterday's track (owner 2026-11-14: "hasn't switched tracks yet"), so off the race the page
 // reloads onto the new day, and the title says when the next track arrives.
 const newDay = () => !DEMO && todayId() !== COURSE;
-const NY_HM = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "numeric", hourCycle: "h23" });
 function nextTrackLine() {
-  const now = new Date(), [hh, mm] = NY_HM.format(now).split(":").map(Number);
-  const m = Math.max(1, (17 * 60 - (hh * 60 + mm) + 1440) % 1440 || 1440), next = now.getTime() + m * 60000;
-  const at = new Date(next).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  const next = nextTrackAt(COURSE), m = Math.max(1, Math.round((next - Date.now()) / 60000));
+  const at = new Date(next).toLocaleString(undefined, m > 20 * 60 ? { weekday: "short", hour: "numeric", minute: "2-digit" } : { hour: "numeric", minute: "2-digit" });
   return `New track in ${m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`} (${at})`;
 }
 const offRace = () => state === "title" || state === "board";
