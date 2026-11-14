@@ -1016,6 +1016,18 @@ export function useXmtp() {
                 const n = applyLocationSync(locs as Record<string, { u?: string; loc?: string; ni?: string }>);
                 if (__DEV__) console.log(`[XMTP] Location sync: updated ${n} users`);
               } catch { /* ignore */ }
+            } else if (typeof content === "string" && content.startsWith("POLL_OPEN:")) {
+              // A poll that opened while the app was closed: show it once on open, as long as
+              // it's still running and this phone hasn't voted (the live stream does the rest).
+              if (BOT_INBOX_IDS.includes(raw.senderInboxId as string)) (async () => {
+                try {
+                  const { parsePollOpen, markPollSeenIfFirstTime, getMyVote } = await import("@/lib/poll");
+                  const data = parsePollOpen(content);
+                  if (!data || data.resolvesAt <= Date.now() || await getMyVote(data.id)) return;
+                  useAppStore.getState().rememberOpenPoll(data);
+                  if (await markPollSeenIfFirstTime(`open-${data.id}`)) useAppStore.getState().setActivePoll(data);
+                } catch { /* ignore */ }
+              })();
             } else if (typeof content === "string" && content.startsWith("RSVP:")) {
               processRsvpMessage(content).catch(() => {});
             } else if (typeof content === "string" && (
@@ -1741,9 +1753,12 @@ export function useXmtp() {
         }
 
         if (typeof content === "string" && content.startsWith("POLL_OPEN:")) {
+          if (!BOT_INBOX_IDS.includes(raw.senderInboxId as string)) return;
           try {
-            const { parsePollOpen, markPollSeenIfFirstTime } = await import("@/lib/poll");
+            const { parsePollOpen, markPollSeenIfFirstTime, getMyVote } = await import("@/lib/poll");
             const data = parsePollOpen(content);
+            // The pop-up shows once; the Main Chat bar keeps the vote reachable until it closes.
+            if (data && data.resolvesAt > Date.now() && !(await getMyVote(data.id))) useAppStore.getState().rememberOpenPoll(data);
             // Same reasoning as BANANA_BET_OPEN: only fires from the live
             // stream (never history replay), gated on markPollSeenIfFirstTime
             // so a reconnect-replay of this broadcast is a no-op.
@@ -1755,9 +1770,11 @@ export function useXmtp() {
         }
 
         if (typeof content === "string" && content.startsWith("POLL_RESULT:")) {
+          if (!BOT_INBOX_IDS.includes(raw.senderInboxId as string)) return;
           try {
             const { parsePollResult, markPollSeenIfFirstTime, getMyVote } = await import("@/lib/poll");
             const data = parsePollResult(content);
+            if (data) useAppStore.getState().forgetOpenPoll(data.pollId);
             if (data && await markPollSeenIfFirstTime(`result-${data.pollId}`)) {
               const myVote = await getMyVote(data.pollId);
               useAppStore.getState().setActivePollResult({ ...data, myVote });

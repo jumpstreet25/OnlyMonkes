@@ -100,6 +100,7 @@ import { enqueueMessage, flushOfflineQueue } from "@/lib/offlineQueue";
 import { appendCachedMessage } from "@/lib/messageCache";
 import { flushPendingWrites } from "@/lib/debouncedStorage";
 import { PinnedBar } from "@/components/PinnedBar";
+import { OpenPollBar } from "@/components/OpenPollBar";
 import { loadPinnedMessages, getPinnedMessages, buildPinMessage, onPinnedMessagesChange, type PinnedMessage } from "@/lib/pinnedMessages";
 import { loadThreadMetadata } from "@/lib/threads";
 import { loadListings } from "@/lib/marketplace";
@@ -1672,6 +1673,8 @@ export default function ChatScreen() {
             onJoin={handleJoinAvatarRoom}
           />
         )}
+
+        {isGroupMember && <OpenPollBar />}
 
         {/* Pinned message bar */}
         {isGroupMember && pinnedMessages.length > 0 && (
