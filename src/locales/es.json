@@ -1116,5 +1116,10 @@
     "placeholder": "Di algo…",
     "send": "Enviar",
     "commandsInMain": "Los comandos funcionan en el chat principal completo"
+  },
+  "pollBar": {
+    "open": "ENCUESTA ABIERTA",
+    "openMany": "{{count}} ENCUESTAS ABIERTAS",
+    "vote": "Votar"
   }
 }

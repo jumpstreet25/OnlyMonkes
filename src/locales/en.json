@@ -1116,5 +1116,10 @@
     "placeholder": "Say something…",
     "send": "Send",
     "commandsInMain": "Commands work in the full Main Chat"
+  },
+  "pollBar": {
+    "open": "POLL OPEN",
+    "openMany": "{{count}} POLLS OPEN",
+    "vote": "Vote"
   }
 }
