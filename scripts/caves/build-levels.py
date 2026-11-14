@@ -464,6 +464,111 @@ def data_center():
     return c
 
 
+def walled_garden():
+    """Cave 4: the Walled Garden, Big Tech's spotless fenced-in paradise. Everything is free,
+    except leaving. Harder than the data center: more Gatekeepers (it's their garden), Eyes
+    covering long sightlines, ads in the mall, and the last fight is at the gate itself.
+
+    Flow: the onboarding tunnel (quiet) → the Welcome Plaza (hub under the fake sky, a
+    fountain in the middle, all three gates in view) → west, the hedge maze, blue badge in
+    its heart → the blue gate opens the App Store mall (icon walls, kiosks, ads), pink badge
+    in the Featured room → the pink gate opens the Terms & Conditions archive, one long
+    winding corridor of fine print with Eyes at the turns, gold badge in the vault at the end
+    → back through the plaza, the gold gate opens The Gate: a fenced courtyard, Gatekeepers
+    in the gaps, the exit beyond. Seven secrets, each a white panel with a banana sticker."""
+    c = Cave("WALLED GARDEN", 60, 60, theme="garden", par=300, seed=41)
+    c.face = 270  # start looking north, up the tunnel to the plaza
+
+    # 1. Onboarding tunnel: you squeeze in through a gap in the wall.
+    c.room(27, 52, 6, 5, floor="p")
+    c.room(24, 53, 2, 2, floor="p").put("S", (26, 54))                      # secret 1: the gap you came through
+    c.hall([(30, 46), (30, 51)], width=1, floor="p").put("d", (30, 49))
+
+    # 2. Welcome Plaza (hub, fake sky): fountain, lawns, lamp posts.
+    c.room(20, 30, 20, 16, floor="p", sky=True)
+    c.room(22, 32, 5, 4, floor="l", sky=True).room(33, 32, 5, 4, floor="l", sky=True)
+    c.room(22, 40, 5, 4, floor="l", sky=True).room(33, 40, 5, 4, floor="l", sky=True)
+    c.room(27, 36, 6, 4, floor="f", sky=True).put("W", (29, 37), (30, 37))   # the fountain
+    c.room(41, 32, 2, 3, floor="p").put("S", (40, 33))                      # secret 2: lost-and-found
+
+    # 3. West: the hedge maze, blue badge in its heart.
+    c.room(3, 26, 14, 22, floor="l", sky=True)
+    c.hall([(17, 38), (19, 38)], width=1, floor="l", sky=True)
+    ring = lambda x0, y0, x1, y1: [(x, y) for x in range(x0, x1 + 1) for y in (y0, y1)] + [(x, y) for y in range(y0, y1 + 1) for x in (x0, x1)]
+    c.put("V", *[q for q in ring(5, 28, 14, 45) if q not in ((5, 30), (5, 31), (14, 38))])
+    c.put("V", *[q for q in ring(7, 31, 12, 42) if q not in ((12, 40), (12, 41))])
+    c.put("V", (9, 35), (10, 35), (9, 38), (10, 38))
+    c.room(6, 49, 3, 2, floor="l").put("S", (7, 48))                        # secret 3: the gardener's shed
+
+    # 4. Behind the blue gate: the App Store mall. Icon walls, kiosks.
+    c.hall([(30, 23), (30, 29)], width=1, floor="p").put("7", (30, 27))
+    c.room(14, 10, 32, 13, floor="p")
+    c.put("T", (18, 13), (18, 14), (18, 18), (18, 19), (24, 13), (24, 14), (24, 18), (24, 19),
+          (36, 13), (36, 14), (36, 18), (36, 19), (42, 13), (42, 14), (42, 18), (42, 19))
+    c.put("C", (30, 15), (30, 16), (31, 15), (31, 16))                      # the top-charts kiosk
+    c.room(47, 11, 2, 2, floor="p").put("S", (46, 11))                      # secret 4: refunds desk
+    # The Featured room (north), pink badge on the stage.
+    c.hall([(25, 8), (25, 9)], width=1, floor="p").put("d", (25, 8))
+    c.room(20, 3, 10, 5, wall="T", floor="e", sky=True)
+    c.room(31, 4, 2, 2, floor="p").put("S", (30, 5))                        # secret 5: last year's apps
+
+    # 5. Behind the pink gate: the Terms & Conditions archive. One long corridor of fine print.
+    c.hall([(46, 16), (49, 16)], width=1, floor="p").put("8", (47, 16))
+    c.hall([(50, 16), (50, 4), (56, 4), (56, 12), (53, 12), (53, 20), (57, 20), (57, 28), (51, 28), (51, 36), (56, 36)], width=2, floor="p")
+    c.room(47, 31, 3, 3, floor="p").put("S", (50, 32))                      # secret 6: the clause nobody read
+    # The vault of small print: the gold badge.
+    c.hall([(55, 38), (55, 39)], width=1, floor="p").put("d", (55, 38))
+    c.room(50, 40, 8, 6, wall="T", floor="p")
+
+    # 6. Behind the gold gate: The Gate. A fenced courtyard, the exit beyond.
+    c.hall([(40, 43), (44, 43), (44, 47)], width=1, floor="p").put("9", (44, 45))
+    c.room(42, 48, 15, 9, floor="l", sky=True)
+    c.put("Z", *[(x, 52) for x in range(42, 57) if x not in (46, 52)])
+    c.room(38, 52, 3, 3, floor="l").put("S", (41, 53))                      # secret 7: the hole in the fence
+    c.put("D", (49, 57))
+
+    # Start: a battery, a banana, quiet.
+    c.put("P", (29, 55)).put("q", (31, 53)).put("b", (28, 53))
+    # Lamp posts (light), topiaries, flower beds.
+    c.put("F", (20, 30), (39, 30), (20, 45), (39, 45), (14, 10), (45, 10), (14, 22), (45, 22), (50, 40), (57, 45), (42, 48), (56, 48))
+    c.put("Y", (26, 31), (33, 31), (26, 44), (33, 44), (4, 27), (16, 47), (29, 21), (42, 56), (56, 56))
+    c.put("M", (22, 35), (37, 35), (22, 43), (37, 43), (8, 33), (21, 4), (28, 4), (44, 50), (54, 50))
+    # Secrets: idols, Seeker phones, big health.
+    c.put("I", (24, 53)).put("Q", (25, 54))
+    c.put("I", (41, 32)).put("H", (42, 34))
+    c.put("I", (6, 49)).put("Q", (8, 50))
+    c.put("I", (47, 11)).put("H", (48, 12))
+    c.put("I", (31, 4)).put("Q", (32, 5))
+    c.put("I", (47, 31)).put("H", (49, 33))
+    c.put("I", (38, 52)).put("Q", (40, 54))
+
+    # Plaza: a Gatekeeper by the fountain, an Eye watching the lawns, ads, cookies.
+    c.put("K", (30, 41)).put("E", (30, 31)).put("a", (23, 38), (37, 38)).put("c", (24, 34), (25, 34), (35, 42), (36, 42))
+    c.put("J", (21, 44), (38, 31)).put("n", (34, 37))
+    c.put("q", (21, 31), (38, 44), (27, 41), (32, 44)).put("Q", (21, 41)).put("h", (21, 38), (38, 38)).put("b", (30, 34))
+    # Hedge maze: cookies and bats in the paths, goblins at the dead ends.
+    c.put("1", (9, 36)).put("c", (15, 30), (15, 31), (6, 44), (7, 44), (13, 43), (8, 32)).put("n", (4, 40), (11, 29), (10, 41))
+    c.put("G", (4, 46), (13, 32)).put("J", (6, 37), (15, 46), (10, 39))
+    c.put("q", (16, 27), (4, 29), (11, 36), (16, 33), (4, 35)).put("h", (15, 44), (8, 40)).put("b", (6, 30))
+    # Mall: ads at the shelves, jeets, a Gatekeeper at the kiosk, an Eye at the far end.
+    c.put("a", (21, 12), (39, 20)).put("h", (27, 20), (33, 12)).put("J", (16, 16), (28, 13), (40, 16)).put("K", (30, 19))
+    c.put("E", (45, 16)).put("c", (20, 16), (21, 17), (34, 16), (35, 17)).put("G", (44, 21)).put("n", (26, 16), (38, 12))
+    c.put("q", (15, 11), (44, 11), (15, 21), (33, 21), (21, 15), (39, 15)).put("Q", (30, 12)).put("h", (22, 21), (39, 11)).put("b", (27, 16))
+    # Featured room: the pink badge, a Gatekeeper on stage, ads.
+    c.put("2", (25, 4)).put("J", (25, 6)).put("a", (29, 3)).put("h", (21, 3)).put("q", (22, 7), (27, 3)).put("h", (28, 7))
+    # T&C archive: Eyes at the turns, bats and cookies in the corridor.
+    c.put("E", (57, 11), (58, 27)).put("h", (51, 5), (53, 19), (52, 35)).put("n", (50, 10), (54, 13), (57, 24))
+    c.put("c", (55, 4), (54, 5), (56, 20), (55, 21), (54, 28), (53, 29)).put("J", (51, 14), (57, 6), (51, 31))
+    c.put("q", (51, 8), (54, 16), (58, 22), (52, 33), (56, 10), (52, 29)).put("h", (57, 8), (55, 29)).put("Q", (53, 37)).put("b", (54, 20))
+    # Vault of small print: the gold badge, two Gatekeepers, an ad.
+    c.put("3", (54, 43)).put("K", (52, 42)).put("J", (56, 44)).put("a", (51, 44)).put("H", (57, 41)).put("q", (50, 45))
+    # The Gate: Gatekeepers in the fence gaps, Eyes behind, cookies and jeets.
+    c.put("K", (46, 51), (52, 51)).put("E", (44, 55), (55, 55)).put("c", (45, 49), (46, 49), (53, 49), (54, 49))
+    c.put("J", (43, 50), (55, 50), (49, 54)).put("n", (49, 50)).put("G", (50, 55))
+    c.put("H", (43, 49)).put("q", (56, 49), (47, 49)).put("h", (50, 49)).put("Q", (43, 54))
+    return c
+
+
 class Arena(Cave):
     """A Jungle Royale versus map: no doors, badges, enemies or exit; spawn points (R)
     and pickups only. Doors stay out so the match server only has to know walls."""
@@ -517,7 +622,7 @@ def temple_ring():
 ARENAS = [temple_ring]
 
 
-# Cave 4 is the old Big Tech HQ prototype (the Banana Phone) until caves 4-5 are built full length.
+# Cave 5 is the old Big Tech HQ prototype (the Banana Phone) until it's rebuilt full length.
 OLD = json.loads((Path(__file__).with_name("old-levels.json")).read_text())
 
 
@@ -546,7 +651,7 @@ def png(rows, path, cs=8):
 
 
 def main():
-    caves = [lost_temple(), paper_hands_alley(), data_center()]
+    caves = [lost_temple(), paper_hands_alley(), data_center(), walled_garden()]
     levels = []
     for c in caves:
         stats = c.check()
