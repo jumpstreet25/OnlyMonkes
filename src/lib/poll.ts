@@ -72,6 +72,8 @@ export async function castVote(pollId: string, optionId: string): Promise<void> 
   const dm = await openOrCreateDm(client, BOT_INBOX_IDS[0]);
   await dm.send(`/vote ${pollId} ${optionId}`);
   await recordMyVote(pollId, optionId);
+  const { useAppStore } = await import("@/store/appStore");
+  useAppStore.getState().forgetOpenPoll(pollId);
 }
 
 // ─── My-vote tracking — same reasoning as bananaBet.ts's my-bet tracking:

@@ -69,7 +69,7 @@ import { toast } from "sonner-native";
 import { updateStats, type Badge } from "@/lib/activityBadges";
 import { loadBananaState } from "@/lib/bananaRewards";
 import { updateStreak as updateBadgeStreak } from "@/lib/badges";
-import { registerForPushNotifications, setNotificationReplyHandler } from "@/lib/notifications";
+import { registerForPushNotifications, setNotificationReplyHandler, setForegroundPushHandler } from "@/lib/notifications";
 import { loadEvents } from "@/lib/calendar";
 import { loadThemeId, loadCustomColor } from "@/lib/theme";
 import { sendSkrTip, sendDevTip, parseTipCommand } from "@/lib/solana";
@@ -92,6 +92,7 @@ import { enqueueMessage, flushOfflineQueue } from "@/lib/offlineQueue";
 import { appendCachedMessage } from "@/lib/messageCache";
 import { flushPendingWrites } from "@/lib/debouncedStorage";
 import { PinnedBar } from "@/components/PinnedBar";
+import { OpenPollBar } from "@/components/OpenPollBar";
 import { loadPinnedMessages, getPinnedMessages, buildPinMessage, onPinnedMessagesChange, type PinnedMessage } from "@/lib/pinnedMessages";
 import { loadThreadMetadata } from "@/lib/threads";
 import { loadListings } from "@/lib/marketplace";
@@ -475,6 +476,8 @@ export default function ChatScreen() {
       try {
         if (wasBgFor > 30_000 || !streamAlive()) {
           _streamHealth.foregroundReconnects++;
+          // The full reconnect takes a while on a phone; show the last 15 min right away.
+          syncMessages({ quick: true }).catch(() => {});
           await initialize();
         } else {
           await syncMessages();
@@ -550,7 +553,20 @@ export default function ChatScreen() {
       syncMessages({ quick: true }).catch(() => {}).finally(() => { polling = false; });
     };
     timer = setInterval(tick, 60_000);
-    return () => { if (timer) clearInterval(timer); };
+    let lastPushSync = 0;
+    setForegroundPushHandler(() => {
+      if (polling || Date.now() - lastPushSync < 5_000) return;
+      lastPushSync = Date.now();
+      polling = true;
+      // Give the message a moment to reach the network node before fetching.
+      setTimeout(() => {
+        syncMessages({ quick: true }).catch(() => {}).finally(() => { polling = false; });
+      }, 1_500);
+    });
+    return () => {
+      if (timer) clearInterval(timer);
+      setForegroundPushHandler(null);
+    };
   }, [isGroupMember, checkStreamLiveness, initialize, syncMessages]);
 
 
@@ -1612,6 +1628,8 @@ export default function ChatScreen() {
             onJoin={handleJoinAvatarRoom}
           />
         )}
+
+        {isGroupMember && <OpenPollBar />}
 
         {/* Pinned message bar */}
         {isGroupMember && pinnedMessages.length > 0 && (

@@ -1032,6 +1032,7 @@ export function useXmtp() {
                   const { parsePollOpen, markPollSeenIfFirstTime, getMyVote } = await import("@/lib/poll");
                   const data = parsePollOpen(content);
                   if (!data || data.resolvesAt <= Date.now() || await getMyVote(data.id)) return;
+                  useAppStore.getState().rememberOpenPoll(data);
                   if (await markPollSeenIfFirstTime(`open-${data.id}`)) useAppStore.getState().setActivePoll(data);
                 } catch { /* ignore */ }
               })();
@@ -1776,8 +1777,10 @@ export function useXmtp() {
         if (typeof content === "string" && content.startsWith("POLL_OPEN:")) {
           if (!isBotSender(raw.senderInboxId as string)) return;
           try {
-            const { parsePollOpen, markPollSeenIfFirstTime } = await import("@/lib/poll");
+            const { parsePollOpen, markPollSeenIfFirstTime, getMyVote } = await import("@/lib/poll");
             const data = parsePollOpen(content);
+            // The pop-up shows once; the Main Chat bar keeps the vote reachable until it closes.
+            if (data && data.resolvesAt > Date.now() && !(await getMyVote(data.id))) useAppStore.getState().rememberOpenPoll(data);
             // Same reasoning as BANANA_BET_OPEN: only fires from the live
             // stream (never history replay), gated on markPollSeenIfFirstTime
             // so a reconnect-replay of this broadcast is a no-op.
@@ -1793,6 +1796,7 @@ export function useXmtp() {
           try {
             const { parsePollResult, markPollSeenIfFirstTime, getMyVote } = await import("@/lib/poll");
             const data = parsePollResult(content);
+            if (data) useAppStore.getState().forgetOpenPoll(data.pollId);
             if (data && await markPollSeenIfFirstTime(`result-${data.pollId}`)) {
               const myVote = await getMyVote(data.pollId);
               useAppStore.getState().setActivePollResult({ ...data, myVote });
