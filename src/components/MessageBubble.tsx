@@ -73,7 +73,11 @@ import { OnlineDot } from "@/components/OnlineDot";
 import { isUserOnline } from "@/lib/presence";
 import MarkdownContent from "@/components/MarkdownContent";
 
+/** Longest message text drawn before "Show more" (see the ANR note in MessageBubble). */
+const LONG_TEXT = 2000;
+
 // ─── Pulse Frame — animated ring for Tier 3 PFP shop item ─────────────────
+
 function PulseRing({ color }: { color: string }) {
   const pulseAnim = useRef(new Animated.Value(0.3)).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;
@@ -639,6 +643,11 @@ export const MessageBubble = memo(function MessageBubble({
   const [showOriginalOverTranslation, setShowOriginalOverTranslation] = useState(false);
   const hasTranslation = !!message.translatedContent && !!message.detectedLang && message.detectedLang !== viewerLanguage;
   const displayContent = hasTranslation && !showOriginalOverTranslation ? message.translatedContent! : editedOrOriginal;
+  // A very long message froze a Seeker for 5 s+ while Android word-wrapped it (Sentry ANR
+  // 2026-11-12, minikin line breaking). Draw the first LONG_TEXT characters, the rest on tap.
+  const [showFullText, setShowFullText] = useState(false);
+  const isLongText = displayContent.length > LONG_TEXT;
+  const shownContent = isLongText && !showFullText ? `${displayContent.slice(0, LONG_TEXT).trimEnd()}…` : displayContent;
 
   const handleLongPress = useCallback(() => {
     Keyboard.dismiss();
@@ -1153,7 +1162,7 @@ export const MessageBubble = memo(function MessageBubble({
                       return (
                         <View style={showBotExpand && !botExpanded ? { maxHeight: 9 * 22, overflow: "hidden" } : undefined}>
                           <MarkdownContent
-                            content={blinkUrl ? stripBlinkUrlLine(displayContent) : displayContent}
+                            content={blinkUrl ? stripBlinkUrlLine(shownContent) : shownContent}
                             style={{ fontSize: 15 * (useAppStore.getState().textScale ?? 1) }}
                           />
                         </View>
@@ -1191,10 +1200,17 @@ export const MessageBubble = memo(function MessageBubble({
                         ]}
                         selectable={false}
                       >
-                        {renderRichContent(blinkUrl ? stripBlinkUrlLine(displayContent) : displayContent, handlePressMention, onTokenPress)}
+                        {renderRichContent(blinkUrl ? stripBlinkUrlLine(shownContent) : shownContent, handlePressMention, onTokenPress)}
                       </Text>
                     );
                   })()}
+                  {isLongText && (
+                    <Pressable onPress={() => setShowFullText((v) => !v)} hitSlop={8}>
+                      <Text style={[styles.editedLabel, { color: textColor, textDecorationLine: "underline" }]}>
+                        {showFullText ? t("messageBubble.showLess") : t("messageBubble.showMore")}
+                      </Text>
+                    </Pressable>
+                  )}
                   {message.editedAt && (
                     <Text style={[styles.editedLabel, { color: textColor }]}>{t("messageBubble.editedLabel")}</Text>
                   )}
