@@ -55,12 +55,20 @@ export function parsePollResult(content: string): PollResultData | null {
   }
 }
 
+const VOTE_CONNECT_WAIT_MS = 15_000;
+
 export async function castVote(pollId: string, optionId: string): Promise<void> {
   const { getXmtpClient } = await import("@/hooks/useXmtp");
   const { openOrCreateDm } = await import("@/lib/xmtp");
   const { BOT_INBOX_IDS } = await import("@/lib/constants");
-  const client = getXmtpClient();
-  if (!client) throw new Error("Not connected");
+  // A vote tapped from a push or right after opening the app can land before the chat
+  // client is up (Sentry "Not connected", 2026-11-13): wait for it instead of failing.
+  let client = getXmtpClient();
+  for (let waited = 0; !client && waited < VOTE_CONNECT_WAIT_MS; waited += 300) {
+    await new Promise((r) => setTimeout(r, 300));
+    client = getXmtpClient();
+  }
+  if (!client) throw new Error("Still connecting to chat. Try again in a moment.");
   const dm = await openOrCreateDm(client, BOT_INBOX_IDS[0]);
   await dm.send(`/vote ${pollId} ${optionId}`);
   await recordMyVote(pollId, optionId);
