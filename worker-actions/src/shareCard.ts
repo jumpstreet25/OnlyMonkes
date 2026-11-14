@@ -30,7 +30,7 @@ const PAGE_PATH = /^\/monke\/(\d{1,5})\/?$/;
 // MonkeCaves clear: /monke/<n>/cave/<cave>/<grade>/<tenths>[/card.png] (2026-11-13). Everything in the
 // path is checked (digits and a grade letter only), so the page never prints text a sharer typed.
 const CAVE_PATH = /^\/monke\/(\d{1,5})\/cave\/([1-9])\/([SABCD])\/(\d{1,5})(\/card\.png)?\/?$/;
-export const CAVE_NAMES: Record<number, string> = { 1: "LOST TEMPLE", 2: "PAPER HANDS ALLEY", 3: "DATA CENTER", 4: "BIG TECH HQ" };
+export const CAVE_NAMES: Record<number, string> = { 1: "LOST TEMPLE", 2: "PAPER HANDS ALLEY", 3: "DATA CENTER", 4: "WALLED GARDEN", 5: "BIG TECH HQ" };
 const GRADE_COLOR: Record<string, RGB> = { S: [255, 210, 63], A: [125, 255, 154], B: [108, 204, 255], C: [233, 22, 113], D: [154, 154, 176] };
 /** 1613 tenths → "2:41.3" */
 export const fmtTenths = (t: number) => `${Math.floor(t / 600)}:${String(Math.floor((t % 600) / 10)).padStart(2, "0")}.${t % 10}`;
