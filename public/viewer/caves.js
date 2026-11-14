@@ -7,6 +7,7 @@ import { weaponFor, heldSprite, shotMask, shotColour } from "/viewer/caves-weapo
 import { LEVELS } from "/viewer/caves-levels.js";
 import { paintFace } from "/viewer/caves-face.js";
 import { WALL_PAINT, FLOOR_PAINT, SKY_PAINT, DECOR_PAL, DECOR_ROWS, DECOR_LETTERS, DECOR_BLOCKS } from "/viewer/caves-world.js";
+import { GARDEN_WALL_PAINT, GARDEN_WALL_FRAMES, GARDEN_FLOOR_PAINT, GARDEN_SKY_PAINT, GARDEN_CEIL_PAINT, GARDEN_LIGHT, GARDEN_DECOR_PAL, GARDEN_DECOR_ROWS, GARDEN_DECOR_LETTERS } from "/viewer/caves-garden.js";
 import { TECH_WALL_PAINT, TECH_WALL_FRAMES, TECH_FLOOR_PAINT, TECH_LIGHT_PANEL, TECH_CEIL_PAINT, TECH_LIGHT, TECH_DECOR_PAL, TECH_DECOR_ROWS, TECH_DECOR_LETTERS } from "/viewer/caves-tech.js";
 import { FOE_ROWS, FOE_PAL, AD_PAL2, XSHOT, BEAM, FOES, FOE_LETTERS } from "/viewer/caves-foes.js";
 import { ARENAS } from "/viewer/caves-arenas.js";
@@ -121,16 +122,22 @@ const TECH = Object.fromEntries(Object.entries(TECH_WALL_PAINT).map(([k, f]) => 
 const TECH_FRAMES = Object.fromEntries(Object.entries(TECH_WALL_FRAMES).map(([k, fs]) => [k, fs.map(fromPaint)]));
 Object.assign(FLOORS, Object.fromEntries(Object.entries(TECH_FLOOR_PAINT).map(([k, f]) => [k, fromPaint(f)])));
 const PANELS = fromPaint(TECH_LIGHT_PANEL), TECH_CEIL = fromPaint(TECH_CEIL_PAINT);
-const FLOWING = new Set([FLOORS.w, FLOORS.c]);
+// Walled Garden (caves-garden.js), after the tech set for the same reason.
+const GARDEN = Object.fromEntries(Object.entries(GARDEN_WALL_PAINT).map(([k, f]) => [k, fromPaint(f)]));
+const GARDEN_FRAMES = Object.fromEntries(Object.entries(GARDEN_WALL_FRAMES).map(([k, fs]) => [k, fs.map(fromPaint)]));
+Object.assign(FLOORS, Object.fromEntries(Object.entries(GARDEN_FLOOR_PAINT).map(([k, f]) => [k, fromPaint(f)])));
+const FAKE_SKY = fromPaint(GARDEN_SKY_PAINT), GARDEN_CEIL = fromPaint(GARDEN_CEIL_PAINT);
+const FLOWING = new Set([FLOORS.w, FLOORS.c, FLOORS.f]);
 const JUNGLE_WALLS = { "#": JUNGLE["#"], S: JUNGLE.S, V: JUNGLE.V, T: JUNGLE.T, Z: JUNGLE.Z, W: JUNGLE.W, d: JUNGLE.d };
 // Per theme: walls, default floor/ceiling, the lit-room ceiling, light levels, decorations.
 const THEMES = {
   jungle: { walls: JUNGLE_WALLS, floor: FLOORS.m, ceil: ROOTS, lit: SKY, light: { sky: 1.15, rock: 0.78 }, decor: DECOR_LETTERS, frames: {} },
+  garden: { walls: GARDEN, floor: FLOORS.p, ceil: GARDEN_CEIL, lit: FAKE_SKY, light: GARDEN_LIGHT, decor: GARDEN_DECOR_LETTERS, frames: GARDEN_FRAMES },
   tech: { walls: TECH, floor: FLOORS.r, ceil: TECH_CEIL, lit: PANELS, light: TECH_LIGHT, decor: TECH_DECOR_LETTERS, frames: TECH_FRAMES },
 };
-const BLOCKING_DECOR = new Set([...DECOR_BLOCKS, "cabinet", "pylon"]);
-const LAMPS = new Set(["torch", "pylon"]);
-const DECOR_SCALE = { tree: 1.05, cabinet: 1.0, torch: 0.7, pylon: 0.72 };
+const BLOCKING_DECOR = new Set([...DECOR_BLOCKS, "cabinet", "pylon", "topiary", "lamppost"]);
+const LAMPS = new Set(["torch", "pylon", "lamppost"]);
+const DECOR_SCALE = { tree: 1.05, cabinet: 1.0, torch: 0.7, pylon: 0.72, topiary: 0.8, lamppost: 0.95 };
 let wallFrames = {};
 let floorAt = new Array(1), ceilAt = new Array(1), light = new Float32Array(1), blockers = new Set();
 let baseFloor = FLOOR, baseCeil = CEIL;
@@ -205,6 +212,7 @@ const SPR = {
   xshot: makeSprite(XSHOT, FOE_PAL),
   ...Object.fromEntries(Object.entries(DECOR_ROWS).map(([k, rows]) => [k, makeSprite(rows, DECOR_PAL)])),
   ...Object.fromEntries(Object.entries(TECH_DECOR_ROWS).map(([k, rows]) => [k, makeSprite(rows, TECH_DECOR_PAL)])),
+  ...Object.fromEntries(Object.entries(GARDEN_DECOR_ROWS).map(([k, rows]) => [k, makeSprite(rows, GARDEN_DECOR_PAL)])),
   // Ammo: a Seeker battery (small) and a Seeker phone (big pack). Health: small kit, big kit.
   ammo: makeSprite([
     "................", "................", "................", "................", "................", "......kkkk......",
@@ -251,7 +259,7 @@ function equip(n) {
 // ── Levels ── map letters are listed in scripts/caves/build-levels.py.
 // Speed-run board (worker caves.ts) only takes runs from this level set. Change a
 // level → bump this and CAVES_VERSION/MIN_MS in worker-actions/src/caves.ts together.
-const CAVES_VERSION = 4; // 4: cave 3 Data Center added, Big Tech HQ moves to cave 4 (2026-11-14)
+const CAVES_VERSION = 5; // 5: cave 4 Walled Garden added, Big Tech HQ moves to cave 5 (2026-11-14)
 // Levels: caves-levels.js (built by scripts/caves/build-levels.py).
 let levelIx = 0;
 let MW = 0, MH = 0, secrets = 0, secretsFound = 0, boss = null;
