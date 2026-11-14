@@ -35,6 +35,12 @@ export default function InviteFriendsScreen() {
   const shareText = me ? `${t("invite.shareText", { newHolder: me.rewards.newHolder })} ${me.url}` : "";
   const onShare = () => { if (me) Share.share({ message: shareText, url: me.url }).catch(() => {}); };
   const onCopy = async () => { if (!me) return; await Clipboard.setStringAsync(me.url); toast(t("invite.copied")); };
+  const live = me?.live ?? null;
+  const liveWhen = live ? new Date(live.start).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" }) : "";
+  const liveText = live ? t("invite.liveShareText", { when: liveWhen }) : "";
+  const onLiveShare = () => { if (live) Share.share({ message: `${liveText} ${live.url}`, url: live.url }).catch(() => {}); };
+  const onLiveX = () => { if (live) Linking.openURL(`https://x.com/intent/post?text=${encodeURIComponent(liveText)}&url=${encodeURIComponent(live.url)}`).catch(() => {}); };
+  const onLiveCopy = async () => { if (!live) return; await Clipboard.setStringAsync(live.url); toast(t("invite.copied")); };
   const onX = () => {
     if (!me) return;
     const text = t("invite.shareText", { newHolder: me.rewards.newHolder });
@@ -56,6 +62,18 @@ export default function InviteFriendsScreen() {
           </View>
         ) : (
           <>
+            {live && (
+              <View style={[styles.card, cardStyle]}>
+                <Text style={styles.label}>{t("invite.liveTitle")}</Text>
+                <Text style={styles.body}>{t("invite.liveBody", { when: liveWhen })}</Text>
+                <Image source={{ uri: live.card }} style={styles.cardImg} resizeMode="contain" />
+                <View style={styles.row}>
+                  <Pressable style={styles.btn} onPress={onLiveShare}><Text style={styles.btnText}>{t("invite.share")}</Text></Pressable>
+                  <Pressable style={[styles.btn, styles.ghost]} onPress={onLiveX}><Text style={styles.btnText}>{t("invite.postOnX")}</Text></Pressable>
+                  <Pressable style={[styles.btn, styles.ghost]} onPress={onLiveCopy}><Text style={styles.btnText}>{t("invite.copy")}</Text></Pressable>
+                </View>
+              </View>
+            )}
             <Text style={styles.intro}>{t("invite.intro", { referrer: me.rewards.referrer, newHolder: me.rewards.newHolder })}</Text>
             <Image source={{ uri: me.card }} style={styles.cardImg} resizeMode="contain" />
             <View style={[styles.card, cardStyle]}>
