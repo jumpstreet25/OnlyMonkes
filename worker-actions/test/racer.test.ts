@@ -9,7 +9,7 @@ jest.mock("../src/livekitAuth", () => ({ walletFromDeviceProof: jest.fn(async ()
 jest.mock("../src/referrals", () => ({ cleanName: (s: unknown) => String(s ?? "").replace(/[^A-Za-z0-9 ._-]/g, "").slice(0, 16) }));
 jest.mock("../src/shareCard", () => ({ monkeImageForNumber: (n: number) => (Number.isInteger(n) && n >= 1 && n <= 9999 ? "x" : null) }));
 
-import { __test, ghostOk, handleRacer, runProblem, RACER_VERSION, DAILY_BANANAS } from "../src/racer";
+import { __test, dayId, ghostOk, handleRacer, runProblem, RACER_VERSION, DAILY_BANANAS } from "../src/racer";
 import { publicLimitName } from "../src/publicLimits";
 
 if (!globalThis.crypto?.subtle) (globalThis as any).crypto = webcrypto;
@@ -36,10 +36,19 @@ describe("runProblem", () => {
     expect(runProblem(run({ v: 0 }), T)).toBe("old game version");
     expect(runProblem(run({ course: "demo" }), T)).toBe("only the daily track counts");
     expect(runProblem(run({ course: "2026-11-09" }), T)).toBe("not today's track");
-    expect(runProblem(run({ course: "2026-11-10" }), Date.UTC(2026, 10, 11, 1))).toBeNull();
+    // just after 5pm EST (22:00 UTC) the race day is Nov 12; the just-ended Nov 11 still counts in the grace
+    expect(runProblem(run({ course: "2026-11-11" }), Date.UTC(2026, 10, 11, 22, 30))).toBeNull();
+    expect(runProblem(run({ course: "2026-11-12" }), Date.UTC(2026, 10, 11, 22, 30))).toBeNull();
+    expect(runProblem(run({ course: "2026-11-12" }), Date.UTC(2026, 10, 11, 21, 30))).toBe("not today's track");
     expect(runProblem(run({ ms: 27_000 }), T)).toBe("faster than possible");
     expect(runProblem(run({ laps: [30_000, 30_000] }), T)).toBe("bad laps");
     expect(runProblem(run({ laps: [30_000, 30_000, 31_000] }), T)).toBe("laps don't add up");
+  });
+  test("race day turns over at 5pm New York, DST included", () => {
+    expect(dayId(Date.UTC(2026, 10, 14, 21, 59))).toBe("2026-11-14");
+    expect(dayId(Date.UTC(2026, 10, 14, 22, 1))).toBe("2026-11-15");
+    expect(dayId(Date.UTC(2026, 6, 4, 20, 59))).toBe("2026-07-04");
+    expect(dayId(Date.UTC(2026, 6, 4, 21, 1))).toBe("2026-07-05");
   });
   test("ghost shape", () => {
     expect(ghostOk(ghostFor(90_000), 90_000)).toBe(true);

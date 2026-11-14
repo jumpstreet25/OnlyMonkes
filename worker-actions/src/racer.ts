@@ -1,11 +1,12 @@
 /**
  * Monke RC daily board, leader ghost and daily bananas (2026-11-11). The game
- * (onlymonkes.app/viewer/racer, racer-sim.js) builds one track per UTC day; a holder's
+ * (onlymonkes.app/viewer/racer, racer-sim.js) builds one track per race day (5pm→5pm New York,
+ * named for the date it ends on, since 2026-11-14; before that the UTC date); a holder's
  * app posts each finished daily race here with a holder proof (phone: Device Integrity
  * key, web: holder token — same as caves.ts). Best time per holder per day, top 10
  * kept on write, and the #1 race's ghost (positions only) so everyone can race the leader.
  *
- * Daily bananas: the first finished daily race of a UTC day pays DAILY_BANANAS, only
+ * Daily bananas: the first finished daily race of a race day pays DAILY_BANANAS, only
  * when the app asks (`pay: true` — the phone, where bananas live; the web never
  * collects). Marked paid before the reply.
  *
@@ -51,7 +52,9 @@ function json(body: unknown, status = 200, cache = "no-store"): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", "Cache-Control": cache } });
 }
 
-export const dayId = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+/** Race day id, same as racer-sim.js todayId: turns over at 5pm New York (DST included). */
+const NY_DATE = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" });
+export const dayId = (ms: number) => NY_DATE.format(new Date(ms + 7 * 3600_000));
 
 /** Why a race is refused, or null. */
 export function runProblem(r: Record<string, unknown>, now = Date.now()): string | null {
