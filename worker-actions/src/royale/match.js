@@ -1,7 +1,7 @@
 // Jungle Royale: MonkeCaves versus.
 // The match server (worker-actions/src/royale/) runs a copy of this file: change
 // both together and bump ROYALE_VERSION (old pages are told to reload).
-export const ROYALE_VERSION = 1;
+export const ROYALE_VERSION = 2;
 // The match itself (fighters, shots, kills,
 // respawns, pickups, bots) with no DOM, so the page runs it offline today and the
 // match server can run the same code later. Every weapon plays the same (damage,
@@ -15,13 +15,15 @@ export const VS = {
 
 // OnlyTreasury's Saga Monkes, playing as bots when there aren't enough holders.
 // Skill 0..1 sets reaction time, aim wobble and how well they keep moving.
+// v2 (2026-11-14, owner: "way too good with movement based on what a touchscreen phone can
+// accomplish"): skills capped at 0.7 and the brain plays like one thumb + one aim drag.
 export const ROSTER = [
-  { n: 1308, skill: 0.55 },
-  { n: 2737, skill: 0.8 },
-  { n: 4151, skill: 0.45 },
-  { n: 4457, skill: 0.7 },
-  { n: 6986, skill: 0.6 },
-  { n: 8340, skill: 0.9 },
+  { n: 1308, skill: 0.45 },
+  { n: 2737, skill: 0.6 },
+  { n: 4151, skill: 0.35 },
+  { n: 4457, skill: 0.55 },
+  { n: 6986, skill: 0.5 },
+  { n: 8340, skill: 0.7 },
 ];
 
 const FLOOR = new Set([".", "R", "h", "H", "q", "Q", "M", "b", "I"]);
@@ -152,7 +154,8 @@ export function createMatch(arena, { seed = 1 } = {}) {
   // ── Bots ──
   function botThink(f, dt) {
     const b = f.brain, s = f.skill;
-    const reaction = 0.55 - 0.3 * s, wobble = (1 - s) * 0.14, turnRate = 2.2 + 1.6 * s;
+    // Touchscreen-human limits: slow to react, aim drifts, turning is a thumb drag.
+    const reaction = 0.8 - 0.3 * s, wobble = 0.05 + (1 - s) * 0.14, turnRate = 1.7 + 1.0 * s;
     b.think -= dt;
     // Who can I see? Nearest live enemy in view (≈150° cone, or anyone within 3 tiles).
     if (b.think <= 0) {
@@ -175,14 +178,18 @@ export function createMatch(arena, { seed = 1 } = {}) {
       b.seenFor += dt;
       const dx = t.x - f.x, dy = t.y - f.y, d = Math.hypot(dx, dy);
       // Lead the target a little (better bots lead better).
-      const lead = (d / VS.SHOT_SPEED) * s * 0.8;
+      const lead = (d / VS.SHOT_SPEED) * s * 0.4;
       b.wantA = Math.atan2(dy + (t.vy || 0) * lead, dx + (t.vx || 0) * lead);
       // Keep a fighting distance and strafe, switching sides now and then.
-      if ((b.strafeT -= dt) <= 0) { b.strafe = rnd() < 0.5 ? -1 : 1; b.strafeT = 0.6 + rnd() * 1.2; }
-      fwd = d > 7 ? 1 : d < 3 ? -0.7 : 0;
-      side = b.strafe * (0.4 + 0.6 * s);
+      // On a phone you can't strafe hard and aim at once: they drift sideways a little,
+      // switch rarely, and mostly stand and shoot once they're on target.
+      if ((b.strafeT -= dt) <= 0) { b.strafe = rnd() < 0.35 ? 0 : rnd() < 0.5 ? -1 : 1; b.strafeT = 1.4 + rnd() * 1.8; }
       const err = Math.abs(Math.atan2(Math.sin(b.wantA - f.a), Math.cos(b.wantA - f.a)));
-      if (b.seenFor > reaction && err < 0.18 && d < 14) {
+      const onTarget = err < 0.25;
+      fwd = d > 7 ? 1 : d < 3 ? -0.5 : 0;
+      side = b.strafe * (onTarget ? 0.2 + 0.2 * s : 0.35 + 0.3 * s);
+      if (onTarget) fwd *= 0.5;
+      if (b.seenFor > reaction && err < 0.12 && d < 13) {
         const a = f.a + (rnd() - 0.5) * 2 * wobble;
         fire(f, Math.cos(a), Math.sin(a));
       }
@@ -217,7 +224,7 @@ export function createMatch(arena, { seed = 1 } = {}) {
     f.a += Math.max(-turnRate * dt, Math.min(turnRate * dt, da));
     // Walking forward only once roughly facing the way (no moonwalking round corners).
     if (!t && Math.abs(da) > 0.9) fwd *= 0.2;
-    const len = Math.hypot(fwd, side) || 1, sp = VS.MOVE * dt * (0.85 + 0.15 * s) / Math.max(1, len);
+    const len = Math.hypot(fwd, side) || 1, sp = VS.MOVE * dt * (t ? 0.7 : 0.8 + 0.1 * s) / Math.max(1, len);
     const cx = Math.cos(f.a), cy = Math.sin(f.a);
     move(f, (cx * fwd - cy * side) * sp, (cy * fwd + cx * side) * sp);
   }
