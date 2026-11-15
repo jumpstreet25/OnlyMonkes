@@ -1,4 +1,4 @@
-// Monke RC — the rules, with no DOM or three.js so they run in Node checks and (later)
+// MonkeKart (was Monke RC) — the rules, with no DOM or three.js so they run in Node checks and (later)
 // on the worker. One track per local calendar day (3am→3am) built from the date; a fixed 120 Hz step so a run
 // and its ghost replay the same everywhere. World: x/z ground plane, y up, heading a
 // (forward = (cos a, sin a) in x/z).

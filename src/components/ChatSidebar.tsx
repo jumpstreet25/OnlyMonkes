@@ -105,7 +105,7 @@ export function ChatSidebar({ onOpenPanel, onEditProfile, compact = false, width
         ...(monkeMemeVisible(memeCfg, isGroupAdmin, wallet) ? [{ key: "meme", label: t("menuDrawer.monkeMeme"), icon: "monkeface" as MenuIconName, onPress: tabOr("meme", "/monkememe") }] : []),
         { key: "3d", label: "3D Monke", icon: "monkeface", onPress: tabOr("3d", "/monke3d") },
         ...(monkeCavesVisible(cavesCfg, isGroupAdmin, wallet) ? [{ key: "caves", label: t("menuDrawer.monkeCaves"), icon: "target" as MenuIconName, onPress: tabOr("caves", "/monkecaves") }] : []),
-        // Monke RC opens its own page (not a workspace tab) so finished races reach the daily board.
+        // MonkeKart opens its own page (not a workspace tab) so finished races reach the daily board.
         ...(racerVisible(racerCfg, isGroupAdmin, wallet) ? [{ key: "racer", label: t("menuDrawer.monkeRC"), icon: "bolt" as MenuIconName, onPress: go("/racer") }] : []),
       ],
     },
