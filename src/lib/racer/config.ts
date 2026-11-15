@@ -1,5 +1,5 @@
 /**
- * Monke RC tile — config/racer.json on master, read raw like config/monkecaves.json
+ * MonkeKart tile — config/racer.json on master, read raw like config/monkecaves.json
  * (same shape and rules: dark launch for the admin + testerWalletHashes,
  * { "testersOnly": false } opens it to every holder without an OTA,
  * { "enabled": false } is the kill switch, a failed fetch stays hidden).
