@@ -1,5 +1,5 @@
 /**
- * Games tab of the Leaderboard: Monke RC's daily board and MonkeCaves' weekly speed-run
+ * Games tab of the Leaderboard: MonkeKart's daily board and MonkeCaves' weekly speed-run
  * board, read from the public GETs in worker-actions/src/racer.ts and caves.ts
  * (each answers 404 "not released" until its board is "on"). Read-only, no proof needed.
  */
@@ -8,7 +8,7 @@ import { Image, Platform, RefreshControl, ScrollView, StyleSheet, Text, View } f
 import { FONTS, THEME } from "@/lib/constants";
 import { monkeImageForNumber } from "@/lib/monkeMeme/monkeNumbers";
 import { useWorldGlassCardStyle } from "@/components/worlds/WorldScreenShell";
-import { cleanRows, fmtCave, fmtRace, utcDay, type BoardRow } from "@/lib/gameBoards";
+import { cleanRows, fmtCave, fmtRace, raceDay, type BoardRow } from "@/lib/gameBoards";
 
 // Web is served from onlymonkes.app (same origin); the phone calls it directly.
 const BASE = Platform.OS === "web" ? "" : "https://onlymonkes.app";
@@ -46,7 +46,8 @@ export function GamesBoardView() {
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
-    const day = utcDay();
+    // The player's own race day (local date, 3am→3am), the same track the game shows them.
+    const day = raceDay();
     const [r, c] = await Promise.all([getJson(`/api/racer/board?day=${day}`), getJson("/api/caves/board")]);
     setRacer(r && Array.isArray(r.top) ? { day: String(r.day ?? day), top: cleanRows(r.top, 10) } : null);
     setCaves(c && c.caves && typeof c.caves === "object"
@@ -65,9 +66,9 @@ export function GamesBoardView() {
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={THEME.textMuted} />}
     >
       <Text style={styles.header}>GAME BOARDS</Text>
-      <Text style={styles.subheader}>Fastest holders · Monke RC resets daily, MonkeCaves weekly (UTC)</Text>
+      <Text style={styles.subheader}>Fastest holders · MonkeKart: new track daily at 3am your time · MonkeCaves: weekly (UTC)</Text>
 
-      <Text style={styles.section}>⚡ MONKE RC · {racer?.day ?? utcDay()}</Text>
+      <Text style={styles.section}>🏎️ MONKEKART · {racer?.day ?? raceDay()}</Text>
       {loading ? <Text style={styles.empty}>Loading…</Text>
         : !racer ? <Text style={styles.empty}>Board opens soon</Text>
         : racer.top.length === 0 ? <Text style={styles.empty}>No times yet today. Be the first.</Text>

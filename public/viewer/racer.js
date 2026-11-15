@@ -1,6 +1,6 @@
-// Monke RC — 3D drawing, input, sound and flow. The rules live in racer-sim.js.
+// MonkeKart (was Monke RC until 2026-11-14) — 3D drawing, input, sound and flow. The rules live in racer-sim.js.
 // three.js scene: jungle ground, the day's track (road ribbon, curbs, bamboo barriers,
-// boost pads, start gate), trees, the player's RC buggy (colours from caves-weapons.js
+// boost pads, start gate), trees, the player's go-kart (colours from caves-weapons.js
 // weaponFor(n), looks only) with their 3D block monke in the seat, and a see-through
 // ghost of their best race.
 import * as THREE from "three";
@@ -222,7 +222,7 @@ wall(ROAD_W / 2 + SHOULDER, 2.6);
   const banner = canvasTex(512, 64, (g, w, h) => {
     g.fillStyle = "#151515"; g.fillRect(0, 0, w, h);
     for (let x = 0; x < w; x += 32) { g.fillStyle = "#ffd23f"; g.fillRect(x, 0, 16, 6); g.fillRect(x + 16, h - 6, 16, 6); }
-    g.fillStyle = "#ffd23f"; g.font = "italic 900 38px ui-monospace, monospace"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText("MONKE RC", w / 2, h / 2 + 2);
+    g.fillStyle = "#ffd23f"; g.font = "italic 900 38px ui-monospace, monospace"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText("MONKEKART", w / 2, h / 2 + 2);
   }, false);
   const bm = new THREE.Mesh(new THREE.BoxGeometry(1.2, 4, ROAD_W + 8), [new THREE.MeshBasicMaterial({ map: banner }), new THREE.MeshBasicMaterial({ map: banner }), post, post, post, post]);
   bm.position.y = 12; bm.rotation.y = 0; gate.add(bm);
@@ -392,28 +392,51 @@ function offTrack(x, z, clear) {
   }
 }
 
-// ── The buggy ──
+// ── The kart ── (2026-11-14, owner: Monke RC → MonkeKart, "do the go-kart look"): a low tube
+// frame, fat slicks, side pods, nose fairing with a number plate, bumpers, steering wheel, bucket
+// seat and a side engine with an exhaust (the boost flame comes out of it). Looks only: the
+// physics footprint is unchanged. x is forward.
 function buildCar(ghostCar) {
   // root (position/heading) → wheels, and chassis (body on its springs: roll, pitch, heave).
   const g = new THREE.Group(), chassis = new THREE.Group(); g.add(chassis);
   const mat = (c) => ghostCar ? new THREE.MeshBasicMaterial({ color: 0xbfe8ff, transparent: true, opacity: 0.32, depthWrite: false }) : new THREE.MeshLambertMaterial({ color: c, flatShading: true });
-  const hull = mat(HULL), trim = mat(TRIM), dark = mat(0x18181c), glow = ghostCar ? hull : new THREE.MeshBasicMaterial({ color: GLOW });
-  const body = new THREE.Mesh(new THREE.BoxGeometry(8.4, 1.4, 4.2), hull); body.position.y = 1.9; chassis.add(body);
-  const nose = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1.0, 3.6), trim); nose.position.set(4.6, 1.75, 0); nose.rotation.z = -0.25; chassis.add(nose);
-  const pod = new THREE.Mesh(new THREE.BoxGeometry(3.2, 1.0, 4.8), trim); pod.position.set(-0.6, 2.2, 0); chassis.add(pod);
-  const wingPost = new THREE.Mesh(new THREE.BoxGeometry(0.4, 1.6, 0.4), dark); wingPost.position.set(-3.8, 3.2, 0); chassis.add(wingPost);
-  const wing = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.25, 5.6), trim); wing.position.set(-4.1, 4.05, 0); wing.rotation.z = 0.12; chassis.add(wing);
-  const strip = new THREE.Mesh(new THREE.BoxGeometry(6.5, 0.12, 0.6), glow); strip.position.set(0.3, 2.66, 0); chassis.add(strip);
+  const hull = mat(HULL), trim = mat(TRIM), dark = mat(0x18181c), steel = mat(0x9aa0a8), glow = ghostCar ? hull : new THREE.MeshBasicMaterial({ color: GLOW });
+  const add = (geo, m, x, y, z, rx = 0, ry = 0, rz = 0) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); o.rotation.set(rx, ry, rz); chassis.add(o); return o; };
+  const tube = (len, r = 0.16) => new THREE.CylinderGeometry(r, r, len, 6);
+  // floor tray + tube rails
+  add(new THREE.BoxGeometry(6.6, 0.22, 2.6), dark, -0.2, 0.75, 0);
+  for (const z of [-1.45, 1.45]) add(tube(7.2), steel, -0.1, 0.85, z, 0, 0, Math.PI / 2);
+  // nose fairing (sloped wedge) + number plate
+  add(new THREE.BoxGeometry(2.0, 0.7, 3.0), hull, 3.6, 1.15, 0, 0, 0, -0.32);
+  add(new THREE.BoxGeometry(0.08, 0.9, 1.3), glow, 4.55, 1.35, 0, 0, 0, -0.32);
+  // front bumper bar + rear bumper loop
+  add(tube(4.6), steel, 4.7, 0.85, 0, Math.PI / 2);
+  add(tube(5.8, 0.2), steel, -4.25, 1.05, 0, Math.PI / 2);
+  for (const z of [-2.9, 2.9]) add(tube(1.1, 0.2), steel, -3.75, 1.05, z, 0, 0, Math.PI / 2);
+  // side pods between the wheels
+  for (const sg of [-1, 1]) add(new THREE.BoxGeometry(3.0, 0.75, 0.9), hull, 0.0, 1.05, sg * 2.15);
+  // steering column + wheel
+  add(tube(1.7, 0.12), steel, 1.55, 1.55, 0, 0, 0, 1.0);
+  const sw = add(new THREE.TorusGeometry(0.62, 0.13, 6, 14), dark, 0.85, 2.1, 0, 0, Math.PI / 2, 0); sw.rotation.z = 0.5;
+  // bucket seat
+  add(new THREE.BoxGeometry(1.6, 0.35, 1.9), trim, -1.0, 1.05, 0);
+  add(new THREE.BoxGeometry(0.35, 1.8, 1.9), trim, -1.85, 1.85, 0, 0, 0, 0.25);
+  // engine + exhaust on the left side behind the seat
+  add(new THREE.BoxGeometry(1.4, 1.1, 1.2), steel, -2.9, 1.35, -1.5);
+  add(new THREE.BoxGeometry(1.0, 0.25, 1.0), dark, -2.9, 1.98, -1.5);
+  add(tube(1.8, 0.2), dark, -3.9, 1.6, -1.5, 0, 0, Math.PI / 2);
+  // trim stripe on the nose
+  add(new THREE.BoxGeometry(1.9, 0.06, 0.5), glow, 3.55, 1.52, 0, 0, 0, -0.32);
   const wheels = [];
-  const wheelG = new THREE.CylinderGeometry(1.35, 1.35, 1.2, 14); wheelG.rotateX(Math.PI / 2);
-  const hubG = new THREE.CylinderGeometry(0.6, 0.6, 1.25, 8); hubG.rotateX(Math.PI / 2);
-  for (const [x, z] of [[3.1, 2.7], [3.1, -2.7], [-2.9, 2.8], [-2.9, -2.8]]) {
-    const pivot = new THREE.Group(); pivot.position.set(x, 1.35, z);
-    const w = new THREE.Mesh(wheelG, dark); const hub = new THREE.Mesh(hubG, trim); w.add(hub);
-    pivot.add(w); g.add(pivot); wheels.push({ pivot, w, front: x > 0 });
+  for (const [x, z, r, w] of [[3.0, 2.55, 1.05, 1.0], [3.0, -2.55, 1.05, 1.0], [-2.85, 2.7, 1.25, 1.6], [-2.85, -2.7, 1.25, 1.6]]) {
+    const wheelG = new THREE.CylinderGeometry(r, r, w, 14); wheelG.rotateX(Math.PI / 2);
+    const hubG = new THREE.CylinderGeometry(r * 0.48, r * 0.48, w + 0.05, 8); hubG.rotateX(Math.PI / 2);
+    const pivot = new THREE.Group(); pivot.position.set(x, r, z);
+    const wm = new THREE.Mesh(wheelG, dark); wm.add(new THREE.Mesh(hubG, trim));
+    pivot.add(wm); g.add(pivot); wheels.push({ pivot, w: wm, front: x > 0 });
   }
   if (!ghostCar) g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
-  return { root: g, chassis, body: [body, nose, pod, wing, wingPost, strip], wheels };
+  return { root: g, chassis, wheels };
 }
 const car = buildCar(false), ghostCar = buildCar(true), leaderCar = buildCar(true);
 leaderCar.root.traverse((o) => { if (o.isMesh) o.material = o.material.clone(), o.material.color?.set(0xffd23f); });
@@ -429,19 +452,19 @@ const underglow = new THREE.Mesh(new THREE.PlaneGeometry(16, 10), new THREE.Mesh
 underglow.rotation.x = -Math.PI / 2; scene.add(underglow);
 // boost flame
 const flame = new THREE.Mesh(new THREE.ConeGeometry(0.9, 4, 8), new THREE.MeshBasicMaterial({ color: 0xffb030, transparent: true, opacity: 0.85 }));
-flame.rotation.z = Math.PI / 2; flame.position.set(-5.2, 2.0, 0); flame.visible = false; car.chassis.add(flame);
+flame.rotation.z = Math.PI / 2; flame.position.set(-5.4, 1.6, -1.5); flame.scale.setScalar(0.7); flame.visible = false; car.chassis.add(flame);
 if (HIGH) flame.material.blending = THREE.AdditiveBlending;
 // driver: the holder's 3D block monke
 let driver = null;
 loadImage(imageFor(n)).then(readGrid).then((grid) => {
   driver = buildMonke(grid);
   const box = new THREE.Box3().setFromObject(driver.root), size = box.getSize(new THREE.Vector3());
-  const s = 3.6 / Math.max(size.x, size.y, size.z);
+  const s = 3.9 / Math.max(size.x, size.y, size.z);
   driver.root.scale.setScalar(s);
   const seat = new THREE.Group(); seat.add(driver.root);
   const c = box.getCenter(new THREE.Vector3());
   driver.root.position.set(-c.x * s, -box.min.y * s, -c.z * s);
-  seat.rotation.y = Math.PI / 2; seat.position.set(-0.4, 2.55, 0);
+  seat.rotation.y = Math.PI / 2; seat.position.set(-0.9, 1.2, 0); // sitting low in the kart's bucket seat
   driver.seat = seat;
   driver.root.traverse((o) => { if (o.isMesh) o.castShadow = true; });
   car.chassis.add(seat);
@@ -745,7 +768,7 @@ function title() {
   if (newDay()) { location.reload(); return; }
   state = "title"; showPads();
   showCard(`
-    <h1>MONKE RC</h1>
+    <h1>MONKEKART</h1>
     <div class="tag">${COURSE_NAME}</div>
     <div>MONKE #${n} <span class="dim">· <span class="swatch" style="background:${HULL}"></span>body <span class="swatch" style="background:${TRIM}"></span>trim</span></div>
     <div class="how">${isTouch ? HOW[ctrl] : "← → steer · Shift drift (let go to boost)<br>↓ brake · Esc pause<br>🎮 stick steer · A / RB / RT drift · B / LT brake · Start pause"}</div>

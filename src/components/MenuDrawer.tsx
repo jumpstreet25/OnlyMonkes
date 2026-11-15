@@ -371,7 +371,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
     getMonkeCavesConfig().then(setCavesCfg).catch(() => {});
   }, []);
   const showMonkeCaves = monkeCavesVisible(cavesCfg, isGroupAdminForMeme, walletForMeme);
-  // Monke RC tile: same dark launch, config/racer.json.
+  // MonkeKart tile: same dark launch, config/racer.json.
   const [racerCfg, setRacerCfg] = useState<RacerConfig | null>(null);
   useEffect(() => {
     getRacerConfig().then(setRacerCfg).catch(() => {});

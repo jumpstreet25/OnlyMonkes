@@ -383,7 +383,7 @@ function TradersBoard() {
   );
 }
 
-/** Leaderboard: top traders, or the game boards (Monke RC daily, MonkeCaves weekly). */
+/** Leaderboard: top traders, or the game boards (MonkeKart daily, MonkeCaves weekly). */
 export function LeaderboardView() {
   const [tab, setTab] = useState<"traders" | "games">("traders");
   return (

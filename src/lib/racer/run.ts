@@ -1,5 +1,5 @@
 /**
- * Monke RC daily board, leader ghost and daily bananas (worker-actions/src/racer.ts).
+ * MonkeKart daily board, leader ghost and daily bananas (worker-actions/src/racer.ts).
  * The game posts each finished race ({ type: "racer", event: "clear", v, course, ms,
  * laps, ghost }); daily races go to the worker with a holder proof and the reply
  * (best, rank, top 10, bananas paid) goes back to the game. The phone asks for the

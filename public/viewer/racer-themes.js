@@ -1,4 +1,4 @@
-// Monke RC — the look of each day's track, picked from the date: seasons, and holidays on
+// MonkeKart — the look of each day's track, picked from the date: seasons, and holidays on
 // their days (owner 2026-11-14: "Daily tracks should be season related, holiday related").
 // Looks only: the track shape and physics come from racer-sim.js and don't change with it.
 // The race day is the player's local calendar date (3am→3am).
