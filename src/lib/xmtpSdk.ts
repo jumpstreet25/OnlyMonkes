@@ -27,6 +27,26 @@ const REGISTRATION_NONCE = 1n;
 
 // How many recent messages a catch-up scans for reactions newer than its window.
 const CATCH_UP_REACTION_SCAN = 200;
+/** SDK 8.0.0-rc5: one list or messages() call returns 1..1000 rows, 100 when no limit is given.
+ *  v5 (and rc4) returned everything, so page wherever we asked for "all" or more than a page. */
+const PAGE_MAX = 1000;
+const MESSAGES_HARD_CAP = 10_000;
+
+async function listPaged(list: (o: Record<string, unknown>) => Promise<any[]>, base: Record<string, unknown>, limit?: number): Promise<any[]> {
+  const want = limit != null ? Math.max(0, Math.floor(limit)) : Infinity;
+  if (want === 0) return [];
+  const out: any[] = [];
+  let cursor: Record<string, unknown> = {};
+  for (let guard = 0; guard < 1000 && out.length < want; guard++) {
+    const take = Math.min(PAGE_MAX, want - out.length);
+    const page: any[] = (await list({ ...base, orderBy: "createdAt", limit: take, ...cursor })) ?? [];
+    out.push(...page);
+    if (page.length < take) break;
+    const last = page[page.length - 1];
+    cursor = { createdBefore: last.createdAt, beforeId: last.id };
+  }
+  return out;
+}
 
 function backendSource() {
   return { url: XMTP_BACKEND_URL, appVersion: APP_VERSION, credentials: { credential: getXmtpCredential } };
@@ -329,13 +349,31 @@ export class Conversation {
 
   async messages(opts: RnListOpts = {}): Promise<DecodedMessage[]> {
     const asc = opts.direction === "ASCENDING";
-    const o: Record<string, unknown> = { direction: asc ? "ascending" : "descending", sortBy: "sentAt" };
-    if (opts.limit != null) o.limit = Math.max(0, Math.floor(opts.limit));
     const after = opts.afterNs != null ? BigInt(Math.floor(opts.afterNs)) : undefined;
     const before = opts.beforeNs != null ? BigInt(Math.floor(opts.beforeNs)) : undefined;
-    if (after != null) o.sentAfter = new (Sdk.Timestamp as any)(after);
-    if (before != null) o.sentBefore = new (Sdk.Timestamp as any)(before);
-    const raw: any[] = await this.inner.messages(o);
+    const want = opts.limit != null ? Math.max(0, Math.floor(opts.limit)) : MESSAGES_HARD_CAP;
+    if (want === 0) return [];
+    // Page with sent-time cursors; each later page overlaps the previous edge by one row (deduped).
+    const raw: any[] = [];
+    const seen = new Set<string>();
+    let lo = after, hi = before, overlap = 0;
+    for (let guard = 0; guard < 100 && raw.length < want; guard++) {
+      const take = Math.min(PAGE_MAX, want - raw.length + overlap);
+      const o: Record<string, unknown> = { direction: asc ? "ascending" : "descending", sortBy: "sentAt", limit: take };
+      if (lo != null) o.sentAfter = new (Sdk.Timestamp as any)(lo);
+      if (hi != null) o.sentBefore = new (Sdk.Timestamp as any)(hi);
+      const page: any[] = (await this.inner.messages(o)) ?? [];
+      let fresh = 0;
+      for (const m of page) {
+        if (seen.has(m.id)) continue;
+        seen.add(m.id); raw.push(m); fresh++;
+        if (raw.length >= want) break;
+      }
+      if (page.length < take || fresh === 0) break;
+      const edge = nsOf(page[page.length - 1].sentAt);
+      if (asc) lo = edge > 0n ? edge - 1n : 0n; else hi = edge + 1n;
+      overlap = 1;
+    }
 
     // v8 keeps reactions only inside their target message. A catch-up window
     // ("since X") would miss new reactions on older messages, so also scan the
@@ -489,7 +527,7 @@ class Conversations {
   private async activeDmWith(peerInboxId: string): Promise<any | undefined> {
     const d = await this.inner.getDmByInboxId(peerInboxId);
     if (!d || (await isActiveRaw(d))) return d ?? undefined;
-    const all: any[] = await this.inner.listDms({ includeDuplicateDms: true });
+    const all: any[] = await listPaged((o) => this.inner.listDms(o), { includeDuplicateDms: true });
     for (const c of all) {
       if ((await c.peerInboxId().catch(() => null)) === peerInboxId && (await isActiveRaw(c))) return c;
     }
@@ -517,33 +555,32 @@ class Conversations {
     return (await this.wrap(g))!;
   }
 
-  private listOpts(limit?: number, states?: RnConsent[]) {
+  private listOpts(states?: RnConsent[]) {
     const o: Record<string, unknown> = {};
     if (Array.isArray(states) && states.length) o.consentStates = states;
-    if (limit != null) o.limit = limit;
     return o;
   }
 
   // Lists show only conversations you can post in; read-only ones (imported history, groups
   // you were removed from) come from listImported().
   async listGroups(_opts?: unknown, limit?: number, states?: RnConsent[]): Promise<Conversation[]> {
-    const gs: any[] = await this.inner.listGroups(this.listOpts(limit, states));
+    const gs: any[] = await listPaged((o) => this.inner.listGroups(o), this.listOpts(states), limit);
     return Promise.all((await onlyActive(gs)).map((g) => this.wrap(g) as Promise<Conversation>));
   }
 
   async listDms(_opts?: unknown, limit?: number, states?: RnConsent[]): Promise<Conversation[]> {
-    const ds: any[] = await this.inner.listDms(this.listOpts(limit, states));
+    const ds: any[] = await listPaged((o) => this.inner.listDms(o), this.listOpts(states), limit);
     return Promise.all((await onlyActive(ds)).map((d) => this.wrap(d) as Promise<Conversation>));
   }
 
   async list(): Promise<Conversation[]> {
-    const cs: any[] = await this.inner.list();
+    const cs: any[] = await listPaged((o) => this.inner.list(o), {});
     return Promise.all((await onlyActive(cs)).map((c) => this.wrap(c) as Promise<Conversation>));
   }
 
   /** Read-only conversations — the old network's history after the import. */
   async listImported(): Promise<Conversation[]> {
-    const cs: any[] = await this.inner.list({ includeDuplicateDms: true });
+    const cs: any[] = await listPaged((o) => this.inner.list(o), { includeDuplicateDms: true });
     const flags = await Promise.all(cs.map(isActiveRaw));
     return Promise.all(cs.filter((_, i) => !flags[i]).map((c) => this.wrap(c) as Promise<Conversation>));
   }

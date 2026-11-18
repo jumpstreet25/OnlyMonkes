@@ -73,7 +73,7 @@
     "@solana/spl-token": "^0.4.14",
     "@solana/web3.js": "^1.92.3",
     "@tanstack/react-query": "^5.90.21",
-    "@xmtp/react-native-sdk": "8.0.0-rc4",
+    "@xmtp/react-native-sdk": "8.0.0-rc5",
     "assert": "2.1.0",
     "bs58": "^5.0.0",
     "buffer": "^6.0.3",
