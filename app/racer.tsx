@@ -1,5 +1,5 @@
 /**
- * Monke RC — the 3D RC racer page (public/viewer/racer.html on the web-app branch)
+ * MonkeKart — the 3D RC racer page (public/viewer/racer.html on the web-app branch)
  * inside the app, driven by the holder's own monke. Web: same-site iframe. Phone: the
  * WebView already in the binary, loading the page from onlymonkes.app (OTA-safe).
  * Hidden unless config/racer.json lets this user in. A finished daily race
