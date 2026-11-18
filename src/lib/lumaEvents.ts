@@ -8,7 +8,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { fetchWithTimeout } from './fetchWithTimeout';
 
-const AK_LUMA_CACHE = 'luma_events_v6'; // v6: hardcoded fallback events guarantee globe content
+const AK_LUMA_CACHE = 'luma_events_v7'; // v7: curated config/solana-events.json
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
 
 export interface LumaEvent {
@@ -225,23 +225,27 @@ async function fetchSolanaComEvents(): Promise<LumaEvent[]> {
 }
 
 /**
- * Hardcoded major Solana events — guaranteed to show on the globe even if all APIs fail.
- * Updated periodically. These are real upcoming events with known coordinates.
+ * Hand-kept Solana events (config/solana-events.json on master, read raw so an
+ * edit reaches phones without an OTA; the bundled copy covers offline / GitHub
+ * down). Lu.ma and solana.com refuse automated requests since Nov 2026, so this
+ * is the main source. Past events drop off 7 days after they end.
  */
-function getHardcodedEvents(): LumaEvent[] {
-  const now = Date.now();
-  return [
-    { id: "solcom-accelerate-miami", name: "Solana Accelerate", startAt: "2026-05-19T09:00:00.000Z", endAt: "2026-05-21T18:00:00.000Z", location: "Miami Beach, United States", lat: 25.7907, lng: -80.1300, url: "https://lu.ma/accelerate-miami", source: "luma" as const },
-    { id: "solcom-hacker-house-nyc", name: "Solana Hacker House NYC", startAt: "2026-06-10T10:00:00.000Z", endAt: "2026-06-12T18:00:00.000Z", location: "New York, United States", lat: 40.7128, lng: -74.0060, url: "https://solana.com/events", source: "luma" as const },
-    { id: "solcom-superteam-london", name: "Superteam London Meetup", startAt: "2026-04-22T18:00:00.000Z", location: "London, United Kingdom", lat: 51.5074, lng: -0.1278, url: "https://solana.com/events", source: "luma" as const },
-    { id: "solcom-solana-singapore", name: "Solana Singapore", startAt: "2026-05-05T09:00:00.000Z", endAt: "2026-05-06T18:00:00.000Z", location: "Singapore", lat: 1.3521, lng: 103.8198, url: "https://solana.com/events", source: "luma" as const },
-    { id: "solcom-superteam-berlin", name: "Superteam Berlin", startAt: "2026-04-28T18:00:00.000Z", location: "Berlin, Germany", lat: 52.5200, lng: 13.4050, url: "https://solana.com/events", source: "luma" as const },
-    { id: "solcom-solana-dubai", name: "Solana Dubai Meetup", startAt: "2026-04-15T17:00:00.000Z", location: "Dubai, UAE", lat: 25.2048, lng: 55.2708, url: "https://solana.com/events", source: "luma" as const },
-    { id: "solcom-monke-dao-sf", name: "MonkeDAO SF Hangout", startAt: "2026-04-20T19:00:00.000Z", location: "San Francisco, United States", lat: 37.7749, lng: -122.4194, url: "https://solana.com/events", source: "luma" as const },
-    { id: "solcom-solana-tokyo", name: "Solana Tokyo Community", startAt: "2026-05-12T18:00:00.000Z", location: "Tokyo, Japan", lat: 35.6762, lng: 139.6503, url: "https://solana.com/events", source: "luma" as const },
-    { id: "solcom-depin-austin", name: "DePIN Day Austin", startAt: "2026-04-25T10:00:00.000Z", location: "Austin, United States", lat: 30.2672, lng: -97.7431, url: "https://solana.com/events", source: "luma" as const },
-    { id: "solcom-solana-seoul", name: "Solana Seoul Meetup", startAt: "2026-05-08T18:00:00.000Z", location: "Seoul, South Korea", lat: 37.5665, lng: 126.9780, url: "https://solana.com/events", source: "luma" as const },
-  ].filter(e => new Date(e.endAt ?? e.startAt).getTime() > now - 7 * 86400000);
+const CURATED_URL = "https://raw.githubusercontent.com/jumpstreet25/OnlyMonkes/master/config/solana-events.json";
+async function getCuratedEvents(): Promise<LumaEvent[]> {
+  let list: any[] = [];
+  try {
+    const res = await fetchWithTimeout(CURATED_URL, { timeoutMs: 8000 });
+    if (res.ok) list = ((await res.json()) as any)?.events ?? [];
+  } catch { /* fall back to the bundled copy */ }
+  if (!list.length) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    list = (require("../../config/solana-events.json") as { events: any[] }).events;
+  }
+  const cutoff = Date.now() - 7 * 86400000;
+  return list
+    .filter((e) => e && typeof e.name === "string" && typeof e.startAt === "string" && Number.isFinite(e.lat) && Number.isFinite(e.lng))
+    .map((e): LumaEvent => ({ id: String(e.id ?? e.name), name: e.name, startAt: e.startAt, endAt: e.endAt, location: String(e.location ?? ""), lat: e.lat, lng: e.lng, url: String(e.url ?? "https://solana.com/events"), source: "luma" }))
+    .filter((e) => new Date(e.endAt ?? e.startAt).getTime() > cutoff);
 }
 
 /**
@@ -284,7 +288,7 @@ export async function fetchSolanaEvents(): Promise<LumaEvent[]> {
   } catch { /* all fetchers failed */ }
 
   // Fallback: merge hardcoded events (guaranteed globe content)
-  for (const evt of getHardcodedEvents()) {
+  for (const evt of await getCuratedEvents()) {
     const dedupKey = `${evt.name.toLowerCase().trim()}|${evt.startAt.slice(0, 10)}`;
     if (!seen.has(dedupKey)) {
       seen.add(dedupKey);

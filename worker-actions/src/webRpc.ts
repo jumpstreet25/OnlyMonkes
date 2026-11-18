@@ -1,23 +1,36 @@
 /**
- * POST /api/rpc — Solana JSON-RPC + DAS proxy for the OnlyMonkes web app.
+ * POST /api/rpc — Solana JSON-RPC + DAS proxy for the OnlyMonkes web app and
+ * phones.
  *
- * The phone app carries its Helius key inside the APK; a public website can't
- * (anyone can read it from the page). Web sends RPC here instead and the
- * worker adds HELIUS_API_KEY server-side. Helius credits are one pooled budget
+ * Neither a public website nor an APK/OTA can hide a key (audit 2026-11-06, H6:
+ * the bot's Helius + Alchemy keys were readable in the APK and OTA manifest).
+ * Both send RPC here and the worker adds the Helius key server-side. Phones
+ * send no Origin header (native fetch); browsers always do. Keys: heliusKeys.ts. Helius credits are one pooled budget
  * (swaps, MonkeLedger, NFT checks), so this is deliberately narrow:
- *  - browser origin must be in WEB_APP_ORIGINS (or localhost while developing)
+ *  - a browser origin must be in WEB_APP_ORIGINS (or localhost while developing);
+ *    no Origin = the phone app
  *  - only the methods the app actually calls; nothing like getProgramAccounts
  *  - ≤10 calls per batch, ≤64 KB body
- *  - optional per-IP limit via the WEB_RPC_LIMITER rate-limit binding
+ *  - per-IP (or per signed-in wallet) limit via WEB_RPC_LIMITER, plus a global
+ *    ceiling via RPC_GLOBAL_LIMITER
+ *
+ * The Origin header proves nothing outside a browser (audit 2026-11-04: a
+ * forged Origin reached Helius), so the proxy takes the holder sign-in token
+ * (Authorization: Bearer, webAuth.ts) and WEB_RPC_REQUIRE_AUTH="1" makes it
+ * required. Phones don't send the token yet, so that flag would lock phones out
+ * of RPC: give them one (Device Integrity key) before turning it on.
  */
+
+import { holderWalletFromRequest, type WebAuthEnv } from "./webAuth";
+import { heliusKey, heliusKeyFailed, heliusKeys, type HeliusKeyEnv } from "./heliusKeys";
 
 type RateLimiter = { limit: (opts: { key: string }) => Promise<{ success: boolean }> };
 
-export interface WebRpcEnv {
-  HELIUS_API_KEY: string;
-  HELIUS_NFT_API_KEY?: string;
+export interface WebRpcEnv extends WebAuthEnv, HeliusKeyEnv {
   WEB_APP_ORIGINS?: string;
   WEB_RPC_LIMITER?: RateLimiter;
+  RPC_GLOBAL_LIMITER?: RateLimiter;
+  WEB_RPC_REQUIRE_AUTH?: string;
 }
 
 const RPC_METHODS = new Set([
@@ -30,6 +43,7 @@ const RPC_METHODS = new Set([
   "getMultipleAccounts",
   "getParsedTokenAccountsByOwner",
   "getSignatureStatuses",
+  "getSignaturesForAddress",
   "getSlot",
   "getTokenAccountBalance",
   "getTokenAccountsByOwner",
@@ -64,15 +78,23 @@ function rpcError(id: unknown, code: number, message: string) {
 }
 
 export async function handleWebRpc(request: Request, env: WebRpcEnv): Promise<Response> {
-  const origin = allowedOrigin(request.headers.get("Origin"), env);
-  if (!origin) return reply({ error: "origin not allowed" }, 403, null);
+  const rawOrigin = request.headers.get("Origin");
+  const origin = allowedOrigin(rawOrigin, env);
+  if (rawOrigin && !origin) return reply({ error: "origin not allowed" }, 403, null);
   if (request.method !== "POST") return reply({ error: "POST only" }, 405, origin);
-  if (!env.HELIUS_API_KEY) return reply({ error: "rpc not configured" }, 503, origin);
+  if (heliusKeys(env).length === 0) return reply({ error: "rpc not configured" }, 503, origin);
+
+  const wallet = await holderWalletFromRequest(request, env);
+  if (!wallet && env.WEB_RPC_REQUIRE_AUTH === "1") return reply({ error: "sign in again" }, 401, origin);
 
   if (env.WEB_RPC_LIMITER) {
-    const ip = request.headers.get("CF-Connecting-IP") ?? "unknown";
-    const { success } = await env.WEB_RPC_LIMITER.limit({ key: ip });
+    const who = wallet ? `w:${wallet}` : request.headers.get("CF-Connecting-IP") ?? "unknown";
+    const { success } = await env.WEB_RPC_LIMITER.limit({ key: `rpc:${who}` });
     if (!success) return reply({ error: "rate limited" }, 429, origin);
+  }
+  if (env.RPC_GLOBAL_LIMITER && !(await env.RPC_GLOBAL_LIMITER.limit({ key: "global" })).success) {
+    console.warn("[rpc] global ceiling hit");
+    return reply({ error: "busy — try again in a minute" }, 429, origin);
   }
 
   const raw = await request.text();
@@ -91,26 +113,26 @@ export async function handleWebRpc(request: Request, env: WebRpcEnv): Promise<Re
     return reply(rpcError(null, -32600, `batch must be 1-${MAX_BATCH} calls`), 400, origin);
   }
 
-  let usesDas = false;
   for (const c of calls) {
     const method = typeof c?.method === "string" ? c.method : "";
-    if (DAS_METHODS.has(method)) usesDas = true;
-    else if (!RPC_METHODS.has(method)) {
+    if (!DAS_METHODS.has(method) && !RPC_METHODS.has(method)) {
       return reply(rpcError(c?.id, -32601, `method not allowed: ${method.slice(0, 64)}`), 400, origin);
     }
   }
-  // A batch mixes plain RPC and DAS only on the NFT key's account, which
-  // serves both.
-  const key = usesDas ? env.HELIUS_NFT_API_KEY || env.HELIUS_API_KEY : env.HELIUS_API_KEY;
-
-  const upstream = await fetch(`https://mainnet.helius-rpc.com/?api-key=${key}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(batch ? calls : calls[0]),
-  });
+  // Keys take turns (heliusKeys.ts); a refused or out-of-credit key hands
+  // the call to the other account once.
+  const body = JSON.stringify(batch ? calls : calls[0]);
+  const send = (key: string) =>
+    fetch(`https://mainnet.helius-rpc.com/?api-key=${key}`, { method: "POST", headers: { "Content-Type": "application/json" }, body });
+  const first = heliusKey(env);
+  let upstream = await send(first);
+  const other = heliusKeys(env).find((k) => k !== first);
+  if (other && heliusKeyFailed(upstream.status)) {
+    console.warn(`[rpc] Helius ${upstream.status} — retrying on the other account`);
+    upstream = await send(other);
+  }
   const text = await upstream.text();
-  return new Response(text, {
-    status: upstream.status,
-    headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": origin, Vary: "Origin" },
-  });
+  const headers: Record<string, string> = { "Content-Type": "application/json", Vary: "Origin" };
+  if (origin) headers["Access-Control-Allow-Origin"] = origin;
+  return new Response(text, { status: upstream.status, headers });
 }

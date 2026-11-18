@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { safeStorageSet } from '@/lib/storageRescue';
+import { useAppStore } from '@/store/appStore';
 
 const SK_USERNAME      = 'profile_username';
 const SK_BIO           = 'profile_bio';
@@ -9,6 +10,28 @@ const SK_XACCOUNT      = 'profile_xaccount';
 const SK_TIP_WALLET    = 'profile_tip_wallet';
 const SK_LOCATION      = 'profile_location';
 const SK_SELECTED_MINT = 'profile_selected_nft_mint';
+const SK_OWNER_WALLET  = 'profile_owner_wallet';
+const PROFILE_KEYS = [SK_USERNAME, SK_BIO, SK_XACCOUNT, SK_TIP_WALLET, SK_LOCATION, SK_SELECTED_MINT];
+
+/**
+ * The profile belongs to a wallet, not the phone (2026-11-12). It used to be
+ * phone-wide, so a second wallet on the same phone (another account in Seed
+ * Vault, Phantom, Solflare, Backpack…) skipped the username setup and kept the
+ * first wallet's name, chosen monke and *tip wallet* — tips went to the wrong
+ * person. A profile saved before this has no owner and is adopted by the
+ * wallet that's connected now, so existing holders aren't asked again.
+ */
+async function claimProfileForWallet(): Promise<void> {
+  const wallet = useAppStore.getState().wallet?.address;
+  if (!wallet) return;
+  const owner = await SecureStore.getItemAsync(SK_OWNER_WALLET);
+  if (owner === wallet) return;
+  if (owner) {
+    await Promise.all(PROFILE_KEYS.map((k) => SecureStore.deleteItemAsync(k).catch(() => {})));
+    useAppStore.setState({ username: null, bio: null, xAccount: null, tipWallet: null, location: null });
+  }
+  await SecureStore.setItemAsync(SK_OWNER_WALLET, wallet);
+}
 
 export interface UserProfile {
   username: string | null;
@@ -19,6 +42,7 @@ export interface UserProfile {
 }
 
 export async function loadUserProfile(): Promise<UserProfile> {
+  await claimProfileForWallet().catch(() => {});
   const [username, bio, xAccount, tipWallet, location] = await Promise.all([
     SecureStore.getItemAsync(SK_USERNAME),
     SecureStore.getItemAsync(SK_BIO),
@@ -36,6 +60,7 @@ export async function saveUserProfile(
   tipWallet: string = '',
   location: string = '',
 ): Promise<void> {
+  await claimProfileForWallet().catch(() => {});
   await Promise.all([
     SecureStore.setItemAsync(SK_USERNAME, username.trim()),
     SecureStore.setItemAsync(SK_BIO, bio.trim()),
@@ -48,10 +73,12 @@ export async function saveUserProfile(
 // ─── Selected NFT mint persistence ───────────────────────────────────────────
 
 export async function saveSelectedNftMint(mint: string): Promise<void> {
+  await claimProfileForWallet().catch(() => {});
   await SecureStore.setItemAsync(SK_SELECTED_MINT, mint);
 }
 
 export async function loadSelectedNftMint(): Promise<string | null> {
+  await claimProfileForWallet().catch(() => {});
   return SecureStore.getItemAsync(SK_SELECTED_MINT);
 }
 
@@ -241,20 +268,88 @@ export function getPersistedLocation(inboxId: string): string | undefined {
  * without waiting for each monke's original PROFILE_UPDATE broadcast.
  */
 export function applyLocationSync(
-  locs: Record<string, { u?: string; loc?: string; ni?: string }>,
+  locs: Record<string, { u?: string; loc?: string; ni?: string; x?: string; dn?: string; d?: number }>,
 ): number {
+  // 2026-11-13: the bot now sends one pin per holder wallet (d: 1). That list is the roster for
+  // MonkeGlobe and the 🌍 count, so every device shows the same holders: before, each device
+  // dropped duplicate inboxes only where it had seen that holder's own PROFILE_UPDATE, and a
+  // fresh browser counted 21 while a phone counted 19.
+  const ids = Object.entries(locs).filter(([id, v]) => id && v?.d === 1 && v.loc?.trim()).map(([id]) => id);
+  if (ids.length) {
+    _globeRoster = ids;
+    _syncDomains = new Map(Object.entries(locs).filter(([, v]) => v?.dn).map(([id, v]) => [id, String(v.dn)]));
+    AsyncStorage.setItem(AK_GLOBE_ROSTER, JSON.stringify(ids)).catch(() => {});
+  }
   let n = 0;
   for (const [inboxId, data] of Object.entries(locs)) {
     if (!inboxId || !data?.loc?.trim()) continue;
+    // Name and picture only fill gaps: an inbox's own PROFILE_UPDATE always wins.
+    const existing = getCachedProfile(inboxId);
     cacheProfile(inboxId, {
-      username: data.u || undefined,
+      username: existing?.username ? undefined : data.u || undefined,
       location: data.loc.trim(),
-      nftImage: data.ni || undefined,
+      nftImage: existing?.nftImage ? undefined : data.ni || undefined,
+      xAccount: existing?.xAccount ? undefined : xHandle(data.x) || undefined,
     });
     trackUser(inboxId, data.u || undefined);
     n++;
   }
   return n;
+}
+
+// ─── MonkeGlobe roster (bot LOCATION_SYNC, one inbox per holder) ──────────────
+const AK_GLOBE_ROSTER = 'globe_roster_v1';
+let _globeRoster: string[] | null = null;
+// inboxId → on-chain name (.skr / .sol / .monke …) the bot found for that holder's wallet.
+let _syncDomains = new Map<string, string>();
+
+/** The on-chain name the bot found for this holder, if any (from the last LOCATION_SYNC). */
+export function getSyncDomain(inboxId: string): string | undefined {
+  return _syncDomains.get(inboxId);
+}
+
+/** Load the last one-per-holder roster the bot sent (call once on app start). */
+export async function loadGlobeRoster(): Promise<void> {
+  try {
+    const raw = await AsyncStorage.getItem(AK_GLOBE_ROSTER);
+    const ids = raw ? (JSON.parse(raw) as unknown) : null;
+    if (Array.isArray(ids) && ids.every((x) => typeof x === 'string')) _globeRoster = ids as string[];
+  } catch { /* ignore */ }
+}
+
+/**
+ * Other holders' located inboxes from the bot's roster, without any inbox of this wallet (the
+ * Globe adds the local user itself). Null until a one-per-holder LOCATION_SYNC has arrived;
+ * callers then fall back to the local profile cache.
+ */
+export function getGlobeRoster(myInboxId: string | null): string[] | null {
+  if (!_globeRoster) return null;
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { isMineInbox } = require('@/lib/inboxLinking') as { isMineInbox: (a: string, b: string) => boolean };
+  return _globeRoster.filter((id) => !(myInboxId && isMineInbox(id, myInboxId)));
+}
+
+/** An X handle from a profile's bio field: "@name", "name" or an x.com / twitter.com link → "name" ("" if it isn't one). */
+export function xHandle(raw: string | null | undefined): string {
+  const t = String(raw ?? '').trim().replace(/^(https?:\/\/)?(www\.)?(x|twitter)\.com\//i, '').replace(/^@/, '').split(/[/?#]/)[0];
+  return /^[A-Za-z0-9_]{1,15}$/.test(t) ? t : '';
+}
+
+/**
+ * A holder's MonkeGlobe name: username, else the X handle linked in their bio, else an on-chain name
+ * for their wallet (AllDomains main, .sol primary, .skr, .monke — looked up by the bot), else their
+ * monke number from the PFP.
+ */
+export function globeName(username: string | null | undefined, nftImage: string | null | undefined, xAccount?: string | null, domain?: string | null): string {
+  if (username?.trim()) return username.trim();
+  const x = xHandle(xAccount);
+  if (x) return `@${x}`;
+  const d = String(domain ?? '').trim().toLowerCase();
+  if (/^[a-z0-9_.-]{1,40}\.[a-z0-9]{1,12}$/.test(d)) return d;
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { monkeNumberFromImage } = require('@/lib/monkeMeme/monkeNumbers') as { monkeNumberFromImage: (u: string | null | undefined) => number | null };
+  const n = monkeNumberFromImage(nftImage);
+  return n ? `Monke #${n}` : 'Saga Monke holder';
 }
 
 // ─── All-time user registry ───────────────────────────────────────────────────
@@ -383,6 +478,13 @@ export function getLocatedUserCount(): number {
   // Lazy require to avoid a circular import at module load (constants ↔ profile).
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { BOT_INBOX_IDS } = require('@/lib/constants') as { BOT_INBOX_IDS: string[] };
+  const { myInboxId, location: myLocation } = useAppStore.getState();
+  const roster = getGlobeRoster(myInboxId ?? null);
+  if (roster) {
+    // Same set the Globe draws: the bot's one-per-holder roster + me + the bot pin(s).
+    const ids = new Set(roster.filter((id) => !BOT_INBOX_IDS.includes(id)));
+    return ids.size + (myInboxId && myLocation ? 1 : 0) + BOT_INBOX_IDS.length;
+  }
   const deduped = getDeduplicatedUsers();
   const counted = new Set<string>();
   for (const inboxId of deduped.keys()) {

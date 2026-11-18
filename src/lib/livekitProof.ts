@@ -38,16 +38,18 @@ export async function livekitProof(roomName: string, identity: string): Promise<
 
 let _holder: { wallet: string; token: string; expiresAt: number } | null = null;
 
-export async function holderProof(): Promise<{ kind: "holder"; token: string }> {
-  const { token } = await holderSession();
+export async function holderProof(canPrompt = true): Promise<{ kind: "holder"; token: string }> {
+  const { token } = await holderSession(canPrompt);
   return { kind: "holder", token };
 }
 
-/** The holder sign-in itself (one MWA signature, ~24 h). Also the XMTP backend credential (xmtpCredential.ts). */
-export async function holderSession(): Promise<{ wallet: string; token: string; expiresAt: number }> {
+/** The holder sign-in itself (one MWA signature, ~24 h). Also the XMTP backend credential (xmtpCredential.ts).
+ *  `canPrompt: false` never opens the wallet: it answers from the cached session or throws. */
+export async function holderSession(canPrompt = true): Promise<{ wallet: string; token: string; expiresAt: number }> {
   const wallet = useAppStore.getState().wallet?.address;
   if (!wallet) throw new Error("Connect your wallet first");
   if (_holder?.wallet === wallet && _holder.expiresAt * 1000 > Date.now() + 60_000) return _holder;
+  if (!canPrompt) throw new Error("Holder check needs a wallet signature");
   // The sign-in endpoints only answer our own origins.
   const headers = { "Content-Type": "application/json", Origin: WORKER_BASE };
   const ch = await fetch(`${WORKER_BASE}/api/auth/challenge`, { method: "POST", headers, body: JSON.stringify({ address: wallet }) });

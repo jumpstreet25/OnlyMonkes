@@ -437,6 +437,11 @@
     "sendingEllipsis": "Enviando…",
     "sendSkr": "Enviar {{amount}} $SKR  🐒",
     "monkeMeme": "MonkeMeme",
+    "monke3d": "Monke 3D",
+    "monke3dBack": "Atrás",
+    "monkeCaves": "MonkeCaves",
+    "monkeCavesBack": "Atrás",
+    "monkeRC": "MonkeKart",
     "invite": "Invitar",
     "oldHistory": "Antes de la mudanza",
     "linkedDevices": "Dispositivos vinculados",
@@ -596,7 +601,12 @@
     "kitName": "Kit {{world}}",
     "kitWear": "Usar",
     "kitNote": "Un kit es el Mundo más su burbuja y color de nombre a juego, con 20% de descuento en lo que aún no tienes. Toca un kit que ya tengas para usar todo el look.",
-    "chestOnly": "COFRE"
+    "chestOnly": "COFRE",
+    "bananasOnly": "Solo bananas",
+    "buyForBananas": "Comprar — {{cost}} 🍌",
+    "priceBananasOnly": "{{cost}} 🍌 — solo bananas, sin wallet",
+    "bananasOnlyConfirm": "{{cost}} 🍌 de tus {{balance}} 🍌. No hace falta la wallet.",
+    "anyColour": "Cualquier color"
   },
   "messageBubble": {
     "liveVideoChat": "Videochat en Vivo",
@@ -610,9 +620,16 @@
     "join": "UNIRSE",
     "tapToOpen": "Toca para abrir",
     "editedLabel": "(editado)",
+    "showMore": "Ver más",
+    "showLess": "Ver menos",
     "translatedFromSpanish": "🌐 Traducido del español — toca para ver el original",
     "translatedFromEnglish": "🌐 Traducido del inglés — toca para ver el original",
-    "showTranslation": "🌐 Mostrar traducción"
+    "showTranslation": "🌐 Mostrar traducción",
+    "untrustedLink": "Enlace oculto — no es de OnlyMonkes",
+    "openOutsideTitle": "¿Salir de OnlyMonkes?",
+    "openOutsideBody": "Esto abre {{host}}. Continúa solo si confías en quien lo envió.",
+    "openOutsideConfirm": "Abrir",
+    "cancel": "Cancelar"
   },
   "glassAlert": {
     "ok": "OK"
@@ -720,6 +737,7 @@
     "admin": "Admin",
     "badgeEarned": "{{emoji}} Insignia obtenida: {{name}}",
     "connectionLost": "Conexión perdida — reintentando...",
+    "signNeeded": "Firma con tu wallet para abrir el chat",
     "reactionSent": "Reacción enviada",
     "joinedChatWithHandle": "🍌 @{{handle}} se unió al chat",
     "newMonkeJoinedChat": "🍌 Nuevo Monke se unió al chat",
@@ -1069,7 +1087,7 @@
     "shareX": "Compartir en X",
     "shareMore": "Más…",
     "shareText": "Hice mi MonkeMeme en @xOnlyMonkes 🐒 #SagaMonkes #OnlyMonkes",
-    "footnote": "Dibujado por FLUX.2 [klein] en GPU gratuitas — Hugging Face primero, Cloudflare de respaldo.",
+    "footnote": "Tu monke en Monke3D, dibujado en la escena por FLUX.2 [klein] en GPUs gratis — primero Hugging Face, Cloudflare de respaldo.",
     "err": {
       "empty": "Primero cuéntanos qué hace tu monke.",
       "too_long": "Máximo 140 caracteres.",
@@ -1080,7 +1098,9 @@
       "failed": "No se pudo dibujar. Intenta de nuevo.",
       "captureFailed": "No se pudo guardar la imagen del meme. Intenta de nuevo.",
       "badNumber": "Ese no es un número de Saga Monke (1–10014, sin los quemados).",
-      "pfpFailed": "No se pudo cargar el arte de ese monke. Intenta de nuevo."
+      "pfpFailed": "No se pudo cargar el arte de ese monke. Intenta de nuevo.",
+      "no3d": "Este monke aún no se puede mostrar en 3D. Elígelo por número arriba.",
+      "snapFailed": "No se pudo crear tu monke 3D. Revisa tu conexión y vuelve a abrir MonkeMeme."
     },
     "numberPlaceholder": "Cualquier Monke # (ej. 8930)",
     "loadNumber": "Cargar",
@@ -1088,6 +1108,11 @@
     "artOnly": "Este monke se dibuja directo de su propio arte — sin tablero de rasgos."
   },
   "invite": {
+    "liveTitle": "🎙️ INVITACIÓN A MONKE LIVE",
+    "liveBody": "Quedada en Avatar Room en vivo, {{when}} en tu hora. Comparte tu tarjeta: lleva tu QR de invitación y los nuevos holders que entren con ella cuentan para tus referidos.",
+    "liveShareText": "🎙️ Monke Live: quedada en Avatar Room para holders de Saga Monkes, {{when}}. Entra con mi invitación 🐒🍌",
+    "liveVoteClosed": "La votación de Monke Live está cerrada",
+    "liveVoteNone": "Ahora no hay votación de Monke Live",
     "title": "Invitar amigos",
     "intro": "Invita a nuevos holders de Saga Monke. Cuando uno se une con tu enlace, tú recibes {{referrer}} bananas y él {{newHolder}}.",
     "loading": "Preparando tu invitación…",
@@ -1182,5 +1207,14 @@
     "removeFailed": "No se pudo quitar ese teléfono. Inténtalo de nuevo.",
     "retry": "Reintentar",
     "close": "Cerrar"
+  },
+  "caves": {
+    "toastRoyale": "+{{bananas}} bananas de Jungle Royale",
+    "toastCaves": "+{{bananas}} bananas de MonkeCaves"
+  },
+  "pollBar": {
+    "open": "ENCUESTA ABIERTA",
+    "openMany": "{{count}} ENCUESTAS ABIERTAS",
+    "vote": "Votar"
   }
 }

@@ -9,6 +9,8 @@
  * fallback to /get when the app isn't installed. Verified https App Links
  * need a native intent filter and wait for the 3.1 APK.
  */
+import { LIVE_EVENT, liveZoneTime } from "./liveEvent";
+export { LIVE_EVENT, liveZoneTime };
 
 export const SITE_BASE = "https://onlymonkes.app";
 export const WEB_APP_BASE = SITE_BASE;
@@ -27,6 +29,7 @@ export const OPEN_TARGETS: Record<string, { label: string; app: string; web: str
   watchlist: { label: "Watchlist", app: "watchlist", web: "/watchlist", tier: "monke" },
   portfolio: { label: "Portfolio", app: "portfolio", web: "/portfolio", tier: "monke" },
   globe: { label: "MonkeGlobe", app: "globe", web: "/globe", tier: "monke" },
+  poll: { label: "the Monke Live vote", app: "live-poll", web: "/live-poll", tier: "monke" },
   treasury: { label: "Treasury", app: "treasury", web: "/treasury", tier: "monke" },
 };
 
@@ -80,6 +83,7 @@ footer{border-top:1px solid var(--line);margin-top:72px;padding:28px 0 40px;colo
 footer .wrap{display:flex;flex-wrap:wrap;gap:12px 22px;justify-content:space-between}
 footer nav{display:flex;flex-wrap:wrap;gap:8px 18px}
 @media (max-width:640px){header.top nav a.hide-sm{display:none}}
+@media (max-width:420px){header.top .wrap{gap:8px}header.top img{height:28px}header.top nav{gap:8px}header.top .btn.sm{padding:7px 12px;font-size:13px}}
 `;
 
 function head(title: string, description: string, path: string, extraCss = ""): string {
@@ -204,8 +208,14 @@ a.tool .go{margin-top:auto;color:var(--sky);font-weight:700}
 details{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 20px;margin-bottom:10px}
 summary{cursor:pointer;font-weight:700;font-size:17px}
 details p{color:var(--mut);margin-top:10px}
-@media (max-width:860px){.hero .wrap{grid-template-columns:1fr}.hero img.mascot{max-width:220px;order:-1}.tiers,.explore{grid-template-columns:1fr}.grid,.steps{grid-template-columns:1fr 1fr}}
-@media (max-width:560px){.grid,.steps{grid-template-columns:1fr}.hero{padding-top:40px}}
+.shots{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.shots figure{background:var(--card);border:1px solid var(--line);border-radius:22px;padding:10px;margin:0}
+.shots img{display:block;width:100%;height:auto;aspect-ratio:720/1138;object-fit:cover;border-radius:14px;background:#0a0b12}
+.shots figcaption{padding:12px 6px 4px}
+.shots figcaption b{display:block;font-family:"Fredoka",sans-serif;font-size:18px}
+.shots figcaption span{color:var(--mut);font-size:14px}
+@media (max-width:860px){.hero .wrap{grid-template-columns:1fr}.hero img.mascot{max-width:220px;order:-1}.tiers,.explore{grid-template-columns:1fr}.shots{grid-template-columns:1fr 1fr}.grid,.steps{grid-template-columns:1fr 1fr}}
+@media (max-width:560px){.grid,.steps{grid-template-columns:1fr}.shots{grid-template-columns:1fr;max-width:340px;margin:0 auto}.hero{padding-top:40px}}
 `;
 
 export function renderLanding(stats: SiteStats | null, globePins: number | null = null): Response {
@@ -266,7 +276,7 @@ export function renderLanding(stats: SiteStats | null, globePins: number | null 
         <li>MonkeTrades — live trade alerts from MonkeBrain</li>
         <li>Monke, the bot in your DMs: portfolio, limit orders, sell ladders</li>
         <li>AutonoMonke — opt-in automated trading from your own hot wallet</li>
-        <li>Saga Monkes marketplace, MonkeMeme, Avatar Rooms</li>
+        <li>Saga Monkes marketplace, Avatar Rooms, MonkeCaves</li>
         <li>Private DMs and group chats</li>
       </ul>
       <a class="btn primary" href="${TENSOR_URL}" target="_blank" rel="noopener">Get a Saga Monke on Tensor</a>
@@ -283,10 +293,20 @@ export function renderLanding(stats: SiteStats | null, globePins: number | null 
     <div class="card"><div class="ic">🐒</div><h3>Monke, the bot</h3><p>Ask about any token, check your bags, set targets and ladders, all by DM. Nothing trades without your YES.</p></div>
     <div class="card"><div class="ic">📈</div><h3>MonkeTrades</h3><p>Alerts with entry, targets and stop, plus a one-tap buy you sign in your own wallet.</p></div>
     <div class="card"><div class="ic">🛒</div><h3>Marketplace</h3><p>List, bid and swap Saga Monkes holder to holder, settled on-chain.</p></div>
-    <div class="card"><div class="ic">🎨</div><h3>MonkeMeme</h3><p>Turn any Saga Monke into a cartoon meme from its own traits, then share it to X.</p></div>
+    <div class="card"><div class="ic">🕹️</div><h3>MonkeCaves</h3><p>A retro cave shooter starring your own monke, plus Jungle Royale online. Earn bananas every day.</p></div>
     <div class="card"><div class="ic">🎙️</div><h3>Avatar Rooms</h3><p>Voice rooms where your monke PFP talks when you do.</p></div>
   </div>
   <p class="risk">MonkeTrades alerts and AutonoMonke are not financial advice. Crypto trading is risky and can lose money; past results don't predict future ones. See the <a href="/terms">terms</a>.</p>
+</div></section>
+
+<section id="screens"><div class="wrap">
+  <h2>See it</h2>
+  <p class="sub">Every Saga Monke comes to life in 3D, from its own traits.</p>
+  <div class="shots">
+    <figure><img src="/site/screen-caves.jpg" alt="MonkeCaves: a first-person cave with a waterfall wall and a glowing blue floor" width="720" height="1138" loading="lazy"><figcaption><b>MonkeCaves</b><span>Clear the caves, beat the clock.</span></figcaption></figure>
+    <figure><img src="/site/screen-room.jpg" alt="Avatar Room 3D stage with four Saga Monkes, two of them talking" width="720" height="1138" loading="lazy"><figcaption><b>Avatar Rooms</b><span>Your monke talks when you do.</span></figcaption></figure>
+    <figure><img src="/site/screen-monke3d.jpg" alt="A Saga Monke rebuilt as a 3D block model" width="720" height="1138" loading="lazy"><figcaption><b>Monke 3D</b><span>Any monke by number, face-tracked by your camera.</span></figcaption></figure>
+  </div>
 </div></section>
 
 <section id="explore"><div class="wrap">
@@ -348,6 +368,124 @@ const PAGE_CSS = `
 .page .stack{display:flex;flex-direction:column;gap:12px;align-items:stretch;max-width:360px;margin:0 auto}
 .page .tip{margin-top:22px;font-size:14px;color:var(--mut);background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;text-align:left}
 .page .tip[hidden]{display:none}
+`;
+
+// ── /live: the next live Avatar Room hangout (owner 2026-11-13). The event itself is in liveEvent.ts. ──
+const LIVE_ZONES: [string, string][] = [
+  ["Los Angeles (PT)", "America/Los_Angeles"], ["Denver (MT)", "America/Denver"], ["Chicago (CT)", "America/Chicago"],
+  ["New York (ET)", "America/New_York"], ["São Paulo", "America/Sao_Paulo"], ["London", "Europe/London"],
+  ["Paris · Berlin · Lagos", "Europe/Paris"], ["Dubai", "Asia/Dubai"], ["India", "Asia/Kolkata"],
+  ["Singapore · Manila", "Asia/Singapore"], ["Tokyo · Seoul", "Asia/Tokyo"], ["Sydney", "Australia/Sydney"],
+];
+const icsStamp = (ms: number) => new Date(ms).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+
+export function renderLive(now = Date.now(), ref: string | null = null): Response {
+  const e = LIVE_EVENT, end = e.start + e.hours * 3_600_000;
+  const et = liveZoneTime(e.start, "America/New_York");
+  const desc = `Live Avatar Room hangout for Saga Monke holders on OnlyMonkes, ${et} ET onward. Your 3D monke talks when you do.`;
+  const self = `${SITE_BASE}/live`;
+  const gcal = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(e.title)}&dates=${icsStamp(e.start)}/${icsStamp(end)}&details=${encodeURIComponent(`Open Main Chat in OnlyMonkes and tap the LIVE pill. ${self}`)}&location=${encodeURIComponent(self)}`;
+  const ics = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//OnlyMonkes//Live//EN", "BEGIN:VEVENT", `UID:live-${e.start}@onlymonkes.app`, `DTSTAMP:${icsStamp(e.start)}`,
+    `DTSTART:${icsStamp(e.start)}`, `DTEND:${icsStamp(end)}`, `SUMMARY:${e.title}`, `DESCRIPTION:Open Main Chat in OnlyMonkes and tap the LIVE pill. ${self}`, `URL:${self}`,
+    "BEGIN:VALARM", "TRIGGER:-PT15M", "ACTION:DISPLAY", "DESCRIPTION:Monke Live starts in 15 minutes", "END:VALARM", "END:VEVENT", "END:VCALENDAR"].join("\r\n");
+  const tweet = `🎙️ ${e.title} — ${et} ET (${liveZoneTime(e.start, "UTC")} UTC). Bring your Saga Monke, your 3D monke talks when you do 🐒🍌\n\n${self}\n\n@xOnlyMonkes #SagaMonkes #SolanaMobile`;
+  const rows = LIVE_ZONES.map(([label, tz]) => `<tr data-tz="${tz}"><td>${esc(label)}</td><td>${esc(liveZoneTime(e.start, tz))}</td></tr>`).join("");
+  const phase = now >= end ? "ended" : now >= e.start ? "live" : "soon";
+  const body = `${head(`${e.title} · ${et} ET`, desc, "/live", PAGE_CSS + LIVE_CSS)}
+<main class="page live">
+  <img class="mascot" src="/site/icon-512.png" alt="">
+  <div class="pill ${phase}" id="phase">${phase === "live" ? "● LIVE NOW" : phase === "ended" ? "This hangout has ended" : "LIVE AVATAR ROOM"}</div>
+  <h1>${esc(e.title)}</h1>
+  <p class="when"><b>${esc(et)} ET</b> onward · come and go any time</p>
+  <div class="local" id="local" hidden></div>
+  <div class="count" id="count" hidden></div>
+  <div class="stack">
+    <a class="btn primary" href="/open/chat">Open Main Chat (holders)</a>
+    <a class="btn ghost" href="${ref ? `/r/${ref}` : "/get"}">New here? Get OnlyMonkes</a>
+  </div>
+  <div class="cal"><a href="${esc(gcal)}" target="_blank" rel="noopener">Add to Google Calendar</a> · <a href="data:text/calendar;charset=utf-8,${encodeURIComponent(ics)}" download="monke-live.ics">Add to phone calendar (.ics)</a></div>
+
+  <section class="vote" id="vote" hidden>
+    <h2>Vote for a time</h2>
+    <p class="sub" id="votesub">Holders vote in the app. Only Saga Monke holders are in Main Chat, so only holders count. Voting closes when the hangout starts.</p>
+    <div id="opts"></div>
+    <div class="stack"><a class="btn primary" id="votebtn" href="/open/poll">Vote in the app (holders)</a></div>
+    <p class="sub small">Not a holder yet? Results are open to everyone; see How to join below.</p>
+  </section>
+
+  <h2>Start time around the world</h2>
+  <table class="zones">${rows}</table>
+
+  <h2>What happens</h2>
+  <ul class="list">
+    <li>Every holder shows up as their own 3D Saga Monke on one stage.</li>
+    <li>Your monke's mouth and head follow yours (face tracking on your phone), or move with your voice.</li>
+    <li>Call the bot in by voice: tap 🤖 and say "Hey Monke".</li>
+    <li>On a computer with no mic? Tap 📱 and use your phone as mic and camera.</li>
+  </ul>
+
+  <h2>How to join</h2>
+  <ol class="list">
+    <li><b>Hold a Saga Monke.</b> Rooms are for holders. <a href="${TENSOR_URL}" target="_blank" rel="noopener">Get one on Tensor</a><span id="floor"></span>.</li>
+    <li><b>Get OnlyMonkes</b> from the Solana dApp Store on Seeker or Saga, or use the <a href="${WEB_APP_BASE}">web app</a> on a computer.</li>
+    <li><b>Log in with your wallet.</b> Main Chat opens.</li>
+    <li><b>At ${esc(et.replace(/^\w+ /, ""))} ET</b>, tap the LIVE pill in Main Chat to join.</li>
+  </ol>
+  <div class="stack">
+    <a class="btn ghost" target="_blank" rel="noopener" href="https://x.com/intent/tweet?text=${encodeURIComponent(tweet)}">Share on X</a>
+  </div>
+  <p class="tip">Holders: invite a friend from Menu → Invite. New holders who join through your link count for the November referral season (250 bananas each).</p>
+</main>
+<script>
+(function(){var S=${e.start},E=${end};
+try{var tz=Intl.DateTimeFormat().resolvedOptions().timeZone;var t=new Intl.DateTimeFormat(undefined,{weekday:'long',hour:'numeric',minute:'2-digit'}).format(new Date(S));
+var l=document.getElementById('local');l.textContent='Your time: '+t+(tz?' ('+tz.replace(/_/g,' ')+')':'');l.hidden=false;
+var r=document.querySelector('tr[data-tz="'+tz+'"]');if(r)r.className='me';}catch(_){}
+var c=document.getElementById('count'),p=document.getElementById('phase');
+function tick(){var n=Date.now();if(n>=E){c.hidden=true;p.textContent='This hangout has ended';p.className='pill ended';return;}
+if(n>=S){c.hidden=false;c.textContent='We are live, come in';p.textContent='● LIVE NOW';p.className='pill live';return;}
+var d=Math.floor((S-n)/1000),h=Math.floor(d/3600),m=Math.floor(d%3600/60),s=d%60;c.hidden=false;c.textContent='Starts in '+h+'h '+String(m).padStart(2,'0')+'m '+String(s).padStart(2,'0')+'s';}
+tick();setInterval(tick,1000);
+function esc(t){return String(t).replace(/[&<>"']/g,function(c){return '&#'+c.charCodeAt(0)+';'})}
+function poll(){fetch('/api/live').then(function(r){return r.ok?r.json():null}).then(function(d){var p=d&&d.poll;if(!p)return;
+var tot=p.options.reduce(function(a,o){return a+o.votes},0),top=Math.max.apply(null,p.options.map(function(o){return o.votes}));
+document.getElementById('opts').innerHTML=p.options.map(function(o){var pc=tot?Math.round(100*o.votes/tot):0;
+return '<div class="opt'+(o.votes&&o.votes===top?' lead':'')+'"><div class="row"><span>'+esc(o.label)+'</span><b>'+o.votes+'</b></div><div class="bar"><i style="width:'+pc+'%"></i></div></div>'}).join('');
+var closed=p.status!=='open'||Date.now()>=p.resolvesAt;document.getElementById('votebtn').style.display=closed?'none':'';
+document.getElementById('votesub').textContent=closed?'Voting is closed. '+tot+' holder'+(tot===1?'':'s')+' voted.':tot+' holder'+(tot===1?'':'s')+' voted so far. Holders vote in the app; voting closes when the hangout starts.';
+document.getElementById('vote').hidden=false;}).catch(function(){})}
+poll();setInterval(poll,30000);
+fetch('/api/floor').then(function(r){return r.ok?r.json():null}).then(function(f){if(f&&f.floorSol)document.getElementById('floor').textContent=' (floor ~'+(Math.round(f.floorSol*100)/100)+' SOL)';}).catch(function(){});
+})();
+</script>
+${foot()}`;
+  return html(body, 200, "public, max-age=60");
+}
+
+const LIVE_CSS = `
+.live img.mascot{display:block;margin:0 auto 14px}
+.live .pill{display:table;margin-left:auto;margin-right:auto;font-size:13px;font-weight:700;letter-spacing:1px;padding:4px 12px;border-radius:999px;border:1px solid var(--line);color:var(--sky);margin-bottom:12px}
+.live .pill.live{background:#e91671;border-color:#e91671;color:#fff}
+.live .pill.ended{color:var(--mut)}
+.live .when{font-size:18px;color:var(--fg);margin-bottom:6px}
+.live .local{font-size:17px;color:var(--ok);font-weight:600;margin-bottom:4px}
+.live .count{font-variant-numeric:tabular-nums;color:var(--mut);margin-bottom:20px}
+.live .cal{margin:16px 0 8px;font-size:14px}
+.live h2{font-size:22px;margin:36px 0 12px}
+.live table.zones{width:100%;max-width:420px;margin:0 auto;border-collapse:collapse;font-size:15px}
+.live table.zones td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:left}
+.live table.zones td+td{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.live table.zones tr.me td{color:var(--ok);font-weight:700}
+.live .list{text-align:left;max-width:460px;margin:0 auto;padding-left:22px;color:var(--mut)}
+.live .list li{margin-bottom:8px}
+.live .list b{color:var(--fg)}
+.live .vote .sub{color:var(--mut);margin-bottom:14px}.live .vote .small{font-size:13px;margin-top:12px}
+.live .opt{max-width:460px;margin:0 auto 10px;text-align:left}
+.live .opt .row{display:flex;justify-content:space-between;gap:10px;font-size:15px}
+.live .opt .row b{font-variant-numeric:tabular-nums}
+.live .opt .bar{height:8px;border-radius:4px;background:var(--card);border:1px solid var(--line);overflow:hidden;margin-top:4px}
+.live .opt .bar i{display:block;height:100%;background:var(--blue)}
+.live .opt.lead .row span,.live .opt.lead .row b{color:var(--ok)}.live .opt.lead .bar i{background:var(--ok)}
 `;
 
 /** In-app browsers (X, Instagram, Facebook, LINE…) usually block intents. */

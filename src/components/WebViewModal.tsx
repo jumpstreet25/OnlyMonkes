@@ -51,7 +51,8 @@ const WALLET_BRIDGE_HOSTS: ReadonlySet<string> = new Set([
 function shouldInjectBridge(url: string | null): boolean {
   if (!url) return false;
   try {
-    return WALLET_BRIDGE_HOSTS.has(new URL(url).host);
+    const u = new URL(url);
+    return u.protocol === "https:" && WALLET_BRIDGE_HOSTS.has(u.host);
   } catch {
     return false;
   }
@@ -137,6 +138,8 @@ export function WebViewModal({ visible, url, title, onClose }: WebViewModalProps
   const handleMessage = React.useCallback(
     (event: WebViewMessageEvent) => {
       try {
+        // The page may have navigated since injection: only an allowlisted https page signs.
+        if (!shouldInjectBridge(event.nativeEvent.url)) return;
         handleBridgeMessage(event.nativeEvent.data, webRef).catch((err) => {
           if (__DEV__) console.warn("[WebViewModal] bridge msg failed:", err);
         });
@@ -165,14 +168,11 @@ export function WebViewModal({ visible, url, title, onClose }: WebViewModalProps
       try {
         parsed = new URL(req.url);
       } catch {
-        // about:blank, data:, blob:, javascript:, etc. — allow (no http host
-        // to evaluate; these can't reach attacker.com on their own).
-        return true;
+        return req.url === "about:blank";
       }
-      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-        return true;
-      }
-      if (WALLET_BRIDGE_HOSTS.has(parsed.host)) {
+      // With the wallet bridge on, only allowlisted https pages load (no data:/javascript:/blob:/http:).
+      if (parsed.protocol === "about:") return true;
+      if (parsed.protocol === "https:" && WALLET_BRIDGE_HOSTS.has(parsed.host)) {
         return true;
       }
       // Block + surface to user.

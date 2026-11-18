@@ -276,6 +276,8 @@ interface LiveFeaturesState {
   activeBananaBet: BananaBetOpenData | null;
   activeBananaBetResult: BananaBetResultDisplay | null;
   activePoll: PollOpenData | null;
+  /** Polls still running that this phone hasn't voted in — the Main Chat "Vote" bar. */
+  openPolls: PollOpenData[];
   activePollResult: PollResultDisplay | null;
   /** 2026-09-02: cold-start-safe reconstruction of a winning AutonoMonke
    *  close's share card, same pattern as activeBananaBetResult — the push
@@ -300,6 +302,8 @@ interface LiveFeaturesActions {
   setActiveBananaBet: (bet: BananaBetOpenData | null) => void;
   setActiveBananaBetResult: (result: BananaBetResultDisplay | null) => void;
   setActivePoll: (poll: PollOpenData | null) => void;
+  rememberOpenPoll: (poll: PollOpenData) => void;
+  forgetOpenPoll: (pollId: string) => void;
   setActivePollResult: (result: PollResultDisplay | null) => void;
   setActiveTradeCloseCard: (trade: ClosedTrade | null) => void;
 }
@@ -392,6 +396,7 @@ const initialState: AppState = {
   activeBananaBet: null,
   activeBananaBetResult: null,
   activePoll: null,
+  openPolls: [],
   activePollResult: null,
   activeTradeCloseCard: null,
 };
@@ -601,6 +606,10 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   setActiveBananaBetResult: (activeBananaBetResult) => set({ activeBananaBetResult }),
   setActiveTradeCloseCard: (activeTradeCloseCard) => set({ activeTradeCloseCard }),
   setActivePoll: (activePoll) => set({ activePoll }),
+  rememberOpenPoll: (poll) => set((s) => ({
+    openPolls: [...s.openPolls.filter((p) => p.id !== poll.id && p.resolvesAt > Date.now()), poll].slice(-5),
+  })),
+  forgetOpenPoll: (pollId) => set((s) => ({ openPolls: s.openPolls.filter((p) => p.id !== pollId) })),
   setActivePollResult: (activePollResult) => set({ activePollResult }),
 
   // ── Reset (all slices) ─────────────────────────────────────────────────────

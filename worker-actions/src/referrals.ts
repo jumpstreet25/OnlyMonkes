@@ -33,6 +33,7 @@ import { holderClaimsFromToken } from "./webAuth";
 import { walletFromDeviceProof } from "./livekitAuth";
 import { sha256Hex } from "./cryptoVerify";
 import { ACCENT, BG, Canvas, MUTED, TEXT, W, encodePng, esc, monkeImageForNumber, readArt, textWidth } from "./shareCard";
+import { LIVE_EVENT, liveUpcoming, liveZoneTime } from "./liveEvent";
 
 const SITE = "https://onlymonkes.app";
 export const REFERRER_BANANAS = 250;
@@ -150,6 +151,8 @@ async function me(request: Request, env: Env): Promise<Response> {
     code,
     url: `${SITE}/r/${code}`,
     card: `${SITE}/r/${code}/card.png?v=${await cardVersion(rec)}`,
+    // Monke Live share card (owner 2026-11-13), only until the hangout ends.
+    live: liveUpcoming() ? { url: `${SITE}/r/${code}?e=live`, card: `${SITE}/r/${code}/card.png?e=live&v=${await cardVersion(rec)}`, title: LIVE_EVENT.title, start: LIVE_EVENT.start } : null,
     name: displayName(rec),
     referred: rec.c,
     pending: Math.max(0, rec.c - rec.k) * REFERRER_BANANAS,
@@ -267,6 +270,68 @@ async function inviteCard(code: string, rec: CodeRec): Promise<{ png: Uint8Array
   return { png: await encodePng(c.px), complete: !rec.p || !!art };
 }
 
+/** "SAT NOV 14 - 5:00 PM EST" and "2PM PT - 10PM UK - SUN 9AM SYD" for the event card (pixel font: no commas or dots). */
+export function liveCardLines(start = LIVE_EVENT.start): [string, string] {
+  const f = (o: Intl.DateTimeFormatOptions, tz = "America/New_York") => new Intl.DateTimeFormat("en-US", { timeZone: tz, ...o }).format(new Date(start));
+  const date = f({ weekday: "short", month: "short", day: "numeric" }).replace(/,/g, "").toUpperCase();
+  const day = (tz: string) => f({ weekday: "short" }, tz);
+  const short = (tz: string, tag: string) => `${day(tz) !== day("America/New_York") ? `${day(tz).toUpperCase()} ` : ""}${f({ hour: "numeric", minute: "2-digit" }, tz).replace(":00", "").replace(" ", "")} ${tag}`;
+  return [`${date} - ${liveZoneTime(start, "America/New_York").replace(/^\w+ /, "")} EST`, [short("America/Los_Angeles", "PT"), short("Europe/London", "UK"), short("Australia/Sydney", "SYD")].join(" - ")];
+}
+
+export async function liveInviteCard(code: string, rec: CodeRec): Promise<{ png: Uint8Array; complete: boolean }> {
+  const c = new Canvas(BG);
+  const cell = 33, ax = 51, ay = 51;
+  c.rect(ax - 6, ay - 6, 16 * cell + 12, 16 * cell + 12, ACCENT);
+  const art = rec.p ? await readArt(monkeImageForNumber(rec.p)!) : null;
+  if (art) for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) c.rect(ax + x * cell, ay + y * cell, cell, cell, art[y][x]);
+  else { c.rect(ax, ay, 16 * cell, 16 * cell, [30, 30, 40]); c.text("?", ax + 8 * cell - 45, ay + 8 * cell - 63, 18, MUTED); }
+  const tx = 648, maxW = W - tx - 40;
+  const fit = (t: string, max: number) => Math.max(2, Math.min(max, Math.floor((maxW + max) / (t.length * 6))));
+  const name = displayName(rec).toUpperCase();
+  const ns = fit(name, 6);
+  c.text(name, tx, 48, ns, TEXT);
+  let y = 48 + 7 * ns + 16;
+  c.text("INVITES YOU TO", tx, y, 3, MUTED); y += 36;
+  c.text("MONKE LIVE", tx, y, 7, ACCENT); y += 64;
+  const [when, zones] = liveCardLines();
+  c.text(when, tx, y, fit(when, 4), TEXT); y += 34;
+  c.text(zones, tx, y, fit(zones, 3), MUTED); y += 36;
+  const url = `${SITE}/r/${code}?e=live`;
+  const qr = qrCreate(url, { errorCorrectionLevel: "M" }).modules;
+  const q = 5, quiet = 3, size = (qr.size + quiet * 2) * q, qy = Math.max(y, 290);
+  c.rect(tx, qy, size, size, TEXT);
+  for (let r = 0; r < qr.size; r++) for (let k = 0; k < qr.size; k++) if (qr.get(r, k)) c.rect(tx + (k + quiet) * q, qy + (r + quiet) * q, q, q, BG);
+  c.text("SCAN", tx + size + 24, qy + 14, 5, TEXT);
+  c.text("TO JOIN", tx + size + 24, qy + 60, 5, TEXT);
+  c.text("AVATAR ROOM", tx + size + 24, qy + 112, 3, MUTED);
+  c.text("HOLDERS ONLY", tx + size + 24, qy + 138, 3, MUTED);
+  const short = `ONLYMONKES.APP/R/${code}`;
+  c.text(short, tx, qy + size + 22, fit(short, 3), MUTED);
+  return { png: await encodePng(c.px), complete: !rec.p || !!art };
+}
+
+async function liveInvitePage(code: string, rec: CodeRec): Promise<Response> {
+  const name = displayName(rec);
+  const card = `${SITE}/r/${code}/card.png?e=live&v=${await cardVersion(rec)}`;
+  const intent = `intent://invite/${code}#Intent;scheme=onlymonkes;package=${ANDROID_PACKAGE};S.browser_fallback_url=${encodeURIComponent(`${SITE}/get`)};end`;
+  const et = liveZoneTime(LIVE_EVENT.start, "America/New_York");
+  const title = `${name} invites you to Monke Live · ${et} ET`;
+  const desc = "Live Avatar Room hangout for Saga Monke holders on OnlyMonkes. Your 3D monke talks when you do. Join with this invite and you both get bananas.";
+  return page(title, desc, `/r/${code}?e=live`, card, `
+<img class="card" src="${esc(card)}" width="1200" height="630" alt="${esc(name)}'s invite to Monke Live">
+<h1>${esc(name)} invites you to Monke Live</h1>
+<p><b>${esc(et)} ET</b> onward<span id="loc"></span>. A live Avatar Room for Saga Monke holders. Join with code <b>${code}</b> and you both get bananas.</p>
+<div class="b">
+<a class="btn" id="app" href="${esc(intent)}">Open in OnlyMonkes</a>
+<a class="btn ghost" href="${SITE}/live?r=${code}">Your time zone + the vote</a>
+<a class="btn ghost" href="${SITE}/get">Get the app</a>
+</div>
+<p style="margin-top:18px;font-size:14px">Rooms are for Saga Monke holders. New to the app? Install it, then open this link again or enter code <b>${code}</b>.</p>
+<script>if(!/Android/i.test(navigator.userAgent))document.getElementById('app').style.display='none';
+try{document.getElementById('loc').textContent=' (your time: '+new Intl.DateTimeFormat(undefined,{weekday:'short',hour:'numeric',minute:'2-digit'}).format(new Date(${LIVE_EVENT.start}))+')'}catch(_){}</script>`);
+}
+
 function page(title: string, desc: string, path: string, image: string, inner: string): Response {
   const html = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -343,14 +408,16 @@ export async function handleReferral(path: string, request: Request, env: Env, c
   const code = pm[1].toUpperCase();
   const rec = CODE.test(code) ? await getRec(env, code) : null;
   if (!rec) return head(new Response("This invite doesn't exist", { status: 404, headers: { "Content-Type": "text/plain" } }));
-  if (!pm[2]) return head(await invitePage(code, rec));
+  // ?e=live: the Monke Live version (event card + page) until the hangout ends.
+  const live = new URL(request.url).searchParams.get("e") === "live" && liveUpcoming();
+  if (!pm[2]) return head(live ? await liveInvitePage(code, rec) : await invitePage(code, rec));
 
   const cache = (caches as unknown as { default: Cache }).default;
-  const key = new Request(`${SITE}/r/${code}/card.png?v=${await cardVersion(rec)}`, { method: "GET" });
+  const key = new Request(`${SITE}/r/${code}/card.png?${live ? `e=live&s=${LIVE_EVENT.start}&` : ""}v=${await cardVersion(rec)}`, { method: "GET" });
   const hit = await cache.match(key);
   if (hit) return head(hit);
   // A card whose PFP art didn't load (Arweave hiccup) is only cached briefly.
-  const card = await inviteCard(code, rec);
+  const card = live ? await liveInviteCard(code, rec) : await inviteCard(code, rec);
   const res = new Response(card.png, { headers: { "Content-Type": "image/png", "Cache-Control": card.complete ? "public, max-age=86400" : "public, max-age=300", "X-Content-Type-Options": "nosniff" } });
   if (card.complete) ctx.waitUntil(cache.put(key, res.clone()).catch(() => {}));
   return head(res);

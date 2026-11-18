@@ -72,7 +72,7 @@ import { toast } from "sonner-native";
 import { updateStats, type Badge } from "@/lib/activityBadges";
 import { loadBananaState } from "@/lib/bananaRewards";
 import { updateStreak as updateBadgeStreak } from "@/lib/badges";
-import { registerForPushNotifications, setNotificationReplyHandler } from "@/lib/notifications";
+import { registerForPushNotifications, setNotificationReplyHandler, setForegroundPushHandler } from "@/lib/notifications";
 import { loadEvents } from "@/lib/calendar";
 import { loadThemeId, loadCustomColor } from "@/lib/theme";
 import { sendSkrTip, sendDevTip, parseTipCommand } from "@/lib/solana";
@@ -95,6 +95,7 @@ import { enqueueMessage, flushOfflineQueue } from "@/lib/offlineQueue";
 import { appendCachedMessage } from "@/lib/messageCache";
 import { flushPendingWrites } from "@/lib/debouncedStorage";
 import { PinnedBar } from "@/components/PinnedBar";
+import { OpenPollBar } from "@/components/OpenPollBar";
 import { loadPinnedMessages, getPinnedMessages, buildPinMessage, onPinnedMessagesChange, type PinnedMessage } from "@/lib/pinnedMessages";
 import { loadThreadMetadata } from "@/lib/threads";
 import { loadListings } from "@/lib/marketplace";
@@ -478,6 +479,8 @@ export default function ChatScreen() {
       try {
         if (wasBgFor > 30_000 || !streamAlive()) {
           _streamHealth.foregroundReconnects++;
+          // The full reconnect takes a while on a phone; show the last 15 min right away.
+          syncMessages({ quick: true }).catch(() => {});
           await initialize();
         } else {
           await syncMessages();
@@ -559,7 +562,20 @@ export default function ChatScreen() {
       syncMessages({ quick: true }).catch(() => {}).finally(() => { polling = false; });
     };
     timer = setInterval(tick, 60_000);
-    return () => { if (timer) clearInterval(timer); };
+    let lastPushSync = 0;
+    setForegroundPushHandler(() => {
+      if (polling || Date.now() - lastPushSync < 5_000) return;
+      lastPushSync = Date.now();
+      polling = true;
+      // Give the message a moment to reach the network node before fetching.
+      setTimeout(() => {
+        syncMessages({ quick: true }).catch(() => {}).finally(() => { polling = false; });
+      }, 1_500);
+    });
+    return () => {
+      if (timer) clearInterval(timer);
+      setForegroundPushHandler(null);
+    };
   }, [isGroupMember, checkStreamLiveness, initialize, syncMessages]);
 
 
@@ -674,10 +690,19 @@ export default function ChatScreen() {
   // ─── Fetch $SKR price + Saga Monkes floor price (live, every 5 min) ─────────
   useEffect(() => {
     let mounted = true;
-    // Load cached floor price immediately so it shows while API warms up
-    AsyncStorage.getItem('cached_floor_price').then(cached => {
-      if (mounted && cached) setFloorPrice(cached);
+    // Saved floor shows while the fetch runs, but only if it's under an hour old
+    // (a phone CoinGecko refused kept showing a days-old price before).
+    AsyncStorage.getItem('cached_floor_price_v2').then(cached => {
+      try {
+        const c = cached ? JSON.parse(cached) as { v: string; at: number } : null;
+        if (mounted && c?.v && Date.now() - c.at < 60 * 60_000) setFloorPrice(c.v);
+      } catch { /* ignore */ }
     }).catch(() => {});
+    const showFloor = (fp: number) => {
+      const fpStr = `${fp.toFixed(2)} SOL`;
+      setFloorPrice(fpStr);
+      AsyncStorage.setItem('cached_floor_price_v2', JSON.stringify({ v: fpStr, at: Date.now() })).catch(() => {});
+    };
     const fetchPrices = () => {
       // /tokens/{address} returns pairs:null for SKR as of 2026-08-24 (confirmed
       // live) — /search still indexes it. Filter to this exact Solana mint and
@@ -694,16 +719,17 @@ export default function ChatScreen() {
           if (p) setSkrPrice(Number(p) < 0.01 ? `$${Number(p).toFixed(6)}` : `$${Number(p).toFixed(4)}`);
         })
         .catch(() => {});
-      fetchAbortable('https://api.coingecko.com/api/v3/nfts/saga-monkes')
-        .then(r => r.json())
+      // Tensor's buy-now floor from its on-chain cNFT listings (worker /api/floor ← bot
+      // tensorFloor.ts), the number Tensor shows. CoinGecko lags it; only a fallback.
+      fetchAbortable('https://onlymonkes.app/api/floor')
+        .then(r => (r.ok ? r.json() : null))
         .then(d => {
           if (!mounted) return;
-          const fp = d?.floor_price?.native_currency;
-          if (fp) {
-            const fpStr = `${Number(fp).toFixed(2)} SOL`;
-            setFloorPrice(fpStr);
-            AsyncStorage.setItem('cached_floor_price', fpStr).catch(() => {});
-          }
+          const fp = Number(d?.floorSol);
+          if (fp > 0) { showFloor(fp); return; }
+          return fetchAbortable('https://api.coingecko.com/api/v3/nfts/saga-monkes')
+            .then(r => r.json())
+            .then(g => { const v = Number(g?.floor_price?.native_currency); if (mounted && v > 0) showFloor(v); });
         })
         .catch(() => {});
     };
@@ -1205,9 +1231,9 @@ export default function ChatScreen() {
   // saves the image to the gallery + copies the caption + opens X's compose
   // screen with the caption prefilled (that part already works via the web
   // intent) — user's only remaining step is tapping X's image-picker icon.
-  const handleShareToX = useCallback(async () => {
+  const handleShareToX = useCallback(async (stampedUri?: string) => {
     const fallbackCaption = "I snapped this using @xOnlyMonkes via Solana Mobile, The Future is Monke! 🐒";
-    const imageUri = xShareImageUri;
+    const imageUri = stampedUri ?? xShareImageUri;
     const messageId = xShareMessageId;
     setXShareImageUri(null);
     setXShareMessageId(null);
@@ -1643,6 +1669,8 @@ export default function ChatScreen() {
             onJoin={handleJoinAvatarRoom}
           />
         )}
+
+        {isGroupMember && <OpenPollBar />}
 
         {/* Pinned message bar */}
         {isGroupMember && pinnedMessages.length > 0 && (

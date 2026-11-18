@@ -37,16 +37,13 @@ import {
   transact,
   Web3MobileWallet,
 } from "@solana-mobile/mobile-wallet-adapter-protocol-web3js";
-import { HELIUS_RPC_URL, SKR_MINT, DEV_WALLET, DEV_ADMIN_WALLET, JUP_API_KEY, USDC_MINT, SKR_DISCOUNT_PCT } from "./constants";
+import { HELIUS_RPC_URL, SKR_MINT, DEV_WALLET, DEV_ADMIN_WALLET, USDC_MINT, SKR_DISCOUNT_PCT } from "./constants";
 import { useAppStore } from "@/store/appStore";
 import { assertDeviceTrusted } from "./security";
 import bs58 from "bs58";
+import { WALLET_IDENTITY } from "@/lib/mwaIdentity";
 
-const APP_IDENTITY = {
-  name: "OnlyMonkes",
-  uri: "https://onlymonkes-actions.jumpstreet25.workers.dev",
-  icon: "favicon.ico",
-};
+const APP_IDENTITY = WALLET_IDENTITY;
 
 
 const SOL_MINT = "So11111111111111111111111111111111111111112";
@@ -166,10 +163,9 @@ async function fetchUsdPriceViaJupiterQuote(mint: string, amountRaw: string, dec
   const c = new AbortController();
   const t = setTimeout(() => c.abort(), TIMEOUT);
   try {
-    const headers: Record<string, string> = JUP_API_KEY ? { "x-api-key": JUP_API_KEY } : {};
     const r = await fetch(
-      `https://api.jup.ag/swap/v2/quote?inputMint=${mint}&outputMint=${USDC_MINT}&amount=${amountRaw}&slippageBps=50`,
-      { signal: c.signal, headers },
+      `https://onlymonkes.app/api/jup/quote?inputMint=${mint}&outputMint=${USDC_MINT}&amount=${amountRaw}&slippageBps=50`,
+      { signal: c.signal },
     );
     if (!r.ok) throw new Error(`Jupiter quote ${r.status}`);
     const d = await r.json() as any;
@@ -511,7 +507,7 @@ export async function getSkrBalance(walletAddress: string): Promise<number> {
 
 // ── SOL → SKR swap tip (for users without SKR) ───────────────────────────────
 
-const JUP_BUILD_URL = "https://api.jup.ag/swap/v2/build";
+const JUP_BUILD_URL = "https://onlymonkes.app/api/jup/build"; // worker adds our key (jupProxy.ts)
 
 /**
  * Tip a recipient by swapping SOL → SKR via Jupiter, then transferring the SKR.
@@ -548,10 +544,7 @@ export async function sendSolTipAsSkr(
       slippageBps: String(slippageBps),
       wrapAndUnwrapSol: "true",
     });
-    const buildHeaders: Record<string, string> = {};
-    if (JUP_API_KEY) buildHeaders["x-api-key"] = JUP_API_KEY;
-
-    const buildRes = await fetch(`${JUP_BUILD_URL}?${buildParams}`, { headers: buildHeaders });
+    const buildRes = await fetch(`${JUP_BUILD_URL}?${buildParams}`);
     if (!buildRes.ok) throw new Error(`Jupiter build failed (${buildRes.status})`);
     const buildData = await buildRes.json() as any;
 

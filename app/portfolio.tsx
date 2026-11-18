@@ -64,7 +64,7 @@ async function fetchTokenPriceViaQuote(mint: string, decimals: number): Promise<
   try {
     const amountRaw = String(10 ** decimals); // quote 1 whole token
     const res = await fetchWithTimeout(
-      `https://api.jup.ag/swap/v2/quote?inputMint=${mint}&outputMint=${USDC_MINT}&amount=${amountRaw}&slippageBps=50`,
+      `https://onlymonkes.app/api/jup/quote?inputMint=${mint}&outputMint=${USDC_MINT}&amount=${amountRaw}&slippageBps=50`,
       { timeoutMs: 8000 },
     );
     if (!res.ok) return null;

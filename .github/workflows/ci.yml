@@ -18,6 +18,12 @@ jobs:
         with:
           node-version: 24
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            worker-actions/package-lock.json
       - run: npm ci --ignore-scripts
+      # worker-actions/test imports worker code whose packages (reflect-metadata,
+      # @peculiar/*) live only in worker-actions/node_modules.
+      - run: npm ci --ignore-scripts --prefix worker-actions
       - run: npx tsc --noEmit
       - run: npx jest --ci

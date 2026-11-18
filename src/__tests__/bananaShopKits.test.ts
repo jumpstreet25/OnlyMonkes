@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
+  SHOP_ITEMS, isBananasOnly,
   KIT_DISCOUNT, LOOT_ITEMS, addOwnedItem, equipItem, findShopItem, getAvailableItems, getEquippedStyles, getWorldKits, kitPrice,
 } from "@/lib/bananaShop";
 import { parseSeasonalItems } from "@/lib/shopSeasonal";
@@ -27,10 +28,12 @@ describe("Banana Shop kits and fixes", () => {
     const { world, pieces } = getWorldKits()[0];
     const full = kitPrice(pieces, []);
     expect(full.toBuy).toHaveLength(3);
-    expect(full.usd).toBeCloseTo((4.99 + 1 + 2) * (1 - KIT_DISCOUNT), 2);
+    expect(full.usd).toBeCloseTo(4.99 * (1 - KIT_DISCOUNT), 2);
+    expect(full.bananas).toBe(Math.round((750 + 40 + 50) * (1 - KIT_DISCOUNT)));
     const last = kitPrice(pieces, [world.id, pieces[1].id]);
     expect(last.toBuy).toHaveLength(1);
-    expect(last.usd).toBe(pieces[2].usdCost);
+    expect(last.usd).toBe(0);
+    expect(last.bananas).toBe(pieces[2].bananaCost);
     expect(kitPrice(pieces, pieces.map((p) => p.id)).toBuy).toHaveLength(0);
   });
 
@@ -63,5 +66,20 @@ describe("Banana Shop kits and fixes", () => {
     spy.mockReturnValue(Date.parse("2026-12-20"));
     expect(getAvailableItems().some((i) => i.id === winter!.id)).toBe(true);
     spy.mockRestore();
+  });
+
+  it("sells 6 glow bubbles; the 5 hidden ones stay wearable for owners", async () => {
+    const forSale = getAvailableItems().filter((i) => i.category === "bubble" && !i.kit && !i.seasonal);
+    expect(forSale.map((i) => i.id)).toEqual(["bubble_neon_blue", "bubble_neon_pink", "bubble_gold_glow", "bubble_frosted", "bubble_dark_ember", "bubble_phantom"]);
+    const hidden = SHOP_ITEMS.filter((i) => i.retired).map((i) => i.id);
+    expect(hidden).toHaveLength(5);
+    await addOwnedItem("bubble_sunset");
+    expect((await equipItem("bubble_sunset")).equipped.bubble).toBe("bubble_sunset");
+    expect((await getEquippedStyles()).glowColor).toBe(findShopItem("bubble_sunset")!.style.glowColor);
+  });
+
+  it("tiers 1-2 are bananas only; PFP, themes and Worlds still take a wallet payment", () => {
+    for (const i of SHOP_ITEMS) expect(isBananasOnly(i)).toBe(i.tier <= 2);
+    expect(isBananasOnly(findShopItem("seasonal_monke_winter_2026")!)).toBe(true);
   });
 });

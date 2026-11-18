@@ -50,22 +50,26 @@ import {
   parseProfileUpdate,
   openOrCreateDm,
   sendDmMessage,
+  XMTP_SIGNATURE_REQUIRED_ERROR,
 } from "@/lib/xmtp";
 import { parseLiveRoomMessage, buildLiveRoomMessage, type LiveRoomData } from "@/lib/livekit";
 import { parsePinMessage, pinMessage, unpinMessage, getPinnedMessages } from "@/lib/pinnedMessages";
 import { parseDeleteMessage, buildDeleteMessage, markMessageDeleted, isMessageDeleted, filterDeleted, loadDeletedMessageIds } from "@/lib/deletedMessages";
 import { parsePresenceMessage, updatePresence, buildPresenceMessage } from "@/lib/presence";
 import { parseThreadMessage, trackThreadReply } from "@/lib/threads";
-import { parseMarketplaceMessage, addListing, addBid, addSwapOffer, cancelBid, markPendingSwap, markSold, delistNft, getListingById, getBidsForListing, recordHistoryEntry, getHistory as getMarketplaceHistory, type NftSwapMessage } from "@/lib/marketplace";
+import { parseMarketplaceMessage, addListing, addBid, addSwapOffer, cancelBid, markPendingSwap, markSold, delistFrom, getListingById, getBidsForListing, recordHistoryEntry, getHistory as getMarketplaceHistory, swapMatchesMyBid, type NftSwapMessage } from "@/lib/marketplace";
 import { parseVideoRoomMessage, type VideoRoomData } from "@/lib/liveVideo";
 import { parseAvatarRoomMessage, type AvatarRoomData } from "@/lib/avatarRoom";
 import { verifyNFTOwnership, verifyNftMintInCollection, checkMonkeLedgerWalletOwnership } from "@/lib/nftVerification";
-import { cacheProfile, getCachedProfile, loadProfileCache, trackUser, loadAllTimeUsers, applyLocationSync, getLocatedUserCount } from "@/lib/userProfile";
+import { cacheProfile, getCachedProfile, loadProfileCache, trackUser, loadAllTimeUsers, applyLocationSync, getLocatedUserCount, loadGlobeRoster } from "@/lib/userProfile";
 import { loadWeeklyActivity, trackActivity } from "@/lib/activityTracker";
 import { incrementProgress, updateStreak, getEarnedBadges, grantSpecialBadge, type BadgeDef } from "@/lib/badges";
 import { processBananaGrant } from "@/lib/bananaGrant";
 import { loadBananaState, mergeBananaBalance } from "@/lib/bananaRewards";
-import { loadShopState, mergeOwnedItems, getEquippedStyles, addOwnedItem, equipItem } from "@/lib/bananaShop";
+import { loadShopState, mergeOwnedItems, getEquippedStyles, addOwnedItem, equipItem, findShopItem } from "@/lib/bananaShop";
+import { isAdminSender, isBotSender, displayNameFor } from "@/lib/trustedSenders";
+import { isMineInbox } from "@/lib/inboxLinking";
+import { registerPushTokensWithBot } from "@/lib/pushRegistration";
 import { applyThemeFromShop } from "@/lib/shopTheme";
 import { processRsvpMessage } from "@/lib/eventRsvp";
 import { parseEventMessage, saveEvent } from "@/lib/calendar";
@@ -95,7 +99,6 @@ function setTypingTimeout(key: string, timer: ReturnType<typeof setTimeout>) {
 let _lastTypingSent = 0;
 import { showLocalNotification, showLocalNotificationWithJoinAction, showLocalNotificationWithReactions, detectMention, getCachedPushToken, registerForExpoPushToken, CH_ALL, CH_MENTIONS, CH_BOT, CH_LIVE, CH_MARKET, CH_SOCIAL } from "@/lib/notifications";
 
-const BOT_USERNAME = "AI Agent #9385";
 import { loadCachedMessages, saveCachedMessages, appendCachedMessage, getLastReadTimestamp } from "@/lib/messageCache";
 import type { ChatMessage, ReactionEmoji } from "@/types";
 import type { XmtpClient, XmtpGroup } from "@/lib/xmtp";
@@ -176,7 +179,11 @@ let _profileBroadcastDone = false;
 let _initRunning = false;
 // Last time the app left the foreground: a load that spans background time is not slow.
 let _lastBackgroundAt = 0;
-AppState.addEventListener("change", (s) => { if (s !== "active") _lastBackgroundAt = Date.now(); });
+let _lastForegroundAt = 0;
+AppState.addEventListener("change", (s) => {
+  if (s === "active") _lastForegroundAt = Date.now();
+  else _lastBackgroundAt = Date.now();
+});
 // streamAllMessages() has no unsubscribe. Start it once per inbox, and
 // drop duplicate deliveries so one DM cannot fire N "DM'd you" banners.
 let _dmAllStreamInbox: string | null = null;
@@ -264,6 +271,7 @@ async function _doProfileRebroadcast(pushToken: string): Promise<void> {
       shopState.owned.length > 0 ? shopState.owned : null,
       shopState.pfpBindings ?? null,
     );
+    void registerPushTokensWithBot(pushToken, expoPushToken);
     if (__DEV__) console.log('[XMTP] Re-broadcast profile with push token:', pushToken.slice(0, 30) + '…');
   } catch { /* non-critical */ }
 }
@@ -331,6 +339,7 @@ export async function backfillProfileHistory(): Promise<{ scanned: number; newPr
           ? content.slice(4).split(":").slice(1).join(":")
           : content;
         if (text.startsWith("LOCATION_SYNC:")) {
+          if (!isBotSender(raw.senderInboxId as string)) continue;
           try {
             const locs = JSON.parse(text.slice("LOCATION_SYNC:".length));
             applyLocationSync(locs as Record<string, { u?: string; loc?: string; ni?: string }>);
@@ -595,6 +604,7 @@ export function useXmtp() {
     // Startup timing (owner: Main Chat took ~1 min to load): each step's ms,
     // sent to Sentry once when the whole load is slow.
     const t0 = Date.now();
+    const startedActive = AppState.currentState === "active";
     const marks: Record<string, number> = {};
     const mark = (step: string) => { marks[step] = Date.now() - t0; };
     let afterReady: (() => Promise<void>) | null = null;
@@ -602,7 +612,7 @@ export function useXmtp() {
     try {
       // Load caches in background — don't block XMTP client boot
       // loadAllTimeUsers seeds from profileCache, so it must run after loadProfileCache
-      const cacheReady = loadProfileCache().then(() => Promise.all([loadAllTimeUsers(), loadWeeklyActivity()]));
+      const cacheReady = loadProfileCache().then(() => Promise.all([loadAllTimeUsers(), loadWeeklyActivity(), loadGlobeRoster()]));
 
       // ── 1. Boot XMTP client (uses prefetched if available) ─────────────────
       const client = await getOrInitXmtpClient();
@@ -981,9 +991,10 @@ export function useXmtp() {
                 trackUser(profile.id, profile.username);
                 // Cross-device sync: same wallet, different device → merge banana + shop
                 const isRemote = profile.id !== _myInboxId;
-                if (profile.walletAddress && isRemote) {
-                  const myWallet = useAppStore.getState().wallet?.address;
-                  if (myWallet && profile.walletAddress === myWallet) {
+                if (isRemote) {
+                  // Only my own inboxes (signature-verified /myinboxes or used on this phone) —
+                  // PROFILE_UPDATE `w` is typed by the sender and proves nothing.
+                  if (isMineInbox(raw.senderInboxId as string, _myInboxId)) {
                     (async () => {
                       try {
                         if (profile.bananaBalance != null) {
@@ -1009,11 +1020,23 @@ export function useXmtp() {
               } catch { /* ignore */ }
             } else if (typeof content === "string" && content.startsWith("LOCATION_SYNC:")) {
               // Bot broadcasts all known user locations (every 12h + on demand)
-              try {
+              if (isBotSender(raw.senderInboxId as string)) try {
                 const locs = JSON.parse(content.slice("LOCATION_SYNC:".length));
                 const n = applyLocationSync(locs as Record<string, { u?: string; loc?: string; ni?: string }>);
                 if (__DEV__) console.log(`[XMTP] Location sync: updated ${n} users`);
               } catch { /* ignore */ }
+            } else if (typeof content === "string" && content.startsWith("POLL_OPEN:")) {
+              // A poll that opened while the app was closed: show it once on open, as long as
+              // it's still running and this phone hasn't voted (the live stream does the rest).
+              if (isBotSender(raw.senderInboxId as string)) (async () => {
+                try {
+                  const { parsePollOpen, markPollSeenIfFirstTime, getMyVote } = await import("@/lib/poll");
+                  const data = parsePollOpen(content);
+                  if (!data || data.resolvesAt <= Date.now() || await getMyVote(data.id)) return;
+                  useAppStore.getState().rememberOpenPoll(data);
+                  if (await markPollSeenIfFirstTime(`open-${data.id}`)) useAppStore.getState().setActivePoll(data);
+                } catch { /* ignore */ }
+              })();
             } else if (typeof content === "string" && content.startsWith("RSVP:")) {
               processRsvpMessage(content).catch(() => {});
             } else if (typeof content === "string" && (
@@ -1024,9 +1047,10 @@ export function useXmtp() {
               // handler's doc comment below for why).
               const market = parseMarketplaceMessage(content);
               if (market) {
+                const from = raw.senderInboxId as string;
                 switch (market.type) {
-                  case 'list': addListing(market.data); break;
-                  case 'delist': delistNft(market.data.listingId); break;
+                  case 'list': addListing({ ...market.data, sellerInboxId: from }); break;
+                  case 'delist': delistFrom(market.data.listingId, from); break;
                   default: break;
                 }
               }
@@ -1049,8 +1073,9 @@ export function useXmtp() {
             // Falling through here without a match is intentional: these
             // message types are already in the system-prefix filter list, so
             // simply not handling them means they're silently dropped, same
-            // as any other filtered system message. POLL_OPEN:/POLL_RESULT:
-            // (2026-07-20) follow the exact same pattern — live-stream only.
+            // as any other filtered system message. POLL_RESULT: (2026-07-20)
+            // follows the same pattern — live-stream only. POLL_OPEN: is handled
+            // above for polls still running when the app opens (2026-11-07).
           } catch { /* skip */ }
         }
       };
@@ -1111,14 +1136,16 @@ export function useXmtp() {
           try {
             const c = raw.content();
             if (typeof c === "string" && c.startsWith("GIFT_ITEM:")) {
+              const sender = raw.senderInboxId as string;
+              if (!isAdminSender(sender, _adminInboxId) && !isBotSender(sender)) continue;
               const payload = JSON.parse(c.slice("GIFT_ITEM:".length));
               const { recipientInboxId, itemId } = payload as { recipientInboxId: string; itemId: string };
-              if (recipientInboxId === _myInboxId) {
-                // Fire-and-forget — async but non-blocking for history decode
+              if (recipientInboxId === _myInboxId && findShopItem(itemId)) {
+                // Fire-and-forget — async but non-blocking for history decode.
+                // Adds only: re-equipping on every history load would undo the user's own choice.
                 (async () => {
                   try {
                     await addOwnedItem(itemId);
-                    await equipItem(itemId);
                     const styles = await getEquippedStyles();
                     useAppStore.getState().setShopStyles(styles);
                     applyThemeFromShop(styles);
@@ -1264,7 +1291,10 @@ export function useXmtp() {
           } catch { /* the stream and resyncs catch up */ }
         });
       }
-      if (marks.ready > 15_000 && _lastBackgroundAt < t0 && AppState.currentState === "active") {
+      // Only a start that ran in the foreground the whole time: one begun in the
+      // background and finished after the user came back counted the time away
+      // (ONLYMONKES-14, "315s").
+      if (marks.ready > 15_000 && startedActive && _lastBackgroundAt < t0 && _lastForegroundAt < t0 && AppState.currentState === "active") {
         Sentry.captureMessage(`Main Chat slow start: ${Math.round(marks.ready / 1000)}s`, { level: "warning", extra: { ...marks, history: rawHistory.length } });
       }
 
@@ -1278,7 +1308,7 @@ export function useXmtp() {
         for (const raw of [...rawHistory].reverse()) {
           try {
             const content = raw.content();
-            if (typeof content === "string" && content.startsWith("PIN:")) {
+            if (typeof content === "string" && content.startsWith("PIN:") && isAdminSender(raw.senderInboxId as string, _adminInboxId)) {
               const pin = parsePinMessage(content);
               if (pin) {
                 pinActions.push({ ...pin, sender: raw.senderInboxId as string });
@@ -1458,9 +1488,9 @@ export function useXmtp() {
             }
             trackUser(profile.id, profile.username);
             // Cross-device sync: same wallet, different device → merge banana + shop
-            if (profile.walletAddress && isRemote) {
-              const myWallet = useAppStore.getState().wallet?.address;
-              if (myWallet && profile.walletAddress === myWallet) {
+            if (isRemote) {
+              // Only my own inboxes — PROFILE_UPDATE `w` is typed by the sender and proves nothing.
+              if (isMineInbox(raw.senderInboxId as string, _myInboxId)) {
                 (async () => {
                   try {
                     if (profile.bananaBalance != null) {
@@ -1487,7 +1517,9 @@ export function useXmtp() {
           try {
             const payload = JSON.parse(content.slice("GIFT_ITEM:".length));
             const { recipientInboxId, itemId, from } = payload as { recipientInboxId: string; itemId: string; from?: string };
-            if (recipientInboxId === _myInboxId) {
+            const giftSender = raw.senderInboxId as string;
+            const trusted = isAdminSender(giftSender, _adminInboxId) || isBotSender(giftSender);
+            if (trusted && recipientInboxId === _myInboxId && findShopItem(itemId)) {
               const { addOwnedItem, equipItem: equipShopItem, getEquippedStyles: getStyles, findShopItem } = await import("@/lib/bananaShop");
               const { applyThemeFromShop } = await import("@/lib/shopTheme");
               await addOwnedItem(itemId);
@@ -1508,6 +1540,7 @@ export function useXmtp() {
         }
 
         if (typeof content === "string" && content.startsWith("LOCATION_SYNC:")) {
+          if (!isBotSender(raw.senderInboxId as string)) return;
           try {
             const locs = JSON.parse(content.slice("LOCATION_SYNC:".length));
             applyLocationSync(locs as Record<string, { u?: string; loc?: string; ni?: string }>);
@@ -1550,7 +1583,7 @@ export function useXmtp() {
         // ── Pinned messages ──────────────────────────────────────────────────
         if (typeof content === "string" && content.startsWith("PIN:")) {
           const pin = parsePinMessage(content);
-          if (pin) {
+          if (pin && isAdminSender(raw.senderInboxId as string, _adminInboxId)) {
             if (pin.action === 'pin') {
               const { messages } = useChatStore.getState();
               const target = messages.find(m => m.id === pin.messageId);
@@ -1567,7 +1600,7 @@ export function useXmtp() {
         // ── Presence heartbeat ──────────────────────────────────────────────
         if (typeof content === "string" && content.startsWith("PRESENCE:")) {
           const presence = parsePresenceMessage(content);
-          if (presence) updatePresence(presence.inboxId, presence.timestamp);
+          if (presence && presence.inboxId === raw.senderInboxId) updatePresence(presence.inboxId, presence.timestamp);
           return;
         }
 
@@ -1583,7 +1616,7 @@ export function useXmtp() {
           const parts = content.slice("BADGE_GRANT:".length).split(":");
           const badgeId = parts[0]?.trim();
           const targetInbox = parts[1]?.trim();
-          if (badgeId && targetInbox && _myInboxId && targetInbox === _myInboxId) {
+          if (isBotSender(raw.senderInboxId as string) && badgeId && targetInbox && _myInboxId && targetInbox === _myInboxId) {
             const earned = grantSpecialBadge(badgeId);
             if (earned) {
               toast.success(t("useXmtp.badgeEarned", { emoji: earned.emoji, name: earned.name }));
@@ -1643,9 +1676,10 @@ export function useXmtp() {
         )) {
           const market = parseMarketplaceMessage(content);
           if (market) {
+            const from = raw.senderInboxId as string;
             switch (market.type) {
-              case 'list': addListing(market.data); break;
-              case 'delist': delistNft(market.data.listingId); break;
+              case 'list': addListing({ ...market.data, sellerInboxId: from }); break;
+              case 'delist': delistFrom(market.data.listingId, from); break;
             }
           }
           return;
@@ -1680,7 +1714,10 @@ export function useXmtp() {
 
         if (typeof content === "string" && content.startsWith("AVATAR_ROOM:")) {
           try {
-            const data = parseAvatarRoomMessage(content);
+            const parsedRoom = parseAvatarRoomMessage(content);
+            const data = parsedRoom && parsedRoom.hostId === raw.senderInboxId
+              ? { ...parsedRoom, host: displayNameFor(raw.senderInboxId as string, parsedRoom.host) }
+              : null;
             if (data) {
               if (data.active) {
                 useAppStore.getState().setActiveAvatarRoom(data);
@@ -1709,7 +1746,7 @@ export function useXmtp() {
                 }
               } else {
                 const current = useAppStore.getState().activeAvatarRoom;
-                if (current?.id === data.id) useAppStore.getState().setActiveAvatarRoom(null);
+                if (current?.id === data.id && current.hostId === data.hostId) useAppStore.getState().setActiveAvatarRoom(null);
               }
             }
           } catch { /* ignore */ }
@@ -1739,9 +1776,12 @@ export function useXmtp() {
         }
 
         if (typeof content === "string" && content.startsWith("POLL_OPEN:")) {
+          if (!isBotSender(raw.senderInboxId as string)) return;
           try {
-            const { parsePollOpen, markPollSeenIfFirstTime } = await import("@/lib/poll");
+            const { parsePollOpen, markPollSeenIfFirstTime, getMyVote } = await import("@/lib/poll");
             const data = parsePollOpen(content);
+            // The pop-up shows once; the Main Chat bar keeps the vote reachable until it closes.
+            if (data && data.resolvesAt > Date.now() && !(await getMyVote(data.id))) useAppStore.getState().rememberOpenPoll(data);
             // Same reasoning as BANANA_BET_OPEN: only fires from the live
             // stream (never history replay), gated on markPollSeenIfFirstTime
             // so a reconnect-replay of this broadcast is a no-op.
@@ -1753,9 +1793,11 @@ export function useXmtp() {
         }
 
         if (typeof content === "string" && content.startsWith("POLL_RESULT:")) {
+          if (!isBotSender(raw.senderInboxId as string)) return;
           try {
             const { parsePollResult, markPollSeenIfFirstTime, getMyVote } = await import("@/lib/poll");
             const data = parsePollResult(content);
+            if (data) useAppStore.getState().forgetOpenPoll(data.pollId);
             if (data && await markPollSeenIfFirstTime(`result-${data.pollId}`)) {
               const myVote = await getMyVote(data.pollId);
               useAppStore.getState().setActivePollResult({ ...data, myVote });
@@ -1835,7 +1877,7 @@ export function useXmtp() {
           useAppStore.getState();
 
         const senderLabel = msg.senderUsername ?? msg.senderAddress.slice(0, 6);
-        const isBotMessage = msg.senderUsername === BOT_USERNAME;
+        const isBotMessage = isBotSender(msg.senderAddress);
 
         // Show heads-up notification for all incoming messages.
         // DirectNotif native module posts directly to the Android channel,
@@ -1950,6 +1992,7 @@ export function useXmtp() {
               shopState.pfpBindings ?? null,
               getMarketplaceHistory(),
             );
+            void registerPushTokensWithBot(pushToken, expoPushToken);
             cacheProfile(client.inboxId, {
               username: username ?? undefined,
               nftImage: verifiedNft?.image ?? null,
@@ -2312,7 +2355,7 @@ export function useXmtp() {
                     }
                     case 'swap': {
                       const swap = market.data as NftSwapMessage;
-                      if (senderInboxId !== swap.sellerInboxId || swap.buyerInboxId !== client.inboxId) return;
+                      if (!swapMatchesMyBid(swap, senderInboxId, client.inboxId, useAppStore.getState().wallet?.address)) return;
                       useAppStore.getState().setPendingNftSwap(swap);
                       const swapListing = getListingById(swap.listingId);
                       showLocalNotification(
@@ -2325,6 +2368,7 @@ export function useXmtp() {
                     case 'complete': {
                       if (senderInboxId !== market.data.buyerInboxId) return;
                       const soldListing = getListingById(market.data.listingId);
+                      if (soldListing?.acceptedBid?.bidderInboxId !== senderInboxId) return;
                       markSold(market.data.listingId);
                       if (soldListing && soldListing.sellerInboxId === client.inboxId) {
                         recordHistoryEntry({
@@ -2388,7 +2432,8 @@ export function useXmtp() {
               // body shows the actual message content. Respects the global
               // notificationsEnabled toggle.
               const { notificationsEnabled: _dmNotifEnabled } = useAppStore.getState();
-              if (_dmNotifEnabled) {
+              // Bot DMs get a push from the bot (it reaches killed apps too), so no local banner — same as Main Chat.
+              if (_dmNotifEnabled && !isBotSender(senderInboxId)) {
                 const senderProfile = getCachedProfile(senderInboxId);
                 const senderName = senderProfile?.username ?? senderInboxId.slice(0, 8);
                 let displayBody = content;
@@ -2425,9 +2470,12 @@ export function useXmtp() {
       const message =
         err instanceof Error ? err.message : "XMTP initialization failed";
       if (__DEV__) console.error("[XMTP] initialize() failed:", message, err);
-      Sentry.captureException(err instanceof Error ? err : new Error(message), { extra: { ...marks, area: "xmtpInit" } });
+      // Needing a fresh wallet signature is expected (the chat shows "Sign and retry"), not a bug.
+      if (message !== XMTP_SIGNATURE_REQUIRED_ERROR) {
+        Sentry.captureException(err instanceof Error ? err : new Error(message), { extra: { ...marks, area: "xmtpInit" } });
+      }
       setError(message);
-      toast.error(t("useXmtp.connectionLost"));
+      toast.error(t(message === XMTP_SIGNATURE_REQUIRED_ERROR ? "useXmtp.signNeeded" : "useXmtp.connectionLost"));
     } finally {
       _initRunning = false;
       setLoading(false);

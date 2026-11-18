@@ -716,7 +716,7 @@ export async function verifyNFTOwnership(
   // uncertain) rather than a hard stop before the worker fallback even had
   // a chance to run.
   if (!HELIUS_NFT_API_KEY && !QUICKNODE_DAS_URL && !ALCHEMY_DAS_URL) {
-    errors.unshift("(this build has no local HELIUS_API_KEY, QUICKNODE_DAS_URL, or ALCHEMY_API_KEY configured)");
+    errors.unshift("(no NFT data source configured)");
   }
 
   // Only an authoritative source (Helius's DAS-capable "0 found", the

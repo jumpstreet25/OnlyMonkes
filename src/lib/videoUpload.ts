@@ -1,11 +1,14 @@
 import * as VideoThumbnails from 'expo-video-thumbnails';
 import * as FileSystem from 'expo-file-system/legacy';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
-import { CLOUDINARY_CLOUD_NAME, CLOUDINARY_UPLOAD_PRESET } from '@/lib/constants';
+import { Buffer } from 'buffer';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
+import { holderGameProof } from '@/lib/royaleProof';
 
-const CLOUD_NAME = CLOUDINARY_CLOUD_NAME;
-const UPLOAD_PRESET = CLOUDINARY_UPLOAD_PRESET;
+// Our own storage (worker-actions/src/webMedia.ts → R2, served from media.onlymonkes.app).
+// The phone proves it's a holder with its hardware key (no wallet prompt when Device
+// Integrity is clean; otherwise one signature, kept 24 h). No upload key in the app.
+const UPLOAD_URL = 'https://onlymonkes.app/api/upload';
 const THUMB_DIR = FileSystem.cacheDirectory + 'video_thumbs/';
 
 /**
@@ -33,65 +36,31 @@ export async function getOrGenerateThumbnail(videoUri: string): Promise<string> 
   return cachedPath;
 }
 
-/**
- * Insert Cloudinary transformation into a URL for auto quality/format.
- * e.g. .../upload/v123/file.mp4 → .../upload/q_auto,f_auto/v123/file.mp4
- */
-function addCloudinaryTransform(url: string, transform: string): string {
-  return url.replace('/upload/', `/upload/${transform}/`);
+async function uploadToMedia(uri: string, name: string, type: string, timeoutMs: number): Promise<string> {
+  const proof = await holderGameProof((nonce) => `OnlyMonkes Upload\nnonce:${nonce}`);
+  const form = new FormData();
+  form.append('file', { uri, type, name } as any);
+  const res = await fetchWithTimeout(UPLOAD_URL, {
+    method: 'POST',
+    headers: { 'X-OM-Proof': Buffer.from(JSON.stringify(proof), 'utf8').toString('base64') },
+    body: form,
+    timeoutMs,
+  });
+  const data = (await res.json().catch(() => ({}))) as { url?: string; error?: string };
+  if (!res.ok || !data.url) throw new Error(data.error ?? `Upload failed (${res.status})`);
+  return data.url;
 }
 
 export async function uploadVideo(videoUri: string): Promise<{ videoUrl: string; thumbUrl: string }> {
   const thumbUri = await getOrGenerateThumbnail(videoUri);
-
-  const vForm = new FormData();
-  vForm.append('file', { uri: videoUri, type: 'video/mp4', name: 'video.mp4' } as any);
-  vForm.append('upload_preset', UPLOAD_PRESET);
-  const vRes = await fetchWithTimeout(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/video/upload`, {
-    method: 'POST',
-    body: vForm,
-    timeoutMs: 120_000,
-  });
-  const vData = await vRes.json();
-  if (!vData.secure_url) throw new Error(vData.error?.message ?? 'Video upload failed');
-
-  const tForm = new FormData();
-  tForm.append('file', { uri: thumbUri, type: 'image/jpeg', name: 'thumb.jpg' } as any);
-  tForm.append('upload_preset', UPLOAD_PRESET);
-  const tRes = await fetchWithTimeout(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`, {
-    method: 'POST',
-    body: tForm,
-    timeoutMs: 60_000,
-  });
-  const tData = await tRes.json();
-  const thumbUrl = tData.secure_url ?? vData.secure_url + '.jpg';
-
-  // Apply server-side transformations for optimized delivery
-  return {
-    videoUrl: addCloudinaryTransform(vData.secure_url, 'q_auto,f_auto'),
-    thumbUrl: addCloudinaryTransform(thumbUrl, 'w_480,q_auto,f_auto'),
-  };
+  const videoUrl = await uploadToMedia(videoUri, 'video.mp4', 'video/mp4', 120_000);
+  const thumbUrl = await uploadToMedia(thumbUri, 'thumb.jpg', 'image/jpeg', 60_000);
+  return { videoUrl, thumbUrl };
 }
 
-/**
- * Upload a generic file to Cloudinary (raw resource type).
- * Returns the public HTTPS URL.
- */
+/** Upload a photo or file; returns its public HTTPS URL. */
 export async function uploadFile(uri: string, filename: string, mimeType: string): Promise<string> {
-  const form = new FormData();
-  form.append('file', { uri, type: mimeType, name: filename } as any);
-  form.append('upload_preset', UPLOAD_PRESET);
-  // Use 'raw' resource type for generic files (PDFs, docs, etc.)
-  const resourceType = mimeType.startsWith('image/') ? 'image'
-    : mimeType.startsWith('video/') ? 'video'
-    : 'raw';
-  const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/${resourceType}/upload`, {
-    method: 'POST',
-    body: form,
-  });
-  const data = await res.json();
-  if (!data.secure_url) throw new Error(data.error?.message ?? 'File upload failed');
-  return data.secure_url;
+  return uploadToMedia(uri, filename, mimeType, 120_000);
 }
 
 /**

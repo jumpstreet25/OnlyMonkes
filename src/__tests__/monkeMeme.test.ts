@@ -46,13 +46,14 @@ describe("traitCatalog", () => {
 });
 
 describe("prompt", () => {
-  it("references the style image only when one is attached", () => {
+  it("keeps the 3D monke from image 1 and adds the trait words", () => {
     const traits = selectionFromTraits(M1760);
-    const withRef = buildMemePrompt({ traits, scene: "buying the dip", hasStyleRef: true });
-    expect(withRef).toContain("art style of image 2");
-    expect(withRef).toContain("red devil horns");
-    expect(withRef).toContain("Scene: buying the dip.");
-    expect(buildMemePrompt({ traits, scene: "x", hasStyleRef: false })).not.toContain("image 2");
+    const p = buildMemePrompt({ traits, scene: "buying the dip" });
+    expect(p).toContain("3D monkey figure built from cubes");
+    expect(p).toContain("exactly the same colors as image 1");
+    expect(p).toContain("red devil horns");
+    expect(p).toContain("Scene: buying the dip.");
+    expect(p).not.toContain("image 2");
   });
 
   it("accepts normal scenes and crypto slang", () => {
@@ -159,10 +160,10 @@ describe("monkeNumbers", () => {
 });
 
 describe("prompt for 1/1s", () => {
-  it("falls back to the art when there are no catalog traits", () => {
-    const p = buildMemePrompt({ traits: {}, scene: "stoned on a beach", hasStyleRef: true });
-    expect(p).toContain("Keep the monkey's exact look from image 1");
-    expect(p).not.toContain("Its look, even where");
+  it("relies on image 1 alone when there are no catalog traits", () => {
+    const p = buildMemePrompt({ traits: {}, scene: "stoned on a beach" });
+    expect(p).toContain("Keep this exact character from image 1");
+    expect(p).not.toContain("Its look:");
   });
 });
 
@@ -189,9 +190,9 @@ describe("trait table + Wave 2 descriptions", () => {
   });
 
   it("puts the description in the prompt and keeps the house style colour-neutral", () => {
-    const p = buildMemePrompt({ traits: {}, scene: "at 3am", hasStyleRef: false, description: wave2Description(8982) });
+    const p = buildMemePrompt({ traits: {}, scene: "at 3am", description: wave2Description(8982) });
     expect(p).toContain("It is a cyborg monkey");
-    expect(p).toContain("Keep its exact colors from image 1");
+    expect(p).toContain("exactly the same colors as image 1");
     expect(p).not.toContain("pink lips");
   });
 });

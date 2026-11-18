@@ -125,19 +125,11 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   ],
   scheme: 'onlymonkes',
   extra: {
-    heliusApiKey: process.env.HELIUS_API_KEY ?? '',
-    heliusNftApiKey: process.env.HELIUS_NFT_API_KEY ?? '',
-    quickNodeDasUrl: process.env.QUICKNODE_DAS_URL ?? '',
-    alchemyApiKey: process.env.ALCHEMY_API_KEY ?? '',
-    groqApiKey: process.env.GROQ_API_KEY ?? '',
-    giphyApiKey: process.env.GIPHY_API_KEY ?? '',
+    // No RPC keys here: extra is public (APK + OTA manifest). RPC goes via the worker (H6).
     nftCollectionAddress:
       process.env.NFT_COLLECTION_ADDRESS ?? 'GokAiStXz2Kqbxwz2oqzfEXuUhE7aXySmBGEP7uejKXF',
-    cloudinaryCloudName: process.env.CLOUDINARY_CLOUD_NAME ?? '',
-    cloudinaryUploadPreset: process.env.CLOUDINARY_UPLOAD_PRESET ?? '',
     livekitUrl: process.env.LIVEKIT_URL ?? '',
     livekitTokenUrl: process.env.LIVEKIT_TOKEN_URL ?? '',
-    jupApiKey: process.env.JUP_API_KEY ?? '',
     skrMint: process.env.SKR_MINT ?? '',
     devWallet: process.env.DEV_WALLET ?? 'BzyaYyd7ew7SRqC1P9Q6z61ebfYmdXRFU6UfKjHzcQ2o',
     sentryDsn: process.env.SENTRY_DSN ?? '',

@@ -54,6 +54,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { ChatMessage } from "@/types";
 import { isMineInbox } from "@/lib/inboxLinking";
 import { captureError } from "@/lib/sentry";
+import { UsernameModal } from "@/components/UsernameModal";
+import { loadUserProfile } from "@/lib/userProfile";
 
 const noop = (..._args: any[]) => {};
 
@@ -62,7 +64,7 @@ export default function GenesisChatScreen() {
   const { t } = useTranslation();
   const genesisCarouselSlides = useGenesisCarouselSlides();
 
-  const { myInboxId, genesisGroupId, verified: isDualHolder, wallet, username, setGenesisGroupId } = useAppStore();
+  const { myInboxId, genesisGroupId, verified: isDualHolder, wallet, username, bio, xAccount, tipWallet, location, setGenesisGroupId } = useAppStore();
   const { disconnect } = useMobileWallet();
 
   // Genesis-only holders never mount ChatScreen/useXmtp() (which is where the
@@ -79,6 +81,27 @@ export default function GenesisChatScreen() {
   const [leaderboardOpen, setLeaderboardOpen] = useState(false);
   const [showCarousel, setShowCarousel] = useState(false);
   const [awaitingApproval, setAwaitingApproval] = useState(false);
+  const [profileModal, setProfileModal] = useState<"setup" | "edit" | null>(null);
+
+  // Genesis-only holders never open Main Chat, which is where the name prompt lives —
+  // without this their messages went out unnamed ("Monke"). The name rides in each
+  // message (MSG:<name>:text), so saving it here is all Genesis needs. The profile is
+  // per wallet (userProfile.ts), so a new wallet gets asked again.
+  useEffect(() => {
+    if (!wallet?.address) return;
+    let cancelled = false;
+    loadUserProfile().then((p) => {
+      if (cancelled) return;
+      const st = useAppStore.getState();
+      if (!p.username) { setProfileModal("setup"); return; }
+      st.setUsername(p.username);
+      if (p.bio) st.setBio(p.bio);
+      if (p.xAccount) st.setXAccount(p.xAccount);
+      st.setTipWallet(p.tipWallet || wallet.address);
+      if (p.location) st.setLocation(p.location);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [wallet?.address]);
 
   useEffect(() => {
     AsyncStorage.getItem(GENESIS_CAROUSEL_KEY).then((seen) => {
@@ -375,7 +398,21 @@ export default function GenesisChatScreen() {
           Linking.openURL(uri).catch(() => toast.error("No Solana wallet found to handle this link"));
         }}
         onDisconnectPress={isDualHolder ? undefined : handleDisconnect}
+        onProfilePress={() => { setShopOpen(false); setProfileModal("edit"); }}
       />
+
+      {profileModal && !showCarousel && (
+        <UsernameModal
+          visible
+          onDone={() => setProfileModal(null)}
+          editMode={profileModal === "edit"}
+          initialUsername={username ?? ""}
+          initialBio={bio ?? ""}
+          initialXAccount={xAccount ?? ""}
+          initialTipWallet={tipWallet ?? ""}
+          initialLocation={location ?? ""}
+        />
+      )}
 
       {leaderboardOpen && (
         <View style={StyleSheet.absoluteFill}>

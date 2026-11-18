@@ -19,7 +19,7 @@
  */
 
 export interface SpaceImage {
-  /** Local file URI (file://…) from react-native-view-shot's captureRef. */
+  /** Phone: local file URI (file://…) from view-shot's captureRef. Web: a data: URI. */
   uri: string;
   name: string;
 }
@@ -43,10 +43,19 @@ async function fetchT(url: string, init: RequestInit, ms: number): Promise<Respo
   }
 }
 
+/** A FormData file part: on the phone RN's {uri, name, type} (a file:// capture);
+ *  on the web the Monke3D snapshot arrives as a data: URI and goes up as a Blob. */
+async function filePart(form: FormData, field: string, img: SpaceImage): Promise<void> {
+  if (img.uri.startsWith("data:")) {
+    form.append(field, await (await fetch(img.uri)).blob(), img.name);
+  } else {
+    form.append(field, { uri: img.uri, name: img.name, type: "image/png" } as unknown as Blob);
+  }
+}
+
 async function upload(api: string, img: SpaceImage): Promise<string> {
   const form = new FormData();
-  // React Native's FormData file part: {uri, name, type}.
-  form.append("files", { uri: img.uri, name: img.name, type: "image/png" } as unknown as Blob);
+  await filePart(form, "files", img);
   const res = await fetchT(`${api}/upload`, { method: "POST", body: form }, UPLOAD_TIMEOUT_MS);
   if (!res.ok) throw new SpaceError(`upload ${res.status}`, res.status === 429 ? "busy" : "failed");
   const paths = (await res.json()) as unknown;
@@ -87,7 +96,7 @@ export function parseSseResult(body: string): { url: string } {
 export interface GenerateArgs {
   spaceUrl: string;
   prompt: string;
-  /** image 1 = the monke PFP, image 2 (optional) = house style reference. */
+  /** image 1 = the holder's monke rendered in Monke3D (public/viewer/snap.html). */
   images: SpaceImage[];
   seed?: number;
 }
@@ -134,9 +143,7 @@ export async function generateOnWorker({ fallbackUrl, prompt, images, wallet }: 
   const form = new FormData();
   form.append("prompt", prompt);
   form.append("wallet", wallet);
-  images.slice(0, 2).forEach((img, i) =>
-    form.append(`image_${i}`, { uri: img.uri, name: img.name, type: "image/png" } as unknown as Blob),
-  );
+  for (const [i, img] of images.slice(0, 2).entries()) await filePart(form, `image_${i}`, img);
   const res = await fetchT(`${fallbackUrl}/api/monkememe/generate`, { method: "POST", body: form }, RESULT_TIMEOUT_MS);
   let body: { image?: unknown; kind?: unknown; error?: unknown } = {};
   try {

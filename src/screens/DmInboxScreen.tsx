@@ -39,6 +39,7 @@ import { GlassModal } from '@/components/GlassModal';
 import * as Clipboard from 'expo-clipboard';
 import { toast } from 'sonner-native';
 import { getHiddenDmMap, hideDmThread, isDmStillHidden } from '@/lib/dmHidden';
+import { isBotSender } from '@/lib/trustedSenders';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -56,14 +57,14 @@ function ThreadRow({ thread, myInboxId, unread, onLongPress }: { thread: DmThrea
   try { profile = getCachedProfile(thread.peerInboxId); } catch { /* ignore */ }
   const name: string = profile?.username ?? 'Monke';
   const avatarUri: string | null = profile?.nftImage ?? null;
-  const isBot = name === 'AI Agent #9385';
+  const isBot = isBotSender(thread.peerInboxId);
 
   const rawMsg = thread.lastMessage;
   let preview = 'No messages yet';
   if (typeof rawMsg === 'string' && rawMsg.length > 0) {
     try {
       // Filter out protocol messages that shouldn't be shown as previews
-      if (rawMsg.startsWith('READ:') || rawMsg.startsWith('TYPING:') || rawMsg.startsWith('PROFILE_UPDATE:') || rawMsg.startsWith('GIFT_ITEM:')) {
+      if (rawMsg.startsWith('READ:') || rawMsg.startsWith('TYPING:') || rawMsg.startsWith('PROFILE_UPDATE:') || rawMsg.startsWith('GIFT_ITEM:') || rawMsg.startsWith('PUSH_') || rawMsg.startsWith('LOCATION_SYNC')) {
         preview = 'No messages yet';
       } else {
         preview = rawMsg

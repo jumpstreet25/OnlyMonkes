@@ -73,7 +73,11 @@ import { OnlineDot } from "@/components/OnlineDot";
 import { isUserOnline } from "@/lib/presence";
 import MarkdownContent from "@/components/MarkdownContent";
 
+/** Longest message text drawn before "Show more" (see the ANR note in MessageBubble). */
+const LONG_TEXT = 2000;
+
 // ─── Pulse Frame — animated ring for Tier 3 PFP shop item ─────────────────
+
 function PulseRing({ color }: { color: string }) {
   const pulseAnim = useRef(new Animated.Value(0.3)).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;
@@ -113,6 +117,7 @@ import { hasThread, getThreadMeta } from "@/lib/threads";
 import { router } from "expo-router";
 import { LiquidGlass as BlurView } from "@/components/LiquidGlass";
 import { getBlurProps } from "@/lib/glassTheme";
+import { displayNameFor, isBotSender, isTrustedTipLink, safeAttachmentUrl } from "@/lib/trustedSenders";
 
 // ─── Glassmorphism constants ─────────────────────────────────────────────────
 const GLASS_BLUE = "#6CB4EE";                    // OnlyMonkes blue
@@ -638,6 +643,11 @@ export const MessageBubble = memo(function MessageBubble({
   const [showOriginalOverTranslation, setShowOriginalOverTranslation] = useState(false);
   const hasTranslation = !!message.translatedContent && !!message.detectedLang && message.detectedLang !== viewerLanguage;
   const displayContent = hasTranslation && !showOriginalOverTranslation ? message.translatedContent! : editedOrOriginal;
+  // A very long message froze a Seeker for 5 s+ while Android word-wrapped it (Sentry ANR
+  // 2026-11-12, minikin line breaking). Draw the first LONG_TEXT characters, the rest on tap.
+  const [showFullText, setShowFullText] = useState(false);
+  const isLongText = displayContent.length > LONG_TEXT;
+  const shownContent = isLongText && !showFullText ? `${displayContent.slice(0, LONG_TEXT).trimEnd()}…` : displayContent;
 
   const handleLongPress = useCallback(() => {
     Keyboard.dismiss();
@@ -712,8 +722,9 @@ export const MessageBubble = memo(function MessageBubble({
   // Re-read from cache on every render — use primary inbox ID to merge multi-device users
   const primarySenderInbox = isOwn ? message.senderAddress : getPrimaryInboxId(message.senderAddress);
   const cachedSender = getCachedProfile(primarySenderInbox);
-  const displayName  = cachedSender?.username ?? message.senderUsername ?? t("chatInput.monke");
-  const isBot = message.senderUsername === "AI Agent #9385";
+  // Bot styling comes from the real sender inbox, never the typed name (audit 2026-11-04).
+  const isBot = isBotSender(message.senderAddress);
+  const displayName  = displayNameFor(message.senderAddress, cachedSender?.username ?? message.senderUsername ?? t("chatInput.monke"));
   // Bot PFP theme — teal from the bot's pixel art visor/eyes
   const BOT_THEME_COLOR = "#00C9A7";
   // Glitch bubble accent — sender's PFP dominant color so each user wears
@@ -1073,10 +1084,14 @@ export const MessageBubble = memo(function MessageBubble({
                   const parts = message.content.slice(8).split("|");
                   const url = parts[0];
                   const amount = parts[1] || "?";
-                  const sender = parts[2] || "Monke";
+                  // Only the worker's own claim link opens, and the name is the real sender's.
+                  if (!isTrustedTipLink(url)) {
+                    return <Text style={styles.tipLinkHint}>{t("messageBubble.untrustedLink")}</Text>;
+                  }
+                  const sender = displayName;
                   return (
                     <Pressable
-                      onPress={() => url && Linking.openURL(url).catch(() => {})}
+                      onPress={() => Linking.openURL(url).catch(() => {})}
                       onLongPress={handleLongPress}
                       delayLongPress={350}
                       style={styles.tipLinkBubble}
@@ -1092,11 +1107,22 @@ export const MessageBubble = memo(function MessageBubble({
               ) : message.content.startsWith("ATTACHMENT:") ? (
                 (() => {
                   const parts = message.content.slice(11).split("|");
-                  const url = parts[0];
+                  const safe = safeAttachmentUrl(parts[0]);
                   const filename = parts[1] || "file";
+                  if (!safe) {
+                    return <Text style={styles.attachmentHint}>{t("messageBubble.untrustedLink")}</Text>;
+                  }
+                  const open = () => Linking.openURL(safe.href).catch(() => {});
                   return (
                     <Pressable
-                      onPress={() => url && Linking.openURL(url).catch(() => {})}
+                      onPress={() =>
+                        /(^|\.)onlymonkes\.app$/.test(safe.hostname)
+                          ? open()
+                          : showGlassAlert(t("messageBubble.openOutsideTitle"), t("messageBubble.openOutsideBody", { host: safe.hostname }), [
+                              { text: t("messageBubble.cancel"), style: "cancel" },
+                              { text: t("messageBubble.openOutsideConfirm"), onPress: open },
+                            ])
+                      }
                       onLongPress={handleLongPress}
                       delayLongPress={350}
                       style={styles.attachmentBubble}
@@ -1104,7 +1130,7 @@ export const MessageBubble = memo(function MessageBubble({
                       <Text style={styles.attachmentIcon}>📎</Text>
                       <View style={{ flex: 1 }}>
                         <Text style={styles.attachmentFilename} numberOfLines={1}>{filename}</Text>
-                        <Text style={styles.attachmentHint}>{t("messageBubble.tapToOpen")}</Text>
+                        <Text style={styles.attachmentHint}>{safe.hostname} · {t("messageBubble.tapToOpen")}</Text>
                       </View>
                     </Pressable>
                   );
@@ -1136,7 +1162,7 @@ export const MessageBubble = memo(function MessageBubble({
                       return (
                         <View style={showBotExpand && !botExpanded ? { maxHeight: 9 * 22, overflow: "hidden" } : undefined}>
                           <MarkdownContent
-                            content={blinkUrl ? stripBlinkUrlLine(displayContent) : displayContent}
+                            content={blinkUrl ? stripBlinkUrlLine(shownContent) : shownContent}
                             style={{ fontSize: 15 * (useAppStore.getState().textScale ?? 1) }}
                           />
                         </View>
@@ -1174,10 +1200,17 @@ export const MessageBubble = memo(function MessageBubble({
                         ]}
                         selectable={false}
                       >
-                        {renderRichContent(blinkUrl ? stripBlinkUrlLine(displayContent) : displayContent, handlePressMention, onTokenPress)}
+                        {renderRichContent(blinkUrl ? stripBlinkUrlLine(shownContent) : shownContent, handlePressMention, onTokenPress)}
                       </Text>
                     );
                   })()}
+                  {isLongText && (
+                    <Pressable onPress={() => setShowFullText((v) => !v)} hitSlop={8}>
+                      <Text style={[styles.editedLabel, { color: textColor, textDecorationLine: "underline" }]}>
+                        {showFullText ? t("messageBubble.showLess") : t("messageBubble.showMore")}
+                      </Text>
+                    </Pressable>
+                  )}
                   {message.editedAt && (
                     <Text style={[styles.editedLabel, { color: textColor }]}>{t("messageBubble.editedLabel")}</Text>
                   )}

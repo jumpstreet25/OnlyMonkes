@@ -437,6 +437,11 @@
     "sendingEllipsis": "Sending…",
     "sendSkr": "Send {{amount}} $SKR  🐒",
     "monkeMeme": "MonkeMeme",
+    "monke3d": "3D Monke",
+    "monke3dBack": "Back",
+    "monkeCaves": "MonkeCaves",
+    "monkeCavesBack": "Back",
+    "monkeRC": "MonkeKart",
     "invite": "Invite",
     "oldHistory": "Before the move",
     "linkedDevices": "Linked devices",
@@ -596,7 +601,12 @@
     "kitName": "{{world}} kit",
     "kitWear": "Wear",
     "kitNote": "A kit is the World plus its matching bubble and name color, 20% off what you don't own yet. Tap a kit you own to wear the whole look.",
-    "chestOnly": "CHEST"
+    "chestOnly": "CHEST",
+    "bananasOnly": "Bananas only",
+    "buyForBananas": "Buy — {{cost}} 🍌",
+    "priceBananasOnly": "{{cost}} 🍌 — bananas only, no wallet needed",
+    "bananasOnlyConfirm": "{{cost}} 🍌 from your {{balance}} 🍌. No wallet needed.",
+    "anyColour": "Any colour"
   },
   "messageBubble": {
     "liveVideoChat": "Live Video Chat",
@@ -610,9 +620,16 @@
     "join": "JOIN",
     "tapToOpen": "Tap to open",
     "editedLabel": "(edited)",
+    "showMore": "Show more",
+    "showLess": "Show less",
     "translatedFromSpanish": "🌐 Translated from Spanish — tap to see original",
     "translatedFromEnglish": "🌐 Translated from English — tap to see original",
-    "showTranslation": "🌐 Show translation"
+    "showTranslation": "🌐 Show translation",
+    "untrustedLink": "Link hidden — not from OnlyMonkes",
+    "openOutsideTitle": "Leave OnlyMonkes?",
+    "openOutsideBody": "This opens {{host}}. Only continue if you trust the sender.",
+    "openOutsideConfirm": "Open",
+    "cancel": "Cancel"
   },
   "glassAlert": {
     "ok": "OK"
@@ -720,6 +737,7 @@
     "admin": "Admin",
     "badgeEarned": "{{emoji}} Badge earned: {{name}}",
     "connectionLost": "Connection lost — retrying...",
+    "signNeeded": "Please sign with your wallet to open chat",
     "reactionSent": "Reaction sent",
     "joinedChatWithHandle": "🍌 @{{handle}} joined chat",
     "newMonkeJoinedChat": "🍌 New Monke joined chat",
@@ -1069,7 +1087,7 @@
     "shareX": "Share to X",
     "shareMore": "More…",
     "shareText": "Made my MonkeMeme on @xOnlyMonkes 🐒 #SagaMonkes #OnlyMonkes",
-    "footnote": "Drawn by FLUX.2 [klein] on free GPUs — Hugging Face first, Cloudflare as backup.",
+    "footnote": "Your monke in Monke3D, drawn into the scene by FLUX.2 [klein] on free GPUs — Hugging Face first, Cloudflare as backup.",
     "err": {
       "empty": "Tell us what your monke is doing first.",
       "too_long": "Keep it to 140 characters.",
@@ -1080,7 +1098,9 @@
       "failed": "Couldn't draw that one. Try again.",
       "captureFailed": "Couldn't save the meme image. Try again.",
       "badNumber": "That's not a Saga Monke number (1–10014, burned monkes excluded).",
-      "pfpFailed": "Couldn't load that monke's art. Try again."
+      "pfpFailed": "Couldn't load that monke's art. Try again.",
+      "no3d": "This monke can't be shown in 3D yet. Pick it by number above.",
+      "snapFailed": "Couldn't build your 3D monke. Check your connection and reopen MonkeMeme."
     },
     "numberPlaceholder": "Any Monke # (e.g. 8930)",
     "loadNumber": "Load",
@@ -1088,6 +1108,11 @@
     "artOnly": "This monke is drawn straight from its own art — no trait board needed."
   },
   "invite": {
+    "liveTitle": "🎙️ MONKE LIVE INVITE",
+    "liveBody": "Live Avatar Room hangout, {{when}} your time. Share your card: it has your invite QR, and new holders who join with it count for your referrals.",
+    "liveShareText": "🎙️ Monke Live: Avatar Room hangout for Saga Monke holders, {{when}}. Join with my invite 🐒🍌",
+    "liveVoteClosed": "The Monke Live vote is closed",
+    "liveVoteNone": "No Monke Live vote right now",
     "title": "Invite friends",
     "intro": "Invite new Saga Monke holders. When one joins with your link, you get {{referrer}} bananas and they get {{newHolder}}.",
     "loading": "Getting your invite…",
@@ -1182,5 +1207,14 @@
     "removeFailed": "Couldn't remove that phone. Try again.",
     "retry": "Try again",
     "close": "Close"
+  },
+  "caves": {
+    "toastRoyale": "+{{bananas}} bananas from Jungle Royale",
+    "toastCaves": "+{{bananas}} bananas from MonkeCaves"
+  },
+  "pollBar": {
+    "open": "POLL OPEN",
+    "openMany": "{{count}} POLLS OPEN",
+    "vote": "Vote"
   }
 }

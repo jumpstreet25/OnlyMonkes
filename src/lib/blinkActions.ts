@@ -1,3 +1,4 @@
+import { isTrustedBlinkUrl } from "@/lib/trustedSenders";
 /**
  * blinkActions.ts — Solana Actions / Blinks client
  *
@@ -74,6 +75,12 @@ export function isBlinkUrl(url: string): boolean {
  * Returns null if no Blink URL found.
  */
 export function extractBlinkUrl(content: string): string | null {
+  const url = findBlinkUrl(content);
+  // Only our own actions render as a Blink; anything else stays a plain link.
+  return url && isTrustedBlinkUrl(url) ? url : null;
+}
+
+function findBlinkUrl(content: string): string | null {
   // Skip media messages
   if (
     content.startsWith("GIF:") ||
@@ -211,6 +218,7 @@ export async function executeAction(
   if (!walletAddress || walletAddress.length < 32 || walletAddress.length > 44) {
     throw new Error("Invalid wallet address");
   }
+  if (!isTrustedBlinkUrl(actionHref)) throw new Error("Untrusted action host");
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15_000);

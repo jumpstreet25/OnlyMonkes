@@ -53,6 +53,12 @@ const CHANNEL_GROUP_ID = "onlymonkes";
 // ── Module-level reply callback ───────────────────────────────────────────────
 let _replyHandler: ((text: string) => void) | null = null;
 
+let _foregroundPushHandler: (() => void) | null = null;
+/** Main Chat registers a quick catch-up fetch to run when a push arrives while the app is open. */
+export function setForegroundPushHandler(fn: (() => void) | null): void {
+  _foregroundPushHandler = fn;
+}
+
 export function setNotificationReplyHandler(fn: (text: string) => void): void {
   _replyHandler = fn;
 }
@@ -264,6 +270,9 @@ try {
     Notifications.addNotificationReceivedListener((notification: any) => {
       const data = notification?.request?.content?.data;
       const id = notification?.request?.identifier;
+      // A push while the app is open means something new was posted: fetch it now instead of
+      // waiting for a stream that may have gone quiet ("showed in notis but not in chat").
+      if (AppState.currentState === "active") _foregroundPushHandler?.();
       if (
         AppState.currentState === "active" &&
         data?.type &&

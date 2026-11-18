@@ -16,6 +16,8 @@ const OPEN: Record<string, string> = {
   watchlist: '/watchlist',
   portfolio: '/portfolio',
   globe: '/globe',
+  poll: '/live-poll',
+  'live-poll': '/live-poll',
   treasury: '/treasury',
   settings: '/settings',
   about: '/about',

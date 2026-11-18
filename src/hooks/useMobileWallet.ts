@@ -27,12 +27,9 @@ import { refreshInboxLinks } from "@/lib/inboxLinking";
 import { fetchSignInPayload, rememberSignIn } from "@/lib/signInProof";
 import { toast } from "sonner-native";
 import type { WalletAccount } from "@/types";
+import { WALLET_IDENTITY } from "@/lib/mwaIdentity";
 
-const APP_IDENTITY = {
-  name: "OnlyMonkes",
-  uri: "https://onlymonkes-actions.jumpstreet25.workers.dev",
-  icon: "favicon.ico",
-};
+const APP_IDENTITY = WALLET_IDENTITY;
 
 /**
  * Core MWA signing call, parameterized on explicit auth values rather than

@@ -3,3 +3,4 @@
 // class is exported, so the entry exports only the two real ones.
 export { default } from "./index";
 export { PhoneCamRoom } from "./phoneCam";
+export { RoyaleHall } from "./royale/royale";

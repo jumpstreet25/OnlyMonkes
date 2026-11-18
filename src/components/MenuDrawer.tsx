@@ -40,13 +40,15 @@ import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
 import * as Clipboard from "expo-clipboard";
 import { toast } from "sonner-native";
-import { THEME, FONTS, SKR_MINT, JUP_API_KEY, DEV_WALLET, getWorldBarTint, getWorldAccent, surfaceToBarTint, resolveBarTint } from "@/lib/constants";
+import { THEME, FONTS, SKR_MINT, DEV_WALLET, getWorldBarTint, getWorldAccent, surfaceToBarTint, resolveBarTint } from "@/lib/constants";
 import { MenuIcon, type MenuIconName } from "@/components/MenuIcon";
 import { WorldLayer } from "@/components/worlds/WorldLayer";
 import { useThemeColor } from "@/lib/shopTheme";
 import { useChatStore } from "@/store/chatStore";
 import { useAppStore, type CalendarEvent } from "@/store/appStore";
 import { getMonkeMemeConfig, monkeMemeVisible, type MonkeMemeConfig } from "@/lib/monkeMeme/config";
+import { getMonkeCavesConfig, monkeCavesVisible, type MonkeCavesConfig } from "@/lib/monkeCaves/config";
+import { getRacerConfig, racerVisible, type RacerConfig } from "@/lib/racer/config";
 import { getCachedProfile, useProfileVersion } from "@/lib/userProfile";
 import { fetchSolanaEvents, type LumaEvent } from "@/lib/lumaEvents";
 import { ProfileScorecard } from "@/components/ProfileScorecard";
@@ -71,11 +73,11 @@ import { CHAT_THEMES, saveThemeId } from "@/lib/theme";
 import { WebViewModal } from "@/components/WebViewModal";
 import { pruneStaleDuplicateMembers, amISuperAdmin } from "@/hooks/useXmtp";
 import { hasImportedHistory } from "@/lib/xmtpHistoryImport";
+import { isBotSender } from "@/lib/trustedSenders";
 
 const DRAWER_WIDTH_RATIO = 0.82;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const URL_REGEX = /https?:\/\/[^\s"'<>)]+/g;
-const BOT_USERNAME = "AI Agent #9385";
 
 type ActiveView = "list" | "alerts" | "events" | "images" | "links" | "settings" | "tools" | "leaderboard";
 
@@ -224,7 +226,7 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
     ), [messages]);
 
   const agentAlerts = useMemo(() =>
-    messages.filter((m) => m.senderUsername === BOT_USERNAME),
+    messages.filter((m) => isBotSender(m.senderAddress)),
     [messages]);
 
   // Lu.ma-sourced Solana ecosystem events. Fetched lazily when the user
@@ -353,6 +355,18 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
     getMonkeMemeConfig().then(setMemeCfg).catch(() => {});
   }, []);
   const showMonkeMeme = monkeMemeVisible(memeCfg, isGroupAdminForMeme, walletForMeme);
+  // MonkeCaves tile: same dark launch, config/monkecaves.json.
+  const [cavesCfg, setCavesCfg] = useState<MonkeCavesConfig | null>(null);
+  useEffect(() => {
+    getMonkeCavesConfig().then(setCavesCfg).catch(() => {});
+  }, []);
+  const showMonkeCaves = monkeCavesVisible(cavesCfg, isGroupAdminForMeme, walletForMeme);
+  // MonkeKart tile: same dark launch, config/racer.json.
+  const [racerCfg, setRacerCfg] = useState<RacerConfig | null>(null);
+  useEffect(() => {
+    getRacerConfig().then(setRacerCfg).catch(() => {});
+  }, []);
+  const showRacer = racerVisible(racerCfg, isGroupAdminForMeme, walletForMeme);
 
   function GridButton({
     iconName, label, badge, onPress,
@@ -673,6 +687,25 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
                     iconName="monkeface"
                     label={t("menuDrawer.monkeMeme")}
                     onPress={() => { onClose(); setTimeout(() => router.push('/monkememe' as any), 300); }}
+                  />
+                )}
+                <GridButton
+                  iconName="monkeface"
+                  label={t("menuDrawer.monke3d")}
+                  onPress={() => { onClose(); setTimeout(() => router.push('/monke3d' as any), 300); }}
+                />
+                {showMonkeCaves && (
+                  <GridButton
+                    iconName="target"
+                    label={t("menuDrawer.monkeCaves")}
+                    onPress={() => { onClose(); setTimeout(() => router.push('/monkecaves' as any), 300); }}
+                  />
+                )}
+                {showRacer && (
+                  <GridButton
+                    iconName="bolt"
+                    label={t("menuDrawer.monkeRC")}
+                    onPress={() => { onClose(); setTimeout(() => router.push('/racer' as any), 300); }}
                   />
                 )}
                 <GridButton
@@ -1321,7 +1354,6 @@ export function MenuDrawer({ visible, onClose, onCreateEvent, onStartLive, onSta
 
 function buildSupportLink(amount?: number): string {
   const skrMint = SKR_MINT;
-  const jupApiKey = JUP_API_KEY;
 
   if (skrMint) {
     // Solana Pay: opens Seed Vault / any Solana wallet to send SKR directly
@@ -1331,9 +1363,7 @@ function buildSupportLink(amount?: number): string {
     return uri;
   }
   // Fallback: Jupiter swap SOL → SKR (SKR_MINT not set yet)
-  let url = `https://jup.ag/swap/SOL-SKR?outputMint=${DEV_WALLET}`;
-  if (jupApiKey) url += `&referralKey=${DEV_WALLET}&feeBps=50`;
-  return url;
+  return `https://jup.ag/swap/SOL-SKR?outputMint=${DEV_WALLET}`;
 }
 
 function SupportCard({ onDevTip }: { onDevTip?: (amount: number) => void }) {

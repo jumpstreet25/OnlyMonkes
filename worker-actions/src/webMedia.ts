@@ -1,37 +1,113 @@
 /**
- * Media for the OnlyMonkes web app. The phone app carries the GIPHY key and
- * the image host's upload preset; a public website can't, so:
+ * GIFs and uploads for the phone app and the web app, so neither carries a key.
  *
  *   GET  /api/giphy/(gifs|stickers)/(search|trending)?q=&limit=&offset=&username=
  *        → GIPHY's JSON, with the key added here. Cached 10 min.
- *   POST /api/upload  multipart `file`, Authorization: Bearer <holder token>
- *        → { url }. Images, PDFs and short videos up to 10 MB, 60 per wallet
- *        per day, forwarded to Cloudinary with the server-side preset.
+ *   POST /api/upload  multipart `file`
+ *        Web: Authorization: Bearer <holder token>.
+ *        Phone: X-OM-Proof: base64 JSON of the holder proof (hardware-key
+ *        signature of uploadProofMessage(nonce), or { kind: "holder", token }).
+ *        → { url } on media.onlymonkes.app (our own R2 bucket, MEDIA).
+ *        Images 10 MB, videos and other files 25 MB, 60 per wallet per day.
+ *        Images, MP4/WebM/MOV and PDFs open inline; anything else downloads.
  *
- * Browser origin must be in WEB_APP_ORIGINS (or localhost while developing).
+ * Browsers: Origin must be in WEB_APP_ORIGINS (or localhost while developing).
+ * The phone sends no Origin, so it gets no CORS header, which a browser on some
+ * other site can't use.
  */
 
-import { holderWalletFromRequest, type WebAuthEnv } from "./webAuth";
+import { holderClaimsFromToken, holderWalletFromRequest, type WebAuthEnv } from "./webAuth";
+import { walletFromDeviceProof } from "./livekitAuth";
 
 type KV = {
   get(key: string): Promise<string | null>;
   put(key: string, value: string, opts?: { expirationTtl?: number }): Promise<void>;
 };
+type R2Put = { httpMetadata?: { contentType?: string; contentDisposition?: string; cacheControl?: string } };
+type MediaBucket = {
+  put(key: string, value: ArrayBuffer | ReadableStream, opts?: R2Put): Promise<unknown>;
+  list(opts?: { cursor?: string; limit?: number }): Promise<{ objects: { size: number }[]; truncated: boolean; cursor?: string }>;
+};
 
 export interface WebMediaEnv extends WebAuthEnv {
   DEVICE_INTEGRITY: KV & WebAuthEnv["DEVICE_INTEGRITY"];
+  FRAME_ALERTS: KV;
   GIPHY_API_KEY?: string;
-  CLOUDINARY_CLOUD_NAME?: string;
-  CLOUDINARY_UPLOAD_PRESET?: string;
+  MEDIA?: MediaBucket;
+}
+
+export const MEDIA_BASE = "https://media.onlymonkes.app";
+/** Uploads stop at this much stored (R2 free plan is 10 GB). */
+export const MEDIA_MAX_BYTES = 8 * 1024 ** 3;
+const MEDIA_FULL_KEY = "media:full";
+
+export function uploadProofMessage(nonce: string): string {
+  return `OnlyMonkes Upload\nnonce:${nonce}`;
 }
 
 const LOCAL_ORIGIN = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
 const GIPHY_PATH = /^\/api\/giphy\/(gifs|stickers)\/(search|trending)$/;
 const GIPHY_USERNAMES = new Set(["sagamonkes"]);
-const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+const MB = 1024 * 1024;
 const UPLOADS_PER_DAY = 60;
+const INLINE: Record<string, { ext: string; max: number }> = {
+  "image/jpeg": { ext: "jpg", max: 10 * MB },
+  "image/png": { ext: "png", max: 10 * MB },
+  "image/gif": { ext: "gif", max: 10 * MB },
+  "image/webp": { ext: "webp", max: 10 * MB },
+  "video/mp4": { ext: "mp4", max: 25 * MB },
+  "video/webm": { ext: "webm", max: 25 * MB },
+  "video/quicktime": { ext: "mov", max: 25 * MB },
+  "application/pdf": { ext: "pdf", max: 25 * MB },
+};
+const OTHER_MAX = 25 * MB;
 
-function allowedOrigin(origin: string | null, env: WebMediaEnv): string | null {
+/** Stored type + headers for an upload. Anything outside INLINE is served as a download. */
+export function mediaKind(type: string, name: string): { contentType: string; ext: string; max: number; disposition?: string } {
+  const t = type.toLowerCase().split(";")[0].trim();
+  const known = INLINE[t];
+  if (known) return { contentType: t, ...known };
+  const base = (name.split(/[\\/]/).pop() ?? "").replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 80) || "file";
+  const ext = (base.match(/\.([A-Za-z0-9]{1,8})$/)?.[1] ?? "bin").toLowerCase();
+  return { contentType: "application/octet-stream", ext, max: OTHER_MAX, disposition: `attachment; filename="${base}"` };
+}
+
+/** Wallet behind the request: web holder token, or the phone's X-OM-Proof. */
+async function uploaderWallet(request: Request, env: WebMediaEnv): Promise<string | null> {
+  const fromBearer = await holderWalletFromRequest(request, env);
+  if (fromBearer) return fromBearer;
+  const raw = request.headers.get("X-OM-Proof");
+  if (!raw || raw.length > 4096) return null;
+  let proof: any;
+  try { proof = JSON.parse(atob(raw)); } catch { return null; }
+  if (proof?.kind === "holder") return (await holderClaimsFromToken(env, typeof proof.token === "string" ? proof.token : ""))?.wallet ?? null;
+  if (proof?.kind === "device") {
+    const r = await walletFromDeviceProof(env as any, proof, uploadProofMessage);
+    return "error" in r ? null : r.wallet;
+  }
+  return null;
+}
+
+/** Cron: total the bucket and set/clear the "full" flag uploads check. */
+export async function refreshMediaUsage(env: WebMediaEnv): Promise<number | null> {
+  if (!env.MEDIA) return null;
+  let total = 0, cursor: string | undefined;
+  for (let i = 0; i < 200; i++) {
+    const page = await env.MEDIA.list({ cursor, limit: 1000 });
+    for (const o of page.objects) total += o.size;
+    if (!page.truncated) break;
+    cursor = page.cursor;
+  }
+  if (total >= MEDIA_MAX_BYTES) await env.FRAME_ALERTS.put(MEDIA_FULL_KEY, String(total), { expirationTtl: 6 * 3600 });
+  else if (await env.FRAME_ALERTS.get(MEDIA_FULL_KEY)) await env.FRAME_ALERTS.put(MEDIA_FULL_KEY, "", { expirationTtl: 60 });
+  return total;
+}
+
+function allowedOrigin(request: Request, env: WebMediaEnv): string | null {
+  // Browsers leave Origin off same-origin GETs (the GIF search from onlymonkes.app
+  // itself); Sec-Fetch-Site is set by the browser and can't be changed by the page.
+  const origin = request.headers.get("Origin")
+    ?? (request.headers.get("Sec-Fetch-Site") === "same-origin" ? new URL(request.url).origin : null);
   if (!origin) return null;
   if (LOCAL_ORIGIN.test(origin)) return origin;
   const list = (env.WEB_APP_ORIGINS ?? "").split(",").map((o) => o.trim()).filter(Boolean);
@@ -54,8 +130,10 @@ export function isWebMediaPath(path: string): boolean {
 }
 
 export async function handleWebMedia(path: string, request: Request, env: WebMediaEnv, ctx?: { waitUntil(p: Promise<unknown>): void }): Promise<Response> {
-  const origin = allowedOrigin(request.headers.get("Origin"), env);
-  if (!origin) return reply({ error: "origin not allowed" }, 403, null);
+  const origin = allowedOrigin(request, env);
+  // A browser always says where it is; no Origin and no Sec-Fetch-Site means the phone app.
+  const browser = !!(request.headers.get("Origin") || request.headers.get("Sec-Fetch-Site"));
+  if (!origin && browser) return reply({ error: "origin not allowed" }, 403, null);
   const ip = request.headers.get("CF-Connecting-IP") ?? "unknown";
 
   const giphy = path.match(GIPHY_PATH);
@@ -92,12 +170,13 @@ export async function handleWebMedia(path: string, request: Request, env: WebMed
 
   // POST /api/upload
   if (request.method !== "POST") return reply({ error: "POST only" }, 405, origin);
-  if (!env.CLOUDINARY_CLOUD_NAME || !env.CLOUDINARY_UPLOAD_PRESET) return reply({ error: "uploads not configured" }, 503, origin);
-  const wallet = await holderWalletFromRequest(request, env);
+  if (!env.MEDIA) return reply({ error: "uploads not configured" }, 503, origin);
+  const wallet = await uploaderWallet(request, env);
   if (!wallet) return reply({ error: "sign in again" }, 401, origin);
   if (await limited(env, `upload:${ip}`)) return reply({ error: "rate limited" }, 429, origin);
   const declared = Number(request.headers.get("Content-Length") ?? "0");
-  if (declared > MAX_UPLOAD_BYTES + 64 * 1024) return reply({ error: "File is over 10 MB" }, 413, origin);
+  if (declared > OTHER_MAX + 64 * 1024) return reply({ error: "File is over 25 MB" }, 413, origin);
+  if (await env.FRAME_ALERTS.get(MEDIA_FULL_KEY)) return reply({ error: "Uploads are paused for now" }, 503, origin);
 
   const day = new Date().toISOString().slice(0, 10);
   const countKey = `upl:${wallet}:${day}`;
@@ -111,17 +190,14 @@ export async function handleWebMedia(path: string, request: Request, env: WebMed
     file = f && typeof f !== "string" ? (f as File) : null;
   } catch { /* handled below */ }
   if (!file) return reply({ error: "missing file" }, 400, origin);
-  if (file.size > MAX_UPLOAD_BYTES) return reply({ error: "File is over 10 MB" }, 413, origin);
-  const type = file.type || "application/octet-stream";
-  const resource = type.startsWith("image/") ? "image" : type === "video/mp4" || type === "video/webm" ? "video" : type === "application/pdf" ? "raw" : "";
-  if (!resource) return reply({ error: "Only images, PDFs and MP4/WebM videos" }, 415, origin);
+  const kind = mediaKind(file.type || "", file.name || "");
+  if (file.size > kind.max) return reply({ error: `File is over ${Math.round(kind.max / MB)} MB` }, 413, origin);
 
-  const out = new FormData();
-  out.append("file", file, file.name || "upload");
-  out.append("upload_preset", env.CLOUDINARY_UPLOAD_PRESET);
-  const res = await fetch(`https://api.cloudinary.com/v1_1/${env.CLOUDINARY_CLOUD_NAME}/${resource}/upload`, { method: "POST", body: out });
-  const data = (await res.json().catch(() => ({}))) as { secure_url?: string };
-  if (!res.ok || !data.secure_url) return reply({ error: "Upload failed" }, 502, origin);
+  const rand = [...crypto.getRandomValues(new Uint8Array(16))].map((b) => b.toString(16).padStart(2, "0")).join("");
+  const key = `u/${day.slice(0, 7)}/${rand}.${kind.ext}`;
+  await env.MEDIA.put(key, await file.arrayBuffer(), {
+    httpMetadata: { contentType: kind.contentType, cacheControl: "public, max-age=31536000, immutable", ...(kind.disposition ? { contentDisposition: kind.disposition } : {}) },
+  });
   await env.DEVICE_INTEGRITY.put(countKey, String(used + 1), { expirationTtl: 2 * 86400 });
-  return reply({ url: data.secure_url }, 200, origin);
+  return reply({ url: `${MEDIA_BASE}/${key}` }, 200, origin);
 }

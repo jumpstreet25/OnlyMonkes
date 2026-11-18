@@ -85,15 +85,23 @@ export async function handleMonkeMemeGenerate(request: Request, env: Env): Promi
     return json({ error: "bad image" }, 400);
   }
 
-  if (!(await isHolder(env, wallet))) return json({ error: "holders only" }, 403);
-
   const ip = request.headers.get("CF-Connecting-IP") ?? "unknown";
   const day = dayKey();
   const kv = env.COMMUNITY_DATA;
-  if (!(await bump(kv, `monkememe:ip:${await sha256Hex(ip)}:${day}`, PER_IP_DAILY_CAP))) {
+  const ipKey = `monkememe:ip:${await sha256Hex(ip)}:${day}`;
+  const globalKey = `monkememe:global:${day}`;
+  // Read-only cap check first: a capped day costs no holder check (Helius) and no
+  // KV write. The counters only move for a holder, below.
+  const [ipUsed, globalUsed] = await Promise.all([kv.get(ipKey), kv.get(globalKey)]);
+  if ((Number(ipUsed) || 0) >= PER_IP_DAILY_CAP) return json({ error: "daily limit", kind: "quota" }, 429);
+  if ((Number(globalUsed) || 0) >= GLOBAL_DAILY_CAP) return json({ error: "generator busy for today", kind: "quota" }, 429);
+
+  if (!(await isHolder(env, wallet))) return json({ error: "holders only" }, 403);
+
+  if (!(await bump(kv, ipKey, PER_IP_DAILY_CAP))) {
     return json({ error: "daily limit", kind: "quota" }, 429);
   }
-  if (!(await bump(kv, `monkememe:global:${day}`, GLOBAL_DAILY_CAP))) {
+  if (!(await bump(kv, globalKey, GLOBAL_DAILY_CAP))) {
     return json({ error: "generator busy for today", kind: "quota" }, 429);
   }
 
