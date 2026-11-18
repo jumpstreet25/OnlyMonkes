@@ -112,7 +112,7 @@ export const RASP_CONFIG: TalsecConfig = {
   // Android-only project per CLAUDE.md; iOS values are required by the type
   // but never consumed at runtime. The production guard below skips this on Android.
   iosConfig: {
-    appBundleId: 'com.onlymonkes.app',
+    appBundleIds: ['com.onlymonkes.app'],
     appTeamId: 'ANDROID_ONLY_NOT_SHIPPED',
   },
   watcherMail: 'security@onlymonkes.com',
@@ -121,7 +121,7 @@ export const RASP_CONFIG: TalsecConfig = {
 
 // Production guard: validate the platform we actually ship on. Hash must be
 // a Base64-encoded SHA-256 digest (44 chars, trailing '=') — the format
-// freerasp 5's native Talsec module actually requires. Catches both the
+// freerasp 5/6's native Talsec module requires. Catches both the
 // literal placeholder AND a stale hash from a rotated keystore.
 if (!__DEV__) {
   const ANDROID_HASH_RE = /^[A-Za-z0-9+/]{43}=$/;

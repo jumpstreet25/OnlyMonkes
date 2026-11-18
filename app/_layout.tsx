@@ -34,7 +34,7 @@ import { UpdateAvailableModal } from '../src/components/UpdateAvailableModal';
 import { getEquippedStyles, type ShopState } from '../src/lib/bananaShop';
 import { applyThemeFromShop } from '../src/lib/shopTheme';
 import { clearLegacyKeys, startNftOwnershipGuard } from '../src/lib/session';
-import { initSentry } from '../src/lib/sentry';
+import { initSentry, captureError } from '../src/lib/sentry';
 import { clearStaleOtaCacheIfNeeded } from '../src/lib/otaUpdates';
 import { OtaUpdateIndicator } from '../src/components/OtaUpdateIndicator';
 import { GlassAlertRoot } from '../src/lib/glassAlert';
@@ -61,7 +61,11 @@ SplashScreen.preventAutoHideAsync();
 const queryClient = new QueryClient();
 
 export default function RootLayout() {
-  useFreeRasp(RASP_CONFIG, THREAT_ACTIONS);
+  // freeRASP 6 reports why it couldn't start (it used to only log to the console).
+  const { error: raspError } = useFreeRasp(RASP_CONFIG, THREAT_ACTIONS);
+  useEffect(() => {
+    if (raspError) captureError(raspError, { where: 'freerasp:start', code: (raspError as { code?: string }).code });
+  }, [raspError]);
   // In-app "Update ready" prompt — lets a downloaded OTA be applied with a
   // tap instead of requiring a force-close + reopen. See useUpdatePrompt.ts.
   const { visible: updatePromptVisible, applyUpdate, dismiss: dismissUpdatePrompt } = useUpdatePrompt();
