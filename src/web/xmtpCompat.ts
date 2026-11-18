@@ -3,7 +3,7 @@
  * web only — the Android bundle never sees this file).
  *
  * Exposes the subset of the RN SDK v5 API that src/lib/xmtp.ts and the hooks
- * use, backed by `@xmtp/browser-sdk` v8 (8.0.0-rc4) against OnlyMonkes' self-hosted
+ * use, backed by `@xmtp/browser-sdk` v8 (8.0.0-rc5) against OnlyMonkes' self-hosted
  * XMTP backend (src/lib/xmtpBackend.ts — staging until phone, web and bot cut over together). The browser SDK runs in a Web Worker that Metro can't bundle, so
  * it is pre-built by scripts/web/build-xmtp.mjs into public/xmtp/ and loaded
  * here as a native ES module.
@@ -31,6 +31,26 @@ const REGISTRATION_NONCE = 1n;
 
 // How many recent messages a catch-up scans for reactions newer than its window.
 const CATCH_UP_REACTION_SCAN = 200;
+/** SDK 8.0.0-rc5: one list or messages() call returns 1..1000 rows, 100 when no limit is given.
+ *  rc4 returned everything, so page wherever we asked for "all" or more than a page. */
+const PAGE_MAX = 1000;
+const MESSAGES_HARD_CAP = 10_000;
+
+async function listPaged(list: (o: Record<string, unknown>) => Promise<any[]>, base: Record<string, unknown>, limit?: number): Promise<any[]> {
+  const want = limit != null ? Math.max(0, Math.floor(limit)) : Infinity;
+  if (want === 0) return [];
+  const out: any[] = [];
+  let cursor: Record<string, unknown> = {};
+  for (let guard = 0; guard < 1000 && out.length < want; guard++) {
+    const take = Math.min(PAGE_MAX, want - out.length);
+    const page: any[] = (await list({ ...base, orderBy: "createdAt", limit: take, ...cursor })) ?? [];
+    out.push(...page);
+    if (page.length < take) break;
+    const last = page[page.length - 1];
+    cursor = { createdBefore: last.createdAt, beforeId: last.id };
+  }
+  return out;
+}
 
 function backendUrl(): string {
   const override = (globalThis as any).__OM_XMTP_BACKEND_URL;
@@ -381,13 +401,31 @@ class WebConversation {
   async messages(opts: RnListOpts = {}): Promise<WebDecodedMessage[]> {
     const { Timestamp } = this.sdk;
     const asc = opts.direction === "ASCENDING";
-    const o: Record<string, unknown> = { direction: asc ? "ascending" : "descending", sortBy: "sentAt" };
-    if (opts.limit != null) o.limit = Math.max(0, Math.floor(opts.limit));
     const after = opts.afterNs != null ? BigInt(Math.floor(opts.afterNs)) : undefined;
     const before = opts.beforeNs != null ? BigInt(Math.floor(opts.beforeNs)) : undefined;
-    if (after != null) o.sentAfter = new Timestamp(after);
-    if (before != null) o.sentBefore = new Timestamp(before);
-    const raw: any[] = await this.inner.messages(o);
+    const want = opts.limit != null ? Math.max(0, Math.floor(opts.limit)) : MESSAGES_HARD_CAP;
+    if (want === 0) return [];
+    // Page with sent-time cursors; each later page overlaps the previous edge by one row (deduped).
+    const raw: any[] = [];
+    const seen = new Set<string>();
+    let lo = after, hi = before, overlap = 0;
+    for (let guard = 0; guard < 100 && raw.length < want; guard++) {
+      const take = Math.min(PAGE_MAX, want - raw.length + overlap);
+      const o: Record<string, unknown> = { direction: asc ? "ascending" : "descending", sortBy: "sentAt", limit: take };
+      if (lo != null) o.sentAfter = new Timestamp(lo);
+      if (hi != null) o.sentBefore = new Timestamp(hi);
+      const page: any[] = (await this.inner.messages(o)) ?? [];
+      let fresh = 0;
+      for (const m of page) {
+        if (seen.has(m.id)) continue;
+        seen.add(m.id); raw.push(m); fresh++;
+        if (raw.length >= want) break;
+      }
+      if (page.length < take || fresh === 0) break;
+      const edge = nsOf(page[page.length - 1].sentAt);
+      if (asc) lo = edge > 0n ? edge - 1n : 0n; else hi = edge + 1n;
+      overlap = 1;
+    }
 
     // v8 keeps reactions only inside their target message (they can't be
     // queried on their own). A catch-up window ("since X") would miss new
@@ -531,25 +569,24 @@ class WebConversations {
     return (await this.wrap(g))!;
   }
 
-  private listOpts(limit?: number, states?: RnConsent[]) {
+  private listOpts(states?: RnConsent[]) {
     const o: Record<string, unknown> = {};
     if (Array.isArray(states) && states.length) o.consentStates = states;
-    if (limit != null) o.limit = limit;
     return o;
   }
 
   async listGroups(_opts?: unknown, limit?: number, states?: RnConsent[]): Promise<WebConversation[]> {
-    const gs: any[] = await this.inner.listGroups(this.listOpts(limit, states));
+    const gs: any[] = await listPaged((o) => this.inner.listGroups(o), this.listOpts(states), limit);
     return Promise.all(gs.map((g) => this.wrap(g) as Promise<WebConversation>));
   }
 
   async listDms(_opts?: unknown, limit?: number, states?: RnConsent[]): Promise<WebConversation[]> {
-    const ds: any[] = await this.inner.listDms(this.listOpts(limit, states));
+    const ds: any[] = await listPaged((o) => this.inner.listDms(o), this.listOpts(states), limit);
     return Promise.all(ds.map((d) => this.wrap(d) as Promise<WebConversation>));
   }
 
   async list(): Promise<WebConversation[]> {
-    const cs: any[] = await this.inner.list();
+    const cs: any[] = await listPaged((o) => this.inner.list(o), {});
     return Promise.all(cs.map((c) => this.wrap(c) as Promise<WebConversation>));
   }
 

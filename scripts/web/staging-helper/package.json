@@ -4,6 +4,6 @@
   "type": "module",
   "description": "Staging-only XMTP helper: creates the staging groups and admits holders who send a signed join request.",
   "dependencies": {
-    "@xmtp/node-sdk": "8.0.0-rc3"
+    "@xmtp/node-sdk": "8.0.0-rc5"
   }
 }
