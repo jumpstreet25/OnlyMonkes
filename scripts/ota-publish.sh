@@ -15,12 +15,5 @@ esac
 [ -z "$(git status --porcelain --untracked-files=no)" ] || { echo "refusing: uncommitted changes"; exit 1; }
 git fetch -q origin "$branch"
 [ "$(git rev-parse HEAD)" = "$(git rev-parse "origin/$branch")" ] || { echo "refusing: HEAD is not origin/$branch (push or pull first)"; exit 1; }
-sign=()
-if grep -q "codeSigningCertificate" app.config.ts; then
-  # 3.1+ installs only signed updates. The private key never goes in git or to Expo.
-  key=${OTA_SIGNING_KEY:-$HOME/.onlymonkes-keys/ota-signing/private-key.pem}
-  [ -r "$key" ] || { echo "refusing: signing key not found at $key (restore it from the MyPassport backup)"; exit 1; }
-  sign=(--private-key-path "$key")
-fi
-echo "publishing $branch @ $(git rev-parse --short HEAD) → channel production, runtime $runtime${sign:+ (signed)}"
-exec npx eas update --branch production --environment production --platform android --message "$msg" --non-interactive "${sign[@]}"
+echo "publishing $branch @ $(git rev-parse --short HEAD) → channel production, runtime $runtime"
+exec npx eas update --branch production --environment production --platform android --message "$msg" --non-interactive

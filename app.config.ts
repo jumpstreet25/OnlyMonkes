@@ -38,12 +38,6 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     enabled: true,
     fallbackToCacheTimeout: 5000,
     checkAutomatically: 'ON_LOAD',
-    // Signed updates (2026-11-18): the app installs only updates signed with our private key
-    // (kept off Expo and out of git: ~/.onlymonkes-keys/ota-signing, backup on the MyPassport).
-    // A stolen Expo login can't push code to 3.1 phones. Lose the key = no more OTAs to this
-    // binary until the next store APK. Bare project: the same values are in AndroidManifest.xml.
-    codeSigningCertificate: './certs/certificate.pem',
-    codeSigningMetadata: { keyid: 'main', alg: 'rsa-v1_5-sha256' },
   },
   // 2026-08-01: bumped from '3.3' — that tag is currently shared by BOTH the
   // old (Reanimated v3) production native binary and the new (Reanimated v4)
