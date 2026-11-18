@@ -1,7 +1,6 @@
 /** @jest-environment node */
 jest.mock("@cf-wasm/photon/workerd", () => ({ PhotonImage: {} }), { virtual: true });
 jest.mock("qrcode/lib/core/qrcode", () => jest.requireActual("qrcode/lib/core/qrcode"));
-import { writeFileSync } from "fs";
 import { cleanLivePoll, handleLive } from "../src/liveEvent";
 import { liveCardLines, liveInviteCard } from "../src/referrals";
 
@@ -26,7 +25,7 @@ describe("Monke Live", () => {
   });
   test("event card renders", async () => {
     const realFetch = globalThis.fetch; globalThis.fetch = (async () => new Response("no", { status: 503 })) as any;
-    try { const c = await liveInviteCard("ABC234", { n: "Jump.skr", p: 8982 } as any); writeFileSync("/tmp/claude-1000/-home-jump-OnlyMonkes/6be153fc-98f2-4e09-a04a-d3520bc4787f/scratchpad/livecard.png", c.png); expect(c.png.length).toBeGreaterThan(1000); }
+    try { const c = await liveInviteCard("ABC234", { n: "Jump.skr", p: 8982 } as any); expect(c.png.length).toBeGreaterThan(1000); }
     finally { globalThis.fetch = realFetch; }
   });
 });
