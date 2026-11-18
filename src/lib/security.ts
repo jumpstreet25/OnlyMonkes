@@ -101,13 +101,24 @@ export function assertDeviceTrusted(action: string): void {
 // as the old hex value (same keystore, just re-encoded) before swapping.
 const ANDROID_RELEASE_CERT_SHA256 = 'Li/uuBzPDeXRkfbhdBE7qYORgbHLdUCrbVyUqc/0h9g=';
 
+// Local 3.1 test builds (com.onlymonkes.app.next, `assembleNextRelease`) are signed with the
+// project debug key, so the release hash alone flags them appIntegrity and blocks the wallet
+// sign-in. Accept the debug cert ONLY for that test package; the store package
+// (com.onlymonkes.app) still accepts the release cert alone.
+const ANDROID_DEBUG_CERT_SHA256 = '+sYXRdwJA3hvue3mKpYrOZ9zSPC7b4mbgzJmdZEDO5w=';
+const TEST_PACKAGE = 'com.onlymonkes.app.next';
+const ANDROID_CERT_HASHES =
+  INSTALLED_PACKAGE === TEST_PACKAGE
+    ? [ANDROID_RELEASE_CERT_SHA256, ANDROID_DEBUG_CERT_SHA256]
+    : [ANDROID_RELEASE_CERT_SHA256];
+
 export const RASP_CONFIG: TalsecConfig = {
   androidConfig: {
     // Must match the installed applicationId. Canary is
     // com.onlymonkes.app.canary — a hard-coded production id fires
     // appIntegrity on every canary launch.
     packageName: INSTALLED_PACKAGE,
-    certificateHashes: [ANDROID_RELEASE_CERT_SHA256],
+    certificateHashes: ANDROID_CERT_HASHES,
   },
   // Android-only project per CLAUDE.md; iOS values are required by the type
   // but never consumed at runtime. The production guard below skips this on Android.
