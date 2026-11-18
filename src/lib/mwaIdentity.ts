@@ -8,7 +8,9 @@
 export const WALLET_IDENTITY = {
   name: "OnlyMonkes",
   uri: "https://onlymonkes.app",
-  icon: "favicon.ico",
+  // Wallets load uri + icon; /favicon.ico is served as HTML (site fallback), so Seed Vault showed
+  // a "?" badge on the connect sheet. This path is a real 180×180 PNG.
+  icon: "site/apple-touch-icon.png",
 };
 
 /** Sign In With Solana `domain` — must match WALLET_IDENTITY.uri's host (wallets warn on a mismatch). */
