@@ -8,7 +8,6 @@
  */
 
 import * as SecureStore from "expo-secure-store";
-import { holderSession } from "@/lib/livekitProof";
 import { useAppStore } from "@/store/appStore";
 
 const WORKER_BASE = "https://onlymonkes.app";
@@ -73,6 +72,9 @@ export async function getXmtpCredential(): Promise<{ value: string; expiresAtSec
     if (s) await save(s);
   }
   if (!s || s.expiresAt <= now + 60) {
+    // Loaded here, not at the top: livekitProof → useMobileWallet → xmtp.ts → xmtpSdk → this file
+    // is a cycle, and at app start it left xmtp.ts with undefined codec classes (3.1 splash crash).
+    const { holderSession } = await import("@/lib/livekitProof");
     s = await holderSession();
     await save(s);
   }
