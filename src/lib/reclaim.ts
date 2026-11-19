@@ -76,7 +76,7 @@ export async function runReclaim({ signChallenge, onStatus }: RunReclaimArgs): P
   const snapshot = await handshake(dm, username, signChallenge, onStatus);
 
   onStatus?.('Merging profile…');
-  return applyProfileSnapshot(snapshot);
+  return applyProfileSnapshot(snapshot, { explicit: true });
 }
 
 async function handshake(
@@ -164,7 +164,9 @@ export { snapshotWalletAllowed };
  * Used by manual `/reclaim` and by auto-restore when the bot pushes
  * PROFILE_SNAPSHOT after wallet connect / XMTP ready.
  */
-export async function applyProfileSnapshot(snap: ParsedProfileSnapshot): Promise<ReclaimSummary> {
+/** `explicit`: the user ran Account Recovery, so the saved name/bio/location win over this phone's.
+ *  The silent background restore only fills what's empty. */
+export async function applyProfileSnapshot(snap: ParsedProfileSnapshot, opts: { explicit?: boolean } = {}): Promise<ReclaimSummary> {
   const connected = useAppStore.getState().wallet?.address ?? null;
   if (!snapshotWalletAllowed(snap.wallet, connected)) {
     throw new Error('Snapshot wallet does not match the connected wallet');
@@ -194,18 +196,19 @@ export async function applyProfileSnapshot(snap: ParsedProfileSnapshot): Promise
   // Sync Zustand
   const app = useAppStore.getState();
   app.setBananaBalance(finalBalance);
-  // Fill only what's empty on this phone and save it, so it survives a restart
-  // and the next PROFILE_UPDATE puts the monke back on the Globe.
+  // Save it so it survives a restart and the next PROFILE_UPDATE puts the monke back on the Globe.
   try {
     const cur = await loadUserProfile();
-    const username = cur.username || snap.username || '';
-    const bio = cur.bio || snap.bio || '';
-    const location = cur.location || snap.location || '';
+    const pick = (mine?: string | null, saved?: string | null) =>
+      (opts.explicit ? saved || mine : mine || saved) || '';
+    const username = pick(cur.username, snap.username);
+    const bio = pick(cur.bio, snap.bio);
+    const location = pick(cur.location, snap.location);
     if (username !== (cur.username ?? '') || bio !== (cur.bio ?? '') || location !== (cur.location ?? '')) {
       await saveUserProfile(username, bio, cur.xAccount ?? '', cur.tipWallet ?? '', location);
-      if (username && !app.username) app.setUsername(username);
-      if (bio && !app.bio) app.setBio(bio);
-      if (location && !app.location) app.setLocation(location);
+      if (username && (opts.explicit || !app.username)) app.setUsername(username);
+      if (bio && (opts.explicit || !app.bio)) app.setBio(bio);
+      if (location && (opts.explicit || !app.location)) app.setLocation(location);
     }
   } catch {
     if (snap.username && !app.username) app.setUsername(snap.username);
