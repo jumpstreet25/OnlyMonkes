@@ -25,6 +25,7 @@ import {
   snapshotWalletAllowed,
   type ParsedProfileSnapshot,
 } from '@/lib/profileSnapshot';
+import { restoreEarnedBadges } from '@/lib/badges';
 import { useAppStore } from '@/store/appStore';
 import { mergeBananaBalance, loadBananaState, saveBananaState } from '@/lib/bananaRewards';
 import { mergeOwnedItems, getEquippedStyles } from '@/lib/bananaShop';
@@ -181,6 +182,8 @@ export async function applyProfileSnapshot(snap: ParsedProfileSnapshot): Promise
   }
 
   let marketplaceEntriesRestored = 0;
+  if (snap.badges?.length) restoreEarnedBadges(snap.badges);
+
   if (snap.marketplaceHistory?.length) {
     await loadHistory(); // ensure in-memory cache is primed for the current wallet
     marketplaceEntriesRestored = mergeHistoryEntries(snap.marketplaceHistory);

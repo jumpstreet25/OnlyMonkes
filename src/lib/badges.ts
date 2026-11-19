@@ -125,7 +125,8 @@ export async function loadBadgeData(): Promise<void> {
     }
     if (badgesRaw) {
       const arr = JSON.parse(badgesRaw);
-      if (Array.isArray(arr)) _earnedBadges = new Set(arr);
+      // Union, not replace: a restore (restoreEarnedBadges) may already have added badges.
+      if (Array.isArray(arr)) for (const id of arr) if (typeof id === 'string') _earnedBadges.add(id);
     }
   } catch { /* ignore */ }
 }
@@ -209,6 +210,21 @@ export function grantSpecialBadge(badgeId: string): BadgeDef | null {
   _onBadgeEarned?.(def);
   _scheduleSave();
   return def;
+}
+
+/**
+ * Badges restored from the bot's wallet record (/reclaim, silent restore). Known ids only, and no
+ * onBadgeEarned: earning already paid its bananas on the old phone, and the balance is restored too.
+ */
+export function restoreEarnedBadges(ids: readonly string[]): number {
+  let added = 0;
+  for (const id of ids) {
+    if (_earnedBadges.has(id) || !BADGE_DEFS.some(b => b.id === id)) continue;
+    _earnedBadges.add(id);
+    added++;
+  }
+  if (added) _scheduleSave();
+  return added;
 }
 
 // cNFT minting removed — badges are now cosmetic achievements that reward bananas.
