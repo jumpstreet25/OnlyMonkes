@@ -27,13 +27,25 @@ const DEFAULT: OnboardingState = {
 };
 
 let _state: OnboardingState = { ...DEFAULT };
+let _loaded: Promise<OnboardingState> | null = null;
+const _listeners = new Set<(s: OnboardingState) => void>();
 
-export async function loadOnboarding(): Promise<OnboardingState> {
-  try {
-    const raw = await AsyncStorage.getItem(AK_ONBOARDING);
-    if (raw) _state = { ...DEFAULT, ...JSON.parse(raw) };
-  } catch { /* ignore */ }
-  return _state;
+export function loadOnboarding(): Promise<OnboardingState> {
+  if (!_loaded) {
+    _loaded = (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(AK_ONBOARDING);
+        if (raw) _state = { ...DEFAULT, ...JSON.parse(raw) };
+      } catch { /* ignore */ }
+      return _state;
+    })();
+  }
+  return _loaded;
+}
+
+function notify() {
+  const snap = { ..._state };
+  _listeners.forEach(l => l(snap));
 }
 
 async function save() {
@@ -43,8 +55,19 @@ async function save() {
 }
 
 export async function markOnboardingStep(step: keyof Omit<OnboardingState, "dismissed">) {
+  await loadOnboarding(); // a step marked before the load finished would be overwritten by it
   if (_state[step]) return; // already done
   _state[step] = true;
+  notify();
+  await save();
+}
+
+/** Hide the checklist for good — e.g. a returning holder whose profile the bot restored. */
+export async function dismissOnboarding() {
+  await loadOnboarding();
+  if (_state.dismissed) return;
+  _state.dismissed = true;
+  notify();
   await save();
 }
 
@@ -56,10 +79,11 @@ export function OnboardingChecklist() {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
-    loadOnboarding().then(s => {
-      setState(s);
-      setVisible(!s.dismissed);
-    });
+    // Steps are marked from other screens while this card is mounted — follow them live.
+    const onChange = (s: OnboardingState) => { setState(s); setVisible(!s.dismissed); };
+    _listeners.add(onChange);
+    loadOnboarding().then(s => onChange({ ...s }));
+    return () => { _listeners.delete(onChange); };
   }, []);
 
   if (!visible) return null;
@@ -79,11 +103,7 @@ export function OnboardingChecklist() {
   // Auto-hide when all done
   if (completed === total) return null;
 
-  const handleDismiss = async () => {
-    _state.dismissed = true;
-    await save();
-    setVisible(false);
-  };
+  const handleDismiss = () => { void dismissOnboarding(); };
 
   return (
     <View style={styles.card}>

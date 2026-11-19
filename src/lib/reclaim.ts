@@ -189,6 +189,13 @@ export async function applyProfileSnapshot(snap: ParsedProfileSnapshot): Promise
   const app = useAppStore.getState();
   app.setBananaBalance(finalBalance);
   if (snap.username && !app.username) app.setUsername(snap.username);
+  // A restored username means a returning holder: the welcome checklist is for new ones.
+  if (snap.username) {
+    try {
+      const { dismissOnboarding } = await import('@/components/OnboardingChecklist');
+      await dismissOnboarding();
+    } catch { /* cosmetic */ }
+  }
   try {
     const styles = await getEquippedStyles();
     app.setShopStyles(styles);
