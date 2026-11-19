@@ -2108,12 +2108,19 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#fff",
   },
+  // A real button, not a faint link: when sign-in is stuck this is the only way out (Saga test 2026-11-19).
   pendingLogoutLink: {
-    fontFamily: FONTS.mono,
-    fontSize: 11,
-    color: THEME.textFaint,
-    textDecorationLine: "underline",
+    fontFamily: FONTS.displayMed,
+    fontSize: 15,
+    color: "#ffffff",
     marginTop: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 32,
+    borderWidth: 1.5,
+    borderColor: "#ffffff",
+    borderRadius: 10,
+    textAlign: "center",
+    overflow: "hidden",
   },
   // Admin recovery (pending screen)
   adminRecoveryLink: {
