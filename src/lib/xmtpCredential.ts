@@ -9,6 +9,7 @@
 
 import * as SecureStore from "expo-secure-store";
 import { useAppStore } from "@/store/appStore";
+import { captureError } from "@/lib/sentry";
 
 const WORKER_BASE = "https://onlymonkes.app";
 const SK_TOKEN = "om_xmtp_holder_v1";
@@ -60,8 +61,20 @@ async function refresh(s: Stored): Promise<Stored | null> {
   }
 }
 
-/** SDK 8 CredentialSource shape: `{ value: "Bearer …", expiresAtSeconds }`. */
+/** SDK 8 CredentialSource shape: `{ value: "Bearer …", expiresAtSeconds }`. The SDK reports any throw
+ *  here only as "credential callback failed", so the real reason is logged first (no token/wallet). */
 export async function getXmtpCredential(): Promise<{ value: string; expiresAtSeconds: bigint }> {
+  try {
+    return await credentialInner();
+  } catch (e) {
+    const reason = String((e as Error)?.message ?? e).replace(/[1-9A-HJ-NP-Za-km-z]{32,44}|eyJ[\w.-]+/g, "<redacted>").slice(0, 200);
+    console.warn("[XMTP] credential failed:", reason);
+    try { captureError(new Error(`xmtp credential: ${reason}`), { where: "xmtpCredential" }); } catch { /* reporting only */ }
+    throw e;
+  }
+}
+
+async function credentialInner(): Promise<{ value: string; expiresAtSeconds: bigint }> {
   const wallet = useAppStore.getState().wallet?.address;
   const now = Math.floor(Date.now() / 1000);
   let s = await load(wallet);
