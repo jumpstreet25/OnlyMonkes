@@ -21,6 +21,15 @@ describe("profile auto-restore", () => {
     );
   });
 
+  it("parses bio and location, capped, blank as missing", () => {
+    const p = parseProfileSnapshot(`PROFILE_SNAPSHOT:${JSON.stringify({ wallet: "W", b: "gm", loc: "x".repeat(80) })}`);
+    expect(p?.bio).toBe("gm");
+    expect(p?.location).toHaveLength(50);
+    const blank = parseProfileSnapshot('PROFILE_SNAPSHOT:{"wallet":"W","b":"  ","loc":""}');
+    expect(blank?.bio).toBeUndefined();
+    expect(blank?.location).toBeUndefined();
+  });
+
   it("rejects a snapshot for a different connected wallet", () => {
     expect(snapshotWalletAllowed("WalletA", "WalletA")).toBe(true);
     expect(snapshotWalletAllowed("WalletA", null)).toBe(true);

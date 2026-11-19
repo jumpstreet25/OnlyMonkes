@@ -9,6 +9,8 @@ export interface ParsedProfileSnapshot {
   shopOwned?: string[];
   pfpBindings?: Record<string, string[]>;
   username?: string;
+  bio?: string;
+  location?: string;
   legendary?: boolean;
   badges?: string[];
   marketplaceHistory?: unknown[];
@@ -55,6 +57,8 @@ export function parseProfileSnapshot(raw: string): ParsedProfileSnapshot | null 
     shopOwned: Array.isArray(data.so) ? data.so.filter((s: unknown) => typeof s === "string") : undefined,
     pfpBindings: data.pb && typeof data.pb === "object" && !Array.isArray(data.pb) ? data.pb : undefined,
     username: typeof data.u === "string" ? data.u : undefined,
+    bio: typeof data.b === "string" ? data.b.trim().slice(0, 100) || undefined : undefined,
+    location: typeof data.loc === "string" ? data.loc.trim().slice(0, 50) || undefined : undefined,
     legendary: data.lg === 1 || data.lg === true,
     badges: Array.isArray(data.bd) ? data.bd.filter((b: unknown) => typeof b === "string") : undefined,
     marketplaceHistory: Array.isArray(data.mh) ? data.mh : undefined,

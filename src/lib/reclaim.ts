@@ -31,6 +31,7 @@ import { mergeOwnedItems, getEquippedStyles } from '@/lib/bananaShop';
 import { mergeHistoryEntries, loadHistory } from '@/lib/marketplace';
 import { rehydrateForWallet } from '@/lib/walletIdentity';
 import { applyThemeFromShop } from '@/lib/shopTheme';
+import { loadUserProfile, saveUserProfile } from '@/lib/userProfile';
 
 const BOT_INBOX_ID = '998001a498174b8a194110ee792b10f97de4965665eaf0d088ed2c71bdf62363';
 
@@ -188,7 +189,22 @@ export async function applyProfileSnapshot(snap: ParsedProfileSnapshot): Promise
   // Sync Zustand
   const app = useAppStore.getState();
   app.setBananaBalance(finalBalance);
-  if (snap.username && !app.username) app.setUsername(snap.username);
+  // Fill only what's empty on this phone and save it, so it survives a restart
+  // and the next PROFILE_UPDATE puts the monke back on the Globe.
+  try {
+    const cur = await loadUserProfile();
+    const username = cur.username || snap.username || '';
+    const bio = cur.bio || snap.bio || '';
+    const location = cur.location || snap.location || '';
+    if (username !== (cur.username ?? '') || bio !== (cur.bio ?? '') || location !== (cur.location ?? '')) {
+      await saveUserProfile(username, bio, cur.xAccount ?? '', cur.tipWallet ?? '', location);
+      if (username && !app.username) app.setUsername(username);
+      if (bio && !app.bio) app.setBio(bio);
+      if (location && !app.location) app.setLocation(location);
+    }
+  } catch {
+    if (snap.username && !app.username) app.setUsername(snap.username);
+  }
   try {
     const styles = await getEquippedStyles();
     app.setShopStyles(styles);
