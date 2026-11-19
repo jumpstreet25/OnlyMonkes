@@ -38,6 +38,7 @@ import {
   markChannelRead,
 } from "@/lib/messageCache";
 import type { ChatMessage, ReactionEmoji } from "@/types";
+import { dropOptimisticEchoes, hasRealEcho, OPTIMISTIC_PREFIX } from "@/lib/optimisticEcho";
 import type { XmtpClient, XmtpGroup } from "@/lib/xmtp";
 
 // ── Module-level warm cache ─────────────────────────────────────────────────
@@ -129,7 +130,7 @@ export function useGroupChat(groupId: string, groupName: string) {
 
           if (newMsgs.length > 0) {
             setMessages(prev => {
-              const merged = [...prev, ...newMsgs].sort((a, b) => a.sentAt.getTime() - b.sentAt.getTime());
+              const merged = [...dropOptimisticEchoes(prev, newMsgs), ...newMsgs].sort((a, b) => a.sentAt.getTime() - b.sentAt.getTime());
               // Update warm cache
               const entry = _warmCache.get(groupId);
               if (entry) { entry.messages = merged; entry.loadedAt = Date.now(); }
@@ -157,7 +158,7 @@ export function useGroupChat(groupId: string, groupName: string) {
               const msg = decodeMessage(raw, myInboxIdRef.current);
               if (msg) {
                 setMessages(prev => {
-                  const updated = [...prev, msg];
+                  const updated = [...dropOptimisticEchoes(prev, [msg]), msg];
                   const entry = _warmCache.get(groupId);
                   if (entry) entry.messages = updated;
                   return updated;
@@ -258,7 +259,7 @@ export function useGroupChat(groupId: string, groupName: string) {
               const ids = new Set(prev.map((m) => m.id));
               const additions = lateMsgs.filter((m) => !ids.has(m.id));
               if (additions.length === 0) return prev;
-              const updated = [...prev, ...additions].sort((a, b) => a.sentAt.getTime() - b.sentAt.getTime());
+              const updated = [...dropOptimisticEchoes(prev, additions), ...additions].sort((a, b) => a.sentAt.getTime() - b.sentAt.getTime());
               const e = _warmCache.get(groupId);
               if (e) e.messages = updated;
               return updated;
@@ -301,7 +302,7 @@ export function useGroupChat(groupId: string, groupName: string) {
         const msg = decodeMessage(raw, myInboxIdRef.current);
         if (msg) {
           setMessages((prev) => {
-            const updated = [...prev, msg];
+            const updated = [...dropOptimisticEchoes(prev, [msg]), msg];
             const entry = _warmCache.get(groupId);
             if (entry) entry.messages = updated;
             return updated;
@@ -374,7 +375,7 @@ export function useGroupChat(groupId: string, groupName: string) {
           const ids = new Set(prev.map((m) => m.id));
           const additions = decoded.filter((m) => !ids.has(m.id)).reverse();
           if (additions.length === 0) return prev;
-          const updated = [...prev, ...additions];
+          const updated = [...dropOptimisticEchoes(prev, additions), ...additions];
           const e = _warmCache.get(groupId);
           if (e) e.messages = updated;
           return updated;
@@ -403,7 +404,7 @@ export function useGroupChat(groupId: string, groupName: string) {
             const msg = decodeMessage(raw, myInboxIdRef.current);
             if (msg) {
               setMessages((prev) => {
-                const updated = [...prev, msg];
+                const updated = [...dropOptimisticEchoes(prev, [msg]), msg];
                 const e = _warmCache.get(groupId);
                 if (e) e.messages = updated;
                 return updated;
@@ -457,7 +458,7 @@ export function useGroupChat(groupId: string, groupName: string) {
   }, []);
 
   const addMessageLocal = useCallback((msg: ChatMessage) => {
-    setMessages((prev) => [...prev, msg]);
+    setMessages((prev) => (msg.id.startsWith(OPTIMISTIC_PREFIX) && hasRealEcho(prev, msg) ? prev : [...prev, msg]));
   }, []);
 
   const updateMessageStatus = useCallback(
