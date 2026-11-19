@@ -243,6 +243,12 @@ configurations.all {
         if (details.requested.group == 'androidx.media3') {
             details.useVersion '1.9.1'
         }
+        // MWA clientlib 2.1.x deadlocks (ANR) when the wallet returns while its websocket is failing:
+        // close() took the scenario lock then the socket lock, onError the reverse. 2.2.1 closes the
+        // socket outside the lock. The RN package 3.0.2 still asks for 2.1.1.
+        if (details.requested.group == 'com.solanamobile' && details.requested.name == 'mobile-wallet-adapter-clientlib') {
+            details.useVersion '2.2.1'
+        }
     }
 }
 
