@@ -37,6 +37,7 @@ import { useTranslation } from "react-i18next";
 import type { FlashListRef } from "@shopify/flash-list";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { OnboardingChecklist, markOnboardingStep } from "@/components/OnboardingChecklist";
+import { captureError } from "@/lib/sentry";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAppStore } from "@/store/appStore";
 import { useChatStore } from "@/store/chatStore";
@@ -939,7 +940,11 @@ export default function ChatScreen() {
       useChatStore.getState().updateMessageStatus(optimistic.id, "sent");
       markOnboardingStep("sentMessage");
       appendCachedMessage("main_chat", { ...optimistic, status: "sent" }).catch(() => {});
-    } catch {
+    } catch (e) {
+      // Release builds logged nothing here, so a failed send left no trace (3.1 staging test).
+      const reason = String((e as Error)?.message ?? e).replace(/[1-9A-HJ-NP-Za-km-z]{32,44}|[0-9a-f]{40,}|eyJ[\w.-]+/g, "<redacted>").slice(0, 300);
+      console.warn("[Chat] send failed:", reason);
+      try { captureError(new Error(`chat send: ${reason}`), { where: "ChatScreen.send" }); } catch {}
       if (!isOnline()) {
         await enqueueMessage({
           id: optimistic.id,
