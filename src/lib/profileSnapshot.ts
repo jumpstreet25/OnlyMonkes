@@ -3,7 +3,11 @@
  * so restore logic is unit-testable without the RN SDK.
  */
 
+import { parseProgress, type ProgressSnapshot } from "@/lib/progressSnapshot";
+
 export interface ParsedProfileSnapshot {
+  /** Streak / banana cycle / badge counters (PROFILE_UPDATE `pg`). */
+  progress?: ProgressSnapshot;
   wallet: string;
   bananaBalance?: number;
   shopOwned?: string[];
@@ -62,6 +66,7 @@ export function parseProfileSnapshot(raw: string): ParsedProfileSnapshot | null 
     legendary: data.lg === 1 || data.lg === true,
     badges: Array.isArray(data.bd) ? data.bd.filter((b: unknown) => typeof b === "string") : undefined,
     marketplaceHistory: Array.isArray(data.mh) ? data.mh : undefined,
+    progress: parseProgress(data.pg) ?? undefined,
     updatedAt: typeof data.updatedAt === "number" ? data.updatedAt : undefined,
   };
 }
