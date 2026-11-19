@@ -18,6 +18,7 @@
  * a cross-module import loop; it is a stable public identifier, not a secret.
  */
 
+import { applyProgress } from '@/lib/progressSnapshot';
 import { getXmtpClient } from '@/hooks/useXmtp';
 import { openOrCreateDm, sendDmMessage } from '@/lib/xmtp';
 import {
@@ -180,6 +181,10 @@ export async function applyProfileSnapshot(snap: ParsedProfileSnapshot): Promise
   }
 
   let marketplaceEntriesRestored = 0;
+  if (snap.progress) {
+    try { await applyProgress(snap.progress); } catch { /* best-effort */ }
+  }
+
   if (snap.marketplaceHistory?.length) {
     await loadHistory(); // ensure in-memory cache is primed for the current wallet
     marketplaceEntriesRestored = mergeHistoryEntries(snap.marketplaceHistory);
