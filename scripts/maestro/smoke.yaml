@@ -1,0 +1,14 @@
+# Quick device smoke test: the app opens to chat and the main screens load without
+# the error screen. Logged-in phone only; never clears app state.
+appId: ${APP_ID}
+---
+- launchApp:
+    stopApp: false
+- waitForAnimationToEnd:
+    timeout: 20000
+- assertNotVisible: "Something went wrong"
+- openLink: "onlymonkes://globe"
+- waitForAnimationToEnd:
+    timeout: 15000
+- assertNotVisible: "Something went wrong"
+- back

@@ -70,3 +70,6 @@ google-services.json
 *.apk *
 .dev.vars
 .wrangler/
+
+# Maestro store screenshots (can show other holders' messages)
+scripts/maestro/out/

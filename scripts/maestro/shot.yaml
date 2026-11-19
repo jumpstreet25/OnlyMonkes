@@ -1,0 +1,8 @@
+# One store screenshot of whatever screen screenshots.sh just opened by deep link.
+# NEVER add `clearState` or `clearKeychain` to any flow here: it wipes the XMTP
+# database and wallet session exactly like `adb uninstall` (CLAUDE.md).
+appId: ${APP_ID}
+---
+- waitForAnimationToEnd:
+    timeout: 15000
+- takeScreenshot: ${OUT}/${NAME}
