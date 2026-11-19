@@ -1763,13 +1763,30 @@ export async function getOrCreateDAppGroup(
 
 // ─── Sending ──────────────────────────────────────────────────────────────────
 
+// libxmtp throws MissingSequenceId ("SequenceId not found in local db") when an inbox's newest
+// installation hasn't finished registering yet — every phone upgrading to 3.1 starts as one — and
+// marks it retryable. Retry a few times with a sync between (Saga upgrade test 2026-11-19).
+const MISSING_SEQUENCE_ID = /SequenceId not found/i;
+const SEND_RETRY_MS = [1000, 3000, 8000];
+export async function sendRetrying(convo: any, payload: unknown): Promise<unknown> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await convo.send(payload);
+    } catch (e) {
+      if (attempt >= SEND_RETRY_MS.length || !MISSING_SEQUENCE_ID.test(String((e as Error)?.message ?? e))) throw e;
+      await new Promise((r) => setTimeout(r, SEND_RETRY_MS[attempt]));
+      try { await convo.sync?.(); } catch { /* the retry still runs */ }
+    }
+  }
+}
+
 export async function sendMessage(
   group: XmtpGroup,
   content: string,
   username?: string | null
 ): Promise<void> {
   const packed = username ? `MSG:${username}:${content}` : content;
-  await (group as any).send(packed);
+  await sendRetrying(group, packed);
 }
 
 export async function sendReply(
@@ -1782,7 +1799,7 @@ export async function sendReply(
   // as a standard MSG:<username>:<content> so decodeMessage() can extract the sender.
   // Backward compat: decodeMessage() still parses legacy REPLYv2: strings from history.
   const packed = username ? `MSG:${username}:${replyContent}` : replyContent;
-  await (group as any).send({
+  await sendRetrying(group, {
     reply: {
       reference: targetMessage.id,
       content: { text: packed },
@@ -2209,7 +2226,7 @@ export async function getLastPeerReadReceipt(dm: any, myInboxId: string): Promis
 
 export async function sendDmMessage(dm: any, content: string, username?: string | null): Promise<void> {
   const payload = username ? `MSG:${username}:${content}` : content;
-  await dm.send(payload);
+  await sendRetrying(dm, payload);
 }
 
 /**
