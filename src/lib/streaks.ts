@@ -3,6 +3,7 @@ import { useAppStore } from '@/store/appStore';
 import { consumeShield } from '@/lib/streakShield';
 
 const AK_STREAK = 'login_streak_v1';
+export const STREAK_STORAGE_KEY = AK_STREAK;
 
 interface StreakData {
   streak: number;
@@ -84,4 +85,33 @@ export async function checkAndUpdateStreak(): Promise<{
   } catch {
     return { newStreak: 0, justHitLegendary: false };
   }
+}
+
+type StreakShape = { streak: number; bestStreak: number; lastLoginDate: string; isLegendary: boolean };
+
+/**
+ * Merge a restored streak (another phone / the bot's record) into this phone's. A remote run counts
+ * only if it is still alive today: last login today, or yesterday with this phone already in today.
+ * Best streak and legendary never go down.
+ */
+export function mergeStreakData(local: StreakShape, remote: StreakShape, today: string, yesterday: string): StreakShape {
+  let alive = 0;
+  if (remote.lastLoginDate === today) alive = remote.streak;
+  else if (remote.lastLoginDate === yesterday) alive = local.lastLoginDate === today ? remote.streak + 1 : remote.streak;
+  const useRemote = alive > local.streak;
+  const streak = useRemote ? alive : local.streak;
+  const lastLoginDate = useRemote && local.lastLoginDate !== today ? remote.lastLoginDate : local.lastLoginDate || remote.lastLoginDate;
+  const bestStreak = Math.max(local.bestStreak, remote.bestStreak, streak);
+  return { streak, bestStreak, lastLoginDate, isLegendary: local.isLegendary || remote.isLegendary || bestStreak >= 7 };
+}
+
+export async function mergeRemoteStreak(remote: StreakShape): Promise<void> {
+  try {
+    const raw = await AsyncStorage.getItem(AK_STREAK);
+    const local: StreakShape = raw ? JSON.parse(raw) : { streak: 0, bestStreak: 0, lastLoginDate: '', isLegendary: false };
+    const merged = mergeStreakData(local, remote, getTodayISO(), getYesterdayISO());
+    if (JSON.stringify(merged) === JSON.stringify(local)) return;
+    await AsyncStorage.setItem(AK_STREAK, JSON.stringify(merged));
+    useAppStore.getState().setLoginStreak(merged.streak, merged.bestStreak, merged.isLegendary);
+  } catch { /* streak restore is best-effort */ }
 }

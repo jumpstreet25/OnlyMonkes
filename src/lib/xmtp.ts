@@ -12,6 +12,7 @@
  * Local dbEncryptionKey stays per-device (installation), not per-inbox.
  */
 
+import { collectProgress } from "@/lib/progressSnapshot";
 import { Client, Group, PublicIdentity, ReactionCodec, ReactionV2Codec, ReplyCodec, RemoteAttachmentCodec } from "@xmtp/react-native-sdk";
 import type { ReactionContent, ReplyContent, RemoteAttachmentContent, Signer } from "@xmtp/react-native-sdk";
 import {
@@ -1852,6 +1853,7 @@ export async function sendProfileUpdate(
     so: shopOwned ?? [],
     pb: pfpBindings ?? null,
     mh: mh && mh.length > 0 ? mh : null,
+    pg: await collectProgress(),
   });
   await (group as any).send(`PROFILE_UPDATE:${payload}`);
 }

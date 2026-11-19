@@ -130,6 +130,16 @@ export async function loadBadgeData(): Promise<void> {
   } catch { /* ignore */ }
 }
 
+/** Restored counters (another phone / the bot's record): keep the higher of each, no earn callbacks. */
+export function restoreBadgeProgress(remote: Partial<BadgeProgress>): void {
+  let changed = false;
+  for (const k of Object.keys(remote) as (keyof BadgeProgress)[]) {
+    const v = remote[k];
+    if (typeof v === 'number' && Number.isFinite(v) && v > _progress[k]) { _progress[k] = v; changed = true; }
+  }
+  if (changed) _scheduleSave();
+}
+
 export function getProgress(): BadgeProgress {
   return { ..._progress };
 }
