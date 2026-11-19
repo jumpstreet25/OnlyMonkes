@@ -248,7 +248,9 @@ export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProp
         }
         return null;
       };
-      for (const botInboxId of BOT_INBOX_IDS) {
+      // One pin for the bot: on staging the list also holds the production bot's id
+      // (not on that network), which drew a second AI Agent #9385 on the same spot.
+      for (const botInboxId of BOT_INBOX_IDS.slice(0, 1)) {
         if (seenInboxIds.has(botInboxId)) continue;
         seenInboxIds.add(botInboxId);
         const botProfile = getCachedProfile(botInboxId);
