@@ -1774,6 +1774,9 @@ export async function sendRetrying(convo: any, payload: unknown): Promise<unknow
       return await convo.send(payload);
     } catch (e) {
       if (attempt >= SEND_RETRY_MS.length || !MISSING_SEQUENCE_ID.test(String((e as Error)?.message ?? e))) throw e;
+      console.warn(`[XMTP] send hit MissingSequenceId, retry ${attempt + 1}/${SEND_RETRY_MS.length}`);
+      // The missing record is often the peer's (a fresh database never fetched it), not ours.
+      try { await convo.refreshMemberIdentities?.(); } catch (re) { console.warn("[XMTP] identity refresh failed:", String((re as Error)?.message ?? re).slice(0, 120)); }
       await new Promise((r) => setTimeout(r, SEND_RETRY_MS[attempt]));
       try { await convo.sync?.(); } catch { /* the retry still runs */ }
     }

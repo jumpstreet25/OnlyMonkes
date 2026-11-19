@@ -258,6 +258,12 @@ class MessageHub {
 
   constructor(private readonly inner: any) {}
 
+  /** Re-read identity state (own inbox + these) from the network; fixes libxmtp MissingSequenceId. */
+  async refreshInboxStates(ids: string[]): Promise<void> {
+    await this.inner.inboxState(true);
+    if (ids.length) await this.inner.inboxStates(ids, true);
+  }
+
   private ensure(): void {
     if (this.stream || this.starting || this.closed) return;
     this.starting = true;
@@ -345,6 +351,11 @@ export class Conversation {
   async sync(): Promise<void> {
     await this.inner.sync();
     if (this.inner.kind === "group") await this.refreshState();
+  }
+
+  /** Refresh every member's identity record from the network (see MessageHub.refreshInboxStates). */
+  async refreshMemberIdentities(): Promise<void> {
+    await this.hub.refreshInboxStates(await this.memberInboxIds());
   }
 
   async messages(opts: RnListOpts = {}): Promise<DecodedMessage[]> {
