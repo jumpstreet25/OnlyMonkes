@@ -18,6 +18,12 @@ const REFRESH_WITHIN_S = 6 * 3600;
 type Stored = { wallet: string; token: string; expiresAt: number };
 
 let _mem: Stored | null = null;
+let _lastFailure: string | null = null;
+
+/** The real reason behind the SDK's generic "credential callback failed" (shown on the chat error screen). */
+export function lastXmtpCredentialFailure(): string | null {
+  return _lastFailure;
+}
 
 /** `wallet` undefined (a push/background runtime with no app store yet) = whatever is stored. */
 async function load(wallet?: string): Promise<Stored | null> {
@@ -65,8 +71,11 @@ async function refresh(s: Stored): Promise<Stored | null> {
  *  here only as "credential callback failed", so the real reason is logged first (no token/wallet). */
 export async function getXmtpCredential(): Promise<{ value: string; expiresAtSeconds: bigint }> {
   try {
-    return await credentialInner();
+    const out = await credentialInner();
+    _lastFailure = null;
+    return out;
   } catch (e) {
+    _lastFailure = String((e as Error)?.message ?? e).slice(0, 300);
     const reason = String((e as Error)?.message ?? e).replace(/[1-9A-HJ-NP-Za-km-z]{32,44}|eyJ[\w.-]+/g, "<redacted>").slice(0, 200);
     console.warn("[XMTP] credential failed:", reason);
     try { captureError(new Error(`xmtp credential: ${reason}`), { where: "xmtpCredential" }); } catch { /* reporting only */ }

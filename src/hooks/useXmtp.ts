@@ -102,6 +102,7 @@ import { showLocalNotification, showLocalNotificationWithJoinAction, showLocalNo
 import { loadCachedMessages, saveCachedMessages, appendCachedMessage, getLastReadTimestamp } from "@/lib/messageCache";
 import type { ChatMessage, ReactionEmoji } from "@/types";
 import type { XmtpClient, XmtpGroup } from "@/lib/xmtp";
+import { lastXmtpCredentialFailure } from "@/lib/xmtpCredential";
 
 // ─── Timeout helper (prevents XMTP sync from hanging on poor network) ────────
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
@@ -2467,8 +2468,9 @@ export function useXmtp() {
         }
       })();
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "XMTP initialization failed";
+      const raw = err instanceof Error ? err.message : "XMTP initialization failed";
+      // The SDK hides why our credential callback threw; show the reason we recorded (e.g. wrong wallet account).
+      const message = /credential ?callback/i.test(raw) ? (lastXmtpCredentialFailure() ?? raw) : raw;
       if (__DEV__) console.error("[XMTP] initialize() failed:", message, err);
       // Needing a fresh wallet signature is expected (the chat shows "Sign and retry"), not a bug.
       if (message !== XMTP_SIGNATURE_REQUIRED_ERROR) {
