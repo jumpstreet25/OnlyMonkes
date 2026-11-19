@@ -60,6 +60,7 @@ interface GlobeMarker {
 
 // Globe HTML loaded from static asset file — avoids Hermes template literal escaping issues
 import { Asset } from "expo-asset";
+import { markOnboardingStep } from "@/components/OnboardingChecklist";
 import * as FileSystem from "expo-file-system/legacy";
 
 let _cachedGlobeHtml: string | null = null;
@@ -171,6 +172,8 @@ interface GlobeScreenProps {
 }
 
 export default function GlobeScreen({ onPressUser, onSendRsvp }: GlobeScreenProps) {
+  // Counts however the Globe was opened (header button, Banana Menu, deep link).
+  useEffect(() => { void markOnboardingStep("openedGlobe"); }, []);
   const calendarEvents = useAppStore(s => s.calendarEvents);
   const profileVersion = useProfileVersion(); // Re-run when any profile cache changes
   const [loading, setLoading] = useState(true);
