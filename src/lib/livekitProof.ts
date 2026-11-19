@@ -12,6 +12,7 @@
  */
 import { Buffer } from "buffer";
 import { Platform } from "react-native";
+import { toast } from "sonner-native";
 import { useAppStore } from "@/store/appStore";
 import { getDevicePublicKeyBase64, isDeviceAttestAvailable, signWithDeviceKey } from "@/lib/deviceAttest";
 import { signBytesWithMwa } from "@/hooks/useMobileWallet";
@@ -37,6 +38,8 @@ export async function livekitProof(roomName: string, identity: string): Promise<
 }
 
 let _holder: { wallet: string; token: string; expiresAt: number } | null = null;
+const MISMATCH_PAUSE_MS = 5 * 60_000;
+let _mismatch: { wallet: string; until: number; message: string } | null = null;
 
 export async function holderProof(canPrompt = true): Promise<{ kind: "holder"; token: string }> {
   const { token } = await holderSession(canPrompt);
@@ -50,12 +53,23 @@ export async function holderSession(canPrompt = true): Promise<{ wallet: string;
   if (!wallet) throw new Error("Connect your wallet first");
   if (_holder?.wallet === wallet && _holder.expiresAt * 1000 > Date.now() + 60_000) return _holder;
   if (!canPrompt) throw new Error("Holder check needs a wallet signature");
+  // After a wrong-account answer, don't reopen the wallet for every XMTP credential retry.
+  if (_mismatch?.wallet === wallet && _mismatch.until > Date.now()) throw new Error(_mismatch.message);
   // The sign-in endpoints only answer our own origins.
   const headers = { "Content-Type": "application/json", Origin: WORKER_BASE };
   const ch = await fetch(`${WORKER_BASE}/api/auth/challenge`, { method: "POST", headers, body: JSON.stringify({ address: wallet }) });
   const { nonce, message, error } = (await ch.json().catch(() => ({}))) as { nonce?: string; message?: string; error?: string };
   if (!ch.ok || !nonce || !message) throw new Error(error ?? `Holder check failed (${ch.status})`);
-  const sig = await signBytesWithMwa(wallet, new Uint8Array(Buffer.from(message, "utf8")));
+  let sig: Uint8Array;
+  try {
+    sig = await signBytesWithMwa(wallet, new Uint8Array(Buffer.from(message, "utf8")));
+  } catch (e) {
+    if ((e as Error)?.name === "WalletMismatchError") {
+      _mismatch = { wallet, until: Date.now() + MISMATCH_PAUSE_MS, message: (e as Error).message };
+      try { toast.error((e as Error).message); } catch { /* UI not ready */ }
+    }
+    throw e;
+  }
   const login = await fetch(`${WORKER_BASE}/api/auth/login`, {
     method: "POST",
     headers,

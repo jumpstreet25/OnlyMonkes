@@ -94,12 +94,26 @@ export async function signBytesWithMwa(
       useAppStore.getState().setMwaAuthToken(result.auth_token);
       addrRaw = result.accounts[0].address as string;
     }
+    // The wallet app may be on another account than the one this session belongs to. Signing anyway
+    // gets "signature does not match this wallet" from the worker, and the XMTP credential then
+    // re-opens the wallet in a loop (Saga upgrade test 2026-11-19).
+    const raw = typeof addrRaw === "string" ? addrRaw : Buffer.from(addrRaw as Uint8Array).toString("base64");
+    const signer = new PublicKey(Buffer.from(raw, "base64")).toBase58();
+    if (signer !== walletAddress) throw new WalletMismatchError(walletAddress, signer);
     const [sig] = await mobileWallet.signMessages({
       addresses: [addrRaw],
       payloads: [messageBytes],
     });
     return sig;
   });
+}
+
+/** The wallet app answered with a different account than the signed-in one. */
+export class WalletMismatchError extends Error {
+  constructor(public expected: string, public got: string) {
+    super(`Your wallet app is on …${got.slice(-4)}, but you're signed in with …${expected.slice(-4)}. Switch accounts in the wallet, or sign out and connect again.`);
+    this.name = "WalletMismatchError";
+  }
 }
 
 /** What a wallet connection yields: an MWA auth token + the account's base64 public key. */
