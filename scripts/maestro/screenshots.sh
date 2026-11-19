@@ -49,6 +49,12 @@ for row in "${SCREENS[@]}"; do
   echo "→ $name ($route)"
   "${A[@]}" shell am start -W -a android.intent.action.VIEW -d "onlymonkes://$route" "$PKG" >/dev/null
   sleep "$wait"
-  maestro --device "$DEV" test -e APP_ID="$PKG" -e NAME="$name" -e OUT="$OUT" "$HERE/shot.yaml" >/dev/null
+  # Maestro 2.x only writes screenshots under its own dated output folder: shoot into a
+  # scratch folder, then move the PNG up to out/<package>/<name>.png.
+  RUN="$OUT/.run"; rm -rf "$RUN"
+  maestro --device "$DEV" test --test-output-dir "$RUN" -e APP_ID="$PKG" -e NAME="$name" "$HERE/shot.yaml" >/dev/null \
+    || { echo "  maestro failed on $name (debug: ~/.maestro/tests)"; exit 1; }
+  find "$RUN" -name "$name.png" -exec mv -f {} "$OUT/$name.png" \;
+  rm -rf "$RUN"
 done
 echo "saved to $OUT"; ls -1 "$OUT"

@@ -5,4 +5,4 @@ appId: ${APP_ID}
 ---
 - waitForAnimationToEnd:
     timeout: 15000
-- takeScreenshot: ${OUT}/${NAME}
+- takeScreenshot: ${NAME}
