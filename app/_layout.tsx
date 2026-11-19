@@ -38,7 +38,6 @@ import { initSentry, captureError } from '../src/lib/sentry';
 import { clearStaleOtaCacheIfNeeded } from '../src/lib/otaUpdates';
 import { OtaUpdateIndicator } from '../src/components/OtaUpdateIndicator';
 import { GlassAlertRoot } from '../src/lib/glassAlert';
-import { logAppOpen, logDailySession } from '../src/lib/analytics';
 import { loadBadgeData, setOnBadgeEarned, getBadgeBananaReward, type BadgeDef } from '../src/lib/badges';
 import { addBananas } from '../src/lib/bananaRewards';
 import { Alert, AppState, Platform } from 'react-native';
@@ -107,7 +106,6 @@ export default function RootLayout() {
       SplashScreen.hideAsync();
     });
 
-    logAppOpen().catch(() => {});
     startHomeWidget().catch(() => {});
     // 3.1: shared text/images open Main Chat (held until login, like deep links).
     const stopShare = startShareIntent(() => {
@@ -115,8 +113,6 @@ export default function RootLayout() {
       if (wallet && myInboxId) router.push('/chat');
       else holdLink('/chat');
     });
-    const streak = useAppStore.getState().loginStreak;
-    logDailySession(streak).catch(() => {});
     clearStaleOtaCacheIfNeeded();
     clearLegacyKeys();
     loadPersistedPrefs();
