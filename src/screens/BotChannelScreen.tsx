@@ -33,7 +33,7 @@ import * as Haptics from "expo-haptics";
 import { LiquidGlass as BlurView } from "@/components/LiquidGlass";
 import { getBlurProps } from "@/lib/glassTheme";
 import { WorldGlassFill } from "@/components/WorldGlassFill";
-import { THEME, FONTS, getWorldBarTint, getWorldAccent, surfaceToBarTint, resolveBarTint } from "@/lib/constants";
+import { THEME, FONTS, getWorldBarTint, getWorldAccent, surfaceToBarTint, resolveBarTint, BOT_INBOX_IDS } from "@/lib/constants";
 import { BotChannelIcon } from "@/components/BotChannelIcon";
 import { ErrorMessage } from "@/components/ErrorMessage";
 import { useThemeColor } from "@/lib/shopTheme";
@@ -42,7 +42,8 @@ import { markChannelRead } from "@/lib/messageCache";
 import type { ChatMessage } from "@/types";
 import { isMineInbox } from "@/lib/inboxLinking";
 
-const BOT_INBOX_ID = "998001a498174b8a194110ee792b10f97de4965665eaf0d088ed2c71bdf62363";
+// The live bot for this build's backend (staging bot first on staging), not a hardcoded production id.
+const BOT_INBOX_ID = BOT_INBOX_IDS[0];
 
 /** Process-lifetime guard — MonkeTrades remount must not re-DM status. */
 let _automonkeStatusCheckedThisSession = false;

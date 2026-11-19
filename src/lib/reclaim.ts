@@ -33,8 +33,10 @@ import { mergeHistoryEntries, loadHistory } from '@/lib/marketplace';
 import { rehydrateForWallet } from '@/lib/walletIdentity';
 import { applyThemeFromShop } from '@/lib/shopTheme';
 import { loadUserProfile, saveUserProfile } from '@/lib/userProfile';
+import { BOT_INBOX_IDS } from '@/lib/constants';
 
-const BOT_INBOX_ID = '998001a498174b8a194110ee792b10f97de4965665eaf0d088ed2c71bdf62363';
+// The live bot for this build's backend (staging bot first on staging), not a hardcoded production id.
+const BOT_INBOX_ID = BOT_INBOX_IDS[0];
 
 /** Match the exact challenge string the bot emits. */
 const CHALLENGE_PATTERN = /OnlyMonkes-Reclaim-[a-f0-9]+-\d+-[^\s]+/;

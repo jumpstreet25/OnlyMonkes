@@ -29,8 +29,10 @@ import { openOrCreateDm, sendDmMessage, parseMyInboxes, parseProfileSnapshot } f
 import { useAppStore } from '@/store/appStore';
 import { applyProfileSnapshot, type SignChallengeFn } from '@/lib/reclaim';
 import { getRememberedInboxIds, loadLocalInboxIds } from '@/lib/localInboxes';
+import { BOT_INBOX_IDS } from '@/lib/constants';
 
-const BOT_INBOX_ID = '998001a498174b8a194110ee792b10f97de4965665eaf0d088ed2c71bdf62363';
+// The live bot for this build's backend (staging bot first on staging), not a hardcoded production id.
+const BOT_INBOX_ID = BOT_INBOX_IDS[0];
 const CACHE_KEY_PREFIX = 'inbox_links_';
 
 /** Match the exact challenge string the bot emits. */
