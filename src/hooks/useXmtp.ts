@@ -102,7 +102,7 @@ import { showLocalNotification, showLocalNotificationWithJoinAction, showLocalNo
 import { loadCachedMessages, saveCachedMessages, appendCachedMessage, getLastReadTimestamp } from "@/lib/messageCache";
 import type { ChatMessage, ReactionEmoji } from "@/types";
 import type { XmtpClient, XmtpGroup } from "@/lib/xmtp";
-import { lastXmtpCredentialFailure } from "@/lib/xmtpCredential";
+import { lastXmtpCredentialFailure, allowXmtpCredentialPrompt } from "@/lib/xmtpCredential";
 
 // ─── Timeout helper (prevents XMTP sync from hanging on poor network) ────────
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
@@ -2512,6 +2512,9 @@ export function useXmtp() {
   const streamAlive = useCallback(() => _streamAlive, []);
 
   const logout = useCallback(async () => {
+    // Close the native client too: left open, it kept asking for a credential after sign-out.
+    try { await (_client as { close?: () => Promise<void> } | null)?.close?.(); } catch { /* already closed */ }
+    allowXmtpCredentialPrompt();
     _unsubscribeStream?.();
     _unsubscribeStream = null;
     _botChannelUnsubs.forEach(u => u());

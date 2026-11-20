@@ -18,6 +18,7 @@
  *  - UserProfileModal when username tapped
  */
 
+import { allowXmtpCredentialPrompt } from "@/lib/xmtpCredential";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
@@ -198,6 +199,7 @@ export default function ChatScreen() {
   // identically — the wallet-bound identity signature has to be re-prompted
   // first, or the user is stuck tapping Retry forever.
   const handleConnectionRetry = useCallback(async () => {
+    allowXmtpCredentialPrompt();
     if (error !== XMTP_SIGNATURE_REQUIRED_ERROR) { initialize(); return; }
     const walletAddress = useAppStore.getState().wallet?.address;
     if (!walletAddress) { initialize(); return; }
