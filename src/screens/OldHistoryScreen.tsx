@@ -16,6 +16,7 @@ import { getXmtpClient } from "@/hooks/useXmtp";
 import { decodeMessage } from "@/lib/xmtp";
 import { getCachedProfile, useProfileVersion } from "@/lib/userProfile";
 import { useAppStore } from "@/store/appStore";
+import { importedOldInboxId } from "@/lib/xmtpHistoryImport";
 import type { ChatMessage } from "@/types";
 
 const OLD_GROUP_NAMES: Record<string, string> = {
@@ -51,7 +52,11 @@ export default function OldHistoryScreen() {
   useProfileVersion();
   const cardStyle = useWorldGlassCardStyle();
   const myInboxId = useAppStore((s) => s.myInboxId) ?? "";
+  const wallet = useAppStore((s) => s.wallet?.address ?? null);
+  const [oldInboxId, setOldInboxId] = useState("");
   const [convs, setConvs] = useState<OldConversation[] | null>(null);
+
+  useEffect(() => { void importedOldInboxId(wallet).then((id) => setOldInboxId(id ?? "")); }, [wallet]);
   const [open, setOpen] = useState<OldConversation | null>(null);
 
   useEffect(() => {
@@ -70,13 +75,16 @@ export default function OldHistoryScreen() {
       })));
       const rank = (r: OldConversation) => (OLD_GROUP_NAMES[r.id] ? 0 : 1);
       rows.sort((a, b) => rank(a) - rank(b) || (b.lastAt ?? 0) - (a.lastAt ?? 0));
-      if (!cancelled) setConvs(rows);
+      // Duplicate DMs with one person all show the same merged thread: list each person once.
+      const seenPeers = new Set<string>();
+      const unique = rows.filter((r) => r.isGroup || !r.peerInboxId || (!seenPeers.has(r.peerInboxId) && !!seenPeers.add(r.peerInboxId)));
+      if (!cancelled) setConvs(unique);
     })();
     return () => { cancelled = true; };
   }, []);
 
   if (open) {
-    return <OldThread conv={open} myInboxId={myInboxId} onBack={() => setOpen(null)} />;
+    return <OldThread conv={open} myInboxId={myInboxId} oldInboxId={oldInboxId} onBack={() => setOpen(null)} />;
   }
 
   return (
@@ -103,7 +111,8 @@ export default function OldHistoryScreen() {
   );
 }
 
-function OldThread({ conv, myInboxId, onBack }: { conv: OldConversation; myInboxId: string; onBack: () => void }) {
+
+function OldThread({ conv, myInboxId, oldInboxId, onBack }: { conv: OldConversation; myInboxId: string; oldInboxId: string; onBack: () => void }) {
   const { t } = useTranslation();
   const [msgs, setMsgs] = useState<ChatMessage[]>([]);
   const [oldestNs, setOldestNs] = useState<number | undefined>(undefined);
@@ -141,7 +150,7 @@ function OldThread({ conv, myInboxId, onBack }: { conv: OldConversation; myInbox
         ListFooterComponent={loading ? <ActivityIndicator style={{ margin: 16 }} color={THEME.accent} /> : null}
         ListEmptyComponent={!loading ? <Text style={styles.empty}>{t("oldHistory.noMessages")}</Text> : null}
         renderItem={({ item }) => {
-          const mine = item.senderAddress === myInboxId;
+          const mine = item.senderAddress === myInboxId || (!!oldInboxId && item.senderAddress === oldInboxId);
           const name = mine ? null : item.senderUsername || getCachedProfile(item.senderAddress)?.username;
           return (
             <View style={[styles.bubble, mine ? styles.mine : styles.theirs]}>
