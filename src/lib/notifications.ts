@@ -337,21 +337,17 @@ export async function registerForPushNotifications(): Promise<string | null> {
       return null;
     }
 
-    // Return cached raw FCM token if we have one (FCM tokens are stable per install)
-    const stored = await SecureStore.getItemAsync(SK_PUSH_TOKEN);
-    if (stored && !stored.startsWith('ExponentPushToken')) {
-      if (__DEV__) console.log('[Notifications] Cached FCM token:', stored.slice(0, 30) + '…');
-      return stored;
+    // Always ask for the current token: FCM rotates it (reinstall, Firebase config change), and a
+    // cached copy kept being sent after Google had dropped it (UNREGISTERED, Saga test 2026-11-20).
+    const stored = await SecureStore.getItemAsync(SK_PUSH_TOKEN).catch(() => null);
+    let token: string;
+    try {
+      token = (await Notifications.getDevicePushTokenAsync()).data as string;
+    } catch (err) {
+      if (stored && !stored.startsWith('ExponentPushToken')) return stored;
+      throw err;
     }
-    // Stale Expo token or no token — clear and fetch a raw FCM token
-    if (stored) await SecureStore.deleteItemAsync(SK_PUSH_TOKEN).catch(() => {});
-
-    // getDevicePushTokenAsync returns the raw FCM registration token.
-    // The bot sends push directly via FCM Legacy API — no Expo relay or credentials needed.
-    const tokenResponse = await Notifications.getDevicePushTokenAsync();
-    const token: string = tokenResponse.data as string;
-
-    await SecureStore.setItemAsync(SK_PUSH_TOKEN, token);
+    if (token !== stored) await SecureStore.setItemAsync(SK_PUSH_TOKEN, token);
     if (__DEV__) console.log('[Notifications] FCM device token registered:', token.slice(0, 40) + '…');
     return token;
   } catch (err) {
