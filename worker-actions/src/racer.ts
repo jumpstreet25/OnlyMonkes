@@ -30,7 +30,7 @@ import { cleanName } from "./referrals";
 import { monkeImageForNumber } from "./shareCard";
 
 /** racer-sim.js RV. Bump both together when the physics or track builder changes. */
-export const RACER_VERSION = 2;
+export const RACER_VERSION = 3;
 export const LAPS = 3;
 /** RV 2: shortest track is ~1,440 units; boosting the whole way (126 u/s) can't lap under ~11.4 s. */
 export const MIN_LAP_MS = 10_000;
