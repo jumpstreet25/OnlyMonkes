@@ -1,14 +1,18 @@
 // MonkeKart (was Monke RC) — the rules, with no DOM or three.js so they run in Node checks and (later)
 // on the worker. One track per local calendar day (3am→3am) built from the date; a fixed 120 Hz step so a run
 // and its ghost replay the same everywhere. World: x/z ground plane, y up, heading a
-// (forward = (cos a, sin a) in x/z).
-export const RV = 2;
+// (forward = (cos a, sin a) in x/z). Each track point also has a height T.y[i].
+export const RV = 3;
 export const DT = 1 / 120;
 export const LAPS = 3;
 // RV 2 (2026-11-12, owner: "without boost the car travels slow"): RV 1's drag cancelled
 // ~28% of V_MAX (real cruise ~56, boost 108 = +93%). Now throttle reaches V_MAX exactly
 // (drag only when coasting), cruise is +60% (~90), boost is a +40% bonus, roads and
 // tracks are wider/larger to match, grass and shallow wall scrapes keep most speed.
+// RV 3 (2026-11-20, owner: "Bridges, tunnels, over-passes, hills, mountains, and make the tracks
+// very different every 24hrs"): every point has a height (hills, grades capped) and gravity pulls
+// along slopes; each day picks a layout — classic circuit, figure-8 whose crossing is an overpass,
+// or a long stretched course — and features: a tunnel through a mountain, a river the road bridges.
 export const ROAD_W = 32;          // road width
 export const SHOULDER = 8;         // grass strip between road edge and barrier
 export const V_MAX = 90;           // top speed on road
@@ -23,6 +27,11 @@ export const driftTier = (charge) => DRIFT_TIERS.reduce((t, d, i) => (charge >= 
 /** Start boost for pressing right before GO (racer.js times it; quality 0..1). */
 export const LAUNCH_MAX_S = 1.0;
 export const GHOST_EVERY = 3;      // record a ghost frame every 3 steps (40 Hz)
+export const CLEARANCE = 13;       // overpass: height between the two roads where they cross
+export const TUNNEL_H = 15;        // tunnel ceiling over the road
+const GRAV = 30;                   // pull along the slope (units/s² per unit of grade)
+const RAMP = 52;                   // overpass ramp half-length in points (4 units each)
+export const LAYOUTS = ["circuit", "eight", "long"];
 
 export function hashSeed(s) { let h = 2166136261; for (const c of String(s)) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return h >>> 0; }
 export function rng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
@@ -73,35 +82,81 @@ function sampleLoop(ctrl, step) {
   return pts;
 }
 
-function selfOverlap(pts, clear) {
-  const n = pts.length, gap = Math.ceil((clear * 2.2) / 4);
+/** Pairs of points far apart along the loop but closer than `clear` on the ground (i < j). */
+function overlaps(pts, clear) {
+  const n = pts.length, gap = Math.ceil((clear * 2.2) / 4), out = [];
   for (let i = 0; i < n; i += 2) for (let j = i + gap; j < n; j += 2) {
     if (n - (j - i) < gap) continue;
-    if (Math.hypot(pts[i][0] - pts[j][0], pts[i][1] - pts[j][1]) < clear) return true;
+    const d = Math.hypot(pts[i][0] - pts[j][0], pts[i][1] - pts[j][1]);
+    if (d < clear) out.push([i, j, d]);
   }
-  return false;
+  return out;
+}
+
+export const cyc = (a, b, N) => { const d = Math.abs(a - b) % N; return Math.min(d, N - d); };
+const smooth = (e0, e1, x) => { const t = Math.max(0, Math.min(1, (x - e0) / (e1 - e0))); return t * t * (3 - 2 * t); };
+
+function ctrlCircuit(r) {
+  const n = 9 + Math.floor(r() * 4), base = (230 + r() * 70) * 1.2, ctrl = [];
+  for (let i = 0; i < n; i++) {
+    const ang = (i / n) * Math.PI * 2 + (r() - 0.5) * 0.35;
+    let rad = base * (0.62 + r() * 0.6);
+    if (r() < 0.22) rad *= 0.55; // pinch → hairpin
+    ctrl.push([Math.cos(ang) * rad * 1.15, Math.sin(ang) * rad]);
+  }
+  return ctrl;
+}
+/** A long course: a stretched loop (2–2.6 : 1) with a few pinches. */
+function ctrlLong(r) {
+  const n = 12 + Math.floor(r() * 4), base = (210 + r() * 50) * 1.2, ax = 2 + r() * 0.6, ctrl = [];
+  for (let i = 0; i < n; i++) {
+    const ang = (i / n) * Math.PI * 2 + (r() - 0.5) * 0.25;
+    let rad = base * (0.75 + r() * 0.4);
+    if (r() < 0.18) rad *= 0.62;
+    ctrl.push([Math.cos(ang) * rad * ax, Math.sin(ang) * rad * 0.8]);
+  }
+  return ctrl;
+}
+/** Figure-8: points on a lemniscate (crossing at the origin), lobes fattened and jittered away from the crossing. */
+function ctrlEight(r) {
+  const n = 20, a = (300 + r() * 80) * 1.2, fat = 1.3 + r() * 0.5, tilt = (r() - 0.5) * 0.5, ctrl = [];
+  for (let i = 0; i < n; i++) {
+    const t = (i / n) * Math.PI * 2, nearX = Math.min(cyc(i, n / 4, n), cyc(i, (3 * n) / 4, n)) <= 1;
+    const den = 1 + Math.sin(t) ** 2, j = nearX ? 1 : 0.88 + r() * 0.24;
+    const x = ((a * Math.cos(t)) / den) * j, z = ((a * Math.sin(t) * Math.cos(t)) / den) * fat * j;
+    ctrl.push([x * Math.cos(tilt) - z * Math.sin(tilt), x * Math.sin(tilt) + z * Math.cos(tilt)]);
+  }
+  return ctrl;
 }
 
 /**
- * Builds the track for a course id: a closed loop through 9–12 jittered control points
- * (some pulled in for hairpins), sampled every 4 units. Rejects loops that come near
- * themselves (the road plus both barriers must never touch another part of the track).
+ * Builds the track for a course id. The day's seed picks a layout (circuit 40%, figure-8 35%, long
+ * 25%), a hill profile and features. Loops are sampled every 4 units; any place where the road comes
+ * near itself is rejected unless it is the figure-8 crossing, where one road climbs over the other
+ * with at least CLEARANCE between them.
  */
 export function buildTrack(id) {
   const seed = hashSeed(`monke-rc:${RV}:${id}`);
-  for (let attempt = 0; attempt < 60; attempt++) {
+  const roll = rng(seed ^ 0x1a40)();
+  const layout = id === "demo" ? "circuit" : roll < 0.4 ? "circuit" : roll < 0.75 ? "eight" : "long";
+  for (let attempt = 0; attempt < 80; attempt++) {
     const r = rng(seed + attempt * 7919);
-    const n = 9 + Math.floor(r() * 4), base = (230 + r() * 70) * 1.2, ctrl = [];
-    for (let i = 0; i < n; i++) {
-      const ang = (i / n) * Math.PI * 2 + (r() - 0.5) * 0.35;
-      let rad = base * (0.62 + r() * 0.6);
-      if (r() < 0.22) rad *= 0.55; // pinch → hairpin
-      ctrl.push([Math.cos(ang) * rad * 1.15, Math.sin(ang) * rad]);
-    }
+    const ctrl = layout === "eight" ? ctrlEight(r) : layout === "long" ? ctrlLong(r) : ctrlCircuit(r);
     const pts = sampleLoop(ctrl, 4);
-    if (pts.length < 260 || pts.length > 840) continue;
-    if (selfOverlap(pts, ROAD_W + 2 * SHOULDER + 22)) continue;
-    const N = pts.length, tan = [], nor = [], curv = [];
+    if (pts.length < 260 || pts.length > 900) continue;
+    const N = pts.length, clear = ROAD_W + 2 * SHOULDER + 22;
+    const ov = overlaps(pts, clear);
+    let cross = null;
+    if (layout === "eight") {
+      if (!ov.length) continue;
+      const m = ov.reduce((b, p) => (p[2] < b[2] ? p : b));
+      // one crossing only
+      if (ov.some(([i, j]) => cyc(i, m[0], N) > 22 || cyc(j, m[1], N) > 22)) continue;
+      // flat top of the overpass: covers every point of the upper road that is near the lower one
+      const plateau = 3 + Math.max(...ov.map(([i]) => cyc(i, m[0], N)));
+      cross = [m[0], m[1], plateau];
+    } else if (ov.length) continue;
+    const tan = [], nor = [], curv = [];
     for (let i = 0; i < N; i++) {
       const a = pts[(i - 1 + N) % N], b = pts[(i + 1) % N];
       const dx = b[0] - a[0], dz = b[1] - a[1], l = Math.hypot(dx, dz);
@@ -114,25 +169,94 @@ export function buildTrack(id) {
       curv.push(c); maxCurv = Math.max(maxCurv, Math.abs(c));
     }
     if (maxCurv > 0.06) continue; // tighter than a ~17-unit radius: undriveable at RV 2 speeds
-    // Start on the straightest stretch.
-    let start = 0, bestSum = Infinity;
-    for (let i = 0; i < N; i++) { let s = 0; for (let k = -12; k <= 12; k++) s += Math.abs(curv[(i + k + N) % N]); if (s < bestSum) { bestSum = s; start = i; } }
+    if (cross) {
+      const [ci, cj] = cross, d = tan[ci][0] * tan[cj][0] + tan[ci][1] * tan[cj][1];
+      if (Math.abs(d) > 0.6) continue; // the roads must cross at a wide angle
+    }
+    // Start on the straightest stretch, never on an overpass ramp.
+    let start = -1, bestSum = Infinity;
+    for (let i = 0; i < N; i++) {
+      if (cross && (cyc(i, cross[0], N) < cross[2] + RAMP + 30 || cyc(i, cross[1], N) < cross[2] + RAMP + 30)) continue;
+      let s = 0; for (let k = -12; k <= 12; k++) s += Math.abs(curv[(i + k + N) % N]);
+      if (s < bestSum) { bestSum = s; start = i; }
+    }
+    if (start < 0) continue;
     const rot = (arr) => arr.slice(start).concat(arr.slice(0, start));
-    const T = { id, seed, pts: rot(pts), tan: rot(tan), nor: rot(nor), curv: rot(curv), N, length: N * 4 };
-    // Boost pads on the straighter parts, away from the start.
+    const T = { id, seed, layout, pts: rot(pts), tan: rot(tan), nor: rot(nor), curv: rot(curv), N, length: N * 4 };
+    if (cross) T.cross = { up: (cross[0] - start + N) % N, down: (cross[1] - start + N) % N, plateau: cross[2] };
+    // Heights: a few periodic waves, flat at the start line and calm around the crossing, plus the overpass ramp.
+    const hr = rng(seed ^ 0x4111), hk = hr();
+    const amp = id === "demo" ? 3 : hk < 0.1 ? 4 : hk < 0.4 ? 9 : hk < 0.75 ? 14 : 19;
+    const waves = [1, 2, 3, 5].map((k) => ({ k, a: hr(), ph: hr() * Math.PI * 2 }));
+    const wsum = waves.reduce((s, w) => s + w.a, 0);
+    const raw = (i) => waves.reduce((s, w) => s + w.a * Math.sin((2 * Math.PI * w.k * i) / N + w.ph), 0) / wsum;
+    const calm = (i) => {
+      let w = smooth(10, 34, cyc(i, 0, N));
+      if (T.cross) w *= smooth(T.cross.plateau + RAMP * 0.6, T.cross.plateau + RAMP * 1.4, Math.min(cyc(i, T.cross.up, N), cyc(i, T.cross.down, N)));
+      return w;
+    };
+    const hills = []; for (let i = 0; i < N; i++) hills.push((raw(i) - raw(0)) * calm(i));
+    let grade = 0; for (let i = 0; i < N; i++) grade = Math.max(grade, Math.abs(hills[(i + 1) % N] - hills[i]) / 4);
+    const scale = Math.min(amp, 0.11 / Math.max(1e-6, grade));
+    T.y = hills.map((h) => h * scale);
+    if (T.cross) {
+      const H = CLEARANCE + 3, P = T.cross.plateau;
+      for (let i = 0; i < N; i++) {
+        const d = cyc(i, T.cross.up, N);
+        if (d <= P) T.y[i] += H;
+        else if (d < P + RAMP) T.y[i] += (H * (1 + Math.cos((Math.PI * (d - P)) / RAMP))) / 2;
+      }
+      if (overlaps(T.pts, clear).some(([i, j]) => Math.abs(T.y[i] - T.y[j]) < CLEARANCE)) continue;
+    }
+    // Features: a tunnel on a gentle stretch, a river line the road bridges (renderer carves the valley).
+    const fr = rng(seed ^ 0x7a11);
+    const busy = (i, pad) => cyc(i, 0, N) < 40 + pad || (T.cross && (cyc(i, T.cross.up, N) < T.cross.plateau + RAMP + pad || cyc(i, T.cross.down, N) < T.cross.plateau + RAMP + pad));
+    const wantTunnel = id !== "demo" && (layout !== "eight" ? fr() < 0.7 : fr() < 0.45);
+    if (wantTunnel) {
+      const len = 30 + Math.floor(fr() * 16);
+      for (let tries = 0; tries < 60; tries++) {
+        const a = Math.floor(fr() * N), b = a + len;
+        let ok = true;
+        for (let i = a - 6; i <= b + 6 && ok; i++) { const k = ((i % N) + N) % N; if (busy(k, 10) || Math.abs(T.curv[k]) > 0.022) ok = false; }
+        if (ok) { T.tunnel = { a: a % N, len }; break; }
+      }
+    }
+    const wantRiver = id !== "demo" && (!T.tunnel || fr() < 0.5);
+    if (wantRiver) {
+      for (let tries = 0; tries < 60; tries++) {
+        const i = Math.floor(fr() * N);
+        if (busy(i, 14) || (T.tunnel && cyc(i, (T.tunnel.a + T.tunnel.len / 2) % N, N) < T.tunnel.len / 2 + 40)) continue;
+        let s = 0; for (let k = -8; k <= 8; k++) s += Math.abs(T.curv[(i + k + N) % N]);
+        if (s > 0.25) continue;
+        const t = T.tan[i], skew = (fr() - 0.5) * 0.7, ang = Math.atan2(t[1], t[0]) + Math.PI / 2 + skew;
+        T.river = { i, x: T.pts[i][0], z: T.pts[i][1], dx: Math.cos(ang), dz: Math.sin(ang) };
+        break;
+      }
+    }
+    // Boost pads on the straighter parts, away from the start and out of the tunnel.
     T.pads = [];
     const pr = rng(seed ^ 0xb005);
     const nPads = Math.min(PADS, Math.max(4, Math.round(N / 100)));
     for (let tries = 0; tries < 400 && T.pads.length < nPads; tries++) {
       const i = 40 + Math.floor(pr() * (N - 80));
       let s = 0; for (let k = -6; k <= 6; k++) s += Math.abs(T.curv[(i + k) % N]);
-      if (s > 0.2 || T.pads.some((p) => Math.abs(p.i - i) < N / 10)) continue;
+      if (s > 0.2 || inTunnel(T, i) || T.pads.some((p) => Math.abs(p.i - i) < N / 10)) continue;
       T.pads.push({ i, off: (pr() - 0.5) * (ROAD_W * 0.45) });
     }
     T.checkpoints = [0.25, 0.5, 0.75].map((f) => Math.floor(N * f));
     return T;
   }
   throw new Error(`no track for ${id}`);
+}
+
+/** Is centreline index i inside the tunnel (with `pad` extra points at each end)? */
+export function inTunnel(T, i, pad = 0) { return !!T.tunnel && ((i - T.tunnel.a + pad + T.N) % T.N) <= T.tunnel.len + 2 * pad; }
+/** Grade at index i (rise per unit forward). */
+export function slopeAt(T, i) { const N = T.N; return (T.y[(i + 1) % N] - T.y[(i - 1 + N) % N]) / 8; }
+/** Road height under (x, z) near centreline index i (slope-interpolated along the road). */
+export function heightAt(T, i, x, z) {
+  const p = T.pts[i], t = T.tan[i];
+  return T.y[i] + ((x - p[0]) * t[0] + (z - p[1]) * t[1]) * slopeAt(T, i);
 }
 
 /** Closest centreline index to (x, z), searching ±w around a hint. */
@@ -199,6 +323,7 @@ export function step(r, input) {
   if (r.grass) r.vf -= r.vf * GRASS_DRAG * DT;
   else if (r.boost <= 0 && !(gas > 0)) r.vf -= r.vf * DRAG * DT;
   if (r.vf > vmax) r.vf += (vmax - r.vf) * Math.min(1, DT * 3);
+  r.vf -= GRAV * slopeAt(T, r.idx) * DT; // uphill slows, downhill speeds up
   if (r.vf < -18) r.vf = -18;
   // turning pushes velocity sideways; grip pulls it back in line
   const turnRate = r.steer * turnK * Math.sign(r.vf || 1);
