@@ -20,11 +20,12 @@ OUT="$HERE/out/$PKG"
 mkdir -p "$OUT"
 A=(adb -s "$DEV")
 
-# name  route  extra-seconds (3D / WebView screens need longer to draw)
+# name  route  extra-seconds (3D / WebView screens need longer to draw)  [flow, default shot.yaml]
+ONLY="${ONLY:-}"  # e.g. ONLY="02-monkecaves 03-monkekart" reshoots just those
 SCREENS=(
   "01-main-chat     chat                 4"
-  "02-monkecaves    monkecaves           12"
-  "03-monkekart     racer                12"
+  "02-monkecaves    monkecaves           12  game-caves.yaml"
+  "03-monkekart     racer                12  game-kart.yaml"
   "04-monke3d       monke3d              10"
   "05-globe         globe                10"
   "06-trades        open/trades          5"
@@ -45,14 +46,15 @@ demo network -e mobile show -e datatype none -e level 4
 demo notifications -e visible false
 
 for row in "${SCREENS[@]}"; do
-  read -r name route wait <<<"$row"
+  read -r name route wait flow <<<"$row"
+  [ -n "$ONLY" ] && [[ " $ONLY " != *" $name "* ]] && continue
   echo "→ $name ($route)"
   "${A[@]}" shell am start -W -a android.intent.action.VIEW -d "onlymonkes://$route" "$PKG" >/dev/null
   sleep "$wait"
   # Maestro 2.x only writes screenshots under its own dated output folder: shoot into a
   # scratch folder, then move the PNG up to out/<package>/<name>.png.
   RUN="$OUT/.run"; rm -rf "$RUN"
-  maestro --device "$DEV" test --test-output-dir "$RUN" -e APP_ID="$PKG" -e NAME="$name" "$HERE/shot.yaml" >/dev/null \
+  maestro --device "$DEV" test --test-output-dir "$RUN" -e APP_ID="$PKG" -e NAME="$name" "$HERE/${flow:-shot.yaml}" >/dev/null \
     || { echo "  maestro failed on $name (debug: ~/.maestro/tests)"; exit 1; }
   find "$RUN" -name "$name.png" -exec mv -f {} "$OUT/$name.png" \;
   rm -rf "$RUN"

@@ -1,0 +1,15 @@
+# MonkeKart in a race: tap RACE, wait out the countdown, shoot while the kart is
+# driving (gas is automatic). NEVER add clearState here.
+appId: ${APP_ID}
+---
+- waitForAnimationToEnd:
+    timeout: 15000
+- tapOn: "RACE"
+- extendedWaitUntil:
+    notVisible: "RACE"
+    timeout: 5000
+- extendedWaitUntil:
+    visible: "__never_shown__"
+    timeout: 4000
+    optional: true
+- takeScreenshot: ${NAME}
