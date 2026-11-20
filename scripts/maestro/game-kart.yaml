@@ -1,15 +1,22 @@
-# MonkeKart in a race: tap RACE, wait out the countdown, shoot while the kart is
-# driving (gas is automatic). NEVER add clearState here.
+# MonkeKart in a race: tap RACE (or "Restart race" when the deep link reopened an
+# earlier, paused race), wait out the countdown, shoot while the kart is driving
+# (gas is automatic). NEVER add clearState here.
 appId: ${APP_ID}
 ---
 - waitForAnimationToEnd:
     timeout: 15000
-- tapOn: "RACE"
-- extendedWaitUntil:
-    notVisible: "RACE"
-    timeout: 5000
+- runFlow:
+    when:
+      visible: "Restart race"
+    commands:
+      - tapOn: "Restart race"
+- runFlow:
+    when:
+      visible: "RACE"
+    commands:
+      - tapOn: "RACE"
 - extendedWaitUntil:
     visible: "__never_shown__"
-    timeout: 4000
+    timeout: 3500
     optional: true
 - takeScreenshot: ${NAME}

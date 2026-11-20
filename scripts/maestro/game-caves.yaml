@@ -1,25 +1,14 @@
-# MonkeCaves in play: tap FIRE on the title card to start the cave, then fire a few
-# shots so the screenshot shows the game, not the menu. NEVER add clearState here.
+# MonkeCaves in play: tap FIRE on the title card to start the cave, then fire twice
+# right away so the shot shows the game (standing still too long gets the monke
+# killed). NEVER add clearState here.
 appId: ${APP_ID}
 ---
 - waitForAnimationToEnd:
     timeout: 15000
 - tapOn:
-    text: "FIRE"
-    optional: true
-- runFlow:
-    when:
-      notVisible: "FIRE"
-    commands:
-      - tapOn:
-          point: "88%,92%"
-- swipe:
-    start: "75%,50%"
-    end: "62%,50%"
-    duration: 600
-- repeat:
-    times: 3
-    commands:
-      - tapOn:
-          point: "88%,92%"
+    point: "88%,90%"
+- tapOn:
+    point: "88%,90%"
+- tapOn:
+    point: "88%,90%"
 - takeScreenshot: ${NAME}

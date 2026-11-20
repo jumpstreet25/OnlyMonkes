@@ -35,6 +35,8 @@ release:
       uri: dapp-store/assets/screenshots/screenshot_5.png
     - purpose: screenshot
       uri: dapp-store/assets/screenshots/screenshot_6.png
+    - purpose: screenshot
+      uri: dapp-store/assets/screenshots/screenshot_7.png
   files:
     - purpose: install
       uri: android/app/build/outputs/apk/release/app-release.apk
