@@ -37,9 +37,15 @@ async function oldDatabaseFor(inboxId: string): Promise<string | null> {
   const dir = `${FileSystem.documentDirectory}xmtp_db/`;
   const info = await FileSystem.getInfoAsync(dir);
   if (!info.exists) return null;
-  const names = await FileSystem.readDirectoryAsync(dir);
-  const db = names.find((n) => n.endsWith(".db3") && n.includes(inboxId));
-  return db ? plain(dir + db) : null;
+  const names = (await FileSystem.readDirectoryAsync(dir)).filter((n) => n.endsWith(".db3") && n.includes(inboxId));
+  // More than one match (old env or test builds): take the one 3.0 wrote to last.
+  let best: { name: string; at: number } | null = null;
+  for (const name of names) {
+    const f = await FileSystem.getInfoAsync(dir + name);
+    const at = f.exists ? f.modificationTime ?? 0 : -1;
+    if (!best || at > best.at) best = { name, at };
+  }
+  return best ? plain(dir + best.name) : null;
 }
 
 async function oldKey(wallet: string): Promise<Uint8Array | null> {
