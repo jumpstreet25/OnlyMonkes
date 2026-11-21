@@ -37,16 +37,18 @@ export function hashSeed(s) { let h = 2166136261; for (const c of String(s)) h =
 export function rng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
 // The race day is the player's own calendar date, turning over at 3am local time (owner 2026-11-14:
 // "I want the track to match the day … based on time zone"), like the daily word games: everyone
-// on Sunday plays the Sunday track, one board per date. HOLD_UNTIL kept the First Snow track
-// (2026-11-15) on from its 5pm Nov 14 launch through Monday 3am. worker racer.ts accepts every
-// date that is "today" somewhere (UTC−12 … UTC+14).
+// on Sunday plays the Sunday track, one board per date. HOLDS launch a track early: a date inside
+// [from, until) plays the `until` track — First Snow (2026-11-15) from its 5pm Nov 14 launch, and the
+// first hilly figure-8 (2026-11-21) from its Nov 20 evening launch (owner: "ship the new level now").
+// Keep in step with worker racer.ts HOLDS. The worker accepts every date that is "today" somewhere
+// (UTC−12 … UTC+14).
 export const DAY_START_H = 3;
-export const HOLD_UNTIL = "2026-11-15";
+export const HOLDS = [["2026-11-14", "2026-11-15"], ["2026-11-20", "2026-11-21"]];
+export const holdDay = (id) => { for (const [from, until] of HOLDS) if (id >= from && id < until) return until; return id; };
 const pad = (v) => String(v).padStart(2, "0");
 export function todayId(d = new Date()) {
   const t = new Date(d.getTime() - DAY_START_H * 3600_000);
-  const id = `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}`;
-  return id < HOLD_UNTIL ? HOLD_UNTIL : id;
+  return holdDay(`${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}`);
 }
 /** When the track after `id` arrives, in the player's local time (ms). */
 export function nextTrackAt(id) {
