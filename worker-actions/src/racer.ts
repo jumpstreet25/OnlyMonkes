@@ -53,10 +53,13 @@ function json(body: unknown, status = 200, cache = "no-store"): Response {
 }
 
 /** The race day is the player's local date, turning over at 3am local (racer-sim.js todayId, since
- *  2026-11-14 — the First Snow track "2026-11-15" was held until Monday 3am). One board per date. */
-const DAY_START_MS = 3 * 3_600_000, HOLD_UNTIL = "2026-11-15";
+ *  2026-11-14). One board per date. HOLDS launch a track early — a date in [from, until) races the
+ *  `until` track: First Snow 2026-11-15 from Nov 14, the first hilly figure-8 2026-11-21 from the
+ *  evening of Nov 20. Keep in step with racer-sim.js HOLDS. */
+const DAY_START_MS = 3 * 3_600_000;
+const HOLDS: [string, string][] = [["2026-11-14", "2026-11-15"], ["2026-11-20", "2026-11-21"]];
 const NY_DATE = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" });
-const clampHold = (id: string) => (id < HOLD_UNTIL ? HOLD_UNTIL : id);
+const clampHold = (id: string) => { for (const [from, until] of HOLDS) if (id >= from && id < until) return until; return id; };
 /** The New York race day: the default board when a caller sends no ?day. */
 export const dayId = (ms: number) => clampHold(NY_DATE.format(new Date(ms - DAY_START_MS)));
 const utcDate = (ms: number) => new Date(ms).toISOString().slice(0, 10);
